@@ -28,6 +28,12 @@ command -v certbot >/dev/null || fatal "Certbot não encontrado (apt install cer
 command -v git >/dev/null || fatal "Git não encontrado."
 ok "Docker, Compose, Nginx, Certbot e Git presentes"
 
+LIVRE_MB="$(free -m | awk '/^Mem:/{print $7}')"
+if [ "${LIVRE_MB:-0}" -lt 500 ]; then
+  fatal "Só ${LIVRE_MB} MB de memória disponíveis. O CRM precisa de ~400 MB livres para não afetar os outros sistemas."
+fi
+ok "Memória disponível: ${LIVRE_MB} MB"
+
 PORTA="$(porta_http)"
 if ss -tln | awk '{print $4}' | grep -qE "[:.]$PORTA$" && ! dc ps -q web 2>/dev/null | grep -q .; then
   fatal "A porta $PORTA já está em uso por outro serviço. Defina CRM_HTTP_PORT no .env com uma porta livre."
@@ -68,7 +74,10 @@ BACKUP_RETENTION_DAYS=30
 BACKUP_HOUR=3
 SEED_ADMIN_EMAIL=$ADMIN_EMAIL
 SEED_ADMIN_NAME=$ADMIN_NOME
-GITHUB_REPO=
+# Imagens prontas publicadas pelo GitHub Actions (a VPS não compila nada)
+CRM_IMAGE_PREFIX=${CRM_IMAGE_PREFIX:-ghcr.io/diegonauemocelin/crm}
+# Aviso de "nova versão disponível" no rodapé
+GITHUB_REPO=${GITHUB_REPO:-diegonauemocelin/crm}
 GITHUB_TOKEN=
 EOF
   chmod 600 .env

@@ -48,8 +48,7 @@ voltar() {
 }
 trap voltar ERR
 
-info "Construindo imagens"
-dc build --pull
+obter_imagens
 
 info "Subindo o banco"
 dc up -d --wait db

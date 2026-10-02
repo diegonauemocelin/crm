@@ -24,10 +24,9 @@ git -c advice.detachedHead=false checkout --quiet "v$ALVO"
 env_set CRM_VERSION "$ALVO"
 env_set GIT_COMMIT "$(git rev-parse --short HEAD)"
 
-# Reaproveita as imagens já construídas daquela versão; só reconstrói se tiverem sido removidas.
-if ! docker image inspect "usaparts-crm-api:$ALVO" >/dev/null 2>&1; then
-  info "Imagens da versão $ALVO não encontradas. Construindo."
-  dc build
+# Reaproveita as imagens daquela versão se ainda estiverem no servidor; senão, baixa (ou constrói).
+if ! docker image inspect "$(prefixo_imagens)-api:$ALVO" >/dev/null 2>&1; then
+  obter_imagens
 fi
 dc up -d --remove-orphans --wait
 aguardar_saude "$ALVO"

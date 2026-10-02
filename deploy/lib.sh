@@ -28,6 +28,25 @@ env_set() {
   fi
 }
 
+prefixo_imagens() { local p; p="$(env_get CRM_IMAGE_PREFIX)"; echo "${p:-usaparts-crm}"; }
+
+# Com CRM_IMAGE_PREFIX apontando para um registro (ghcr.io/...), baixa as imagens já construídas pelo GitHub Actions:
+# a VPS não compila nada (evita picos de memória que afetariam os outros sistemas do servidor).
+# Sem o prefixo, constrói localmente.
+obter_imagens() {
+  if [[ "$(prefixo_imagens)" == */* ]]; then
+    info "Baixando imagens prontas ($(prefixo_imagens)-*:$(env_get CRM_VERSION))"
+    # return (e não exit) para o deploy acionar a volta automática à versão anterior.
+    dc pull --quiet api web backup db || {
+      erro "Não foi possível baixar as imagens. A versão foi publicada (aba Actions do GitHub)? O pacote está público ou foi feito 'docker login ghcr.io'?"
+      return 1
+    }
+  else
+    info "Construindo imagens localmente"
+    dc build --pull
+  fi
+}
+
 porta_http() { local p; p="$(env_get CRM_HTTP_PORT)"; echo "${p:-8180}"; }
 
 # Espera a API responder saudável com a versão esperada (ou qualquer versão se vazio).

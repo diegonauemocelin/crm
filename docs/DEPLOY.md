@@ -2,6 +2,8 @@
 
 Tudo roda em containers próprios (`usaparts-crm`), com rede, banco e volumes isolados. A única mudança fora dos containers é **um vhost novo no Nginx** para `crm.usaparts.com.br` e o certificado HTTPS desse domínio. Nenhum outro site, banco, container ou regra de firewall é alterado.
 
+**Memória:** a VPS tem 2 GB e já roda outros sistemas (BI, painel). Por isso a VPS **não compila nada**. A cada versão publicada, o GitHub Actions constrói as imagens e publica em `ghcr.io/diegonauemocelin/crm-*`, e o deploy só as baixa. Em uso normal o CRM ocupa cerca de 300 MB, com limites rígidos por container (banco 384 MB, API 384 MB, frontend 64 MB, backup 128 MB). Na Fase 2 (WhatsApp/Evolution API) será preciso reavaliar a memória; o recomendado é passar a VPS para 4 GB.
+
 ## 0. Inventário (obrigatório antes de instalar)
 
 Somente leitura: não instala nem altera nada.

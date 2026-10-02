@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.1.1",
+      "date": "2026-10-02",
+      "title": "Ajustes para o servidor de produção",
+      "changes": [
+        { "type": "infra", "area": "Servidor", "text": "As imagens do sistema passam a ser construídas pelo GitHub a cada versão publicada. O servidor só baixa as imagens prontas, sem compilar nada, o que evita picos de memória que poderiam afetar os outros sistemas da VPS." },
+        { "type": "infra", "area": "Servidor", "text": "Limites de memória do banco, da API, do frontend e do backup ajustados para a VPS de 2 GB (cerca de 300 MB em uso normal)." },
+        { "type": "melhoria", "area": "Sistema", "text": "Aviso de nova versão disponível ativado por padrão na instalação." },
+        { "type": "infra", "area": "Qualidade", "text": "Verificação automática a cada envio de código: testes, build das imagens, stack completa no ar, teste de segurança, backup e restauração." }
+      ]
+    },
+    {
       "version": "0.1.0",
       "date": "2026-10-02",
       "title": "Fase 1 — Fundação, segurança e identidade visual",

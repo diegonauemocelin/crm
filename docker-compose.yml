@@ -21,6 +21,8 @@ services:
     image: postgres:18-alpine
     # O Postgres precisa trocar de usuário na inicialização.
     cap_add: [CHOWN, SETUID, SETGID, FOWNER, DAC_OVERRIDE]
+    # Ajustado para a VPS de 2 GB que também roda outros sistemas.
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "work_mem=4MB", "-c", "maintenance_work_mem=32MB", "-c", "max_connections=30", "-c", "effective_cache_size=256MB"]
     environment:
       POSTGRES_DB: crm
       POSTGRES_USER: crm
@@ -29,7 +31,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql
     networks: [internal]
-    shm_size: 256mb
+    shm_size: 128mb
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U crm -d crm"]
       interval: 10s
@@ -37,11 +39,13 @@ services:
       retries: 10
     deploy:
       resources:
-        limits: { memory: 1g }
+        limits: { memory: 384m }
 
+  # Em produção as imagens vêm prontas do GitHub (CRM_IMAGE_PREFIX=ghcr.io/...): a VPS não compila nada.
+  # Sem o prefixo (desenvolvimento e CI), o compose constrói localmente.
   api:
     <<: *hardening
-    image: usaparts-crm-api:${CRM_VERSION:-latest}
+    image: ${CRM_IMAGE_PREFIX:-usaparts-crm}-api:${CRM_VERSION:-latest}
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -53,6 +57,7 @@ services:
       - /tmp
     environment:
       NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=256
       HOME: /tmp
       CHECKPOINT_DISABLE: "1"
       APP_URL: https://${CRM_DOMAIN:?defina CRM_DOMAIN no .env}
@@ -74,11 +79,11 @@ services:
     networks: [internal, egress]
     deploy:
       resources:
-        limits: { memory: 768m }
+        limits: { memory: 384m }
 
   web:
     <<: *hardening
-    image: usaparts-crm-web:${CRM_VERSION:-latest}
+    image: ${CRM_IMAGE_PREFIX:-usaparts-crm}-web:${CRM_VERSION:-latest}
     build:
       context: .
       dockerfile: apps/web/Dockerfile
@@ -93,12 +98,12 @@ services:
     networks: [egress]
     deploy:
       resources:
-        limits: { memory: 128m }
+        limits: { memory: 64m }
 
   # Backup diário criptografado (pg_dump -> gzip -> age com chave pública). A chave privada fica FORA do servidor.
   backup:
     <<: *hardening
-    image: usaparts-crm-backup:${CRM_VERSION:-latest}
+    image: ${CRM_IMAGE_PREFIX:-usaparts-crm}-backup:${CRM_VERSION:-latest}
     build:
       context: deploy/backup
     environment:
@@ -119,7 +124,7 @@ services:
     networks: [internal]
     deploy:
       resources:
-        limits: { memory: 256m }
+        limits: { memory: 128m }
 
 networks:
   # Sem saída para a internet: só a API e o backup falam com o banco.
