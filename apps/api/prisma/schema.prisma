@@ -1,0 +1,227 @@
+// Modelo de dados do CRM. Toda tabela de negócio carrega tenantId para permitir a evolução para SaaS.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat        = "cjs"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum LayoutMode {
+  CLASSIC
+  MODERN
+}
+
+enum ThemeMode {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+enum PermissionScope {
+  OWN
+  ALL
+}
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  users    User[]
+  roles    Role[]
+  settings TenantSetting[]
+  files    FileAsset[]
+
+  @@map("tenants")
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  name        String
+  description String?
+  /// Perfil de sistema (Administrador): não pode ser editado nem excluído e tem acesso total.
+  isSystem    Boolean  @default(false)
+  require2fa  Boolean  @default(false)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id])
+  permissions RolePermission[]
+  users       User[]
+
+  @@unique([tenantId, name])
+  @@map("roles")
+}
+
+model RolePermission {
+  id        String          @id @default(uuid()) @db.Uuid
+  roleId    String          @db.Uuid
+  module    String
+  canView   Boolean         @default(false)
+  canCreate Boolean         @default(false)
+  canEdit   Boolean         @default(false)
+  canDelete Boolean         @default(false)
+  canExport Boolean         @default(false)
+  scope     PermissionScope @default(ALL)
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, module])
+  @@map("role_permissions")
+}
+
+model User {
+  id                 String     @id @default(uuid()) @db.Uuid
+  tenantId           String     @db.Uuid
+  roleId             String     @db.Uuid
+  name               String
+  email              String
+  passwordHash       String
+  avatarFileId       String?    @db.Uuid
+  active             Boolean    @default(true)
+  mustChangePassword Boolean    @default(false)
+  passwordChangedAt  DateTime   @default(now())
+
+  /// Segredo TOTP criptografado (AES-256-GCM). O "pending" existe só durante a configuração.
+  totpSecretEnc        String?
+  totpPendingSecretEnc String?
+  totpEnabled          Boolean  @default(false)
+  /// Último time step TOTP aceito; impede reutilizar o mesmo código.
+  totpLastStep         Int?
+
+  failedLogins Int       @default(0)
+  lockedUntil  DateTime?
+  lastLoginAt  DateTime?
+  lastLoginIp  String?
+
+  layout LayoutMode?
+  theme  ThemeMode   @default(SYSTEM)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant         Tenant               @relation(fields: [tenantId], references: [id])
+  role           Role                 @relation(fields: [roleId], references: [id])
+  refreshTokens  RefreshToken[]
+  resetTokens    PasswordResetToken[]
+  recoveryCodes  RecoveryCode[]
+
+  @@unique([tenantId, email])
+  @@index([email])
+  @@map("users")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  /// Todos os tokens de uma mesma sessão compartilham a família. Reuso de token revogado derruba a família inteira.
+  familyId   String    @db.Uuid
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  replacedAt DateTime?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
+}
+
+model RecoveryCode {
+  id       String    @id @default(uuid()) @db.Uuid
+  userId   String    @db.Uuid
+  codeHash String
+  usedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("recovery_codes")
+}
+
+/// Log de auditoria encadeado por hash. UPDATE e DELETE são bloqueados por trigger no banco.
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  tenantId  String?  @db.Uuid
+  userId    String?  @db.Uuid
+  userEmail String?
+  action    String
+  entity    String?
+  entityId  String?
+  ip        String?
+  userAgent String?
+  data      Json?
+  prevHash  String
+  hash      String
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([userId])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+model TenantSetting {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  key       String
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, key])
+  @@map("tenant_settings")
+}
+
+model FileAsset {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  kind      String
+  mime      String
+  size      Int
+  path      String
+  isPublic  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("file_assets")
+}
+
+/// Histórico de versões exibido na tela "Atualizações". Sincronizado a partir de releases.json a cada inicialização.
+model SystemRelease {
+  version     String   @id
+  releasedAt  DateTime
+  title       String
+  changes     Json
+  installedAt DateTime @default(now())
+
+  @@map("system_releases")
+}
+

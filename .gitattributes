@@ -1,0 +1,6 @@
+# Scripts rodam no Linux da VPS: precisam de quebra de linha LF mesmo quando editados no Windows.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

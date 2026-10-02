@@ -1,0 +1,17 @@
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+**/*.log
+**/.env
+**/.env.*
+.git
+.github
+.claude
+.deploy
+backups
+docs
+apps/api/storage
+apps/api/.devdb
+apps/api/src/generated
+apps/api/test
+inventario-*.txt

@@ -1,0 +1,52 @@
+import { type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common'
+import { APP_GUARD } from '@nestjs/core'
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
+import { LoggerModule } from 'nestjs-pino'
+import { AuditModule } from './audit/audit.module'
+import { AuthGuard } from './auth/auth.guard'
+import { AuthModule } from './auth/auth.module'
+import { CsrfMiddleware } from './common/csrf.middleware'
+import { env } from './config/env'
+import { FilesModule } from './files/files.module'
+import { PrismaModule } from './prisma/prisma.module'
+import { RolesController } from './roles/roles.controller'
+import { RolesService } from './roles/roles.service'
+import { SettingsModule } from './settings/settings.module'
+import { SystemController } from './system/system.controller'
+import { SystemService } from './system/system.service'
+import { UsersController } from './users/users.controller'
+import { UsersService } from './users/users.service'
+
+@Module({
+  imports: [
+    LoggerModule.forRoot({
+      pinoHttp: {
+        level: env.isProd ? 'info' : 'debug',
+        transport: env.isProd ? undefined : { target: 'pino-pretty', options: { singleLine: true } },
+        // Cookies e cabeçalhos de autenticação nunca vão para o log.
+        redact: ['req.headers.cookie', 'req.headers.authorization', 'req.headers["x-csrf-token"]', 'res.headers["set-cookie"]'],
+        autoLogging: { ignore: (req) => req.url === '/api/health' },
+      },
+    }),
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 300 }]),
+    PrismaModule,
+    AuditModule,
+    FilesModule,
+    SettingsModule,
+    AuthModule,
+  ],
+  controllers: [UsersController, RolesController, SystemController],
+  providers: [
+    UsersService,
+    RolesService,
+    SystemService,
+    // Ordem importa: primeiro o limite de requisições, depois sessão + permissão.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useExisting: AuthGuard },
+  ],
+})
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(CsrfMiddleware).forRoutes('*')
+  }
+}

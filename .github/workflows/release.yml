@@ -1,0 +1,38 @@
+name: Publicar versão
+
+# Ao enviar uma tag vX.Y.Z, publica a Release no GitHub com as notas do releases.json.
+# A Release publicada é o que o sistema consulta para mostrar "nova versão disponível" no rodapé.
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Conferir versão
+        run: node scripts/check-release.mjs "${GITHUB_REF_NAME}"
+      - name: Gerar notas da versão
+        run: |
+          node -e '
+            const r = require("./releases.json").releases[0];
+            const nomes = { novo: "Novo", melhoria: "Melhoria", correcao: "Correção", seguranca: "Segurança", infra: "Infraestrutura" };
+            const areas = [...new Set(r.changes.map(c => c.area || "Geral"))];
+            let md = `## ${r.title}\n\nPublicada em ${r.date}.\n`;
+            for (const a of areas) {
+              md += `\n### ${a}\n`;
+              for (const c of r.changes.filter(c => (c.area || "Geral") === a)) md += `- **${nomes[c.type] || c.type}:** ${c.text}\n`;
+            }
+            require("fs").writeFileSync("notas.md", md);
+          '
+      - name: Criar Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes-file notas.md --verify-tag

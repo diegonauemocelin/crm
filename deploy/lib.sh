@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Funções compartilhadas pelos scripts de implantação.
+
+RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ESTADO="$RAIZ/.deploy"
+mkdir -p "$ESTADO" 2>/dev/null || true
+
+cor() { printf '\033[%sm%s\033[0m\n' "$1" "$2"; }
+info() { cor "1;34" "==> $*"; }
+ok() { cor "1;32" "  ✔ $*"; }
+aviso() { cor "1;33" "  ! $*"; }
+erro() { cor "1;31" "  ✖ $*" >&2; }
+fatal() { erro "$*"; exit 1; }
+
+exigir_root() { [ "$(id -u)" -eq 0 ] || fatal "Rode como root (sudo)."; }
+
+dc() { docker compose --project-directory "$RAIZ" -f "$RAIZ/docker-compose.yml" "$@"; }
+
+env_get() { grep -E "^$1=" "$RAIZ/.env" 2>/dev/null | tail -1 | cut -d= -f2-; }
+
+# Grava/atualiza uma variável no .env sem mexer nas demais.
+env_set() {
+  local chave="$1" valor="$2" arquivo="$RAIZ/.env"
+  if grep -qE "^${chave}=" "$arquivo"; then
+    sed -i "s|^${chave}=.*|${chave}=${valor}|" "$arquivo"
+  else
+    printf '%s=%s\n' "$chave" "$valor" >> "$arquivo"
+  fi
+}
+
+porta_http() { local p; p="$(env_get CRM_HTTP_PORT)"; echo "${p:-8180}"; }
+
+# Espera a API responder saudável com a versão esperada (ou qualquer versão se vazio).
+aguardar_saude() {
+  local esperado="${1:-}" tentativas=60 corpo
+  for _ in $(seq 1 "$tentativas"); do
+    if corpo="$(curl -fsS --max-time 3 "http://127.0.0.1:$(porta_http)/api/health" 2>/dev/null)"; then
+      if [ -z "$esperado" ] || echo "$corpo" | grep -q "\"version\":\"$esperado\""; then
+        ok "Sistema saudável: $corpo"
+        return 0
+      fi
+    fi
+    sleep 2
+  done
+  erro "A API não respondeu saudável em $((tentativas * 2))s."
+  return 1
+}
+
+registrar() { printf '%s\t%s\t%s\n' "$(date -Iseconds)" "$1" "$2" >> "$ESTADO/historico.log"; }

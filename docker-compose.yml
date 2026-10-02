@@ -1,0 +1,132 @@
+# CRM - stack isolada. Nome de projeto, rede, volumes e banco próprios: não toca em nada que já exista na VPS.
+# A única porta publicada é a do frontend, e só em 127.0.0.1 (o Nginx do servidor faz o HTTPS e repassa para ela).
+
+name: usaparts-crm
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+services:
+  db:
+    <<: *hardening
+    image: postgres:18-alpine
+    # O Postgres precisa trocar de usuário na inicialização.
+    cap_add: [CHOWN, SETUID, SETGID, FOWNER, DAC_OVERRIDE]
+    environment:
+      POSTGRES_DB: crm
+      POSTGRES_USER: crm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    networks: [internal]
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm -d crm"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits: { memory: 1g }
+
+  api:
+    <<: *hardening
+    image: usaparts-crm-api:${CRM_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-dev}
+        BUILD_DATE: ${BUILD_DATE:-}
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      NODE_ENV: production
+      HOME: /tmp
+      CHECKPOINT_DISABLE: "1"
+      APP_URL: https://${CRM_DOMAIN:?defina CRM_DOMAIN no .env}
+      DATABASE_URL: postgresql://crm:${POSTGRES_PASSWORD}@db:5432/crm
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?defina JWT_ACCESS_SECRET no .env}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?defina APP_ENCRYPTION_KEY no .env}
+      COOKIE_SECURE: "true"
+      GITHUB_REPO: ${GITHUB_REPO:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
+      SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-}
+      SEED_TENANT_NAME: ${SEED_TENANT_NAME:-USA Parts}
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    # "internal" alcança o banco; "egress" permite sair para SMTP, GitHub e, nas próximas fases, Magazord e Meta.
+    networks: [internal, egress]
+    deploy:
+      resources:
+        limits: { memory: 768m }
+
+  web:
+    <<: *hardening
+    image: usaparts-crm-web:${CRM_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - "127.0.0.1:${CRM_HTTP_PORT:-8180}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [egress]
+    deploy:
+      resources:
+        limits: { memory: 128m }
+
+  # Backup diário criptografado (pg_dump -> gzip -> age com chave pública). A chave privada fica FORA do servidor.
+  backup:
+    <<: *hardening
+    image: usaparts-crm-backup:${CRM_VERSION:-latest}
+    build:
+      context: deploy/backup
+    environment:
+      PGHOST: db
+      PGUSER: crm
+      PGDATABASE: crm
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?defina BACKUP_AGE_RECIPIENT no .env (chave pública age)}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_HOUR: ${BACKUP_HOUR:-3}
+      TZ: America/Sao_Paulo
+    volumes:
+      - ${BACKUP_DIR:-./backups}:/backups
+      - uploads:/data/uploads:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [internal]
+    deploy:
+      resources:
+        limits: { memory: 256m }
+
+networks:
+  # Sem saída para a internet: só a API e o backup falam com o banco.
+  internal:
+    internal: true
+  egress: {}
+
+volumes:
+  pgdata:
+  uploads:

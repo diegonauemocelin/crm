@@ -1,0 +1,31 @@
+{
+  "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
+  "releases": [
+    {
+      "version": "0.1.0",
+      "date": "2026-10-02",
+      "title": "Fase 1 — Fundação, segurança e identidade visual",
+      "changes": [
+        { "type": "novo", "area": "Acesso", "text": "Login com e-mail e senha protegida por Argon2id, sessão em cookie seguro (HttpOnly, Secure, SameSite=Strict) com expiração de 15 minutos e renovação automática." },
+        { "type": "novo", "area": "Acesso", "text": "Autenticação em dois fatores (TOTP) compatível com Google Authenticator, Microsoft Authenticator e similares, com 8 códigos de recuperação." },
+        { "type": "novo", "area": "Acesso", "text": "2FA obrigatório por perfil de acesso (ativado por padrão para Administrador)." },
+        { "type": "novo", "area": "Acesso", "text": "Recuperação de senha por e-mail com link de uso único válido por 1 hora." },
+        { "type": "novo", "area": "Usuários", "text": "Cadastro de usuários com foto, ativação/desativação, convite por e-mail ou senha provisória com troca obrigatória no primeiro acesso." },
+        { "type": "novo", "area": "Usuários", "text": "Administrador pode desbloquear usuários, reenviar link de senha e zerar o 2FA de quem perdeu o celular." },
+        { "type": "novo", "area": "Perfis de acesso", "text": "Perfis customizáveis com permissões por módulo (ver, criar, editar, excluir, exportar) e escopo (somente os próprios registros ou todos)." },
+        { "type": "novo", "area": "Perfis de acesso", "text": "Perfis iniciais: Administrador, Marketing, Pré-Vendas, Pós-Vendas, Vendedor e Diretoria (somente leitura)." },
+        { "type": "novo", "area": "Identidade visual", "text": "Whitelabel: nome do sistema, logo (claro e escuro), favicon, cor principal, cor do menu e textos da tela de login configuráveis pelo painel." },
+        { "type": "novo", "area": "Aparência", "text": "Escolha entre layout Moderno (menu lateral recolhível, construído com shadcn/ui) e Clássico (menu superior no estilo RD Station). O administrador define o padrão e se cada usuário pode escolher." },
+        { "type": "novo", "area": "Aparência", "text": "Modo claro, escuro ou automático (segue o sistema operacional), por usuário." },
+        { "type": "novo", "area": "Configurações", "text": "Servidor de e-mail (SMTP) configurável pelo painel, com botões para testar a conexão e enviar um e-mail de teste. Pré-configuração sugerida para a Locaweb." },
+        { "type": "novo", "area": "Auditoria", "text": "Log de auditoria imutável e encadeado por hash: registra quem fez o quê, quando e de qual IP. Consulta com filtros e verificação de integridade." },
+        { "type": "novo", "area": "Sistema", "text": "Tela Atualizações com a versão instalada e o histórico detalhado de cada versão." },
+        { "type": "novo", "area": "Sistema", "text": "Rodapé com a versão em execução e o aviso quando existe versão mais nova publicada." },
+        { "type": "seguranca", "area": "Proteções", "text": "Bloqueio progressivo após 5 senhas erradas (15 min, 1 h, 4 h), limite de requisições por IP, proteção CSRF em duas camadas e cabeçalhos de segurança (CSP, HSTS, X-Frame-Options)." },
+        { "type": "seguranca", "area": "Proteções", "text": "Permissões verificadas no servidor em todas as rotas. Desativar um usuário ou trocar seu perfil encerra as sessões na hora." },
+        { "type": "seguranca", "area": "Proteções", "text": "Segredos do 2FA e senha do SMTP criptografados no banco (AES-256-GCM). Upload de imagens validado pelo conteúdo do arquivo." },
+        { "type": "infra", "area": "Servidor", "text": "Implantação em containers Docker isolados (rede, banco e volumes próprios), sem alterar outros sistemas da VPS. Scripts de deploy, rollback e backup diário criptografado." }
+      ]
+    }
+  ]
+}

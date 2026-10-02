@@ -1,0 +1,21 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+*.log
+
+# Segredos e dados locais: nunca versionar
+.env
+.env.*
+!.env.example
+backups/
+.deploy/
+inventario-*.txt
+apps/api/storage/
+apps/api/.devdb/
+
+# Gerado pelo Prisma no build
+apps/api/src/generated/
+
+# Ferramentas locais
+.claude/settings.local.json
