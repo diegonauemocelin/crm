@@ -75,11 +75,24 @@
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
     --ring: color-mix(in oklch, var(--brand) 55%, transparent);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
+    /* Paleta categórica validada (daltonismo e contraste) — ordem fixa, nunca reciclada. */
+    --chart-1: #2a78d6;
+    --chart-2: #eb6834;
+    --chart-3: #1baf7a;
+    --chart-4: #eda100;
+    --chart-5: #e87ba4;
+    /* Escala sequencial (uma cor, do claro ao escuro) para o mapa por estado. */
+    --seq-1: #cde2fb;
+    --seq-2: #9ec5f4;
+    --seq-3: #6da7ec;
+    --seq-4: #3987e5;
+    --seq-5: #256abf;
+    --seq-6: #184f95;
+    --seq-7: #0d366b;
+    --seq-ink-light: #0b0b0b;
+    --seq-ink-dark: #ffffff;
+    --chart-grid: #e1e0d9;
+    --chart-axis: #898781;
     --radius: 0.625rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.145 0 0);
@@ -110,11 +123,23 @@
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
+    --chart-1: #3987e5;
+    --chart-2: #d95926;
+    --chart-3: #199e70;
+    --chart-4: #c98500;
+    --chart-5: #d55181;
+    --seq-1: #0d366b;
+    --seq-2: #104281;
+    --seq-3: #184f95;
+    --seq-4: #256abf;
+    --seq-5: #3987e5;
+    --seq-6: #6da7ec;
+    --seq-7: #9ec5f4;
+    /* No escuro a escala se inverte: os tons claros (mais valor) pedem texto escuro. */
+    --seq-ink-light: #ffffff;
+    --seq-ink-dark: #0b0b0b;
+    --chart-grid: #2c2c2a;
+    --chart-axis: #898781;
     --sidebar: oklch(0.205 0 0);
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: var(--brand);

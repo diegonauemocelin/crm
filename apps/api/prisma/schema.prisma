@@ -27,16 +27,45 @@ enum PermissionScope {
   ALL
 }
 
+enum ServiceKind {
+  PRE_VENDAS
+  POS_VENDAS
+}
+
+enum ReturnStatus {
+  SIM
+  NAO
+  PENDENTE
+}
+
+enum SaleStatus {
+  SIM
+  NAO
+  NEGOCIACAO
+}
+
+/// Listas configuráveis dos atendimentos. Itens são desativados, nunca apagados, para preservar o histórico.
+enum LookupType {
+  ORIGEM
+  TIPO_CLIENTE
+  MARCA
+  TIPO_PECA
+  MOTIVO_PERDA
+}
+
 model Tenant {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
   slug      String   @unique
   createdAt DateTime @default(now())
 
-  users    User[]
-  roles    Role[]
-  settings TenantSetting[]
-  files    FileAsset[]
+  users          User[]
+  roles          Role[]
+  settings       TenantSetting[]
+  files          FileAsset[]
+  sellers        Seller[]
+  lookups        LookupItem[]
+  serviceRecords ServiceRecord[]
 
   @@map("tenants")
 }
@@ -110,6 +139,7 @@ model User {
 
   tenant         Tenant               @relation(fields: [tenantId], references: [id])
   role           Role                 @relation(fields: [roleId], references: [id])
+  seller         Seller?
   refreshTokens  RefreshToken[]
   resetTokens    PasswordResetToken[]
   recoveryCodes  RecoveryCode[]
@@ -223,5 +253,111 @@ model SystemRelease {
   installedAt DateTime @default(now())
 
   @@map("system_releases")
+}
+
+/// Vendedor que recebe os atendimentos. Pode ou não ter login: o vínculo com um usuário (perfil Vendedor)
+/// é o que permite o escopo "somente os próprios registros".
+model Seller {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  unit      String?
+  email     String?
+  phone     String?
+  userId    String?  @unique @db.Uuid
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id])
+  user    User?           @relation(fields: [userId], references: [id])
+  records ServiceRecord[]
+
+  @@unique([tenantId, name])
+  @@map("sellers")
+}
+
+model LookupItem {
+  id        String     @id @default(uuid()) @db.Uuid
+  tenantId  String     @db.Uuid
+  type      LookupType
+  name      String
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  originOf       ServiceRecord[] @relation("RecordOrigin")
+  customerTypeOf ServiceRecord[] @relation("RecordCustomerType")
+  lostReasonOf   ServiceRecord[] @relation("RecordLostReason")
+
+  @@unique([tenantId, type, name])
+  @@map("lookup_items")
+}
+
+/// Atendimento de Pré-Vendas ou Pós-Vendas.
+model ServiceRecord {
+  id             String        @id @default(uuid()) @db.Uuid
+  tenantId       String        @db.Uuid
+  kind           ServiceKind
+  leadAt         DateTime
+  name           String
+  customerCode   String?
+  phone          String?
+  email          String?
+  sellerId       String?       @db.Uuid
+  originId       String?       @db.Uuid
+  customerTypeId String?       @db.Uuid
+  country        String        @default("BR")
+  state          String?       @db.Char(2)
+  city           String?
+  /// Marcas da máquina e tipos de peça (ids de LookupItem), seleção múltipla.
+  brandIds       String[]      @db.Uuid
+  partTypeIds    String[]      @db.Uuid
+  forwarded      Boolean       @default(false)
+  forwardedAt    DateTime?
+  returnStatus   ReturnStatus?
+  returnedAt     DateTime?
+  saleStatus     SaleStatus    @default(NEGOCIACAO)
+  lostReasonId   String?       @db.Uuid
+  invoiceNumber  String?
+  saleValue      Decimal?      @db.Decimal(12, 2)
+  notes          String?
+  /// Chave de deduplicação da importação: reimportar a mesma planilha não duplica registros.
+  externalKey    String?
+  importBatch    String?
+  createdById    String?       @db.Uuid
+  updatedById    String?       @db.Uuid
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  tenant       Tenant                 @relation(fields: [tenantId], references: [id])
+  seller       Seller?                @relation(fields: [sellerId], references: [id])
+  origin       LookupItem?            @relation("RecordOrigin", fields: [originId], references: [id])
+  customerType LookupItem?            @relation("RecordCustomerType", fields: [customerTypeId], references: [id])
+  lostReason   LookupItem?            @relation("RecordLostReason", fields: [lostReasonId], references: [id])
+  history      ServiceRecordHistory[]
+
+  @@unique([tenantId, externalKey])
+  @@index([tenantId, kind, leadAt])
+  @@index([sellerId])
+  @@index([phone])
+  @@map("service_records")
+}
+
+/// Histórico de alterações de cada atendimento (quem mudou o quê e quando).
+model ServiceRecordHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  recordId  String   @db.Uuid
+  userId    String?  @db.Uuid
+  userName  String?
+  action    String
+  changes   Json
+  createdAt DateTime @default(now())
+
+  record ServiceRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@index([recordId, createdAt])
+  @@map("service_record_history")
 }
 

@@ -14,6 +14,7 @@ import { useAuth } from '@/lib/auth'
 import { useBranding } from '@/lib/branding'
 import { findNavItem, visibleNavigation } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
+import { AlertsBell } from './alerts-bell'
 import { AppFooter } from './app-footer'
 import { BrandMark } from './brand-logo'
 import { GlobalSearch } from './global-search'
@@ -126,6 +127,7 @@ export function ClassicLayout() {
 
           <div className="ml-auto flex items-center gap-1">
             <GlobalSearch iconOnly className={cn('hover:bg-white/10', navText)} />
+            <AlertsBell className={cn('hover:bg-white/10', navText)} />
             <ThemeToggle className={cn('hover:bg-white/10', navText)} />
             {me && (
               <DropdownMenu>

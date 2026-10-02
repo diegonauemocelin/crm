@@ -4,6 +4,7 @@ export const MODULES = [
   { key: 'leads', label: 'Base de leads', group: 'CRM' },
   { key: 'pre_vendas', label: 'Pré-Vendas', group: 'Atendimento' },
   { key: 'pos_vendas', label: 'Pós-Vendas', group: 'Atendimento' },
+  { key: 'cadastros', label: 'Cadastros de atendimento (vendedores e listas)', group: 'Atendimento' },
   { key: 'chat', label: 'Chat WhatsApp', group: 'Atendimento' },
   { key: 'captura', label: 'Formulários, LPs e pop-ups', group: 'Marketing' },
   { key: 'email_marketing', label: 'Email marketing', group: 'Marketing' },

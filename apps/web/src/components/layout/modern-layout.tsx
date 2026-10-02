@@ -12,6 +12,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { findNavItem } from '@/lib/navigation'
+import { AlertsBell } from './alerts-bell'
 import { AppFooter } from './app-footer'
 import { GlobalSearch } from './global-search'
 import { ThemeToggle } from './theme-toggle'
@@ -55,6 +56,7 @@ export function ModernLayout() {
             </BreadcrumbList>
           </Breadcrumb>
           <GlobalSearch />
+          <AlertsBell />
           <ThemeToggle />
         </header>
         <main className="flex-1 p-4 md:p-6">

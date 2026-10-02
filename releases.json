@@ -2,6 +2,26 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.2.0",
+      "date": "2026-10-02",
+      "title": "Fase 2 — Pré-Vendas e Pós-Vendas",
+      "changes": [
+        { "type": "novo", "area": "Pré e Pós-Vendas", "text": "Telas de Pré-Vendas e Pós-Vendas com a mesma estrutura e filtros independentes: data, cliente, código, telefone, e-mail, vendedor, origem, tipo de cliente, estado/cidade, marca da máquina, tipo de peça, repasse, retorno, resultado, motivo de perda, nota fiscal, valor e observações." },
+        { "type": "novo", "area": "Pré e Pós-Vendas", "text": "Regras automáticas: motivo obrigatório na venda perdida; nota fiscal e valor obrigatórios na venda realizada; ao repassar ao vendedor, o retorno fica “Pendente” e a hora do repasse é registrada." },
+        { "type": "novo", "area": "Pré e Pós-Vendas", "text": "Telefone com máscara e padronizado; estado sugerido pelo DDD; atalho para abrir a conversa no WhatsApp." },
+        { "type": "novo", "area": "Pré e Pós-Vendas", "text": "Filtros combináveis (período, vendedor, origem, tipo de cliente, estado, região, marca, peça, repasse, retorno, venda, motivo), busca, edição rápida direto na tabela e exportação para Excel (CSV)." },
+        { "type": "novo", "area": "Pré e Pós-Vendas", "text": "Histórico de alterações de cada atendimento: quem mudou o quê, de qual valor para qual, e quando." },
+        { "type": "novo", "area": "Pré e Pós-Vendas", "text": "Seleção de vários atendimentos para mover entre Pré-Vendas e Pós-Vendas." },
+        { "type": "novo", "area": "Alertas", "text": "Alerta de lead sem retorno do vendedor após o prazo configurado (padrão 24 h): destaque na lista, filtro “Sem retorno” e sino de notificações no topo." },
+        { "type": "novo", "area": "Dashboard", "text": "Dashboard com comparação ao período anterior: atendimentos, taxa de repasse, taxa e tempo médio de retorno, conversão, valor vendido, ticket médio e vendas perdidas." },
+        { "type": "novo", "area": "Dashboard", "text": "Evolução no tempo, distribuição por origem, tipo de cliente, região, marca e peça, mapa por estado, Pareto dos motivos de perda e ranking de vendedores." },
+        { "type": "novo", "area": "Cadastros", "text": "Cadastros de vendedores, origens, tipos de cliente, marcas, tipos de peça e motivos de perda, com ativar/desativar sem apagar histórico." },
+        { "type": "novo", "area": "Cadastros", "text": "Vínculo do vendedor com um usuário de perfil Vendedor, que passa a ver somente os próprios atendimentos; função de mesclar dois cadastros do mesmo vendedor." },
+        { "type": "novo", "area": "Importação", "text": "Importação da planilha atual (link do Google Planilhas ou CSV) com análise prévia e confirmação. Pode ser repetida: só entram as linhas novas. Disponível em Pré-Vendas e em Cadastros → Importar." },
+        { "type": "seguranca", "area": "Proteções", "text": "Importação restrita ao administrador e apenas de links do Google Planilhas; exportação protegida contra fórmulas maliciosas no Excel; vendedor não abre nem transfere atendimentos de outros." }
+      ]
+    },
+    {
       "version": "0.1.2",
       "date": "2026-10-02",
       "title": "Correção na primeira instalação",

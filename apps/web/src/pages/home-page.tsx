@@ -10,16 +10,17 @@ import { cn } from '@/lib/utils'
 
 const PHASES = [
   { n: 1, title: 'Fundação', text: 'Acesso seguro, 2FA, perfis, whitelabel, auditoria, layouts e atualizações.' },
-  { n: 2, title: 'Pré e Pós-Vendas', text: 'Registro de atendimentos, cadastros, chat WhatsApp e dashboard de vendedores.' },
+  { n: 2, title: 'Pré e Pós-Vendas', text: 'Registro de atendimentos, cadastros, importação da planilha, alertas e dashboard de vendedores.' },
   { n: 3, title: 'Base de leads', text: 'Leads, campos personalizados, importação do RD Station, tracking e lead scoring.' },
   { n: 4, title: 'Captura', text: 'Formulários, pop-ups, botão de WhatsApp e landing pages.' },
   { n: 5, title: 'Email marketing', text: 'Catálogo, Magazord, editor de e-mail, IA com aprovação e segmentação.' },
   { n: 6, title: 'Automações', text: 'Fluxos de automação e atribuição de receita.' },
   { n: 7, title: 'Análise', text: 'Dashboards, GA4 e construtor de relatórios.' },
   { n: 8, title: 'Hardening', text: 'Testes de carga, revisão de segurança, backup validado e documentação final.' },
+  { n: 9, title: 'Chat WhatsApp', text: 'Atendimento pelo WhatsApp dentro do sistema (Evolution API), com acesso por usuário.' },
 ]
 
-const CURRENT_PHASE = 1
+const CURRENT_PHASE = 2
 
 function greeting() {
   const h = Number(new Intl.DateTimeFormat('pt-BR', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(new Date()))

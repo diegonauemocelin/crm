@@ -9,8 +9,8 @@ import { NAVIGATION } from '@/lib/navigation'
 import { LoginPage } from '@/pages/auth/login-page'
 
 /** Cada tela vira um arquivo JS separado, baixado só quando aberta. */
-function page<T extends Record<string, ComponentType>>(loader: () => Promise<T>, name: keyof T) {
-  const Component = lazy(async () => ({ default: (await loader())[name] as ComponentType }))
+function page<T>(loader: () => Promise<T>, name: keyof T) {
+  const Component = lazy(async () => ({ default: (await loader())[name] as unknown as ComponentType }))
   return <Component />
 }
 
@@ -22,6 +22,9 @@ const pages = {
   audit: () => page(() => import('@/pages/audit-page'), 'AuditPage'),
   updates: () => page(() => import('@/pages/updates-page'), 'UpdatesPage'),
   profile: () => page(() => import('@/pages/profile-page'), 'ProfilePage'),
+  preVendas: () => page(() => import('@/pages/atendimento-page'), 'PreVendasPage'),
+  posVendas: () => page(() => import('@/pages/atendimento-page'), 'PosVendasPage'),
+  cadastros: () => page(() => import('@/pages/cadastros-page'), 'CadastrosPage'),
   comingSoon: () => page(() => import('@/pages/misc-pages'), 'ComingSoonPage'),
   notFound: () => page(() => import('@/pages/misc-pages'), 'NotFoundPage'),
   forgot: () => page(() => import('@/pages/auth/password-pages'), 'ForgotPasswordPage'),
@@ -79,6 +82,9 @@ const router = createBrowserRouter([
           { path: 'auditoria', element: <Lazy>{pages.audit()}</Lazy> },
           { path: 'atualizacoes', element: <Lazy>{pages.updates()}</Lazy> },
           { path: 'meu-perfil', element: <Lazy>{pages.profile()}</Lazy> },
+          { path: 'pre-vendas', element: <Lazy>{pages.preVendas()}</Lazy> },
+          { path: 'pos-vendas', element: <Lazy>{pages.posVendas()}</Lazy> },
+          { path: 'cadastros-atendimento', element: <Lazy>{pages.cadastros()}</Lazy> },
           ...comingSoon,
           { path: '*', element: <Lazy>{pages.notFound()}</Lazy> },
         ],

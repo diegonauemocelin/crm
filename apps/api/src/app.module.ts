@@ -2,6 +2,7 @@ import { type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common
 import { APP_GUARD } from '@nestjs/core'
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
 import { LoggerModule } from 'nestjs-pino'
+import { AtendimentoModule } from './atendimento/atendimento.module'
 import { AuditModule } from './audit/audit.module'
 import { AuthGuard } from './auth/auth.guard'
 import { AuthModule } from './auth/auth.module'
@@ -34,6 +35,7 @@ import { UsersService } from './users/users.service'
     FilesModule,
     SettingsModule,
     AuthModule,
+    AtendimentoModule,
   ],
   controllers: [UsersController, RolesController, SystemController],
   providers: [

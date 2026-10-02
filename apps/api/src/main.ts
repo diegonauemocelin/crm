@@ -5,6 +5,7 @@ import { NestFactory } from '@nestjs/core'
 import type { NestExpressApplication } from '@nestjs/platform-express'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import cookieParser from 'cookie-parser'
+import { json } from 'express'
 import helmet from 'helmet'
 import { Logger } from 'nestjs-pino'
 import { AppModule } from './app.module'
@@ -18,6 +19,8 @@ async function bootstrap() {
   // então o IP do cliente vem do X-Forwarded-For sem permitir que o próprio cliente o falsifique.
   app.set('trust proxy', 'loopback, linklocal, uniquelocal')
   app.disable('x-powered-by')
+  // A importação de planilha recebe o CSV no corpo: limite maior só nessa rota (o Nginx também limita a 2 MB).
+  app.use('/api/atendimentos/importar', json({ limit: '2mb' }))
   app.useBodyParser('json', { limit: '1mb' })
   app.useBodyParser('urlencoded', { limit: '1mb', extended: false })
 

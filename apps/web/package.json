@@ -1,7 +1,7 @@
 {
   "name": "@crm/web",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -23,6 +23,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router": "^8.4.0",
+    "recharts": "^3.10.1",
     "shadcn": "^4.21.1",
     "sonner": "^2.0.8",
     "tailwindcss": "^4.3.3",

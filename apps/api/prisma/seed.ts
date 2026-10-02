@@ -11,7 +11,7 @@ import { randomBytes } from 'node:crypto'
 import { PrismaClient } from '../src/generated/prisma/client'
 
 const MODULES = [
-  'dashboard', 'leads', 'pre_vendas', 'pos_vendas', 'chat', 'captura', 'email_marketing',
+  'dashboard', 'leads', 'pre_vendas', 'pos_vendas', 'cadastros', 'chat', 'captura', 'email_marketing',
   'automacoes', 'catalogo', 'relatorios', 'usuarios', 'perfis', 'configuracoes', 'auditoria',
 ] as const
 type Mod = (typeof MODULES)[number]

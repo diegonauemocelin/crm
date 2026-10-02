@@ -10,6 +10,8 @@ const pg = new EmbeddedPostgres({
   password: 'crm_dev_local',
   port: 54329,
   persistent: true,
+  // No Windows o padrão seria WIN1252, que não aceita emojis vindos de WhatsApp/planilhas. Produção usa UTF-8.
+  initdbFlags: ['--encoding=UTF8', '--locale=C'],
 })
 
 if (!existsSync(dataDir)) {
