@@ -5,7 +5,7 @@
     var t = localStorage.getItem('crm-theme')
     var dark = t === 'DARK' || ((t === null || t === 'SYSTEM') && window.matchMedia('(prefers-color-scheme: dark)').matches)
     if (dark) document.documentElement.classList.add('dark')
-  } catch (e) {
+  } catch {
     /* sem armazenamento: segue o padrão claro */
   }
 })()
