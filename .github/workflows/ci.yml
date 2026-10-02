@@ -68,12 +68,15 @@ jobs:
       - name: Teste de fumaça (cabeçalhos, CSRF, permissões)
         # COOKIE_SECURE=true em produção: no CI o acesso é por http, então os testes de "Secure"/HSTS são pulados.
         run: node scripts/teste-fumaca.mjs http://127.0.0.1:8180
-      - name: Backup e teste de restauração
+      - name: Backup criptografado
         run: |
           docker compose run --rm --no-deps backup /usr/local/bin/backup.sh
-          ARQ=$(ls backups/crm-db-*.dump.age | head -1)
-          sudo cp /tmp/chave-teste.txt /tmp/chave-restauracao.txt
-          bash deploy/restaurar.sh --teste "$ARQ" /tmp/chave-restauracao.txt
+          sudo ls -l backups/
+      # Os arquivos de backup têm permissão 600 (dono: usuário do Postgres). Na VPS os scripts rodam com sudo; aqui também.
+      - name: Teste de restauração (banco separado)
+        run: |
+          ARQ=$(sudo sh -c 'ls backups/crm-db-*.dump.age | head -1')
+          sudo bash deploy/restaurar.sh --teste "$ARQ" /tmp/chave-teste.txt
       - name: Logs em caso de falha
         if: failure()
         run: docker compose logs --tail=200
