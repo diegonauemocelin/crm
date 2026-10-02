@@ -14,7 +14,7 @@ ATUAL="$(env_get CRM_VERSION)"
 if [ -n "${1:-}" ]; then
   ALVO="${1#v}"
 else
-  ALVO="$(awk -F'\t' '$2=="deploy"{print $3}' "$ESTADO/historico.log" 2>/dev/null | grep -vx "$ATUAL" | tail -1)"
+  ALVO="$(awk -F'\t' -v atual="$ATUAL" '$2=="deploy" && $3!=atual {v=$3} END{print v}' "$ESTADO/historico.log" 2>/dev/null || true)"
 fi
 [ -n "$ALVO" ] || fatal "Não há versão anterior registrada. Informe a versão: deploy/rollback.sh v0.1.0"
 git rev-parse -q --verify "refs/tags/v$ALVO" >/dev/null || fatal "Versão v$ALVO não encontrada."

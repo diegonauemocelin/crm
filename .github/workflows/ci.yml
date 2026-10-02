@@ -28,6 +28,10 @@ jobs:
       - run: npm test
       - run: npm run lint
       - run: npm run build
+      - name: Scripts de implantação (sintaxe e testes)
+        run: |
+          for f in deploy/*.sh deploy/backup/*.sh; do bash -n "$f"; done
+          bash deploy/testes/lib.test.sh
       - name: Dependências sem vulnerabilidades altas
         run: npm audit --omit=dev --audit-level=high
 

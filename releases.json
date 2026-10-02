@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.1.2",
+      "date": "2026-10-02",
+      "title": "Correção na primeira instalação",
+      "changes": [
+        { "type": "correcao", "area": "Servidor", "text": "O instalador parava sem mensagem em servidores que nunca tiveram o sistema instalado. Corrigido, e agora os scripts de implantação também são testados automaticamente a cada envio de código." }
+      ]
+    },
+    {
       "version": "0.1.1",
       "date": "2026-10-02",
       "title": "Ajustes para o servidor de produção",

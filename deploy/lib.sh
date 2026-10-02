@@ -16,7 +16,8 @@ exigir_root() { [ "$(id -u)" -eq 0 ] || fatal "Rode como root (sudo)."; }
 
 dc() { docker compose --project-directory "$RAIZ" -f "$RAIZ/docker-compose.yml" "$@"; }
 
-env_get() { grep -E "^$1=" "$RAIZ/.env" 2>/dev/null | tail -1 | cut -d= -f2-; }
+# Variável ausente devolve vazio (e sucesso): com "set -o pipefail", um grep sem resultado encerraria o script em silêncio.
+env_get() { { grep -E "^$1=" "$RAIZ/.env" 2>/dev/null || true; } | tail -1 | cut -d= -f2-; }
 
 # Grava/atualiza uma variável no .env sem mexer nas demais.
 env_set() {

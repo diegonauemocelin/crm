@@ -15,7 +15,8 @@ cd "$RAIZ"
 
 info "Buscando versões publicadas"
 git fetch --tags --prune --force origin
-ALVO="${1:-$(git tag -l 'v*' --sort=-v:refname | head -1)}"
+ALVO="${1:-}"
+[ -n "$ALVO" ] || ALVO="$(git tag -l 'v*' --sort=-v:refname | sed -n 1p)"
 [ -n "$ALVO" ] || fatal "Nenhuma versão (tag vX.Y.Z) publicada no repositório."
 git rev-parse -q --verify "refs/tags/$ALVO" >/dev/null || fatal "Versão $ALVO não existe."
 
