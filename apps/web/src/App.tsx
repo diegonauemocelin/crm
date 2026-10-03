@@ -8,10 +8,55 @@ import { useAuth } from '@/lib/auth'
 import { NAVIGATION } from '@/lib/navigation'
 import { LoginPage } from '@/pages/auth/login-page'
 
+const RELOAD_FLAG = 'crm-reloaded-after-update'
+
+/**
+ * Depois de uma atualização, uma aba que ficou aberta ainda aponta para os arquivos da versão anterior,
+ * que deixam de existir no servidor. Nesse caso recarrega a página uma vez para pegar a versão nova.
+ */
+async function loadWithReload<T>(loader: () => Promise<T>): Promise<T> {
+  try {
+    const mod = await loader()
+    sessionStorageSafe('remove')
+    return mod
+  } catch (err) {
+    if (sessionStorageSafe('get') !== '1') {
+      sessionStorageSafe('set')
+      window.location.reload()
+      return new Promise<T>(() => {})
+    }
+    throw err
+  }
+}
+
+function sessionStorageSafe(op: 'get' | 'set' | 'remove'): string | null {
+  try {
+    if (op === 'get') return sessionStorage.getItem(RELOAD_FLAG)
+    if (op === 'set') sessionStorage.setItem(RELOAD_FLAG, '1')
+    else sessionStorage.removeItem(RELOAD_FLAG)
+  } catch {
+    /* armazenamento indisponível: segue sem a proteção contra recarga em laço */
+  }
+  return null
+}
+
 /** Cada tela vira um arquivo JS separado, baixado só quando aberta. */
 function page<T>(loader: () => Promise<T>, name: keyof T) {
-  const Component = lazy(async () => ({ default: (await loader())[name] as unknown as ComponentType }))
+  const Component = lazy(async () => ({ default: (await loadWithReload(loader))[name] as unknown as ComponentType }))
   return <Component />
+}
+
+/** Tela de erro amigável no lugar da mensagem técnica do roteador. */
+function RouteError() {
+  return (
+    <div className="flex min-h-svh flex-col items-center justify-center gap-3 p-6 text-center">
+      <p className="text-lg font-semibold">Não foi possível abrir esta tela</p>
+      <p className="max-w-md text-sm text-muted-foreground">O sistema pode ter sido atualizado enquanto esta aba estava aberta. Recarregue a página para continuar.</p>
+      <button type="button" className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" onClick={() => window.location.reload()}>
+        Recarregar
+      </button>
+    </div>
+  )
 }
 
 const pages = {
@@ -71,6 +116,7 @@ const router = createBrowserRouter([
   { path: '/configurar-conta', element: <Lazy fullscreen>{pages.setup()}</Lazy> },
   {
     element: <Protected />,
+    errorElement: <RouteError />,
     children: [
       {
         element: <AppShell />,

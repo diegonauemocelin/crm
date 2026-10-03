@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.2.2",
+      "date": "2026-10-03",
+      "title": "Atualização sem erro em abas abertas",
+      "changes": [
+        { "type": "correcao", "area": "Sistema", "text": "Abas abertas durante uma atualização mostravam “Failed to fetch dynamically imported module” ao abrir uma tela. Agora o sistema percebe que foi atualizado e recarrega a página sozinho, uma vez." },
+        { "type": "melhoria", "area": "Sistema", "text": "Mensagem amigável com botão “Recarregar” no lugar de erros técnicos ao abrir telas." }
+      ]
+    },
+    {
       "version": "0.2.1",
       "date": "2026-10-03",
       "title": "Unidades da empresa e ajuste de tipos de peça",
