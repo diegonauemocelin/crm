@@ -5,6 +5,7 @@ import { isOverdue, type ReturnStatus, type SaleStatus } from './regras'
 export interface DashRow {
   leadAt: Date
   sellerId: string | null
+  unitId: string | null
   originId: string | null
   customerTypeId: string | null
   state: string | null
@@ -109,8 +110,15 @@ export function buildDashboard(current: DashRow[], previous: DashRow[], opts: { 
   })
   sellers.sort((a, b) => b.revenue - a.revenue || b.sales - a.sales || b.leads - a.leads)
 
+  const units = countBy(current, (r) => r.unitId).map((e) => {
+    const mine = current.filter((r) => (r.unitId ?? NONE) === e.id)
+    const k = kpis(mine, opts.alertHours)
+    return { id: e.id, leads: k.total, sales: k.sales, revenue: k.revenue, conversion: k.conversion, returnRate: k.returnRate }
+  })
+
   return {
     granularity,
+    byUnit: units,
     kpis: kpis(current, opts.alertHours),
     previousKpis: kpis(previous, opts.alertHours),
     timeline: [...timelineMap.values()].sort((a, b) => a.bucket.localeCompare(b.bucket)),

@@ -23,7 +23,10 @@ export const MODULE_KEYS = MODULES.map((m) => m.key) as readonly ModuleKey[]
 export const ACTIONS = ['view', 'create', 'edit', 'delete', 'export'] as const
 export type Action = (typeof ACTIONS)[number]
 
-export type PermissionSet = Record<string, { view: boolean; create: boolean; edit: boolean; delete: boolean; export: boolean; scope: 'OWN' | 'ALL' }>
+/** OWN: só os próprios registros; UNIT: só os da unidade do usuário; ALL: todos. */
+export type Scope = 'OWN' | 'UNIT' | 'ALL'
+
+export type PermissionSet = Record<string, { view: boolean; create: boolean; edit: boolean; delete: boolean; export: boolean; scope: Scope }>
 
 export function emptyPermission() {
   return { view: false, create: false, edit: false, delete: false, export: false, scope: 'ALL' as const }

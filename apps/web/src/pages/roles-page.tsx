@@ -297,7 +297,7 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
                               {SCOPED_MODULES.has(m.key) ? (
                                 <Select
                                   value={p.scope}
-                                  onValueChange={(v) => setPerms((prev) => ({ ...prev, [m.key]: { ...prev[m.key]!, scope: v as 'OWN' | 'ALL' } }))}
+                                  onValueChange={(v) => setPerms((prev) => ({ ...prev, [m.key]: { ...prev[m.key]!, scope: v as 'OWN' | 'UNIT' | 'ALL' } }))}
                                   disabled={!p.view}
                                 >
                                   <SelectTrigger size="sm" className="w-full" aria-label={`Registros visíveis em ${m.label}`}>
@@ -305,6 +305,7 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
                                   </SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="ALL">Todos</SelectItem>
+                                    <SelectItem value="UNIT">Somente da unidade</SelectItem>
                                     <SelectItem value="OWN">Somente os próprios</SelectItem>
                                   </SelectContent>
                                 </Select>

@@ -15,7 +15,7 @@ import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, errorMessage } from '@/lib/api'
-import { int, type Kind } from '@/lib/atendimento'
+import { int, type Kind, UF_LIST, UF_NAMES, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import type { UserRow } from '@/lib/types'
 import { FormError } from './auth/auth-layout'
@@ -38,7 +38,8 @@ interface LookupRow {
 interface SellerRow {
   id: string
   name: string
-  unit: string | null
+  unitId: string | null
+  unit: { id: string; name: string } | null
   email: string | null
   phone: string | null
   active: boolean
@@ -60,8 +61,9 @@ export function CadastrosPage() {
         title="Cadastros de atendimento"
         description="Vendedores e listas usadas em Pré-Vendas e Pós-Vendas. Itens são desativados, nunca apagados, para não perder o histórico."
       />
-      <Tabs defaultValue="vendedores">
+      <Tabs defaultValue="unidades">
         <TabsList className="mb-4 flex h-auto flex-wrap">
+          <TabsTrigger value="unidades">Unidades</TabsTrigger>
           <TabsTrigger value="vendedores">Vendedores</TabsTrigger>
           {LISTS.map((l) => (
             <TabsTrigger key={l.type} value={l.type}>
@@ -71,6 +73,9 @@ export function CadastrosPage() {
           <TabsTrigger value="alertas">Alertas</TabsTrigger>
           {me?.role.isSystem && <TabsTrigger value="importar">Importar</TabsTrigger>}
         </TabsList>
+        <TabsContent value="unidades">
+          <UnitsTab />
+        </TabsContent>
         <TabsContent value="vendedores">
           <SellersTab />
         </TabsContent>
@@ -235,7 +240,7 @@ function SellersTab() {
           <TableHeader>
             <TableRow>
               <TableHead className="pl-6">Nome</TableHead>
-              <TableHead className="hidden md:table-cell">Unidade / região</TableHead>
+              <TableHead>Unidade</TableHead>
               <TableHead>Acesso ao sistema</TableHead>
               <TableHead className="text-right">Atendimentos</TableHead>
               <TableHead>Situação</TableHead>
@@ -248,7 +253,7 @@ function SellersTab() {
             {q.data?.map((s) => (
               <TableRow key={s.id} className={s.active ? undefined : 'opacity-60'}>
                 <TableCell className="pl-6 font-medium">{s.name}</TableCell>
-                <TableCell className="hidden text-sm md:table-cell">{s.unit ?? '—'}</TableCell>
+                <TableCell className="text-sm">{s.unit?.name ?? <span className="text-amber-700 dark:text-amber-400">Sem unidade</span>}</TableCell>
                 <TableCell className="text-sm">{s.user ? s.user.email : <span className="text-muted-foreground">Sem login</span>}</TableCell>
                 <TableCell className="text-right tabular-nums">{int.format(s.usage)}</TableCell>
                 <TableCell>{s.active ? <Badge variant="outline">Ativo</Badge> : <Badge variant="secondary">Inativo</Badge>}</TableCell>
@@ -292,7 +297,8 @@ function SellerDialog({ seller, onClose }: { seller: SellerRow | null; onClose: 
   const qc = useQueryClient()
   const users = useQuery({ queryKey: ['users', '', 'active'], queryFn: () => api.get<UserRow[]>('/users?status=active') })
   const [name, setName] = useState(seller?.name ?? '')
-  const [unit, setUnit] = useState(seller?.unit ?? '')
+  const [unitId, setUnitId] = useState<string | null>(seller?.unitId ?? null)
+  const options = useOptions()
   const [email, setEmail] = useState(seller?.email ?? '')
   const [phone, setPhone] = useState(seller?.phone ?? '')
   const [userId, setUserId] = useState<string | null>(seller?.userId ?? null)
@@ -300,13 +306,15 @@ function SellerDialog({ seller, onClose }: { seller: SellerRow | null; onClose: 
   const [error, setError] = useState<string | null>(null)
 
   const save = useMutation({
-    mutationFn: () => {
-      const body = { name, unit: unit || null, email: email || null, phone: phone || null, userId, active }
+    mutationFn: (): Promise<unknown> => {
+      const body = { name, unitId, email: email || null, phone: phone || null, userId, active }
       return seller ? api.put(`/cadastros/vendedores/${seller.id}`, body) : api.post('/cadastros/vendedores', body)
     },
-    onSuccess: () => {
+    onSuccess: (r) => {
       invalidateAll(qc)
-      toast.success(seller ? 'Vendedor atualizado.' : 'Vendedor incluído.')
+      void qc.invalidateQueries({ queryKey: ['atendimentos'] })
+      const n = (r as { backfilled?: number }).backfilled ?? 0
+      toast.success(seller ? (n ? `Vendedor atualizado. ${int.format(n)} atendimento(s) dele passaram a ser da unidade.` : 'Vendedor atualizado.') : 'Vendedor incluído.')
       onClose()
     },
     onError: (err) => setError(errorMessage(err)),
@@ -332,8 +340,20 @@ function SellerDialog({ seller, onClose }: { seller: SellerRow | null; onClose: 
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="s-unit">Unidade / região</Label>
-              <Input id="s-unit" maxLength={60} placeholder="Ex.: Itajaí, PR" value={unit} onChange={(e) => setUnit(e.target.value)} />
+              <Label htmlFor="s-unit">Unidade</Label>
+              <Select value={unitId ?? NONE} onValueChange={(v) => setUnitId(v === NONE ? null : v)}>
+                <SelectTrigger id="s-unit" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Sem unidade</SelectItem>
+                  {options.data?.units.filter((u) => u.active || u.id === unitId).map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="s-phone">Telefone</Label>
@@ -421,6 +441,170 @@ function MergeDialog({ source, sellers, onClose, onDone }: { source: SellerRow; 
             Mesclar
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+interface UnitRow {
+  id: string
+  name: string
+  city: string | null
+  state: string | null
+  isHeadquarters: boolean
+  active: boolean
+  sellers: number
+  users: number
+  records: number
+}
+
+function UnitsTab() {
+  const { can } = useAuth()
+  const q = useQuery({ queryKey: ['cadastros', 'unidades'], queryFn: () => api.get<UnitRow[]>('/cadastros/unidades') })
+  const [editing, setEditing] = useState<UnitRow | 'new' | null>(null)
+
+  if (q.isLoading) return <TableSkeleton rows={4} />
+  if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <div>
+          <CardTitle>Unidades</CardTitle>
+          <CardDescription className="mt-1.5">
+            Matriz e filiais. Vendedores, usuários e atendimentos são vinculados a uma unidade, e os relatórios podem ser filtrados por ela.
+          </CardDescription>
+        </div>
+        <Can module="cadastros" action="create">
+          <Button onClick={() => setEditing('new')}>
+            <PlusIcon /> Nova unidade
+          </Button>
+        </Can>
+      </CardHeader>
+      <CardContent className="px-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="pl-6">Unidade</TableHead>
+              <TableHead>Cidade</TableHead>
+              <TableHead className="text-right">Vendedores</TableHead>
+              <TableHead className="text-right">Usuários</TableHead>
+              <TableHead className="text-right">Atendimentos</TableHead>
+              <TableHead>Situação</TableHead>
+              <TableHead className="w-16 pr-6">
+                <span className="sr-only">Ações</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {q.data?.map((u) => (
+              <TableRow key={u.id} className={u.active ? undefined : 'opacity-60'}>
+                <TableCell className="pl-6 font-medium">
+                  {u.name} {u.isHeadquarters && <Badge variant="secondary" className="ml-1">Matriz</Badge>}
+                </TableCell>
+                <TableCell className="text-sm">{[u.city, u.state].filter(Boolean).join('/') || '—'}</TableCell>
+                <TableCell className="text-right tabular-nums">{int.format(u.sellers)}</TableCell>
+                <TableCell className="text-right tabular-nums">{int.format(u.users)}</TableCell>
+                <TableCell className="text-right tabular-nums">{int.format(u.records)}</TableCell>
+                <TableCell>{u.active ? <Badge variant="outline">Ativa</Badge> : <Badge variant="secondary">Inativa</Badge>}</TableCell>
+                <TableCell className="pr-6">
+                  {can('cadastros', 'edit') && (
+                    <Button variant="ghost" size="icon" className="size-8" onClick={() => setEditing(u)} aria-label={`Editar ${u.name}`}>
+                      <PencilIcon />
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+      {editing && <UnitDialog unit={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
+    </Card>
+  )
+}
+
+function UnitDialog({ unit, onClose }: { unit: UnitRow | null; onClose: () => void }) {
+  const qc = useQueryClient()
+  const [name, setName] = useState(unit?.name ?? '')
+  const [city, setCity] = useState(unit?.city ?? '')
+  const [state, setState] = useState<string | null>(unit?.state ?? null)
+  const [hq, setHq] = useState(unit?.isHeadquarters ?? false)
+  const [active, setActive] = useState(unit?.active ?? true)
+  const [error, setError] = useState<string | null>(null)
+
+  const save = useMutation({
+    mutationFn: () => {
+      const body = { name, city: city || null, state, isHeadquarters: hq, active }
+      return unit ? api.put(`/cadastros/unidades/${unit.id}`, body) : api.post('/cadastros/unidades', body)
+    },
+    onSuccess: () => {
+      invalidateAll(qc)
+      toast.success(unit ? 'Unidade atualizada.' : 'Unidade incluída.')
+      onClose()
+    },
+    onError: (err) => setError(errorMessage(err)),
+  })
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <form
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault()
+            setError(null)
+            save.mutate()
+          }}
+          className="space-y-4"
+        >
+          <DialogHeader>
+            <DialogTitle>{unit ? 'Editar unidade' : 'Nova unidade'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="u-name">Nome</Label>
+            <Input id="u-name" required minLength={2} maxLength={80} placeholder="Ex.: Filial Cascavel" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-[1fr_9rem]">
+            <div className="space-y-2">
+              <Label htmlFor="u-city">Cidade</Label>
+              <Input id="u-city" maxLength={80} value={city} onChange={(e) => setCity(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="u-state">Estado</Label>
+              <Select value={state ?? NONE} onValueChange={(v) => setState(v === NONE ? null : v)}>
+                <SelectTrigger id="u-state" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>—</SelectItem>
+                  {UF_LIST.map((uf) => (
+                    <SelectItem key={uf} value={uf}>
+                      {uf} — {UF_NAMES[uf]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            É a matriz
+            <Switch checked={hq} onCheckedChange={setHq} />
+          </label>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            Unidade ativa
+            <Switch checked={active} onCheckedChange={setActive} />
+          </label>
+          <FormError message={error} />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={save.isPending || name.trim().length < 2}>
+              {save.isPending && <Loader2Icon className="animate-spin" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )

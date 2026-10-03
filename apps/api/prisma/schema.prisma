@@ -24,6 +24,7 @@ enum ThemeMode {
 
 enum PermissionScope {
   OWN
+  UNIT
   ALL
 }
 
@@ -63,6 +64,7 @@ model Tenant {
   roles          Role[]
   settings       TenantSetting[]
   files          FileAsset[]
+  units          Unit[]
   sellers        Seller[]
   lookups        LookupItem[]
   serviceRecords ServiceRecord[]
@@ -133,6 +135,10 @@ model User {
 
   layout LayoutMode?
   theme  ThemeMode   @default(SYSTEM)
+
+  /// Unidade do usuário: base do escopo "somente da sua unidade" nos perfis de acesso.
+  unitId String? @db.Uuid
+  unit   Unit?   @relation(fields: [unitId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -257,11 +263,32 @@ model SystemRelease {
 
 /// Vendedor que recebe os atendimentos. Pode ou não ter login: o vínculo com um usuário (perfil Vendedor)
 /// é o que permite o escopo "somente os próprios registros".
+/// Unidades da empresa (matriz e filiais). Segmentam atendimentos, vendedores, usuários e relatórios.
+model Unit {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  name           String
+  city           String?
+  state          String?  @db.Char(2)
+  isHeadquarters Boolean  @default(false)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id])
+  sellers Seller[]
+  users   User[]
+  records ServiceRecord[]
+
+  @@unique([tenantId, name])
+  @@map("units")
+}
+
 model Seller {
   id        String   @id @default(uuid()) @db.Uuid
   tenantId  String   @db.Uuid
   name      String
-  unit      String?
+  unitId    String?  @db.Uuid
   email     String?
   phone     String?
   userId    String?  @unique @db.Uuid
@@ -270,6 +297,7 @@ model Seller {
   updatedAt DateTime @updatedAt
 
   tenant  Tenant          @relation(fields: [tenantId], references: [id])
+  unit    Unit?           @relation(fields: [unitId], references: [id])
   user    User?           @relation(fields: [userId], references: [id])
   records ServiceRecord[]
 
@@ -305,6 +333,8 @@ model ServiceRecord {
   phone          String?
   email          String?
   sellerId       String?       @db.Uuid
+  /// Unidade do atendimento. Preenchida pela unidade do vendedor quando ele é escolhido (pode ser alterada).
+  unitId         String?       @db.Uuid
   originId       String?       @db.Uuid
   customerTypeId String?       @db.Uuid
   country        String        @default("BR")
@@ -333,6 +363,7 @@ model ServiceRecord {
 
   tenant       Tenant                 @relation(fields: [tenantId], references: [id])
   seller       Seller?                @relation(fields: [sellerId], references: [id])
+  unit         Unit?                  @relation(fields: [unitId], references: [id])
   origin       LookupItem?            @relation("RecordOrigin", fields: [originId], references: [id])
   customerType LookupItem?            @relation("RecordCustomerType", fields: [customerTypeId], references: [id])
   lostReason   LookupItem?            @relation("RecordLostReason", fields: [lostReasonId], references: [id])
@@ -341,6 +372,7 @@ model ServiceRecord {
   @@unique([tenantId, externalKey])
   @@index([tenantId, kind, leadAt])
   @@index([sellerId])
+  @@index([unitId])
   @@index([phone])
   @@map("service_records")
 }

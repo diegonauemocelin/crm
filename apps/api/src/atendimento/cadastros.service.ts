@@ -38,12 +38,18 @@ export class CadastrosService implements OnApplicationBootstrap {
 
   /** Itens ativos de todas as listas, para os formulários e filtros. */
   async options(tenantId: string) {
-    const [lookups, sellers] = await Promise.all([
+    const [lookups, sellers, units] = await Promise.all([
       this.prisma.lookupItem.findMany({ where: { tenantId }, orderBy: { name: 'asc' }, select: { id: true, type: true, name: true, active: true } }),
-      this.prisma.seller.findMany({ where: { tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true, unit: true, active: true, userId: true } }),
+      this.prisma.seller.findMany({ where: { tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true, unitId: true, active: true, userId: true } }),
+      this.prisma.unit.findMany({
+        where: { tenantId },
+        orderBy: [{ isHeadquarters: 'desc' }, { name: 'asc' }],
+        select: { id: true, name: true, city: true, state: true, isHeadquarters: true, active: true },
+      }),
     ])
     const byType = (t: LookupType) => lookups.filter((l) => l.type === t)
     return {
+      units,
       sellers,
       origins: byType('ORIGEM'),
       customerTypes: byType('TIPO_CLIENTE'),
@@ -104,12 +110,59 @@ export class CadastrosService implements OnApplicationBootstrap {
     if (exists) throw new ConflictException(`"${name}" já existe nesta lista${exists.active ? '' : ' (está desativado)'}.`)
   }
 
+  async listUnits(tenantId: string) {
+    const [units, sellers, users, records] = await Promise.all([
+      this.prisma.unit.findMany({ where: { tenantId }, orderBy: [{ isHeadquarters: 'desc' }, { name: 'asc' }] }),
+      this.prisma.seller.groupBy({ by: ['unitId'], where: { tenantId, active: true }, _count: { _all: true } }),
+      this.prisma.user.groupBy({ by: ['unitId'], where: { tenantId, active: true }, _count: { _all: true } }),
+      this.prisma.serviceRecord.groupBy({ by: ['unitId'], where: { tenantId, deletedAt: null }, _count: { _all: true } }),
+    ])
+    const count = (rows: { unitId: string | null; _count: { _all: number } }[], id: string) => rows.find((r) => r.unitId === id)?._count._all ?? 0
+    return units.map((u) => ({ ...u, sellers: count(sellers, u.id), users: count(users, u.id), records: count(records, u.id) }))
+  }
+
+  async saveUnit(
+    actor: AuthUser,
+    id: string | null,
+    data: { name: string; city?: string | null; state?: string | null; isHeadquarters?: boolean; active?: boolean },
+    ctx: RequestCtx,
+  ) {
+    const name = data.name.trim()
+    const dup = await this.prisma.unit.findFirst({
+      where: { tenantId: actor.tenantId, name: { equals: name, mode: 'insensitive' }, ...(id ? { NOT: { id } } : {}) },
+    })
+    if (dup) throw new ConflictException('Já existe uma unidade com este nome.')
+    const payload = {
+      name,
+      city: data.city?.trim() || null,
+      state: data.state?.toUpperCase() || null,
+      isHeadquarters: data.isHeadquarters ?? false,
+      ...(data.active !== undefined ? { active: data.active } : {}),
+    }
+    const unit = await this.prisma.$transaction(async (tx) => {
+      // Só existe uma matriz.
+      if (payload.isHeadquarters) await tx.unit.updateMany({ where: { tenantId: actor.tenantId, ...(id ? { NOT: { id } } : {}) }, data: { isHeadquarters: false } })
+      if (id) {
+        const current = await tx.unit.findFirst({ where: { id, tenantId: actor.tenantId } })
+        if (!current) throw new NotFoundException('Unidade não encontrada.')
+        return tx.unit.update({ where: { id }, data: payload })
+      }
+      return tx.unit.create({ data: { tenantId: actor.tenantId, ...payload } })
+    })
+    await this.audit.byUser(actor, ctx, id ? 'unidade.updated' : 'unidade.created', 'unit', unit.id, payload)
+    return unit
+  }
+
+  async assertUnit(tenantId: string, unitId: string | null | undefined) {
+    if (unitId && !(await this.prisma.unit.count({ where: { id: unitId, tenantId } }))) throw new BadRequestException('Unidade inválida.')
+  }
+
   async listSellers(tenantId: string) {
     const [sellers, counts] = await Promise.all([
       this.prisma.seller.findMany({
         where: { tenantId },
         orderBy: { name: 'asc' },
-        include: { user: { select: { id: true, name: true, email: true } } },
+        include: { user: { select: { id: true, name: true, email: true } }, unit: { select: { id: true, name: true } } },
       }),
       this.prisma.serviceRecord.groupBy({ by: ['sellerId'], where: { tenantId, deletedAt: null }, _count: { _all: true } }),
     ])
@@ -120,10 +173,11 @@ export class CadastrosService implements OnApplicationBootstrap {
   async saveSeller(
     actor: AuthUser,
     id: string | null,
-    data: { name: string; unit?: string | null; email?: string | null; phone?: string | null; userId?: string | null; active?: boolean },
+    data: { name: string; unitId?: string | null; email?: string | null; phone?: string | null; userId?: string | null; active?: boolean },
     ctx: RequestCtx,
   ) {
     const name = data.name.trim()
+    await this.assertUnit(actor.tenantId, data.unitId)
     const dup = await this.prisma.seller.findFirst({
       where: { tenantId: actor.tenantId, name: { equals: name, mode: 'insensitive' }, ...(id ? { NOT: { id } } : {}) },
     })
@@ -136,7 +190,7 @@ export class CadastrosService implements OnApplicationBootstrap {
     }
     const payload = {
       name,
-      unit: data.unit?.trim() || null,
+      unitId: data.unitId || null,
       email: data.email?.trim().toLowerCase() || null,
       phone: data.phone?.trim() || null,
       userId: data.userId || null,
@@ -146,8 +200,15 @@ export class CadastrosService implements OnApplicationBootstrap {
       const current = await this.prisma.seller.findFirst({ where: { id, tenantId: actor.tenantId } })
       if (!current) throw new NotFoundException('Vendedor não encontrado.')
       const seller = await this.prisma.seller.update({ where: { id }, data: payload })
-      await this.audit.byUser(actor, ctx, 'vendedor.updated', 'seller', id, payload)
-      return seller
+      // Atendimentos do vendedor ainda sem unidade (ex.: importados da planilha) passam a usar a unidade dele.
+      let backfilled = 0
+      if (payload.unitId && payload.unitId !== current.unitId) {
+        backfilled = (
+          await this.prisma.serviceRecord.updateMany({ where: { tenantId: actor.tenantId, sellerId: id, unitId: null }, data: { unitId: payload.unitId } })
+        ).count
+      }
+      await this.audit.byUser(actor, ctx, 'vendedor.updated', 'seller', id, { ...payload, atendimentosAtribuidosAUnidade: backfilled })
+      return { ...seller, backfilled }
     }
     const seller = await this.prisma.seller.create({ data: { tenantId: actor.tenantId, ...payload } })
     await this.audit.byUser(actor, ctx, 'vendedor.created', 'seller', seller.id, payload)

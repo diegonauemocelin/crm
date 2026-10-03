@@ -78,7 +78,7 @@ export function findHeader(rows: string[][]): { index: number; map: Partial<Reco
 }
 
 /** Tipos de peça conhecidos; qualquer outro item da coluna de produto é tratado como marca da máquina. */
-export const PART_TYPES = ['Filtro', 'Motor', 'Material Rodante', 'Tração ou Giro', 'Coroa de Giro']
+export const PART_TYPES = ['Filtro', 'Motor', 'Material Rodante', 'Tração ou Giro', 'Coroa de Giro', 'FPS']
 const PART_SET = new Set(PART_TYPES.map(norm))
 
 /** Nomes da planilha que são a mesma pessoa (confirmado com a empresa). */

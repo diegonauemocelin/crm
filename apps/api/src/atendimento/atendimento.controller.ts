@@ -41,6 +41,7 @@ class FiltersDto implements RecordFilters {
   @IsIn(KINDS) kind!: ServiceKind
   @IsOptional() @IsString() @MaxLength(120) search?: string
   @IsOptional() @Matches(/^([0-9a-f-]{36}|none)$/) sellerId?: string
+  @IsOptional() @Matches(/^([0-9a-f-]{36}|none)$/) unitId?: string
   @IsOptional() @Matches(/^([0-9a-f-]{36}|none)$/) originId?: string
   @IsOptional() @Matches(/^([0-9a-f-]{36}|none)$/) customerTypeId?: string
   @IsOptional() @IsIn([...UF_LIST, 'EX']) state?: string
@@ -71,6 +72,7 @@ class RecordDto {
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsString() @MaxLength(40) phone?: string | null
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsEmail({}, { message: 'E-mail inválido.' }) email?: string | null
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() sellerId?: string | null
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() unitId?: string | null
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() originId?: string | null
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() customerTypeId?: string | null
   @ApiPropertyOptional() @IsOptional() @IsString() @Length(2, 40) country?: string
@@ -115,10 +117,18 @@ class LookupUpdateDto {
 
 class SellerDto {
   @ApiProperty() @IsString() @Length(2, 80) name!: string
-  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(60) unit?: string | null
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() unitId?: string | null
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsEmail() email?: string | null
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(30) phone?: string | null
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() userId?: string | null
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean
+}
+
+class UnitDto {
+  @ApiProperty() @IsString() @Length(2, 80) name!: string
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(80) city?: string | null
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsIn(UF_LIST) state?: string | null
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() isHeadquarters?: boolean
   @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean
 }
 
@@ -170,12 +180,12 @@ export class AtendimentoController {
     const { rows, names } = await this.records.exportRows(user, q)
     const n = (id: string | null) => (id ? (names.get(id) ?? '') : '')
     const header = [
-      'Data do lead', 'Nome', 'Código do cliente', 'Telefone', 'E-mail', 'Vendedor', 'Origem', 'Tipo de cliente', 'País', 'Estado', 'Cidade',
+      'Data do lead', 'Nome', 'Código do cliente', 'Telefone', 'E-mail', 'Unidade', 'Vendedor', 'Origem', 'Tipo de cliente', 'País', 'Estado', 'Cidade',
       'Marca da máquina', 'Tipo de peça', 'Repassou ao vendedor', 'Vendedor retornou', 'Venda realizada', 'Motivo da perda', 'Nota fiscal', 'Valor da venda', 'Observações',
     ]
     const lines = rows.map((r) =>
       [
-        fmtDate(r.leadAt), r.name, r.customerCode, r.phone, r.email, n(r.sellerId), n(r.originId), n(r.customerTypeId), r.country,
+        fmtDate(r.leadAt), r.name, r.customerCode, r.phone, r.email, n(r.unitId), n(r.sellerId), n(r.originId), n(r.customerTypeId), r.country,
         r.state ? UFS[r.state as keyof typeof UFS]?.name ?? r.state : '', r.city, r.brandIds.map(n).join(', '), r.partTypeIds.map(n).join(', '),
         r.forwarded ? 'Sim' : 'Não', r.returnStatus ? LABEL[r.returnStatus] : '', LABEL[r.saleStatus], n(r.lostReasonId), r.invoiceNumber, fmtMoney(r.saleValue), r.notes,
       ]
@@ -245,6 +255,24 @@ export class CadastrosController {
     const allowed = ['pre_vendas', 'pos_vendas', 'cadastros'].some((m) => can(user.permissions, user.role.isSystem, m, 'view'))
     if (!allowed) throw new ForbiddenException('Você não tem permissão para esta ação.')
     return this.cadastros.options(user.tenantId)
+  }
+
+  @Get('unidades')
+  @RequirePermission('cadastros', 'view')
+  units(@CurrentUser() user: AuthUser) {
+    return this.cadastros.listUnits(user.tenantId)
+  }
+
+  @Post('unidades')
+  @RequirePermission('cadastros', 'create')
+  createUnit(@CurrentUser() user: AuthUser, @Body() dto: UnitDto, @ReqContext() ctx: RequestCtx) {
+    return this.cadastros.saveUnit(user, null, dto, ctx)
+  }
+
+  @Put('unidades/:id')
+  @RequirePermission('cadastros', 'edit')
+  updateUnit(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UnitDto, @ReqContext() ctx: RequestCtx) {
+    return this.cadastros.saveUnit(user, id, dto, ctx)
   }
 
   @Get('vendedores')

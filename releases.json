@@ -2,6 +2,19 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.2.1",
+      "date": "2026-10-03",
+      "title": "Unidades da empresa e ajuste de tipos de peça",
+      "changes": [
+        { "type": "novo", "area": "Unidades", "text": "Cadastro de unidades (matriz e filiais), já com Matriz Maravilha/SC, Filial Cascavel/PR, Filial Itajaí/SC e Filial Cachoeirinha/RS." },
+        { "type": "novo", "area": "Unidades", "text": "Vendedores, usuários e atendimentos vinculados a uma unidade. O atendimento recebe automaticamente a unidade do vendedor escolhido." },
+        { "type": "novo", "area": "Unidades", "text": "Ao vincular um vendedor a uma unidade, os atendimentos dele que ainda estavam sem unidade (como os importados da planilha) passam a ser dessa unidade." },
+        { "type": "novo", "area": "Unidades", "text": "Filtro por unidade na lista e no dashboard, gráfico comparando as unidades e coluna Unidade na exportação." },
+        { "type": "novo", "area": "Perfis de acesso", "text": "Novo escopo “Somente da unidade”: ideal para gerente de filial, que vê e distribui apenas os atendimentos da própria unidade." },
+        { "type": "melhoria", "area": "Cadastros", "text": "FPS passa a ser tipo de peça (produto), e não marca de máquina. Os atendimentos já importados foram ajustados automaticamente." }
+      ]
+    },
+    {
       "version": "0.2.0",
       "date": "2026-10-02",
       "title": "Fase 2 — Pré-Vendas e Pós-Vendas",

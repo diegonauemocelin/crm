@@ -40,6 +40,7 @@ interface Dashboard {
   period: { from: string; to: string; days: number }
   previousPeriod: { from: string; to: string }
   granularity: 'dia' | 'semana' | 'mes'
+  byUnit: { id: string; leads: number; sales: number; revenue: number; conversion: number | null }[]
   kpis: Kpis
   previousKpis: Kpis
   timeline: { bucket: string; leads: number; sales: number; revenue: number }[]
@@ -130,7 +131,7 @@ function HBar({ title, description, data, valueLabel = 'Atendimentos', format = 
           <p className="py-8 text-center text-sm text-muted-foreground">Sem dados no período.</p>
         ) : (
           <ChartContainer config={config} className="aspect-auto w-full" style={{ height: Math.max(120, data.length * 34 + 16) }}>
-            <BarChart data={data} layout="vertical" margin={{ left: 0, right: extra ? 96 : 48, top: 0, bottom: 0 }} barCategoryGap={6}>
+            <BarChart data={data} layout="vertical" margin={{ left: 0, right: extra ? 190 : 48, top: 0, bottom: 0 }} barCategoryGap={6}>
               <XAxis type="number" hide />
               <YAxis type="category" dataKey="name" width={130} tickLine={false} axisLine={false} tick={{ fontSize: 12 }} />
               <ChartTooltip cursor={{ fill: 'var(--muted)', opacity: 0.5 }} content={<ChartTooltipContent hideIndicator formatter={(v, _n, item) => <span className="tabular-nums">{format(Number(v))}{item.payload.extra ? ` · ${item.payload.extra}` : ''}</span>} />} />
@@ -219,10 +220,12 @@ export function AtendimentoDashboard({ kind }: { kind: Kind }) {
   const names = useMemo(() => namesOf(options.data), [options.data])
   const [preset, setPreset] = useState<string>('90')
   const [range, setRange] = useState<[string, string]>(() => PRESETS[1].range() as [string, string])
+  const [unitId, setUnitId] = useState<string | null>(null)
   const [sellerId, setSellerId] = useState<string | null>(null)
   const [originId, setOriginId] = useState<string | null>(null)
 
   const query = new URLSearchParams({ kind, from: range[0], to: range[1] })
+  if (unitId) query.set('unitId', unitId)
   if (sellerId) query.set('sellerId', sellerId)
   if (originId) query.set('originId', originId)
 
@@ -270,6 +273,19 @@ export function AtendimentoDashboard({ kind }: { kind: Kind }) {
           <span className="text-sm text-muted-foreground">até</span>
           <Input type="date" className="h-8 w-36" aria-label="Até" value={range[1]} min={range[0]} onChange={(e) => e.target.value && (setPreset(''), setRange([range[0], e.target.value]))} />
         </div>
+        <Select value={unitId ?? ALL} onValueChange={(v) => setUnitId(v === ALL ? null : v)}>
+          <SelectTrigger size="sm" className="w-44" aria-label="Unidade">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Todas as unidades</SelectItem>
+            {options.data?.units.map((u) => (
+              <SelectItem key={u.id} value={u.id}>
+                {u.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={sellerId ?? ALL} onValueChange={(v) => setSellerId(v === ALL ? null : v)}>
           <SelectTrigger size="sm" className="w-44" aria-label="Vendedor">
             <SelectValue />
@@ -357,6 +373,12 @@ export function AtendimentoDashboard({ kind }: { kind: Kind }) {
           </Card>
 
           <div className="grid gap-4 xl:grid-cols-2">
+            <HBar
+              title="Por unidade"
+              description="Atendimentos; ao lado, vendas e valor vendido"
+              data={d.byUnit.map((u) => ({ name: name(u.id, 'Sem unidade'), value: u.leads, extra: `${int.format(u.sales)} vendas · ${brlCompact.format(u.revenue)}` }))}
+              extra="vendas"
+            />
             <HBar title="Por origem" data={d.byOrigin.map((g) => ({ name: name(g.id), value: g.leads }))} />
             <Card>
               <CardHeader>

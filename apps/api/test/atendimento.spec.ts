@@ -47,7 +47,7 @@ describe('importação da planilha', () => {
     ',,Pré e Pós Vendas,,,,,,,,,,,,,,',
     'Data,Cód. Cliente,Nome,Número,Vendedor,Origem,Tipo Cliente,Região - Estado,Produto/Serviço,Repassou,Retornou,Venda Realizada,Venda Perdida,Motivos de Perda,N° NF,Valor,Observação Pré e Pós Vendas',
     '17/07/2026,21.555,~METZLER - Claudio,55 47 9647-0159,Evandro - Itajaí,WhatsApp,Revenda,Santa Catarina,XCMG,TRUE,FALSE,FALSE,TRUE,Não respondeu,,,Orçamento enviado',
-    '30/06/2026,22.518,~Jose Aldo,55 13 99143-1193,Davi,WhatsApp,Revenda,São Paulo,"JCB, Motor",TRUE,TRUE,TRUE,FALSE,Vendeu,144833,"R$ 9.540,00",vendeu',
+    '30/06/2026,22.518,~Jose Aldo,55 13 99143-1193,Davi,WhatsApp,Revenda,São Paulo,"JCB, Motor, FPS",TRUE,TRUE,TRUE,FALSE,Vendeu,144833,"R$ 9.540,00",vendeu',
     '17/07/2026,s/c,Cleber,55 32 9909-1451,Davi,RD Station,Não informado,Paraguai,,TRUE,FALSE,FALSE,,Aguardando Vendedor,,,',
     ',,,,,,,,,FALSE,FALSE,FALSE,FALSE,,,,',
     '04/08/0206,1,Erro,55 11 99999-9999,Davi,,,,,FALSE,FALSE,FALSE,FALSE,,,,',
@@ -78,7 +78,7 @@ describe('importação da planilha', () => {
     expect(sold.saleValue).toBe(9540)
     expect(sold.invoiceNumber).toBe('144833')
     expect(sold.brands).toEqual(['JCB'])
-    expect(sold.partTypes).toEqual(['Motor'])
+    expect(sold.partTypes).toEqual(['Motor', 'FPS'])
     expect(sold.returnStatus).toBe('SIM')
 
     expect(waiting.customerCode).toBeNull()
@@ -165,6 +165,7 @@ describe('dashboard', () => {
   const row = (o: Partial<DashRow>): DashRow => ({
     leadAt: new Date('2026-09-10T15:00:00Z'),
     sellerId: 's1',
+    unitId: 'matriz',
     originId: 'o1',
     customerTypeId: null,
     state: 'SP',
@@ -187,7 +188,7 @@ describe('dashboard', () => {
       row({ forwarded: true, returnStatus: 'NAO', saleStatus: 'SIM', saleValue: 500, sellerId: 's2' }),
       row({ saleStatus: 'NAO', lostReasonId: 'semProduto' }),
       row({ saleStatus: 'NAO', lostReasonId: 'semProduto' }),
-      row({ saleStatus: 'NAO', lostReasonId: 'preco', state: null, country: 'Paraguai' }),
+      row({ saleStatus: 'NAO', lostReasonId: 'preco', state: null, country: 'Paraguai', unitId: 'cascavel' }),
     ]
     const d = buildDashboard(rows, [row({})], { from: '2026-09-01', to: '2026-09-30', alertHours: 24 })
     expect(d.kpis.total).toBe(5)
@@ -204,5 +205,7 @@ describe('dashboard', () => {
     expect(d.sellers[0]!.id).toBe('s1')
     expect(d.byState.find((s) => s.id === 'EX')?.leads).toBe(1)
     expect(d.granularity).toBe('dia')
+    expect(d.byUnit.find((u) => u.id === 'matriz')).toMatchObject({ leads: 4, sales: 2, revenue: 1500 })
+    expect(d.byUnit.find((u) => u.id === 'cascavel')).toMatchObject({ leads: 1, sales: 0 })
   })
 })

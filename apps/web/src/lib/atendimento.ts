@@ -19,10 +19,16 @@ export interface Option {
   active: boolean
 }
 export interface SellerOption extends Option {
-  unit: string | null
+  unitId: string | null
   userId: string | null
 }
+export interface UnitOption extends Option {
+  city: string | null
+  state: string | null
+  isHeadquarters: boolean
+}
 export interface Options {
+  units: UnitOption[]
   sellers: SellerOption[]
   origins: Option[]
   customerTypes: Option[]
@@ -40,6 +46,7 @@ export interface ServiceRecord {
   phone: string | null
   email: string | null
   sellerId: string | null
+  unitId: string | null
   originId: string | null
   customerTypeId: string | null
   country: string
@@ -71,7 +78,7 @@ export function useOptions() {
 export function namesOf(o: Options | undefined) {
   const m = new Map<string, string>()
   if (!o) return m
-  for (const list of [o.sellers, o.origins, o.customerTypes, o.brands, o.partTypes, o.lostReasons]) for (const i of list) m.set(i.id, i.name)
+  for (const list of [o.units, o.sellers, o.origins, o.customerTypes, o.brands, o.partTypes, o.lostReasons]) for (const i of list) m.set(i.id, i.name)
   return m
 }
 

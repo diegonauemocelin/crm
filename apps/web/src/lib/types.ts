@@ -14,7 +14,7 @@ export interface PermissionEntry {
   edit: boolean
   delete: boolean
   export: boolean
-  scope: 'OWN' | 'ALL'
+  scope: 'OWN' | 'UNIT' | 'ALL'
 }
 
 export interface Me {
@@ -84,6 +84,7 @@ export interface UserRow {
   locked: boolean
   avatarUrl: string | null
   role: { id: string; name: string; isSystem: boolean }
+  unit: { id: string; name: string } | null
 }
 
 export interface RoleRow {

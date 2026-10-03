@@ -25,6 +25,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { api, errorMessage } from '@/lib/api'
+import { useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import type { UserRow } from '@/lib/types'
 import { FormError } from './auth/auth-layout'
@@ -136,6 +137,7 @@ function UsersContent() {
                     </div>
                   </TableCell>
                   <TableCell>{u.role.name}</TableCell>
+                  <TableCell className="hidden text-sm lg:table-cell">{u.unit?.name ?? '—'}</TableCell>
                   <TableCell className="hidden md:table-cell">
                     {u.totpEnabled ? <Badge variant="secondary">Ativo</Badge> : <span className="text-sm text-muted-foreground">—</span>}
                   </TableCell>
@@ -264,6 +266,8 @@ function UserDialog({ user, onClose }: { user: UserRow | null; onClose: () => vo
   const [name, setName] = useState(user?.name ?? '')
   const [email, setEmail] = useState(user?.email ?? '')
   const [roleId, setRoleId] = useState(user?.role.id ?? '')
+  const [unitId, setUnitId] = useState<string | null>(user?.unit?.id ?? null)
+  const options = useOptions()
   const [sendInvite, setSendInvite] = useState(true)
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -271,8 +275,8 @@ function UserDialog({ user, onClose }: { user: UserRow | null; onClose: () => vo
   const save = useMutation({
     mutationFn: () =>
       user
-        ? api.patch(`/users/${user.id}`, { name, email, roleId })
-        : api.post('/users', { name, email, roleId, sendInvite, ...(sendInvite ? {} : { password }) }),
+        ? api.patch(`/users/${user.id}`, { name, email, roleId, unitId })
+        : api.post('/users', { name, email, roleId, unitId, sendInvite, ...(sendInvite ? {} : { password }) }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['users'] })
       toast.success(user ? 'Usuário atualizado.' : sendInvite ? 'Usuário criado e convite enviado por e-mail.' : 'Usuário criado.')
@@ -322,6 +326,23 @@ function UserDialog({ user, onClose }: { user: UserRow | null; onClose: () => vo
               </SelectContent>
             </Select>
             {isSelf && <p className="text-xs text-muted-foreground">Você não pode trocar o próprio perfil.</p>}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="u-unit">Unidade</Label>
+            <Select value={unitId ?? '__none__'} onValueChange={(v) => setUnitId(v === '__none__' ? null : v)}>
+              <SelectTrigger id="u-unit" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Sem unidade</SelectItem>
+                {options.data?.units.filter((u) => u.active || u.id === unitId).map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Usada nos perfis com acesso “somente da unidade”.</p>
           </div>
           {!user && (
             <div className="space-y-3 rounded-md border p-3">

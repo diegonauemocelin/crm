@@ -67,6 +67,7 @@ export const FIELD_LABELS: Record<string, string> = {
   phone: 'Telefone',
   email: 'E-mail',
   sellerId: 'Vendedor',
+  unitId: 'Unidade',
   originId: 'Origem',
   customerTypeId: 'Tipo de cliente',
   country: 'País',

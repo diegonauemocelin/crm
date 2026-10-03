@@ -63,6 +63,7 @@ export class AuthGuard implements CanActivate {
       email: user.email,
       name: user.name,
       familyId: payload.fam,
+      unitId: user.unitId,
       pending2faSetup,
       role: { id: user.role.id, name: user.role.name, isSystem: user.role.isSystem, require2fa: user.role.require2fa },
       permissions,

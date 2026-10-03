@@ -97,8 +97,15 @@ export class ImportService {
     const cache = new Map<string, string>()
     const resolve = (type: LookupType, name: string | null) => (name ? this.cadastros.resolveLookup(user.tenantId, type, name, cache) : null)
 
+    const sellerUnits = new Map(
+      (await this.prisma.seller.findMany({ where: { tenantId: user.tenantId }, select: { id: true, unitId: true } })).map((s) => [s.id, s.unitId]),
+    )
     const data: Prisma.ServiceRecordCreateManyInput[] = []
-    for (const r of fresh) data.push(await this.toRow(user, r, kind, batch, cache, resolve))
+    for (const r of fresh) {
+      const row = await this.toRow(user, r, kind, batch, cache, resolve)
+      row.unitId = row.sellerId ? (sellerUnits.get(row.sellerId) ?? null) : null
+      data.push(row)
+    }
     // Tudo ou nada: um erro no meio não deixa a importação pela metade.
     const inserted = await this.prisma.$transaction(
       async (tx) => {

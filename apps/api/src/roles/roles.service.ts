@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import type { RequestCtx } from '../common/decorators'
-import { MODULE_KEYS, type ModuleKey } from '../common/permissions'
+import { MODULE_KEYS, type ModuleKey, type Scope } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import { PrismaService } from '../prisma/prisma.service'
 
@@ -12,7 +12,7 @@ export interface PermissionInput {
   edit: boolean
   delete: boolean
   export: boolean
-  scope: 'OWN' | 'ALL'
+  scope: Scope
 }
 
 export interface RoleInput {
@@ -129,7 +129,7 @@ function view(role: {
   isSystem: boolean
   require2fa: boolean
   active: boolean
-  permissions: { module: string; canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean; canExport: boolean; scope: 'OWN' | 'ALL' }[]
+  permissions: { module: string; canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean; canExport: boolean; scope: Scope }[]
   _count: { users: number }
 }) {
   return {

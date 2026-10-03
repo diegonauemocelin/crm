@@ -3,7 +3,7 @@ import { ApiProperty, ApiTags } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, Length, MaxLength, ValidateNested } from 'class-validator'
 import { CurrentUser, ReqContext, type RequestCtx, RequirePermission } from '../common/decorators'
-import { MODULE_KEYS, MODULES, type ModuleKey } from '../common/permissions'
+import { MODULE_KEYS, MODULES, type ModuleKey, type Scope } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import { RolesService } from './roles.service'
 
@@ -14,7 +14,7 @@ class PermissionDto {
   @ApiProperty() @IsBoolean() edit!: boolean
   @ApiProperty() @IsBoolean() delete!: boolean
   @ApiProperty() @IsBoolean() export!: boolean
-  @ApiProperty({ enum: ['OWN', 'ALL'] }) @IsIn(['OWN', 'ALL']) scope!: 'OWN' | 'ALL'
+  @ApiProperty({ enum: ['OWN', 'UNIT', 'ALL'] }) @IsIn(['OWN', 'UNIT', 'ALL']) scope!: Scope
 }
 
 class RoleDto {

@@ -54,6 +54,7 @@ interface FormState {
   phone: string
   email: string
   sellerId: string | null
+  unitId: string | null
   originId: string | null
   customerTypeId: string | null
   country: string
@@ -87,6 +88,7 @@ function initial(kind: Kind, r: ServiceRecord | null): FormState {
     phone: r?.phone ? formatPhone(r.phone) : '',
     email: r?.email ?? '',
     sellerId: r?.sellerId ?? null,
+    unitId: r?.unitId ?? null,
     originId: r?.originId ?? null,
     customerTypeId: r?.customerTypeId ?? null,
     country: r?.country ?? 'BR',
@@ -123,6 +125,7 @@ function toPayload(f: FormState) {
     phone: f.phone.trim() || null,
     email: f.email.trim() || null,
     sellerId: f.sellerId,
+    unitId: f.unitId,
     originId: f.originId,
     customerTypeId: f.customerTypeId,
     country: f.country.trim() || 'BR',
@@ -345,9 +348,22 @@ export function RecordSheet({ kind, record, onClose }: { kind: Kind; record: Ser
                   <h3 className="text-sm font-semibold">Encaminhamento</h3>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Field label="Vendedor" htmlFor="r-seller">
-                      <OptionSelect id="r-seller" value={form.sellerId} onChange={(v) => set('sellerId', v)} items={o?.sellers ?? []} placeholder="Sem vendedor" />
+                      <OptionSelect
+                        id="r-seller"
+                        value={form.sellerId}
+                        onChange={(v) => {
+                          // A unidade acompanha a do vendedor escolhido (pode ser alterada depois).
+                          const unit = o?.sellers.find((s) => s.id === v)?.unitId
+                          setForm((f) => ({ ...f, sellerId: v, unitId: unit ?? f.unitId }))
+                        }}
+                        items={o?.sellers ?? []}
+                        placeholder="Sem vendedor"
+                      />
                     </Field>
-                    <div className="flex items-end gap-3 pb-1.5">
+                    <Field label="Unidade" htmlFor="r-unit">
+                      <OptionSelect id="r-unit" value={form.unitId} onChange={(v) => set('unitId', v)} items={o?.units ?? []} placeholder="Sem unidade" />
+                    </Field>
+                    <div className="flex items-end gap-3 pb-1.5 sm:col-span-2">
                       <Switch
                         id="r-forwarded"
                         checked={form.forwarded}

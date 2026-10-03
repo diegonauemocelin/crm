@@ -48,7 +48,7 @@ import { ImportDialog } from './import-dialog'
 import { RecordSheet } from './record-sheet'
 
 const ALL = '__all__'
-export const FILTER_KEYS = ['search', 'from', 'to', 'sellerId', 'originId', 'customerTypeId', 'state', 'region', 'brandId', 'partTypeId', 'forwarded', 'returnStatus', 'saleStatus', 'lostReasonId', 'overdue'] as const
+export const FILTER_KEYS = ['search', 'from', 'to', 'unitId', 'sellerId', 'originId', 'customerTypeId', 'state', 'region', 'brandId', 'partTypeId', 'forwarded', 'returnStatus', 'saleStatus', 'lostReasonId', 'overdue'] as const
 
 interface Page {
   total: number
@@ -201,6 +201,7 @@ export function RecordsList({ kind }: { kind: Kind }) {
       <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
         <Input type="date" className="h-8" aria-label="De" value={params.get('from') ?? ''} onChange={(e) => setFilter('from', e.target.value || null)} />
         <Input type="date" className="h-8" aria-label="Até" value={params.get('to') ?? ''} onChange={(e) => setFilter('to', e.target.value || null)} />
+        <FilterSelect label="Unidade" value={params.get('unitId')} onChange={(v) => setFilter('unitId', v)} items={o?.units ?? []} withNone />
         <FilterSelect label="Vendedor" value={params.get('sellerId')} onChange={(v) => setFilter('sellerId', v)} items={o?.sellers ?? []} withNone />
         <FilterSelect label="Origem" value={params.get('originId')} onChange={(v) => setFilter('originId', v)} items={o?.origins ?? []} withNone />
         <FilterSelect label="Tipo de cliente" value={params.get('customerTypeId')} onChange={(v) => setFilter('customerTypeId', v)} items={o?.customerTypes ?? []} withNone />
@@ -286,6 +287,7 @@ export function RecordsList({ kind }: { kind: Kind }) {
                   <TableHead className="hidden lg:table-cell">Origem</TableHead>
                   <TableHead className="hidden xl:table-cell">Interesse</TableHead>
                   <TableHead className="hidden md:table-cell">UF</TableHead>
+                  <TableHead className="hidden 2xl:table-cell">Unidade</TableHead>
                   <TableHead className="min-w-36">Vendedor</TableHead>
                   <TableHead className="w-20 text-center">Repassou</TableHead>
                   <TableHead className="w-28">Retorno</TableHead>
@@ -323,6 +325,7 @@ export function RecordsList({ kind }: { kind: Kind }) {
                       {[...r.brandIds, ...r.partTypeIds].map((id) => names.get(id)).filter(Boolean).join(', ') || '—'}
                     </TableCell>
                     <TableCell className="hidden text-sm md:table-cell">{r.country !== 'BR' ? r.country : (r.state ?? '—')}</TableCell>
+                    <TableCell className="hidden text-sm whitespace-nowrap 2xl:table-cell">{r.unitId ? names.get(r.unitId) : '—'}</TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       {canEdit ? (
                         <Select

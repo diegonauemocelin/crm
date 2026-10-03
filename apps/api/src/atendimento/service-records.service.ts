@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import type { RequestCtx } from '../common/decorators'
-import { type Action, can } from '../common/permissions'
+import { type Action, can, type Scope } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import { Prisma, type ServiceKind } from '../generated/prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
@@ -21,6 +21,7 @@ export interface RecordFilters {
   kind: ServiceKind
   search?: string
   sellerId?: string
+  unitId?: string
   originId?: string
   customerTypeId?: string
   state?: string
@@ -44,6 +45,7 @@ export interface RecordInput {
   phone?: string | null
   email?: string | null
   sellerId?: string | null
+  unitId?: string | null
   originId?: string | null
   customerTypeId?: string | null
   country?: string
@@ -84,10 +86,26 @@ export class ServiceRecordsService {
     }
   }
 
-  /** Perfil com escopo "somente os próprios" vê apenas atendimentos do vendedor vinculado ao seu usuário. */
+  scopeOf(user: AuthUser, kind: ServiceKind): Scope {
+    if (user.role.isSystem) return 'ALL'
+    return user.permissions[MODULE_BY_KIND[kind]]?.scope ?? 'ALL'
+  }
+
+  /**
+   * "Somente os próprios": atendimentos do vendedor vinculado ao usuário.
+   * "Somente da unidade": atendimentos da unidade do usuário (usuário sem unidade não vê nenhum).
+   */
   scope(user: AuthUser, kind: ServiceKind): Prisma.ServiceRecordWhereInput {
-    if (user.role.isSystem) return {}
-    return user.permissions[MODULE_BY_KIND[kind]]?.scope === 'OWN' ? { seller: { userId: user.id } } : {}
+    const s = this.scopeOf(user, kind)
+    if (s === 'OWN') return { seller: { userId: user.id } }
+    if (s === 'UNIT') return user.unitId ? { unitId: user.unitId } : { id: { in: [] } }
+    return {}
+  }
+
+  /** Unidade do vendedor, usada para preencher a unidade do atendimento. */
+  private async sellerUnit(tenantId: string, sellerId: string | null | undefined) {
+    if (!sellerId) return null
+    return (await this.prisma.seller.findFirst({ where: { id: sellerId, tenantId }, select: { unitId: true } }))?.unitId ?? null
   }
 
   alertSettings(tenantId: string) {
@@ -111,6 +129,7 @@ export class ServiceRecordsService {
       })
     }
     if (f.sellerId) and.push({ sellerId: f.sellerId === 'none' ? null : f.sellerId })
+    if (f.unitId) and.push({ unitId: f.unitId === 'none' ? null : f.unitId })
     if (f.originId) and.push({ originId: f.originId === 'none' ? null : f.originId })
     if (f.customerTypeId) and.push({ customerTypeId: f.customerTypeId === 'none' ? null : f.customerTypeId })
     if (f.lostReasonId) and.push({ lostReasonId: f.lostReasonId })
@@ -177,6 +196,45 @@ export class ServiceRecordsService {
       if (found !== new Set(lookupIds).size) throw new BadRequestException('Item de lista inválido.')
     }
     if (d.sellerId && !(await this.prisma.seller.count({ where: { tenantId, id: d.sellerId } }))) throw new BadRequestException('Vendedor inválido.')
+    if (d.unitId && !(await this.prisma.unit.count({ where: { tenantId, id: d.unitId } }))) throw new BadRequestException('Unidade inválida.')
+  }
+
+  /**
+   * Regras de escopo na gravação:
+   * - "próprios": o vendedor é sempre o do próprio usuário;
+   * - "unidade": a unidade é sempre a do usuário, e só vendedores dessa unidade podem receber o atendimento;
+   * - sem unidade informada, o atendimento herda a unidade do vendedor.
+   */
+  private async applyScopeOnWrite(user: AuthUser, kind: ServiceKind, d: RecordInput, current: { sellerId: string | null; unitId: string | null } | null) {
+    const scope = this.scopeOf(user, kind)
+    if (scope === 'OWN') {
+      if (current) {
+        if (d.sellerId !== undefined && d.sellerId !== current.sellerId) throw new ForbiddenException('Seu perfil não permite transferir o atendimento para outro vendedor.')
+        if (d.unitId !== undefined && d.unitId !== current.unitId) throw new ForbiddenException('Seu perfil não permite trocar a unidade do atendimento.')
+        return
+      }
+      const own = await this.prisma.seller.findUnique({ where: { userId: user.id } })
+      if (!own) throw new ForbiddenException('Seu usuário não está vinculado a um vendedor. Peça ao administrador.')
+      d.sellerId = own.id
+      d.unitId = own.unitId
+      return
+    }
+
+    const sellerChanged = d.sellerId !== undefined && d.sellerId !== (current?.sellerId ?? null)
+    if (d.unitId === undefined && sellerChanged) {
+      const unit = await this.sellerUnit(user.tenantId, d.sellerId)
+      if (unit || !current) d.unitId = unit
+    }
+
+    if (scope === 'UNIT') {
+      if (!user.unitId) throw new ForbiddenException('Seu usuário não está vinculado a uma unidade. Peça ao administrador.')
+      if (d.unitId !== undefined && d.unitId !== user.unitId) throw new ForbiddenException('Seu perfil só permite atendimentos da sua unidade.')
+      if (!current) d.unitId = user.unitId
+      if (sellerChanged && d.sellerId) {
+        const unit = await this.sellerUnit(user.tenantId, d.sellerId)
+        if (unit !== user.unitId) throw new ForbiddenException('Escolha um vendedor da sua unidade.')
+      }
+    }
   }
 
   private normalize(d: RecordInput) {
@@ -203,12 +261,7 @@ export class ServiceRecordsService {
   async create(user: AuthUser, d: RecordInput & { kind: ServiceKind; name: string }, ctx: RequestCtx) {
     this.assertCan(user, d.kind, 'create')
     await this.assertRefs(user.tenantId, d)
-    // Vendedor com escopo próprio cria atendimentos já atribuídos a si.
-    if (Object.keys(this.scope(user, d.kind)).length) {
-      const own = await this.prisma.seller.findUnique({ where: { userId: user.id } })
-      if (!own) throw new ForbiddenException('Seu usuário não está vinculado a um vendedor. Peça ao administrador.')
-      d.sellerId = own.id
-    }
+    await this.applyScopeOnWrite(user, d.kind, d, null)
     const base = this.normalize(d)
     const state = applyAutomaticFields(
       {
@@ -248,10 +301,8 @@ export class ServiceRecordsService {
     const current = await this.load(user, id)
     this.assertCan(user, current.kind, 'edit')
     if (d.kind && d.kind !== current.kind) this.assertCan(user, d.kind, 'edit')
-    if (d.sellerId !== undefined && d.sellerId !== current.sellerId && Object.keys(this.scope(user, current.kind)).length) {
-      throw new ForbiddenException('Seu perfil não permite transferir o atendimento para outro vendedor.')
-    }
     await this.assertRefs(user.tenantId, d)
+    await this.applyScopeOnWrite(user, current.kind, d, current)
 
     const base = this.normalize(d)
     const prev = { ...current, saleValue: current.saleValue === null ? null : Number(current.saleValue) }
@@ -297,7 +348,7 @@ export class ServiceRecordsService {
     const records = await this.prisma.serviceRecord.findMany({ where: { id: { in: ids }, tenantId: user.tenantId, deletedAt: null } })
     for (const r of records) {
       this.assertCan(user, r.kind, 'edit')
-      if (Object.keys(this.scope(user, r.kind)).length) throw new ForbiddenException('Seu perfil não permite mover atendimentos.')
+      if (this.scopeOf(user, r.kind) === 'OWN') throw new ForbiddenException('Seu perfil não permite mover atendimentos.')
     }
     this.assertCan(user, kind, 'edit')
     const toMove = records.filter((r) => r.kind !== kind)
@@ -333,6 +384,7 @@ export class ServiceRecordsService {
       select: {
         leadAt: true,
         sellerId: true,
+        unitId: true,
         originId: true,
         customerTypeId: true,
         state: true,
@@ -381,6 +433,7 @@ export class ServiceRecordsService {
       this.prisma.lookupItem.findMany({ where: { tenantId: user.tenantId }, select: { id: true, name: true } }),
       this.prisma.seller.findMany({ where: { tenantId: user.tenantId }, select: { id: true, name: true } }),
     ])
-    return { rows, names: new Map([...lookups, ...sellers].map((x) => [x.id, x.name])) }
+    const units = await this.prisma.unit.findMany({ where: { tenantId: user.tenantId }, select: { id: true, name: true } })
+    return { rows, names: new Map([...lookups, ...sellers, ...units].map((x) => [x.id, x.name])) }
   }
 }
