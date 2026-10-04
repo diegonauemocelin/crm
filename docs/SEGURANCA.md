@@ -72,6 +72,16 @@ Referências: OWASP Top 10 (2021/2025) e OWASP ASVS nível 2. Esta página regis
 - Eliminação: apaga nome, e-mail, telefone, campos personalizados e histórico do lead e dos atendimentos vinculados, mantendo só um registro anônimo para estatística. Fica registrado na auditoria.
 - Arquivos de importação ficam fora da área pública, com permissão 600, e são apagados ao fim da importação.
 
+## Rastreamento do site e webhooks (v0.3.2)
+
+- O script do site usa só cookies do próprio domínio do site, com números aleatórios (sem dado pessoal). Não grava IP nem navegador.
+- URLs guardadas sem parâmetros desconhecidos (só UTMs, gclid/fbclid e busca): e-mail, token ou CPF que apareçam na URL são descartados antes de gravar. Do site que indicou, só o domínio.
+- Coleta aceita apenas os domínios cadastrados (origem do navegador e URL da página), com limite por IP. A rota não devolve dado nenhum e fica fora do CSRF (não usa sessão nem cookie do CRM).
+- Identificação do visitante só por token assinado (HMAC) no link (`crm_lid`) ou pelos formulários do próprio CRM: ninguém consegue ligar visitas a um lead só sabendo o e-mail dele.
+- Modo "só após consentimento" para sites com banner de cookies; navegadores com Global Privacy Control não são rastreados.
+- Prazo de guarda configurável (padrão 395 dias), com limpeza diária. Eliminação do lead apaga também a navegação; a portabilidade a inclui.
+- Meta Lead Ads: desligado por padrão; URL do webhook com chave aleatória por empresa; verificação por token; cada aviso validado pela assinatura `X-Hub-Signature-256` (HMAC do corpo bruto com o App Secret); reenvios ignorados por chave única; chamadas só para `graph.facebook.com` (sem SSRF). App Secret e token da página criptografados (AES-256-GCM).
+
 ## Pendências planejadas (Fase 8 e anteriores)
 
 - fail2ban lendo o log do Nginx do CRM (exige instalar/configurar no host: será proposto após o inventário).

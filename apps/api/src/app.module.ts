@@ -11,6 +11,7 @@ import { env } from './config/env'
 import { FilesModule } from './files/files.module'
 import { LeadsModule } from './leads/leads.module'
 import { PrismaModule } from './prisma/prisma.module'
+import { RastreamentoModule } from './rastreamento/rastreamento.module'
 import { RolesController } from './roles/roles.controller'
 import { RolesService } from './roles/roles.service'
 import { SettingsModule } from './settings/settings.module'
@@ -27,7 +28,8 @@ import { UsersService } from './users/users.service'
         transport: env.isProd ? undefined : { target: 'pino-pretty', options: { singleLine: true } },
         // Cookies e cabeçalhos de autenticação nunca vão para o log.
         redact: ['req.headers.cookie', 'req.headers.authorization', 'req.headers["x-csrf-token"]', 'res.headers["set-cookie"]'],
-        autoLogging: { ignore: (req) => req.url === '/api/health' },
+        // Health e as páginas vistas do site (milhares por dia) não poluem o log.
+        autoLogging: { ignore: (req) => req.url === '/api/health' || !!req.url?.startsWith('/api/public/rastreamento/') },
       },
     }),
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 300 }]),
@@ -38,6 +40,7 @@ import { UsersService } from './users/users.service'
     AuthModule,
     LeadsModule,
     AtendimentoModule,
+    RastreamentoModule,
   ],
   controllers: [UsersController, RolesController, SystemController],
   providers: [

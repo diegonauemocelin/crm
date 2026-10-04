@@ -2,6 +2,21 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.3.2",
+      "date": "2026-10-04",
+      "title": "Rastreamento do site e Meta Lead Ads",
+      "changes": [
+        { "type": "novo", "area": "Rastreamento do site", "text": "Código para colar no site que registra as páginas visitadas e de onde o visitante veio: UTMs, anúncios do Google e do Meta, buscadores, redes sociais, e-mail, outros sites ou acesso direto." },
+        { "type": "novo", "area": "Rastreamento do site", "text": "Painel em Configurações → Rastreamento do site: confirmação de instalação, visitas por dia, origens das visitas e páginas mais vistas." },
+        { "type": "novo", "area": "Base de leads", "text": "Aba “Site” na ficha do lead: páginas visitadas e origem da primeira e da última visita. Visitas entram na linha do tempo." },
+        { "type": "novo", "area": "Lead scoring", "text": "Nova regra de interesse “Visitou o site” (2 pontos por visita, ajustável)." },
+        { "type": "novo", "area": "Integrações", "text": "Meta Lead Ads pronto para uso, desligado até o app do Meta ser aprovado: leads dos formulários do Facebook e do Instagram entram na base com campanha e anúncio, sem duplicar." },
+        { "type": "seguranca", "area": "LGPD", "text": "Rastreamento sem dado pessoal: identificadores aleatórios, URLs limpas de e-mails e tokens, modo “só após aceite de cookies”, respeito ao Global Privacy Control, prazo de guarda configurável com limpeza diária." },
+        { "type": "seguranca", "area": "Integrações", "text": "Webhook do Meta validado por assinatura, com URL secreta por empresa, chaves criptografadas e proteção contra reenvio." },
+        { "type": "correcao", "area": "Backup", "text": "O backup diário deixa de avisar “Permission denied” durante importações: planilhas temporárias ficam fora (são apagadas ao terminar)." }
+      ]
+    },
+    {
       "version": "0.3.1",
       "date": "2026-10-03",
       "title": "Importações grandes sem interrupção",

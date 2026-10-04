@@ -111,7 +111,7 @@ function Stat({ label, value, delta, hint }: { label: string; value: string; del
 }
 
 /** Barras horizontais de uma série: título nomeia a série, valores escritos na ponta da barra. */
-function HBar({ title, description, data, valueLabel = 'Atendimentos', format = (v: number) => int.format(v), extra }: {
+export function HBar({ title, description, data, valueLabel = 'Atendimentos', format = (v: number) => int.format(v), extra }: {
   title: string
   description?: string
   data: { name: string; value: number; extra?: string }[]

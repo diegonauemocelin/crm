@@ -94,6 +94,8 @@ model Tenant {
   customFields   CustomFieldDef[]
   scoreRules     ScoreRule[]
   leadImports    LeadImport[]
+  siteVisitors   SiteVisitor[]
+  receipts       IntegrationReceipt[]
 
   @@map("tenants")
 }
@@ -482,6 +484,7 @@ model Lead {
   events   LeadEvent[]
   consents LeadConsent[]
   records  ServiceRecord[]
+  visitors SiteVisitor[]
 
   @@unique([tenantId, email])
   @@index([tenantId, phone])
@@ -489,6 +492,71 @@ model Lead {
   @@index([tenantId, scoreGrade])
   @@index([ownerId])
   @@map("leads")
+}
+
+/// Navegador que visitou o site (identificado por um número aleatório em cookie do próprio site).
+/// Fica anônimo até ser ligado a um lead (link de e-mail, formulário ou integração).
+model SiteVisitor {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  clientId     String
+  leadId       String?   @db.Uuid
+  firstSeenAt  DateTime  @default(now())
+  lastSeenAt   DateTime  @default(now())
+  /// Origem da primeira e da última visita (fonte, meio, campanha, página de entrada).
+  firstTouch   Json?
+  lastTouch    Json?
+  sessions     Int       @default(0)
+  pageviews    Int       @default(0)
+  identifiedAt DateTime?
+
+  tenant Tenant         @relation(fields: [tenantId], references: [id])
+  lead   Lead?          @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  views  SitePageview[]
+
+  @@unique([tenantId, clientId])
+  @@index([leadId])
+  @@index([tenantId, lastSeenAt])
+  @@map("site_visitors")
+}
+
+model SitePageview {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  visitorId  String   @db.Uuid
+  sessionId  String
+  /// URL sem parâmetros desconhecidos (só UTMs e afins), para não guardar dado pessoal por acidente.
+  url        String
+  title      String?
+  newSession Boolean  @default(false)
+  /// Origem, só na primeira página de cada visita.
+  touch      Json?
+  occurredAt DateTime @default(now())
+
+  visitor SiteVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+
+  @@index([visitorId, occurredAt])
+  @@index([tenantId, occurredAt])
+  @@map("site_pageviews")
+}
+
+/// Avisos recebidos de integrações (Meta Lead Ads e, depois, Magazord). A chave única impede processar
+/// duas vezes o mesmo aviso quando o serviço reenvia.
+model IntegrationReceipt {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  provider   String
+  externalId String
+  status     String
+  leadId     String?  @db.Uuid
+  error      String?
+  receivedAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, provider, externalId])
+  @@index([tenantId, provider, receivedAt])
+  @@map("integration_receipts")
 }
 
 /// Linha do tempo do lead: conversões, mudanças, vendas, e-mails (próximas fases), importações.

@@ -18,7 +18,8 @@ echo "[backup] $(date -Iseconds) iniciando"
 pg_dump --format=custom --compress=9 --no-owner | age -r "$BACKUP_AGE_RECIPIENT" -o "$TMP/crm-db-$STAMP.dump.age"
 if [ -d /data/uploads ]; then
   # Falha nos arquivos não invalida o backup do banco, que é o mais importante.
-  tar -C /data -cz uploads | age -r "$BACKUP_AGE_RECIPIENT" -o "$TMP/crm-uploads-$STAMP.tar.gz.age" \
+  # Planilhas de importação em andamento ficam de fora: são temporárias, só a API pode lê-las e são apagadas ao terminar.
+  tar -C /data --exclude=importacoes -cz uploads | age -r "$BACKUP_AGE_RECIPIENT" -o "$TMP/crm-uploads-$STAMP.tar.gz.age" \
     || { echo "[backup] AVISO: falha ao copiar os arquivos enviados" >&2; rm -f "$TMP/crm-uploads-$STAMP.tar.gz.age"; }
 fi
 

@@ -16,17 +16,27 @@ import { useAuth } from '@/lib/auth'
 import { applyBranding } from '@/lib/branding'
 import type { Branding, LayoutMode } from '@/lib/types'
 import { FormError } from './auth/auth-layout'
+import { MetaTab } from './settings/meta-tab'
+import { TrackingTab } from './settings/tracking-tab'
 
 export function SettingsPage() {
   return (
     <RequirePermission module="configuracoes">
-      <PageHeader title="Configurações" description="Identidade visual, aparência e servidor de e-mail do sistema." />
+      <PageHeader title="Configurações" description="Identidade visual, aparência, servidor de e-mail, rastreamento do site e integrações." />
       <Tabs defaultValue="marca">
-        <TabsList className="mb-4">
+        <TabsList className="mb-4 h-auto flex-wrap">
           <TabsTrigger value="marca">Identidade visual</TabsTrigger>
           <TabsTrigger value="aparencia">Aparência</TabsTrigger>
           <TabsTrigger value="email">E-mail (SMTP)</TabsTrigger>
+          <TabsTrigger value="rastreamento">Rastreamento do site</TabsTrigger>
+          <TabsTrigger value="meta">Meta Lead Ads</TabsTrigger>
         </TabsList>
+        <TabsContent value="rastreamento">
+          <TrackingTab />
+        </TabsContent>
+        <TabsContent value="meta">
+          <MetaTab />
+        </TabsContent>
         <TabsContent value="marca">
           <BrandingTab />
         </TabsContent>

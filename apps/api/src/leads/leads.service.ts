@@ -368,9 +368,13 @@ export class LeadsService {
     this.assertCan(user, 'export')
     const lead = await this.load(user, id)
     const tl = await this.timeline(user, id)
+    const visitas = await this.prisma.siteVisitor.findMany({
+      where: { leadId: id },
+      select: { firstSeenAt: true, lastSeenAt: true, firstTouch: true, lastTouch: true, views: { select: { url: true, title: true, occurredAt: true }, orderBy: { occurredAt: 'desc' } } },
+    })
     await this.audit.byUser(user, ctx, 'lead.personal_data_exported', 'lead', id)
     const { tenantId: _t, ...data } = lead
-    return { geradoEm: new Date().toISOString(), titular: data, linhaDoTempo: tl.events, atendimentos: tl.records, consentimentos: tl.consents }
+    return { geradoEm: new Date().toISOString(), titular: data, linhaDoTempo: tl.events, atendimentos: tl.records, consentimentos: tl.consents, navegacaoNoSite: visitas }
   }
 
   /**
@@ -399,6 +403,8 @@ export class LeadsService {
         },
       }),
       this.prisma.leadEvent.deleteMany({ where: { leadId: id } }),
+      // Navegação no site ligada à pessoa (as páginas vistas vão junto, em cascata).
+      this.prisma.siteVisitor.deleteMany({ where: { leadId: id } }),
       this.prisma.leadConsent.updateMany({ where: { leadId: id }, data: { ip: null, text: null } }),
       this.prisma.serviceRecord.updateMany({ where: { leadId: id }, data: { name: 'Dados removidos (LGPD)', phone: null, email: null, customerCode: null, notes: null } }),
     ])

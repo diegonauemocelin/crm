@@ -3,6 +3,7 @@ import {
   ArrowLeftIcon,
   CheckCircle2Icon,
   DownloadIcon,
+  GlobeIcon,
   HeadsetIcon,
   Loader2Icon,
   MailIcon,
@@ -38,6 +39,7 @@ import { api, errorMessage } from '@/lib/api'
 import { brl, formatPhone, KIND_INFO, type Kind, maskPhone, namesOf, SALE_LABEL, type SaleStatus, UF_LIST, UF_NAMES, useOptions, whatsappLink } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import { type CustomField, type Lead, type LeadStage, STAGE_LABEL, STAGES, useCustomFields } from '@/lib/leads'
+import { type LeadSite, pathOf, touchLabel } from '@/lib/rastreamento'
 import { FormError } from './auth/auth-layout'
 import { GradeBadge } from './leads-page'
 
@@ -254,6 +256,7 @@ function LeadView({ lead }: { lead: Lead | null }) {
           <TabsList className="mb-4">
             <TabsTrigger value="dados">Dados</TabsTrigger>
             <TabsTrigger value="linha">Linha do tempo</TabsTrigger>
+            <TabsTrigger value="site">Site</TabsTrigger>
             <TabsTrigger value="privacidade">Privacidade (LGPD)</TabsTrigger>
           </TabsList>
         )}
@@ -354,6 +357,9 @@ function LeadView({ lead }: { lead: Lead | null }) {
           <>
             <TabsContent value="linha">
               <Timeline lead={lead} />
+            </TabsContent>
+            <TabsContent value="site">
+              <SiteVisits lead={lead} />
             </TabsContent>
             <TabsContent value="privacidade">
               <Privacy lead={lead} />
@@ -459,6 +465,72 @@ function EventItem({ e }: { e: TimelineData['events'][number] }) {
           {e.userName ? ` · ${e.userName}` : ''}
         </p>
       </div>
+    </div>
+  )
+}
+
+function SiteVisits({ lead }: { lead: Lead }) {
+  const q = useQuery({ queryKey: ['lead-site', lead.id], queryFn: () => api.get<LeadSite>(`/rastreamento/leads/${lead.id}`) })
+  if (q.isLoading) return <TableSkeleton rows={4} />
+  if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />
+  const s = q.data!
+  if (!s.devices) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-sm text-muted-foreground">
+          Nenhuma visita ao site ligada a este lead. A ligação acontece quando ele clica num link de e-mail do CRM ou, na próxima fase, preenche um formulário no site.
+        </CardContent>
+      </Card>
+    )
+  }
+  const rows: [string, string][] = [
+    ['Primeira visita', `${formatDateTime(s.firstSeenAt)} · ${touchLabel(s.firstTouch)}`],
+    ['Última visita', `${formatDateTime(s.lastSeenAt)} · ${touchLabel(s.lastTouch)}`],
+    ['Visitas / páginas vistas', `${s.sessions} / ${s.pageviews}`],
+    ['Dispositivos', String(s.devices)],
+  ]
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Páginas visitadas</CardTitle>
+          <CardDescription>As 100 mais recentes.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ol className="space-y-3">
+            {s.views.map((v) => (
+              <li key={v.id} className="flex gap-3">
+                <GlobeIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm" title={v.url}>
+                    {v.title || pathOf(v.url)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDateTime(v.occurredAt)}
+                    {v.newSession ? ` · entrada por ${touchLabel(v.touch)}` : ''}
+                    {v.title ? ` · ${pathOf(v.url)}` : ''}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </CardContent>
+      </Card>
+      <Card className="h-fit">
+        <CardHeader>
+          <CardTitle className="text-base">Origem</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <dl className="space-y-3 text-sm">
+            {rows.map(([k, v]) => (
+              <div key={k}>
+                <dt className="text-xs text-muted-foreground">{k}</dt>
+                <dd>{v}</dd>
+              </div>
+            ))}
+          </dl>
+        </CardContent>
+      </Card>
     </div>
   )
 }

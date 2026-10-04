@@ -5,8 +5,11 @@ import { env } from '../config/env'
 import { randomToken, safeEqual } from './crypto'
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
-/** Webhooks de terceiros não têm cookie; são autenticados por assinatura própria em cada módulo. */
-const EXEMPT_PREFIXES = ['/api/webhooks/']
+/**
+ * Webhooks de terceiros e o rastreamento do site vêm de outros domínios, sem cookie e sem sessão:
+ * webhooks são autenticados por assinatura; o rastreamento só recebe páginas vistas e não altera nada sensível.
+ */
+const EXEMPT_PREFIXES = ['/api/webhooks/', '/api/public/rastreamento/']
 
 function originOf(referer: string | undefined): string | undefined {
   if (!referer) return undefined
@@ -25,13 +28,15 @@ function originOf(referer: string | undefined): string | undefined {
 @Injectable()
 export class CsrfMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction) {
+    // Sem cookie de CSRF para quem chega de fora (visitantes do site, Meta): eles nunca usam o painel.
+    if (EXEMPT_PREFIXES.some((p) => req.originalUrl.startsWith(p))) return next()
     let token = req.cookies?.[CSRF_COOKIE] as string | undefined
     if (!token) {
       token = randomToken(24)
       res.cookie(CSRF_COOKIE, token, { httpOnly: false, secure: env.cookieSecure, sameSite: 'strict', path: '/' })
     }
 
-    if (SAFE_METHODS.has(req.method) || EXEMPT_PREFIXES.some((p) => req.originalUrl.startsWith(p))) return next()
+    if (SAFE_METHODS.has(req.method)) return next()
 
     const origin = req.headers.origin ?? originOf(req.headers.referer)
     if (origin !== undefined && origin !== env.appUrl) throw new ForbiddenException('Origem da requisição não permitida.')
