@@ -54,6 +54,28 @@ enum LookupType {
   MOTIVO_PERDA
 }
 
+/// Funil de marketing. "Visitante" (anônimo) fica no rastreamento do site; aqui estão as pessoas identificadas.
+enum LeadStage {
+  LEAD
+  QUALIFICADO
+  OPORTUNIDADE
+  CLIENTE
+}
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  SELECT
+  MULTISELECT
+  BOOLEAN
+}
+
+enum ScoreDimension {
+  PERFIL
+  INTERESSE
+}
+
 model Tenant {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
@@ -68,6 +90,10 @@ model Tenant {
   sellers        Seller[]
   lookups        LookupItem[]
   serviceRecords ServiceRecord[]
+  leads          Lead[]
+  customFields   CustomFieldDef[]
+  scoreRules     ScoreRule[]
+  leadImports    LeadImport[]
 
   @@map("tenants")
 }
@@ -279,6 +305,7 @@ model Unit {
   sellers Seller[]
   users   User[]
   records ServiceRecord[]
+  leads   Lead[]
 
   @@unique([tenantId, name])
   @@map("units")
@@ -300,6 +327,7 @@ model Seller {
   unit    Unit?           @relation(fields: [unitId], references: [id])
   user    User?           @relation(fields: [userId], references: [id])
   records ServiceRecord[]
+  leads   Lead[]
 
   @@unique([tenantId, name])
   @@map("sellers")
@@ -315,6 +343,7 @@ model LookupItem {
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id])
   originOf       ServiceRecord[] @relation("RecordOrigin")
+  leadOriginOf   Lead[]          @relation("LeadOrigin")
   customerTypeOf ServiceRecord[] @relation("RecordCustomerType")
   lostReasonOf   ServiceRecord[] @relation("RecordLostReason")
 
@@ -333,6 +362,8 @@ model ServiceRecord {
   phone          String?
   email          String?
   sellerId       String?       @db.Uuid
+  /// Lead da base vinculado (pelo telefone ou e-mail). Liga o atendimento à linha do tempo do lead.
+  leadId         String?       @db.Uuid
   /// Unidade do atendimento. Preenchida pela unidade do vendedor quando ele é escolhido (pode ser alterada).
   unitId         String?       @db.Uuid
   originId       String?       @db.Uuid
@@ -363,6 +394,7 @@ model ServiceRecord {
 
   tenant       Tenant                 @relation(fields: [tenantId], references: [id])
   seller       Seller?                @relation(fields: [sellerId], references: [id])
+  lead         Lead?                  @relation(fields: [leadId], references: [id])
   unit         Unit?                  @relation(fields: [unitId], references: [id])
   origin       LookupItem?            @relation("RecordOrigin", fields: [originId], references: [id])
   customerType LookupItem?            @relation("RecordCustomerType", fields: [customerTypeId], references: [id])
@@ -373,6 +405,7 @@ model ServiceRecord {
   @@index([tenantId, kind, leadAt])
   @@index([sellerId])
   @@index([unitId])
+  @@index([leadId])
   @@index([phone])
   @@map("service_records")
 }
@@ -391,5 +424,168 @@ model ServiceRecordHistory {
 
   @@index([recordId, createdAt])
   @@map("service_record_history")
+}
+
+/// Pessoa identificada (por e-mail e/ou telefone). Deduplicada por e-mail e por telefone (E.164).
+model Lead {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  name         String?
+  email        String?
+  phone        String?
+  company      String?
+  jobTitle     String?
+  country      String    @default("BR")
+  state        String?   @db.Char(2)
+  city         String?
+  stage        LeadStage @default(LEAD)
+  ownerId      String?   @db.Uuid
+  unitId       String?   @db.Uuid
+  originId     String?   @db.Uuid
+  /// Etiquetas em minúsculas (ex.: "revenda", "newsletter").
+  tags         String[]
+  /// Valores dos campos personalizados, por chave do campo.
+  customFields Json      @default("{}")
+
+  /// Permissão para receber e-mail marketing (LGPD). Histórico completo em lead_consents.
+  emailOptIn   Boolean   @default(false)
+  emailOptOutAt DateTime?
+
+  firstConversionAt DateTime?
+  lastConversionAt  DateTime?
+  /// Origem/UTMs da primeira e da última conversão.
+  firstConversion   Json?
+  lastConversion    Json?
+
+  lastOpportunityAt DateTime?
+  lastSaleAt        DateTime?
+  lastSaleValue     Decimal?  @db.Decimal(12, 2)
+
+  scoreProfile   Int       @default(0)
+  scoreInterest  Int       @default(0)
+  scoreGrade     String?   @db.Char(1)
+  scoreUpdatedAt DateTime?
+  lastActivityAt DateTime?
+
+  importBatch String?
+  /// Dados pessoais apagados a pedido do titular (LGPD): o registro fica só para estatística.
+  anonymizedAt DateTime?
+  createdById  String?   @db.Uuid
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id])
+  owner    Seller?         @relation(fields: [ownerId], references: [id])
+  unit     Unit?           @relation(fields: [unitId], references: [id])
+  origin   LookupItem?     @relation("LeadOrigin", fields: [originId], references: [id])
+  events   LeadEvent[]
+  consents LeadConsent[]
+  records  ServiceRecord[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, phone])
+  @@index([tenantId, stage])
+  @@index([tenantId, scoreGrade])
+  @@index([ownerId])
+  @@map("leads")
+}
+
+/// Linha do tempo do lead: conversões, mudanças, vendas, e-mails (próximas fases), importações.
+model LeadEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  leadId     String   @db.Uuid
+  type       String
+  title      String
+  data       Json?
+  occurredAt DateTime @default(now())
+  userId     String?  @db.Uuid
+  userName   String?
+  createdAt  DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, occurredAt])
+  @@index([tenantId, type, occurredAt])
+  @@map("lead_events")
+}
+
+/// Registro de consentimento (LGPD): o que foi aceito, quando, de onde e com qual texto.
+model LeadConsent {
+  id        String   @id @default(uuid()) @db.Uuid
+  leadId    String   @db.Uuid
+  purpose   String
+  granted   Boolean
+  source    String
+  text      String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, purpose, createdAt])
+  @@map("lead_consents")
+}
+
+model CustomFieldDef {
+  id        String          @id @default(uuid()) @db.Uuid
+  tenantId  String          @db.Uuid
+  key       String
+  label     String
+  type      CustomFieldType
+  options   String[]
+  active    Boolean         @default(true)
+  position  Int             @default(0)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, key])
+  @@map("custom_field_defs")
+}
+
+/// Regra de lead scoring. Perfil: atributos do lead. Interesse: eventos recentes.
+model ScoreRule {
+  id        String         @id @default(uuid()) @db.Uuid
+  tenantId  String         @db.Uuid
+  dimension ScoreDimension
+  name      String
+  /// Perfil: "stage", "state", "tag", "customer_type", "has_phone", "custom:<chave>". Interesse: tipo de evento.
+  field     String
+  operator  String
+  value     Json?
+  points    Int
+  active    Boolean        @default(true)
+  createdAt DateTime       @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, dimension])
+  @@map("score_rules")
+}
+
+/// Importação de planilha de leads (arquivo, mapeamento de colunas, andamento e relatório).
+model LeadImport {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  fileName    String
+  filePath    String?
+  status      String    @default("ENVIADO")
+  headers     String[]
+  totalRows   Int       @default(0)
+  mapping     Json?
+  options     Json?
+  report      Json?
+  processed   Int       @default(0)
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now())
+  finishedAt  DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@map("lead_imports")
 }
 

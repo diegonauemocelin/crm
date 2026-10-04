@@ -2,6 +2,26 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.3.0",
+      "date": "2026-10-04",
+      "title": "Fase 3 — Base de leads",
+      "changes": [
+        { "type": "novo", "area": "Base de leads", "text": "Cadastro unificado de leads, sem duplicar a mesma pessoa: identificação pelo e-mail e, sem e-mail, pelo telefone padronizado." },
+        { "type": "novo", "area": "Base de leads", "text": "Lista com resumo do funil (Lead, Lead qualificado, Oportunidade, Cliente), busca, filtros por nota, tag, estado, responsável, unidade, origem e permissão de e-mail, e exportação." },
+        { "type": "novo", "area": "Base de leads", "text": "Ações em massa: adicionar/remover tags, alterar estágio e alterar responsável de vários leads de uma vez." },
+        { "type": "novo", "area": "Base de leads", "text": "Ficha do lead com linha do tempo: importações, mudanças, consentimentos e os atendimentos de Pré/Pós-Vendas, tudo em um só lugar." },
+        { "type": "novo", "area": "Pré e Pós-Vendas", "text": "Cada atendimento encontra (ou cria) o lead pelo telefone/e-mail. Venda registrada no atendimento torna o lead Cliente e atualiza a última venda." },
+        { "type": "novo", "area": "Importação", "text": "Importação de planilhas (CSV, XLSX e o “Texto Unicode” do Excel) com mapeamento de colunas, análise prévia, relatório de erros e andamento em tempo real. Modelo pronto para o export do RD Station." },
+        { "type": "novo", "area": "Importação", "text": "Base do RD Station preparada: responsável Pré-Vendas (comercial@usaparts.com.br), tags de importações antigas descartadas e última venda trazida para o histórico." },
+        { "type": "novo", "area": "Campos personalizados", "text": "Campos personalizados de texto, número, data, lista (uma ou várias opções) e sim/não, usados na ficha, na importação e no lead scoring." },
+        { "type": "novo", "area": "Lead scoring", "text": "Nota A/B/C/D em duas dimensões: perfil (características do lead) e interesse (atendimentos, vendas e conversões recentes), com regras e faixas configuráveis. O interesse perde valor com a inatividade." },
+        { "type": "novo", "area": "Tags", "text": "Gestão de tags: renomear, juntar e remover de todos os leads." },
+        { "type": "seguranca", "area": "LGPD", "text": "Consentimento para e-mail marketing registrado com data, origem e texto; quem se descadastrou nunca é reinscrito por importação." },
+        { "type": "seguranca", "area": "LGPD", "text": "Descadastro em 1 clique por link (página pública, sem login), exportação de todos os dados do titular e eliminação dos dados pessoais a pedido." },
+        { "type": "melhoria", "area": "Dados", "text": "Telefones com código de país repetido ou código de operadora (ex.: 015) passam a ser reconhecidos; valores como “1.200” são lidos como mil e duzentos." }
+      ]
+    },
+    {
       "version": "0.2.2",
       "date": "2026-10-03",
       "title": "Atualização sem erro em abas abertas",

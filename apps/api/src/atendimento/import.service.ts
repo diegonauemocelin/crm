@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service'
 import type { RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import type { LookupType, Prisma, ServiceKind } from '../generated/prisma/client'
+import { LeadSyncService } from '../leads/lead-sync.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { CadastrosService } from './cadastros.service'
 import { mapSheet, type MappedRecord } from './planilha'
@@ -48,6 +49,7 @@ export class ImportService {
     private readonly prisma: PrismaService,
     private readonly cadastros: CadastrosService,
     private readonly audit: AuditService,
+    private readonly leadSync: LeadSyncService,
   ) {}
 
   /** Importação em massa é restrita ao perfil Administrador. */
@@ -118,8 +120,10 @@ export class ImportService {
       { timeout: 120_000 },
     )
 
+    // Cada atendimento importado encontra (ou cria) o lead correspondente na base.
+    const link = await this.leadSync.linkAll(user.tenantId)
     await this.audit.byUser(user, ctx, 'atendimento.imported', 'service_record', batch, { kind, quantidade: inserted, lote: batch })
-    return { dryRun: false, batch, imported: inserted, ...summary }
+    return { dryRun: false, batch, imported: inserted, leadsCreated: link.leadsCreated, ...summary }
   }
 
   private async toRow(

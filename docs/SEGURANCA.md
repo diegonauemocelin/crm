@@ -64,11 +64,19 @@ Referências: OWASP Top 10 (2021/2025) e OWASP ASVS nível 2. Esta página regis
 - Backups diários criptografados com chave pública `age`. A chave privada fica fora do servidor.
 - Dependências: `npm audit` no CI (falha em vulnerabilidade alta), scripts de instalação de pacotes bloqueados por padrão (só os necessários liberados em `allowScripts`).
 
+## LGPD (dados de leads)
+
+- Consentimento para e-mail marketing registrado em `lead_consents` (finalidade, aceito/recusado, origem, texto, IP e data). Importações nunca reinscrevem quem se descadastrou.
+- Descadastro em 1 clique: link assinado (HMAC) por lead, página pública sem login, com o e-mail mascarado.
+- Portabilidade: exportação em JSON de tudo o que o sistema guarda sobre o titular.
+- Eliminação: apaga nome, e-mail, telefone, campos personalizados e histórico do lead e dos atendimentos vinculados, mantendo só um registro anônimo para estatística. Fica registrado na auditoria.
+- Arquivos de importação ficam fora da área pública, com permissão 600, e são apagados ao fim da importação.
+
 ## Pendências planejadas (Fase 8 e anteriores)
 
 - fail2ban lendo o log do Nginx do CRM (exige instalar/configurar no host: será proposto após o inventário).
 - Limite de requisições compartilhado em Redis (hoje em memória, suficiente para uma instância da API).
 - Sessões ativas por usuário (listar e encerrar dispositivos) e alerta por e-mail de login em novo dispositivo.
 - Pedir senha novamente para reconfigurar o 2FA.
-- LGPD (consentimento, exportação e exclusão do titular) entra junto com a base de leads (Fase 3).
+- Política de retenção configurável (anonimizar automaticamente leads inativos há X meses).
 - Teste de intrusão e de carga (Fase 8).

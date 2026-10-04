@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module'
 import { CsrfMiddleware } from './common/csrf.middleware'
 import { env } from './config/env'
 import { FilesModule } from './files/files.module'
+import { LeadsModule } from './leads/leads.module'
 import { PrismaModule } from './prisma/prisma.module'
 import { RolesController } from './roles/roles.controller'
 import { RolesService } from './roles/roles.service'
@@ -35,6 +36,7 @@ import { UsersService } from './users/users.service'
     FilesModule,
     SettingsModule,
     AuthModule,
+    LeadsModule,
     AtendimentoModule,
   ],
   controllers: [UsersController, RolesController, SystemController],

@@ -91,7 +91,10 @@ export function ufFromText(text: string | null | undefined): UF | null {
 export function normalizePhone(raw: string | null | undefined): string | null {
   if (!raw) return null
   let digits = raw.replace(/\D/g, '')
-  if (digits.length >= 12 && digits.startsWith('55')) digits = digits.slice(2)
+  // Remove o código do país (às vezes repetido, como em "+55 +5547999998888" vindo do RD Station).
+  while (digits.length >= 12 && digits.startsWith('55')) digits = digits.slice(2)
+  // Discagem com código de operadora: 0 + operadora (2 dígitos) + DDD + número, ex.: "015 55 99971-0654".
+  if ((digits.length === 13 || digits.length === 14) && digits.startsWith('0')) digits = digits.slice(3)
   if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1)
   if (digits.length !== 10 && digits.length !== 11) return null
   if (!DDD_UF[digits.slice(0, 2)]) return null
@@ -111,6 +114,8 @@ export function parseMoney(raw: string | null | undefined): number | null {
   let s = raw.replace(/[R$\s]/g, '')
   if (!s) return null
   if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.')
+  // "1.200" ou "12.500.000" (só grupos de 3 após o ponto) é milhar no padrão brasileiro; "221.72" continua decimal.
+  else if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '')
   const n = Number(s)
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null
 }

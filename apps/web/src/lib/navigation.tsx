@@ -51,7 +51,7 @@ export const NAVIGATION: NavGroup[] = [
   },
   {
     title: 'CRM',
-    items: [{ title: 'Base de leads', to: '/leads', icon: UsersRoundIcon, module: 'leads', phase: 3 }],
+    items: [{ title: 'Base de leads', to: '/leads', icon: UsersRoundIcon, module: 'leads' }],
   },
   {
     title: 'Marketing',

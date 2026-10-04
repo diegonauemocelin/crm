@@ -4,6 +4,7 @@ import type { RequestCtx } from '../common/decorators'
 import { type Action, can, type Scope } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import { Prisma, type ServiceKind } from '../generated/prisma/client'
+import { LeadSyncService } from '../leads/lead-sync.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { normalizePhone, REGIONS, regionOf, UF_LIST, UFS } from './br'
@@ -78,6 +79,7 @@ export class ServiceRecordsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly settings: SettingsService,
+    private readonly leadSync: LeadSyncService,
   ) {}
 
   assertCan(user: AuthUser, kind: ServiceKind, action: Action) {
@@ -293,6 +295,7 @@ export class ServiceRecordsService {
       },
     })
     await this.audit.byUser(user, ctx, 'atendimento.created', 'service_record', record.id, { kind: d.kind })
+    await this.leadSync.syncRecord(record)
     const { alertHours } = await this.alertSettings(user.tenantId)
     return this.view(record, alertHours)
   }
@@ -328,6 +331,7 @@ export class ServiceRecordsService {
       },
     })
     await this.audit.byUser(user, ctx, 'atendimento.updated', 'service_record', id, { campos: Object.keys(changes) })
+    await this.leadSync.syncRecord(record, { saleStatus: current.saleStatus })
     const { alertHours } = await this.alertSettings(user.tenantId)
     return this.view(record, alertHours)
   }
