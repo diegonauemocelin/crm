@@ -6,7 +6,9 @@ import { PrismaClient } from '../generated/prisma/client'
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleDestroy {
   constructor() {
-    super({ adapter: new PrismaPg({ connectionString: env.databaseUrl }) })
+    // O Prisma guarda o plano compilado de cada formato de consulta (padrão: 1.000). Lotes grandes de importação geram
+    // planos de vários MB que nunca se repetem e esgotavam a memória da API; 200 cobre com folga as consultas do dia a dia.
+    super({ adapter: new PrismaPg({ connectionString: env.databaseUrl }), queryPlanCacheMaxSize: 200 })
   }
 
   async onModuleDestroy() {

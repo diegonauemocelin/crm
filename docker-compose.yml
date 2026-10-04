@@ -57,7 +57,8 @@ services:
       - /tmp
     environment:
       NODE_ENV: production
-      NODE_OPTIONS: --max-old-space-size=256
+      # Importações grandes (dezenas de milhares de linhas) precisam de folga; uso normal fica em ~150 MB.
+      NODE_OPTIONS: --max-old-space-size=384
       HOME: /tmp
       CHECKPOINT_DISABLE: "1"
       APP_URL: https://${CRM_DOMAIN:?defina CRM_DOMAIN no .env}
@@ -79,7 +80,7 @@ services:
     networks: [internal, egress]
     deploy:
       resources:
-        limits: { memory: 384m }
+        limits: { memory: 512m }
 
   web:
     <<: *hardening

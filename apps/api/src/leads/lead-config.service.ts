@@ -76,14 +76,21 @@ export class LeadConfigService implements OnApplicationBootstrap, OnModuleDestro
       })
       const byLead = new Map<string, { type: string; occurredAt: Date }[]>()
       for (const e of events) byLead.set(e.leadId, [...(byLead.get(e.leadId) ?? []), e])
-      const updates: Prisma.PrismaPromise<unknown>[] = []
+      const updates: Prisma.LeadUpdateArgs[] = []
       for (const l of leads) {
         const s = computeScore({ ...l, customFields: (l.customFields as Record<string, unknown>) ?? {} }, byLead.get(l.id) ?? [], rules, settings)
         if (s.profile !== l.scoreProfile || s.interest !== l.scoreInterest || s.grade !== l.scoreGrade) {
-          updates.push(this.prisma.lead.update({ where: { id: l.id }, data: { scoreProfile: s.profile, scoreInterest: s.interest, scoreGrade: s.grade, scoreUpdatedAt: new Date() } }))
+          updates.push({ where: { id: l.id }, data: { scoreProfile: s.profile, scoreInterest: s.interest, scoreGrade: s.grade, scoreUpdatedAt: new Date() } })
         }
       }
-      for (let i = 0; i < updates.length; i += 200) await this.prisma.$transaction(updates.slice(i, i + 200))
+      // Uma consulta por lead dentro da transação: o formato é sempre o mesmo e o Prisma reaproveita o plano
+      // (lotes em array geravam um plano novo a cada tamanho de lote).
+      for (let i = 0; i < updates.length; i += 200) {
+        const slice = updates.slice(i, i + 200)
+        await this.prisma.$transaction(async (tx) => {
+          for (const u of slice) await tx.lead.update(u)
+        })
+      }
       total += leads.length
       cursor = leads[leads.length - 1]!.id
     }

@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.3.1",
+      "date": "2026-10-03",
+      "title": "Importações grandes sem interrupção",
+      "changes": [
+        { "type": "correcao", "area": "Importação", "text": "Importações grandes (como a base completa do RD Station) paravam no meio e ficavam presas em “Importando”: o sistema ficava sem memória. O consumo agora é estável do início ao fim." },
+        { "type": "novo", "area": "Importação", "text": "Importação interrompida (por reinício do sistema ou erro) aparece como “Interrompida”, com o botão Retomar: ela continua da última linha gravada, sem duplicar leads." },
+        { "type": "melhoria", "area": "Importação", "text": "Histórico de importações mostra quantas linhas já foram gravadas e permite acompanhar uma importação em andamento." },
+        { "type": "melhoria", "area": "Sistema", "text": "Mais memória reservada para a API e uso de memória registrado no log durante importações." }
+      ]
+    },
+    {
       "version": "0.3.0",
       "date": "2026-10-04",
       "title": "Fase 3 — Base de leads",

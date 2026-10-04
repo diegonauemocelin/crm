@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, type OnApplicationBootstrap } from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -33,7 +33,7 @@ interface Prepared {
 }
 
 @Injectable()
-export class LeadImportService {
+export class LeadImportService implements OnApplicationBootstrap {
   private readonly logger = new Logger(LeadImportService.name)
 
   constructor(
@@ -42,6 +42,12 @@ export class LeadImportService {
     private readonly config: LeadConfigService,
     private readonly sync: LeadSyncService,
   ) {}
+
+  /** Importação que estava rodando quando o sistema reiniciou não volta sozinha: fica "interrompida" para ser retomada. */
+  async onApplicationBootstrap() {
+    const r = await this.prisma.leadImport.updateMany({ where: { status: 'PROCESSANDO' }, data: { status: 'INTERROMPIDO' } })
+    if (r.count) this.logger.warn(`${r.count} importação(ões) interrompida(s) por reinício do sistema. Podem ser retomadas pela tela de importação.`)
+  }
 
   private assertCan(user: AuthUser) {
     if (!can(user.permissions, user.role.isSystem, 'leads', 'create')) throw new ForbiddenException('Você não tem permissão para importar leads.')
@@ -195,22 +201,30 @@ export class LeadImportService {
     return { byEmail, byPhone }
   }
 
-  /** Inicia a importação em segundo plano; a tela acompanha o andamento consultando o status. */
+  /**
+   * Inicia (ou retoma) a importação em segundo plano; a tela acompanha o andamento consultando o status.
+   * Uma importação interrompida (ex.: o sistema reiniciou) continua da última linha já gravada.
+   */
   async start(user: AuthUser, id: string, ctx: RequestCtx) {
     this.assertCan(user)
     const imp = await this.load(user, id)
-    if (imp.status !== 'ANALISADO') throw new BadRequestException(imp.status === 'PROCESSANDO' ? 'Esta importação já está em andamento.' : 'Analise a planilha antes de importar.')
-    await this.prisma.leadImport.update({ where: { id }, data: { status: 'PROCESSANDO', processed: 0 } })
-    await this.audit.byUser(user, ctx, 'lead_import.started', 'lead_import', id, { arquivo: imp.fileName })
-    void this.process(user, id).catch(async (err) => {
+    const resume = imp.status === 'INTERROMPIDO' || imp.status === 'ERRO'
+    if (imp.status === 'PROCESSANDO') throw new BadRequestException('Esta importação já está em andamento.')
+    if (!resume && imp.status !== 'ANALISADO') throw new BadRequestException('Analise a planilha antes de importar.')
+    if (!imp.filePath) throw new BadRequestException('O arquivo desta importação não está mais disponível. Envie a planilha de novo.')
+    const offset = resume ? imp.processed : 0
+    await this.prisma.leadImport.update({ where: { id }, data: { status: 'PROCESSANDO', processed: offset, finishedAt: null } })
+    await this.audit.byUser(user, ctx, resume ? 'lead_import.resumed' : 'lead_import.started', 'lead_import', id, { arquivo: imp.fileName, aPartirDaLinha: offset })
+    void this.process(user, id, offset).catch(async (err) => {
       this.logger.error(`Importação ${id} falhou: ${(err as Error).message}`)
       await this.prisma.leadImport.update({ where: { id }, data: { status: 'ERRO', report: { ...(imp.report as object), erro: (err as Error).message } as Prisma.InputJsonValue, finishedAt: new Date() } })
     })
     return { id, status: 'PROCESSANDO' }
   }
 
-  private async process(user: AuthUser, id: string) {
+  private async process(user: AuthUser, id: string, offset: number) {
     const imp = await this.prisma.leadImport.findUniqueOrThrow({ where: { id } })
+    const partial = ((imp.report as { parcial?: Record<string, number> } | null)?.parcial ?? {}) as Record<string, number>
     const mapping = imp.mapping as Mapping
     const options = (imp.options ?? {}) as ImportOptions
     const tenantId = imp.tenantId
@@ -231,20 +245,21 @@ export class LeadImportService {
       return oid
     }
 
-    let created = 0
-    let updated = 0
-    let skipped = 0
-    let mergedInFile = 0
+    // Numa retomada, os contadores continuam de onde pararam.
+    let created = offset ? (partial.created ?? 0) : 0
+    let updated = offset ? (partial.updated ?? 0) : 0
+    let skipped = offset ? (partial.skipped ?? 0) : 0
+    let mergedInFile = offset ? (partial.mergedInFile ?? 0) : 0
     const touched: string[] = []
     const now = new Date()
     const source = isRdExport(imp.headers) ? 'importado do RD Station' : `importado de ${imp.fileName}`
 
-    for (let i = 0; i < prepared.rows.length; i += 250) {
+    for (let i = offset; i < prepared.rows.length; i += 250) {
       const chunk = prepared.rows.slice(i, i + 250)
       const newLeads: Prisma.LeadCreateManyInput[] = []
       const newEvents: Prisma.LeadEventCreateManyInput[] = []
       const newConsents: Prisma.LeadConsentCreateManyInput[] = []
-      const updates: Prisma.PrismaPromise<unknown>[] = []
+      const updates: Prisma.LeadUpdateArgs[] = []
       // Leads criados neste mesmo lote (ainda não gravados): repetições na planilha são somadas a eles.
       const pending = new Map<string, Prisma.LeadCreateManyInput>()
 
@@ -347,25 +362,42 @@ export class LeadImportService {
           newConsents.push({ leadId: matchId, purpose: 'email_marketing', granted: true, source })
         }
         newEvents.push({ tenantId, leadId: matchId, type: 'importado', title: `Atualizado pela planilha ${imp.fileName}`, userId: user.id, userName: user.name })
-        updates.push(this.prisma.lead.update({ where: { id: matchId }, data }))
+        updates.push({ where: { id: matchId }, data })
         touched.push(matchId)
         updated++
       }
 
-      await this.prisma.$transaction([
-        this.prisma.lead.createMany({ data: newLeads, skipDuplicates: true }),
-        ...updates,
-        this.prisma.leadEvent.createMany({ data: newEvents }),
-        this.prisma.leadConsent.createMany({ data: newConsents }),
-      ])
-      await this.prisma.leadImport.update({ where: { id }, data: { processed: Math.min(prepared.rows.length, i + chunk.length) } })
+      // Transação interativa com inserções em fatias pequenas: um lote único com tudo gerava um plano de consulta
+      // diferente (e enorme) a cada bloco, que o Prisma guardava em cache até a API ficar sem memória.
+      await this.prisma.$transaction(
+        async (tx) => {
+          for (let j = 0; j < newLeads.length; j += 50) await tx.lead.createMany({ data: newLeads.slice(j, j + 50), skipDuplicates: true })
+          for (const u of updates) await tx.lead.update(u)
+          for (let j = 0; j < newEvents.length; j += 50) await tx.leadEvent.createMany({ data: newEvents.slice(j, j + 50) })
+          for (let j = 0; j < newConsents.length; j += 50) await tx.leadConsent.createMany({ data: newConsents.slice(j, j + 50) })
+        },
+        { timeout: 120_000 },
+      )
+      if ((i / 250) % 8 === 0) {
+        const mem = process.memoryUsage()
+        this.logger.log(`Importação ${id.slice(0, 8)}: ${i + chunk.length}/${prepared.rows.length} linhas · memória ${Math.round(mem.heapUsed / 1048576)} MB heap / ${Math.round(mem.rss / 1048576)} MB total`)
+      }
+      // Grava o avanço junto com os contadores: se o sistema reiniciar, a retomada sabe exatamente onde continuar.
+      await this.prisma.leadImport.update({
+        where: { id },
+        data: {
+          processed: Math.min(prepared.rows.length, i + chunk.length),
+          report: { ...(imp.report as object), parcial: { created, updated, skipped, mergedInFile } } as Prisma.InputJsonValue,
+        },
+      })
     }
 
     // Liga os atendimentos de Pré/Pós-Vendas aos leads (pelo telefone/e-mail) e recalcula as notas.
     const link = await this.sync.linkAll(tenantId)
     await this.config.rescore(tenantId)
 
-    const report = { ...(imp.report as object), created, updated, skipped, mergedInFile, invalid: prepared.invalid.length, atendimentosVinculados: link.linked, leadsCriadosDeAtendimentos: link.leadsCreated, lote: batch }
+    const { parcial: _p, ...analysis } = (imp.report ?? {}) as Record<string, unknown>
+    const report = { ...analysis, retomadaEm: offset || undefined, created, updated, skipped, mergedInFile, invalid: prepared.invalid.length, atendimentosVinculados: link.linked, leadsCriadosDeAtendimentos: link.leadsCreated, lote: batch }
     await this.prisma.leadImport.update({ where: { id }, data: { status: 'CONCLUIDO', report: report as Prisma.InputJsonValue, finishedAt: new Date(), filePath: null } })
     await unlink(imp.filePath!).catch(() => undefined)
     await this.audit.log({ tenantId, userId: user.id, userEmail: user.email, action: 'lead_import.finished', entity: 'lead_import', entityId: id, data: { criados: created, atualizados: updated, ignorados: skipped } })

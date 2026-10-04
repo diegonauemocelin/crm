@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeftIcon, CheckCircle2Icon, FileSpreadsheetIcon, Loader2Icon, SearchCheckIcon, UploadIcon } from 'lucide-react'
+import { ArrowLeftIcon, CheckCircle2Icon, FileSpreadsheetIcon, Loader2Icon, PlayIcon, SearchCheckIcon, UploadIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { formatDateTime, PageHeader, RequirePermission } from '@/components/page'
@@ -93,7 +93,8 @@ interface ImportRow {
   report: Report | null
 }
 
-const STATUS: Record<string, string> = { ENVIADO: 'Enviado', ANALISADO: 'Analisado', PROCESSANDO: 'Importando', CONCLUIDO: 'Concluído', ERRO: 'Erro' }
+const STATUS: Record<string, string> = { ENVIADO: 'Enviado', ANALISADO: 'Analisado', PROCESSANDO: 'Importando', CONCLUIDO: 'Concluído', ERRO: 'Erro', INTERROMPIDO: 'Interrompida' }
+const RESUMABLE = new Set(['INTERROMPIDO', 'ERRO'])
 
 export function LeadImportPage() {
   return (
@@ -182,6 +183,21 @@ function ImportWizard() {
     }
   }
 
+  // Continua uma importação interrompida (reinício do sistema ou erro) a partir da última linha gravada.
+  const resume = async (id: string) => {
+    setBusy('start')
+    setError(null)
+    try {
+      await api.post(`/leads/importacoes/${id}/executar`)
+      setRunningId(id)
+      await qc.invalidateQueries({ queryKey: ['lead-import', id] })
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const targets = [...BASE_TARGETS, ...(fields.data ?? []).filter((f) => f.active).map((f) => ({ id: `custom:${f.key}`, label: `${f.label} (personalizado)` }))]
   const sellers = options.data?.sellers.filter((s) => s.active) ?? []
   const run = status.data
@@ -201,7 +217,15 @@ function ImportWizard() {
       {run ? (
         <Card>
           <CardHeader>
-            <CardTitle>{run.status === 'PROCESSANDO' ? 'Importando…' : run.status === 'CONCLUIDO' ? 'Importação concluída' : 'A importação falhou'}</CardTitle>
+            <CardTitle>
+              {run.status === 'PROCESSANDO'
+                ? 'Importando…'
+                : run.status === 'CONCLUIDO'
+                  ? 'Importação concluída'
+                  : run.status === 'INTERROMPIDO'
+                    ? 'Importação interrompida'
+                    : 'A importação falhou'}
+            </CardTitle>
             <CardDescription>{run.fileName}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -239,10 +263,21 @@ function ImportWizard() {
               </>
             )}
             {run.status === 'ERRO' && <FormError message={run.report?.erro ?? 'Erro inesperado.'} />}
+            {RESUMABLE.has(run.status) && (
+              <p className="text-sm text-muted-foreground">
+                {int.format(run.processed)} de {int.format(run.report?.valid ?? run.totalRows)} linhas já foram gravadas. Retomar continua a partir daí, sem duplicar ninguém.
+              </p>
+            )}
+            <FormError message={error} />
           </CardContent>
           {run.status !== 'PROCESSANDO' && (
             <CardFooter className="gap-2">
-              <Button asChild>
+              {RESUMABLE.has(run.status) && (
+                <Button onClick={() => void resume(run.id)} disabled={busy !== null}>
+                  <PlayIcon /> Retomar
+                </Button>
+              )}
+              <Button variant={RESUMABLE.has(run.status) ? 'outline' : 'default'} asChild>
                 <Link to="/leads">Ver a base de leads</Link>
               </Button>
               <Button
@@ -509,7 +544,10 @@ function ImportWizard() {
                   <TableHead className="pl-6">Arquivo</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead>Situação</TableHead>
-                  <TableHead className="pr-6 text-right">Novos / atualizados</TableHead>
+                  <TableHead className="text-right">Novos / atualizados</TableHead>
+                  <TableHead className="pr-6">
+                    <span className="sr-only">Ações</span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -520,8 +558,24 @@ function ImportWizard() {
                     <TableCell>
                       <Badge variant={h.status === 'ERRO' ? 'destructive' : 'outline'}>{STATUS[h.status] ?? h.status}</Badge>
                     </TableCell>
-                    <TableCell className="pr-6 text-right tabular-nums">
-                      {h.report?.created !== undefined ? `${int.format(h.report.created)} / ${int.format(h.report.updated ?? 0)}` : '—'}
+                    <TableCell className="text-right tabular-nums">
+                      {h.report?.created !== undefined
+                        ? `${int.format(h.report.created)} / ${int.format(h.report.updated ?? 0)}`
+                        : h.status === 'PROCESSANDO' || RESUMABLE.has(h.status)
+                          ? `${int.format(h.processed)} linhas`
+                          : '—'}
+                    </TableCell>
+                    <TableCell className="pr-6 text-right">
+                      {RESUMABLE.has(h.status) && (
+                        <Button size="sm" variant="outline" onClick={() => void resume(h.id)} disabled={busy !== null}>
+                          <PlayIcon /> Retomar
+                        </Button>
+                      )}
+                      {h.status === 'PROCESSANDO' && (
+                        <Button size="sm" variant="ghost" onClick={() => setRunningId(h.id)}>
+                          Acompanhar
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
