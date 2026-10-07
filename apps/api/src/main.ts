@@ -23,6 +23,7 @@ async function bootstrap() {
   app.use('/api/atendimentos/importar', json({ limit: '2mb' }))
   // Páginas vistas chegam como texto (sendBeacon não faz pré-verificação de CORS) e são pequenas.
   app.use('/api/public/rastreamento/coleta', text({ type: () => true, limit: '8kb' }))
+  app.use('/api/public/captura/enviar', text({ type: () => true, limit: '16kb' }))
   // O webhook do Meta é validado pela assinatura do corpo exato que chegou: precisa do corpo bruto.
   app.use('/api/webhooks/meta', raw({ type: () => true, limit: '1mb' }))
   app.useBodyParser('json', { limit: '1mb' })

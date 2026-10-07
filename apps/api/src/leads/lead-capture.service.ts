@@ -27,6 +27,8 @@ export interface Conversion {
   ownerId?: string | null
   tags?: string[]
   occurredAt?: Date
+  /** Campos personalizados já validados (chave -> valor). Só completam os que estiverem vazios. */
+  customFields?: Record<string, unknown>
 }
 
 /**
@@ -80,6 +82,7 @@ export class LeadCaptureService {
           ownerId: conv.ownerId ?? null,
           originId,
           tags,
+          customFields: (conv.customFields ?? {}) as Prisma.InputJsonValue,
           firstConversionAt: at,
           lastConversionAt: at,
           firstConversion: touch,
@@ -111,6 +114,11 @@ export class LeadCaptureService {
     if (!existing.state && state) data.state = state
     if (!existing.originId) data.originId = originId
     if (!existing.ownerId && conv.ownerId) data.ownerId = conv.ownerId
+    if (conv.customFields && Object.keys(conv.customFields).length) {
+      const current = (existing.customFields ?? {}) as Record<string, unknown>
+      const fill = Object.fromEntries(Object.entries(conv.customFields).filter(([k]) => current[k] === undefined || current[k] === null || current[k] === ''))
+      if (Object.keys(fill).length) data.customFields = { ...current, ...fill } as Prisma.InputJsonValue
+    }
     await this.prisma.lead.update({ where: { id: existing.id }, data })
     await this.config.rescore(tenantId, [existing.id])
     return { leadId: existing.id, created: false }

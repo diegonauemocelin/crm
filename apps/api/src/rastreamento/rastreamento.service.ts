@@ -143,6 +143,11 @@ export class RastreamentoService implements OnApplicationBootstrap, OnModuleDest
     return `<script async src="${env.appUrl}/api/public/rastreamento/script.js?k=${s.siteKey}"></script>`
   }
 
+  /** Empresa e configuração pela chave pública do site (também usada pela captura). */
+  async siteByKey(key: string) {
+    return /^[A-Za-z0-9_-]{10,64}$/.test(key) ? this.site(key) : null
+  }
+
   private async site(key: string) {
     const hit = this.cache.get(key)
     if (hit && Date.now() - hit.at < 60_000) return hit

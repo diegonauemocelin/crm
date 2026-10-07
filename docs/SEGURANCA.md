@@ -91,6 +91,16 @@ Referências: OWASP Top 10 (2021/2025) e OWASP ASVS nível 2. Esta página regis
 - Carrinhos seguem o escopo de acesso da base de leads (vendedor só vê os carrinhos dos próprios leads). Eliminação do lead apaga os carrinhos e desliga os pedidos da pessoa.
 - Eventos de compra do site (carrinho, checkout, compra) chegam pelo mesmo canal do rastreamento: lista fechada de eventos, até 30 produtos por evento, valores numéricos validados; o dispositivo é guardado só como categoria (celular, computador, tablet, app).
 
+## Captura: formulários, pop-ups e WhatsApp (v0.5.0)
+
+- Rotas públicas `/api/public/captura/*` sem sessão e fora do CSRF; respondem (e liberam CORS) só para os domínios do site cadastrados no rastreamento. Resposta recusada não vai para cache.
+- Envio validado contra a definição do formulário: só os campos dele entram (nada de campos extras), tamanhos limitados, e-mail e telefone normalizados, opções de lista conferidas.
+- Antirrobô: campo-isca invisível e tempo mínimo de preenchimento (envio de robô recebe "ok" e é descartado), limite de 10 envios por minuto por IP.
+- O número do WhatsApp central não vai para o site: o link `wa.me` só é devolvido depois do cadastro do visitante.
+- No site, tudo é montado com `createElement`/`textContent` dentro de Shadow DOM: textos do painel nunca viram HTML, e o CSS da loja não interfere.
+- Consentimento (LGPD): caixa nunca pré-marcada; o aceite fica em `lead_consents` com texto, data, origem e IP; link da política de privacidade em todos os formulários.
+- Cada envio fica em `capture_submissions` (prova da conversão). Eliminação do lead apaga também os envios da pessoa.
+
 ## Pendências planejadas (Fase 8 e anteriores)
 
 - fail2ban lendo o log do Nginx do CRM (exige instalar/configurar no host: será proposto após o inventário).

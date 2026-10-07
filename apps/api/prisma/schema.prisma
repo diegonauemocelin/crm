@@ -107,6 +107,8 @@ model Tenant {
   receipts       IntegrationReceipt[]
   carts          EcommerceCart[]
   orders         EcommerceOrder[]
+  forms          CaptureForm[]
+  popups         CapturePopup[]
 
   @@map("tenants")
 }
@@ -511,6 +513,7 @@ model Lead {
   visitors SiteVisitor[]
   carts    EcommerceCart[]
   orders   EcommerceOrder[]
+  captures CaptureSubmission[]
 
   @@unique([tenantId, email])
   @@index([tenantId, ecommerceId])
@@ -675,6 +678,95 @@ model IntegrationReceipt {
   @@unique([tenantId, provider, externalId])
   @@index([tenantId, provider, receivedAt])
   @@map("integration_receipts")
+}
+
+/// Formulário de captura: usado no site (embutido ou em pop-up) e nas landing pages.
+model CaptureForm {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  name           String
+  /// Campos: [{ key: "name" | "email" | "phone" | ... | "custom:<chave>" | "message", label, required, options? }]
+  fields         Json
+  submitLabel    String   @default("Enviar")
+  successMessage String   @default("Recebemos seus dados. Em breve entraremos em contato.")
+  /// Depois de enviar: abre o WhatsApp central com a mensagem preenchida ou vai para um endereço.
+  afterSubmit    String   @default("mensagem")
+  redirectUrl    String?
+  /// Caixa de consentimento para e-mail marketing (LGPD). Vazio = não mostra.
+  consentText    String?
+  originName     String   @default("Site - LP")
+  ownerId        String?  @db.Uuid
+  tags           String[]
+  /// Também cria um atendimento na fila de Pré-Vendas.
+  createRecord   Boolean  @default(true)
+  active         Boolean  @default(true)
+  submissions    Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant Tenant              @relation(fields: [tenantId], references: [id])
+  popups CapturePopup[]
+  sends  CaptureSubmission[]
+
+  @@index([tenantId])
+  @@map("capture_forms")
+}
+
+/// Pop-up exibido no site pelo script do CRM, com um formulário.
+model CapturePopup {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  formId    String   @db.Uuid
+  title     String
+  text      String?
+  imageUrl  String?
+  /// Quando abre: tempo na página, intenção de saída ou rolagem.
+  trigger   String   @default("delay")
+  delaySec  Int      @default(10)
+  scrollPct Int      @default(50)
+  /// Páginas onde aparece (trechos do endereço). Vazio = todas.
+  include   String[]
+  exclude   String[]
+  device    String   @default("todos")
+  /// Depois de fechado ou enviado, não aparece de novo por N dias para o mesmo visitante.
+  frequencyDays Int  @default(7)
+  color     String   @default("#1d4ed8")
+  active    Boolean  @default(false)
+  views     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id])
+  form   CaptureForm @relation(fields: [formId], references: [id])
+
+  @@index([tenantId])
+  @@map("capture_popups")
+}
+
+/// Cada envio de formulário, pop-up ou botão de WhatsApp (prova da conversão e do consentimento).
+model CaptureSubmission {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  /// formulario, popup, whatsapp, landing
+  channel   String
+  formId    String?  @db.Uuid
+  popupId   String?  @db.Uuid
+  leadId    String?  @db.Uuid
+  recordId  String?  @db.Uuid
+  data      Json
+  pageUrl   String?
+  touch     Json?
+  device    String?
+  createdAt DateTime @default(now())
+
+  form CaptureForm? @relation(fields: [formId], references: [id], onDelete: SetNull)
+  lead Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([formId, createdAt])
+  @@index([leadId])
+  @@map("capture_submissions")
 }
 
 /// Linha do tempo do lead: conversões, mudanças, vendas, e-mails (próximas fases), importações.

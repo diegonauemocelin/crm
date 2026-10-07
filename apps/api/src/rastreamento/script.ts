@@ -10,6 +10,8 @@
  *   usaCrm('consent', true)   // quando o visitante aceitar o banner de cookies (modo "após consentimento")
  *   usaCrm('pageview')        // registrar manualmente uma página (normalmente automático)
  */
+import { CAPTURE_JS } from '../captura/widget'
+
 export function buildScript(o: { key: string; endpoint: string; requireConsent: boolean; cookieDomains: string[] }) {
   const cfg = JSON.stringify({ k: o.key, e: o.endpoint, c: o.requireConsent, d: o.cookieDomains })
   return `/* CRM - rastreamento do site */
@@ -18,7 +20,8 @@ export function buildScript(o: { key: string; endpoint: string; requireConsent: 
   var C = ${cfg};
   if (w.__crmTrack) return; w.__crmTrack = 1;
   var nav = w.navigator || {};
-  if (nav.globalPrivacyControl === true) return;
+  // Global Privacy Control: não rastreia; formulários e WhatsApp (ação do próprio visitante) continuam.
+  var noTrack = nav.globalPrivacyControl === true;
   var host = location.hostname, domain = '';
   for (var i = 0; i < C.d.length; i++) { var x = C.d[i]; if (host === x || host.slice(-x.length - 1) === '.' + x) { if (!domain || x.length < domain.length) domain = x; } }
   function rid() {
@@ -49,7 +52,7 @@ export function buildScript(o: { key: string; endpoint: string; requireConsent: 
     return { v: vid, s: sid, n: isNew };
   }
   function send() {
-    if (!consent) return;
+    if (!consent || noTrack) return;
     var url = location.href;
     if (url === lastUrl) return; lastUrl = url;
     var id = ids(), lid = null;
@@ -81,7 +84,7 @@ export function buildScript(o: { key: string; endpoint: string; requireConsent: 
       var its = items(p.items);
       var key = name + '|' + JSON.stringify(its) + '|' + (p.transaction_id || '');
       if (seen[key]) return; seen[key] = 1;
-      if (!consent) return;
+      if (!consent || noTrack) return;
       var id = ids();
       post(JSON.stringify({ k: C.k, v: id.v, s: id.s, n: false, u: location.href, x: name, val: Number(p.value) || null, it: its, h: deviceHint() }));
     } catch (err) {}
@@ -106,7 +109,8 @@ export function buildScript(o: { key: string; endpoint: string; requireConsent: 
   w.addEventListener('popstate', function () { setTimeout(send, 0); });
   w.addEventListener('pagehide', scan);
   setInterval(scan, 1000);
-  if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', function () { send(); scan(); }); else { send(); scan(); }
+${CAPTURE_JS}
+  if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', function () { send(); scan(); startCapture(); }); else { send(); scan(); startCapture(); }
 })(window, document);
 `
 }

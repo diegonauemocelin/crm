@@ -7,9 +7,10 @@ import { randomToken, safeEqual } from './crypto'
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 /**
  * Webhooks de terceiros e o rastreamento do site vêm de outros domínios, sem cookie e sem sessão:
- * webhooks são autenticados por assinatura; o rastreamento só recebe páginas vistas e não altera nada sensível.
+ * webhooks são autenticados por assinatura; rastreamento e captura só aceitam os domínios do site cadastrados,
+ * não usam sessão e só criam/completam leads (nunca leem nem alteram dados do painel).
  */
-const EXEMPT_PREFIXES = ['/api/webhooks/', '/api/public/rastreamento/']
+const EXEMPT_PREFIXES = ['/api/webhooks/', '/api/public/rastreamento/', '/api/public/captura/']
 
 function originOf(referer: string | undefined): string | undefined {
   if (!referer) return undefined

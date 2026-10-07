@@ -432,6 +432,8 @@ export class LeadsService {
       this.prisma.leadEvent.deleteMany({ where: { leadId: id } }),
       // Navegação no site ligada à pessoa (as páginas vistas vão junto, em cascata).
       this.prisma.siteVisitor.deleteMany({ where: { leadId: id } }),
+      // Envios de formulário guardam nome, e-mail e telefone.
+      this.prisma.captureSubmission.deleteMany({ where: { leadId: id } }),
       // Carrinhos guardam nome, e-mail e telefone; pedidos ficam (registro fiscal da loja), sem o vínculo com a pessoa.
       this.prisma.ecommerceCart.deleteMany({ where: { leadId: id } }),
       this.prisma.ecommerceOrder.updateMany({ where: { leadId: id }, data: { leadId: null, customerId: null } }),

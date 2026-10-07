@@ -2,6 +2,22 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.5.0",
+      "date": "2026-10-07",
+      "title": "Fase 4 — Captura: formulários, pop-ups e botão de WhatsApp",
+      "changes": [
+        { "type": "novo", "area": "Captura", "text": "Novo módulo Captura (menu Marketing): formulários com campos do lead e personalizados, mensagem de agradecimento, abrir o WhatsApp ou ir para outro endereço depois do envio." },
+        { "type": "novo", "area": "Captura", "text": "Pop-ups no site: aparecem depois de alguns segundos, ao rolar a página ou ao tentar sair; escolha de páginas e dispositivos, intervalo para não repetir, e exibições, envios e conversão de cada um." },
+        { "type": "novo", "area": "Captura", "text": "Botão flutuante de WhatsApp: o visitante informa nome e WhatsApp, vira lead e só então abre a conversa com o número central de Pré-Vendas, com a mensagem já escrita." },
+        { "type": "novo", "area": "Captura", "text": "Formulário embutido em qualquer página do site com um código de uma linha. Tudo aparece pelo mesmo script do rastreamento: não é preciso colar nada novo." },
+        { "type": "novo", "area": "Pré-Vendas", "text": "Quem preenche formulário, pop-up ou botão de WhatsApp entra também na fila de Pré-Vendas, com origem, responsável e a mensagem do cliente (sem duplicar se ele mandar de novo em 24 horas)." },
+        { "type": "novo", "area": "Base de leads", "text": "Conversões na linha do tempo, com página e origem da visita; o navegador do visitante é ligado ao lead e as visitas anteriores aparecem na ficha." },
+        { "type": "novo", "area": "Captura", "text": "Aba Envios com todos os formulários, pop-ups e contatos de WhatsApp recebidos." },
+        { "type": "seguranca", "area": "LGPD", "text": "Consentimento para e-mail marketing só com a caixa marcada pelo visitante (nunca pré-marcada), guardado com texto, data e IP; link da política de privacidade em todos os formulários." },
+        { "type": "seguranca", "area": "Captura", "text": "Proteção contra robôs (campo-isca e tempo mínimo de preenchimento), limite de envios por IP, só domínios do site cadastrados e número de WhatsApp nunca exposto no site." }
+      ]
+    },
+    {
       "version": "0.4.2",
       "date": "2026-10-07",
       "title": "Ações em lote em todos os leads de um filtro",

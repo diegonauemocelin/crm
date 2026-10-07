@@ -1,0 +1,86 @@
+import { describe, expect, it } from 'vitest'
+import { cleanFields, pageMatches, safeRedirect, validateSubmission, waLink, whatsappText } from '../src/captura/regras'
+
+const CUSTOMS = [{ key: 'marca', label: 'Marca da máquina', type: 'SELECT', options: ['John Deere', 'Case'], active: true }]
+
+describe('definição do formulário', () => {
+  it('aceita campos do lead e personalizados ativos, sem repetição', () => {
+    const r = cleanFields(
+      [
+        { key: 'name', label: '', required: true },
+        { key: 'phone', label: 'Celular', required: true },
+        { key: 'phone', label: 'de novo' },
+        { key: 'custom:marca', required: false },
+      ],
+      CUSTOMS,
+    )
+    expect(r).toEqual({
+      fields: [
+        { key: 'name', label: 'Nome', required: true, type: 'text' },
+        { key: 'phone', label: 'Celular', required: true, type: 'tel' },
+        { key: 'custom:marca', label: 'Marca da máquina', required: false, type: 'select', options: ['John Deere', 'Case'] },
+      ],
+    })
+  })
+
+  it('recusa campo desconhecido e formulário sem e-mail nem telefone', () => {
+    expect(cleanFields([{ key: 'cpf' }], CUSTOMS)).toEqual({ error: 'Campo desconhecido: cpf' })
+    expect(cleanFields([{ key: 'name' }], CUSTOMS)).toMatchObject({ error: expect.stringMatching(/e-mail ou WhatsApp/) })
+    expect(cleanFields([], CUSTOMS)).toMatchObject({ error: expect.any(String) })
+  })
+})
+
+describe('envio do formulário', () => {
+  const fields = [
+    { key: 'name', label: 'Nome', required: true },
+    { key: 'email', label: 'E-mail', required: false },
+    { key: 'phone', label: 'WhatsApp', required: true },
+    { key: 'state', label: 'Estado', required: false },
+    { key: 'custom:marca', label: 'Marca', required: false, options: ['John Deere', 'Case'] },
+    { key: 'message', label: 'Mensagem', required: false },
+  ]
+
+  it('normaliza contato e separa respostas personalizadas', () => {
+    const r = validateSubmission(fields, { name: ' Ana ', email: 'Ana@X.com', phone: '(47) 99647-0159', state: 'sc', 'custom:marca': 'Case', message: 'Preciso de filtro' })
+    expect(r).toEqual({
+      data: {
+        contact: { name: 'Ana', email: 'ana@x.com', phone: '+5547996470159', company: null, jobTitle: null, city: null, state: 'SC' },
+        custom: { marca: 'Case' },
+        message: 'Preciso de filtro',
+      },
+    })
+  })
+
+  it('aponta os erros por campo', () => {
+    const r = validateSubmission(fields, { name: '', phone: '123', email: 'x@', state: 'ZZ', 'custom:marca': 'Volvo' })
+    expect(r).toEqual({ errors: { name: 'Preencha este campo.', phone: 'Telefone inválido. Use DDD + número.', email: 'E-mail inválido.', state: 'Estado inválido.', 'custom:marca': 'Opção inválida.' } })
+  })
+
+  it('ignora campos que não estão no formulário', () => {
+    const r = validateSubmission([{ key: 'email', label: 'E-mail', required: true }], { email: 'a@b.com', isAdmin: true, tenantId: 'x' })
+    expect('data' in r && r.data.contact.email).toBe('a@b.com')
+    expect(JSON.stringify(r)).not.toMatch(/isAdmin|tenantId/)
+  })
+})
+
+describe('onde o pop-up/botão aparece', () => {
+  it('trechos do endereço, prefixo com * e exclusões', () => {
+    expect(pageMatches('https://loja.com/produto/filtro', [], [])).toBe(true)
+    expect(pageMatches('https://loja.com/produto/filtro', ['/produto/*'], [])).toBe(true)
+    expect(pageMatches('https://loja.com/carrinho', ['/produto/*'], [])).toBe(false)
+    expect(pageMatches('https://loja.com/checkout/pagamento', [], ['checkout'])).toBe(false)
+  })
+})
+
+describe('WhatsApp e redirecionamento', () => {
+  it('mensagem com o primeiro nome e link wa.me', () => {
+    const text = whatsappText('Olá! Meu nome é {nome}. Vim pela página {pagina}', { name: 'Maria Souza', page: 'https://loja.com/x' })
+    expect(text).toBe('Olá! Meu nome é Maria. Vim pela página https://loja.com/x')
+    expect(waLink('+5547996470159', 'Oi tudo bem')).toBe('https://wa.me/5547996470159?text=Oi%20tudo%20bem')
+  })
+
+  it('só aceita endereços http(s)', () => {
+    expect(safeRedirect('javascript:alert(1)')).toBeNull()
+    expect(safeRedirect('https://usaparts.com.br/obrigado')).toBe('https://usaparts.com.br/obrigado')
+  })
+})
