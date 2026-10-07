@@ -3,6 +3,7 @@ import { Loader2Icon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
+import { ClockWarning } from '@/components/clock-warning'
 import { InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot } from '@/components/ui/input-otp'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -109,6 +110,7 @@ export function LoginPage() {
       }
     >
       <div className="space-y-4">
+        <ClockWarning />
         {step === 'mfa' ? (
           <InputOTP
             maxLength={6}

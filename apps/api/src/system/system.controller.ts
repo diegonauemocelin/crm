@@ -16,6 +16,14 @@ export class SystemController {
     return this.system.health()
   }
 
+  /** Hora do servidor: a tela do 2FA compara com o relógio do computador (códigos dependem dos dois estarem certos). */
+  @Public()
+  @SkipThrottle()
+  @Get('system/time')
+  time() {
+    return { now: Date.now() }
+  }
+
   /** Versão exibida no rodapé de todas as telas, inclusive a de login. */
   @Public()
   @Get('system/version')

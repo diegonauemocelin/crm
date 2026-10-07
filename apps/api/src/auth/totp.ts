@@ -11,17 +11,25 @@ export async function totpQrCode(secret: string, issuer: string, label: string) 
 }
 
 /**
- * Valida o código aceitando 1 período de tolerância (30 s) para relógio adiantado/atrasado.
- * `lastStep` impede que um código já usado seja aceito de novo (replay).
+ * Tolerância de relógio: até 90 s (3 períodos) de diferença entre o celular e o servidor.
+ * Com 1 período, uma pequena diferença de horário fazia códigos certos serem recusados.
+ * Continua seguro: 7 códigos válidos entre 1 milhão, bloqueio após 5 erros e sem reuso de código.
  */
-export async function checkTotp(secret: string, token: string, lastStep: number | null): Promise<number | null> {
+export const TOTP_TOLERANCE_S = 90
+
+/**
+ * Valida o código. `lastStep` impede que um código já usado seja aceito de novo (replay).
+ * `driftSeconds`: quanto o celular está adiantado (+) ou atrasado (-) em relação ao servidor.
+ */
+export async function checkTotp(secret: string, token: string, lastStep: number | null): Promise<{ step: number; driftSeconds: number } | null> {
   if (!/^\d{6}$/.test(token)) return null
   const result = await verify({
     secret,
     token,
-    epochTolerance: 30,
+    epochTolerance: TOTP_TOLERANCE_S,
     ...(lastStep !== null ? { afterTimeStep: lastStep } : {}),
   })
   // O verify funcional também cobre HOTP; no modo TOTP (padrão) o resultado traz o timeStep.
-  return result.valid && 'timeStep' in result ? result.timeStep : null
+  if (!result.valid || !('timeStep' in result)) return null
+  return { step: result.timeStep, driftSeconds: (result.delta ?? 0) * 30 }
 }

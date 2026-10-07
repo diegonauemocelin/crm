@@ -51,8 +51,8 @@ export class TwoFactorService {
     const row = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } })
     if (!row.totpPendingSecretEnc) throw new BadRequestException('Inicie a configuração do 2FA primeiro.')
     const secret = decrypt(row.totpPendingSecretEnc)
-    const step = await checkTotp(secret, code.trim(), null)
-    if (step === null) throw new BadRequestException('Código inválido. Confira o horário do celular e tente novamente.')
+    const totp = await checkTotp(secret, code.trim(), null)
+    if (totp === null) throw new BadRequestException('Código inválido. Confira o horário do celular e tente novamente.')
 
     const codes = newRecoveryCodes()
     await this.prisma.$transaction([
@@ -60,7 +60,7 @@ export class TwoFactorService {
       this.prisma.recoveryCode.createMany({ data: codes.map((c) => ({ userId: user.id, codeHash: sha256(c) })) }),
       this.prisma.user.update({
         where: { id: user.id },
-        data: { totpSecretEnc: row.totpPendingSecretEnc, totpPendingSecretEnc: null, totpEnabled: true, totpLastStep: step },
+        data: { totpSecretEnc: row.totpPendingSecretEnc, totpPendingSecretEnc: null, totpEnabled: true, totpLastStep: totp.step },
       }),
     ])
     await this.audit.byUser(user, ctx, 'auth.2fa_enabled', 'user', user.id)

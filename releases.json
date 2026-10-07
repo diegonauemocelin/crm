@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.6.1",
+      "date": "2026-10-07",
+      "title": "Correção do código de verificação em duas etapas",
+      "changes": [
+        { "type": "correcao", "area": "Acesso", "text": "Códigos certos do autenticador eram recusados quando o relógio do celular e o do servidor tinham mais de 30 segundos de diferença, obrigando a digitar várias vezes e até bloqueando o acesso. Agora a diferença aceita é de até 90 segundos." },
+        { "type": "melhoria", "area": "Acesso", "text": "A tela do código avisa quando o relógio do servidor está diferente do computador, e o registro do sistema mostra a diferença quando um código é aceito fora da hora, para corrigir na origem." },
+        { "type": "seguranca", "area": "Acesso", "text": "Continuam valendo o bloqueio após 5 tentativas erradas e a recusa de código já usado." }
+      ]
+    },
+    {
       "version": "0.6.0",
       "date": "2026-10-07",
       "title": "Fase 5 — Email marketing",

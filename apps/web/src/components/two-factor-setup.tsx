@@ -2,6 +2,7 @@ import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { CheckIcon, CopyIcon, DownloadIcon, Loader2Icon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { ClockWarning } from './clock-warning'
 import { InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot } from '@/components/ui/input-otp'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api, errorMessage } from '@/lib/api'
@@ -114,6 +115,7 @@ export function TwoFactorSetup({ onDone }: { onDone: () => void }) {
         )}
       </div>
       <div className="flex flex-col items-center gap-2">
+        <ClockWarning />
         <InputOTP maxLength={6} pattern={REGEXP_ONLY_DIGITS} value={code} onChange={setCode} onComplete={confirm} disabled={busy || !setup} aria-label="Código do autenticador">
           <InputOTPGroup>
             <InputOTPSlot index={0} />

@@ -109,9 +109,9 @@ export class AuthService {
     this.assertNotLocked(user.lockedUntil)
 
     const normalized = code.replace(/\s|-/g, '')
-    const step = await checkTotp(decrypt(user.totpSecretEnc), normalized, user.totpLastStep)
+    const totp = await checkTotp(decrypt(user.totpSecretEnc), normalized, user.totpLastStep)
     let usedRecovery = false
-    if (step === null) {
+    if (totp === null) {
       usedRecovery = await this.consumeRecoveryCode(user.id, normalized)
       if (!usedRecovery) {
         await this.registerFailure(user.id, user.tenantId, user.email, user.failedLogins, ctx, 'codigo_2fa_incorreto')
@@ -119,7 +119,11 @@ export class AuthService {
       }
     }
 
-    if (step !== null) await this.prisma.user.update({ where: { id: user.id }, data: { totpLastStep: step } })
+    if (totp !== null) {
+      await this.prisma.user.update({ where: { id: user.id }, data: { totpLastStep: totp.step } })
+      // Relógio do celular ou do servidor fora da hora: aceita, mas avisa no log para corrigir.
+      if (Math.abs(totp.driftSeconds) >= 60) this.logger.warn(`2FA aceito com ${totp.driftSeconds} s de diferença de relógio (${user.email}). Confira o horário do servidor (timedatectl) e do celular.`)
+    }
     const session = await this.startSession(user.id, user.tenantId, user.email, ctx, usedRecovery ? 'auth.login_recovery_code' : 'auth.login')
     return { status: 'ok' as const, ...session }
   }

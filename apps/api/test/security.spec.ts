@@ -64,9 +64,20 @@ describe('2FA (TOTP)', () => {
   it('aceita o código atual e recusa reuso do mesmo período', async () => {
     const secret = generateSecret()
     const code = await generate({ secret })
-    const step = await checkTotp(secret, code, null)
-    expect(step).not.toBeNull()
-    expect(await checkTotp(secret, code, step)).toBeNull()
+    const ok = await checkTotp(secret, code, null)
+    expect(ok).not.toBeNull()
+    expect(await checkTotp(secret, code, ok!.step)).toBeNull()
+  })
+
+  it('aceita celular até 90 s adiantado ou atrasado e informa a diferença', async () => {
+    const secret = generateSecret()
+    const now = Math.floor(Date.now() / 1000)
+    for (const offset of [-90, -60, -30, 30, 60, 90]) {
+      const r = await checkTotp(secret, await generate({ secret, epoch: now + offset }), null)
+      expect(r, `diferença de ${offset} s`).not.toBeNull()
+      expect(Math.abs(r!.driftSeconds - offset)).toBeLessThanOrEqual(30)
+    }
+    expect(await checkTotp(secret, await generate({ secret, epoch: now + 150 }), null)).toBeNull()
   })
 
   it('recusa formato inválido e código errado', async () => {
