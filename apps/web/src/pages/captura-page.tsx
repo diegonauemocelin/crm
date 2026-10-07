@@ -4,6 +4,7 @@ import { type FormEvent, type ReactNode, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { CopyField } from '@/components/copy-field'
+import { MultiSelect } from '@/components/multi-select'
 import { EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -34,6 +35,7 @@ import {
   type Submission,
   type Trigger,
   TRIGGER_LABEL,
+  type WhatsappButton,
 } from '@/lib/captura'
 import { FormError } from './auth/auth-layout'
 
@@ -51,7 +53,7 @@ export function CapturaPage() {
         <TabsList className="mb-4 h-auto flex-wrap">
           <TabsTrigger value="formularios">Formulários</TabsTrigger>
           <TabsTrigger value="popups">Pop-ups</TabsTrigger>
-          <TabsTrigger value="whatsapp">Botão de WhatsApp</TabsTrigger>
+          <TabsTrigger value="whatsapp">Botões de WhatsApp</TabsTrigger>
           <TabsTrigger value="envios">Envios</TabsTrigger>
         </TabsList>
         <TabsContent value="formularios">
@@ -107,6 +109,56 @@ function SellerPick({ id, value, onChange, disabled }: { id: string; value: stri
           ))}
       </SelectContent>
     </Select>
+  )
+}
+
+/**
+ * Tipo de cliente e marcas da máquina (opcionais). Vão para o atendimento de Pré-Vendas e dizem de qual LP,
+ * pop-up ou botão o contato veio. No pop-up, vazio = usa os do formulário.
+ */
+function TypeAndBrands({
+  idPrefix,
+  customerTypeId,
+  brandIds,
+  onChange,
+  inherit,
+}: {
+  idPrefix: string
+  customerTypeId: string | null
+  brandIds: string[]
+  onChange: (v: { customerTypeId: string | null; brandIds: string[] }) => void
+  inherit?: boolean
+}) {
+  const options = useOptions()
+  return (
+    <>
+      <Field label="Tipo de cliente (opcional)" htmlFor={`${idPrefix}-type`}>
+        <Select value={customerTypeId ?? NONE} onValueChange={(v) => onChange({ customerTypeId: v === NONE ? null : v, brandIds })}>
+          <SelectTrigger id={`${idPrefix}-type`} className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NONE}>{inherit ? 'Usar o do formulário' : 'Não definir'}</SelectItem>
+            {(options.data?.customerTypes ?? [])
+              .filter((t) => t.active || t.id === customerTypeId)
+              .map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label="Marca da máquina (opcional)" htmlFor={`${idPrefix}-brands`}>
+        <MultiSelect
+          id={`${idPrefix}-brands`}
+          items={options.data?.brands ?? []}
+          value={brandIds}
+          onChange={(v) => onChange({ customerTypeId, brandIds: v })}
+          placeholder={inherit ? 'Usar as do formulário' : 'Nenhuma'}
+        />
+      </Field>
+    </>
   )
 }
 
@@ -202,6 +254,8 @@ const NEW_FORM = (): Omit<CaptureForm, 'id' | 'submissions' | 'createdAt'> => ({
   consentText: DEFAULT_CONSENT,
   originName: 'Site - LP',
   ownerId: null,
+  customerTypeId: null,
+  brandIds: [],
   tags: [],
   createRecord: true,
   active: true,
@@ -236,6 +290,8 @@ function FormEditor({ form, onClose }: { form: CaptureForm | null; onClose: () =
         consentText: f.consentText?.trim() || null,
         originName: f.originName,
         ownerId: f.ownerId,
+        customerTypeId: f.customerTypeId ?? null,
+        brandIds: f.brandIds ?? [],
         tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
         createRecord: f.createRecord,
         active: f.active,
@@ -343,9 +399,10 @@ function FormEditor({ form, onClose }: { form: CaptureForm | null; onClose: () =
               <Input id="cf-origin" list="cf-origins" maxLength={80} value={f.originName} onChange={(e) => set('originName', e.target.value)} />
               <datalist id="cf-origins">{options.data?.origins.map((o) => <option key={o.id} value={o.name} />)}</datalist>
             </Field>
-            <Field label="Responsável" htmlFor="cf-owner">
+            <Field label="Vendedor (fila de quem recebe)" htmlFor="cf-owner">
               <SellerPick id="cf-owner" value={f.ownerId} onChange={(v) => set('ownerId', v)} />
             </Field>
+            <TypeAndBrands idPrefix="cf" customerTypeId={f.customerTypeId ?? null} brandIds={f.brandIds ?? []} onChange={(v) => setF((x) => ({ ...x, ...v }))} />
             <Field label="Tags" htmlFor="cf-tags" className="space-y-1.5 sm:col-span-2">
               <Input id="cf-tags" placeholder="orcamento, site" value={tags} onChange={(e) => setTags(e.target.value)} />
             </Field>
@@ -464,6 +521,7 @@ function PopupsTab() {
 
 function PopupEditor({ popup, forms, onClose }: { popup: CapturePopup | null; forms: CaptureForm[]; onClose: () => void }) {
   const qc = useQueryClient()
+  const sellers = useOptions()
   const [p, setP] = useState(() =>
     popup
       ? { ...popup }
@@ -481,6 +539,9 @@ function PopupEditor({ popup, forms, onClose }: { popup: CapturePopup | null; fo
           device: 'todos' as DeviceRule,
           frequencyDays: 7,
           color: '#1d4ed8',
+          ownerId: null as string | null,
+          customerTypeId: null as string | null,
+          brandIds: [] as string[],
           active: false,
         },
   )
@@ -504,6 +565,9 @@ function PopupEditor({ popup, forms, onClose }: { popup: CapturePopup | null; fo
         device: p.device,
         frequencyDays: p.frequencyDays,
         color: p.color,
+        ownerId: p.ownerId,
+        customerTypeId: p.customerTypeId,
+        brandIds: p.brandIds,
         active: p.active,
       }
       return popup ? api.put(`/captura/popups/${popup.id}`, body) : api.post('/captura/popups', body)
@@ -606,6 +670,25 @@ function PopupEditor({ popup, forms, onClose }: { popup: CapturePopup | null; fo
             <Field label="Nunca mostrar em" htmlFor="pp-exc" hint="Uma por linha: caminho (/checkout) ou domínio (www.usaparts.com.br).">
               <Textarea id="pp-exc" rows={3} value={exclude} onChange={(e) => setExclude(e.target.value)} />
             </Field>
+            <p className="text-xs text-muted-foreground sm:col-span-2">Vendedor, tipo de cliente e marca deste pop-up (opcionais; vazio = usa os do formulário):</p>
+            <Field label="Vendedor (fila de quem recebe)" htmlFor="pp-owner">
+              <Select value={p.ownerId ?? NONE} onValueChange={(v) => set('ownerId', v === NONE ? null : v)}>
+                <SelectTrigger id="pp-owner" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Usar o do formulário</SelectItem>
+                  {(sellers.data?.sellers ?? [])
+                    .filter((x) => x.active || x.id === p.ownerId)
+                    .map((x) => (
+                      <SelectItem key={x.id} value={x.id}>
+                        {x.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <TypeAndBrands idPrefix="pp" inherit customerTypeId={p.customerTypeId} brandIds={p.brandIds} onChange={(v) => setP((x) => ({ ...x, ...v }))} />
             <Field label="Cor do botão" htmlFor="pp-color">
               <Input id="pp-color" type="color" className="h-9 w-20 p-1" value={p.color} onChange={(e) => set('color', e.target.value)} />
             </Field>
@@ -630,151 +713,272 @@ function PopupEditor({ popup, forms, onClose }: { popup: CapturePopup | null; fo
   )
 }
 
-// ---------- Botão de WhatsApp ----------
+// ---------- Botões de WhatsApp ----------
 
 function WhatsappTab() {
-  const q = useQuery({ queryKey: ['captura-settings'], queryFn: () => api.get<CaptureSettings>('/captura/configuracoes') })
+  const q = useQuery({ queryKey: ['captura-whatsapps'], queryFn: () => api.get<WhatsappButton[]>('/captura/whatsapps') })
+  const { can } = useAuth()
+  const qc = useQueryClient()
+  const [open, setOpen] = useState<WhatsappButton | 'new' | null>(null)
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/captura/whatsapps/${id}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['captura-whatsapps'] })
+      toast.success('Botão excluído.')
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />
-  if (!q.data) return <TableSkeleton rows={4} />
-  return <WhatsappEditor initial={q.data} />
+  if (!q.data) return <TableSkeleton rows={3} />
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">Em cada página aparece um botão: o primeiro da lista (pela ordem) que combina com a página e o dispositivo.</p>
+        {can('captura', 'create') && (
+          <Button onClick={() => setOpen('new')}>
+            <PlusIcon /> Novo botão
+          </Button>
+        )}
+      </div>
+      {q.data.length === 0 ? (
+        <EmptyState icon={MegaphoneIcon} title="Nenhum botão de WhatsApp" description="Crie um botão: o visitante informa nome e WhatsApp, vira lead, entra na fila do vendedor escolhido e só então abre a conversa." />
+      ) : (
+        <Card className="overflow-hidden py-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-4">Botão</TableHead>
+                <TableHead>Onde aparece</TableHead>
+                <TableHead className="text-right">Ordem</TableHead>
+                <TableHead className="text-right">Contatos</TableHead>
+                <TableHead className="pr-4" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {q.data.map((w) => (
+                <TableRow key={w.id}>
+                  <TableCell className="pl-4">
+                    <p className="flex items-center gap-2 font-medium">
+                      {w.name}
+                      <Badge variant={w.active ? 'default' : 'outline'}>{w.active ? 'No ar' : 'Pausado'}</Badge>
+                    </p>
+                    <p className="text-xs text-muted-foreground">{formatPhone(w.phone)}</p>
+                  </TableCell>
+                  <TableCell className="max-w-72 text-sm">
+                    {w.include.length ? w.include.join(', ') : 'Todas as páginas'}
+                    {w.exclude.length ? <p className="text-xs text-muted-foreground">exceto {w.exclude.join(', ')}</p> : null}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{w.sortOrder}</TableCell>
+                  <TableCell className="text-right tabular-nums">{int.format(w.submissions)}</TableCell>
+                  <TableCell className="pr-4 text-right whitespace-nowrap">
+                    {can('captura', 'edit') && (
+                      <Button size="sm" variant="ghost" onClick={() => setOpen(w)} aria-label={`Editar ${w.name}`}>
+                        <PencilIcon />
+                      </Button>
+                    )}
+                    {can('captura', 'delete') && (
+                      <Button size="sm" variant="ghost" onClick={() => confirm(`Excluir o botão "${w.name}"?`) && remove.mutate(w.id)} aria-label={`Excluir ${w.name}`}>
+                        <Trash2Icon />
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+      <PrivacyCard />
+      {open && <WhatsappEditor button={open === 'new' ? null : open} onClose={() => setOpen(null)} />}
+    </div>
+  )
 }
 
-function WhatsappEditor({ initial }: { initial: CaptureSettings }) {
-  const qc = useQueryClient()
+function PrivacyCard() {
+  const q = useQuery({ queryKey: ['captura-settings'], queryFn: () => api.get<CaptureSettings>('/captura/configuracoes') })
   const { can } = useAuth()
-  const canEdit = can('captura', 'edit')
-  const [w, setW] = useState(initial.whatsapp)
-  const [privacyUrl, setPrivacyUrl] = useState(initial.privacyUrl)
-  const [phone, setPhone] = useState(initial.whatsapp.phone ? formatPhone(initial.whatsapp.phone) : '')
-  const [include, setInclude] = useState(initial.whatsapp.include.join('\n'))
-  const [exclude, setExclude] = useState(initial.whatsapp.exclude.join('\n'))
-  const [tags, setTags] = useState(initial.whatsapp.tags.join(', '))
+  const qc = useQueryClient()
+  const [value, setValue] = useState<string | null>(null)
+  const save = useMutation({
+    mutationFn: () => api.put<CaptureSettings>('/captura/configuracoes', { privacyUrl: (value ?? q.data?.privacyUrl ?? '').trim() }),
+    onSuccess: (saved) => {
+      qc.setQueryData(['captura-settings'], saved)
+      setValue(null)
+      toast.success('Política de privacidade salva.')
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  if (!q.data) return null
+  return (
+    <Card className="max-w-2xl">
+      <CardHeader>
+        <CardTitle className="text-base">Política de privacidade</CardTitle>
+        <CardDescription>Link mostrado abaixo de todos os formulários, pop-ups e botões (LGPD).</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Input aria-label="Link da política de privacidade" placeholder="https://www.usaparts.com.br/politica-de-privacidade" value={value ?? q.data.privacyUrl} onChange={(e) => setValue(e.target.value)} disabled={!can('captura', 'edit')} />
+      </CardContent>
+      {can('captura', 'edit') && (
+        <CardFooter>
+          <Button onClick={() => save.mutate()} disabled={save.isPending || value === null}>
+            {save.isPending && <Loader2Icon className="animate-spin" />}
+            Salvar
+          </Button>
+        </CardFooter>
+      )}
+    </Card>
+  )
+}
+
+const NEW_WHATSAPP = (): Omit<WhatsappButton, 'id' | 'submissions'> => ({
+  name: '',
+  active: false,
+  sortOrder: 0,
+  phone: '',
+  buttonText: 'Fale no WhatsApp',
+  title: 'Fale com a USA Parts',
+  subtitle: 'Deixe seu nome e WhatsApp para iniciar a conversa.',
+  askEmail: false,
+  message: 'Olá! Meu nome é {nome}. Vim pelo site e gostaria de atendimento.',
+  position: 'direita',
+  color: '#25D366',
+  include: [],
+  exclude: [],
+  device: 'todos',
+  ownerId: null,
+  customerTypeId: null,
+  brandIds: [],
+  tags: ['whatsapp-site'],
+  createRecord: true,
+})
+
+function WhatsappEditor({ button, onClose }: { button: WhatsappButton | null; onClose: () => void }) {
+  const qc = useQueryClient()
+  const [w, setW] = useState(() => (button ? { ...button, phone: formatPhone(button.phone) } : NEW_WHATSAPP()))
+  const [include, setInclude] = useState(w.include.join('\n'))
+  const [exclude, setExclude] = useState(w.exclude.join('\n'))
+  const [tags, setTags] = useState(w.tags.join(', '))
   const [error, setError] = useState<string | null>(null)
   const set = <K extends keyof typeof w>(k: K, v: (typeof w)[K]) => setW((x) => ({ ...x, [k]: v }))
   const save = useMutation({
-    mutationFn: () =>
-      api.put<CaptureSettings>('/captura/configuracoes', {
-        privacyUrl,
-        whatsapp: { ...w, phone: phone.trim() || null, include: linesOf(include), exclude: linesOf(exclude), tags: tags.split(',').map((t) => t.trim()).filter(Boolean) },
-      }),
-    onSuccess: (saved) => {
-      qc.setQueryData(['captura-settings'], saved)
-      toast.success('Botão de WhatsApp salvo.')
+    mutationFn: () => {
+      const { id: _i, submissions: _s, ...rest } = w as WhatsappButton
+      const body = { ...rest, phone: w.phone.trim(), include: linesOf(include), exclude: linesOf(exclude), tags: tags.split(',').map((t) => t.trim()).filter(Boolean) }
+      return button ? api.put(`/captura/whatsapps/${button.id}`, body) : api.post('/captura/whatsapps', body)
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['captura-whatsapps'] })
+      toast.success('Botão salvo.')
+      onClose()
     },
     onError: (err) => setError(errorMessage(err)),
   })
   return (
-    <form
-      onSubmit={(e: FormEvent) => {
-        e.preventDefault()
-        setError(null)
-        save.mutate()
-      }}
-      className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]"
-    >
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            Botão flutuante de WhatsApp
-            <Badge variant={initial.whatsapp.enabled ? 'default' : 'outline'}>{initial.whatsapp.enabled ? 'No ar' : 'Desligado'}</Badge>
-          </CardTitle>
-          <CardDescription>O visitante informa nome e WhatsApp, vira lead, entra na fila de Pré-Vendas e só então abre a conversa no número central.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <fieldset disabled={!canEdit} className="space-y-4">
-            <label className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
-              Botão no ar
-              <Switch checked={w.enabled} onCheckedChange={(c) => set('enabled', c)} />
+    <Sheet open onOpenChange={(o) => !o && onClose()}>
+      <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+        <SheetHeader className="border-b">
+          <SheetTitle>{button ? `Editar: ${button.name}` : 'Novo botão de WhatsApp'}</SheetTitle>
+          <SheetDescription>O número não aparece no site: o link do WhatsApp só é entregue depois que o visitante se identifica.</SheetDescription>
+        </SheetHeader>
+        <form
+          className="space-y-4 px-4 pb-6"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault()
+            setError(null)
+            save.mutate()
+          }}
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Nome interno" htmlFor="wa-name" className="space-y-1.5 sm:col-span-2">
+              <Input id="wa-name" required maxLength={80} placeholder="Ex.: LPs de revenda" value={w.name} onChange={(e) => set('name', e.target.value)} />
+            </Field>
+            <Field label="Número do WhatsApp" htmlFor="wa-phone">
+              <Input id="wa-phone" required inputMode="tel" placeholder="(49) 99999-9999" value={w.phone} onChange={(e) => set('phone', e.target.value)} />
+            </Field>
+            <Field label="Texto do botão" htmlFor="wa-btn">
+              <Input id="wa-btn" maxLength={40} value={w.buttonText} onChange={(e) => set('buttonText', e.target.value)} />
+            </Field>
+            <Field label="Título da janela" htmlFor="wa-title">
+              <Input id="wa-title" maxLength={80} value={w.title} onChange={(e) => set('title', e.target.value)} />
+            </Field>
+            <Field label="Subtítulo" htmlFor="wa-sub">
+              <Input id="wa-sub" maxLength={200} value={w.subtitle} onChange={(e) => set('subtitle', e.target.value)} />
+            </Field>
+            <Field label="Mensagem que abre no WhatsApp" htmlFor="wa-msg" hint="Variáveis: {nome} e {pagina}." className="space-y-1.5 sm:col-span-2">
+              <Textarea id="wa-msg" rows={2} maxLength={500} value={w.message} onChange={(e) => set('message', e.target.value)} />
+            </Field>
+            <Field label="Vendedor (fila de quem recebe)" htmlFor="wa-owner">
+              <SellerPick id="wa-owner" value={w.ownerId} onChange={(v) => set('ownerId', v)} />
+            </Field>
+            <Field label="Tags" htmlFor="wa-tags">
+              <Input id="wa-tags" value={tags} onChange={(e) => setTags(e.target.value)} />
+            </Field>
+            <TypeAndBrands idPrefix="wa" customerTypeId={w.customerTypeId} brandIds={w.brandIds} onChange={(v) => setW((x) => ({ ...x, ...v }))} />
+            <Field label="Mostrar só nas páginas" htmlFor="wa-inc" hint="Uma por linha: caminho (/produto/*) ou domínio (teste.usaparts.com.br). Vazio = todas.">
+              <Textarea id="wa-inc" rows={2} value={include} onChange={(e) => setInclude(e.target.value)} />
+            </Field>
+            <Field label="Nunca mostrar em" htmlFor="wa-exc" hint="Uma por linha: caminho (/checkout) ou domínio (www.usaparts.com.br).">
+              <Textarea id="wa-exc" rows={2} value={exclude} onChange={(e) => setExclude(e.target.value)} />
+            </Field>
+            <Field label="Posição" htmlFor="wa-pos">
+              <Select value={w.position} onValueChange={(v) => set('position', v as 'direita' | 'esquerda')}>
+                <SelectTrigger id="wa-pos" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="direita">Canto inferior direito</SelectItem>
+                  <SelectItem value="esquerda">Canto inferior esquerdo</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Dispositivos" htmlFor="wa-device">
+              <Select value={w.device} onValueChange={(v) => set('device', v as DeviceRule)}>
+                <SelectTrigger id="wa-device" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(DEVICE_RULE_LABEL) as DeviceRule[]).map((d) => (
+                    <SelectItem key={d} value={d}>
+                      {DEVICE_RULE_LABEL[d]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Cor" htmlFor="wa-color">
+              <Input id="wa-color" type="color" className="h-9 w-20 p-1" value={w.color} onChange={(e) => set('color', e.target.value)} />
+            </Field>
+            <Field label="Ordem (menor aparece primeiro)" htmlFor="wa-order">
+              <Input id="wa-order" type="number" min={0} max={999} value={w.sortOrder} onChange={(e) => set('sortOrder', Number(e.target.value))} />
+            </Field>
+          </div>
+          <div className="space-y-3 rounded-md border p-3">
+            <label className="flex items-center justify-between gap-3 text-sm">
+              Pedir também o e-mail (opcional para o visitante)
+              <Switch checked={w.askEmail} onCheckedChange={(c) => set('askEmail', c)} />
             </label>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Número do WhatsApp de Pré-Vendas" htmlFor="wa-phone" hint="Não aparece no site: só é usado depois que o visitante se identifica.">
-                <Input id="wa-phone" inputMode="tel" placeholder="(49) 99999-9999" value={phone} onChange={(e) => setPhone(e.target.value)} />
-              </Field>
-              <Field label="Texto do botão" htmlFor="wa-btn">
-                <Input id="wa-btn" maxLength={40} value={w.buttonText} onChange={(e) => set('buttonText', e.target.value)} />
-              </Field>
-              <Field label="Título da janela" htmlFor="wa-title">
-                <Input id="wa-title" maxLength={80} value={w.title} onChange={(e) => set('title', e.target.value)} />
-              </Field>
-              <Field label="Subtítulo" htmlFor="wa-sub">
-                <Input id="wa-sub" maxLength={200} value={w.subtitle} onChange={(e) => set('subtitle', e.target.value)} />
-              </Field>
-              <Field label="Mensagem que abre no WhatsApp" htmlFor="wa-msg" hint="Variáveis: {nome} e {pagina}." className="space-y-1.5 sm:col-span-2">
-                <Textarea id="wa-msg" rows={2} maxLength={500} value={w.message} onChange={(e) => set('message', e.target.value)} />
-              </Field>
-              <Field label="Responsável pelos leads" htmlFor="wa-owner">
-                <SellerPick id="wa-owner" value={w.ownerId} onChange={(v) => set('ownerId', v)} disabled={!canEdit} />
-              </Field>
-              <Field label="Tags" htmlFor="wa-tags">
-                <Input id="wa-tags" value={tags} onChange={(e) => setTags(e.target.value)} />
-              </Field>
-              <Field label="Posição" htmlFor="wa-pos">
-                <Select value={w.position} onValueChange={(v) => set('position', v as 'direita' | 'esquerda')}>
-                  <SelectTrigger id="wa-pos" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="direita">Canto inferior direito</SelectItem>
-                    <SelectItem value="esquerda">Canto inferior esquerdo</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Dispositivos" htmlFor="wa-device">
-                <Select value={w.device} onValueChange={(v) => set('device', v as DeviceRule)}>
-                  <SelectTrigger id="wa-device" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.keys(DEVICE_RULE_LABEL) as DeviceRule[]).map((d) => (
-                      <SelectItem key={d} value={d}>
-                        {DEVICE_RULE_LABEL[d]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Mostrar só nas páginas" htmlFor="wa-inc" hint="Uma por linha: caminho (/produto/*) ou domínio (teste.usaparts.com.br). Vazio = todas.">
-                <Textarea id="wa-inc" rows={2} value={include} onChange={(e) => setInclude(e.target.value)} />
-              </Field>
-              <Field label="Nunca mostrar em" htmlFor="wa-exc" hint="Uma por linha: caminho (/checkout) ou domínio (www.usaparts.com.br).">
-                <Textarea id="wa-exc" rows={2} value={exclude} onChange={(e) => setExclude(e.target.value)} />
-              </Field>
-              <Field label="Cor" htmlFor="wa-color">
-                <Input id="wa-color" type="color" className="h-9 w-20 p-1" value={w.color} onChange={(e) => set('color', e.target.value)} />
-              </Field>
-            </div>
-            <div className="space-y-3 rounded-md border p-3">
-              <label className="flex items-center justify-between gap-3 text-sm">
-                Pedir também o e-mail (opcional para o visitante)
-                <Switch checked={w.askEmail} onCheckedChange={(c) => set('askEmail', c)} />
-              </label>
-              <label className="flex items-center justify-between gap-3 text-sm">
-                Criar atendimento na fila de Pré-Vendas
-                <Switch checked={w.createRecord} onCheckedChange={(c) => set('createRecord', c)} />
-              </label>
-            </div>
-          </fieldset>
-        </CardContent>
-      </Card>
-      <Card className="h-fit">
-        <CardHeader>
-          <CardTitle>Política de privacidade</CardTitle>
-          <CardDescription>Link mostrado abaixo de todos os formulários (LGPD). Use a página de privacidade do site da loja.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Input aria-label="Link da política de privacidade" placeholder="https://www.usaparts.com.br/politica-de-privacidade" value={privacyUrl} onChange={(e) => setPrivacyUrl(e.target.value)} disabled={!canEdit} />
+            <label className="flex items-center justify-between gap-3 text-sm">
+              Criar atendimento na fila de Pré-Vendas
+              <Switch checked={w.createRecord} onCheckedChange={(c) => set('createRecord', c)} />
+            </label>
+            <label className="flex items-center justify-between gap-3 text-sm">
+              Botão no ar
+              <Switch checked={w.active} onCheckedChange={(c) => set('active', c)} />
+            </label>
+          </div>
           <FormError message={error} />
-        </CardContent>
-        {canEdit && (
-          <CardFooter>
+          <div className="flex gap-2 border-t pt-4">
             <Button type="submit" disabled={save.isPending}>
               {save.isPending && <Loader2Icon className="animate-spin" />}
               Salvar
             </Button>
-          </CardFooter>
-        )}
-      </Card>
-    </form>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+          </div>
+        </form>
+      </SheetContent>
+    </Sheet>
   )
 }
 

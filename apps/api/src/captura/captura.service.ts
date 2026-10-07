@@ -28,6 +28,9 @@ export interface WhatsappWidget {
   exclude: string[]
   device: 'todos' | 'celular' | 'computador'
   ownerId: string | null
+  /** Opcionais: tipo de cliente e marcas da máquina gravados no atendimento. */
+  customerTypeId: string | null
+  brandIds: string[]
   tags: string[]
   createRecord: boolean
 }
@@ -52,6 +55,8 @@ export const DEFAULT_WHATSAPP: WhatsappWidget = {
   exclude: [],
   device: 'todos',
   ownerId: null,
+  customerTypeId: null,
+  brandIds: [],
   tags: ['whatsapp-site'],
   createRecord: true,
 }
@@ -63,6 +68,8 @@ export interface PublicSubmit {
   kind: 'form' | 'popup' | 'whatsapp' | 'landing' | 'popup_view'
   formId?: string
   popupId?: string
+  /** Qual botão de WhatsApp (pode haver vários). */
+  whatsappId?: string
   /** Id do navegador (cookie do rastreamento), para ligar as visitas ao lead. */
   v?: string
   u?: string
@@ -145,12 +152,12 @@ export class CapturaService {
 
   /** O que o script do site precisa para desenhar pop-ups, formulários embutidos e o botão de WhatsApp. */
   async publicConfig(tenantId: string) {
-    const [forms, popups, s] = await Promise.all([
+    const [forms, popups, s, buttons] = await Promise.all([
       this.prisma.captureForm.findMany({ where: { tenantId, active: true } }),
       this.prisma.capturePopup.findMany({ where: { tenantId, active: true, form: { active: true } } }),
       this.settingsOf(tenantId),
+      this.prisma.captureWhatsapp.findMany({ where: { tenantId, active: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }),
     ])
-    const w = s.whatsapp
     return {
       privacyUrl: s.privacyUrl || null,
       forms: Object.fromEntries(
@@ -171,10 +178,8 @@ export class CapturaService {
         frequencyDays: p.frequencyDays,
         color: p.color,
       })),
-      whatsapp:
-        w.enabled && w.phone
-          ? { buttonText: w.buttonText, title: w.title, subtitle: w.subtitle, askEmail: w.askEmail, position: w.position, color: w.color, include: w.include, exclude: w.exclude, device: w.device }
-          : null,
+      // Vários botões: o script mostra o primeiro que combina com a página e o dispositivo. O número não vai junto.
+      whatsapps: buttons.map((w) => ({ id: w.id, buttonText: w.buttonText, title: w.title, subtitle: w.subtitle, askEmail: w.askEmail, position: w.position, color: w.color, include: w.include, exclude: w.exclude, device: w.device })),
     }
   }
 
@@ -189,19 +194,27 @@ export class CapturaService {
 
     let fields: FormField[]
     let form: Awaited<ReturnType<typeof this.prisma.captureForm.findFirst>> = null
-    let popup: { id: string; name: string } | null = null
+    let popup: { id: string; name: string; ownerId: string | null; customerTypeId: string | null; brandIds: string[] } | null = null
+    // Botão usado (ou, se o script for antigo e não mandar o id, o primeiro ativo).
+    const wa =
+      p.kind === 'whatsapp'
+        ? await this.prisma.captureWhatsapp.findFirst({
+            where: { tenantId, active: true, ...(p.whatsappId && UUID.test(p.whatsappId) ? { id: p.whatsappId } : {}) },
+            orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+          })
+        : null
     if (p.kind === 'whatsapp') {
-      if (!s.whatsapp.enabled || !s.whatsapp.phone) return { ok: false, message: 'Atendimento por WhatsApp indisponível no momento.' }
+      if (!wa) return { ok: false, message: 'Atendimento por WhatsApp indisponível no momento.' }
       fields = [
         { key: 'name', label: 'Nome', required: true },
         { key: 'phone', label: 'WhatsApp', required: true },
-        ...(s.whatsapp.askEmail ? [{ key: 'email', label: 'E-mail', required: false }] : []),
+        ...(wa!.askEmail ? [{ key: 'email', label: 'E-mail', required: false }] : []),
       ]
     } else {
       if (!p.formId || !UUID.test(p.formId)) return { ok: false, message: 'Formulário inválido.' }
       form = await this.prisma.captureForm.findFirst({ where: { id: p.formId, tenantId, active: true } })
       if (!form) return { ok: false, message: 'Este formulário não está mais disponível.' }
-      if (p.kind === 'popup' && p.popupId && UUID.test(p.popupId)) popup = await this.prisma.capturePopup.findFirst({ where: { id: p.popupId, tenantId }, select: { id: true, name: true } })
+      if (p.kind === 'popup' && p.popupId && UUID.test(p.popupId)) popup = await this.prisma.capturePopup.findFirst({ where: { id: p.popupId, tenantId }, select: { id: true, name: true, ownerId: true, customerTypeId: true, brandIds: true } })
       fields = form.fields as unknown as FormField[]
     }
 
@@ -225,14 +238,31 @@ export class CapturaService {
     const device = classifyDevice(meta.userAgent, null, (await this.tracking.config(tenantId)).appMarkers)
     const touch = ((visitor?.lastTouch ?? visitor?.firstTouch) as Touch | null) ?? { source: 'direto', medium: 'direto' }
 
-    const channelName = p.kind === 'whatsapp' ? 'botão de WhatsApp do site' : popup ? `pop-up "${popup.name}"` : p.kind === 'landing' ? `landing page (formulário "${form!.name}")` : `formulário "${form!.name}"`
+    // Vendedor, tipo de cliente e marcas: do botão de WhatsApp, do pop-up (se ele definir) ou do formulário.
+    const source = p.kind === 'whatsapp' ? wa! : form!
+    const ownerId = (popup?.ownerId ?? source.ownerId) || null
+    const customerTypeId = (popup?.customerTypeId ?? source.customerTypeId) || null
+    const brandIds = popup?.brandIds.length ? popup.brandIds : (source.brandIds ?? [])
+    const lookups = await this.prisma.lookupItem.findMany({ where: { tenantId, id: { in: [customerTypeId, ...brandIds].filter((x): x is string => !!x) } }, select: { id: true, name: true, type: true } })
+    const customerType = lookups.find((l) => l.id === customerTypeId && l.type === 'TIPO_CLIENTE') ?? null
+    const brands = lookups.filter((l) => brandIds.includes(l.id) && l.type === 'MARCA')
+
+    const channelName = p.kind === 'whatsapp' ? `botão de WhatsApp "${wa!.name}"` : popup ? `pop-up "${popup.name}"` : p.kind === 'landing' ? `landing page (formulário "${form!.name}")` : `formulário "${form!.name}"`
     const result = await this.capture.capture(tenantId, contact, {
       title: p.kind === 'whatsapp' ? 'Chamou no WhatsApp pelo site' : `Converteu no ${channelName}`,
       originName: p.kind === 'whatsapp' ? 'WhatsApp' : form!.originName,
       touch: { ...touch, conversao: channelName, pagina: pageUrl },
-      details: { canal: p.kind, respostas: { ...custom, ...(message ? { mensagem: message } : {}) }, pagina: pageUrl, dispositivo: device },
-      ownerId: p.kind === 'whatsapp' ? s.whatsapp.ownerId : form!.ownerId,
-      tags: p.kind === 'whatsapp' ? s.whatsapp.tags : form!.tags,
+      details: {
+        canal: p.kind,
+        respostas: { ...custom, ...(message ? { mensagem: message } : {}) },
+        pagina: pageUrl,
+        dispositivo: device,
+        ...(customerType ? { tipoCliente: customerType.name } : {}),
+        ...(brands.length ? { marcas: brands.map((b) => b.name) } : {}),
+      },
+      ownerId,
+      // O tipo de cliente também vira tag (ex.: "revenda"): entra no lead scoring e nas segmentações.
+      tags: [...(p.kind === 'whatsapp' ? wa!.tags : form!.tags), ...(customerType ? [customerType.name] : [])],
       customFields,
     })
     if (!result) return { ok: false, message: 'Informe o e-mail ou o WhatsApp.' }
@@ -244,8 +274,8 @@ export class CapturaService {
     }
     if (visitor) await this.tracking.identify(tenantId, visitor.id, result.leadId).catch(() => undefined)
 
-    const createRecord = p.kind === 'whatsapp' ? s.whatsapp.createRecord : form!.createRecord
-    const recordId = createRecord ? await this.preVendas(tenantId, result.leadId, contact, channelName, p.kind === 'whatsapp' ? 'WhatsApp' : form!.originName, p.kind === 'whatsapp' ? s.whatsapp.ownerId : form!.ownerId, message, custom).catch((err) => {
+    const createRecord = p.kind === 'whatsapp' ? wa!.createRecord : form!.createRecord
+    const recordId = createRecord ? await this.preVendas(tenantId, result.leadId, contact, channelName, p.kind === 'whatsapp' ? 'WhatsApp' : form!.originName, ownerId, message, custom, customerType?.id ?? null, brands.map((b) => b.id)).catch((err) => {
       this.logger.error(`Captura: atendimento de Pré-Vendas não criado: ${(err as Error).message}`)
       return null
     }) : null
@@ -256,9 +286,17 @@ export class CapturaService {
         channel: p.kind === 'form' ? 'formulario' : p.kind === 'landing' ? 'landing' : p.kind,
         formId: form?.id ?? null,
         popupId: popup?.id ?? null,
+        whatsappId: wa?.id ?? null,
         leadId: result.leadId,
         recordId,
-        data: { ...contact, ...custom, ...(message ? { message } : {}), consentimento: consentText ? p.consent === true : null } as Prisma.InputJsonValue,
+        data: {
+          ...contact,
+          ...custom,
+          ...(message ? { message } : {}),
+          consentimento: consentText ? p.consent === true : null,
+          ...(customerType ? { tipoCliente: customerType.name } : {}),
+          ...(brands.length ? { marcas: brands.map((b) => b.name) } : {}),
+        } as Prisma.InputJsonValue,
         pageUrl,
         touch: touch as Prisma.InputJsonValue,
         device,
@@ -268,10 +306,12 @@ export class CapturaService {
     await this.audit.log({ tenantId, action: 'captura.submitted', entity: 'lead', entityId: result.leadId, ip: meta.ip, data: { canal: p.kind, formulario: form?.id ?? null, novo: result.created } })
 
     if (p.kind === 'whatsapp') {
-      return { ok: true, redirect: waLink(s.whatsapp.phone!, whatsappText(s.whatsapp.message, { name: contact.name, page: pageUrl })) }
+      return { ok: true, redirect: waLink(wa!.phone, whatsappText(wa!.message, { name: contact.name, page: pageUrl })) }
     }
-    if (form!.afterSubmit === 'whatsapp' && s.whatsapp.phone) {
-      return { ok: true, message: form!.successMessage, redirect: waLink(s.whatsapp.phone, whatsappText(s.whatsapp.message, { name: contact.name, page: pageUrl })) }
+    if (form!.afterSubmit === 'whatsapp') {
+      // Formulário que abre o WhatsApp: usa o primeiro botão ativo (número central).
+      const main = await this.prisma.captureWhatsapp.findFirst({ where: { tenantId, active: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] })
+      if (main) return { ok: true, message: form!.successMessage, redirect: waLink(main.phone, whatsappText(main.message, { name: contact.name, page: pageUrl })) }
     }
     if (form!.afterSubmit === 'redirect') return { ok: true, message: form!.successMessage, redirect: safeRedirect(form!.redirectUrl) }
     return { ok: true, message: form!.successMessage }
@@ -290,6 +330,8 @@ export class CapturaService {
     ownerId: string | null,
     message: string | null,
     custom: Record<string, string>,
+    customerTypeId: string | null,
+    brandIds: string[],
   ) {
     const recent = await this.prisma.serviceRecord.findFirst({
       where: { tenantId, leadId, kind: 'PRE_VENDAS', deletedAt: null, createdAt: { gte: new Date(Date.now() - 24 * 3_600_000) } },
@@ -317,6 +359,8 @@ export class CapturaService {
         sellerId: seller?.id ?? null,
         unitId: seller?.unitId ?? lead?.unitId ?? null,
         originId: origin.id,
+        customerTypeId,
+        brandIds,
         leadId,
         notes: notes.slice(0, 5000),
         history: { create: { userName: 'Captura do site', action: 'criado automaticamente', changes: {} } },

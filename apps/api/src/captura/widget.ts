@@ -95,7 +95,7 @@ export const CAPTURE_JS = `
       var data = {};
       list.forEach(function (x) { x.err.textContent = ''; var v = x.input.multiple ? Array.prototype.filter.call(x.input.options, function (o) { return o.selected; }).map(function (o) { return o.value; }) : x.input.value; data[x.f.key] = v; });
       btn.disabled = true; msg.textContent = '';
-      capSend({ kind: opts.kind, formId: opts.formId, popupId: opts.popupId, d: data, consent: consent ? consent.checked : undefined, hp: hp.value, t: Date.now() - started }, function (res) {
+      capSend({ kind: opts.kind, formId: opts.formId, popupId: opts.popupId, whatsappId: opts.whatsappId, d: data, consent: consent ? consent.checked : undefined, hp: hp.value, t: Date.now() - started }, function (res) {
         btn.disabled = false;
         if (!res || !res.ok) {
           msg.textContent = (res && res.message) || 'Não foi possível enviar.';
@@ -142,7 +142,10 @@ export const CAPTURE_JS = `
     });
   }
   function whatsapp() {
-    var c = CFG.whatsapp; if (!c || !deviceOk(c.device) || !pageOk(c.include, c.exclude)) return;
+    // Vários botões: vale o primeiro (pela ordem do painel) que combina com a página e o dispositivo.
+    var list = CFG.whatsapps || (CFG.whatsapp ? [CFG.whatsapp] : []), c = null;
+    for (var i = 0; i < list.length; i++) if (deviceOk(list[i].device) && pageOk(list[i].include, list[i].exclude)) { c = list[i]; break; }
+    if (!c) return;
     var hh = shadowHost(); var side = c.position === 'esquerda' ? 'left' : 'right';
     var b = el('button', 'wa'); b.type = 'button'; b.style.background = c.color; b.style[side] = '18px'; b.setAttribute('aria-label', c.buttonText);
     var ns = 'http://www.w3.org/2000/svg'; var svg = d.createElementNS(ns, 'svg'); svg.setAttribute('viewBox', '0 0 32 32'); var path = d.createElementNS(ns, 'path'); path.setAttribute('d', WA_ICON); svg.appendChild(path); b.appendChild(svg);
@@ -155,7 +158,7 @@ export const CAPTURE_JS = `
       var inner = el('div', 'in'); panel.appendChild(inner);
       var fields = [{ key: 'name', label: 'Nome', required: true }, { key: 'phone', label: 'WhatsApp', required: true }];
       if (c.askEmail) fields.push({ key: 'email', label: 'E-mail', required: false });
-      renderForm(inner, { kind: 'whatsapp', fields: fields, submitLabel: 'Iniciar conversa', color: c.color });
+      renderForm(inner, { kind: 'whatsapp', whatsappId: c.id, fields: fields, submitLabel: 'Iniciar conversa', color: c.color });
       hh.r.appendChild(panel);
     };
     hh.r.appendChild(b); d.body.appendChild(hh.h);

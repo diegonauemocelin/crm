@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.5.3",
+      "date": "2026-10-07",
+      "title": "Vários botões de WhatsApp, tipo de cliente e marca na captura",
+      "changes": [
+        { "type": "novo", "area": "Captura", "text": "Vários botões de WhatsApp, cada um com seu número, textos, páginas, vendedor e ordem de prioridade (ex.: um nas LPs de revenda e outro na loja). O botão que já existia virou o “Botão principal”." },
+        { "type": "novo", "area": "Captura", "text": "Formulários, pop-ups e botões de WhatsApp com tipo de cliente (ex.: Revenda, Ecommerce) e marca da máquina, opcionais: o atendimento de Pré-Vendas já nasce com eles preenchidos e dá para saber de qual LP, pop-up ou botão o contato veio." },
+        { "type": "novo", "area": "Captura", "text": "Pop-up pode ter vendedor, tipo de cliente e marca próprios (vazio = usa os do formulário)." },
+        { "type": "melhoria", "area": "Base de leads", "text": "O tipo de cliente da captura também vira tag do lead (ex.: “revenda”), que já conta no lead scoring e serve para segmentar campanhas." },
+        { "type": "melhoria", "area": "Pré-Vendas", "text": "Todo contato entra na fila do vendedor escolhido no formulário, pop-up ou botão de WhatsApp." }
+      ]
+    },
+    {
       "version": "0.5.2",
       "date": "2026-10-07",
       "title": "Base de cada vendedor e pop-up/WhatsApp por domínio",

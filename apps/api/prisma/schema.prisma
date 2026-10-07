@@ -109,6 +109,7 @@ model Tenant {
   orders         EcommerceOrder[]
   forms          CaptureForm[]
   popups         CapturePopup[]
+  whatsapps      CaptureWhatsapp[]
 
   @@map("tenants")
 }
@@ -696,6 +697,9 @@ model CaptureForm {
   consentText    String?
   originName     String   @default("Site - LP")
   ownerId        String?  @db.Uuid
+  /// Opcionais: tipo de cliente e marcas da máquina gravados no atendimento (rastreiam de qual LP/site veio).
+  customerTypeId String?  @db.Uuid
+  brandIds       String[] @default([]) @db.Uuid
   tags           String[]
   /// Também cria um atendimento na fila de Pré-Vendas.
   createRecord   Boolean  @default(true)
@@ -732,6 +736,10 @@ model CapturePopup {
   /// Depois de fechado ou enviado, não aparece de novo por N dias para o mesmo visitante.
   frequencyDays Int  @default(7)
   color     String   @default("#1d4ed8")
+  /// Opcionais: substituem os do formulário (vazio = usa o do formulário).
+  ownerId        String?  @db.Uuid
+  customerTypeId String?  @db.Uuid
+  brandIds       String[] @default([]) @db.Uuid
   active    Boolean  @default(false)
   views     Int      @default(0)
   createdAt DateTime @default(now())
@@ -744,6 +752,41 @@ model CapturePopup {
   @@map("capture_popups")
 }
 
+/// Botão flutuante de WhatsApp. Pode haver vários (ex.: um nas LPs de revenda, outro na loja); em cada página
+/// aparece o primeiro ativo cujas regras de página e dispositivo combinam.
+model CaptureWhatsapp {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  name           String
+  /// E.164. Não vai para o site: o link só é entregue depois do cadastro.
+  phone          String
+  buttonText     String   @default("Fale no WhatsApp")
+  title          String   @default("Fale com a gente")
+  subtitle       String   @default("")
+  askEmail       Boolean  @default(false)
+  message        String
+  position       String   @default("direita")
+  color          String   @default("#25D366")
+  include        String[]
+  exclude        String[]
+  device         String   @default("todos")
+  ownerId        String?  @db.Uuid
+  customerTypeId String?  @db.Uuid
+  brandIds       String[] @default([]) @db.Uuid
+  tags           String[]
+  createRecord   Boolean  @default(true)
+  active         Boolean  @default(false)
+  /// Ordem de prioridade quando mais de um botão serve para a mesma página (menor primeiro).
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("capture_whatsapps")
+}
+
 /// Cada envio de formulário, pop-up ou botão de WhatsApp (prova da conversão e do consentimento).
 model CaptureSubmission {
   id        String   @id @default(uuid()) @db.Uuid
@@ -752,6 +795,7 @@ model CaptureSubmission {
   channel   String
   formId    String?  @db.Uuid
   popupId   String?  @db.Uuid
+  whatsappId String? @db.Uuid
   leadId    String?  @db.Uuid
   recordId  String?  @db.Uuid
   data      Json

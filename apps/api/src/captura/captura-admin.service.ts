@@ -11,7 +11,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { env } from '../config/env'
 import { RastreamentoService } from '../rastreamento/rastreamento.service'
 import { SettingsService } from '../settings/settings.service'
-import { type CaptureSettings, CapturaService, type WhatsappWidget } from './captura.service'
+import { type CaptureSettings, CapturaService } from './captura.service'
 import { BASE_FIELDS, cleanFields, type CustomDef, safeRedirect } from './regras'
 
 export interface FormInput {
@@ -24,9 +24,33 @@ export interface FormInput {
   consentText?: string | null
   originName: string
   ownerId?: string | null
+  customerTypeId?: string | null
+  brandIds?: string[]
   tags: string[]
   createRecord: boolean
   active: boolean
+}
+
+export interface WhatsappInput {
+  name: string
+  phone: string
+  buttonText: string
+  title: string
+  subtitle: string
+  askEmail: boolean
+  message: string
+  position: 'direita' | 'esquerda'
+  color: string
+  include: string[]
+  exclude: string[]
+  device: 'todos' | 'celular' | 'computador'
+  ownerId?: string | null
+  customerTypeId?: string | null
+  brandIds?: string[]
+  tags: string[]
+  createRecord: boolean
+  active: boolean
+  sortOrder: number
 }
 
 export interface PopupInput {
@@ -43,6 +67,9 @@ export interface PopupInput {
   device: 'todos' | 'celular' | 'computador'
   frequencyDays: number
   color: string
+  ownerId?: string | null
+  customerTypeId?: string | null
+  brandIds?: string[]
   active: boolean
 }
 
@@ -78,6 +105,14 @@ export class CapturaAdminService {
     if (ownerId && !(await this.prisma.seller.count({ where: { id: ownerId, tenantId } }))) throw new BadRequestException('Responsável inválido.')
   }
 
+  /** Tipo de cliente e marcas precisam ser itens das listas da empresa (Cadastros). */
+  private async assertLookups(tenantId: string, customerTypeId: string | null | undefined, brandIds: string[] | undefined) {
+    if (customerTypeId && !(await this.prisma.lookupItem.count({ where: { id: customerTypeId, tenantId, type: 'TIPO_CLIENTE' } }))) throw new BadRequestException('Tipo de cliente inválido.')
+    const brands = [...new Set(brandIds ?? [])]
+    if (brands.length && (await this.prisma.lookupItem.count({ where: { id: { in: brands }, tenantId, type: 'MARCA' } })) !== brands.length) throw new BadRequestException('Marca da máquina inválida.')
+    return brands
+  }
+
   // ---------- Formulários ----------
 
   async listForms(user: AuthUser) {
@@ -102,9 +137,11 @@ export class CapturaAdminService {
     const checked = cleanFields(d.fields, customs.map((c) => ({ ...c, key: c.key })))
     if ('error' in checked) throw new BadRequestException(checked.error)
     await this.assertOwner(user.tenantId, d.ownerId)
+    const brandIds = await this.assertLookups(user.tenantId, d.customerTypeId, d.brandIds)
     const redirectUrl = d.afterSubmit === 'redirect' ? safeRedirect(d.redirectUrl) : null
     if (d.afterSubmit === 'redirect' && !redirectUrl) throw new BadRequestException('Informe um endereço válido (https://...) para onde o visitante vai depois de enviar.')
-    if (d.afterSubmit === 'whatsapp' && !(await this.captura.settingsOf(user.tenantId)).whatsapp.phone) throw new BadRequestException('Cadastre o número do WhatsApp (aba Botão de WhatsApp) antes de usar esta opção.')
+    if (d.afterSubmit === 'whatsapp' && !(await this.prisma.captureWhatsapp.count({ where: { tenantId: user.tenantId, active: true } })))
+      throw new BadRequestException('Cadastre e ative um botão de WhatsApp (aba Botões de WhatsApp) antes de usar esta opção.')
     const data = {
       name: d.name.trim(),
       fields: checked.fields as unknown as Prisma.InputJsonValue,
@@ -115,6 +152,8 @@ export class CapturaAdminService {
       consentText: d.consentText?.trim() || null,
       originName: d.originName.trim() || 'Site - LP',
       ownerId: d.ownerId ?? null,
+      customerTypeId: d.customerTypeId ?? null,
+      brandIds,
       tags: normalizeTags(d.tags),
       createRecord: d.createRecord,
       active: d.active,
@@ -142,6 +181,8 @@ export class CapturaAdminService {
   async savePopup(user: AuthUser, id: string | null, d: PopupInput, ctx: RequestCtx) {
     this.assertCan(user, id ? 'edit' : 'create')
     if (!(await this.prisma.captureForm.count({ where: { id: d.formId, tenantId: user.tenantId } }))) throw new BadRequestException('Escolha um formulário.')
+    await this.assertOwner(user.tenantId, d.ownerId)
+    const popupBrands = await this.assertLookups(user.tenantId, d.customerTypeId, d.brandIds)
     const imageUrl = d.imageUrl?.trim() ? safeRedirect(d.imageUrl) : null
     if (d.imageUrl?.trim() && !imageUrl?.startsWith('https://')) throw new BadRequestException('A imagem precisa de um endereço https://')
     const data = {
@@ -158,6 +199,9 @@ export class CapturaAdminService {
       device: d.device,
       frequencyDays: d.frequencyDays,
       color: d.color,
+      ownerId: d.ownerId ?? null,
+      customerTypeId: d.customerTypeId ?? null,
+      brandIds: popupBrands,
       active: d.active,
     }
     if (id && !(await this.prisma.capturePopup.count({ where: { id, tenantId: user.tenantId } }))) throw new NotFoundException('Pop-up não encontrado.')
@@ -178,24 +222,70 @@ export class CapturaAdminService {
 
   async getSettings(user: AuthUser) {
     this.assertCan(user, 'view')
-    return this.captura.settingsOf(user.tenantId)
+    return { privacyUrl: (await this.captura.settingsOf(user.tenantId)).privacyUrl }
   }
 
-  async saveSettings(user: AuthUser, d: { privacyUrl: string; whatsapp: WhatsappWidget }, ctx: RequestCtx) {
+  /** Configuração geral da captura: link da política de privacidade (os botões de WhatsApp têm cadastro próprio). */
+  async saveSettings(user: AuthUser, d: { privacyUrl: string }, ctx: RequestCtx) {
     this.assertCan(user, 'edit')
     const privacyUrl = d.privacyUrl.trim() ? safeRedirect(d.privacyUrl) : ''
     if (privacyUrl === null) throw new BadRequestException('Link da política de privacidade inválido.')
-    const phone = d.whatsapp.phone ? normalizePhone(d.whatsapp.phone) : null
-    if (d.whatsapp.phone && !phone) throw new BadRequestException('Número de WhatsApp inválido. Use DDD + número.')
-    if (d.whatsapp.enabled && !phone) throw new BadRequestException('Informe o número de WhatsApp para ligar o botão.')
-    await this.assertOwner(user.tenantId, d.whatsapp.ownerId)
-    const next: CaptureSettings = {
-      privacyUrl,
-      whatsapp: { ...d.whatsapp, phone, include: cleanPatterns(d.whatsapp.include), exclude: cleanPatterns(d.whatsapp.exclude), tags: normalizeTags(d.whatsapp.tags) },
-    }
+    const current = await this.captura.settingsOf(user.tenantId)
+    const next: CaptureSettings = { ...current, privacyUrl }
     await this.settings.set(user.tenantId, 'captura', next)
-    await this.audit.byUser(user, ctx, 'captura.settings_updated', 'settings', 'captura', { whatsappAtivo: next.whatsapp.enabled })
-    return next
+    await this.audit.byUser(user, ctx, 'captura.settings_updated', 'settings', 'captura', { privacyUrl })
+    return { privacyUrl }
+  }
+
+  // ---------- Botões de WhatsApp ----------
+
+  async listWhatsapps(user: AuthUser) {
+    this.assertCan(user, 'view')
+    const rows = await this.prisma.captureWhatsapp.findMany({ where: { tenantId: user.tenantId }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] })
+    const counts = await this.prisma.captureSubmission.groupBy({ by: ['whatsappId'], where: { tenantId: user.tenantId, whatsappId: { not: null } }, _count: { _all: true } })
+    const sent = new Map(counts.map((c) => [c.whatsappId, c._count._all]))
+    return rows.map(({ tenantId: _t, ...w }) => ({ ...w, submissions: sent.get(w.id) ?? 0 }))
+  }
+
+  async saveWhatsapp(user: AuthUser, id: string | null, d: WhatsappInput, ctx: RequestCtx) {
+    this.assertCan(user, id ? 'edit' : 'create')
+    const phone = normalizePhone(d.phone ?? '')
+    if (!phone) throw new BadRequestException('Número de WhatsApp inválido. Use DDD + número.')
+    await this.assertOwner(user.tenantId, d.ownerId)
+    const brandIds = await this.assertLookups(user.tenantId, d.customerTypeId, d.brandIds)
+    const data = {
+      name: d.name.trim(),
+      phone,
+      buttonText: d.buttonText.trim(),
+      title: d.title.trim(),
+      subtitle: d.subtitle.trim(),
+      askEmail: d.askEmail,
+      message: d.message.trim(),
+      position: d.position,
+      color: d.color,
+      include: cleanPatterns(d.include),
+      exclude: cleanPatterns(d.exclude),
+      device: d.device,
+      ownerId: d.ownerId ?? null,
+      customerTypeId: d.customerTypeId ?? null,
+      brandIds,
+      tags: normalizeTags(d.tags),
+      createRecord: d.createRecord,
+      active: d.active,
+      sortOrder: d.sortOrder,
+    }
+    if (id && !(await this.prisma.captureWhatsapp.count({ where: { id, tenantId: user.tenantId } }))) throw new NotFoundException('Botão não encontrado.')
+    const row = id ? await this.prisma.captureWhatsapp.update({ where: { id }, data }) : await this.prisma.captureWhatsapp.create({ data: { ...data, tenantId: user.tenantId } })
+    await this.audit.byUser(user, ctx, id ? 'captura.whatsapp_updated' : 'captura.whatsapp_created', 'capture_whatsapp', row.id, { nome: data.name, ativo: data.active })
+    const { tenantId: _t, ...rest } = row
+    return rest
+  }
+
+  async removeWhatsapp(user: AuthUser, id: string, ctx: RequestCtx) {
+    this.assertCan(user, 'delete')
+    const r = await this.prisma.captureWhatsapp.deleteMany({ where: { id, tenantId: user.tenantId } })
+    if (!r.count) throw new NotFoundException('Botão não encontrado.')
+    await this.audit.byUser(user, ctx, 'captura.whatsapp_deleted', 'capture_whatsapp', id)
   }
 
   // ---------- Envios ----------

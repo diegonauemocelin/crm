@@ -27,6 +27,8 @@ export interface CaptureForm {
   consentText: string | null
   originName: string
   ownerId: string | null
+  customerTypeId: string | null
+  brandIds: string[]
   tags: string[]
   createRecord: boolean
   active: boolean
@@ -57,14 +59,22 @@ export interface CapturePopup {
   device: DeviceRule
   frequencyDays: number
   color: string
+  /** Vazio = usa o do formulário. */
+  ownerId: string | null
+  customerTypeId: string | null
+  brandIds: string[]
   active: boolean
   views: number
   submissions: number
 }
 
-export interface WhatsappWidget {
-  enabled: boolean
-  phone: string | null
+export interface WhatsappButton {
+  id: string
+  name: string
+  active: boolean
+  sortOrder: number
+  submissions: number
+  phone: string
   buttonText: string
   title: string
   subtitle: string
@@ -76,13 +86,14 @@ export interface WhatsappWidget {
   exclude: string[]
   device: DeviceRule
   ownerId: string | null
+  customerTypeId: string | null
+  brandIds: string[]
   tags: string[]
   createRecord: boolean
 }
 
 export interface CaptureSettings {
   privacyUrl: string
-  whatsapp: WhatsappWidget
 }
 
 export interface Submission {

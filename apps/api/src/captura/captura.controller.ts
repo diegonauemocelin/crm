@@ -20,6 +20,8 @@ class FormDto {
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(500) consentText?: string | null
   @ApiProperty() @IsString() @MaxLength(80) originName!: string
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() ownerId?: string | null
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() customerTypeId?: string | null
+  @ApiPropertyOptional() @IsOptional() @IsArray() @ArrayMaxSize(20) @IsUUID('all', { each: true }) brandIds?: string[]
   @ApiProperty() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(60, { each: true }) tags!: string[]
   @ApiProperty() @IsBoolean() createRecord!: boolean
   @ApiProperty() @IsBoolean() active!: boolean
@@ -39,12 +41,17 @@ class PopupDto {
   @ApiProperty() @IsIn(['todos', 'celular', 'computador']) device!: 'todos' | 'celular' | 'computador'
   @ApiProperty() @Type(() => Number) @IsInt() @Min(0) @Max(365) frequencyDays!: number
   @ApiProperty() @Matches(HEX_COLOR) color!: string
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() ownerId?: string | null
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() customerTypeId?: string | null
+  @ApiPropertyOptional() @IsOptional() @IsArray() @ArrayMaxSize(20) @IsUUID('all', { each: true }) brandIds?: string[]
   @ApiProperty() @IsBoolean() active!: boolean
 }
 
 class WhatsappDto {
-  @ApiProperty() @IsBoolean() enabled!: boolean
-  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(40) phone!: string | null
+  @ApiProperty() @IsString() @Length(2, 80) name!: string
+  @ApiProperty() @IsString() @Length(8, 40) phone!: string
+  @ApiProperty() @IsBoolean() active!: boolean
+  @ApiProperty() @Type(() => Number) @IsInt() @Min(0) @Max(999) sortOrder!: number
   @ApiProperty() @IsString() @Length(1, 40) buttonText!: string
   @ApiProperty() @IsString() @Length(1, 80) title!: string
   @ApiProperty() @IsString() @MaxLength(200) subtitle!: string
@@ -56,13 +63,14 @@ class WhatsappDto {
   @ApiProperty() @IsArray() @ArrayMaxSize(30) @IsString({ each: true }) exclude!: string[]
   @ApiProperty() @IsIn(['todos', 'celular', 'computador']) device!: 'todos' | 'celular' | 'computador'
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() ownerId!: string | null
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() customerTypeId!: string | null
+  @ApiPropertyOptional() @IsOptional() @IsArray() @ArrayMaxSize(20) @IsUUID('all', { each: true }) brandIds?: string[]
   @ApiProperty() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(60, { each: true }) tags!: string[]
   @ApiProperty() @IsBoolean() createRecord!: boolean
 }
 
 class SettingsDto {
   @ApiProperty() @IsString() @MaxLength(500) privacyUrl!: string
-  @ApiProperty() @ValidateNested() @Type(() => WhatsappDto) whatsapp!: WhatsappDto
 }
 
 class SubmissionsDto {
@@ -199,6 +207,28 @@ export class CapturaController {
   @Put('configuracoes')
   saveSettings(@CurrentUser() user: AuthUser, @Body() dto: SettingsDto, @ReqContext() ctx: RequestCtx) {
     return this.admin.saveSettings(user, dto, ctx)
+  }
+
+  @Get('whatsapps')
+  whatsapps(@CurrentUser() user: AuthUser) {
+    return this.admin.listWhatsapps(user)
+  }
+
+  @Post('whatsapps')
+  createWhatsapp(@CurrentUser() user: AuthUser, @Body() dto: WhatsappDto, @ReqContext() ctx: RequestCtx) {
+    return this.admin.saveWhatsapp(user, null, dto, ctx)
+  }
+
+  @Put('whatsapps/:id')
+  updateWhatsapp(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: WhatsappDto, @ReqContext() ctx: RequestCtx) {
+    return this.admin.saveWhatsapp(user, id, dto, ctx)
+  }
+
+  @Delete('whatsapps/:id')
+  @HttpCode(200)
+  async removeWhatsapp(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    await this.admin.removeWhatsapp(user, id, ctx)
+    return { ok: true }
   }
 
   @Get('envios')
