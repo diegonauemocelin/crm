@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.5.1",
+      "date": "2026-10-07",
+      "title": "Formulário no site com código de script",
+      "changes": [
+        { "type": "correcao", "area": "Captura", "text": "Formulário embutido ficava em branco em lojas que montam o conteúdo depois de abrir a página (como a Magazord). Agora ele aparece assim que o espaço surge na página." },
+        { "type": "novo", "area": "Captura", "text": "Código com script de cada formulário em Captura → Formulários: cole no corpo da página e o formulário aparece exatamente ali, mesmo em editores que removem o código simples e mesmo sem o rastreamento no cabeçalho." },
+        { "type": "melhoria", "area": "Captura", "text": "O card do formulário avisa quando o rastreamento do site está desligado ou o formulário está inativo (os dois motivos para ele não aparecer)." }
+      ]
+    },
+    {
       "version": "0.5.0",
       "date": "2026-10-07",
       "title": "Fase 4 — Captura: formulários, pop-ups e botão de WhatsApp",

@@ -8,6 +8,8 @@ import type { Prisma } from '../generated/prisma/client'
 import { LeadConfigService } from '../leads/lead-config.service'
 import { normalizeTags } from '../leads/mapeamento'
 import { PrismaService } from '../prisma/prisma.service'
+import { env } from '../config/env'
+import { RastreamentoService } from '../rastreamento/rastreamento.service'
 import { SettingsService } from '../settings/settings.service'
 import { type CaptureSettings, CapturaService, type WhatsappWidget } from './captura.service'
 import { BASE_FIELDS, cleanFields, type CustomDef, safeRedirect } from './regras'
@@ -55,6 +57,7 @@ export class CapturaAdminService {
     private readonly captura: CapturaService,
     private readonly config: LeadConfigService,
     private readonly audit: AuditService,
+    private readonly tracking: RastreamentoService,
   ) {}
 
   assertCan(user: AuthUser, action: Action) {
@@ -79,8 +82,18 @@ export class CapturaAdminService {
 
   async listForms(user: AuthUser) {
     this.assertCan(user, 'view')
-    const forms = await this.prisma.captureForm.findMany({ where: { tenantId: user.tenantId }, orderBy: { createdAt: 'desc' }, include: { _count: { select: { popups: true } } } })
-    return forms.map(({ tenantId: _t, _count, ...f }) => ({ ...f, popups: _count.popups }))
+    const [forms, tracking] = await Promise.all([
+      this.prisma.captureForm.findMany({ where: { tenantId: user.tenantId }, orderBy: { createdAt: 'desc' }, include: { _count: { select: { popups: true } } } }),
+      this.tracking.config(user.tenantId),
+    ])
+    return forms.map(({ tenantId: _t, _count, ...f }) => ({
+      ...f,
+      popups: _count.popups,
+      // Dois jeitos de colocar o formulário numa página: o código com script (funciona em qualquer editor) e o marcador.
+      embedScript: `<script async src="${env.appUrl}/api/public/captura/form.js?k=${tracking.siteKey}&f=${f.id}"></script>`,
+      embedDiv: `<div data-usacrm-form="${f.id}"></div>`,
+      trackingEnabled: tracking.enabled,
+    }))
   }
 
   async saveForm(user: AuthUser, id: string | null, d: FormInput, ctx: RequestCtx) {

@@ -157,7 +157,12 @@ export const CAPTURE_JS = `
     if (w.__crmCap || typeof fetch !== 'function' || !d.body) return; w.__crmCap = 1;
     fetch(BASE + '/api/public/captura/config?k=' + encodeURIComponent(C.k), { credentials: 'omit' })
       .then(function (r) { return r.json(); })
-      .then(function (cfg) { CFG = cfg || {}; CFG.forms = CFG.forms || {}; embedForms(); popups(); whatsapp(); })
+      .then(function (cfg) {
+        CFG = cfg || {}; CFG.forms = CFG.forms || {}; embedForms(); popups(); whatsapp();
+        // Lojas que montam o conteúdo depois de abrir a página (ex.: Magazord): desenha os formulários quando o marcador aparecer.
+        w.__crmEmbed = embedForms;
+        if (w.MutationObserver) { var tm = null; new MutationObserver(function () { if (tm) return; tm = setTimeout(function () { tm = null; embedForms(); }, 300); }).observe(d.body, { childList: true, subtree: true }); }
+      })
       .catch(function () {});
   }
 `

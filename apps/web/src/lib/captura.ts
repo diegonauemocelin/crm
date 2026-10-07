@@ -33,6 +33,10 @@ export interface CaptureForm {
   submissions: number
   popups?: number
   createdAt: string
+  /** Códigos para colar no site (vêm prontos do servidor, com a chave do site). */
+  embedScript?: string
+  embedDiv?: string
+  trackingEnabled?: boolean
 }
 
 export type Trigger = 'delay' | 'exit' | 'scroll'

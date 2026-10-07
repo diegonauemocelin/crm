@@ -9,6 +9,7 @@ import { convertCustom, type CustomFieldShape } from '../leads/mapeamento'
 import { PrismaService } from '../prisma/prisma.service'
 import { classifyDevice, CLIENT_ID, domainAllowed, type Touch } from '../rastreamento/origem'
 import { RastreamentoService } from '../rastreamento/rastreamento.service'
+import { env } from '../config/env'
 import { SettingsService } from '../settings/settings.service'
 import { BASE_FIELDS, type FormField, safeRedirect, validateSubmission, waLink, whatsappText } from './regras'
 
@@ -115,6 +116,31 @@ export class CapturaService {
     } catch {
       return null
     }
+  }
+
+  /**
+   * Código com script de um formulário: cria o espaço do formulário exatamente onde foi colado e garante que o
+   * script do CRM está na página (carrega se faltar). Funciona mesmo em editores que removem o <div> marcador.
+   */
+  async formScript(key: string, formId: string) {
+    const site = await this.tracking.siteByKey(key)
+    if (!site?.s.enabled || !UUID.test(formId)) return '/* Formulário do CRM indisponível (rastreamento desligado ou código inválido). */\n'
+    const form = await this.prisma.captureForm.findFirst({ where: { id: formId, tenantId: site.tenantId, active: true }, select: { id: true } })
+    if (!form) return '/* Formulário do CRM inativo ou excluído. */\n'
+    const cfg = JSON.stringify({ f: form.id, s: `${env.appUrl}/api/public/rastreamento/script.js?k=${key}` })
+    return `/* CRM - formulário */
+(function (d, w) {
+  var C = ${cfg};
+  var me = d.currentScript;
+  var box = d.createElement('div');
+  box.setAttribute('data-usacrm-form', C.f);
+  if (me && me.parentNode) me.parentNode.insertBefore(box, me); else (d.body || d.documentElement).appendChild(box);
+  if (w.__crmEmbed) { w.__crmEmbed(); return; }
+  if (!w.__crmTrack && !d.querySelector('script[src*="/api/public/rastreamento/script.js"]')) {
+    var t = d.createElement('script'); t.async = true; t.src = C.s; (d.head || d.documentElement).appendChild(t);
+  }
+})(document, window);
+`
   }
 
   /** O que o script do site precisa para desenhar pop-ups, formulários embutidos e o botão de WhatsApp. */

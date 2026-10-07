@@ -153,11 +153,24 @@ function FormsTab() {
                   <p className="text-sm text-muted-foreground">
                     {f.fields.map((x) => x.label).join(', ')} · {int.format(f.submissions)} envio(s){f.popups ? ` · usado em ${f.popups} pop-up(s)` : ''}
                   </p>
-                  <div className="max-w-xl pt-1">
-                    <p className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
-                      <CodeIcon className="size-3.5" /> Para embutir numa página do site (onde o formulário deve aparecer):
+                  <div className="max-w-2xl space-y-2 pt-1">
+                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <CodeIcon className="size-3.5" /> Para colocar numa página do site: cole no corpo da página (modo HTML do editor), no ponto onde o formulário deve aparecer.
                     </p>
-                    <CopyField value={`<div data-usacrm-form="${f.id}"></div>`} />
+                    {f.embedScript && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium">Código com script (recomendado)</p>
+                        <CopyField value={f.embedScript} />
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium">Código simples (só se o editor não aceitar script)</p>
+                      <CopyField value={f.embedDiv ?? `<div data-usacrm-form="${f.id}"></div>`} />
+                    </div>
+                    {f.trackingEnabled === false && (
+                      <p className="text-xs text-destructive">O rastreamento do site está desligado: ligue em Configurações → Rastreamento do site para o formulário aparecer.</p>
+                    )}
+                    {!f.active && <p className="text-xs text-destructive">Este formulário está inativo: ele não aparece no site.</p>}
                   </div>
                 </div>
                 {can('captura', 'edit') && (

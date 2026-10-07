@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, Res } from '@nestjs/common'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
-import { Throttle } from '@nestjs/throttler'
+import { SkipThrottle, Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
 import type { Request, Response } from 'express'
@@ -115,6 +115,17 @@ export class PublicCapturaController {
     res.setHeader('Cache-Control', 'public, max-age=60')
     res.setHeader('Access-Control-Allow-Origin', origin!)
     return this.captura.publicConfig(site.tenantId)
+  }
+
+  /** Código com script do formulário (alternativa ao <div> marcador). */
+  @Public()
+  @SkipThrottle()
+  @Get('form.js')
+  async formJs(@Query('k') key: string, @Query('f') formId: string, @Res({ passthrough: true }) res: Response) {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+    res.setHeader('Cache-Control', 'public, max-age=300')
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+    return this.captura.formScript(String(key ?? ''), String(formId ?? ''))
   }
 
   @Public()
