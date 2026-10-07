@@ -12,6 +12,8 @@ import { type LeadFilters, LeadsService } from '../leads/leads.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { domainAllowed } from '../rastreamento/origem'
 import { RastreamentoService } from '../rastreamento/rastreamento.service'
+import { EMAIL_IMAGE_LIMIT, FilesService } from '../files/files.service'
+import { MagazordService } from '../integracoes/magazord.service'
 import { MailService } from '../settings/mail.service'
 import { publicBranding, SettingsService } from '../settings/settings.service'
 import { type Block, type Brand, cleanBlocks, collectLinks, renderEmail } from './blocos'
@@ -24,9 +26,13 @@ export interface EmailSettings {
   footerText: string
   /** Envios por minuto (protege a reputação do domínio e o servidor). */
   ratePerMinute: number
+  /** Logo próprio dos e-mails (fundo branco); vazio = o logo do sistema. */
+  logoFileId: string | null
 }
 
-export const DEFAULT_EMAIL: EmailSettings = { fromName: '', replyTo: '', footerText: '', ratePerMinute: 60 }
+export const DEFAULT_EMAIL: EmailSettings = { fromName: '', replyTo: '', footerText: '', ratePerMinute: 60, logoFileId: null }
+
+const fileUrl = (id: string) => `${env.appUrl}/api/files/public/${id}`
 
 export interface CampaignInput {
   name: string
@@ -58,6 +64,8 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly scoring: LeadConfigService,
     private readonly tracking: RastreamentoService,
     private readonly audit: AuditService,
+    private readonly files: FilesService,
+    private readonly magazord: MagazordService,
   ) {}
 
   onApplicationBootstrap() {
@@ -77,12 +85,19 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     return this.settings.get(tenantId, 'email_marketing', DEFAULT_EMAIL)
   }
 
-  async saveConfig(user: AuthUser, d: EmailSettings, ctx: RequestCtx) {
+  /** Configurações com o endereço do logo dos e-mails (o próprio ou o do sistema). */
+  async configView(tenantId: string) {
+    const [cfg, brand] = await Promise.all([this.config(tenantId), this.brand(tenantId)])
+    return { ...cfg, logoUrl: brand.logoUrl, ownLogo: !!cfg.logoFileId }
+  }
+
+  async saveConfig(user: AuthUser, d: Omit<EmailSettings, 'logoFileId'>, ctx: RequestCtx) {
     this.assertCan(user, 'edit')
-    const next = { fromName: d.fromName.trim(), replyTo: d.replyTo.trim(), footerText: d.footerText.trim(), ratePerMinute: d.ratePerMinute }
+    const current = await this.config(user.tenantId)
+    const next = { fromName: d.fromName.trim(), replyTo: d.replyTo.trim(), footerText: d.footerText.trim(), ratePerMinute: d.ratePerMinute, logoFileId: current.logoFileId }
     await this.settings.set(user.tenantId, 'email_marketing', next)
     await this.audit.byUser(user, ctx, 'email.settings_updated', 'settings', 'email_marketing', next)
-    return next
+    return this.configView(user.tenantId)
   }
 
   // ---------- Público (segmentos) ----------
@@ -186,12 +201,101 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     await this.audit.byUser(user, ctx, 'email.campaign_deleted', 'email_campaign', id, { nome: c.name })
   }
 
+  // ---------- Logo, imagens, produtos e WhatsApp do editor ----------
+
+  async uploadLogo(user: AuthUser, file: Express.Multer.File | undefined, ctx: RequestCtx) {
+    this.assertCan(user, 'edit')
+    const asset = await this.files.saveImage(user.tenantId, 'email-logo', file, true, { types: ['png', 'jpg', 'gif', 'webp'] })
+    const current = await this.config(user.tenantId)
+    await this.settings.set(user.tenantId, 'email_marketing', { ...current, logoFileId: asset.id })
+    await this.audit.byUser(user, ctx, 'email.logo_updated', 'settings', 'email_marketing', { fileId: asset.id })
+    return this.configView(user.tenantId)
+  }
+
+  async removeLogo(user: AuthUser, ctx: RequestCtx) {
+    this.assertCan(user, 'edit')
+    const current = await this.config(user.tenantId)
+    // O arquivo fica: e-mails já enviados continuam mostrando o logo.
+    await this.settings.set(user.tenantId, 'email_marketing', { ...current, logoFileId: null })
+    await this.audit.byUser(user, ctx, 'email.logo_removed', 'settings', 'email_marketing')
+    return this.configView(user.tenantId)
+  }
+
+  async listImages(user: AuthUser) {
+    this.assertCan(user, 'view')
+    const rows = await this.prisma.fileAsset.findMany({ where: { tenantId: user.tenantId, kind: 'email-image' }, orderBy: { createdAt: 'desc' }, take: 300, select: { id: true, size: true, createdAt: true } })
+    return rows.map((r) => ({ ...r, url: fileUrl(r.id) }))
+  }
+
+  async uploadImage(user: AuthUser, file: Express.Multer.File | undefined, ctx: RequestCtx) {
+    this.assertCan(user, 'edit')
+    const asset = await this.files.saveImage(user.tenantId, 'email-image', file, true, { maxBytes: EMAIL_IMAGE_LIMIT, types: ['png', 'jpg', 'gif', 'webp'] })
+    await this.audit.byUser(user, ctx, 'email.image_uploaded', 'file', asset.id, { tamanho: asset.size })
+    return { id: asset.id, size: asset.size, createdAt: asset.createdAt, url: fileUrl(asset.id) }
+  }
+
+  /** Só apaga imagem que nenhuma campanha usa (e-mails enviados precisam continuar mostrando). */
+  async removeImage(user: AuthUser, id: string, ctx: RequestCtx) {
+    this.assertCan(user, 'delete')
+    const asset = await this.prisma.fileAsset.findFirst({ where: { id, tenantId: user.tenantId, kind: 'email-image' } })
+    if (!asset) throw new NotFoundException('Imagem não encontrada.')
+    const used = await this.prisma.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM email_campaigns WHERE "tenantId" = ${user.tenantId}::uuid AND blocks::text LIKE ${`%${id}%`}`
+    if (Number(used[0]?.n ?? 0) > 0) throw new BadRequestException('Esta imagem está em uma campanha. Tire ela das campanhas antes de apagar (as já enviadas precisam dela).')
+    await this.files.remove(id)
+    await this.audit.byUser(user, ctx, 'email.image_deleted', 'file', id)
+  }
+
+  /** Busca no catálogo da loja (copiado da Magazord). */
+  async searchProducts(user: AuthUser, q: string, page: number) {
+    this.assertCan(user, 'view')
+    const term = q.trim()
+    const where: Prisma.StoreProductWhereInput = {
+      tenantId: user.tenantId,
+      active: true,
+      ...(term ? { OR: [{ name: { contains: term, mode: 'insensitive' } }, { code: { contains: term, mode: 'insensitive' } }, { brand: { contains: term, mode: 'insensitive' } }] } : {}),
+    }
+    const size = 24
+    const [rows, total, mz, state] = await Promise.all([
+      this.prisma.storeProduct.findMany({ where, orderBy: [{ stock: { sort: 'desc', nulls: 'last' } }, { name: 'asc' }], skip: (page - 1) * size, take: size }),
+      this.prisma.storeProduct.count({ where }),
+      this.magazord.config(user.tenantId),
+      this.magazord.state(user.tenantId),
+    ])
+    return {
+      items: rows.map((p) => ({ id: p.id, code: p.code, name: p.name, brand: p.brand, price: p.price?.toNumber() ?? null, priceFrom: p.priceFrom?.toNumber() ?? null, stock: p.stock, image: p.image, url: p.url })),
+      total,
+      page,
+      pageSize: size,
+      catalog: {
+        enabled: mz.enabled && mz.importProducts,
+        updating: this.magazord.productsUpdating(user.tenantId),
+        syncedAt: state.productsSyncedAt ?? null,
+        error: state.productsError ?? null,
+      },
+    }
+  }
+
+  async refreshProducts(user: AuthUser, ctx: RequestCtx) {
+    this.assertCan(user, 'edit')
+    const r = await this.magazord.refreshProducts(user.tenantId)
+    if (!r.started) throw new BadRequestException(r.reason)
+    await this.audit.byUser(user, ctx, 'email.catalog_refresh', 'settings', 'magazord')
+    return { ok: true }
+  }
+
+  /** Números de WhatsApp já cadastrados na Captura, para escolher no botão do e-mail. */
+  async whatsappNumbers(user: AuthUser) {
+    this.assertCan(user, 'view')
+    return this.prisma.captureWhatsapp.findMany({ where: { tenantId: user.tenantId }, orderBy: [{ active: 'desc' }, { sortOrder: 'asc' }], select: { id: true, name: true, phone: true, message: true } })
+  }
+
   // ---------- Montagem ----------
 
   private async brand(tenantId: string): Promise<Brand> {
     const [b, cfg] = await Promise.all([this.settings.branding(tenantId), this.config(tenantId)])
     const pub = publicBranding(b)
-    return { appName: b.appName, color: b.primaryColor, logoUrl: pub.logoUrl ? `${env.appUrl}${pub.logoUrl}` : null, footerText: cfg.footerText }
+    const logoUrl = cfg.logoFileId ? fileUrl(cfg.logoFileId) : pub.logoUrl ? `${env.appUrl}${pub.logoUrl}` : null
+    return { appName: b.appName, color: b.primaryColor, logoUrl, footerText: cfg.footerText }
   }
 
   /** Pré-visualização com os dados de quem está editando (nada é rastreado). */

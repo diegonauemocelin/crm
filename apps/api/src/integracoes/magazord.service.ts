@@ -7,7 +7,7 @@ import { LeadConfigService } from '../leads/lead-config.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { RastreamentoService } from '../rastreamento/rastreamento.service'
 import { SettingsService } from '../settings/settings.service'
-import { cartItems, cleanBaseUrl, type CustomerData, customerFrom, DEFAULT_CART_MESSAGE, type MagazordPessoa, mzDateTime, orderGroup, parseMzDate } from './magazord'
+import { cartItems, cleanBaseUrl, cleanHttpsBase, type CustomerData, customerFrom, DEFAULT_CART_MESSAGE, type MagazordPessoa, type MzSiteProduct, mzDateTime, orderGroup, parseMzDate, productFrom } from './magazord'
 
 export interface MagazordSettings {
   enabled: boolean
@@ -18,6 +18,14 @@ export interface MagazordSettings {
   importCustomers: boolean
   importOrders: boolean
   importCarts: boolean
+  /** Catálogo de produtos (nome, preço, imagem e link) para montar e-mails. */
+  importProducts: boolean
+  /** Id da loja na Magazord (quase sempre 1). */
+  storeId: number
+  /** Endereço do site, para completar links relativos dos produtos (vazio = descobre pelos carrinhos). */
+  siteUrl: string
+  /** Endereço das imagens, para completar caminhos relativos (vazio = descobre pelos carrinhos). */
+  imageBaseUrl: string
   /** Responsável pelos leads novos vindos da loja. */
   ownerId: string | null
   tags: string[]
@@ -36,6 +44,10 @@ export const DEFAULT_MAGAZORD: MagazordSettings = {
   importCustomers: true,
   importOrders: true,
   importCarts: true,
+  importProducts: true,
+  storeId: 1,
+  siteUrl: '',
+  imageBaseUrl: '',
   ownerId: null,
   tags: ['ecommerce'],
   abandonHours: 2,
@@ -55,7 +67,9 @@ export interface MagazordState {
   customersCursor: string | null
   ordersCursor: string | null
   cartsCursor: string | null
-  totals: { customers: number; leadsCreated: number; orders: number; carts: number }
+  productsSyncedAt?: string | null
+  productsError?: string | null
+  totals: { customers: number; leadsCreated: number; orders: number; carts: number; products?: number }
 }
 
 export const DEFAULT_STATE: MagazordState = {
@@ -76,6 +90,8 @@ const ORIGIN = 'Ecommerce'
 /** Histórico de pedidos trazido na primeira sincronização. */
 const ORDERS_BACKFILL_DAYS = 730
 const CARTS_BACKFILL_DAYS = 30
+/** Catálogo completo de novo a cada 12 h (preço e estoque mudam ao longo do dia). */
+const PRODUCTS_EVERY_MS = 12 * 3_600_000
 
 interface Page<T> {
   items: T[]
@@ -123,6 +139,7 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
   private readonly logger = new Logger(MagazordService.name)
   private timer: NodeJS.Timeout | null = null
   private readonly running = new Set<string>()
+  private readonly productsRunning = new Set<string>()
 
   constructor(
     private readonly prisma: PrismaService,
@@ -206,6 +223,7 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
     await run('Pedidos', () => this.get(s, '/v2/site/pedido', { limit: 1 }))
     const now = new Date()
     await run('Carrinhos', () => this.get(s, '/v2/site/carrinho', { limit: 1, dataAtualizacaoInicio: mzDateTime(new Date(now.getTime() - 86_400_000)), dataAtualizacaoFim: mzDateTime(now) }))
+    if (s.importProducts) await run('Produtos', () => this.get(s, `/v2/site/frontend/produto/${s.storeId || 1}`, { limit: 1, page: 1 }))
     return { ok: checks.every((c) => c.ok), checks }
   }
 
@@ -229,6 +247,7 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
       if (s.importCustomers) await this.syncCustomers(tenantId, s)
       if (s.importOrders) await this.syncOrders(tenantId, s)
       if (s.importCarts) await this.syncCarts(tenantId, s)
+      if (s.importProducts) await this.syncProducts(tenantId, s, false)
       await this.saveState(tenantId, { running: false, lastOkAt: new Date().toISOString(), lastError: null })
       return { started: true }
     } catch (err) {
@@ -480,6 +499,77 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
       })
       await this.tracking.tagLead(c.leadId!, ['carrinho-abandonado'], [])
     }
+  }
+
+  // ---------- Catálogo de produtos ----------
+
+  /**
+   * Site e servidor de imagens para completar links relativos: o que estiver configurado ou, se vazio,
+   * o endereço que a própria Magazord usa nos itens dos carrinhos já importados.
+   */
+  private async productContext(tenantId: string, s: MagazordSettings) {
+    let siteUrl = cleanHttpsBase(s.siteUrl)
+    let imageBase = cleanHttpsBase(s.imageBaseUrl)
+    if (!siteUrl || !imageBase) {
+      const carts = await this.prisma.ecommerceCart.findMany({ where: { tenantId, itemCount: { gt: 0 } }, orderBy: { lastActivityAt: 'desc' }, take: 20, select: { items: true } })
+      for (const item of carts.flatMap((c) => (c.items as unknown as { image?: string | null; url?: string | null }[]) ?? [])) {
+        try {
+          if (!siteUrl && item.url) siteUrl = new URL(item.url).origin
+          if (!imageBase && item.image) imageBase = new URL(item.image).origin
+        } catch {
+          /* item sem endereço válido */
+        }
+      }
+    }
+    return { siteUrl, imageBase }
+  }
+
+  /** Catálogo completo (a cada 12 h ou quando pedido). Erro aqui não interrompe clientes, pedidos e carrinhos. */
+  private async syncProducts(tenantId: string, s: MagazordSettings, force: boolean) {
+    // Marca como "atualizando" antes de qualquer espera: a tela consulta logo depois do clique.
+    if (this.productsRunning.has(tenantId)) return
+    this.productsRunning.add(tenantId)
+    const started = new Date()
+    try {
+      const st = await this.state(tenantId)
+      if (!force && st.productsSyncedAt && Date.now() - Date.parse(st.productsSyncedAt) < PRODUCTS_EVERY_MS) return
+      const ctx = await this.productContext(tenantId, s)
+      let count = 0
+      for (let page = 1; page <= 1000; page++) {
+        const { items, has_more } = this.page<MzSiteProduct>(await this.get(s, `/v2/site/frontend/produto/${s.storeId || 1}`, { page, limit: 100 }))
+        for (const raw of items) {
+          const p = productFrom(raw, ctx)
+          if (!p) continue
+          const data = { code: p.code, name: p.name, brand: p.brand, price: p.price, priceFrom: p.priceFrom, stock: p.stock, image: p.image, url: p.url, active: p.active, syncedAt: started }
+          await this.prisma.storeProduct.upsert({ where: { tenantId_externalId: { tenantId, externalId: p.externalId } }, create: { tenantId, externalId: p.externalId, ...data }, update: data })
+          count++
+        }
+        if (!has_more || !items.length) break
+      }
+      // Produto que saiu da loja fica fora da busca (o e-mail que já usou continua com os dados copiados).
+      await this.prisma.storeProduct.updateMany({ where: { tenantId, syncedAt: { lt: started } }, data: { active: false } })
+      const fresh = await this.state(tenantId)
+      await this.saveState(tenantId, { productsSyncedAt: started.toISOString(), productsError: null, totals: { ...fresh.totals, products: count } })
+    } catch (err) {
+      const msg = (err as Error).message.slice(0, 500)
+      this.logger.warn(`Magazord: catálogo de produtos falhou: ${msg}`)
+      await this.saveState(tenantId, { productsError: msg })
+    } finally {
+      this.productsRunning.delete(tenantId)
+    }
+  }
+
+  /** Botão "Atualizar catálogo" do e-mail marketing (em segundo plano). */
+  async refreshProducts(tenantId: string) {
+    const s = await this.config(tenantId)
+    if (!s.enabled || !s.importProducts) return { started: false, reason: 'Ligue a integração com a Magazord e a opção “Catálogo de produtos” em Configurações → Integrações.' }
+    if (this.productsRunning.has(tenantId)) return { started: false, reason: 'O catálogo já está sendo atualizado.' }
+    void this.syncProducts(tenantId, s, true)
+    return { started: true, reason: null }
+  }
+
+  productsUpdating(tenantId: string) {
+    return this.productsRunning.has(tenantId)
   }
 
   async logSync(tenantId: string, userId: string, userEmail: string) {

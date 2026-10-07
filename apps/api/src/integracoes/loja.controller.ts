@@ -11,7 +11,7 @@ import type { AuthUser } from '../common/types'
 import { LeadsService } from '../leads/leads.service'
 import { normalizeTags } from '../leads/mapeamento'
 import { type CartFilters, type CartView, CONTACT_STATUSES, type ContactStatus, LojaService } from './loja.service'
-import { cleanBaseUrl } from './magazord'
+import { cleanBaseUrl, cleanHttpsBase } from './magazord'
 import { MagazordService, type MagazordSettings } from './magazord.service'
 
 class MagazordDto {
@@ -22,6 +22,10 @@ class MagazordDto {
   @ApiProperty() @IsBoolean() importCustomers!: boolean
   @ApiProperty() @IsBoolean() importOrders!: boolean
   @ApiProperty() @IsBoolean() importCarts!: boolean
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() importProducts?: boolean
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1_000_000) storeId?: number
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) siteUrl?: string
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) imageBaseUrl?: string
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() ownerId?: string | null
   @ApiProperty() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(60, { each: true }) tags!: string[]
   @ApiProperty() @Type(() => Number) @IsInt() @Min(1) @Max(168) abandonHours!: number
@@ -79,11 +83,18 @@ export class MagazordController {
     const base = dto.baseUrl.trim() ? cleanBaseUrl(dto.baseUrl) : ''
     if (base === null) throw new BadRequestException('Endereço inválido. Use o do painel da loja, ex.: https://usaparts.painel.magazord.com.br')
     const current = await this.magazord.config(user.tenantId)
-    const { token, password, ...rest } = dto
+    const { token, password, importProducts, storeId, siteUrl, imageBaseUrl, ...rest } = dto
+    for (const [label, v] of [['site', siteUrl], ['imagens', imageBaseUrl]] as const) {
+      if (v?.trim() && !cleanHttpsBase(v)) throw new BadRequestException(`Endereço de ${label} inválido (use https://).`)
+    }
     const next: MagazordSettings = {
       ...current,
       ...rest,
       baseUrl: base,
+      importProducts: importProducts ?? current.importProducts,
+      storeId: storeId ?? current.storeId,
+      siteUrl: siteUrl === undefined ? current.siteUrl : (cleanHttpsBase(siteUrl) ?? ''),
+      imageBaseUrl: imageBaseUrl === undefined ? current.imageBaseUrl : (cleanHttpsBase(imageBaseUrl) ?? ''),
       ownerId: dto.ownerId ?? null,
       tags: normalizeTags(dto.tags),
       tokenEnc: token?.trim() ? encrypt(token.trim()) : current.tokenEnc,
@@ -97,6 +108,7 @@ export class MagazordController {
       clientes: next.importCustomers,
       pedidos: next.importOrders,
       carrinhos: next.importCarts,
+      produtos: next.importProducts,
       tokenAlterado: !!token,
       senhaAlterada: !!password,
     })

@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Res } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common'
+import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { SkipThrottle, Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
@@ -8,6 +9,7 @@ import { CurrentUser, Public, ReqContext, type RequestCtx } from '../common/deco
 import type { AuthUser } from '../common/types'
 import { UF_LIST } from '../atendimento/br'
 import type { LeadFilters } from '../leads/leads.service'
+import { EMAIL_IMAGE_LIMIT, IMAGE_UPLOAD_LIMIT } from '../files/files.service'
 import { EmailService, PIXEL } from './email.service'
 
 const STAGES = ['LEAD', 'QUALIFICADO', 'OPORTUNIDADE', 'CLIENTE'] as const
@@ -68,6 +70,11 @@ class SettingsDto {
   @ApiProperty() @Type(() => Number) @IsInt() @Min(5) @Max(1000) ratePerMinute!: number
 }
 
+class ProductQueryDto {
+  @IsOptional() @IsString() @MaxLength(120) q?: string
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(500) page = 1
+}
+
 class CountDto {
   @ApiProperty() @IsObject() @ValidateNested() @Type(() => SegmentFiltersDto) filters!: SegmentFiltersDto
 }
@@ -80,7 +87,55 @@ export class EmailController {
   @Get('configuracoes')
   async config(@CurrentUser() user: AuthUser) {
     this.email.assertCan(user, 'view')
-    return this.email.config(user.tenantId)
+    return this.email.configView(user.tenantId)
+  }
+
+  @Post('configuracoes/logo')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: IMAGE_UPLOAD_LIMIT } }))
+  uploadLogo(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File | undefined, @ReqContext() ctx: RequestCtx) {
+    return this.email.uploadLogo(user, file, ctx)
+  }
+
+  @Post('configuracoes/logo/remover')
+  @HttpCode(200)
+  removeLogo(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
+    return this.email.removeLogo(user, ctx)
+  }
+
+  @Get('imagens')
+  images(@CurrentUser() user: AuthUser) {
+    return this.email.listImages(user)
+  }
+
+  @Post('imagens')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: EMAIL_IMAGE_LIMIT } }))
+  uploadImage(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File | undefined, @ReqContext() ctx: RequestCtx) {
+    return this.email.uploadImage(user, file, ctx)
+  }
+
+  @Delete('imagens/:id')
+  @HttpCode(200)
+  async removeImage(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    await this.email.removeImage(user, id, ctx)
+    return { ok: true }
+  }
+
+  @Get('produtos')
+  products(@CurrentUser() user: AuthUser, @Query() q: ProductQueryDto) {
+    return this.email.searchProducts(user, q.q ?? '', q.page)
+  }
+
+  @Post('produtos/atualizar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  refreshProducts(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
+    return this.email.refreshProducts(user, ctx)
+  }
+
+  @Get('whatsapp')
+  whatsapp(@CurrentUser() user: AuthUser) {
+    return this.email.whatsappNumbers(user)
   }
 
   @Put('configuracoes')

@@ -107,6 +107,7 @@ model Tenant {
   receipts       IntegrationReceipt[]
   carts          EcommerceCart[]
   orders         EcommerceOrder[]
+  products       StoreProduct[]
   forms          CaptureForm[]
   popups         CapturePopup[]
   whatsapps      CaptureWhatsapp[]
@@ -665,6 +666,34 @@ model EcommerceOrder {
   @@index([leadId, orderedAt])
   @@index([tenantId, orderedAt])
   @@map("ecommerce_orders")
+}
+
+/// Catálogo de produtos da loja (Magazord), copiado para montar e-mails sem consultar a loja a cada busca.
+model StoreProduct {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  /// Derivação (SKU) na Magazord.
+  externalId String
+  code       String
+  name       String
+  brand      String?
+  price      Decimal? @db.Decimal(12, 2)
+  /// Preço "de" (antes do desconto).
+  priceFrom  Decimal? @db.Decimal(12, 2)
+  stock      Int?
+  image      String?
+  url        String?
+  active     Boolean  @default(true)
+  /// Última sincronização em que o produto apareceu (os que somem ficam inativos).
+  syncedAt   DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId, active, name])
+  @@map("store_products")
 }
 
 /// Avisos recebidos de integrações (Meta Lead Ads e, depois, Magazord). A chave única impede processar

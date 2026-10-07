@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CopyIcon, Loader2Icon, MailIcon, PencilIcon, PlusIcon, Trash2Icon, UsersRoundIcon } from 'lucide-react'
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
+import { CopyIcon, ImageIcon, Loader2Icon, MailIcon, PencilIcon, PlusIcon, Trash2Icon, UploadIcon, UsersRoundIcon } from 'lucide-react'
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { int, UF_LIST, UF_NAMES, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
-import { type Campaign, type EmailSettings, pct, type Segment, type SegmentFilters, STATUS_LABEL, STATUS_TONE } from '@/lib/email'
+import { type Campaign, type EmailSettings, newBlock, pct, type Segment, type SegmentFilters, STATUS_LABEL, STATUS_TONE } from '@/lib/email'
 import { STAGES, useTags } from '@/lib/leads'
 import { FormError } from './auth/auth-layout'
 
@@ -55,7 +55,7 @@ function CampaignsTab() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const create = useMutation({
-    mutationFn: () => api.post<Campaign>('/email/campanhas', { name: 'Nova campanha', subject: '', blocks: [{ type: 'titulo', text: 'Olá, {primeiro_nome}!' }, { type: 'texto', text: 'Escreva aqui a sua mensagem.' }] }),
+    mutationFn: () => api.post<Campaign>('/email/campanhas', { name: 'Nova campanha', subject: '', blocks: [newBlock('titulo'), newBlock('texto')] }),
     onSuccess: (c) => navigate(`/email-marketing/${c.id}`),
     onError: (err) => toast.error(errorMessage(err)),
   })
@@ -341,7 +341,12 @@ function SettingsTab() {
   const q = useQuery({ queryKey: ['email-settings'], queryFn: () => api.get<EmailSettings>('/email/configuracoes') })
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />
   if (!q.data) return <TableSkeleton rows={3} />
-  return <SettingsEditor initial={q.data} />
+  return (
+    <div className="grid max-w-5xl gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <SettingsEditor initial={q.data} />
+      <LogoCard settings={q.data} />
+    </div>
+  )
 }
 
 function Row({ label, htmlFor, hint, children }: { label: string; htmlFor: string; hint?: string; children: ReactNode }) {
@@ -360,7 +365,7 @@ function SettingsEditor({ initial }: { initial: EmailSettings }) {
   const [s, setS] = useState(initial)
   const [error, setError] = useState<string | null>(null)
   const save = useMutation({
-    mutationFn: () => api.put<EmailSettings>('/email/configuracoes', { ...s }),
+    mutationFn: () => api.put<EmailSettings>('/email/configuracoes', { fromName: s.fromName, replyTo: s.replyTo, footerText: s.footerText, ratePerMinute: s.ratePerMinute }),
     onSuccess: (saved) => {
       qc.setQueryData(['email-settings'], saved)
       toast.success('Configurações salvas.')
@@ -368,7 +373,7 @@ function SettingsEditor({ initial }: { initial: EmailSettings }) {
     onError: (err) => setError(errorMessage(err)),
   })
   return (
-    <Card className="max-w-2xl">
+    <Card>
       <form
         onSubmit={(e: FormEvent) => {
           e.preventDefault()
@@ -408,6 +413,53 @@ function SettingsEditor({ initial }: { initial: EmailSettings }) {
           </CardFooter>
         )}
       </form>
+    </Card>
+  )
+}
+
+function LogoCard({ settings }: { settings: EmailSettings }) {
+  const qc = useQueryClient()
+  const { can } = useAuth()
+  const input = useRef<HTMLInputElement>(null)
+  const done = (v: EmailSettings) => {
+    qc.setQueryData(['email-settings'], v)
+    toast.success('Logo do e-mail atualizado.')
+  }
+  const upload = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return api.post<EmailSettings>('/email/configuracoes/logo', form)
+    },
+    onSuccess: done,
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const remove = useMutation({ mutationFn: () => api.post<EmailSettings>('/email/configuracoes/logo/remover'), onSuccess: done, onError: (err) => toast.error(errorMessage(err)) })
+  return (
+    <Card className="h-fit">
+      <CardHeader>
+        <CardTitle>Logo dos e-mails</CardTitle>
+        <CardDescription>Aparece no topo de toda campanha. Use a versão para fundo branco (PNG ou JPG, até 1 MB, com uns 400 px de largura).</CardDescription>
+      </CardHeader>
+      <CardContent className="mt-4 space-y-3">
+        <div className="flex h-24 items-center justify-center rounded-md border bg-white p-3">
+          {settings.logoUrl ? <img src={settings.logoUrl} alt="Logo dos e-mails" className="max-h-full max-w-full object-contain" /> : <span className="flex items-center gap-2 text-sm text-[#6b7280]"><ImageIcon className="size-4" /> Sem logo: vai o nome da empresa</span>}
+        </div>
+        <p className="text-xs text-muted-foreground">{settings.ownLogo ? 'Logo próprio dos e-mails.' : settings.logoUrl ? 'Usando o logo do sistema (Configurações → Aparência).' : ''}</p>
+        {can('email_marketing', 'edit') && (
+          <div className="flex flex-wrap gap-2">
+            <input ref={input} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) upload.mutate(f); e.target.value = '' }} />
+            <Button type="button" size="sm" variant="outline" onClick={() => input.current?.click()} disabled={upload.isPending}>
+              {upload.isPending ? <Loader2Icon className="animate-spin" /> : <UploadIcon />} Enviar logo
+            </Button>
+            {settings.ownLogo && (
+              <Button type="button" size="sm" variant="ghost" onClick={() => remove.mutate()} disabled={remove.isPending}>
+                Usar o do sistema
+              </Button>
+            )}
+          </div>
+        )}
+      </CardContent>
     </Card>
   )
 }

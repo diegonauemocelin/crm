@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.6.2",
+      "date": "2026-10-07",
+      "title": "Editor visual de e-mail, produtos da loja e imagens",
+      "changes": [
+        { "type": "novo", "area": "Email marketing", "text": "Editor visual: o e-mail aparece montado na tela e os blocos são arrastados e soltos direto nele, para colocar ou mudar de lugar. Clique em um bloco para editar." },
+        { "type": "novo", "area": "Email marketing", "text": "Texto com formatação: negrito, itálico, sublinhado, riscado, cor, cor de fundo, tamanho da fonte, link e listas, editando direto no e-mail." },
+        { "type": "novo", "area": "Email marketing", "text": "Produtos da loja: busca por nome, código ou marca no catálogo da Magazord, com descrição, preço (de/por), imagem e link. Arraste o produto para o e-mail." },
+        { "type": "novo", "area": "Email marketing", "text": "Imagens: envio de imagens (PNG, JPG, GIF ou WEBP) para uma galeria e arraste para o e-mail; também dá para soltar uma imagem do computador direto no e-mail." },
+        { "type": "novo", "area": "Email marketing", "text": "Bloco de botão de WhatsApp, com o número da Captura e a mensagem que já vem escrita. O clique é contado no relatório." },
+        { "type": "novo", "area": "Email marketing", "text": "Logo próprio dos e-mails em Email marketing → Configurações (vazio usa o logo do sistema)." },
+        { "type": "melhoria", "area": "Email marketing", "text": "“Ver como fica” mostra o e-mail final, no computador e no celular. Imagem com largura ajustável, botão com posição e cor do texto, espaço com altura e produtos com 2 ou 3 por linha." },
+        { "type": "novo", "area": "Integrações", "text": "Magazord: opção Catálogo de produtos, atualizado a cada 12 horas ou pelo botão Atualizar. O usuário WebService precisa de leitura em /api/v2/site/frontend/produto." },
+        { "type": "correcao", "area": "Email marketing", "text": "Logo e imagens dos e-mails passam a carregar em programas de e-mail que abrem as imagens direto do servidor." },
+        { "type": "seguranca", "area": "Email marketing", "text": "O texto formatado passa por uma lista de permissões ao salvar (só formatação e links seguros). Imagens são conferidas pelo conteúdo do arquivo (SVG não é aceito), e uma imagem usada em campanha não pode ser apagada." }
+      ]
+    },
+    {
       "version": "0.6.1",
       "date": "2026-10-07",
       "title": "Correção do código de verificação em duas etapas",

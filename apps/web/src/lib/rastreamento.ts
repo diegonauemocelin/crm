@@ -117,7 +117,9 @@ export interface MagazordState {
   lastError: string | null
   customersPage: number
   customersBackfillDone: boolean
-  totals: { customers: number; leadsCreated: number; orders: number; carts: number }
+  productsSyncedAt?: string | null
+  productsError?: string | null
+  totals: { customers: number; leadsCreated: number; orders: number; carts: number; products?: number }
 }
 
 export interface MagazordConfig {
@@ -128,6 +130,10 @@ export interface MagazordConfig {
   importCustomers: boolean
   importOrders: boolean
   importCarts: boolean
+  importProducts: boolean
+  storeId: number
+  siteUrl: string
+  imageBaseUrl: string
   ownerId: string | null
   tags: string[]
   abandonHours: number

@@ -60,6 +60,10 @@ function MagazordEditor({ initial }: { initial: MagazordConfig }) {
         importCustomers: form.importCustomers,
         importOrders: form.importOrders,
         importCarts: form.importCarts,
+        importProducts: form.importProducts,
+        storeId: form.storeId || 1,
+        siteUrl: form.siteUrl.trim(),
+        imageBaseUrl: form.imageBaseUrl.trim(),
         ownerId: form.ownerId,
         tags: tagsText.split(',').map((t) => t.trim()).filter(Boolean),
         abandonHours: form.abandonHours,
@@ -81,7 +85,7 @@ function MagazordEditor({ initial }: { initial: MagazordConfig }) {
     }
   }
 
-  const toggle = (k: 'importCustomers' | 'importOrders' | 'importCarts', label: string, help: string) => (
+  const toggle = (k: 'importCustomers' | 'importOrders' | 'importCarts' | 'importProducts', label: string, help: string) => (
     <div className="flex items-start justify-between gap-4">
       <div>
         <Label htmlFor={`mz-${k}`}>{label}</Label>
@@ -131,6 +135,24 @@ function MagazordEditor({ initial }: { initial: MagazordConfig }) {
             {toggle('importCustomers', 'Clientes da loja viram leads', 'Na primeira vez traz todos os cadastros; depois, só os novos e alterados.')}
             {toggle('importOrders', 'Pedidos', 'Pedido pago torna o lead Cliente, registra a compra e tira as tags de carrinho. Traz os últimos 2 anos.')}
             {toggle('importCarts', 'Carrinhos e checkout', 'Carrinhos de clientes identificados, com produtos e link para retomar a compra.')}
+            {toggle('importProducts', 'Catálogo de produtos', 'Nome, preço, imagem e link dos produtos para montar e-mails. Atualiza a cada 12 horas.')}
+            {form.importProducts && (
+              <div className="grid gap-3 border-t pt-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="mz-store">Id da loja</Label>
+                  <Input id="mz-store" type="number" min={1} className="w-24" value={form.storeId} onChange={(e) => set('storeId', Number(e.target.value))} disabled={!canEdit} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="mz-site">Endereço do site (opcional)</Label>
+                  <Input id="mz-site" placeholder="https://www.usaparts.com.br" value={form.siteUrl} onChange={(e) => set('siteUrl', e.target.value)} disabled={!canEdit} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="mz-img">Endereço das imagens (opcional)</Label>
+                  <Input id="mz-img" placeholder="Descoberto pelos carrinhos" value={form.imageBaseUrl} onChange={(e) => set('imageBaseUrl', e.target.value)} disabled={!canEdit} />
+                </div>
+                <p className="text-xs text-muted-foreground sm:col-span-3">O usuário WebService precisa de permissão de leitura em /api/v2/site/frontend/produto. Os endereços só são usados quando a Magazord manda o link ou a imagem sem o domínio; em branco, o sistema descobre pelos carrinhos.</p>
+              </div>
+            )}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -232,6 +254,7 @@ function SyncStatus({ config }: { config: MagazordConfig }) {
             ['Leads novos criados', st.totals.leadsCreated],
             ['Pedidos lidos', st.totals.orders],
             ['Carrinhos lidos', st.totals.carts],
+            ['Produtos no catálogo', st.totals.products ?? 0],
           ].map(([k, v]) => (
             <div key={k as string} className="rounded-md border p-3">
               <dt className="text-xs text-muted-foreground">{k}</dt>
@@ -241,6 +264,12 @@ function SyncStatus({ config }: { config: MagazordConfig }) {
         </dl>
         {!st.customersBackfillDone && st.customersPage > 1 && (
           <p className="text-sm text-muted-foreground">Carga inicial de clientes em andamento: página {int.format(st.customersPage - 1)} concluída (100 clientes por página).</p>
+        )}
+        {st.productsError && (
+          <p role="alert" className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+            <XCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
+            Catálogo de produtos: {st.productsError}
+          </p>
         )}
         {st.lastError && (
           <p role="alert" className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">

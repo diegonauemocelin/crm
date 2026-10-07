@@ -140,3 +140,99 @@ export function cartMessage(template: string, v: { name: string | null; items: C
 
 export const DEFAULT_CART_MESSAGE =
   'Olá, {nome}! Aqui é da USA Parts. Vi que você deixou {produtos} no carrinho. Posso te ajudar a finalizar? Use o cupom {cupom} para ganhar um desconto: {link}'
+
+// ---------- Catálogo de produtos (para os e-mails) ----------
+
+/** Item de GET /v2/site/frontend/produto/{loja}. */
+export interface MzSiteProduct {
+  produto_id?: number | string | null
+  derivacao_id?: number | string | null
+  codigo?: string | null
+  nome?: string | null
+  titulo?: string | null
+  derivacao_nome?: string | null
+  marca?: string | null
+  valor?: number | string | null
+  valor_de?: number | string | null
+  qtde_estoque?: number | string | null
+  link?: string | null
+  ativo?: boolean | null
+  midias?: { path?: string | null; arquivo_nome?: string | null; ordem?: number | null }[] | null
+}
+
+export interface ProductData {
+  externalId: string
+  code: string
+  name: string
+  brand: string | null
+  price: number | null
+  priceFrom: number | null
+  stock: number | null
+  image: string | null
+  url: string | null
+  active: boolean
+}
+
+/** Endereço https (site da loja ou servidor das imagens), sem usuário/senha; sem barra no fim. */
+export function cleanHttpsBase(input: string | null | undefined): string | null {
+  const v = (input ?? '').trim()
+  if (!v) return null
+  try {
+    const u = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`)
+    if (u.protocol !== 'https:' || u.username || u.password) return null
+    return `${u.origin}${u.pathname.replace(/\/+$/, '')}`
+  } catch {
+    return null
+  }
+}
+
+/** Link absoluto: já completo, "//host/..." ou relativo ao endereço base. */
+export function absoluteUrl(value: string | null | undefined, base: string | null): string | null {
+  const v = (value ?? '').trim()
+  if (!v) return null
+  try {
+    if (/^https:\/\//i.test(v)) return new URL(v).toString().slice(0, 500)
+    if (v.startsWith('//')) return new URL(`https:${v}`).toString().slice(0, 500)
+    if (/^[a-z]+:/i.test(v) || !base) return null
+    return new URL(v.replace(/^\/+/, ''), `${base}/`).toString().slice(0, 500)
+  } catch {
+    return null
+  }
+}
+
+const money = (v: unknown) => {
+  if (v === null || v === undefined || v === '') return null
+  const n = typeof v === 'number' ? v : Number(String(v).replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'))
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null
+}
+
+export function productFrom(p: MzSiteProduct, o: { siteUrl: string | null; imageBase: string | null }): ProductData | null {
+  const externalId = String(p.derivacao_id ?? p.produto_id ?? p.codigo ?? '').trim()
+  const base = String(p.nome ?? p.titulo ?? '').trim()
+  if (!externalId || !base) return null
+  const variant = String(p.derivacao_nome ?? '').trim()
+  const name = variant && !base.toLowerCase().includes(variant.toLowerCase()) && !/^(único|unico|padrão|padrao)$/i.test(variant) ? `${base} - ${variant}` : base
+  const media = [...(p.midias ?? [])].filter((m) => m?.path || m?.arquivo_nome).sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0))[0]
+  let image: string | null = null
+  if (media) {
+    const path = String(media.path ?? '').trim()
+    const file = String(media.arquivo_nome ?? '').trim()
+    const full = file && !path.endsWith(file) ? `${path.replace(/\/?$/, '/')}${file}` : path || file
+    image = absoluteUrl(full, o.imageBase)
+  }
+  const price = money(p.valor)
+  const from = money(p.valor_de)
+  const stock = Number(p.qtde_estoque)
+  return {
+    externalId: externalId.slice(0, 60),
+    code: String(p.codigo ?? '').trim().slice(0, 60),
+    name: name.slice(0, 200),
+    brand: p.marca?.trim().slice(0, 80) || null,
+    price,
+    priceFrom: from && price && from > price ? from : null,
+    stock: Number.isFinite(stock) ? Math.trunc(stock) : null,
+    image,
+    url: absoluteUrl(p.link, o.siteUrl),
+    active: p.ativo !== false,
+  }
+}

@@ -15,6 +15,8 @@ export class FilesController {
   async public(@Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
     const { asset, content } = await this.files.read(id)
     if (!asset.isPublic) throw new NotFoundException()
+    // Logo e imagens de e-mail são exibidos por outros sites (webmail): libera o carregamento entre origens.
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
     this.send(res, asset.mime, content, 'public, max-age=86400')
   }
 

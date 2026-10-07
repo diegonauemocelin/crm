@@ -12,6 +12,6 @@ import { RastreamentoService } from './rastreamento.service'
   imports: [LeadsModule],
   controllers: [PublicTrackingController, TrackingController, MetaWebhookController, MetaAdminController, MagazordController, LojaController],
   providers: [RastreamentoService, MetaLeadAdsService, MagazordService, LojaService],
-  exports: [RastreamentoService],
+  exports: [RastreamentoService, MagazordService],
 })
 export class RastreamentoModule {}
