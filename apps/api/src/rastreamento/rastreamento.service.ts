@@ -6,7 +6,7 @@ import { Prisma } from '../generated/prisma/client'
 import { LeadConfigService } from '../leads/lead-config.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
-import { CLIENT_ID, classifyTouch, cleanUrl, describeTouch, domainAllowed, type Touch } from './origem'
+import { CLIENT_ID, classifyDevice, classifyTouch, cleanUrl, describeTouch, type Device, domainAllowed, type Touch } from './origem'
 import { buildScript } from './script'
 
 export interface TrackingSettings {
@@ -19,9 +19,27 @@ export interface TrackingSettings {
   requireConsent: boolean
   /** Páginas vistas mais antigas que isso são apagadas. */
   retentionDays: number
+  /** Textos que aparecem no navegador do app da loja (identificam visitas vindas do app). */
+  appMarkers: string[]
 }
 
-export const DEFAULT_TRACKING: TrackingSettings = { enabled: false, siteKey: '', domains: [], requireConsent: false, retentionDays: 395 }
+export const DEFAULT_TRACKING: TrackingSettings = { enabled: false, siteKey: '', domains: [], requireConsent: false, retentionDays: 395, appMarkers: [] }
+
+/** Eventos de compra aceitos do site. */
+export const SHOP_EVENTS: Record<string, string> = {
+  add_to_cart: 'Adicionou ao carrinho',
+  begin_checkout: 'Iniciou o checkout',
+  add_shipping_info: 'Informou a entrega no checkout',
+  add_payment_info: 'Escolheu o pagamento no checkout',
+  purchase: 'Comprou no site',
+}
+
+export interface ShopItem {
+  id: string
+  name: string
+  price: number | null
+  qty: number
+}
 
 interface Hit {
   k: string
@@ -32,6 +50,12 @@ interface Hit {
   t?: string | null
   r?: string | null
   l?: string | null
+  /** Dica de dispositivo publicada pela loja. */
+  h?: string | null
+  /** Evento de e-commerce (em vez de página vista). */
+  x?: string | null
+  val?: number | null
+  it?: ShopItem[]
 }
 
 const DAY = 86_400_000
@@ -52,7 +76,18 @@ function parseHit(raw: unknown): Hit | null {
   const s = str(p.s, 64)
   const u = str(p.u, 2000)
   if (!k || !v || !s || !u || !CLIENT_ID.test(v) || !CLIENT_ID.test(s)) return null
-  return { k, v, s, u, n: p.n === true, t: str(p.t, 300), r: str(p.r, 2000), l: str(p.l, 200) }
+  const x = str(p.x, 40)
+  if (x && !SHOP_EVENTS[x]) return null
+  const num = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) && n >= 0 && n < 1e8 ? Math.round(n * 100) / 100 : null)
+  const it = Array.isArray(p.it)
+    ? (p.it as Record<string, unknown>[]).slice(0, 30).map((i) => ({
+        id: String(i?.id ?? '').slice(0, 60),
+        name: String(i?.name ?? '').slice(0, 160),
+        price: num(i?.price),
+        qty: Math.max(1, Math.min(9999, Math.round(Number(i?.qty) || 1))),
+      }))
+    : []
+  return { k, v, s, u, n: p.n === true, t: str(p.t, 300), r: str(p.r, 2000), l: str(p.l, 200), h: str(p.h, 20), x, val: num(p.val), it }
 }
 
 function hostOf(url: string | null | undefined) {
@@ -149,7 +184,7 @@ export class RastreamentoService implements OnApplicationBootstrap, OnModuleDest
   // ---------- Coleta ----------
 
   /** Recebe uma página vista. Qualquer dado fora do esperado é descartado em silêncio (o site nunca vê erro). */
-  async collect(raw: unknown, origin: string | undefined) {
+  async collect(raw: unknown, origin: string | undefined, userAgent?: string) {
     const hit = parseHit(raw)
     if (!hit) return
     const site = await this.site(hit.k)
@@ -163,13 +198,15 @@ export class RastreamentoService implements OnApplicationBootstrap, OnModuleDest
 
     const tenantId = site.tenantId
     const now = new Date()
+    const device: Device = classifyDevice(userAgent, hit.h, site.s.appMarkers)
+    if (hit.x) return this.collectEvent(tenantId, hit, url, device, now)
     const touch: Touch | null = hit.n ? (classifyTouch(hit.u, hit.r, domains) ?? { source: 'direto', medium: 'direto', landing: url }) : null
 
     let visitor = await this.prisma.siteVisitor.findUnique({ where: { tenantId_clientId: { tenantId, clientId: hit.v } } })
     if (!visitor) {
       try {
         visitor = await this.prisma.siteVisitor.create({
-          data: { tenantId, clientId: hit.v, firstTouch: (touch ?? { source: 'direto', medium: 'direto', landing: url }) as Prisma.InputJsonValue },
+          data: { tenantId, clientId: hit.v, firstDevice: device, device, firstTouch: (touch ?? { source: 'direto', medium: 'direto', landing: url }) as Prisma.InputJsonValue },
         })
       } catch (err) {
         // Duas páginas do mesmo visitante chegando juntas: a outra requisição criou primeiro.
@@ -180,11 +217,11 @@ export class RastreamentoService implements OnApplicationBootstrap, OnModuleDest
 
     await this.prisma.$transaction([
       this.prisma.sitePageview.create({
-        data: { tenantId, visitorId: visitor.id, sessionId: hit.s, url, title: hit.t?.trim().slice(0, 200) || null, newSession: hit.n, touch: (touch ?? undefined) as Prisma.InputJsonValue | undefined, occurredAt: now },
+        data: { tenantId, visitorId: visitor.id, sessionId: hit.s, url, title: hit.t?.trim().slice(0, 200) || null, newSession: hit.n, touch: (touch ?? undefined) as Prisma.InputJsonValue | undefined, device, occurredAt: now },
       }),
       this.prisma.siteVisitor.update({
         where: { id: visitor.id },
-        data: { lastSeenAt: now, pageviews: { increment: 1 }, ...(hit.n ? { sessions: { increment: 1 }, lastTouch: touch as Prisma.InputJsonValue } : {}) },
+        data: { lastSeenAt: now, device, pageviews: { increment: 1 }, ...(hit.n ? { sessions: { increment: 1 }, lastTouch: touch as Prisma.InputJsonValue } : {}) },
       }),
     ])
 
@@ -194,6 +231,39 @@ export class RastreamentoService implements OnApplicationBootstrap, OnModuleDest
     } else if (visitor.leadId && hit.n) {
       await this.registerVisits(tenantId, visitor.leadId, [{ at: now, url, touch }])
     }
+  }
+
+  /**
+   * Evento de compra do site (carrinho, checkout, compra). Se o visitante já é um lead conhecido,
+   * entra na linha do tempo; iniciar o checkout também marca o lead para campanhas de recuperação.
+   */
+  private async collectEvent(tenantId: string, hit: Hit, url: string, device: Device, now: Date) {
+    const visitor = await this.prisma.siteVisitor.findUnique({ where: { tenantId_clientId: { tenantId, clientId: hit.v } } })
+    // Evento sem nenhuma página vista antes (script bloqueado, cookie apagado): não há a quem atribuir.
+    if (!visitor) return
+    const items = hit.it ?? []
+    const value = hit.val ?? (items.reduce((s, i) => s + (i.price ?? 0) * i.qty, 0) || null)
+    await this.prisma.siteEvent.create({
+      data: { tenantId, visitorId: visitor.id, name: hit.x!, value, items: items as unknown as Prisma.InputJsonValue, url, device, occurredAt: now },
+    })
+    if (!visitor.leadId || hit.x === 'add_shipping_info' || hit.x === 'add_payment_info') return
+    const money = value ? ` — ${value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : ''
+    const names = items.map((i) => i.name).filter(Boolean)
+    const title = `${SHOP_EVENTS[hit.x!]}${names.length ? `: ${names.slice(0, 3).join(', ')}${names.length > 3 ? ` e mais ${names.length - 3}` : ''}` : ''}${money}`
+    const type = hit.x === 'add_to_cart' ? 'carrinho' : hit.x === 'begin_checkout' ? 'checkout' : 'compra_site'
+    await this.prisma.leadEvent.create({ data: { tenantId, leadId: visitor.leadId, type, title: title.slice(0, 300), data: { itens: items, valor: value, pagina: url } as unknown as Prisma.InputJsonValue, occurredAt: now } })
+    if (hit.x === 'begin_checkout') await this.tagLead(visitor.leadId, ['checkout-iniciado'], [])
+    if (hit.x === 'purchase') await this.tagLead(visitor.leadId, [], ['checkout-iniciado', 'carrinho-abandonado'])
+    await this.prisma.lead.updateMany({ where: { id: visitor.leadId }, data: { lastActivityAt: now } })
+    await this.scoring.rescore(tenantId, [visitor.leadId])
+  }
+
+  /** Tags de campanha (checkout-iniciado, carrinho-abandonado): entram e saem conforme o comportamento. */
+  async tagLead(leadId: string, add: string[], remove: string[]) {
+    const lead = await this.prisma.lead.findUnique({ where: { id: leadId }, select: { tags: true } })
+    if (!lead) return
+    const next = [...new Set([...lead.tags, ...add])].filter((t) => !remove.includes(t))
+    if (next.length !== lead.tags.length || next.some((t, i) => t !== lead.tags[i])) await this.prisma.lead.update({ where: { id: leadId }, data: { tags: next } })
   }
 
   /**
@@ -215,6 +285,32 @@ export class RastreamentoService implements OnApplicationBootstrap, OnModuleDest
       leadId,
       sessions.map((s) => ({ at: s.occurredAt, url: s.url, touch: s.touch as Touch | null })),
     )
+    // Carrinho e checkout feitos antes de ser identificado também vão para a linha do tempo.
+    const shop = await this.prisma.siteEvent.findMany({
+      where: { visitorId, name: { in: ['add_to_cart', 'begin_checkout', 'purchase'] }, occurredAt: { gte: new Date(Date.now() - BACKFILL_DAYS * DAY) } },
+      orderBy: { occurredAt: 'asc' },
+      take: 50,
+    })
+    if (shop.length) {
+      await this.prisma.leadEvent.createMany({
+        data: shop.map((e) => {
+          const items = (e.items as unknown as ShopItem[] | null) ?? []
+          const names = items.map((i) => i.name).filter(Boolean)
+          const value = e.value === null ? null : Number(e.value)
+          return {
+            tenantId,
+            leadId,
+            type: e.name === 'add_to_cart' ? 'carrinho' : e.name === 'begin_checkout' ? 'checkout' : 'compra_site',
+            title: `${SHOP_EVENTS[e.name] ?? e.name}${names.length ? `: ${names.slice(0, 3).join(', ')}` : ''}${value ? ` — ${value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : ''}`.slice(0, 300),
+            data: { itens: items, valor: value, pagina: e.url } as unknown as Prisma.InputJsonValue,
+            occurredAt: e.occurredAt,
+          }
+        }),
+      })
+      const last = shop[shop.length - 1]!
+      if (last.name === 'begin_checkout') await this.tagLead(leadId, ['checkout-iniciado'], [])
+      await this.scoring.rescore(tenantId, [leadId])
+    }
     return true
   }
 
@@ -252,7 +348,15 @@ export class RastreamentoService implements OnApplicationBootstrap, OnModuleDest
           where: { visitorId: { in: visitors.map((v) => v.id) } },
           orderBy: { occurredAt: 'desc' },
           take: 100,
-          select: { id: true, url: true, title: true, occurredAt: true, newSession: true, touch: true },
+          select: { id: true, url: true, title: true, occurredAt: true, newSession: true, touch: true, device: true },
+        })
+      : []
+    const shop = visitors.length
+      ? await this.prisma.siteEvent.findMany({
+          where: { visitorId: { in: visitors.map((v) => v.id) } },
+          orderBy: { occurredAt: 'desc' },
+          take: 50,
+          select: { id: true, name: true, value: true, items: true, occurredAt: true, device: true },
         })
       : []
     const first = visitors.reduce<(typeof visitors)[number] | null>((a, b) => (!a || b.firstSeenAt < a.firstSeenAt ? b : a), null)
@@ -264,14 +368,17 @@ export class RastreamentoService implements OnApplicationBootstrap, OnModuleDest
       lastSeenAt: visitors[0]?.lastSeenAt ?? null,
       firstTouch: first?.firstTouch ?? null,
       lastTouch: visitors[0]?.lastTouch ?? null,
+      firstDevice: first?.firstDevice ?? null,
+      device: visitors[0]?.device ?? null,
       views,
+      shop: shop.map((e) => ({ ...e, value: e.value === null ? null : Number(e.value) })),
     }
   }
 
   /** Resumo para a tela de configuração: confirma a instalação e mostra de onde vêm as visitas. */
   async summary(tenantId: string, days: number) {
     const since = new Date(Date.now() - days * DAY)
-    const [perDay, sources, pages, totals, last] = await Promise.all([
+    const [perDay, sources, pages, totals, last, devices, leadDevices, funnel] = await Promise.all([
       this.prisma.$queryRaw<{ dia: string; visitas: bigint; paginas: bigint }[]>`
         SELECT to_char("occurredAt" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD') AS dia,
                count(*) FILTER (WHERE "newSession") AS visitas, count(*) AS paginas
@@ -289,6 +396,19 @@ export class RastreamentoService implements OnApplicationBootstrap, OnModuleDest
         SELECT count(*) AS visitantes, count("leadId") AS identificados
         FROM site_visitors WHERE "tenantId" = ${tenantId}::uuid AND "lastSeenAt" >= ${since}`,
       this.prisma.sitePageview.findFirst({ where: { tenantId }, orderBy: { occurredAt: 'desc' }, select: { occurredAt: true, url: true } }),
+      this.prisma.$queryRaw<{ dispositivo: string; visitas: bigint }[]>`
+        SELECT coalesce(device, 'desconhecido') AS dispositivo, count(*) AS visitas
+        FROM site_pageviews WHERE "tenantId" = ${tenantId}::uuid AND "occurredAt" >= ${since} AND "newSession"
+        GROUP BY 1 ORDER BY 2 DESC`,
+      // De qual dispositivo vieram os leads identificados no período (dispositivo da primeira visita).
+      this.prisma.$queryRaw<{ dispositivo: string; leads: bigint }[]>`
+        SELECT coalesce("firstDevice", 'desconhecido') AS dispositivo, count(DISTINCT "leadId") AS leads
+        FROM site_visitors WHERE "tenantId" = ${tenantId}::uuid AND "identifiedAt" >= ${since}
+        GROUP BY 1 ORDER BY 2 DESC`,
+      this.prisma.$queryRaw<{ evento: string; visitantes: bigint }[]>`
+        SELECT name AS evento, count(DISTINCT "visitorId") AS visitantes
+        FROM site_events WHERE "tenantId" = ${tenantId}::uuid AND "occurredAt" >= ${since}
+        GROUP BY 1`,
     ])
     const n = (v: bigint | number | null | undefined) => Number(v ?? 0)
     return {
@@ -299,6 +419,9 @@ export class RastreamentoService implements OnApplicationBootstrap, OnModuleDest
       perDay: perDay.map((r) => ({ day: r.dia, visits: n(r.visitas), pageviews: n(r.paginas) })),
       sources: sources.map((r) => ({ source: r.fonte, medium: r.meio, visits: n(r.visitas) })),
       pages: pages.map((r) => ({ url: r.pagina, views: n(r.vistas) })),
+      devices: devices.map((r) => ({ device: r.dispositivo, visits: n(r.visitas) })),
+      leadDevices: leadDevices.map((r) => ({ device: r.dispositivo, leads: n(r.leads) })),
+      shop: Object.fromEntries(funnel.map((r) => [r.evento, n(r.visitantes)])) as Record<string, number>,
     }
   }
 

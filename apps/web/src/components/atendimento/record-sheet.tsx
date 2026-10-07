@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangleIcon, Loader2Icon, MessageCircleIcon, Trash2Icon } from 'lucide-react'
+import { AlertTriangleIcon, ArrowRightLeftIcon, ClockIcon, Loader2Icon, MessageCircleIcon, Trash2Icon } from 'lucide-react'
 import { type FormEvent, type ReactNode, useState } from 'react'
+import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { MoneyInput } from '@/components/money-input'
 import { MultiSelect } from '@/components/multi-select'
@@ -26,6 +27,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { api, errorMessage } from '@/lib/api'
 import {
+  FOLLOW_LABEL,
+  FOLLOW_STATUSES,
+  followDeadline,
+  type FollowStatus,
   formatPhone,
   type Kind,
   KIND_INFO,
@@ -69,6 +74,8 @@ interface FormState {
   invoiceNumber: string
   saleValue: number | null
   notes: string
+  followStatus: FollowStatus | null
+  followNote: string
 }
 
 /** ISO → valor para <input type="datetime-local"> no horário de São Paulo. */
@@ -103,12 +110,15 @@ function initial(kind: Kind, r: ServiceRecord | null): FormState {
     invoiceNumber: r?.invoiceNumber ?? '',
     saleValue: r?.saleValue ?? null,
     notes: r?.notes ?? '',
+    followStatus: r?.followStatus ?? null,
+    followNote: r?.followNote ?? '',
   }
 }
 
 /** Mesmas regras do servidor, para avisar antes de salvar. */
-function validate(f: FormState): string | null {
+function validate(f: FormState, r: ServiceRecord | null): string | null {
   if (!f.name.trim()) return 'Informe o nome.'
+  if (r?.followStatus && f.followStatus !== r.followStatus && !f.followNote.trim()) return 'Escreva uma observação sobre o contato com o cliente.'
   if (f.saleStatus === 'NAO' && !f.lostReasonId) return 'Informe o motivo da venda perdida.'
   if (f.saleStatus === 'SIM' && !f.invoiceNumber.trim()) return 'Informe o número da nota fiscal.'
   if (f.saleStatus === 'SIM' && !(f.saleValue && f.saleValue > 0)) return 'Informe o valor da venda.'
@@ -116,8 +126,11 @@ function validate(f: FormState): string | null {
   return null
 }
 
-function toPayload(f: FormState) {
+function toPayload(f: FormState, r: ServiceRecord | null) {
+  // Situação do pós-venda só vai quando o registro tem acompanhamento (gerado da pré-venda ou criado no pós-venda).
+  const follow = r?.followStatus ? { followStatus: f.followStatus, followNote: f.followNote.trim() || null } : {}
   return {
+    ...follow,
     kind: f.kind,
     leadAt: fromLocalInput(f.leadAt),
     name: f.name.trim(),
@@ -189,16 +202,21 @@ export function RecordSheet({ kind, record, onClose }: { kind: Kind; record: Ser
   const o = options.data
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }))
+  const full = useQuery({ queryKey: ['atendimento', record?.id], queryFn: () => api.get<ServiceRecord>(`/atendimentos/${record!.id}`), enabled: !!record })
+  const linked = full.data
 
   const save = useMutation({
     mutationFn: () => {
-      const payload = toPayload(form)
+      const payload = toPayload(form, record)
       return record ? api.patch<ServiceRecord>(`/atendimentos/${record.id}`, payload) : api.post<ServiceRecord>('/atendimentos', payload)
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
       void qc.invalidateQueries({ queryKey: ['atendimentos'] })
       void qc.invalidateQueries({ queryKey: ['atendimento-alertas'] })
+      void qc.invalidateQueries({ queryKey: ['atendimento', saved.id] })
       toast.success(record ? 'Atendimento atualizado.' : 'Atendimento registrado.')
+      const wasClosed = !!record && (record.saleStatus === 'SIM' || record.saleStatus === 'NAO')
+      if (saved.kind === 'PRE_VENDAS' && (saved.saleStatus === 'SIM' || saved.saleStatus === 'NAO') && !wasClosed) toast.info('Pós-venda criado: o cliente já está na fila do pós-venda.')
       onClose()
     },
     onError: (err) => setError(errorMessage(err)),
@@ -216,7 +234,7 @@ export function RecordSheet({ kind, record, onClose }: { kind: Kind; record: Ser
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    const problem = validate(form)
+    const problem = validate(form, record)
     setError(problem)
     if (!problem) save.mutate()
   }
@@ -261,6 +279,63 @@ export function RecordSheet({ kind, record, onClose }: { kind: Kind; record: Ser
           )}
           <TabsContent value="dados">
             <form onSubmit={submit} className="space-y-6">
+              {linked?.parent && (
+                <p className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 p-2.5 text-sm">
+                  <ArrowRightLeftIcon className="size-4 text-muted-foreground" />
+                  Gerado da pré-venda de {formatDateTime(linked.parent.leadAt)}
+                  {linked.parent.sellerId ? ` (vendedor ${namesOf(o).get(linked.parent.sellerId) ?? ''})` : ''}.
+                  <Link to={`/pre-vendas?abrir=${linked.parent.id}`} className="font-medium underline-offset-4 hover:underline" onClick={onClose}>
+                    Abrir pré-venda
+                  </Link>
+                </p>
+              )}
+              {linked?.children?.map((c) => (
+                <p key={c.id} className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 p-2.5 text-sm">
+                  <ArrowRightLeftIcon className="size-4 text-muted-foreground" />
+                  Pós-venda: <strong>{c.followStatus ? FOLLOW_LABEL[c.followStatus] : '—'}</strong>
+                  {c.sellerId ? ` · ${namesOf(o).get(c.sellerId) ?? ''}` : ' · sem responsável'}
+                  {c.followNote ? ` · ${c.followNote}` : ''}
+                  <Link to={`/pos-vendas?abrir=${c.id}`} className="font-medium underline-offset-4 hover:underline" onClick={onClose}>
+                    Abrir pós-venda
+                  </Link>
+                </p>
+              ))}
+              {record?.followStatus && (
+                <section className="space-y-3 rounded-md border p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold">Acompanhamento do pós-venda</h3>
+                    <DeadlineText r={record} />
+                  </div>
+                  <Field label="Situação">
+                    <ToggleGroup
+                      type="single"
+                      variant="outline"
+                      className="flex-wrap"
+                      value={form.followStatus ?? 'PENDENTE'}
+                      disabled={!canEdit}
+                      onValueChange={(v) => v && setForm((f) => ({ ...f, followStatus: v as FollowStatus, followNote: v === record.followStatus ? (record.followNote ?? '') : '' }))}
+                      aria-label="Situação do pós-venda"
+                    >
+                      {FOLLOW_STATUSES.filter((st) => st !== 'PENDENTE' || record.followStatus === 'PENDENTE').map((st) => (
+                        <ToggleGroupItem key={st} value={st} className="px-3">
+                          {FOLLOW_LABEL[st]}
+                        </ToggleGroupItem>
+                      ))}
+                    </ToggleGroup>
+                  </Field>
+                  <Field label="Observação do contato" htmlFor="r-follow-note" required={form.followStatus !== record.followStatus}>
+                    <Textarea
+                      id="r-follow-note"
+                      rows={2}
+                      maxLength={2000}
+                      placeholder="Ex.: liguei, o cliente recebeu a peça e está satisfeito."
+                      value={form.followNote}
+                      onChange={(e) => set('followNote', e.target.value)}
+                      disabled={!canEdit}
+                    />
+                  </Field>
+                </section>
+              )}
               <fieldset disabled={!canEdit || save.isPending} className="space-y-6">
                 <section className="space-y-3">
                   <h3 className="text-sm font-semibold">Cliente</h3>
@@ -524,5 +599,17 @@ function History({ id, names }: { id: string; names: Map<string, string> }) {
         </li>
       ))}
     </ol>
+  )
+}
+
+function DeadlineText({ r }: { r: ServiceRecord }) {
+  const [now] = useState(() => Date.now())
+  const d = followDeadline(r, now)
+  if (!d) return null
+  const tone = d.tone === 'late' ? 'font-medium text-rose-700 dark:text-rose-400' : d.tone === 'ok' ? 'text-emerald-700 dark:text-emerald-400' : 'text-muted-foreground'
+  return (
+    <span className={`flex items-center gap-1 text-xs ${tone}`}>
+      <ClockIcon className="size-3.5" /> {d.text} (prazo {formatDateTime(r.dueAt)})
+    </span>
   )
 }

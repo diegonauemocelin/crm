@@ -157,6 +157,10 @@ export class CadastrosService implements OnApplicationBootstrap {
     if (unitId && !(await this.prisma.unit.count({ where: { id: unitId, tenantId } }))) throw new BadRequestException('Unidade inválida.')
   }
 
+  countSellers(tenantId: string, ids: string[]) {
+    return this.prisma.seller.count({ where: { tenantId, id: { in: [...new Set(ids)] } } })
+  }
+
   async listSellers(tenantId: string) {
     const [sellers, counts] = await Promise.all([
       this.prisma.seller.findMany({

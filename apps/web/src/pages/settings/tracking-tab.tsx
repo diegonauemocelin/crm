@@ -25,7 +25,7 @@ import { Switch } from '@/components/ui/switch'
 import { api, errorMessage } from '@/lib/api'
 import { int } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
-import { mediumLabel, pathOf, type TrackingConfig, type TrackingSummary } from '@/lib/rastreamento'
+import { DEVICE_LABEL, mediumLabel, pathOf, SHOP_LABEL, type TrackingConfig, type TrackingSummary } from '@/lib/rastreamento'
 import { FormError } from '../auth/auth-layout'
 
 export function TrackingTab() {
@@ -47,6 +47,7 @@ function TrackingEditor({ initial }: { initial: TrackingConfig }) {
   const qc = useQueryClient()
   const [form, setForm] = useState(initial)
   const [domainsText, setDomainsText] = useState(initial.domains.join('\n'))
+  const [appText, setAppText] = useState((initial.appMarkers ?? []).join(', '))
   const [busy, setBusy] = useState<'save' | 'key' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [confirmKey, setConfirmKey] = useState(false)
@@ -57,7 +58,8 @@ function TrackingEditor({ initial }: { initial: TrackingConfig }) {
     setError(null)
     try {
       const domains = domainsText.split(/[\n,;]/).map((d) => d.trim()).filter(Boolean)
-      const saved = await api.put<TrackingConfig>('/rastreamento/config', { enabled: form.enabled, domains, requireConsent: form.requireConsent, retentionDays: form.retentionDays })
+      const appMarkers = appText.split(',').map((m) => m.trim()).filter(Boolean)
+      const saved = await api.put<TrackingConfig>('/rastreamento/config', { enabled: form.enabled, domains, requireConsent: form.requireConsent, retentionDays: form.retentionDays, appMarkers })
       qc.setQueryData(['tracking-config'], saved)
       setForm(saved)
       setDomainsText(saved.domains.join('\n'))
@@ -122,6 +124,13 @@ function TrackingEditor({ initial }: { initial: TrackingConfig }) {
                 </p>
               </div>
               <Switch id="t-consent" checked={form.requireConsent} onCheckedChange={(v) => setForm({ ...form, requireConsent: v })} disabled={!canEdit} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="t-app">Identificação do app da loja (opcional)</Label>
+              <Input id="t-app" placeholder="ex.: UsaPartsApp" value={appText} onChange={(e) => setAppText(e.target.value)} disabled={!canEdit} />
+              <p className="text-xs text-muted-foreground">
+                O app é reconhecido automaticamente quando abre o site por dentro (WebView). Se o fornecedor do app informar um texto próprio no navegador dele, coloque aqui (separe por vírgula).
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="t-retention">Guardar páginas visitadas por (dias)</Label>
@@ -255,6 +264,26 @@ function TrackingSummaryView() {
           </ChartContainer>
         </CardContent>
       </Card>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <HBar
+          title="Visitas por dispositivo"
+          description="Celular, computador, tablet ou app da loja."
+          valueLabel="Visitas"
+          data={d.devices.map((x) => ({ name: DEVICE_LABEL[x.device] ?? x.device, value: x.visits }))}
+        />
+        <HBar
+          title="Leads por dispositivo"
+          description="Leads identificados no período, pelo dispositivo da primeira visita."
+          valueLabel="Leads"
+          data={d.leadDevices.map((x) => ({ name: DEVICE_LABEL[x.device] ?? x.device, value: x.leads }))}
+        />
+      </div>
+      <HBar
+        title="Funil da loja"
+        description="Visitantes que fizeram cada etapa no período (eventos publicados pela loja)."
+        valueLabel="Visitantes"
+        data={['add_to_cart', 'begin_checkout', 'add_payment_info', 'purchase'].map((k) => ({ name: SHOP_LABEL[k] ?? k, value: d.shop[k] ?? 0 }))}
+      />
       <div className="grid gap-4 lg:grid-cols-2">
         <HBar title="De onde vêm as visitas" description="Fonte e meio (UTMs, buscadores, redes sociais)." valueLabel="Visitas" data={d.sources.map((s) => ({ name: s.source === 'direto' ? 'Acesso direto' : `${s.source} · ${mediumLabel(s.medium)}`, value: s.visits }))} />
         <Card>

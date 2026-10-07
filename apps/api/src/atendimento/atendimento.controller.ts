@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res } from '@nestjs/common'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
@@ -11,6 +11,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -36,6 +37,7 @@ import { DEFAULT_ATENDIMENTO, ServiceRecordsService, type RecordFilters } from '
 const KINDS = ['PRE_VENDAS', 'POS_VENDAS'] as const
 const SALE = ['SIM', 'NAO', 'NEGOCIACAO'] as const
 const RETURN = ['SIM', 'NAO', 'PENDENTE'] as const
+const FOLLOW = ['PENDENTE', 'CONTATADO', 'ANALISANDO', 'RESOLVIDO', 'VOLTOU_AO_VENDEDOR'] as const
 
 class FiltersDto implements RecordFilters {
   @IsIn(KINDS) kind!: ServiceKind
@@ -55,6 +57,9 @@ class FiltersDto implements RecordFilters {
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) from?: string
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) to?: string
   @IsOptional() @IsIn(['true']) overdue?: 'true'
+  @IsOptional() @IsIn(FOLLOW) followStatus?: (typeof FOLLOW)[number]
+  @IsOptional() @IsIn(['true']) followOverdue?: 'true'
+  @IsOptional() @IsIn(['true']) postSaleReturned?: 'true'
 }
 
 class ListDto extends FiltersDto {
@@ -87,6 +92,8 @@ class RecordDto {
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(40) invoiceNumber?: string | null
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100_000_000) saleValue?: number | null
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(5000) notes?: string | null
+  @ApiPropertyOptional({ enum: FOLLOW }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsIn(FOLLOW) followStatus?: (typeof FOLLOW)[number] | null
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(2000) followNote?: string | null
 }
 
 class CreateRecordDto extends RecordDto {
@@ -138,6 +145,9 @@ class MergeDto {
 
 class AlertSettingsDto {
   @ApiProperty() @Type(() => Number) @IsInt() @Min(1) @Max(720) alertHours!: number
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(720) postSaleHours?: number
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() postSaleOwnerId?: string | null
+  @ApiPropertyOptional({ description: 'unidade -> vendedor responsável pelo pós-venda' }) @IsOptional() @IsObject() postSaleOwnerByUnit?: Record<string, string>
 }
 
 function csvCell(v: unknown) {
@@ -309,8 +319,21 @@ export class CadastrosController {
   @Put('alertas')
   @RequirePermission('cadastros', 'edit')
   async saveAlertSettings(@CurrentUser() user: AuthUser, @Body() dto: AlertSettingsDto, @ReqContext() ctx: RequestCtx) {
-    const saved = await this.settings.set(user.tenantId, 'atendimento', { alertHours: dto.alertHours })
-    await this.audit.byUser(user, ctx, 'settings.atendimento_updated', 'settings', 'atendimento', { alertHours: dto.alertHours })
+    const current = await this.settings.get(user.tenantId, 'atendimento', DEFAULT_ATENDIMENTO)
+    const byUnit = dto.postSaleOwnerByUnit ?? current.postSaleOwnerByUnit
+    const ids = [dto.postSaleOwnerId, ...Object.values(byUnit)].filter((x): x is string => !!x)
+    const uuid = /^[0-9a-f-]{36}$/
+    if (Object.entries(byUnit).some(([k, v]) => !uuid.test(k) || !uuid.test(v))) throw new BadRequestException('Responsável por unidade inválido.')
+    if (ids.length && (await this.cadastros.countSellers(user.tenantId, ids)) !== new Set(ids).size) throw new BadRequestException('Responsável pelo pós-venda inválido.')
+    const next = {
+      ...current,
+      alertHours: dto.alertHours,
+      postSaleHours: dto.postSaleHours ?? current.postSaleHours,
+      postSaleOwnerId: dto.postSaleOwnerId !== undefined ? dto.postSaleOwnerId : current.postSaleOwnerId,
+      postSaleOwnerByUnit: byUnit,
+    }
+    const saved = await this.settings.set(user.tenantId, 'atendimento', next)
+    await this.audit.byUser(user, ctx, 'settings.atendimento_updated', 'settings', 'atendimento', { ...next })
     return saved
   }
 

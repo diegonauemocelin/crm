@@ -45,6 +45,15 @@ enum SaleStatus {
   NEGOCIACAO
 }
 
+/// Acompanhamento do pós-venda gerado automaticamente a partir da pré-venda.
+enum FollowStatus {
+  PENDENTE
+  CONTATADO
+  ANALISANDO
+  RESOLVIDO
+  VOLTOU_AO_VENDEDOR
+}
+
 /// Listas configuráveis dos atendimentos. Itens são desativados, nunca apagados, para preservar o histórico.
 enum LookupType {
   ORIGEM
@@ -96,6 +105,8 @@ model Tenant {
   leadImports    LeadImport[]
   siteVisitors   SiteVisitor[]
   receipts       IntegrationReceipt[]
+  carts          EcommerceCart[]
+  orders         EcommerceOrder[]
 
   @@map("tenants")
 }
@@ -385,6 +396,13 @@ model ServiceRecord {
   invoiceNumber  String?
   saleValue      Decimal?      @db.Decimal(12, 2)
   notes          String?
+  /// Pós-venda: pré-venda que o originou (criado automaticamente ao fechar a pré-venda).
+  parentId       String?       @db.Uuid
+  /// Pós-venda: situação do acompanhamento, prazo para o primeiro contato e quando ele aconteceu.
+  followStatus   FollowStatus?
+  followNote     String?
+  dueAt          DateTime?
+  firstActionAt  DateTime?
   /// Chave de deduplicação da importação: reimportar a mesma planilha não duplica registros.
   externalKey    String?
   importBatch    String?
@@ -401,6 +419,8 @@ model ServiceRecord {
   origin       LookupItem?            @relation("RecordOrigin", fields: [originId], references: [id])
   customerType LookupItem?            @relation("RecordCustomerType", fields: [customerTypeId], references: [id])
   lostReason   LookupItem?            @relation("RecordLostReason", fields: [lostReasonId], references: [id])
+  parent       ServiceRecord?         @relation("PostSale", fields: [parentId], references: [id])
+  children     ServiceRecord[]        @relation("PostSale")
   history      ServiceRecordHistory[]
 
   @@unique([tenantId, externalKey])
@@ -409,6 +429,8 @@ model ServiceRecord {
   @@index([unitId])
   @@index([leadId])
   @@index([phone])
+  @@index([parentId])
+  @@index([tenantId, kind, followStatus, dueAt])
   @@map("service_records")
 }
 
@@ -470,6 +492,8 @@ model Lead {
   lastActivityAt DateTime?
 
   importBatch String?
+  /// Id do cliente na loja virtual (Magazord), quando ele tem cadastro lá.
+  ecommerceId String?
   /// Dados pessoais apagados a pedido do titular (LGPD): o registro fica só para estatística.
   anonymizedAt DateTime?
   createdById  String?   @db.Uuid
@@ -485,8 +509,11 @@ model Lead {
   consents LeadConsent[]
   records  ServiceRecord[]
   visitors SiteVisitor[]
+  carts    EcommerceCart[]
+  orders   EcommerceOrder[]
 
   @@unique([tenantId, email])
+  @@index([tenantId, ecommerceId])
   @@index([tenantId, phone])
   @@index([tenantId, stage])
   @@index([tenantId, scoreGrade])
@@ -509,10 +536,14 @@ model SiteVisitor {
   sessions     Int       @default(0)
   pageviews    Int       @default(0)
   identifiedAt DateTime?
+  /// Dispositivo da primeira e da última visita: celular, tablet, computador ou app (só a categoria, nunca o navegador).
+  firstDevice  String?
+  device       String?
 
   tenant Tenant         @relation(fields: [tenantId], references: [id])
   lead   Lead?          @relation(fields: [leadId], references: [id], onDelete: SetNull)
   views  SitePageview[]
+  events SiteEvent[]
 
   @@unique([tenantId, clientId])
   @@index([leadId])
@@ -531,6 +562,7 @@ model SitePageview {
   newSession Boolean  @default(false)
   /// Origem, só na primeira página de cada visita.
   touch      Json?
+  device     String?
   occurredAt DateTime @default(now())
 
   visitor SiteVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
@@ -538,6 +570,92 @@ model SitePageview {
   @@index([visitorId, occurredAt])
   @@index([tenantId, occurredAt])
   @@map("site_pageviews")
+}
+
+/// Eventos de compra da loja captados pelo script (adicionou ao carrinho, iniciou checkout, comprou).
+model SiteEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  visitorId  String   @db.Uuid
+  name       String
+  value      Decimal? @db.Decimal(12, 2)
+  /// Produtos do evento: código, nome, preço e quantidade.
+  items      Json?
+  url        String?
+  device     String?
+  occurredAt DateTime @default(now())
+
+  visitor SiteVisitor @relation(fields: [visitorId], references: [id], onDelete: Cascade)
+
+  @@index([visitorId, occurredAt])
+  @@index([tenantId, name, occurredAt])
+  @@map("site_events")
+}
+
+/// Carrinho da loja virtual (Magazord). Aberto, abandonado ou comprado; base para recuperar vendas.
+model EcommerceCart {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  externalId     String
+  hash           String?
+  /// 1 aberto, 2 abandonado, 3 comprado (códigos da Magazord).
+  status         Int
+  leadId         String?   @db.Uuid
+  customerId     String?
+  customerName   String?
+  customerEmail  String?
+  customerPhone  String?
+  startedAt      DateTime?
+  lastActivityAt DateTime?
+  /// Cliente chegou ao checkout (preencheu endereço de entrega).
+  checkoutStarted Boolean  @default(false)
+  checkoutUrl    String?
+  items          Json      @default("[]")
+  itemCount      Int       @default(0)
+  value          Decimal?  @db.Decimal(12, 2)
+  orderCode      String?
+  /// Acompanhamento da recuperação pela equipe.
+  contactStatus  String    @default("PENDENTE")
+  contactNote    String?
+  contactedAt    DateTime?
+  contactedBy    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  lead   Lead?  @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId, status, lastActivityAt])
+  @@index([leadId])
+  @@map("ecommerce_carts")
+}
+
+/// Pedido da loja virtual (Magazord). Alimenta a última venda do lead e, depois, a atribuição de receita.
+model EcommerceOrder {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  externalId  String
+  code        String
+  leadId      String?  @db.Uuid
+  customerId  String?
+  orderedAt   DateTime
+  total       Decimal  @db.Decimal(12, 2)
+  statusCode  Int
+  statusName  String
+  /// pago (aprovado, faturado, enviado, entregue), pendente ou cancelado.
+  statusGroup String
+  payment     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  lead   Lead?  @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, externalId])
+  @@index([leadId, orderedAt])
+  @@index([tenantId, orderedAt])
+  @@map("ecommerce_orders")
 }
 
 /// Avisos recebidos de integrações (Meta Lead Ads e, depois, Magazord). A chave única impede processar

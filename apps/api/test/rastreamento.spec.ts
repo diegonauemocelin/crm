@@ -76,7 +76,7 @@ describe('script do site', () => {
       crypto: { getRandomValues: (a: Uint8Array) => a.fill(7) },
       addEventListener: () => undefined,
     }
-    const ctx = { window: win, document: doc, location: { href: 'https://www.usaparts.com.br/?crm_lid=abc', hostname: 'www.usaparts.com.br', protocol: 'https:' }, history: { state: null, replaceState: () => undefined }, URL, setTimeout }
+    const ctx = { window: win, document: doc, location: { href: 'https://www.usaparts.com.br/?crm_lid=abc', hostname: 'www.usaparts.com.br', protocol: 'https:' }, history: { state: null, replaceState: () => undefined }, URL, setTimeout, setInterval: () => 0 }
     runInNewContext(code, ctx)
     expect(sent).toHaveLength(0)
     ;(win.usaCrm as (c: string, a?: unknown) => void)('consent', true)
@@ -91,7 +91,7 @@ describe('script do site', () => {
     const code = buildScript({ key: 'k'.repeat(24), endpoint: 'https://crm/x', requireConsent: false, cookieDomains: SITE })
     const sent: string[] = []
     const win: Record<string, unknown> = { navigator: { globalPrivacyControl: true, sendBeacon: (_u: string, b: string) => (sent.push(b), true) }, addEventListener: () => undefined }
-    runInNewContext(code, { window: win, document: { cookie: '', readyState: 'complete' }, location: { href: 'https://usaparts.com.br/', hostname: 'usaparts.com.br', protocol: 'https:' }, history: {}, URL, setTimeout })
+    runInNewContext(code, { window: win, document: { cookie: '', readyState: 'complete' }, location: { href: 'https://usaparts.com.br/', hostname: 'usaparts.com.br', protocol: 'https:' }, history: {}, URL, setTimeout, setInterval: () => 0 })
     expect(sent).toHaveLength(0)
   })
 })

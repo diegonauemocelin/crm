@@ -20,6 +20,7 @@ class TrackingDto {
   @ApiProperty() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(200, { each: true }) domains!: string[]
   @ApiProperty() @IsBoolean() requireConsent!: boolean
   @ApiProperty() @Type(() => Number) @IsInt() @Min(30) @Max(1095) retentionDays!: number
+  @ApiPropertyOptional() @IsOptional() @IsArray() @ArrayMaxSize(5) @IsString({ each: true }) @MaxLength(60, { each: true }) appMarkers?: string[]
 }
 
 class SummaryDto {
@@ -66,8 +67,8 @@ export class PublicTrackingController {
   @Post('coleta')
   @HttpCode(204)
   @Header('Cross-Origin-Resource-Policy', 'cross-origin')
-  async collect(@Req() req: Request, @Headers('origin') origin: string | undefined) {
-    await this.tracking.collect(req.body, origin)
+  async collect(@Req() req: Request, @Headers('origin') origin: string | undefined, @Headers('user-agent') ua: string | undefined) {
+    await this.tracking.collect(req.body, origin, ua?.slice(0, 500))
   }
 }
 
@@ -98,7 +99,8 @@ export class TrackingController {
     }
     if (dto.enabled && !domains.length) throw new BadRequestException('Informe ao menos um domínio do site para ligar o rastreamento.')
     const current = await this.tracking.config(user.tenantId)
-    const next = await this.tracking.save(user.tenantId, { ...current, ...dto, domains })
+    const appMarkers = (dto.appMarkers ?? current.appMarkers).map((m) => m.trim()).filter((m) => m.length >= 3)
+    const next = await this.tracking.save(user.tenantId, { ...current, ...dto, domains, appMarkers })
     await this.audit.byUser(user, ctx, 'settings.tracking_updated', 'settings', 'tracking', { ...dto, domains })
     return { ...next, snippet: this.tracking.snippet(next) }
   }

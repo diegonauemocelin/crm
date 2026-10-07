@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangleIcon, BellIcon } from 'lucide-react'
+import { AlertTriangleIcon, BellIcon, ClockAlertIcon, Undo2Icon } from 'lucide-react'
 import { Link } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -12,6 +12,9 @@ interface Alerts {
   alertHours: number
   total: number
   items: { kind: Kind; overdue: number }[]
+  postSaleHours: number
+  followOverdue: number
+  returnedToMe: number
 }
 
 /** Notificações internas: atendimentos repassados sem retorno do vendedor além do prazo configurado. */
@@ -42,10 +45,10 @@ export function AlertsBell({ className }: { className?: string }) {
       <PopoverContent align="end" className="w-80 p-0">
         <div className="border-b px-4 py-3">
           <p className="font-medium">Notificações</p>
-          {q.data && <p className="text-xs text-muted-foreground">Retorno do vendedor pendente há mais de {int.format(q.data.alertHours)} h</p>}
+          <p className="text-xs text-muted-foreground">Retorno do vendedor e pós-venda fora do prazo</p>
         </div>
         {total === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nenhum atendimento aguardando retorno além do prazo.</p>
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nenhum atendimento fora do prazo.</p>
         ) : (
           <ul className="divide-y">
             {q.data?.items
@@ -55,11 +58,31 @@ export function AlertsBell({ className }: { className?: string }) {
                   <Link to={`${KIND_INFO[i.kind].path}?overdue=true`} className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-muted">
                     <AlertTriangleIcon className="size-4 shrink-0 text-amber-600" />
                     <span className="flex-1">
-                      <strong>{int.format(i.overdue)}</strong> em {KIND_INFO[i.kind].title} sem retorno do vendedor
+                      <strong>{int.format(i.overdue)}</strong> em {KIND_INFO[i.kind].title} sem retorno do vendedor (há mais de {int.format(q.data.alertHours)} h)
                     </span>
                   </Link>
                 </li>
               ))}
+            {!!q.data?.followOverdue && (
+              <li>
+                <Link to="/pos-vendas?followOverdue=true" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-muted">
+                  <ClockAlertIcon className="size-4 shrink-0 text-rose-600" />
+                  <span className="flex-1">
+                    <strong>{int.format(q.data.followOverdue)}</strong> pós-venda(s) sem contato em {int.format(q.data.postSaleHours)} h
+                  </span>
+                </Link>
+              </li>
+            )}
+            {!!q.data?.returnedToMe && (
+              <li>
+                <Link to="/pre-vendas?postSaleReturned=true" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-muted">
+                  <Undo2Icon className="size-4 shrink-0 text-sky-600" />
+                  <span className="flex-1">
+                    <strong>{int.format(q.data.returnedToMe)}</strong> cliente(s) voltaram do pós-venda para você
+                  </span>
+                </Link>
+              </li>
+            )}
           </ul>
         )}
       </PopoverContent>

@@ -2,6 +2,24 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.4.0",
+      "date": "2026-10-07",
+      "title": "Loja virtual (Magazord), carrinhos abandonados, dispositivos e pós-venda automático",
+      "changes": [
+        { "type": "novo", "area": "Loja virtual", "text": "Integração com a Magazord: todo cliente cadastrado na loja vira lead com origem “Ecommerce” (na primeira vez traz todos os cadastros; depois, os novos a cada 10 minutos)." },
+        { "type": "novo", "area": "Loja virtual", "text": "Pedidos da loja: pedido pago torna o lead Cliente, registra a compra na linha do tempo e atualiza a última venda. Ficha do lead ganha a aba “Loja virtual” com pedidos, total comprado e carrinhos." },
+        { "type": "novo", "area": "Carrinhos e checkout", "text": "Nova tela com carrinhos abandonados e checkouts iniciados: cliente, produtos com foto, link que reabre o carrinho, botão de WhatsApp com mensagem pronta e cupom, registro do contato e exportação da lista." },
+        { "type": "novo", "area": "Carrinhos e checkout", "text": "Carrinho recuperado é marcado sozinho quando o cliente compra depois do contato. Leads recebem as tags “checkout-iniciado” e “carrinho-abandonado” (saem quando ele compra), prontas para campanhas." },
+        { "type": "novo", "area": "Rastreamento do site", "text": "O script do site passa a ler os eventos que a loja já publica (adicionou ao carrinho, iniciou o checkout, comprou): aparecem na linha do tempo do lead e no funil da loja." },
+        { "type": "novo", "area": "Rastreamento do site", "text": "Dispositivo de cada visita (celular, computador, tablet ou app da loja): gráficos de visitas e de leads por dispositivo no painel de rastreamento." },
+        { "type": "novo", "area": "Pós-Vendas", "text": "Pré-venda marcada como “Vendeu” ou “Perdida” gera o pós-venda automaticamente, com os dados do cliente, para o responsável configurado (padrão ou por unidade)." },
+        { "type": "novo", "area": "Pós-Vendas", "text": "Prazo de 24 horas (configurável) para o primeiro contato. Situações: aguardando contato, cliente contatado, analisando, resolvido e voltou ao vendedor, sempre com observação. Atrasados e devolvidos aparecem no sino de notificações." },
+        { "type": "novo", "area": "Lead scoring", "text": "Nova regra de interesse “Iniciou o checkout na loja” (5 pontos, ajustável)." },
+        { "type": "seguranca", "area": "Integrações", "text": "Token e senha da Magazord criptografados; o sistema só conversa com endereços *.magazord.com.br. CPF/CNPJ dos clientes não é lido nem guardado." },
+        { "type": "seguranca", "area": "LGPD", "text": "Eliminação dos dados do lead apaga também os carrinhos; a exportação dos dados do titular inclui pedidos e carrinhos." }
+      ]
+    },
+    {
       "version": "0.3.2",
       "date": "2026-10-04",
       "title": "Rastreamento do site e Meta Lead Ads",

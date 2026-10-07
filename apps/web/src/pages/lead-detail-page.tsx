@@ -5,6 +5,7 @@ import {
   DownloadIcon,
   GlobeIcon,
   HeadsetIcon,
+  ShoppingCartIcon,
   Loader2Icon,
   MailIcon,
   MailXIcon,
@@ -39,7 +40,7 @@ import { api, errorMessage } from '@/lib/api'
 import { brl, formatPhone, KIND_INFO, type Kind, maskPhone, namesOf, SALE_LABEL, type SaleStatus, UF_LIST, UF_NAMES, useOptions, whatsappLink } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import { type CustomField, type Lead, type LeadStage, STAGE_LABEL, STAGES, useCustomFields } from '@/lib/leads'
-import { type LeadSite, pathOf, touchLabel } from '@/lib/rastreamento'
+import { CONTACT_LABEL, DEVICE_LABEL, type LeadShop, type LeadSite, pathOf, SHOP_LABEL, touchLabel } from '@/lib/rastreamento'
 import { FormError } from './auth/auth-layout'
 import { GradeBadge } from './leads-page'
 
@@ -257,6 +258,7 @@ function LeadView({ lead }: { lead: Lead | null }) {
             <TabsTrigger value="dados">Dados</TabsTrigger>
             <TabsTrigger value="linha">Linha do tempo</TabsTrigger>
             <TabsTrigger value="site">Site</TabsTrigger>
+            <TabsTrigger value="loja">Loja virtual</TabsTrigger>
             <TabsTrigger value="privacidade">Privacidade (LGPD)</TabsTrigger>
           </TabsList>
         )}
@@ -360,6 +362,9 @@ function LeadView({ lead }: { lead: Lead | null }) {
             </TabsContent>
             <TabsContent value="site">
               <SiteVisits lead={lead} />
+            </TabsContent>
+            <TabsContent value="loja">
+              <ShopTab lead={lead} />
             </TabsContent>
             <TabsContent value="privacidade">
               <Privacy lead={lead} />
@@ -487,7 +492,8 @@ function SiteVisits({ lead }: { lead: Lead }) {
     ['Primeira visita', `${formatDateTime(s.firstSeenAt)} · ${touchLabel(s.firstTouch)}`],
     ['Última visita', `${formatDateTime(s.lastSeenAt)} · ${touchLabel(s.lastTouch)}`],
     ['Visitas / páginas vistas', `${s.sessions} / ${s.pageviews}`],
-    ['Dispositivos', String(s.devices)],
+    ['Dispositivo', [s.firstDevice, s.device].filter((x, i, a) => x && a.indexOf(x) === i).map((x) => DEVICE_LABEL[x!] ?? x).join(' → ') || '—'],
+    ['Navegadores diferentes', String(s.devices)],
   ]
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -508,6 +514,7 @@ function SiteVisits({ lead }: { lead: Lead }) {
                   <p className="text-xs text-muted-foreground">
                     {formatDateTime(v.occurredAt)}
                     {v.newSession ? ` · entrada por ${touchLabel(v.touch)}` : ''}
+                    {v.newSession && v.device ? ` · ${DEVICE_LABEL[v.device] ?? v.device}` : ''}
                     {v.title ? ` · ${pathOf(v.url)}` : ''}
                   </p>
                 </div>
@@ -529,6 +536,109 @@ function SiteVisits({ lead }: { lead: Lead }) {
               </div>
             ))}
           </dl>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function ShopTab({ lead }: { lead: Lead }) {
+  const q = useQuery({ queryKey: ['lead-shop', lead.id], queryFn: () => api.get<LeadShop>(`/loja/leads/${lead.id}`) })
+  const site = useQuery({ queryKey: ['lead-site', lead.id], queryFn: () => api.get<LeadSite>(`/rastreamento/leads/${lead.id}`) })
+  if (q.isLoading) return <TableSkeleton rows={4} />
+  if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />
+  const d = q.data!
+  const shop = site.data?.shop ?? []
+  if (!d.orders.length && !d.carts.length && !shop.length) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-sm text-muted-foreground">Nenhum pedido, carrinho ou atividade de compra na loja virtual ligados a este lead.</CardContent>
+      </Card>
+    )
+  }
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Pedidos</CardTitle>
+            <CardDescription>
+              {d.paidOrders} pedido(s) pago(s) · total {brl.format(d.totalSpent)}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {d.orders.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Sem pedidos na loja.</p>
+            ) : (
+              <ul className="divide-y text-sm">
+                {d.orders.map((o) => (
+                  <li key={o.id} className="flex items-center justify-between gap-3 py-2">
+                    <div>
+                      <p className="font-medium">Pedido {o.code}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDateTime(o.orderedAt)}
+                        {o.payment ? ` · ${o.payment}` : ''}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="tabular-nums">{brl.format(o.total)}</p>
+                      <Badge variant={o.statusGroup === 'cancelado' ? 'destructive' : 'outline'}>{o.statusName}</Badge>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+        {d.carts.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Carrinhos</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-3 text-sm">
+                {d.carts.map((c) => (
+                  <li key={c.id} className="flex gap-3">
+                    <ShoppingCartIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <p className="line-clamp-2">{c.items.map((i) => `${i.qty}x ${i.name}`).join(', ')}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDateTime(c.lastActivityAt)} · {c.status === 3 ? 'comprado' : c.status === 2 ? 'abandonado' : 'aberto'}
+                        {c.checkoutStarted ? ' · checkout iniciado' : ''} · {CONTACT_LABEL[c.contactStatus]}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+      <Card className="h-fit">
+        <CardHeader>
+          <CardTitle className="text-base">Atividade de compra no site</CardTitle>
+          <CardDescription>Carrinho, checkout e compras vistos pelo rastreamento.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {shop.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nada registrado.</p>
+          ) : (
+            <ol className="space-y-3 text-sm">
+              {shop.map((e) => (
+                <li key={e.id}>
+                  <p>
+                    {SHOP_LABEL[e.name] ?? e.name}
+                    {e.value ? ` · ${brl.format(e.value)}` : ''}
+                  </p>
+                  {!!e.items?.length && <p className="line-clamp-2 text-xs text-muted-foreground">{e.items.map((i) => i.name).join(', ')}</p>}
+                  <p className="text-xs text-muted-foreground">
+                    {formatDateTime(e.occurredAt)}
+                    {e.device ? ` · ${DEVICE_LABEL[e.device] ?? e.device}` : ''}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          )}
         </CardContent>
       </Card>
     </div>

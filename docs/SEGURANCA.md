@@ -82,6 +82,15 @@ Referências: OWASP Top 10 (2021/2025) e OWASP ASVS nível 2. Esta página regis
 - Prazo de guarda configurável (padrão 395 dias), com limpeza diária. Eliminação do lead apaga também a navegação; a portabilidade a inclui.
 - Meta Lead Ads: desligado por padrão; URL do webhook com chave aleatória por empresa; verificação por token; cada aviso validado pela assinatura `X-Hub-Signature-256` (HMAC do corpo bruto com o App Secret); reenvios ignorados por chave única; chamadas só para `graph.facebook.com` (sem SSRF). App Secret e token da página criptografados (AES-256-GCM).
 
+## Loja virtual (Magazord) e eventos de compra (v0.4.0)
+
+- Integração só de leitura (GET) com usuário WebService próprio. Token e senha criptografados (AES-256-GCM), nunca devolvidos pela API.
+- Endereço restrito a `https://*.magazord.com.br` (sem porta, usuário ou outro esquema): o painel não pode ser usado para o servidor chamar outro destino (SSRF).
+- CPF/CNPJ não é lido nem guardado. Do cliente, só nome, e-mail, telefone, cidade/UF e empresa (pessoa jurídica).
+- Links e imagens de produtos vindos da loja só são aceitos com `https://`. A CSP do painel permite imagens `https:` (fotos dos produtos no CDN da loja); scripts continuam restritos ao próprio domínio.
+- Carrinhos seguem o escopo de acesso da base de leads (vendedor só vê os carrinhos dos próprios leads). Eliminação do lead apaga os carrinhos e desliga os pedidos da pessoa.
+- Eventos de compra do site (carrinho, checkout, compra) chegam pelo mesmo canal do rastreamento: lista fechada de eventos, até 30 produtos por evento, valores numéricos validados; o dispositivo é guardado só como categoria (celular, computador, tablet, app).
+
 ## Pendências planejadas (Fase 8 e anteriores)
 
 - fail2ban lendo o log do Nginx do CRM (exige instalar/configurar no host: será proposto após o inventário).

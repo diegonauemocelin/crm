@@ -4,12 +4,14 @@ import {
   ArrowLeftRightIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ClockAlertIcon,
   DownloadIcon,
   FilterXIcon,
   InboxIcon,
   Loader2Icon,
   PlusIcon,
   SearchIcon,
+  Undo2Icon,
   UploadIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -27,6 +29,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { api, errorMessage } from '@/lib/api'
 import {
   brl,
+  FOLLOW_LABEL,
+  FOLLOW_STATUSES,
+  followDeadline,
   formatDay,
   formatPhone,
   int,
@@ -48,7 +53,7 @@ import { ImportDialog } from './import-dialog'
 import { RecordSheet } from './record-sheet'
 
 const ALL = '__all__'
-export const FILTER_KEYS = ['search', 'from', 'to', 'unitId', 'sellerId', 'originId', 'customerTypeId', 'state', 'region', 'brandId', 'partTypeId', 'forwarded', 'returnStatus', 'saleStatus', 'lostReasonId', 'overdue'] as const
+export const FILTER_KEYS = ['search', 'from', 'to', 'unitId', 'sellerId', 'originId', 'customerTypeId', 'state', 'region', 'brandId', 'partTypeId', 'forwarded', 'returnStatus', 'saleStatus', 'lostReasonId', 'overdue', 'followStatus', 'followOverdue', 'postSaleReturned'] as const
 
 interface Page {
   total: number
@@ -56,6 +61,12 @@ interface Page {
   pageSize: number
   alertHours: number
   items: ServiceRecord[]
+}
+
+const DEADLINE_TONE = {
+  ok: 'text-emerald-700 dark:text-emerald-400',
+  pending: 'text-muted-foreground',
+  late: 'font-medium text-rose-700 dark:text-rose-400',
 }
 
 const SALE_BADGE: Record<string, string> = {
@@ -96,6 +107,24 @@ export function RecordsList({ kind }: { kind: Kind }) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [importing, setImporting] = useState(false)
   const page = Number(params.get('page') ?? '1')
+  const openId = params.get('abrir')
+
+  // Link direto para um atendimento (ex.: da pré-venda para o pós-venda gerado).
+  useEffect(() => {
+    if (!openId) return
+    let cancelled = false
+    api
+      .get<ServiceRecord>(`/atendimentos/${openId}`)
+      .then((r) => !cancelled && setOpen(r))
+      .catch((err) => toast.error(errorMessage(err)))
+    const next = new URLSearchParams(params)
+    next.delete('abrir')
+    setParams(next, { replace: true })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openId])
 
   const setFilter = (key: string, value: string | null) => {
     const next = new URLSearchParams(params)
@@ -227,6 +256,31 @@ export function RecordsList({ kind }: { kind: Kind }) {
         >
           <AlertTriangleIcon /> Sem retorno
         </Button>
+        {kind === 'POS_VENDAS' && (
+          <>
+            <FilterSelect label="Pós-venda" value={params.get('followStatus')} onChange={(v) => setFilter('followStatus', v)} items={FOLLOW_STATUSES.map((s) => ({ id: s, name: FOLLOW_LABEL[s] }))} />
+            <Button
+              size="sm"
+              variant={params.get('followOverdue') ? 'default' : 'outline'}
+              className="h-8"
+              onClick={() => setFilter('followOverdue', params.get('followOverdue') ? null : 'true')}
+              aria-pressed={!!params.get('followOverdue')}
+            >
+              <ClockAlertIcon /> Fora do prazo
+            </Button>
+          </>
+        )}
+        {kind === 'PRE_VENDAS' && (
+          <Button
+            size="sm"
+            variant={params.get('postSaleReturned') ? 'default' : 'outline'}
+            className="h-8"
+            onClick={() => setFilter('postSaleReturned', params.get('postSaleReturned') ? null : 'true')}
+            aria-pressed={!!params.get('postSaleReturned')}
+          >
+            <Undo2Icon /> Voltou do pós-venda
+          </Button>
+        )}
         {activeFilters > 0 && (
           <Button
             size="sm"
@@ -292,6 +346,7 @@ export function RecordsList({ kind }: { kind: Kind }) {
                   <TableHead className="w-20 text-center">Repassou</TableHead>
                   <TableHead className="w-28">Retorno</TableHead>
                   <TableHead className="w-32">Venda</TableHead>
+                  {kind === 'POS_VENDAS' && <TableHead className="w-40">Pós-venda</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -392,6 +447,18 @@ export function RecordsList({ kind }: { kind: Kind }) {
                       {r.saleStatus === 'SIM' && r.saleValue !== null && <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">{brl.format(r.saleValue)}</p>}
                       {r.saleStatus === 'NAO' && r.lostReasonId && <p className="mt-0.5 truncate text-xs text-muted-foreground">{names.get(r.lostReasonId)}</p>}
                     </TableCell>
+                    {kind === 'POS_VENDAS' && (
+                      <TableCell>
+                        {r.followStatus ? (
+                          <>
+                            <p className="text-sm">{FOLLOW_LABEL[r.followStatus]}</p>
+                            <FollowDeadline r={r} />
+                          </>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -423,4 +490,16 @@ export function RecordsList({ kind }: { kind: Kind }) {
     next.set('page', String(p))
     setParams(next, { replace: true })
   }
+}
+
+/** Prazo do primeiro contato do pós-venda, recalculado a cada minuto. */
+function FollowDeadline({ r }: { r: ServiceRecord }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(t)
+  }, [])
+  const d = followDeadline(r, now)
+  if (!d) return null
+  return <p className={cn('text-xs', DEADLINE_TONE[d.tone])}>{d.text}</p>
 }

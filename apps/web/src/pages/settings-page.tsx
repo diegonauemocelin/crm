@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2Icon, ImageIcon, Loader2Icon, PlugZapIcon, SendIcon, Trash2Icon, UploadIcon, XCircleIcon } from 'lucide-react'
 import { type FormEvent, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { LayoutPicker } from '@/components/layout-picker'
 import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -17,20 +18,30 @@ import { applyBranding } from '@/lib/branding'
 import type { Branding, LayoutMode } from '@/lib/types'
 import { FormError } from './auth/auth-layout'
 import { MetaTab } from './settings/meta-tab'
+import { MagazordTab } from './settings/magazord-tab'
 import { TrackingTab } from './settings/tracking-tab'
 
+const TABS = ['marca', 'aparencia', 'email', 'rastreamento', 'loja', 'meta']
+
 export function SettingsPage() {
+  // Aba inicial pelo endereço (?aba=loja), usada pelos atalhos de outras telas.
+  const [params] = useSearchParams()
+  const initial = TABS.includes(params.get('aba') ?? '') ? params.get('aba')! : 'marca'
   return (
     <RequirePermission module="configuracoes">
       <PageHeader title="Configurações" description="Identidade visual, aparência, servidor de e-mail, rastreamento do site e integrações." />
-      <Tabs defaultValue="marca">
+      <Tabs defaultValue={initial}>
         <TabsList className="mb-4 h-auto flex-wrap">
           <TabsTrigger value="marca">Identidade visual</TabsTrigger>
           <TabsTrigger value="aparencia">Aparência</TabsTrigger>
           <TabsTrigger value="email">E-mail (SMTP)</TabsTrigger>
           <TabsTrigger value="rastreamento">Rastreamento do site</TabsTrigger>
+          <TabsTrigger value="loja">Loja virtual (Magazord)</TabsTrigger>
           <TabsTrigger value="meta">Meta Lead Ads</TabsTrigger>
         </TabsList>
+        <TabsContent value="loja">
+          <MagazordTab />
+        </TabsContent>
         <TabsContent value="rastreamento">
           <TrackingTab />
         </TabsContent>

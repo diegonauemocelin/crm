@@ -47,6 +47,7 @@ export const DEFAULT_RULES: (Omit<ScoreRuleShape, 'active'> & { name: string })[
   { dimension: 'INTERESSE', name: 'Atendimento de Pré/Pós-Vendas', field: 'atendimento', operator: 'each', value: null, points: 15 },
   { dimension: 'INTERESSE', name: 'Comprou', field: 'venda', operator: 'each', value: null, points: 25 },
   { dimension: 'INTERESSE', name: 'Visitou o site', field: 'visita', operator: 'each', value: null, points: 2 },
+  { dimension: 'INTERESSE', name: 'Iniciou o checkout na loja', field: 'checkout', operator: 'each', value: null, points: 5 },
   { dimension: 'INTERESSE', name: 'Abriu e-mail', field: 'email_aberto', operator: 'each', value: null, points: 2 },
   { dimension: 'INTERESSE', name: 'Clicou em e-mail', field: 'email_clique', operator: 'each', value: null, points: 5 },
 ]

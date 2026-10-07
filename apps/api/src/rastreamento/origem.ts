@@ -157,5 +157,31 @@ export function describeTouch(t: Touch | null | undefined) {
   return `${t.source} (${medium})${t.campaign ? ` · campanha ${t.campaign}` : ''}`
 }
 
+export type Device = 'celular' | 'tablet' | 'computador' | 'app'
+
+/** Navegadores embutidos em redes sociais: são celular, não o app da loja. */
+const SOCIAL_INAPP = /FBAN|FBAV|FB_IAB|Instagram|Line\/|musical_ly|TikTok|BytedanceWebview|Twitter|LinkedInApp|Pinterest|Snapchat|WhatsApp|GSA\//i
+
+/**
+ * Categoria do dispositivo a partir do navegador (nada além da categoria é guardado).
+ * App da loja: marcador configurado no painel, dica da própria loja (dataLayer "device": "app")
+ * ou navegador embutido (WebView) que não seja de rede social.
+ */
+export function classifyDevice(ua: string | null | undefined, hint: string | null | undefined, appMarkers: string[] = []): Device {
+  const u = ua ?? ''
+  if (hint && /\bapp\b|aplicativo/i.test(hint)) return 'app'
+  if (appMarkers.some((m) => m.trim() && u.toLowerCase().includes(m.trim().toLowerCase()))) return 'app'
+  const social = SOCIAL_INAPP.test(u)
+  const androidWebView = /Android/.test(u) && /; wv\)/.test(u)
+  const iosWebView = /(iPhone|iPad|iPod)/.test(u) && /AppleWebKit/.test(u) && !/Safari\//.test(u) && !/CriOS|FxiOS|EdgiOS/.test(u)
+  if (!social && (androidWebView || iosWebView)) return 'app'
+  if (/iPad|Tablet/i.test(u) || (/Android/.test(u) && !/Mobile/.test(u))) return 'tablet'
+  if (/Mobi|iPhone|iPod|Android|Windows Phone/i.test(u)) return 'celular'
+  if (hint && /mobile|celular/i.test(hint)) return 'celular'
+  return 'computador'
+}
+
+export const DEVICE_LABEL: Record<Device, string> = { celular: 'Celular', tablet: 'Tablet', computador: 'Computador', app: 'App' }
+
 /** Identificadores gerados pelo navegador: aleatórios, curtos, sem dado pessoal. */
 export const CLIENT_ID = /^[A-Za-z0-9_-]{16,64}$/

@@ -13,6 +13,7 @@ import {
   PackageIcon,
   SettingsIcon,
   ShieldCheckIcon,
+  ShoppingCartIcon,
   UsersIcon,
   UsersRoundIcon,
   type LucideIcon,
@@ -51,7 +52,10 @@ export const NAVIGATION: NavGroup[] = [
   },
   {
     title: 'CRM',
-    items: [{ title: 'Base de leads', to: '/leads', icon: UsersRoundIcon, module: 'leads' }],
+    items: [
+      { title: 'Base de leads', to: '/leads', icon: UsersRoundIcon, module: 'leads' },
+      { title: 'Carrinhos e checkout', to: '/carrinhos', icon: ShoppingCartIcon, module: 'leads' },
+    ],
   },
   {
     title: 'Marketing',

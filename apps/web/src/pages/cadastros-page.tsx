@@ -610,25 +610,130 @@ function UnitDialog({ unit, onClose }: { unit: UnitRow | null; onClose: () => vo
   )
 }
 
+interface AlertConfig {
+  alertHours: number
+  postSaleHours: number
+  postSaleOwnerId: string | null
+  postSaleOwnerByUnit: Record<string, string>
+}
+
 function AlertsTab() {
+  const q = useQuery({ queryKey: ['cadastros', 'alertas'], queryFn: () => api.get<AlertConfig>('/cadastros/alertas') })
+  if (q.isLoading || !q.data) return <TableSkeleton rows={2} />
+  return (
+    <div className="grid gap-4 xl:grid-cols-2">
+      <ReturnAlertCard config={q.data} />
+      <PostSaleCard config={q.data} />
+    </div>
+  )
+}
+
+function useSaveAlerts(message: string) {
   const qc = useQueryClient()
-  const { can } = useAuth()
-  const q = useQuery({ queryKey: ['cadastros', 'alertas'], queryFn: () => api.get<{ alertHours: number }>('/cadastros/alertas') })
-  const [hours, setHours] = useState<number | null>(null)
-  const save = useMutation({
-    mutationFn: (h: number) => api.put('/cadastros/alertas', { alertHours: h }),
+  return useMutation({
+    mutationFn: (c: AlertConfig) => api.put<AlertConfig>('/cadastros/alertas', { ...c }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['cadastros', 'alertas'] })
       void qc.invalidateQueries({ queryKey: ['atendimento-alertas'] })
       void qc.invalidateQueries({ queryKey: ['atendimentos'] })
-      toast.success('Prazo do alerta salvo.')
+      toast.success(message)
     },
     onError: (err) => toast.error(errorMessage(err)),
   })
-  if (q.isLoading || !q.data) return <TableSkeleton rows={2} />
-  const value = hours ?? q.data.alertHours
+}
+
+const NO_OWNER = '__none__'
+
+/** Pré-venda com resultado gera o pós-venda: aqui se define quem recebe e o prazo do primeiro contato. */
+function PostSaleCard({ config }: { config: AlertConfig }) {
+  const { can } = useAuth()
+  const options = useOptions()
+  const canEdit = can('cadastros', 'edit')
+  const [hours, setHours] = useState(config.postSaleHours)
+  const [owner, setOwner] = useState<string | null>(config.postSaleOwnerId)
+  const [byUnit, setByUnit] = useState<Record<string, string>>(config.postSaleOwnerByUnit)
+  const save = useSaveAlerts('Pós-venda salvo.')
+  const sellers = (options.data?.sellers ?? []).filter((s) => s.active)
+  const units = (options.data?.units ?? []).filter((u) => u.active)
+  const pick = (id: string, value: string | null, onChange: (v: string | null) => void, empty: string) => (
+    <Select value={value ?? NO_OWNER} onValueChange={(v) => onChange(v === NO_OWNER ? null : v)} disabled={!canEdit}>
+      <SelectTrigger id={id} className="w-full">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={NO_OWNER}>{empty}</SelectItem>
+        {sellers.map((s) => (
+          <SelectItem key={s.id} value={s.id}>
+            {s.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
   return (
-    <Card className="max-w-lg">
+    <Card>
+      <CardHeader>
+        <CardTitle>Pós-venda automático</CardTitle>
+        <CardDescription>
+          Quando a pré-venda é marcada como “Vendeu” ou “Perdida”, o cliente entra no Pós-Vendas para outra pessoa acompanhar. Ela precisa registrar o contato (com observação) dentro do prazo.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="ps-hours">Prazo para o primeiro contato (horas)</Label>
+          <Input id="ps-hours" type="number" min={1} max={720} className="w-28" value={hours} onChange={(e) => setHours(Number(e.target.value))} disabled={!canEdit} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="ps-owner">Responsável padrão</Label>
+          {pick('ps-owner', owner, setOwner, 'Sem responsável (fila do pós-venda)')}
+        </div>
+        {units.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Responsável por unidade (opcional)</p>
+            <p className="text-xs text-muted-foreground">Vale para a unidade da pré-venda. Sem responsável na unidade, usa o padrão.</p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {units.map((u) => (
+                <div key={u.id} className="space-y-1">
+                  <Label htmlFor={`ps-unit-${u.id}`} className="text-xs text-muted-foreground">
+                    {u.name}
+                  </Label>
+                  {pick(
+                    `ps-unit-${u.id}`,
+                    byUnit[u.id] ?? null,
+                    (v) =>
+                      setByUnit((m) => {
+                        const n = { ...m }
+                        if (v) n[u.id] = v
+                        else delete n[u.id]
+                        return n
+                      }),
+                    'Usar o padrão',
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+      {canEdit && (
+        <CardFooter>
+          <Button onClick={() => save.mutate({ ...config, postSaleHours: hours, postSaleOwnerId: owner, postSaleOwnerByUnit: byUnit })} disabled={save.isPending || !(hours >= 1 && hours <= 720)}>
+            {save.isPending && <Loader2Icon className="animate-spin" />}
+            Salvar
+          </Button>
+        </CardFooter>
+      )}
+    </Card>
+  )
+}
+
+function ReturnAlertCard({ config }: { config: AlertConfig }) {
+  const { can } = useAuth()
+  const [hours, setHours] = useState<number | null>(null)
+  const save = useSaveAlerts('Prazo do alerta salvo.')
+  const value = hours ?? config.alertHours
+  return (
+    <Card className="h-fit">
       <CardHeader>
         <CardTitle>Alerta de retorno do vendedor</CardTitle>
         <CardDescription>
@@ -644,7 +749,7 @@ function AlertsTab() {
       </CardContent>
       {can('cadastros', 'edit') && (
         <CardFooter>
-          <Button onClick={() => save.mutate(value)} disabled={save.isPending || !(value >= 1 && value <= 720)}>
+          <Button onClick={() => save.mutate({ ...config, alertHours: value })} disabled={save.isPending || !(value >= 1 && value <= 720)}>
             {save.isPending && <Loader2Icon className="animate-spin" />}
             Salvar
           </Button>

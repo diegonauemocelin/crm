@@ -13,6 +13,28 @@ export const KIND_INFO: Record<Kind, { title: string; path: string; module: stri
 export const SALE_LABEL: Record<SaleStatus, string> = { SIM: 'Vendeu', NAO: 'Perdida', NEGOCIACAO: 'Em negociação' }
 export const RETURN_LABEL: Record<ReturnStatus, string> = { SIM: 'Sim', NAO: 'Não', PENDENTE: 'Pendente' }
 
+export type FollowStatus = 'PENDENTE' | 'CONTATADO' | 'ANALISANDO' | 'RESOLVIDO' | 'VOLTOU_AO_VENDEDOR'
+export const FOLLOW_LABEL: Record<FollowStatus, string> = {
+  PENDENTE: 'Aguardando contato',
+  CONTATADO: 'Cliente contatado',
+  ANALISANDO: 'Analisando',
+  RESOLVIDO: 'Resolvido',
+  VOLTOU_AO_VENDEDOR: 'Voltou ao vendedor',
+}
+export const FOLLOW_STATUSES = Object.keys(FOLLOW_LABEL) as FollowStatus[]
+
+/** "vence em 5 h", "atrasado há 2 h", "contato em 3 h" (prazo do primeiro contato do pós-venda). */
+export function followDeadline(r: { followStatus: FollowStatus | null; dueAt: string | null; firstActionAt: string | null }, now: number) {
+  if (!r.followStatus || !r.dueAt) return null
+  const due = new Date(r.dueAt).getTime()
+  const h = (ms: number) => (ms < 3_600_000 ? `${Math.max(1, Math.round(ms / 60_000))} min` : `${Math.round(ms / 3_600_000)} h`)
+  if (r.firstActionAt) {
+    const late = new Date(r.firstActionAt).getTime() > due
+    return { tone: late ? ('late' as const) : ('ok' as const), text: late ? 'Contato fora do prazo' : 'Contato no prazo' }
+  }
+  return due < now ? { tone: 'late' as const, text: `Atrasado há ${h(now - due)}` } : { tone: 'pending' as const, text: `Vence em ${h(due - now)}` }
+}
+
 export interface Option {
   id: string
   name: string
@@ -66,6 +88,15 @@ export interface ServiceRecord {
   notes: string | null
   importBatch: string | null
   overdue: boolean
+  parentId: string | null
+  followStatus: FollowStatus | null
+  followNote: string | null
+  dueAt: string | null
+  firstActionAt: string | null
+  followOverdue: boolean
+  /** Só na consulta individual: a pré-venda de origem e os pós-vendas gerados. */
+  parent?: { id: string; sellerId: string | null; leadAt: string; saleStatus: SaleStatus } | null
+  children?: { id: string; sellerId: string | null; followStatus: FollowStatus | null; followNote: string | null; dueAt: string | null; firstActionAt: string | null }[]
   createdAt: string
   updatedAt: string
 }

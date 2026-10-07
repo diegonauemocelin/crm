@@ -102,7 +102,7 @@ class FieldDto {
 class RuleDto {
   @ApiProperty() @IsIn(['PERFIL', 'INTERESSE']) dimension!: 'PERFIL' | 'INTERESSE'
   @ApiProperty() @IsString() @Length(2, 80) name!: string
-  @ApiProperty() @IsString() @Matches(/^(stage|state|tag|has_phone|has_email|custom:[a-z0-9_]+|conversao|atendimento|venda|email_aberto|email_clique|visita)$/) field!: string
+  @ApiProperty() @IsString() @Matches(/^(stage|state|tag|has_phone|has_email|custom:[a-z0-9_]+|conversao|atendimento|venda|email_aberto|email_clique|visita|carrinho|checkout|carrinho_abandonado)$/) field!: string
   @ApiProperty() @IsIn(['eq', 'in', 'exists', 'gte', 'each']) operator!: string
   @ApiPropertyOptional() @IsOptional() value?: unknown
   @ApiProperty() @Type(() => Number) @IsInt() @Min(-100) @Max(100) points!: number

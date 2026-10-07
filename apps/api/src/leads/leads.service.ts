@@ -372,9 +372,13 @@ export class LeadsService {
       where: { leadId: id },
       select: { firstSeenAt: true, lastSeenAt: true, firstTouch: true, lastTouch: true, views: { select: { url: true, title: true, occurredAt: true }, orderBy: { occurredAt: 'desc' } } },
     })
+    const loja = {
+      pedidos: await this.prisma.ecommerceOrder.findMany({ where: { leadId: id }, select: { code: true, orderedAt: true, total: true, statusName: true, payment: true } }),
+      carrinhos: await this.prisma.ecommerceCart.findMany({ where: { leadId: id }, select: { items: true, lastActivityAt: true, checkoutStarted: true, status: true } }),
+    }
     await this.audit.byUser(user, ctx, 'lead.personal_data_exported', 'lead', id)
     const { tenantId: _t, ...data } = lead
-    return { geradoEm: new Date().toISOString(), titular: data, linhaDoTempo: tl.events, atendimentos: tl.records, consentimentos: tl.consents, navegacaoNoSite: visitas }
+    return { geradoEm: new Date().toISOString(), titular: data, linhaDoTempo: tl.events, atendimentos: tl.records, consentimentos: tl.consents, navegacaoNoSite: visitas, lojaVirtual: loja }
   }
 
   /**
@@ -399,12 +403,16 @@ export class LeadsService {
           firstConversion: Prisma.DbNull,
           lastConversion: Prisma.DbNull,
           emailOptIn: false,
+          ecommerceId: null,
           anonymizedAt: new Date(),
         },
       }),
       this.prisma.leadEvent.deleteMany({ where: { leadId: id } }),
       // Navegação no site ligada à pessoa (as páginas vistas vão junto, em cascata).
       this.prisma.siteVisitor.deleteMany({ where: { leadId: id } }),
+      // Carrinhos guardam nome, e-mail e telefone; pedidos ficam (registro fiscal da loja), sem o vínculo com a pessoa.
+      this.prisma.ecommerceCart.deleteMany({ where: { leadId: id } }),
+      this.prisma.ecommerceOrder.updateMany({ where: { leadId: id }, data: { leadId: null, customerId: null } }),
       this.prisma.leadConsent.updateMany({ where: { leadId: id }, data: { ip: null, text: null } }),
       this.prisma.serviceRecord.updateMany({ where: { leadId: id }, data: { name: 'Dados removidos (LGPD)', phone: null, email: null, customerCode: null, notes: null } }),
     ])
