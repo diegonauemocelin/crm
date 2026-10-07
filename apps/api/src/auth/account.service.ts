@@ -21,6 +21,8 @@ export class AccountService {
   async profile(user: AuthUser) {
     const row = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } })
     const branding = await this.settings.branding(user.tenantId)
+    // Vendedor ligado ao login: define a base de quem tem perfil "somente os próprios".
+    const seller = await this.prisma.seller.findUnique({ where: { userId: user.id }, select: { id: true, name: true } })
     const layout = branding.allowLayoutChoice ? (row.layout ?? branding.defaultLayout) : branding.defaultLayout
     return {
       id: row.id,
@@ -35,6 +37,7 @@ export class AccountService {
       allowLayoutChoice: branding.allowLayoutChoice,
       lastLoginAt: row.lastLoginAt,
       role: user.role,
+      seller,
       permissions: user.role.isSystem ? fullPermissions() : user.permissions,
       modules: MODULES,
     }

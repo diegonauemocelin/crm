@@ -30,6 +30,8 @@ export interface Me {
   allowLayoutChoice: boolean
   lastLoginAt: string | null
   role: { id: string; name: string; isSystem: boolean; require2fa: boolean }
+  /** Vendedor ligado a este login (define a base do perfil "somente os próprios"). */
+  seller: { id: string; name: string } | null
   permissions: Record<string, PermissionEntry>
   modules: ModuleDef[]
 }

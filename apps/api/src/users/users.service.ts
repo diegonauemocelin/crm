@@ -3,6 +3,7 @@ import { AuditService } from '../audit/audit.service'
 import { AuthService } from '../auth/auth.service'
 import { hashPassword, passwordProblems } from '../auth/password'
 import { randomToken } from '../common/crypto'
+import { linkSellersByEmail } from '../common/seller-link'
 import type { RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import type { Prisma } from '../generated/prisma/client'
@@ -100,6 +101,7 @@ export class UsersService {
     })
     await this.audit.byUser(actor, ctx, 'user.created', 'user', user.id, { email, roleId: input.roleId, convite: input.sendInvite })
     if (input.sendInvite) await this.auth.sendPasswordLink(user.id, actor.tenantId, email, user.name, 'invite')
+    await this.linkSellers(actor, ctx)
     return view(user)
   }
 
@@ -131,7 +133,14 @@ export class UsersService {
     // Desativar ou trocar o perfil encerra as sessões abertas na hora.
     if (input.active === false || (input.roleId && input.roleId !== current.roleId)) await this.auth.revokeAllSessions(id)
     await this.audit.byUser(actor, ctx, 'user.updated', 'user', id, { ...input })
+    await this.linkSellers(actor, ctx)
     return view(user)
+  }
+
+  /** Usuário com o mesmo e-mail de um vendedor passa a ser esse vendedor (base "somente os próprios"). */
+  private async linkSellers(actor: AuthUser, ctx: RequestCtx) {
+    const linked = await linkSellersByEmail(this.prisma, actor.tenantId)
+    if (linked.length) await this.audit.byUser(actor, ctx, 'vendedor.auto_linked', 'seller', undefined, { vinculos: linked })
   }
 
   async unlock(actor: AuthUser, id: string, ctx: RequestCtx) {

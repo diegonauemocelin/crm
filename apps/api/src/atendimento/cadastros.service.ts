@@ -3,6 +3,7 @@ import { AuditService } from '../audit/audit.service'
 import type { RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import type { LookupType } from '../generated/prisma/client'
+import { linkSellersByEmail } from '../common/seller-link'
 import { PrismaService } from '../prisma/prisma.service'
 import { PART_TYPES } from './planilha'
 
@@ -25,7 +26,19 @@ export class CadastrosService implements OnApplicationBootstrap {
   ) {}
 
   async onApplicationBootstrap() {
-    for (const t of await this.prisma.tenant.findMany({ select: { id: true } })) await this.ensureDefaults(t.id)
+    for (const t of await this.prisma.tenant.findMany({ select: { id: true } })) {
+      await this.ensureDefaults(t.id)
+      // Vendedores e usuários com o mesmo e-mail já cadastrados antes do vínculo automático.
+      const linked = await linkSellersByEmail(this.prisma, t.id)
+      if (linked.length) await this.audit.log({ tenantId: t.id, action: 'vendedor.auto_linked', entity: 'seller', data: { vinculos: linked } })
+    }
+  }
+
+  /** Vincula pelo e-mail depois de salvar vendedor ou usuário, e registra na auditoria. */
+  async autoLink(actor: AuthUser, ctx: RequestCtx) {
+    const linked = await linkSellersByEmail(this.prisma, actor.tenantId)
+    if (linked.length) await this.audit.byUser(actor, ctx, 'vendedor.auto_linked', 'seller', undefined, { vinculos: linked })
+    return linked
   }
 
   async ensureDefaults(tenantId: string) {
@@ -212,11 +225,13 @@ export class CadastrosService implements OnApplicationBootstrap {
         ).count
       }
       await this.audit.byUser(actor, ctx, 'vendedor.updated', 'seller', id, { ...payload, atendimentosAtribuidosAUnidade: backfilled })
-      return { ...seller, backfilled }
+      const linked = await this.autoLink(actor, ctx)
+      return { ...(linked.length ? await this.prisma.seller.findUniqueOrThrow({ where: { id } }) : seller), backfilled }
     }
     const seller = await this.prisma.seller.create({ data: { tenantId: actor.tenantId, ...payload } })
     await this.audit.byUser(actor, ctx, 'vendedor.created', 'seller', seller.id, payload)
-    return seller
+    const linked = await this.autoLink(actor, ctx)
+    return linked.length ? await this.prisma.seller.findUniqueOrThrow({ where: { id: seller.id } }) : seller
   }
 
   /** Junta dois cadastros da mesma pessoa: os atendimentos passam para o destino e a origem é desativada. */

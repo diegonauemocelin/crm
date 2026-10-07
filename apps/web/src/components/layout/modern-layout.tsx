@@ -13,6 +13,7 @@ import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { findNavItem } from '@/lib/navigation'
 import { AlertsBell } from './alerts-bell'
+import { SellerLinkWarning } from './seller-link-warning'
 import { AppFooter } from './app-footer'
 import { GlobalSearch } from './global-search'
 import { ThemeToggle } from './theme-toggle'
@@ -60,6 +61,7 @@ export function ModernLayout() {
           <ThemeToggle />
         </header>
         <main className="flex-1 p-4 md:p-6">
+          <SellerLinkWarning />
           <Outlet />
         </main>
         <AppFooter />

@@ -15,6 +15,7 @@ import { useBranding } from '@/lib/branding'
 import { findNavItem, visibleNavigation } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
 import { AlertsBell } from './alerts-bell'
+import { SellerLinkWarning } from './seller-link-warning'
 import { AppFooter } from './app-footer'
 import { BrandMark } from './brand-logo'
 import { GlobalSearch } from './global-search'
@@ -157,7 +158,8 @@ export function ClassicLayout() {
       </div>
 
       <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-5">
-        <Outlet />
+        <SellerLinkWarning />
+          <Outlet />
       </main>
       <AppFooter className="bg-background" />
     </div>

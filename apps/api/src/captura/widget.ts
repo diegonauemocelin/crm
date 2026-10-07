@@ -39,8 +39,15 @@ export const CAPTURE_JS = `
   function isMobile() { return /Mobi|Android|iPhone|iPod/i.test(nav.userAgent || '') || (w.matchMedia && w.matchMedia('(max-width: 768px)').matches); }
   function deviceOk(dev) { return dev === 'todos' || !dev || (dev === 'celular' ? isMobile() : !isMobile()); }
   function pageOk(inc, exc) {
-    var p = (location.pathname + location.search).toLowerCase();
-    function hit(x) { x = String(x || '').trim().toLowerCase(); if (!x) return false; return x.slice(-1) === '*' ? p.indexOf(x.slice(0, -1)) === 0 : p === x || p.indexOf(x) >= 0; }
+    var p = (location.pathname + location.search).toLowerCase(), hs = location.hostname.toLowerCase();
+    function pathHit(x) { return x.slice(-1) === '*' ? p.indexOf(x.slice(0, -1)) === 0 : p === x || p.indexOf(x) >= 0; }
+    // Aceita caminho ("/produto/*") ou domínio com caminho opcional ("teste.usaparts.com.br/ofertas*").
+    function hit(x) {
+      x = String(x || '').trim().toLowerCase(); if (!x) return false;
+      var m = x.charAt(0) !== '/' && /^(?:https?:\\/\\/)?([a-z0-9-]+(?:\\.[a-z0-9-]+)+)(\\/.*)?$/.exec(x);
+      if (m) { var dom = m[1].replace(/^www\\./, ''); if (hs !== dom && hs !== 'www.' + dom) return false; x = m[2] || ''; return !x || x === '/' || x === '/*' || pathHit(x); }
+      return pathHit(x);
+    }
     for (var i = 0; i < (exc || []).length; i++) if (hit(exc[i])) return false;
     var list = (inc || []).filter(function (x) { return String(x || '').trim(); });
     if (!list.length) return true;

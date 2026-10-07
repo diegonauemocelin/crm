@@ -114,16 +114,28 @@ export function validateSubmission(fields: FormField[], input: Record<string, un
 /** A página do site é uma onde o pop-up/botão deve aparecer? Trechos do endereço; "*" no fim = começa com. */
 export function pageMatches(url: string, include: string[], exclude: string[]) {
   let path: string
+  let host: string
   try {
     const u = new URL(url)
     path = `${u.pathname}${u.search}`.toLowerCase()
+    host = u.hostname.toLowerCase()
   } catch {
     return false
   }
+  const pathHit = (p: string) => (p.endsWith('*') ? path.startsWith(p.slice(0, -1)) : path === p || path.includes(p))
   const hit = (pattern: string) => {
-    const p = pattern.trim().toLowerCase()
+    let p = pattern.trim().toLowerCase()
     if (!p) return false
-    return p.endsWith('*') ? path.startsWith(p.slice(0, -1)) : path === p || path.includes(p)
+    // Domínio (com ou sem caminho): "teste.usaparts.com.br" ou "https://teste.usaparts.com.br/ofertas*".
+    // Vale o próprio domínio e o "www." dele; subdomínios diferentes não contam (usaparts.com.br ≠ teste.usaparts.com.br).
+    const m = /^(?:https?:\/\/)?([a-z0-9-]+(?:\.[a-z0-9-]+)+)(\/.*)?$/.exec(p)
+    if (m && !p.startsWith('/')) {
+      const dom = m[1]!.replace(/^www\./, '')
+      if (host !== dom && host !== `www.${dom}`) return false
+      p = m[2] ?? ''
+      return !p || p === '/' || p === '/*' || pathHit(p)
+    }
+    return pathHit(p)
   }
   if (exclude.some(hit)) return false
   return include.filter((p) => p.trim()).length === 0 || include.some(hit)

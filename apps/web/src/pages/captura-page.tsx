@@ -600,10 +600,10 @@ function PopupEditor({ popup, forms, onClose }: { popup: CapturePopup | null; fo
             <Field label="Não repetir por (dias)" htmlFor="pp-freq">
               <Input id="pp-freq" type="number" min={0} max={365} value={p.frequencyDays} onChange={(e) => set('frequencyDays', Number(e.target.value))} />
             </Field>
-            <Field label="Mostrar só nas páginas" htmlFor="pp-inc" hint="Uma por linha. Ex.: /produto/* (vazio = todas).">
+            <Field label="Mostrar só nas páginas" htmlFor="pp-inc" hint="Uma por linha: caminho (/produto/*) ou domínio (teste.usaparts.com.br). Vazio = todas.">
               <Textarea id="pp-inc" rows={3} value={include} onChange={(e) => setInclude(e.target.value)} />
             </Field>
-            <Field label="Nunca mostrar em" htmlFor="pp-exc" hint="Uma por linha. Ex.: /checkout">
+            <Field label="Nunca mostrar em" htmlFor="pp-exc" hint="Uma por linha: caminho (/checkout) ou domínio (www.usaparts.com.br).">
               <Textarea id="pp-exc" rows={3} value={exclude} onChange={(e) => setExclude(e.target.value)} />
             </Field>
             <Field label="Cor do botão" htmlFor="pp-color">
@@ -733,10 +733,10 @@ function WhatsappEditor({ initial }: { initial: CaptureSettings }) {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Mostrar só nas páginas" htmlFor="wa-inc" hint="Uma por linha (vazio = todas).">
+              <Field label="Mostrar só nas páginas" htmlFor="wa-inc" hint="Uma por linha: caminho (/produto/*) ou domínio (teste.usaparts.com.br). Vazio = todas.">
                 <Textarea id="wa-inc" rows={2} value={include} onChange={(e) => setInclude(e.target.value)} />
               </Field>
-              <Field label="Nunca mostrar em" htmlFor="wa-exc" hint="Uma por linha. Ex.: /checkout">
+              <Field label="Nunca mostrar em" htmlFor="wa-exc" hint="Uma por linha: caminho (/checkout) ou domínio (www.usaparts.com.br).">
                 <Textarea id="wa-exc" rows={2} value={exclude} onChange={(e) => setExclude(e.target.value)} />
               </Field>
               <Field label="Cor" htmlFor="wa-color">

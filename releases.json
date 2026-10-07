@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.5.2",
+      "date": "2026-10-07",
+      "title": "Base de cada vendedor e pop-up/WhatsApp por domínio",
+      "changes": [
+        { "type": "correcao", "area": "Captura", "text": "As regras “mostrar só nas páginas” e “nunca mostrar em” passam a aceitar domínio (ex.: teste.usaparts.com.br), não só o caminho da página. Antes, um domínio nessas regras fazia o pop-up e o botão de WhatsApp não aparecerem." },
+        { "type": "melhoria", "area": "Captura", "text": "Domínio vale para ele e para o “www.” dele; subdomínios são separados: “usaparts.com.br” não esconde o teste.usaparts.com.br. Dá para combinar com caminho: teste.usaparts.com.br/ofertas*." },
+        { "type": "correcao", "area": "Vendedores", "text": "Vendedor e usuário com o mesmo e-mail (ex.: vendedor Ecommerce e o login ecommerce@usaparts.com.br) passam a ser vinculados automaticamente. Sem esse vínculo, quem tem perfil Vendedor não via nenhum lead nem atendimento." },
+        { "type": "melhoria", "area": "Vendedores", "text": "Quem tem perfil “somente os próprios” e ainda não está vinculado a um vendedor vê um aviso explicando como resolver, em vez de listas vazias." }
+      ]
+    },
+    {
       "version": "0.5.1",
       "date": "2026-10-07",
       "title": "Formulário no site com código de script",

@@ -70,6 +70,17 @@ describe('onde o pop-up/botão aparece', () => {
     expect(pageMatches('https://loja.com/carrinho', ['/produto/*'], [])).toBe(false)
     expect(pageMatches('https://loja.com/checkout/pagamento', [], ['checkout'])).toBe(false)
   })
+
+  it('aceita domínio: só no site das LPs e nunca na loja', () => {
+    const inc = ['teste.usaparts.com.br']
+    const exc = ['usaparts.com.br']
+    expect(pageMatches('http://teste.usaparts.com.br/', inc, exc)).toBe(true)
+    expect(pageMatches('https://teste.usaparts.com.br/ofertas-jcb', inc, exc)).toBe(true)
+    expect(pageMatches('https://www.usaparts.com.br/produto/x', inc, exc)).toBe(false)
+    expect(pageMatches('https://usaparts.com.br/', [], exc)).toBe(false)
+    expect(pageMatches('https://teste.usaparts.com.br/a', ['https://teste.usaparts.com.br/ofertas*'], [])).toBe(false)
+    expect(pageMatches('https://teste.usaparts.com.br/ofertas-jcb', ['https://teste.usaparts.com.br/ofertas*'], [])).toBe(true)
+  })
 })
 
 describe('WhatsApp e redirecionamento', () => {
