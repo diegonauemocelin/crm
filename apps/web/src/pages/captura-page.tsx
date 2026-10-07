@@ -862,8 +862,28 @@ function WhatsappEditor({ button, onClose }: { button: WhatsappButton | null; on
   const set = <K extends keyof typeof w>(k: K, v: (typeof w)[K]) => setW((x) => ({ ...x, [k]: v }))
   const save = useMutation({
     mutationFn: () => {
-      const { id: _i, submissions: _s, ...rest } = w as WhatsappButton
-      const body = { ...rest, phone: w.phone.trim(), include: linesOf(include), exclude: linesOf(exclude), tags: tags.split(',').map((t) => t.trim()).filter(Boolean) }
+      // Só os campos do cadastro: a API recusa campos extras (id, datas, contadores).
+      const body = {
+        name: w.name,
+        phone: w.phone.trim(),
+        buttonText: w.buttonText,
+        title: w.title,
+        subtitle: w.subtitle,
+        askEmail: w.askEmail,
+        message: w.message,
+        position: w.position,
+        color: w.color,
+        device: w.device,
+        ownerId: w.ownerId,
+        customerTypeId: w.customerTypeId,
+        brandIds: w.brandIds,
+        createRecord: w.createRecord,
+        active: w.active,
+        sortOrder: w.sortOrder,
+        include: linesOf(include),
+        exclude: linesOf(exclude),
+        tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
+      }
       return button ? api.put(`/captura/whatsapps/${button.id}`, body) : api.post('/captura/whatsapps', body)
     },
     onSuccess: () => {

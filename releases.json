@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.5.4",
+      "date": "2026-10-07",
+      "title": "Correção ao salvar botão de WhatsApp",
+      "changes": [
+        { "type": "correcao", "area": "Captura", "text": "Editar e salvar um botão de WhatsApp já existente dava o erro “property createdAt should not exist”. Agora salva normalmente." }
+      ]
+    },
+    {
       "version": "0.5.3",
       "date": "2026-10-07",
       "title": "Vários botões de WhatsApp, tipo de cliente e marca na captura",
