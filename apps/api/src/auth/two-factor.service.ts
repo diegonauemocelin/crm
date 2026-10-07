@@ -27,8 +27,21 @@ export class TwoFactorService {
   ) {}
 
   async setup(user: AuthUser) {
-    const secret = newTotpSecret()
-    await this.prisma.user.update({ where: { id: user.id }, data: { totpPendingSecretEnc: encrypt(secret) } })
+    // Reabrir a tela (recarregar, voltar do app autenticador) mostra a MESMA chave ainda não confirmada.
+    // Antes, cada abertura gerava uma chave nova e o QR já escaneado deixava de valer ("código inválido").
+    const row = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { totpPendingSecretEnc: true } })
+    let secret: string | null = null
+    if (row.totpPendingSecretEnc) {
+      try {
+        secret = decrypt(row.totpPendingSecretEnc)
+      } catch {
+        secret = null
+      }
+    }
+    if (!secret) {
+      secret = newTotpSecret()
+      await this.prisma.user.update({ where: { id: user.id }, data: { totpPendingSecretEnc: encrypt(secret) } })
+    }
     const branding = await this.settings.branding(user.tenantId)
     const { uri, qrDataUrl } = await totpQrCode(secret, branding.appName, user.email)
     return { secret, uri, qrDataUrl }

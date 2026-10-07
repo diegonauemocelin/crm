@@ -129,9 +129,13 @@ export function TwoFactorSetup({ onDone }: { onDone: () => void }) {
         </InputOTP>
         {busy && <Loader2Icon className="size-4 animate-spin text-muted-foreground" aria-label="Verificando" />}
         {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
+          <div role="alert" className="space-y-1 text-sm">
+            <p className="text-destructive">{error}</p>
+            <p className="text-muted-foreground">
+              Se você já tinha escaneado um QR antes, apague do app autenticador as entradas antigas de “{branding.appName}”, escaneie o QR desta tela e use o código novo.
+              Confira também se o celular está com data e hora automáticas.
+            </p>
+          </div>
         )}
       </div>
     </div>

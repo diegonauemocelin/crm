@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.4.1",
+      "date": "2026-10-07",
+      "title": "Configuração do 2FA sem “código inválido”",
+      "changes": [
+        { "type": "correcao", "area": "Segurança", "text": "Na configuração do 2FA, recarregar a tela ou voltar do app autenticador gerava uma chave nova e o QR já escaneado passava a dar “código inválido”. Agora a mesma chave é mantida até a confirmação." },
+        { "type": "melhoria", "area": "Segurança", "text": "Quando o código não confere, a tela explica como resolver (apagar entradas antigas do app autenticador e conferir a hora do celular)." }
+      ]
+    },
+    {
       "version": "0.4.0",
       "date": "2026-10-07",
       "title": "Loja virtual (Magazord), carrinhos abandonados, dispositivos e pós-venda automático",
