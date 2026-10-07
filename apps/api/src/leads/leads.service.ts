@@ -54,6 +54,9 @@ const SORTS: Record<string, Prisma.LeadOrderByWithRelationInput[]> = {
   activity: [{ lastActivityAt: { sort: 'desc', nulls: 'last' } }],
 }
 
+/** Máximo de leads por ação em massa. */
+const BULK_LIMIT = 50_000
+
 @Injectable()
 export class LeadsService {
   constructor(
@@ -303,33 +306,52 @@ export class LeadsService {
     await this.audit.byUser(user, ctx, 'lead.deleted', 'lead', id)
   }
 
-  /** Ações em massa: tags, estágio e responsável de vários leads de uma vez. */
+  /**
+   * Ações em massa: tags, estágio e responsável. Vale para os leads selecionados (ids) ou para todos os
+   * leads de um filtro (ex.: origem Ecommerce -> responsável "Ecommerce"), sempre dentro do escopo do perfil.
+   * Grava em blocos com comandos únicos por bloco (não guarda planos de consulta enormes em memória).
+   */
   async bulk(
     user: AuthUser,
-    ids: string[],
+    target: { ids?: string[]; filters?: LeadFilters },
     action: { addTags?: string[]; removeTags?: string[]; stage?: LeadStage; ownerId?: string | null },
     ctx: RequestCtx,
   ) {
     this.assertCan(user, 'edit')
     if (action.ownerId !== undefined && this.scopeOf(user) === 'OWN') throw new ForbiddenException('Seu perfil não permite transferir leads.')
     if (action.ownerId) await this.assertRefs(user.tenantId, { ownerId: action.ownerId })
-    const leads = await this.prisma.lead.findMany({ where: { id: { in: ids }, anonymizedAt: null, ...this.where(user, {}) }, select: { id: true, tags: true, stage: true } })
+    if (!target.ids?.length && !target.filters) throw new BadRequestException('Selecione os leads.')
+    const where: Prisma.LeadWhereInput = target.ids?.length
+      ? { id: { in: target.ids }, anonymizedAt: null, ...this.where(user, {}) }
+      : { AND: [this.where(user, target.filters ?? {}), { anonymizedAt: null }] }
+    const total = await this.prisma.lead.count({ where })
+    if (total > BULK_LIMIT) throw new BadRequestException(`São ${total.toLocaleString('pt-BR')} leads: o máximo por ação é ${BULK_LIMIT.toLocaleString('pt-BR')}. Use mais filtros.`)
+    const leads = await this.prisma.lead.findMany({ where, select: { id: true, stage: true } })
     const add = normalizeTags(action.addTags ?? [])
-    const remove = new Set(normalizeTags(action.removeTags ?? []))
-    const ops: Prisma.PrismaPromise<unknown>[] = []
-    for (const l of leads) {
-      const data: Prisma.LeadUncheckedUpdateInput = {}
-      if (add.length || remove.size) data.tags = [...new Set([...l.tags, ...add])].filter((t) => !remove.has(t))
-      if (action.stage && action.stage !== l.stage) {
-        data.stage = action.stage
-        data.events = { create: { tenantId: user.tenantId, type: 'estagio', title: `Estágio: ${STAGE_LABEL[l.stage]} → ${STAGE_LABEL[action.stage]}`, userId: user.id, userName: user.name } }
+    const remove = normalizeTags(action.removeTags ?? [])
+
+    for (let i = 0; i < leads.length; i += 1000) {
+      const chunk = leads.slice(i, i + 1000)
+      const ids = chunk.map((l) => l.id)
+      if (action.ownerId !== undefined) await this.prisma.lead.updateMany({ where: { id: { in: ids } }, data: { ownerId: action.ownerId } })
+      if (add.length || remove.length) {
+        await this.prisma.$executeRaw`
+          UPDATE leads SET tags = ARRAY(SELECT DISTINCT t FROM unnest(tags || ${add}::text[]) AS t WHERE t <> ALL(${remove}::text[])), "updatedAt" = now()
+          WHERE id = ANY(${ids}::uuid[])`
       }
-      if (action.ownerId !== undefined) data.ownerId = action.ownerId
-      ops.push(this.prisma.lead.update({ where: { id: l.id }, data }))
+      if (action.stage) {
+        const changing = chunk.filter((l) => l.stage !== action.stage)
+        if (changing.length) {
+          await this.prisma.lead.updateMany({ where: { id: { in: changing.map((l) => l.id) } }, data: { stage: action.stage } })
+          await this.prisma.leadEvent.createMany({
+            data: changing.map((l) => ({ tenantId: user.tenantId, leadId: l.id, type: 'estagio', title: `Estágio: ${STAGE_LABEL[l.stage]} → ${STAGE_LABEL[action.stage!]}`, userId: user.id, userName: user.name })),
+          })
+        }
+      }
     }
-    for (let i = 0; i < ops.length; i += 200) await this.prisma.$transaction(ops.slice(i, i + 200))
-    await this.audit.byUser(user, ctx, 'lead.bulk_updated', 'lead', undefined, { quantidade: leads.length, ...action })
-    await this.config.rescore(user.tenantId, leads.map((l) => l.id))
+    await this.audit.byUser(user, ctx, 'lead.bulk_updated', 'lead', undefined, { quantidade: leads.length, porFiltro: !target.ids?.length, filtros: target.filters ?? null, ...action })
+    // Responsável não entra na nota; tags e estágio entram.
+    if (add.length || remove.length || action.stage) await this.config.rescore(user.tenantId, leads.map((l) => l.id))
     return { updated: leads.length }
   }
 

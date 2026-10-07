@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.4.2",
+      "date": "2026-10-07",
+      "title": "Ações em lote em todos os leads de um filtro",
+      "changes": [
+        { "type": "novo", "area": "Base de leads", "text": "Ações em massa para todos os leads de um filtro, não só os da página: marque a página e clique em “Selecionar todos os N leads deste filtro”. Ex.: origem Ecommerce → responsável “Ecommerce”." },
+        { "type": "melhoria", "area": "Base de leads", "text": "Ações em massa mais rápidas e leves: até 50.000 leads por ação, gravadas em blocos." }
+      ]
+    },
+    {
       "version": "0.4.1",
       "date": "2026-10-07",
       "title": "Configuração do 2FA sem “código inválido”",

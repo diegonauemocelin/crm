@@ -78,6 +78,8 @@ function LeadsContent() {
   const [params, setParams] = useSearchParams()
   const [searchText, setSearchText] = useState(params.get('search') ?? '')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  // "Todos do filtro": a ação vale para todos os leads que o filtro encontra, não só os da página.
+  const [allFiltered, setAllFiltered] = useState(false)
   const [bulk, setBulk] = useState<'addTag' | 'removeTag' | 'stage' | 'owner' | null>(null)
   const page = Number(params.get('page') ?? '1')
   const sort = params.get('sort') ?? 'recent'
@@ -89,6 +91,7 @@ function LeadsContent() {
     next.delete('page')
     setParams(next, { replace: true })
     setSelected(new Set())
+    setAllFiltered(false)
   }
 
   useEffect(() => {
@@ -222,7 +225,12 @@ function LeadsContent() {
 
       {selected.size > 0 && can('leads', 'edit') && (
         <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 text-sm">
-          <span>{int.format(selected.size)} selecionado(s)</span>
+          <span>{allFiltered && data ? `Todos os ${int.format(data.total)} leads deste filtro` : `${int.format(selected.size)} selecionado(s)`}</span>
+          {!allFiltered && allOnPage && data && data.total > data.items.length && (
+            <Button size="sm" variant="link" className="h-auto px-1" onClick={() => setAllFiltered(true)}>
+              Selecionar todos os {int.format(data.total)} leads deste filtro
+            </Button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="outline">
@@ -236,7 +244,14 @@ function LeadsContent() {
               <DropdownMenuItem onSelect={() => setBulk('owner')}>Alterar responsável</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setSelected(new Set())
+              setAllFiltered(false)
+            }}
+          >
             Limpar seleção
           </Button>
         </div>
@@ -260,7 +275,10 @@ function LeadsContent() {
                 <TableRow>
                   {can('leads', 'edit') && (
                     <TableHead className="w-10">
-                      <Checkbox checked={allOnPage} onCheckedChange={(c) => setSelected(new Set(c ? data.items.map((l) => l.id) : []))} aria-label="Selecionar todos desta página" />
+                      <Checkbox checked={allOnPage} onCheckedChange={(c) => {
+                          setSelected(new Set(c ? data.items.map((l) => l.id) : []))
+                          setAllFiltered(false)
+                        }} aria-label="Selecionar todos desta página" />
                     </TableHead>
                   )}
                   <TableHead>Lead</TableHead>
@@ -279,14 +297,15 @@ function LeadsContent() {
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           checked={selected.has(l.id)}
-                          onCheckedChange={(c) =>
+                          onCheckedChange={(c) => {
+                            setAllFiltered(false)
                             setSelected((s) => {
                               const n = new Set(s)
                               if (c) n.add(l.id)
                               else n.delete(l.id)
                               return n
                             })
-                          }
+                          }}
                           aria-label={`Selecionar ${l.name ?? l.email ?? 'lead'}`}
                         />
                       </TableCell>
@@ -347,11 +366,12 @@ function LeadsContent() {
       {bulk && (
         <BulkDialog
           kind={bulk}
-          ids={[...selected]}
+          target={allFiltered && data ? { filters: Object.fromEntries(FILTERS.flatMap((k) => (params.get(k) ? [[k, params.get(k)!]] : []))), count: data.total } : { ids: [...selected], count: selected.size }}
           onClose={() => setBulk(null)}
           onDone={() => {
             setBulk(null)
             setSelected(new Set())
+            setAllFiltered(false)
             void qc.invalidateQueries({ queryKey: ['leads'] })
             void qc.invalidateQueries({ queryKey: ['lead-tags'] })
           }}
@@ -361,7 +381,17 @@ function LeadsContent() {
   )
 }
 
-function BulkDialog({ kind, ids, onClose, onDone }: { kind: 'addTag' | 'removeTag' | 'stage' | 'owner'; ids: string[]; onClose: () => void; onDone: () => void }) {
+function BulkDialog({
+  kind,
+  target,
+  onClose,
+  onDone,
+}: {
+  kind: 'addTag' | 'removeTag' | 'stage' | 'owner'
+  target: { ids?: string[]; filters?: Record<string, string>; count: number }
+  onClose: () => void
+  onDone: () => void
+}) {
   const options = useOptions()
   const tags = useTags()
   const [value, setValue] = useState('')
@@ -369,7 +399,7 @@ function BulkDialog({ kind, ids, onClose, onDone }: { kind: 'addTag' | 'removeTa
     mutationFn: () => {
       const body =
         kind === 'addTag' ? { addTags: [value] } : kind === 'removeTag' ? { removeTags: [value] } : kind === 'stage' ? { stage: value } : { ownerId: value === 'none' ? null : value }
-      return api.post<{ updated: number }>('/leads/massa', { ids, ...body })
+      return api.post<{ updated: number }>('/leads/massa', { ...(target.filters ? { filters: target.filters } : { ids: target.ids }), ...body })
     },
     onSuccess: (r) => {
       toast.success(`${int.format(r.updated)} lead(s) atualizado(s).`)
@@ -391,7 +421,9 @@ function BulkDialog({ kind, ids, onClose, onDone }: { kind: 'addTag' | 'removeTa
         >
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
-            <DialogDescription>Aplica a {int.format(ids.length)} lead(s) selecionado(s).</DialogDescription>
+            <DialogDescription>
+              {target.filters ? `Aplica a todos os ${int.format(target.count)} leads do filtro atual.` : `Aplica a ${int.format(target.count)} lead(s) selecionado(s).`}
+            </DialogDescription>
           </DialogHeader>
           {kind === 'addTag' && (
             <div className="space-y-2">

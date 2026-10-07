@@ -20,6 +20,7 @@ import {
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator'
 import type { Response } from 'express'
 import { UF_LIST, UFS } from '../atendimento/br'
@@ -74,7 +75,8 @@ class LeadDto {
 }
 
 class BulkDto {
-  @ApiProperty() @IsArray() @ArrayMaxSize(5000) @IsUUID('all', { each: true }) ids!: string[]
+  @ApiPropertyOptional({ description: 'Leads escolhidos um a um' }) @IsOptional() @IsArray() @ArrayMaxSize(5000) @IsUUID('all', { each: true }) ids?: string[]
+  @ApiPropertyOptional({ description: 'Ou: todos os leads deste filtro' }) @IsOptional() @ValidateNested() @Type(() => FiltersDto) filters?: FiltersDto
   @ApiPropertyOptional() @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) addTags?: string[]
   @ApiPropertyOptional() @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) removeTags?: string[]
   @ApiPropertyOptional({ enum: STAGES }) @IsOptional() @IsIn(STAGES) stage?: LeadStage
@@ -167,8 +169,8 @@ export class LeadsController {
   @Post('massa')
   @HttpCode(200)
   bulk(@CurrentUser() user: AuthUser, @Body() dto: BulkDto, @ReqContext() ctx: RequestCtx) {
-    const { ids, ...action } = dto
-    return this.leads.bulk(user, ids, action, ctx)
+    const { ids, filters, ...action } = dto
+    return this.leads.bulk(user, { ids, filters }, action, ctx)
   }
 
   @Post('vincular-atendimentos')
