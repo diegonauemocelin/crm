@@ -18,7 +18,9 @@ export function UnsubscribePage() {
     setBusy(true)
     setError(null)
     try {
-      await api.post(`/public/descadastro/${encodeURIComponent(token)}`)
+      // ?c= identifica a campanha de onde veio o clique (conta no relatório dela).
+      const c = new URLSearchParams(window.location.search).get('c')
+      await api.post(`/public/descadastro/${encodeURIComponent(token)}${c && /^[0-9a-f-]{36}$/.test(c) ? `?c=${c}` : ''}`)
       setDone(true)
     } catch (err) {
       setError(errorMessage(err))

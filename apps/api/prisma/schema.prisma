@@ -110,6 +110,8 @@ model Tenant {
   forms          CaptureForm[]
   popups         CapturePopup[]
   whatsapps      CaptureWhatsapp[]
+  segments       EmailSegment[]
+  campaigns      EmailCampaign[]
 
   @@map("tenants")
 }
@@ -477,6 +479,8 @@ model Lead {
   /// Permissão para receber e-mail marketing (LGPD). Histórico completo em lead_consents.
   emailOptIn   Boolean   @default(false)
   emailOptOutAt DateTime?
+  /// E-mail recusado pelo servidor do destinatário (inexistente): fica fora das campanhas até ser corrigido.
+  emailBouncedAt DateTime?
 
   firstConversionAt DateTime?
   lastConversionAt  DateTime?
@@ -515,6 +519,7 @@ model Lead {
   carts    EcommerceCart[]
   orders   EcommerceOrder[]
   captures CaptureSubmission[]
+  emails   EmailRecipient[]
 
   @@unique([tenantId, email])
   @@index([tenantId, ecommerceId])
@@ -785,6 +790,109 @@ model CaptureWhatsapp {
 
   @@index([tenantId])
   @@map("capture_whatsapps")
+}
+
+/// Segmento de leads para campanhas (e, na Fase 6, automações): filtros da base de leads salvos com um nome.
+model EmailSegment {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  /// Mesmos filtros da base de leads (estágio, nota, tags, estado, responsável, unidade, origem, datas).
+  filters   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id])
+  campaigns EmailCampaign[]
+
+  @@index([tenantId])
+  @@map("email_segments")
+}
+
+enum CampaignStatus {
+  RASCUNHO
+  AGENDADA
+  ENVIANDO
+  PAUSADA
+  ENVIADA
+  CANCELADA
+}
+
+/// Campanha de e-mail marketing: conteúdo em blocos, público (segmento) e andamento do envio.
+model EmailCampaign {
+  id          String         @id @default(uuid()) @db.Uuid
+  tenantId    String         @db.Uuid
+  name        String
+  subject     String
+  preheader   String?
+  fromName    String?
+  replyTo     String?
+  /// Blocos do editor (título, texto, imagem, botão, produtos...).
+  blocks      Json           @default("[]")
+  /// Links do conteúdo no momento do envio (o clique rastreado aponta para o índice, nunca para um endereço livre).
+  links       String[]
+  segmentId   String?        @db.Uuid
+  status      CampaignStatus @default(RASCUNHO)
+  scheduledAt DateTime?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  total       Int            @default(0)
+  sent        Int            @default(0)
+  failed      Int            @default(0)
+  opens       Int            @default(0)
+  clicks      Int            @default(0)
+  unsubscribes Int           @default(0)
+  createdById String?        @db.Uuid
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id])
+  segment    EmailSegment?    @relation(fields: [segmentId], references: [id], onDelete: SetNull)
+  recipients EmailRecipient[]
+
+  @@index([tenantId, status])
+  @@map("email_campaigns")
+}
+
+/// Um destinatário de uma campanha: envio, abertura, cliques e descadastro.
+model EmailRecipient {
+  id             String    @id @default(uuid()) @db.Uuid
+  campaignId     String    @db.Uuid
+  leadId         String    @db.Uuid
+  email          String
+  /// PENDENTE, ENVIADO, ERRO
+  status         String    @default("PENDENTE")
+  error          String?
+  sentAt         DateTime?
+  openedAt       DateTime?
+  opens          Int       @default(0)
+  clickedAt      DateTime?
+  clicks         Int       @default(0)
+  unsubscribedAt DateTime?
+
+  campaign EmailCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead     Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  clicksLog EmailClick[]
+
+  @@unique([campaignId, leadId])
+  @@index([campaignId, status])
+  @@index([leadId])
+  @@map("email_recipients")
+}
+
+/// Clique em um link da campanha (para o relatório de links mais clicados).
+model EmailClick {
+  id          String   @id @default(uuid()) @db.Uuid
+  recipientId String   @db.Uuid
+  campaignId  String   @db.Uuid
+  linkIndex   Int
+  createdAt   DateTime @default(now())
+
+  recipient EmailRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, linkIndex])
+  @@map("email_clicks")
 }
 
 /// Cada envio de formulário, pop-up ou botão de WhatsApp (prova da conversão e do consentimento).

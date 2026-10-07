@@ -8,6 +8,7 @@ import { AuthGuard } from './auth/auth.guard'
 import { AuthModule } from './auth/auth.module'
 import { CapturaModule } from './captura/captura.module'
 import { CsrfMiddleware } from './common/csrf.middleware'
+import { EmailModule } from './email/email.module'
 import { env } from './config/env'
 import { FilesModule } from './files/files.module'
 import { LeadsModule } from './leads/leads.module'
@@ -30,7 +31,7 @@ import { UsersService } from './users/users.service'
         // Cookies e cabeçalhos de autenticação nunca vão para o log.
         redact: ['req.headers.cookie', 'req.headers.authorization', 'req.headers["x-csrf-token"]', 'res.headers["set-cookie"]'],
         // Health e as páginas vistas do site (milhares por dia) não poluem o log.
-        autoLogging: { ignore: (req) => req.url === '/api/health' || !!req.url?.startsWith('/api/public/rastreamento/') || !!req.url?.startsWith('/api/public/captura/config') },
+        autoLogging: { ignore: (req) => req.url === '/api/health' || !!req.url?.startsWith('/api/public/rastreamento/') || !!req.url?.startsWith('/api/public/captura/config') || !!req.url?.startsWith('/api/public/e/') },
       },
     }),
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 300 }]),
@@ -43,6 +44,7 @@ import { UsersService } from './users/users.service'
     AtendimentoModule,
     RastreamentoModule,
     CapturaModule,
+    EmailModule,
   ],
   controllers: [UsersController, RolesController, SystemController],
   providers: [

@@ -2,6 +2,20 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.6.0",
+      "date": "2026-10-07",
+      "title": "Fase 5 — Email marketing",
+      "changes": [
+        { "type": "novo", "area": "Email marketing", "text": "Campanhas de e-mail montadas por blocos (título, texto, imagem, botão, produtos, divisória e espaço), com pré-visualização ao vivo e personalização com {primeiro_nome}, {nome} e {email}." },
+        { "type": "novo", "area": "Email marketing", "text": "Segmentos com os mesmos filtros da base de leads (etapa, nota, tag, UF, vendedor, unidade, origem, período). Só recebe quem tem e-mail, autorizou o contato e não teve e-mail recusado." },
+        { "type": "novo", "area": "Email marketing", "text": "Envio de teste antes do disparo, confirmação com o número de pessoas e opção de agendar. Envio gradual (envios por minuto configurável) com pausar, retomar e cancelar." },
+        { "type": "novo", "area": "Email marketing", "text": "Relatório por campanha: enviados, erros, aberturas, cliques por link e descadastros, com a lista de destinatários. Aberturas e cliques entram na linha do tempo do lead e contam no lead scoring." },
+        { "type": "novo", "area": "Email marketing", "text": "Descadastro em 1 clique pelo próprio Gmail/Outlook e link no rodapé de todo e-mail. Quem descadastra sai das próximas campanhas automaticamente." },
+        { "type": "melhoria", "area": "Rastreamento", "text": "Quem clica num link do e-mail para o site já chega identificado no rastreamento." },
+        { "type": "seguranca", "area": "Email marketing", "text": "Links de clique só levam aos links da própria campanha e os identificadores são assinados (sem redirecionamento livre). E-mails recusados pelo servidor (ex.: endereço inexistente) ficam fora dos próximos envios, protegendo a reputação do domínio." }
+      ]
+    },
+    {
       "version": "0.5.4",
       "date": "2026-10-07",
       "title": "Correção ao salvar botão de WhatsApp",

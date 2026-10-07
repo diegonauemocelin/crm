@@ -61,7 +61,7 @@ export const NAVIGATION: NavGroup[] = [
     title: 'Marketing',
     items: [
       { title: 'Captura', to: '/captura', icon: MegaphoneIcon, module: 'captura' },
-      { title: 'Email marketing', to: '/email-marketing', icon: MailIcon, module: 'email_marketing', phase: 5 },
+      { title: 'Email marketing', to: '/email-marketing', icon: MailIcon, module: 'email_marketing' },
       { title: 'Catálogo', to: '/catalogo', icon: PackageIcon, module: 'catalogo', phase: 5 },
       { title: 'Automações', to: '/automacoes', icon: BotIcon, module: 'automacoes', phase: 6 },
     ],

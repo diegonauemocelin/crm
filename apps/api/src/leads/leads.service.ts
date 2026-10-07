@@ -477,11 +477,16 @@ export class LeadsService {
     return { email: masked, subscribed: lead.emailOptIn }
   }
 
-  async unsubscribe(token: string, ip: string | null) {
+  async unsubscribe(token: string, ip: string | null, campaignId: string | null = null) {
     const id = this.leadFromToken(token)
     const lead = id ? await this.prisma.lead.findFirst({ where: { id, deletedAt: null } }) : null
     if (!lead) throw new NotFoundException('Link de descadastro inválido.')
     if (lead.emailOptIn) await this.setEmailConsent(lead.tenantId, lead.id, false, 'link de descadastro', { ip })
+    // Veio de uma campanha: conta o descadastro no relatório dela (uma vez).
+    if (campaignId) {
+      const r = await this.prisma.emailRecipient.updateMany({ where: { campaignId, leadId: lead.id, unsubscribedAt: null }, data: { unsubscribedAt: new Date() } })
+      if (r.count) await this.prisma.emailCampaign.update({ where: { id: campaignId }, data: { unsubscribes: { increment: 1 } } })
+    }
     await this.audit.log({ tenantId: lead.tenantId, action: 'lead.unsubscribed', entity: 'lead', entityId: lead.id, ip })
     return { ok: true }
   }

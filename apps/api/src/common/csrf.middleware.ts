@@ -10,7 +10,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
  * webhooks são autenticados por assinatura; rastreamento e captura só aceitam os domínios do site cadastrados,
  * não usam sessão e só criam/completam leads (nunca leem nem alteram dados do painel).
  */
-const EXEMPT_PREFIXES = ['/api/webhooks/', '/api/public/rastreamento/', '/api/public/captura/']
+// Descadastro: autenticado pelo token assinado do link (o Gmail/Outlook envia o "cancelar inscrição" direto, sem cookie).
+const EXEMPT_PREFIXES = ['/api/webhooks/', '/api/public/rastreamento/', '/api/public/captura/', '/api/public/descadastro/']
 
 function originOf(referer: string | undefined): string | undefined {
   if (!referer) return undefined

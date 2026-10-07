@@ -353,7 +353,7 @@ export class UnsubscribeController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post(':token')
   @HttpCode(200)
-  unsubscribe(@Param('token') token: string, @ReqContext() ctx: RequestCtx) {
-    return this.leads.unsubscribe(token.slice(0, 200), ctx.ip)
+  unsubscribe(@Param('token') token: string, @Query('c') campaignId: string | undefined, @ReqContext() ctx: RequestCtx) {
+    return this.leads.unsubscribe(token.slice(0, 200), ctx.ip, typeof campaignId === 'string' && /^[0-9a-f-]{36}$/.test(campaignId) ? campaignId : null)
   }
 }
