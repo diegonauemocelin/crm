@@ -42,6 +42,8 @@ export interface CampaignInput {
   replyTo?: string | null
   blocks: unknown
   segmentId?: string | null
+  /** Só na criação: CAMPANHA (padrão) ou MODELO (usado pelas automações). */
+  kind?: 'CAMPANHA' | 'MODELO'
 }
 
 const TICK_MS = 15_000
@@ -141,9 +143,9 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
 
   // ---------- Campanhas ----------
 
-  async listCampaigns(user: AuthUser) {
+  async listCampaigns(user: AuthUser, kind: 'CAMPANHA' | 'MODELO' = 'CAMPANHA') {
     this.assertCan(user, 'view')
-    const rows = await this.prisma.emailCampaign.findMany({ where: { tenantId: user.tenantId }, orderBy: { createdAt: 'desc' }, take: 200, include: { segment: { select: { name: true } } } })
+    const rows = await this.prisma.emailCampaign.findMany({ where: { tenantId: user.tenantId, kind }, orderBy: { createdAt: 'desc' }, take: 200, include: { segment: { select: { name: true } } } })
     return rows.map(({ tenantId: _t, blocks: _b, ...c }) => c)
   }
 
@@ -164,10 +166,11 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     const checked = cleanBlocks(d.blocks)
     if ('error' in checked) throw new BadRequestException(checked.error)
     if (d.segmentId && !(await this.prisma.emailSegment.count({ where: { id: d.segmentId, tenantId: user.tenantId } }))) throw new BadRequestException('Segmento inválido.')
-    if (id) {
-      const current = await this.load(user, id)
-      if (!EDITABLE.includes(current.status)) throw new BadRequestException('Campanha em envio ou já enviada não pode ser alterada. Duplique para criar outra.')
-    }
+    const current = id ? await this.load(user, id) : null
+    if (current && !EDITABLE.includes(current.status)) throw new BadRequestException('Campanha em envio ou já enviada não pode ser alterada. Duplique para criar outra.')
+    const kind = current?.kind ?? (d.kind === 'MODELO' ? 'MODELO' : 'CAMPANHA')
+    // Modelo: links só são acrescentados (e-mails já enviados apontam para o índice do link).
+    const links = kind === 'MODELO' ? [...new Set([...(current?.links ?? []), ...collectLinks(checked.blocks)])] : undefined
     const data = {
       name: d.name.trim(),
       subject: d.subject.trim(),
@@ -175,9 +178,10 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
       fromName: d.fromName?.trim() || null,
       replyTo: d.replyTo?.trim() || null,
       blocks: checked.blocks as unknown as Prisma.InputJsonValue,
-      segmentId: d.segmentId ?? null,
+      segmentId: kind === 'MODELO' ? null : (d.segmentId ?? null),
+      ...(links ? { links } : {}),
     }
-    const c = id ? await this.prisma.emailCampaign.update({ where: { id }, data }) : await this.prisma.emailCampaign.create({ data: { ...data, tenantId: user.tenantId, createdById: user.id } })
+    const c = id ? await this.prisma.emailCampaign.update({ where: { id }, data }) : await this.prisma.emailCampaign.create({ data: { ...data, kind, tenantId: user.tenantId, createdById: user.id } })
     await this.audit.byUser(user, ctx, id ? 'email.campaign_updated' : 'email.campaign_created', 'email_campaign', c.id, { nome: data.name })
     const { tenantId: _t, ...rest } = c
     return rest
@@ -187,7 +191,7 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     this.assertCan(user, 'create')
     const c = await this.load(user, id)
     const copy = await this.prisma.emailCampaign.create({
-      data: { tenantId: user.tenantId, name: `${c.name} (cópia)`.slice(0, 120), subject: c.subject, preheader: c.preheader, fromName: c.fromName, replyTo: c.replyTo, blocks: c.blocks as Prisma.InputJsonValue, segmentId: c.segmentId, createdById: user.id },
+      data: { tenantId: user.tenantId, name: `${c.name} (cópia)`.slice(0, 120), subject: c.subject, preheader: c.preheader, fromName: c.fromName, replyTo: c.replyTo, blocks: c.blocks as Prisma.InputJsonValue, segmentId: c.segmentId, kind: c.kind, links: c.kind === 'MODELO' ? c.links : [], createdById: user.id },
     })
     await this.audit.byUser(user, ctx, 'email.campaign_duplicated', 'email_campaign', copy.id, { origem: id })
     return { id: copy.id }
@@ -197,6 +201,11 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     this.assertCan(user, 'delete')
     const c = await this.load(user, id)
     if (c.status !== 'RASCUNHO') throw new BadRequestException('Só rascunhos podem ser excluídos. Campanhas enviadas ficam no histórico.')
+    if (c.kind === 'MODELO') {
+      const used = await this.prisma.$queryRaw<{ name: string }[]>`SELECT name FROM automations WHERE "tenantId" = ${user.tenantId}::uuid AND steps::text LIKE ${`%${id}%`} LIMIT 3`
+      if (used.length) throw new BadRequestException(`Este modelo está na automação “${used.map((u) => u.name).join('”, “')}”. Tire ele do fluxo antes de excluir.`)
+      if (await this.prisma.emailRecipient.count({ where: { campaignId: id } })) throw new BadRequestException('Este modelo já foi enviado por automações e fica no histórico.')
+    }
     await this.prisma.emailCampaign.delete({ where: { id } })
     await this.audit.byUser(user, ctx, 'email.campaign_deleted', 'email_campaign', id, { nome: c.name })
   }
@@ -327,6 +336,7 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
   async start(user: AuthUser, id: string, scheduledAt: Date | null, ctx: RequestCtx) {
     this.assertCan(user, 'edit')
     const c = await this.load(user, id)
+    if (c.kind === 'MODELO') throw new BadRequestException('Modelos são enviados pelas automações, não para um segmento.')
     if (c.status !== 'RASCUNHO' && c.status !== 'AGENDADA') throw new BadRequestException('Esta campanha já foi enviada ou está em envio.')
     if (!c.segmentId) throw new BadRequestException('Escolha o segmento (público) da campanha.')
     if (!c.subject.trim()) throw new BadRequestException('Informe o assunto.')
@@ -447,6 +457,70 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
       ])
       await this.prisma.emailCampaign.update({ where: { id: c.id }, data: { sent, failed } })
     }
+  }
+
+  // ---------- Envio por automação ----------
+
+  /**
+   * Envia um modelo para um lead (passo "Enviar e-mail" das automações), com rastreamento de abertura e clique.
+   * `tentar_depois`: servidor de e-mail fora do ar; o fluxo tenta de novo no próximo ciclo.
+   */
+  async sendAutomationEmail(a: { tenantId: string; templateId: string; leadId: string; runId: string; automationId: string; automationName: string }): Promise<{ status: 'enviado' | 'pulado' | 'erro' | 'tentar_depois'; message: string; recipientId?: string }> {
+    const tpl = await this.prisma.emailCampaign.findFirst({ where: { id: a.templateId, tenantId: a.tenantId, kind: 'MODELO' } })
+    if (!tpl) return { status: 'erro', message: 'O modelo de e-mail foi excluído.' }
+    const lead = await this.prisma.lead.findFirst({ where: { id: a.leadId, tenantId: a.tenantId }, select: { name: true, email: true, emailOptIn: true, emailBouncedAt: true, anonymizedAt: true, deletedAt: true } })
+    if (!lead?.email) return { status: 'pulado', message: 'Lead sem e-mail.' }
+    if (!lead.emailOptIn) return { status: 'pulado', message: 'Lead sem consentimento para e-mail (LGPD) ou descadastrado.' }
+    if (lead.emailBouncedAt) return { status: 'pulado', message: 'E-mail do lead já foi recusado antes.' }
+    if (lead.anonymizedAt || lead.deletedAt) return { status: 'pulado', message: 'Lead excluído.' }
+    if (await this.prisma.emailRecipient.count({ where: { campaignId: tpl.id, runId: a.runId } })) return { status: 'pulado', message: 'Este e-mail já foi enviado nesta passagem pelo fluxo.' }
+    const [smtp, cfg, brand] = await Promise.all([this.settings.smtp(a.tenantId), this.config(a.tenantId), this.brand(a.tenantId)])
+    if (!smtp.host || !smtp.fromEmail) return { status: 'tentar_depois', message: 'Servidor de e-mail (SMTP) não configurado.' }
+
+    const r = await this.prisma.emailRecipient.create({ data: { campaignId: tpl.id, leadId: a.leadId, email: lead.email, runId: a.runId } })
+    const token = this.token(r.id)
+    const unsubToken = this.leads.unsubscribeToken(a.leadId)
+    const out = renderEmail(tpl.blocks as unknown as Block[], {
+      brand,
+      subject: tpl.subject,
+      preheader: tpl.preheader,
+      person: { name: lead.name, email: lead.email },
+      unsubscribeUrl: `${env.appUrl}/descadastro/${unsubToken}?c=${tpl.id}`,
+      trackLink: (_u, i) => `${env.appUrl}/api/public/e/l/${token}/${i}`,
+      openPixelUrl: `${env.appUrl}/api/public/e/a/${token}`,
+      linkList: tpl.links,
+    })
+    const transport = await this.mail.transport({ ...smtp })
+    try {
+      await transport.sendMail({
+        from: { name: tpl.fromName || cfg.fromName || smtp.fromName || brand.appName, address: smtp.fromEmail },
+        replyTo: tpl.replyTo || cfg.replyTo || smtp.replyTo || undefined,
+        to: lead.email,
+        subject: out.subject,
+        html: out.html,
+        text: out.text,
+        headers: { 'List-Unsubscribe': `<${env.appUrl}/api/public/descadastro/${unsubToken}?c=${tpl.id}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
+      })
+    } catch (err) {
+      const e = err as { message?: string; response?: string; responseCode?: number }
+      const msg = `${e.responseCode ?? ''} ${e.response ?? e.message ?? 'erro'}`.trim().slice(0, 300)
+      if (!e.responseCode) {
+        await this.prisma.emailRecipient.delete({ where: { id: r.id } })
+        return { status: 'tentar_depois', message: `Servidor de e-mail indisponível (${msg}).` }
+      }
+      await this.prisma.emailRecipient.update({ where: { id: r.id }, data: { status: 'ERRO', error: msg } })
+      await this.prisma.emailCampaign.update({ where: { id: tpl.id }, data: { failed: { increment: 1 } } })
+      if (BOUNCE.test(msg)) await this.prisma.lead.update({ where: { id: a.leadId }, data: { emailBouncedAt: new Date() } })
+      return { status: 'erro', message: `E-mail recusado: ${msg}` }
+    } finally {
+      transport.close()
+    }
+    await this.prisma.emailRecipient.update({ where: { id: r.id }, data: { status: 'ENVIADO', sentAt: new Date() } })
+    await this.prisma.emailCampaign.update({ where: { id: tpl.id }, data: { sent: { increment: 1 }, total: { increment: 1 } } })
+    await this.prisma.leadEvent.create({
+      data: { tenantId: a.tenantId, leadId: a.leadId, type: 'email_enviado', title: `Recebeu o e-mail "${tpl.name}" (automação "${a.automationName}")`.slice(0, 300), data: { campanha: tpl.id, automacao: a.automationId } },
+    })
+    return { status: 'enviado', message: `E-mail "${tpl.name}" enviado para ${lead.email}.`, recipientId: r.id }
   }
 
   // ---------- Rastreamento (público) ----------

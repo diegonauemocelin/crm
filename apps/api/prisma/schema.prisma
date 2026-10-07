@@ -113,6 +113,7 @@ model Tenant {
   whatsapps      CaptureWhatsapp[]
   segments       EmailSegment[]
   campaigns      EmailCampaign[]
+  automations    Automation[]
 
   @@map("tenants")
 }
@@ -522,6 +523,8 @@ model Lead {
   captures CaptureSubmission[]
   emails   EmailRecipient[]
 
+  automationRuns AutomationRun[]
+
   @@unique([tenantId, email])
   @@index([tenantId, ecommerceId])
   @@index([tenantId, phone])
@@ -861,6 +864,8 @@ model EmailCampaign {
   /// Links do conteúdo no momento do envio (o clique rastreado aponta para o índice, nunca para um endereço livre).
   links       String[]
   segmentId   String?        @db.Uuid
+  /// CAMPANHA (envio para um segmento) ou MODELO (enviado pelas automações, um lead por vez).
+  kind        String         @default("CAMPANHA")
   status      CampaignStatus @default(RASCUNHO)
   scheduledAt DateTime?
   startedAt   DateTime?
@@ -880,6 +885,7 @@ model EmailCampaign {
   recipients EmailRecipient[]
 
   @@index([tenantId, status])
+  @@index([tenantId, kind])
   @@map("email_campaigns")
 }
 
@@ -898,14 +904,17 @@ model EmailRecipient {
   clickedAt      DateTime?
   clicks         Int       @default(0)
   unsubscribedAt DateTime?
+  /// Envio feito por uma automação (o mesmo modelo pode ir de novo para o lead em outra passagem pelo fluxo).
+  runId          String?   @db.Uuid
 
   campaign EmailCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   lead     Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   clicksLog EmailClick[]
 
-  @@unique([campaignId, leadId])
+  @@unique([campaignId, leadId, runId])
   @@index([campaignId, status])
+  @@index([runId])
   @@index([leadId])
   @@map("email_recipients")
 }
@@ -1048,3 +1057,85 @@ model LeadImport {
   @@map("lead_imports")
 }
 
+
+// ---------- Fase 6: automações ----------
+
+enum AutomationRunStatus {
+  ATIVO
+  CONCLUIDO
+  SAIU
+  ERRO
+}
+
+/// Fluxo de automação montado pelo operador: gatilho (o que faz o lead entrar) e passos (esperar, condições e ações).
+model Automation {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  name           String
+  description    String?
+  active         Boolean   @default(false)
+  /// { type, ...configuração } — ver src/automacoes/fluxo.ts
+  trigger        Json
+  /// Árvore de passos; condições têm os caminhos "sim" e "não".
+  steps          Json      @default("[]")
+  /// nunca | apos_terminar: se o mesmo lead pode entrar de novo depois de terminar o fluxo.
+  reentry        String    @default("nunca")
+  /// Sai do fluxo quando o lead compra (pedido pago na loja ou compra no site).
+  exitOnPurchase Boolean   @default(true)
+  /// Só acontecimentos a partir daqui fazem o lead entrar (ligar o fluxo não puxa o passado).
+  activatedAt    DateTime?
+  createdById    String?   @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tenant Tenant          @relation(fields: [tenantId], references: [id])
+  runs   AutomationRun[]
+
+  @@index([tenantId, active])
+  @@map("automations")
+}
+
+/// Passagem de um lead por um fluxo: em que passo está e quando o próximo passo roda.
+model AutomationRun {
+  id           String              @id @default(uuid()) @db.Uuid
+  tenantId     String              @db.Uuid
+  automationId String              @db.Uuid
+  leadId       String              @db.Uuid
+  status       AutomationRunStatus @default(ATIVO)
+  stepId       String?
+  nextRunAt    DateTime?
+  /// Dados do gatilho e do andamento (ex.: e-mail enviado no último passo, espera em curso).
+  context      Json                @default("{}")
+  startedAt    DateTime            @default(now())
+  finishedAt   DateTime?
+  exitReason   String?
+
+  automation Automation      @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  lead       Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  logs       AutomationLog[]
+
+  @@index([status, nextRunAt])
+  @@index([automationId, leadId])
+  @@index([automationId, status])
+  @@index([leadId])
+  @@map("automation_runs")
+}
+
+/// O que aconteceu em cada passo (para o relatório e para conferir por que o lead seguiu tal caminho).
+model AutomationLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  runId        String   @db.Uuid
+  automationId String   @db.Uuid
+  leadId       String   @db.Uuid
+  stepId       String?
+  /// entrou, passo, condicao, email, erro, saiu, concluiu
+  kind         String
+  message      String
+  createdAt    DateTime @default(now())
+
+  run AutomationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, createdAt])
+  @@index([automationId, createdAt])
+  @@map("automation_logs")
+}

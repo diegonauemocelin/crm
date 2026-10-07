@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { RUN_STATUS, type RunStatus } from '@/lib/automacoes'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -400,8 +401,33 @@ function Summary({ lead }: { lead: Lead }) {
             </div>
           ))}
         </dl>
+        <LeadAutomations leadId={lead.id} />
       </CardContent>
     </Card>
+  )
+}
+
+/** Fluxos de automação de que o lead participa (ou já participou). */
+function LeadAutomations({ leadId }: { leadId: string }) {
+  const { can } = useAuth()
+  const q = useQuery({ queryKey: ['lead-automacoes', leadId], queryFn: () => api.get<{ id: string; status: RunStatus; startedAt: string; exitReason: string | null; automation: { id: string; name: string } }[]>(`/automacoes/lead/${leadId}`), enabled: can('automacoes', 'view') })
+  if (!q.data?.length) return null
+  return (
+    <div className="mt-4 border-t pt-3">
+      <p className="mb-2 text-xs font-medium text-muted-foreground">Automações</p>
+      <ul className="space-y-1.5 text-sm">
+        {q.data.map((r) => (
+          <li key={r.id} className="flex items-center justify-between gap-2">
+            <Link to={`/automacoes/${r.automation.id}`} className="min-w-0 truncate hover:underline" title={r.exitReason ?? undefined}>
+              {r.automation.name}
+            </Link>
+            <Badge variant="outline" className={RUN_STATUS[r.status].tone}>
+              {RUN_STATUS[r.status].label}
+            </Badge>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 

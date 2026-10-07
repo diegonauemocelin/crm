@@ -152,6 +152,7 @@ export function Editor({ campaign }: { campaign: Campaign }) {
     setDirty(true)
   }
   const segment = segments.data?.find((s) => s.id === c.segmentId)
+  const isModel = campaign.kind === 'MODELO'
   const blocks = items.map((i) => i.b)
   const selected = items.find((i) => i.id === sel) ?? null
 
@@ -275,14 +276,16 @@ export function Editor({ campaign }: { campaign: Campaign }) {
   return (
     <div>
       <Button variant="ghost" size="sm" className="mb-2 -ml-2" asChild>
-        <Link to="/email-marketing">
-          <ArrowLeftIcon /> Campanhas
+        <Link to={isModel ? '/email-marketing?aba=modelos' : '/email-marketing'}>
+          <ArrowLeftIcon /> {isModel ? 'Modelos' : 'Campanhas'}
         </Link>
       </Button>
       <PageHeader
         title={c.name || 'Campanha'}
         description={
-          campaign.status === 'AGENDADA' && campaign.scheduledAt
+          isModel
+            ? `Modelo usado pelas automações${campaign.sent ? ` · ${int.format(campaign.sent)} envio(s), ${campaign.sent ? Math.round((campaign.opens / campaign.sent) * 100) : 0}% abriram` : ''}. Arraste blocos, imagens e produtos; as mudanças valem para os próximos envios.`
+            : campaign.status === 'AGENDADA' && campaign.scheduledAt
             ? `Agendada para ${formatDateTime(campaign.scheduledAt)}`
             : 'Arraste blocos, imagens e produtos para o e-mail. Clique em um bloco para editar.'
         }
@@ -300,9 +303,11 @@ export function Editor({ campaign }: { campaign: Campaign }) {
                   {save.isPending && <Loader2Icon className="animate-spin" />}
                   Salvar{dirty ? ' *' : ''}
                 </Button>
-                <Button onClick={() => setConfirmSend(true)} disabled={!c.segmentId || !c.subject.trim() || !items.length}>
-                  <SendIcon /> Enviar
-                </Button>
+                {!isModel && (
+                  <Button onClick={() => setConfirmSend(true)} disabled={!c.segmentId || !c.subject.trim() || !items.length}>
+                    <SendIcon /> Enviar
+                  </Button>
+                )}
               </>
             )}
           </div>
@@ -314,6 +319,7 @@ export function Editor({ campaign }: { campaign: Campaign }) {
           <Field label="Nome interno" htmlFor="c-name">
             <Input id="c-name" maxLength={120} value={c.name} onChange={(e) => set('name', e.target.value)} disabled={!canEdit} />
           </Field>
+          {!isModel && (
           <Field label="Segmento (quem recebe)" htmlFor="c-seg" hint={segment ? `${int.format(segment.eligible)} podem receber agora.` : 'Crie segmentos na aba Segmentos.'}>
             <Select value={c.segmentId ?? NONE} onValueChange={(v) => set('segmentId', v === NONE ? null : v)} disabled={!canEdit}>
               <SelectTrigger id="c-seg" className="w-full">
@@ -329,6 +335,7 @@ export function Editor({ campaign }: { campaign: Campaign }) {
               </SelectContent>
             </Select>
           </Field>
+          )}
           <Field label="Assunto" htmlFor="c-subject" hint="Use {primeiro_nome} para personalizar.">
             <Input id="c-subject" maxLength={200} placeholder="Ex.: {primeiro_nome}, peças JCB com frete grátis" value={c.subject} onChange={(e) => set('subject', e.target.value)} disabled={!canEdit} />
           </Field>

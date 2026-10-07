@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CopyIcon, ImageIcon, Loader2Icon, MailIcon, PencilIcon, PlusIcon, Trash2Icon, UploadIcon, UsersRoundIcon } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
@@ -24,17 +24,23 @@ import { FormError } from './auth/auth-layout'
 const ANY = '__any__'
 
 export function EmailPage() {
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('aba') ?? 'campanhas'
   return (
     <RequirePermission module="email_marketing">
       <PageHeader title="Email marketing" description="Campanhas para os leads que autorizaram receber e-mails, com aberturas, cliques e descadastros." />
-      <Tabs defaultValue="campanhas">
+      <Tabs value={tab} onValueChange={(v) => setParams(v === 'campanhas' ? {} : { aba: v }, { replace: true })}>
         <TabsList className="mb-4">
           <TabsTrigger value="campanhas">Campanhas</TabsTrigger>
+          <TabsTrigger value="modelos">Modelos (automações)</TabsTrigger>
           <TabsTrigger value="segmentos">Segmentos</TabsTrigger>
           <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
         </TabsList>
         <TabsContent value="campanhas">
           <CampaignsTab />
+        </TabsContent>
+        <TabsContent value="modelos">
+          <ModelsTab />
         </TabsContent>
         <TabsContent value="segmentos">
           <SegmentsTab />
@@ -44,6 +50,90 @@ export function EmailPage() {
         </TabsContent>
       </Tabs>
     </RequirePermission>
+  )
+}
+
+// ---------- Modelos (enviados pelas automações) ----------
+
+function ModelsTab() {
+  const q = useQuery({ queryKey: ['email-models'], queryFn: () => api.get<Campaign[]>('/email/campanhas?tipo=MODELO') })
+  const { can } = useAuth()
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+  const create = useMutation({
+    mutationFn: () => api.post<Campaign>('/email/campanhas', { name: 'Novo modelo', subject: '', kind: 'MODELO', blocks: [newBlock('titulo'), newBlock('texto')] }),
+    onSuccess: (c) => navigate(`/email-marketing/${c.id}`),
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const duplicate = useMutation({
+    mutationFn: (id: string) => api.post<{ id: string }>(`/email/campanhas/${id}/duplicar`),
+    onSuccess: (r) => navigate(`/email-marketing/${r.id}`),
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/email/campanhas/${id}`),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['email-models'] }),
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">Modelos são e-mails montados no mesmo editor e enviados pelas automações, um lead por vez, no passo “Enviar e-mail”.</p>
+        {can('email_marketing', 'create') && (
+          <Button onClick={() => create.mutate()} disabled={create.isPending}>
+            <PlusIcon /> Novo modelo
+          </Button>
+        )}
+      </div>
+      {q.error ? (
+        <ErrorState error={q.error} onRetry={() => q.refetch()} />
+      ) : !q.data ? (
+        <TableSkeleton rows={3} />
+      ) : !q.data.length ? (
+        <EmptyState icon={MailIcon} title="Nenhum modelo ainda" description="Crie um modelo (ex.: “Recuperação de carrinho com cupom”) e use no passo Enviar e-mail de uma automação." />
+      ) : (
+        <Card className="overflow-hidden py-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-4">Modelo</TableHead>
+                <TableHead className="text-right">Enviados</TableHead>
+                <TableHead className="text-right">Aberturas</TableHead>
+                <TableHead className="text-right">Cliques</TableHead>
+                <TableHead className="pr-4" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {q.data.map((c) => (
+                <TableRow key={c.id}>
+                  <TableCell className="pl-4">
+                    <Link to={`/email-marketing/${c.id}`} className="font-medium hover:underline">
+                      {c.name}
+                    </Link>
+                    <p className="text-xs text-muted-foreground">{c.subject || '(sem assunto)'}</p>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{int.format(c.sent)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{pct(c.opens, c.sent)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{pct(c.clicks, c.sent)}</TableCell>
+                  <TableCell className="pr-4 text-right whitespace-nowrap">
+                    {can('email_marketing', 'create') && (
+                      <Button size="icon" variant="ghost" aria-label="Duplicar modelo" onClick={() => duplicate.mutate(c.id)}>
+                        <CopyIcon />
+                      </Button>
+                    )}
+                    {can('email_marketing', 'delete') && (
+                      <Button size="icon" variant="ghost" aria-label="Excluir modelo" onClick={() => confirm(`Excluir o modelo "${c.name}"?`) && remove.mutate(c.id)}>
+                        <Trash2Icon />
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+    </div>
   )
 }
 

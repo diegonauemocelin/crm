@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module'
 import { CapturaModule } from './captura/captura.module'
 import { CsrfMiddleware } from './common/csrf.middleware'
 import { EmailModule } from './email/email.module'
+import { AutomacoesModule } from './automacoes/automacoes.module'
 import { env } from './config/env'
 import { FilesModule } from './files/files.module'
 import { LeadsModule } from './leads/leads.module'
@@ -45,6 +46,7 @@ import { UsersService } from './users/users.service'
     RastreamentoModule,
     CapturaModule,
     EmailModule,
+    AutomacoesModule,
   ],
   controllers: [UsersController, RolesController, SystemController],
   providers: [

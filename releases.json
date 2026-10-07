@@ -2,6 +2,20 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.7.0",
+      "date": "2026-10-07",
+      "title": "Fase 6 — Automações",
+      "changes": [
+        { "type": "novo", "area": "Automações", "text": "Construtor de fluxos totalmente personalizável: escolha o gatilho e monte os passos clicando no “+”. Esperar (minutos, horas ou dias), condição com caminhos Sim e Não (uma dentro da outra), enviar e-mail, adicionar ou remover tag, trocar vendedor, mudar etapa, criar atendimento no Pré-Vendas, avisar a equipe por e-mail e encerrar." },
+        { "type": "novo", "area": "Automações", "text": "Gatilhos: lead novo (por origem), formulário/pop-up/WhatsApp, entrada no Pré-Vendas ou no Pós-Vendas, produto no carrinho, carrinho abandonado, checkout iniciado, compra, e-mail aberto ou clicado, visita ao site (ou a uma página), mudança de etapa, X dias sem acessar o site ou sem nenhuma interação, e manual por segmento." },
+        { "type": "novo", "area": "Automações", "text": "Condições: tem carrinho abandonado, iniciou checkout e não comprou, comprou, X dias sem acessar o site, X dias sem interação, abriu ou clicou no e-mail do fluxo, tag, etapa, nota, origem, vendedor, telefone e permissão para e-mail — cada uma também na forma “não”, combinadas com “todas” ou “qualquer uma”." },
+        { "type": "novo", "area": "Automações", "text": "Relatório de cada fluxo: quantos entraram, estão nele, concluíram ou saíram, e-mails enviados com aberturas e cliques, quantos passaram por cada passo e vendas (pedidos pagos até 30 dias depois de entrar). Histórico passo a passo de cada lead e opção de tirar um lead do fluxo." },
+        { "type": "novo", "area": "Email marketing", "text": "Modelos de e-mail para as automações (aba Modelos), montados no mesmo editor visual, com aberturas e cliques contados." },
+        { "type": "melhoria", "area": "Base de leads", "text": "A tela do lead mostra os fluxos de automação de que ele participa." },
+        { "type": "seguranca", "area": "Automações", "text": "E-mail só para quem autorizou (LGPD). Ligar um fluxo não dispara para o passado nem para a base antiga inteira. Por padrão o lead sai do fluxo quando compra e não entra de novo (a reentrada, quando ligada, é no máximo uma vez por dia). Todas as mudanças ficam na auditoria." }
+      ]
+    },
+    {
       "version": "0.6.2",
       "date": "2026-10-07",
       "title": "Editor visual de e-mail, produtos da loja e imagens",

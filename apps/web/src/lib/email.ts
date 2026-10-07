@@ -146,6 +146,8 @@ export interface Campaign {
   blocks: Block[]
   segmentId: string | null
   segment?: { name: string } | null
+  /** CAMPANHA (para um segmento) ou MODELO (enviado pelas automações). */
+  kind: 'CAMPANHA' | 'MODELO'
   status: CampaignStatus
   scheduledAt: string | null
   startedAt: string | null

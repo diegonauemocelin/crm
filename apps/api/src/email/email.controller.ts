@@ -43,6 +43,7 @@ class CampaignDto {
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsEmail() replyTo?: string | null
   @ApiProperty() @IsArray() blocks!: unknown[]
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() segmentId?: string | null
+  @ApiPropertyOptional({ description: 'Só na criação' }) @IsOptional() @IsIn(['CAMPANHA', 'MODELO']) kind?: 'CAMPANHA' | 'MODELO'
 }
 
 class PreviewDto {
@@ -172,8 +173,8 @@ export class EmailController {
   }
 
   @Get('campanhas')
-  campaigns(@CurrentUser() user: AuthUser) {
-    return this.email.listCampaigns(user)
+  campaigns(@CurrentUser() user: AuthUser, @Query('tipo') tipo?: string) {
+    return this.email.listCampaigns(user, tipo === 'MODELO' ? 'MODELO' : 'CAMPANHA')
   }
 
   @Post('campanhas')

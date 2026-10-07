@@ -53,6 +53,8 @@ export interface RenderOptions {
   trackLink?: (url: string, index: number) => string
   /** Pixel de abertura (opcional: no teste e na pré-visualização não vai). */
   openPixelUrl?: string | null
+  /** Lista fixa de links (modelos de automação: o índice de um link nunca muda depois de enviado). */
+  linkList?: string[]
 }
 
 export const escape = (v: string) => v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
@@ -310,7 +312,7 @@ export function collectLinks(blocks: Block[]): string[] {
 
 export function renderEmail(blocks: Block[], o: RenderOptions) {
   const color = HEX.test(o.brand.color) ? o.brand.color : '#1d4ed8'
-  const links = collectLinks(blocks)
+  const links = o.linkList ?? collectLinks(blocks)
   const track = (u: string) => {
     if (/^(mailto|tel):/i.test(u) || !o.trackLink) return u
     const i = links.indexOf(u)
