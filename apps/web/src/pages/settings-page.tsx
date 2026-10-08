@@ -19,10 +19,11 @@ import type { Branding, LayoutMode } from '@/lib/types'
 import { FormError } from './auth/auth-layout'
 import { MetaTab } from './settings/meta-tab'
 import { Ga4Tab } from './settings/ga4-tab'
+import { GoogleAdsTab } from './settings/google-ads-tab'
 import { MagazordTab } from './settings/magazord-tab'
 import { TrackingTab } from './settings/tracking-tab'
 
-const TABS = ['marca', 'aparencia', 'email', 'rastreamento', 'loja', 'meta', 'ga4']
+const TABS = ['marca', 'aparencia', 'email', 'rastreamento', 'loja', 'meta', 'ga4', 'google-ads']
 
 export function SettingsPage() {
   // Aba inicial pelo endereço (?aba=loja), usada pelos atalhos de outras telas.
@@ -40,6 +41,7 @@ export function SettingsPage() {
           <TabsTrigger value="loja">Loja virtual (Magazord)</TabsTrigger>
           <TabsTrigger value="meta">Meta Lead Ads</TabsTrigger>
           <TabsTrigger value="ga4">Google Analytics</TabsTrigger>
+          <TabsTrigger value="google-ads">Google Ads</TabsTrigger>
         </TabsList>
         <TabsContent value="loja">
           <MagazordTab />
@@ -49,6 +51,9 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="meta">
           <MetaTab />
+        </TabsContent>
+        <TabsContent value="google-ads">
+          <GoogleAdsTab />
         </TabsContent>
         <TabsContent value="ga4">
           <Ga4Tab />

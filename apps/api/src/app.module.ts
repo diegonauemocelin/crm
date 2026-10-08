@@ -13,6 +13,7 @@ import { UserThrottlerGuard } from './common/throttle.guard'
 import { AutomacoesModule } from './automacoes/automacoes.module'
 import { RelatoriosModule } from './relatorios/relatorios.module'
 import { CatalogoModule } from './catalogo/catalogo.module'
+import { GoogleAdsModule } from './googleads/googleads.module'
 import { env } from './config/env'
 import { FilesModule } from './files/files.module'
 import { LeadsModule } from './leads/leads.module'
@@ -52,6 +53,7 @@ import { UsersService } from './users/users.service'
     AutomacoesModule,
     RelatoriosModule,
     CatalogoModule,
+    GoogleAdsModule,
   ],
   controllers: [UsersController, RolesController, SystemController],
   providers: [

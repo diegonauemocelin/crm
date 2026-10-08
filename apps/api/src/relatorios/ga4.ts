@@ -47,10 +47,10 @@ export function parseKeyFile(text: string): { clientEmail: string; privateKey: s
 const b64url = (s: string | Buffer) => Buffer.from(s).toString('base64url')
 
 /** JWT assinado (RS256) trocado por um token de acesso de 1 hora. */
-export function signJwt(clientEmail: string, privateKey: string, now = Date.now()) {
+export function signJwt(clientEmail: string, privateKey: string, now = Date.now(), scope = GA_SCOPE) {
   const iat = Math.floor(now / 1000)
   const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
-  const claims = b64url(JSON.stringify({ iss: clientEmail, scope: GA_SCOPE, aud: GA_TOKEN_URL, iat, exp: iat + 3600 }))
+  const claims = b64url(JSON.stringify({ iss: clientEmail, scope, aud: GA_TOKEN_URL, iat, exp: iat + 3600 }))
   const signature = createSign('RSA-SHA256').update(`${header}.${claims}`).sign(privateKey).toString('base64url')
   return `${header}.${claims}.${signature}`
 }

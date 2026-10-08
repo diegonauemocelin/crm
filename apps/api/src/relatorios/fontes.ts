@@ -81,6 +81,14 @@ const leadDims = (prefix = 'Lead'): Dimension[] => [
   { key: 'lead_fonte', label: `${prefix}: fonte (1ª conversão)`, sql: `l."firstConversion"->>'source'`, joins: ['lead'] },
   { key: 'lead_meio', label: `${prefix}: meio (1ª conversão)`, sql: `l."firstConversion"->>'medium'`, joins: ['lead'] },
   { key: 'lead_campanha', label: `${prefix}: campanha (1ª conversão)`, sql: `l."firstConversion"->>'campaign'`, joins: ['lead'] },
+  { key: 'lead_termo', label: `${prefix}: palavra-chave (1ª conversão)`, sql: `l."firstConversion"->>'term'`, joins: ['lead'] },
+  { key: 'lead_campanha_ultima', label: `${prefix}: campanha (última conversão)`, sql: `l."lastConversion"->>'campaign'`, joins: ['lead'] },
+  {
+    key: 'lead_google_ads',
+    label: `${prefix}: veio de anúncio do Google`,
+    sql: `CASE WHEN l.id IS NULL THEN NULL WHEN (l."firstConversion"->>'landing' ~ '[?&](gclid|gbraid|wbraid)=') OR (l."lastConversion"->>'landing' ~ '[?&](gclid|gbraid|wbraid)=') OR (lower(l."firstConversion"->>'source') = 'google' AND lower(l."firstConversion"->>'medium') IN ('cpc','ppc','paid')) OR (lower(l."lastConversion"->>'source') = 'google' AND lower(l."lastConversion"->>'medium') IN ('cpc','ppc','paid')) THEN 'Sim' ELSE 'Não' END`,
+    joins: ['lead'],
+  },
   { key: 'lead_estado', label: `${prefix}: estado`, sql: `l.state`, joins: ['lead'] },
   { key: 'lead_regiao', label: `${prefix}: região`, sql: region('l.state'), joins: ['lead'] },
   { key: 'lead_vendedor', label: `${prefix}: vendedor responsável`, sql: `lsel.name`, joins: ['lead', 'leadSeller'] },
@@ -162,6 +170,7 @@ export const SOURCES: Source[] = [
       lostReason: `LEFT JOIN lookup_items rl ON rl.id = t."lostReasonId"`,
       brand: `LEFT JOIN LATERAL unnest(t."brandIds") AS brx(id) ON true LEFT JOIN lookup_items bri ON bri.id = brx.id`,
       part: `LEFT JOIN LATERAL unnest(t."partTypeIds") AS ptx(id) ON true LEFT JOIN lookup_items pti ON pti.id = ptx.id`,
+      ...LEAD_JOINS,
     },
     dimensions: [
       { key: 'tipo', label: 'Pré ou Pós-Vendas', sql: 't.kind::text', labels: { PRE_VENDAS: 'Pré-Vendas', POS_VENDAS: 'Pós-Vendas' } },
@@ -193,6 +202,7 @@ export const SOURCES: Source[] = [
         sql: 't."followStatus"::text',
         labels: { PENDENTE: 'Pendente', CONTATADO: 'Contatado', ANALISANDO: 'Analisando', RESOLVIDO: 'Resolvido', VOLTOU_AO_VENDEDOR: 'Voltou ao vendedor' },
       },
+      ...leadDims('Lead').filter((d) => !['lead_estado', 'lead_regiao', 'lead_vendedor'].includes(d.key)),
       ...timeDims('t."leadAt"'),
     ],
     metrics: [

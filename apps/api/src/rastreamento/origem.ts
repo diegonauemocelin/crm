@@ -46,7 +46,7 @@ const SOCIAL: [string, string][] = [
 ]
 
 /** Parâmetros que podem ficar na URL guardada. O resto (que pode ter e-mail, CPF, token...) é descartado. */
-const KEEP_PARAMS = new Set(['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid', 'q', 'busca', 'categoria', 'page', 'pagina'])
+const KEEP_PARAMS = new Set(['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'gbraid', 'wbraid', 'fbclid', 'q', 'busca', 'categoria', 'page', 'pagina'])
 
 function hostOf(url: string | undefined | null): string | null {
   if (!url) return null
@@ -124,7 +124,7 @@ export function classifyTouch(pageUrl: string, referrer: string | null | undefin
       landing,
     }
   }
-  if (p.get('gclid')) return { source: 'google', medium: 'cpc', referrer: refHost ?? undefined, landing }
+  if (p.get('gclid') || p.get('gbraid') || p.get('wbraid')) return { source: 'google', medium: 'cpc', referrer: refHost ?? undefined, landing }
   if (p.get('fbclid')) return { source: refHost && refHost.includes('instagram') ? 'instagram' : 'facebook', medium: 'social', referrer: refHost ?? undefined, landing }
   if (internal) return null
   if (!refHost) return { source: 'direto', medium: 'direto', landing }

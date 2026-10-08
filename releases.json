@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.11.0",
+      "date": "2026-10-08",
+      "title": "Retorno dos atendimentos para o Google Ads",
+      "changes": [
+        { "type": "novo", "area": "Google Ads", "text": "Retorno para as campanhas do Google Ads, direto pela API do Google (Data Manager), a cada 15 minutos: contato recebido, vendedor retornou, venda com o valor e perda separada por motivo (ex.: “Sem produto disponível”, “Não respondeu”), cada um na conversão escolhida em Configurações → Google Ads." },
+        { "type": "novo", "area": "Google Ads", "text": "Quem passou pelo site vai com o código do clique do anúncio; quem chamou direto no WhatsApp ou ligou é reconhecido pelo telefone e e-mail, enviados só criptografados. Cada resultado vai uma vez só, dentro do prazo do Google (90 dias), com tela de acompanhamento, “Testar conexão” e “Enviar agora”." },
+        { "type": "melhoria", "area": "Dashboards e relatórios", "text": "Atendimentos no criador de relatórios com os campos do lead: fonte, meio, campanha e palavra-chave do anúncio e “veio de anúncio do Google”, para ver vendas, perdas e motivos por campanha." },
+        { "type": "melhoria", "area": "Rastreamento", "text": "Os códigos de clique de anúncios do Google em iPhone (gbraid e wbraid) também são guardados." },
+        { "type": "seguranca", "area": "Google Ads", "text": "Os dados do cliente vão só para medir o resultado do anúncio, nunca para personalizar anúncios; leads com dados apagados a pedido (LGPD) não são enviados. A chave do Google fica criptografada e as mudanças ficam na auditoria." }
+      ]
+    },
+    {
       "version": "0.10.0",
       "date": "2026-10-08",
       "title": "Editor visual de pop-ups e formulários e Catálogo de produtos",
