@@ -61,6 +61,8 @@ export interface Options {
 
 export interface ServiceRecord {
   id: string
+  /** Só na ficha completa: campanha do Google Ads de onde o contato veio. */
+  googleAds?: { campaignId: string | null; campaign: string | null; label: string; byOrigin?: boolean } | null
   kind: Kind
   leadAt: string
   name: string

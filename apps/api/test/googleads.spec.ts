@@ -74,3 +74,51 @@ describe('Google Ads: evento enviado', () => {
     expect(ingestBody({ ...s, sendUserData: false }, '555', []).consent.adUserData).toBe('CONSENT_DENIED')
   })
 })
+
+describe('Google Ads: quais contatos enviar', () => {
+  it('origem marcada OU anúncio detectado; com tudo desligado, todos', async () => {
+    const { shouldSend } = await import('../src/googleads/googleads')
+    const s = { onlyGoogle: true, originIds: ['whats', 'tel'] }
+    expect(shouldSend(s, true, null)).toBe(true)
+    expect(shouldSend(s, false, 'whats')).toBe(true)
+    expect(shouldSend(s, false, 'tel')).toBe(true)
+    expect(shouldSend(s, false, 'site')).toBe(false)
+    expect(shouldSend({ onlyGoogle: false, originIds: ['whats'] }, true, 'site')).toBe(false)
+    expect(shouldSend({ onlyGoogle: false, originIds: [] }, false, null)).toBe(true)
+  })
+})
+
+describe('Google Ads: campanha do contato', () => {
+  it('lê o número da campanha que o Google põe no link (gad_campaignid) e classifica como anúncio', async () => {
+    const { classifyTouch } = await import('../src/rastreamento/origem')
+    const { campaignIdFromUrl } = await import('../src/googleads/googleads')
+    const t = classifyTouch('https://teste.usaparts.com.br/jcb?gad_source=1&gad_campaignid=21987654321&gclid=Cj0KCQjwXYZ123', null, ['usaparts.com.br'])
+    expect(t).toMatchObject({ source: 'google', medium: 'cpc', campaignId: '21987654321' })
+    expect(t?.landing).toContain('gad_campaignid=21987654321')
+    const u = classifyTouch('https://teste.usaparts.com.br/?utm_source=google&utm_medium=cpc&utm_campaign=JCB%20Pe%C3%A7as&gad_campaignid=21987654321', null, ['usaparts.com.br'])
+    expect(u).toMatchObject({ source: 'google', medium: 'cpc', campaign: 'JCB Peças', campaignId: '21987654321' })
+    expect(campaignIdFromUrl('https://x.com/?utm_id=123456')).toBe('123456')
+    expect(campaignIdFromUrl('https://x.com/?gad_campaignid=abc')).toBeNull()
+  })
+
+  it('nome pelo utm_campaign ou pela lista cadastrada; só o número quando não há nome', async () => {
+    const { adsInfoOf, campaignLabel } = await import('../src/googleads/googleads')
+    const at = new Date('2026-10-01T12:00:00Z')
+    const withName = adsInfoOf([{ t: { source: 'google', medium: 'cpc', campaign: 'JCB Peças', campaignId: '111222' }, at }])
+    expect(withName).toMatchObject({ campaignId: '111222', campaign: 'JCB Peças' })
+    expect(campaignLabel(withName!)).toBe('JCB Peças (nº 111222)')
+    const fromList = adsInfoOf([{ t: { source: 'google', medium: 'cpc', landing: 'https://x.com/?gad_campaignid=333444&gclid=Cj0KCQjwAAA111' }, at }], { '333444': 'Filtros Caterpillar' })
+    expect(campaignLabel(fromList!)).toBe('Filtros Caterpillar (nº 333444)')
+    const onlyId = adsInfoOf([{ t: { source: 'google', medium: 'cpc', campaign: '555666' }, at }])
+    expect(onlyId).toMatchObject({ campaignId: '555666', campaign: null })
+    expect(campaignLabel(onlyId!)).toBe('campanha nº 555666')
+    // A mais recente vale; orgânico não conta.
+    const both = adsInfoOf([
+      { t: { source: 'google', medium: 'cpc', campaign: 'Antiga', campaignId: '1111' }, at: new Date('2026-09-01T00:00:00Z') },
+      { t: { source: 'google', medium: 'cpc', campaign: 'Nova', campaignId: '2222' }, at },
+      { t: { source: 'google', medium: 'organico' }, at: new Date('2026-10-05T00:00:00Z') },
+    ])
+    expect(both?.campaign).toBe('Nova')
+    expect(adsInfoOf([{ t: { source: 'google', medium: 'organico' }, at }])).toBeNull()
+  })
+})

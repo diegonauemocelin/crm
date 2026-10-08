@@ -20,8 +20,17 @@ export const GRADE_CLASS: Record<Grade, string> = {
   D: 'border-border bg-muted text-muted-foreground',
 }
 
+/** Campanha do Google Ads de onde o contato veio (só quando o CRM detecta o anúncio). */
+export interface GoogleAdsInfo {
+  campaignId: string | null
+  campaign: string | null
+  label: string
+  byOrigin?: boolean
+}
+
 export interface Lead {
   id: string
+  googleAds?: GoogleAdsInfo | null
   name: string | null
   email: string | null
   phone: string | null

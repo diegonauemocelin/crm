@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.12.0",
+      "date": "2026-10-08",
+      "title": "Google Ads: origens escolhidas e campanha marcada no lead",
+      "changes": [
+        { "type": "novo", "area": "Google Ads", "text": "Escolha quais contatos vão para o Google Ads pela origem do atendimento (pode marcar várias, como WhatsApp, Ligação e Site - LP), além dos que o CRM detecta como vindos de anúncio." },
+        { "type": "novo", "area": "Google Ads", "text": "O lead que chega por anúncio do Google é marcado: recebe a tag “google-ads” e a linha do tempo, a ficha do lead e o atendimento do Pré-Vendas mostram a campanha (nome e número)." },
+        { "type": "novo", "area": "Google Ads", "text": "O CRM lê o número da campanha que o Google Ads põe sozinho no link (gad_campaignid). O nome vem do utm_campaign e fica guardado pelo número para os próximos contatos; também dá para cadastrar os nomes em Configurações → Google Ads." },
+        { "type": "melhoria", "area": "Dashboards e relatórios", "text": "Novo campo “Lead: número da campanha do Google Ads” nos relatórios de leads, atendimentos, pedidos, carrinhos, e-mails e conversões." }
+      ]
+    },
+    {
       "version": "0.11.0",
       "date": "2026-10-08",
       "title": "Retorno dos atendimentos para o Google Ads",

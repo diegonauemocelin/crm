@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Post, Put } from '@nestjs/common'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
-import { IsBoolean, IsObject, IsOptional, IsString, Matches, MaxLength, ValidateIf, ValidateNested } from 'class-validator'
+import { ArrayMaxSize, IsArray, IsBoolean, IsObject, IsOptional, IsString, IsUUID, Matches, MaxLength, ValidateIf, ValidateNested } from 'class-validator'
 import { CurrentUser, ReqContext, type RequestCtx, RequirePermission } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { GoogleAdsService } from './googleads.service'
@@ -24,6 +24,9 @@ class GoogleAdsDto {
   @ApiProperty() @ValidateNested() @Type(() => ActionsDto) actions!: ActionsDto
   @ApiProperty() @IsBoolean() sendUserData!: boolean
   @ApiProperty() @IsBoolean() onlyGoogle!: boolean
+  @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) originIds?: string[]
+  /** Nomes das campanhas pelo número (conferidos no serviço). */
+  @ApiPropertyOptional() @IsOptional() @IsObject() campaigns?: Record<string, string>
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @Matches(/^\d{4}-\d{2}-\d{2}$/) startDate?: string | null
 }
 

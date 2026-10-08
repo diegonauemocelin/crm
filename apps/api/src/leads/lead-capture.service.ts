@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common'
 import { normalizePhone, UF_LIST, ufFromPhone } from '../atendimento/br'
 import type { Prisma } from '../generated/prisma/client'
+import { adsInfoOf, campaignLabel, DEFAULT_GOOGLE_ADS, GOOGLE_ADS_TAG, type GoogleAdsSettings } from '../googleads/googleads'
 import { PrismaService } from '../prisma/prisma.service'
+import { SettingsService } from '../settings/settings.service'
 import { LeadConfigService } from './lead-config.service'
 import { normalizeEmail, normalizeTags } from './mapeamento'
 
@@ -41,7 +43,22 @@ export class LeadCaptureService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: LeadConfigService,
+    private readonly settings: SettingsService,
   ) {}
+
+  /**
+   * Campanha do Google Ads da conversão (pelo código de clique / número da campanha na página de entrada).
+   * Quando o link traz o número e o nome (utm_campaign) juntos, guarda o nome para os próximos contatos da campanha.
+   */
+  private async googleAds(tenantId: string, touch: Record<string, unknown>, at: Date) {
+    const info = adsInfoOf([{ t: touch, at }])
+    if (!info) return null
+    const s = await this.settings.get<GoogleAdsSettings>(tenantId, 'google_ads', DEFAULT_GOOGLE_ADS)
+    if (info.campaignId && info.campaign && !s.campaigns[info.campaignId]) {
+      await this.settings.set(tenantId, 'google_ads', { ...s, campaigns: { ...s.campaigns, [info.campaignId]: info.campaign.slice(0, 120) } })
+    }
+    return { ...info, campaign: info.campaign ?? (info.campaignId ? (s.campaigns[info.campaignId] ?? null) : null) }
+  }
 
   private async originId(tenantId: string, name: string) {
     const found = await this.prisma.lookupItem.findFirst({ where: { tenantId, type: 'ORIGEM', name: { equals: name, mode: 'insensitive' } } })
@@ -56,10 +73,13 @@ export class LeadCaptureService {
     const stateRaw = c.state?.trim().toUpperCase() ?? null
     const state = stateRaw && (UF_LIST as readonly string[]).includes(stateRaw) ? stateRaw : (phone ? ufFromPhone(phone) : null)
     const at = conv.occurredAt ?? new Date()
-    const tags = normalizeTags(conv.tags ?? [])
+    // Veio de anúncio do Google: marca o lead (tag "google-ads") e diz a campanha na linha do tempo.
+    const ads = await this.googleAds(tenantId, conv.touch, at)
+    const tags = normalizeTags([...(conv.tags ?? []), ...(ads ? [GOOGLE_ADS_TAG] : [])])
     const originId = await this.originId(tenantId, conv.originName)
     const touch = conv.touch as Prisma.InputJsonValue
-    const event = { tenantId, type: 'conversao', title: conv.title.slice(0, 300), data: { origem: conv.touch, ...(conv.details ?? {}) } as Prisma.InputJsonValue, occurredAt: at }
+    const title = ads ? `${conv.title} · Google Ads, ${campaignLabel(ads)}` : conv.title
+    const event = { tenantId, type: 'conversao', title: title.slice(0, 300), data: { origem: conv.touch, ...(ads ? { googleAds: { campanha: ads.campaign, numeroCampanha: ads.campaignId } } : {}), ...(conv.details ?? {}) } as Prisma.InputJsonValue, occurredAt: at }
 
     const existing = await this.prisma.lead.findFirst({
       where: { tenantId, deletedAt: null, anonymizedAt: null, ...(email ? { email } : { phone }) },

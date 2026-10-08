@@ -3,6 +3,7 @@ import { CheckCircle2Icon, FileJsonIcon, Loader2Icon, PlugZapIcon, SendIcon, XCi
 import { type FormEvent, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
+import { MultiSelect } from '@/components/multi-select'
 import { ErrorState, formatDateTime, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -26,6 +27,8 @@ interface Config {
   actions: Record<Kind, string> & { perdaPorMotivo: Record<string, string> }
   sendUserData: boolean
   onlyGoogle: boolean
+  originIds: string[]
+  campaigns: Record<string, string>
   startDate: string | null
   updatedAt: string | null
 }
@@ -60,6 +63,9 @@ function Editor({ initial }: { initial: Config }) {
   const [busy, setBusy] = useState<'save' | 'test' | 'send' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
+  // Nomes das campanhas como linhas editáveis (número + nome).
+  const [campaigns, setCampaigns] = useState(() => Object.entries(initial.campaigns ?? {}).map(([id, name]) => ({ id, name })))
+  const setCampaign = (i: number, patch: Partial<{ id: string; name: string }>) => setCampaigns((list) => list.map((c, j) => (j === i ? { ...c, ...patch } : c)))
   const setAction = (k: Kind, v: string) => setForm((f) => ({ ...f, actions: { ...f.actions, [k]: v.replace(/[^\d]/g, '') } }))
   const setReason = (id: string, v: string) => setForm((f) => ({ ...f, actions: { ...f.actions, perdaPorMotivo: { ...f.actions.perdaPorMotivo, [id]: v.trim() === '-' ? '-' : v.replace(/[^\d]/g, '') } } }))
 
@@ -83,11 +89,14 @@ function Editor({ initial }: { initial: Config }) {
         actions: form.actions,
         sendUserData: form.sendUserData,
         onlyGoogle: form.onlyGoogle,
+        originIds: form.originIds,
+        campaigns: Object.fromEntries(campaigns.filter((c) => c.id.trim() && c.name.trim()).map((c) => [c.id.trim(), c.name.trim()])),
         startDate: form.startDate,
         ...(keyFile ? { keyFile: keyFile.text } : {}),
       })
       qc.setQueryData(['google-ads-config'], saved)
       setForm(saved)
+      setCampaigns(Object.entries(saved.campaigns ?? {}).map(([id, name]) => ({ id, name })))
       setKeyFile(null)
       if (fileRef.current) fileRef.current.value = ''
       toast.success('Google Ads salvo.')
@@ -215,16 +224,64 @@ function Editor({ initial }: { initial: Config }) {
                 </div>
                 <Switch id="ga-user" checked={form.sendUserData} onCheckedChange={(v) => setForm({ ...form, sendUserData: v })} disabled={!canEdit} />
               </div>
+            </div>
+
+            <div className="space-y-3 rounded-md border p-3">
+              <p className="text-sm font-medium">Quais contatos enviar</p>
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <Label htmlFor="ga-only">Só contatos que vieram de anúncio do Google</Label>
+                  <Label htmlFor="ga-only">Contatos em que o CRM detectou anúncio do Google</Label>
                   <p className="text-xs text-muted-foreground">
-                    Recomendado. Conta como anúncio: código de clique do Google na página de entrada, origem google/cpc ou a origem do atendimento com “Google” no nome (ex.: “Google
-                    Ads”). Desligado, envia todos (o Google só aproveita quem clicou num anúncio).
+                    Código de clique do Google na página de entrada, origem google/cpc ou a origem do atendimento com “Google” no nome (ex.: “Google Ads”).
                   </p>
                 </div>
                 <Switch id="ga-only" checked={form.onlyGoogle} onCheckedChange={(v) => setForm({ ...form, onlyGoogle: v })} disabled={!canEdit} />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="ga-origins">E também os atendimentos destas origens</Label>
+                <MultiSelect
+                  id="ga-origins"
+                  items={(options.data?.origins ?? []).map((o) => ({ id: o.id, name: o.name, active: o.active }))}
+                  value={form.originIds}
+                  onChange={(originIds) => setForm({ ...form, originIds })}
+                  placeholder="Nenhuma origem marcada"
+                  disabled={!canEdit}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Pode marcar várias (ex.: WhatsApp, Ligação, Site - LP). Vale a origem escolhida no atendimento do Pré-Vendas. O Google só aproveita quem de fato clicou num anúncio; os
+                  demais ele ignora.
+                </p>
+              </div>
+              <p className="text-xs font-medium">
+                {!form.onlyGoogle && form.originIds.length === 0
+                  ? 'Com as duas opções vazias, vão todos os atendimentos do Pré-Vendas.'
+                  : `Vai: ${[form.onlyGoogle ? 'quem veio de anúncio detectado' : null, form.originIds.length ? `${form.originIds.length} origem(ns) marcada(s)` : null].filter(Boolean).join(' + ')}.`}
+              </p>
+            </div>
+
+            <div className="space-y-3 rounded-md border p-3">
+              <p className="text-sm font-medium">Nomes das campanhas</p>
+              <p className="text-xs text-muted-foreground">
+                O Google Ads põe sozinho o <strong>número da campanha</strong> no link do anúncio (marcação automática ligada). O nome só vem se a campanha tiver
+                <span className="font-mono"> utm_campaign</span>; quando vem junto com o número, o CRM guarda o nome aqui sozinho. Também dá para cadastrar ou corrigir: o número fica
+                em Campanhas, na coluna “ID da campanha”.
+              </p>
+              {campaigns.map((c, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Input className="h-8 w-40 font-mono" inputMode="numeric" placeholder="Número" value={c.id} onChange={(e) => setCampaign(i, { id: e.target.value.replace(/\D/g, '') })} disabled={!canEdit} aria-label="Número da campanha" />
+                  <Input className="h-8 min-w-0 flex-1" placeholder="Nome da campanha" maxLength={120} value={c.name} onChange={(e) => setCampaign(i, { name: e.target.value })} disabled={!canEdit} aria-label="Nome da campanha" />
+                  {canEdit && (
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setCampaigns((list) => list.filter((_, j) => j !== i))}>
+                      Remover
+                    </Button>
+                  )}
+                </div>
+              ))}
+              {canEdit && (
+                <Button type="button" variant="outline" size="sm" onClick={() => setCampaigns((list) => [...list, { id: '', name: '' }])}>
+                  Adicionar campanha
+                </Button>
+              )}
             </div>
             <FormError message={error} />
           </CardContent>

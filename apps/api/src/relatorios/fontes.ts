@@ -81,6 +81,12 @@ const leadDims = (prefix = 'Lead'): Dimension[] => [
   { key: 'lead_fonte', label: `${prefix}: fonte (1ª conversão)`, sql: `l."firstConversion"->>'source'`, joins: ['lead'] },
   { key: 'lead_meio', label: `${prefix}: meio (1ª conversão)`, sql: `l."firstConversion"->>'medium'`, joins: ['lead'] },
   { key: 'lead_campanha', label: `${prefix}: campanha (1ª conversão)`, sql: `l."firstConversion"->>'campaign'`, joins: ['lead'] },
+  {
+    key: 'lead_campanha_numero',
+    label: `${prefix}: número da campanha do Google Ads`,
+    sql: `coalesce(l."lastConversion"->>'campaignId', substring(l."lastConversion"->>'landing' from '[?&]gad_campaignid=([0-9]+)'), l."firstConversion"->>'campaignId', substring(l."firstConversion"->>'landing' from '[?&]gad_campaignid=([0-9]+)'))`,
+    joins: ['lead'],
+  },
   { key: 'lead_termo', label: `${prefix}: palavra-chave (1ª conversão)`, sql: `l."firstConversion"->>'term'`, joins: ['lead'] },
   { key: 'lead_campanha_ultima', label: `${prefix}: campanha (última conversão)`, sql: `l."lastConversion"->>'campaign'`, joins: ['lead'] },
   {

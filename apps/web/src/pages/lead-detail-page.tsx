@@ -383,6 +383,7 @@ function Summary({ lead }: { lead: Lead }) {
     ['Perfil / interesse', `${lead.scoreProfile} / ${lead.scoreInterest} pts`],
     ['Última atividade', formatDateTime(lead.lastActivityAt)],
     ['Primeira conversão', formatDateTime(lead.firstConversionAt)],
+    ...(lead.googleAds ? ([['Google Ads', lead.googleAds.label]] as [string, string][]) : []),
     ['Última oportunidade', formatDateTime(lead.lastOpportunityAt)],
     ['Última venda', lead.lastSaleAt ? `${formatDateTime(lead.lastSaleAt)}${lead.lastSaleValue ? ` · ${brl.format(lead.lastSaleValue)}` : ''}` : '—'],
     ['E-mail marketing', lead.emailOptIn ? 'Aceita receber' : 'Não aceita'],

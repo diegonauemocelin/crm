@@ -5,6 +5,7 @@ import { type Action, can, type Scope } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import { Prisma, type ServiceKind } from '../generated/prisma/client'
 import { LeadSyncService } from '../leads/lead-sync.service'
+import { adsInfoOf, campaignLabel, DEFAULT_GOOGLE_ADS, type GoogleAdsSettings, isGoogleAdsTouch } from '../googleads/googleads'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { normalizePhone, REGIONS, regionOf, UF_LIST, UFS } from './br'
@@ -199,7 +200,28 @@ export class ServiceRecordsService {
       r.parentId ? this.prisma.serviceRecord.findFirst({ where: { id: r.parentId, deletedAt: null }, select: { id: true, sellerId: true, leadAt: true, saleStatus: true } }) : null,
       this.prisma.serviceRecord.findMany({ where: { parentId: r.id, deletedAt: null }, select: { id: true, sellerId: true, followStatus: true, followNote: true, dueAt: true, firstActionAt: true } }),
     ])
-    return { ...this.view(r, alertHours), parent, children }
+    return { ...this.view(r, alertHours), parent, children, googleAds: await this.googleAdsOf(r) }
+  }
+
+  /** O atendimento veio de anúncio do Google? Pela conversão do lead (campanha) ou pela origem com "Google" no nome. */
+  private async googleAdsOf(r: { tenantId: string; leadId: string | null; originId: string | null }) {
+    const [lead, origin] = await Promise.all([
+      r.leadId ? this.prisma.lead.findUnique({ where: { id: r.leadId }, select: { firstConversion: true, firstConversionAt: true, lastConversion: true, lastConversionAt: true } }) : null,
+      r.originId ? this.prisma.lookupItem.findUnique({ where: { id: r.originId }, select: { name: true } }) : null,
+    ])
+    const touches = lead
+      ? [
+          { t: lead.firstConversion as Record<string, unknown> | null, at: lead.firstConversionAt },
+          { t: lead.lastConversion as Record<string, unknown> | null, at: lead.lastConversionAt },
+        ]
+      : []
+    if (touches.some((x) => isGoogleAdsTouch(x.t))) {
+      const s = await this.settings.get<GoogleAdsSettings>(r.tenantId, 'google_ads', DEFAULT_GOOGLE_ADS)
+      const info = adsInfoOf(touches, s.campaigns)
+      if (info) return { campaignId: info.campaignId, campaign: info.campaign, label: campaignLabel(info), byOrigin: false }
+    }
+    if (origin && /google/i.test(origin.name)) return { campaignId: null, campaign: null, label: 'campanha não identificada (pela origem do atendimento)', byOrigin: true }
+    return null
   }
 
   async history(user: AuthUser, id: string) {

@@ -34,8 +34,12 @@ export interface GoogleAdsSettings {
   }
   /** Envia e-mail e telefone criptografados (SHA-256) para o Google casar quem chamou direto no WhatsApp ou ligou. */
   sendUserData: boolean
-  /** Só contatos que vieram de anúncio do Google (recomendado) ou todos os atendimentos. */
+  /** Inclui os contatos em que o CRM detectou anúncio do Google (código de clique, google/cpc ou origem com "Google" no nome). */
   onlyGoogle: boolean
+  /** Inclui também os atendimentos destas origens do Pré-Vendas (ex.: WhatsApp, Ligação). Pode ser mais de uma. */
+  originIds: string[]
+  /** Nomes das campanhas pelo número (aprendidos do utm_campaign ou cadastrados à mão). */
+  campaigns: Record<string, string>
   /** Atendimentos a partir desta data (não manda o histórico antigo de uma vez ao ligar). */
   startDate: string | null
   updatedAt: string | null
@@ -50,6 +54,8 @@ export const DEFAULT_GOOGLE_ADS: GoogleAdsSettings = {
   actions: { contato: '', negociacao: '', venda: '', perda: '', perdaPorMotivo: {} },
   sendUserData: true,
   onlyGoogle: true,
+  originIds: [],
+  campaigns: {},
   startDate: null,
   updatedAt: null,
 }
@@ -182,6 +188,64 @@ export function actionFor(s: GoogleAdsSettings, kind: ConversionKind, lostReason
   const byReason = lostReasonId ? s.actions.perdaPorMotivo[lostReasonId] : undefined
   if (byReason === '-') return ''
   return byReason || s.actions.perda || ''
+}
+
+const CAMPAIGN_ID = /^\d{4,20}$/
+
+/** Tag aplicada ao lead que chegou por anúncio do Google. */
+export const GOOGLE_ADS_TAG = 'google-ads'
+
+/** Número da campanha numa URL: gad_campaignid (o Google acrescenta sozinho com a marcação automática) ou utm_id. */
+export function campaignIdFromUrl(url: string | null | undefined): string | null {
+  if (!url) return null
+  try {
+    const p = new URL(url).searchParams
+    const v = p.get('gad_campaignid') ?? p.get('utm_id')
+    return v && CAMPAIGN_ID.test(v) ? v : null
+  } catch {
+    return null
+  }
+}
+
+export interface AdsInfo {
+  campaignId: string | null
+  /** Nome da campanha (do utm_campaign ou do cadastro de nomes); null quando só se sabe o número. */
+  campaign: string | null
+  at: Date | null
+}
+
+/**
+ * De qual campanha do Google Ads o contato veio: o toque de anúncio mais recente.
+ * O nome vem do utm_campaign (quando não é só o número) ou da lista de nomes cadastrada em Configurações → Google Ads.
+ */
+export function adsInfoOf(touches: { t: TouchLike | null | undefined; at: Date | null }[], names: Record<string, string> = {}): AdsInfo | null {
+  const google = touches
+    .filter((x) => isGoogleAdsTouch(x.t))
+    .sort((a, b) => (b.at?.getTime() ?? 0) - (a.at?.getTime() ?? 0))[0]
+  if (!google?.t) return null
+  const t = google.t
+  const rawName = typeof t.campaign === 'string' ? t.campaign.trim() : ''
+  const id = (typeof t.campaignId === 'string' && CAMPAIGN_ID.test(t.campaignId) ? t.campaignId : null) ?? campaignIdFromUrl(t.landing) ?? (CAMPAIGN_ID.test(rawName) ? rawName : null)
+  const name = rawName && !CAMPAIGN_ID.test(rawName) ? rawName : id ? (names[id] ?? null) : null
+  return { campaignId: id, campaign: name, at: google.at }
+}
+
+/** Texto curto: "Campanha JCB Peças (nº 1234567)", "Campanha nº 1234567" ou "Campanha não identificada". */
+export function campaignLabel(a: Pick<AdsInfo, 'campaign' | 'campaignId'>) {
+  if (a.campaign && a.campaignId) return `${a.campaign} (nº ${a.campaignId})`
+  if (a.campaign) return a.campaign
+  if (a.campaignId) return `campanha nº ${a.campaignId}`
+  return 'campanha não identificada'
+}
+
+/**
+ * Quem entra no retorno: origem do atendimento marcada OU anúncio do Google detectado.
+ * Com as duas opções desligadas (nenhuma origem e sem detecção), vão todos.
+ */
+export function shouldSend(s: Pick<GoogleAdsSettings, 'onlyGoogle' | 'originIds'>, fromGoogle: boolean, originId: string | null) {
+  const origins = s.originIds ?? []
+  if (!s.onlyGoogle && origins.length === 0) return true
+  return (s.onlyGoogle && fromGoogle) || (!!originId && origins.includes(originId))
 }
 
 /** Mensagem clara para os erros mais comuns da API do Google. */

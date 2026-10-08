@@ -10,6 +10,8 @@ import { SettingsService } from '../settings/settings.service'
 import {
   actionFor,
   adsError,
+  adsInfoOf,
+  campaignLabel,
   BATCH_SIZE,
   buildEvent,
   CLICK_WINDOW_DAYS,
@@ -24,6 +26,7 @@ import {
   type GoogleAdsSettings,
   ingestBody,
   isGoogleAdsTouch,
+  shouldSend,
 } from './googleads'
 
 const DAY = 86_400_000
@@ -46,6 +49,8 @@ export interface GoogleAdsInput {
   actions: { contato?: string; negociacao?: string; venda?: string; perda?: string; perdaPorMotivo?: Record<string, string> }
   sendUserData: boolean
   onlyGoogle: boolean
+  originIds?: string[]
+  campaigns?: Record<string, string>
   startDate?: string | null
 }
 
@@ -107,6 +112,9 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
         .map(([k, v]) => [k, cleanActionId(v)])
         .filter(([, v]) => v),
     )
+    // Só origens que existem na lista "Origem" do Pré-Vendas desta empresa.
+    const wanted = [...new Set((input.originIds ?? []).filter((x) => /^[0-9a-f-]{36}$/.test(x)))].slice(0, 50)
+    const originIds = wanted.length ? (await this.prisma.lookupItem.findMany({ where: { tenantId: user.tenantId, type: 'ORIGEM', id: { in: wanted } }, select: { id: true } })).map((o) => o.id) : []
     const startDate = input.startDate && /^\d{4}-\d{2}-\d{2}$/.test(input.startDate) ? input.startDate : (current.startDate ?? new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10))
     const next: GoogleAdsSettings = {
       enabled: input.enabled,
@@ -123,6 +131,16 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
       },
       sendUserData: input.sendUserData,
       onlyGoogle: input.onlyGoogle,
+      originIds,
+      campaigns:
+        input.campaigns === undefined
+          ? current.campaigns
+          : Object.fromEntries(
+              Object.entries(input.campaigns)
+                .map(([id, name]) => [id.trim(), String(name ?? '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 120)] as const)
+                .filter(([id, name]) => /^\d{4,20}$/.test(id) && name)
+                .slice(0, 500),
+            ),
       startDate,
       updatedAt: new Date().toISOString(),
     }
@@ -140,9 +158,18 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
       chaveAlterada: !!input.keyFile?.trim(),
       dadosDoCliente: next.sendUserData,
       soGoogle: next.onlyGoogle,
+      origens: next.originIds.length,
       desde: next.startDate,
     })
     return this.view(next)
+  }
+
+  /** Aprende o nome de uma campanha (quando o link traz o número e o utm_campaign juntos). Nunca troca um nome já cadastrado. */
+  async learnCampaign(tenantId: string, id: string, name: string) {
+    if (!/^\d{4,20}$/.test(id) || !name.trim() || /^\d+$/.test(name.trim())) return
+    const s = await this.config(tenantId)
+    if (s.campaigns[id]) return
+    await this.settings.set(tenantId, 'google_ads', { ...s, campaigns: { ...s.campaigns, [id]: name.trim().slice(0, 120) } })
   }
 
   // ---------- Acesso ao Google ----------
@@ -230,6 +257,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
         saleValue: true,
         returnStatus: true,
         lostReasonId: true,
+        originId: true,
         updatedAt: true,
         origin: { select: { name: true } },
         lead: { select: { firstConversion: true, firstConversionAt: true, lastConversion: true, lastConversionAt: true } },
@@ -270,7 +298,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
       const before = touches.filter((x) => !x.at || x.at.getTime() <= r.leadAt.getTime() + DAY).sort((a, b) => (b.at?.getTime() ?? 0) - (a.at?.getTime() ?? 0))
       const google = before.find((x) => isGoogleAdsTouch(x.t))
       const fromGoogle = !!google || /google/i.test(r.origin?.name ?? '')
-      if (s.onlyGoogle && !fromGoogle) continue
+      if (!shouldSend(s, fromGoogle, r.originId)) continue
       const clickIds: ClickIds | null = google ? clickIdsFromUrl(google.t.landing) : null
       const clickAt = google?.at ?? null
 
@@ -295,7 +323,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
           eventAt: k.at,
           value: k.value,
           clickIds: (clickIds ?? undefined) as Prisma.InputJsonValue | undefined,
-          campaign: google?.t.campaign?.slice(0, 120) ?? null,
+          campaign: google ? campaignLabel(adsInfoOf([google], s.campaigns) ?? { campaign: null, campaignId: null }).slice(0, 160) : null,
           status: late ? 'IGNORADO' : 'PENDENTE',
           error: late ? 'Mais de 90 dias depois do clique no anúncio (o Google não aceita).' : null,
         })

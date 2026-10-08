@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangleIcon, ArrowRightLeftIcon, ClockIcon, Loader2Icon, MessageCircleIcon, Trash2Icon } from 'lucide-react'
+import { AlertTriangleIcon, ArrowRightLeftIcon, ClockIcon, Loader2Icon, MegaphoneIcon, MessageCircleIcon, Trash2Icon } from 'lucide-react'
 import { type FormEvent, type ReactNode, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -279,6 +279,14 @@ export function RecordSheet({ kind, record, onClose }: { kind: Kind; record: Ser
           )}
           <TabsContent value="dados">
             <form onSubmit={submit} className="space-y-6">
+              {linked?.googleAds && (
+                <p className="flex flex-wrap items-center gap-2 rounded-md border border-sky-500/40 bg-sky-500/10 p-2.5 text-sm">
+                  <MegaphoneIcon className="size-4 text-sky-700 dark:text-sky-300" />
+                  <span>
+                    Veio do <strong>Google Ads</strong>: {linked.googleAds.label}.
+                  </span>
+                </p>
+              )}
               {linked?.parent && (
                 <p className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 p-2.5 text-sm">
                   <ArrowRightLeftIcon className="size-4 text-muted-foreground" />

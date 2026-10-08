@@ -8,7 +8,9 @@ import type { RequestCtx } from '../common/decorators'
 import { type Action, can, type Scope } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import { type LeadStage, Prisma } from '../generated/prisma/client'
+import { adsInfoOf, campaignLabel, DEFAULT_GOOGLE_ADS, type GoogleAdsSettings, isGoogleAdsTouch } from '../googleads/googleads'
 import { PrismaService } from '../prisma/prisma.service'
+import { SettingsService } from '../settings/settings.service'
 import { LeadConfigService } from './lead-config.service'
 import { convertCustom, normalizeEmail, normalizeTags } from './mapeamento'
 
@@ -63,6 +65,7 @@ export class LeadsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly config: LeadConfigService,
+    private readonly settings: SettingsService,
   ) {}
 
   assertCan(user: AuthUser, action: Action) {
@@ -165,7 +168,20 @@ export class LeadsService {
 
   async get(user: AuthUser, id: string) {
     this.assertCan(user, 'view')
-    return this.view(await this.load(user, id))
+    const lead = await this.load(user, id)
+    return { ...this.view(lead), googleAds: await this.googleAdsOf(user.tenantId, lead) }
+  }
+
+  /** De qual campanha do Google Ads o lead veio (última conversão por anúncio), com o nome cadastrado da campanha. */
+  async googleAdsOf(tenantId: string, lead: { firstConversion: unknown; firstConversionAt: Date | null; lastConversion: unknown; lastConversionAt: Date | null }) {
+    const touches = [
+      { t: lead.firstConversion as Record<string, unknown> | null, at: lead.firstConversionAt },
+      { t: lead.lastConversion as Record<string, unknown> | null, at: lead.lastConversionAt },
+    ]
+    if (!touches.some((x) => isGoogleAdsTouch(x.t))) return null
+    const s = await this.settings.get<GoogleAdsSettings>(tenantId, 'google_ads', DEFAULT_GOOGLE_ADS)
+    const info = adsInfoOf(touches, s.campaigns)
+    return info ? { campaignId: info.campaignId, campaign: info.campaign, label: campaignLabel(info), at: info.at } : null
   }
 
   /** Linha do tempo: eventos do lead + atendimentos de Pré/Pós-Vendas vinculados + consentimentos. */
