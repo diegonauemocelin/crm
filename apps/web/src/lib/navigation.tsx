@@ -68,7 +68,7 @@ export const NAVIGATION: NavGroup[] = [
   },
   {
     title: 'Análise',
-    items: [{ title: 'Dashboards e relatórios', to: '/relatorios', icon: BarChart3Icon, module: 'relatorios', phase: 7 }],
+    items: [{ title: 'Dashboards e relatórios', to: '/relatorios', icon: BarChart3Icon, module: 'relatorios' }],
   },
   {
     title: 'Administração',

@@ -74,7 +74,7 @@ function hours(h: number | null) {
 }
 
 /** Variação contra o período anterior, com seta + texto (nunca só cor). `lowerIsBetter` inverte o sentido de "bom". */
-function Delta({ now, before, lowerIsBetter, asPoints }: { now: number | null; before: number | null; lowerIsBetter?: boolean; asPoints?: boolean }) {
+export function Delta({ now, before, lowerIsBetter, asPoints }: { now: number | null; before: number | null; lowerIsBetter?: boolean; asPoints?: boolean }) {
   if (now === null || before === null) return <span className="text-xs text-muted-foreground">sem base de comparação</span>
   if (!asPoints && before === 0) return <span className="text-xs text-muted-foreground">período anterior zerado</span>
   const diff = asPoints ? (now - before) * 100 : (now - before) / before
@@ -97,7 +97,7 @@ function Delta({ now, before, lowerIsBetter, asPoints }: { now: number | null; b
   )
 }
 
-function Stat({ label, value, delta, hint }: { label: string; value: string; delta: ReactNode; hint?: string }) {
+export function Stat({ label, value, delta, hint }: { label: string; value: string; delta: ReactNode; hint?: string }) {
   return (
     <Card className="gap-1 py-4">
       <CardContent className="space-y-1 px-4">

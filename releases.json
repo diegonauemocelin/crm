@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.8.0",
+      "date": "2026-10-08",
+      "title": "Fase 7 — Dashboards e relatórios",
+      "changes": [
+        { "type": "novo", "area": "Dashboards e relatórios", "text": "Visão geral do marketing e das vendas, com comparação com o período anterior: visitas, conversões, leads novos, receita e pedidos da loja, ticket médio, carrinhos abandonados, e-mails (envio, abertura e clique) e Pré-Vendas. Funil do visitante ao cliente, evolução no tempo e quebras por fonte, formulário, página de entrada, dispositivo e origem." },
+        { "type": "novo", "area": "Dashboards e relatórios", "text": "Criador de relatórios: escolha a fonte (leads, atendimentos, pedidos, carrinhos, e-mails, visitas, páginas ou conversões), agrupe por até 2 campos (vendedor, origem, fonte/campanha, estado, região, marca, tag, dia, semana, mês, dia da semana e outros), escolha até 4 métricas, filtros e o período. Mostra como tabela, barras, colunas, linha ou número, com prévia na hora." },
+        { "type": "novo", "area": "Dashboards e relatórios", "text": "Relatórios salvos (só para você ou para a equipe), exportação em CSV e Painel com os relatórios fixados, em metade ou largura inteira e na ordem que preferir. O botão “Criar painel sugerido” monta um painel inicial com um clique." },
+        { "type": "novo", "area": "Integrações", "text": "Google Analytics 4 (Configurações → Google Analytics): com uma conta de serviço só de leitura, a aba Google Analytics mostra usuários, sessões, engajamento, eventos-chave, compras e receita, e as quebras por canal, origem/mídia, páginas, páginas de entrada, dispositivo, estado e produtos." },
+        { "type": "seguranca", "area": "Dashboards e relatórios", "text": "Relatórios respeitam o escopo do perfil (próprios ou da unidade); as consultas são só de leitura e têm tempo máximo; a chave do Google fica criptografada e nunca é mostrada de novo; exportações e mudanças ficam na auditoria." }
+      ]
+    },
+    {
       "version": "0.7.0",
       "date": "2026-10-07",
       "title": "Fase 6 — Automações",
