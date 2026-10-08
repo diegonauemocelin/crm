@@ -5,7 +5,7 @@ import type { Request, Response } from 'express'
 import { AllowPending2fa, CurrentUser, Public, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { AccountService } from './account.service'
-import { ForgotPasswordDto, LoginDto, MfaCodeDto, PasswordDto, ResetPasswordDto } from './auth.dto'
+import { ForgotPasswordDto, LoginDto, MfaCodeDto, OptionalPasswordDto, PasswordDto, ResetPasswordDto } from './auth.dto'
 import { AuthService } from './auth.service'
 import { clearSessionCookies, MFA_COOKIE, REFRESH_COOKIE, setMfaCookie, setSessionCookies } from './cookies'
 import { TwoFactorService } from './two-factor.service'
@@ -92,10 +92,11 @@ export class AuthController {
   }
 
   @AllowPending2fa()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('2fa/setup')
   @HttpCode(200)
-  setup2fa(@CurrentUser() user: AuthUser) {
-    return this.twoFactor.setup(user)
+  setup2fa(@CurrentUser() user: AuthUser, @Body() dto: OptionalPasswordDto) {
+    return this.twoFactor.setup(user, dto.password)
   }
 
   @AllowPending2fa()

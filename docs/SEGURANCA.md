@@ -8,12 +8,13 @@ Referências: OWASP Top 10 (2021/2025) e OWASP ASVS nível 2. Esta página regis
 |---|---|
 | Hash de senha | Argon2id (38 MiB, 3 iterações), rehash automático se os parâmetros mudarem |
 | Política de senha | Mínimo de 12 caracteres, sem regra de composição (ASVS 2.1), bloqueio de senhas óbvias e que contenham o e-mail |
-| 2FA | TOTP (RFC 6238), tolerância de ±30 s, **proteção contra reuso do mesmo código**, 8 códigos de recuperação de uso único (armazenados como hash) |
+| 2FA | TOTP (RFC 6238), tolerância de ±90 s (relógio do celular ou do servidor fora da hora), **proteção contra reuso do mesmo código**, 8 códigos de recuperação de uso único (armazenados como hash) |
 | 2FA obrigatório | Por perfil de acesso. Administrador e Diretoria vêm com 2FA obrigatório. Sem 2FA configurado, o servidor só libera a tela de configuração |
 | Sessão | JWT HS256 de 15 min em cookie `HttpOnly; Secure; SameSite=Strict` + refresh token opaco de 12 h, **rotativo**, guardado como hash |
 | Roubo de sessão | Reuso de refresh token já trocado derruba a sessão inteira e gera alerta na auditoria |
 | Revogação imediata | A cada requisição o servidor confere usuário ativo, perfil ativo e sessão não revogada. Desativar usuário, trocar perfil ou trocar senha encerra as sessões na hora |
-| Força bruta | Bloqueio progressivo da conta (5 erros: 15 min; 10: 1 h; 15+: 4 h) + limite por IP (10 logins/min, 300 req/min geral) |
+| Força bruta | Bloqueio progressivo da conta (5 erros: 15 min; 10: 1 h; 15+: 4 h) + limite por IP nas rotas sem sessão (10 logins/min) + fail2ban no servidor (15 erros em 10 min banem o IP por 1 h) |
+| Limite de uso | 300 req/min **por usuário logado** (token válido); sem sessão, por IP. O escritório inteiro sai por um IP só, então o limite por IP somaria a equipe |
 | Enumeração de contas | Mesma mensagem e mesmo tempo de resposta para e-mail inexistente e senha errada; "esqueci a senha" sempre responde igual |
 | Recuperação de senha | Token aleatório de 256 bits, guardado como hash, uso único, 1 h de validade (72 h para convites) |
 
@@ -101,11 +102,33 @@ Referências: OWASP Top 10 (2021/2025) e OWASP ASVS nível 2. Esta página regis
 - Consentimento (LGPD): caixa nunca pré-marcada; o aceite fica em `lead_consents` com texto, data, origem e IP; link da política de privacidade em todos os formulários.
 - Cada envio fica em `capture_submissions` (prova da conversão). Eliminação do lead apaga também os envios da pessoa.
 
-## Pendências planejadas (Fase 8 e anteriores)
+## Fase 8: sessões, avisos e servidor (v0.9.0)
 
-- fail2ban lendo o log do Nginx do CRM (exige instalar/configurar no host: será proposto após o inventário).
+- **Aparelhos conectados** (Meu perfil): cada login aberto com navegador, sistema, IP, início e último uso; desconectar um aparelho ou todos os outros. O administrador vê os aparelhos de qualquer usuário e pode desconectá-lo de todos (Usuários → Aparelhos conectados).
+- **Avisos por e-mail**: acesso por aparelho novo (navegador + sistema não usados nos últimos 180 dias; o primeiro acesso da conta não avisa), conta bloqueada por tentativas, senha trocada ou redefinida, 2FA desativado, reconfigurado ou zerado pelo administrador, e código de recuperação usado. O e-mail mostra só o começo do IP. Falha no envio não bloqueia a ação (vai para o log).
+- **Reconfigurar o 2FA exige a senha**: sem isso, uma sessão roubada poderia trocar o 2FA da conta pelo celular de outra pessoa.
+- Limpeza diária das sessões vencidas (os tokens trocados e ainda válidos ficam, para detectar roubo de sessão).
+- Servidor: `deploy/seguranca-vps.sh` faz um diagnóstico só de leitura (portas abertas, containers expostos, ufw, SSH, fail2ban, tentativas no login, atualizações, relógio, backups) e, com `--fail2ban`, ativa as regras do SSH e do login do CRM, sempre deixando de fora o IP de quem está conectado. Firewall e SSH não são alterados automaticamente porque a VPS tem outros sistemas.
+- Backup: `deploy/restaurar.sh --teste` restaura num banco separado e compara as contagens (usuários, leads, atendimentos, pedidos, campanhas, auditoria) com a produção.
+- Carga: `scripts/teste-carga.mjs` simula a equipe nas telas mais pesadas (só leitura). Resultado local em 08/10/2026: 25 usuários simultâneos com mediana entre 150 e 250 ms e p95 abaixo de 450 ms (Visão geral até 730 ms).
+
+### Revisão OWASP Top 10 (08/10/2026)
+
+| Item | Situação |
+|---|---|
+| A01 Controle de acesso | Guard global, permissão por rota no servidor, escopo próprio/unidade também nos relatórios e carrinhos; arquivos privados conferidos pela empresa |
+| A02 Criptografia | Argon2id, AES-256-GCM para segredos (2FA, SMTP, Magazord, Meta, chave do GA4), HTTPS com HSTS |
+| A03 Injeção | Prisma parametrizado; no criador de relatórios todo SQL vem de uma lista fixa e os valores vão como parâmetro; CSV protegido contra fórmulas; HTML de e-mail sanitizado por lista de permissões |
+| A04 Design inseguro | Corrigido: reconfigurar o 2FA sem senha. Corrigido: limite de uso por IP que somava o escritório inteiro |
+| A05 Configuração | Cabeçalhos de segurança, containers sem root e só leitura, banco sem porta publicada |
+| A06 Componentes | `npm audit --omit=dev`: 0 vulnerabilidades |
+| A07 Autenticação | Bloqueio progressivo, 2FA com proteção contra reuso, avisos por e-mail, sessões por aparelho |
+| A08 Integridade | Auditoria encadeada por hash e protegida por trigger; imagens publicadas pelo GitHub Actions |
+| A09 Registro e monitoramento | Auditoria de login, sessões, exportações e configurações; fail2ban lendo o log do CRM |
+| A10 SSRF | SMTP recusa rede interna; Magazord só `*.magazord.com.br`; Meta e Google com endereços fixos |
+
+## Pendências planejadas
+
 - Limite de requisições compartilhado em Redis (hoje em memória, suficiente para uma instância da API).
-- Sessões ativas por usuário (listar e encerrar dispositivos) e alerta por e-mail de login em novo dispositivo.
-- Pedir senha novamente para reconfigurar o 2FA.
 - Política de retenção configurável (anonimizar automaticamente leads inativos há X meses).
-- Teste de intrusão e de carga (Fase 8).
+- Teste de intrusão externo por terceiro (recomendado antes de abrir o sistema para outras empresas).

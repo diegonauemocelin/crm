@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
 import { ApiProperty, ApiTags } from '@nestjs/swagger'
 import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, IsUUID, Length, MaxLength, ValidateIf } from 'class-validator'
+import { SecurityService } from '../auth/security.service'
 import { TwoFactorService } from '../auth/two-factor.service'
 import { CurrentUser, ReqContext, type RequestCtx, RequirePermission } from '../common/decorators'
 import type { AuthUser } from '../common/types'
@@ -35,6 +36,7 @@ export class UsersController {
   constructor(
     private readonly users: UsersService,
     private readonly twoFactor: TwoFactorService,
+    private readonly security: SecurityService,
   ) {}
 
   @Get()
@@ -75,6 +77,21 @@ export class UsersController {
   async reset2fa(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
     await this.twoFactor.resetForUser(user, id, ctx)
     return { ok: true }
+  }
+
+  /** Aparelhos conectados de um usuário (para o administrador conferir e, se preciso, desconectar). */
+  @Get(':id/sessoes')
+  @RequirePermission('usuarios', 'view')
+  async sessions(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    await this.users.get(user.tenantId, id)
+    return this.security.sessions(id)
+  }
+
+  @Post(':id/encerrar-sessoes')
+  @HttpCode(200)
+  @RequirePermission('usuarios', 'edit')
+  async revokeSessions(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    return this.users.revokeSessions(user, id, ctx)
   }
 
   @Post(':id/send-password-link')

@@ -1,6 +1,6 @@
 import { type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common'
 import { APP_GUARD } from '@nestjs/core'
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'
+import { ThrottlerModule } from '@nestjs/throttler'
 import { LoggerModule } from 'nestjs-pino'
 import { AtendimentoModule } from './atendimento/atendimento.module'
 import { AuditModule } from './audit/audit.module'
@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module'
 import { CapturaModule } from './captura/captura.module'
 import { CsrfMiddleware } from './common/csrf.middleware'
 import { EmailModule } from './email/email.module'
+import { UserThrottlerGuard } from './common/throttle.guard'
 import { AutomacoesModule } from './automacoes/automacoes.module'
 import { RelatoriosModule } from './relatorios/relatorios.module'
 import { env } from './config/env'
@@ -55,8 +56,8 @@ import { UsersService } from './users/users.service'
     UsersService,
     RolesService,
     SystemService,
-    // Ordem importa: primeiro o limite de requisições, depois sessão + permissão.
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    // Ordem importa: primeiro o limite de requisições (por usuário logado ou por IP), depois sessão + permissão.
+    { provide: APP_GUARD, useClass: UserThrottlerGuard },
     { provide: APP_GUARD, useExisting: AuthGuard },
   ],
 })

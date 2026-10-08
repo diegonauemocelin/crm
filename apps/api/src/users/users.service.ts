@@ -149,6 +149,14 @@ export class UsersService {
     await this.audit.byUser(actor, ctx, 'user.unlocked', 'user', id)
   }
 
+  /** Desconecta o usuário de todos os aparelhos (ex.: celular perdido ou suspeita de acesso indevido). */
+  async revokeSessions(actor: AuthUser, id: string, ctx: RequestCtx) {
+    const target = await this.get(actor.tenantId, id)
+    const r = await this.prisma.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } })
+    await this.audit.byUser(actor, ctx, 'user.sessions_revoked', 'user', id, { email: target.email, sessoes: r.count })
+    return { ok: true, sessions: r.count }
+  }
+
   async sendReset(actor: AuthUser, id: string, ctx: RequestCtx) {
     const user = await this.prisma.user.findFirst({ where: { id, tenantId: actor.tenantId } })
     if (!user) throw new NotFoundException('Usuário não encontrado.')

@@ -1,10 +1,11 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CameraIcon, Loader2Icon, MonitorIcon, MoonIcon, ShieldCheckIcon, SunIcon } from 'lucide-react'
 import { type FormEvent, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { LayoutPicker } from '@/components/layout-picker'
 import { UserAvatar } from '@/components/layout/user-menu'
-import { PageHeader } from '@/components/page'
+import { ErrorState, PageHeader, TableSkeleton } from '@/components/page'
+import { type Session, SessionsList } from '@/components/sessions-list'
 import { TwoFactorSetup } from '@/components/two-factor-setup'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -30,6 +31,7 @@ export function ProfilePage() {
       <AppearanceCard me={me} />
       <PasswordCard />
       <TwoFactorCard me={me} />
+      <SessionsCard />
     </div>
   )
 }
@@ -217,10 +219,26 @@ function PasswordCard() {
 function TwoFactorCard({ me }: { me: Me }) {
   const { refresh } = useAuth()
   const [setupOpen, setSetupOpen] = useState(false)
+  // Com o 2FA ativo, reconfigurar pede a senha antes (o servidor confere de novo).
+  const [confirmed, setConfirmed] = useState<string | null>(null)
   const [disableOpen, setDisableOpen] = useState(false)
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  const confirmPassword = async (e: FormEvent) => {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      await api.post('/auth/2fa/setup', { password })
+      setConfirmed(password)
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const disable = async (e: FormEvent) => {
     e.preventDefault()
@@ -269,20 +287,47 @@ function TwoFactorCard({ me }: { me: Me }) {
         )}
       </CardFooter>
 
-      <Dialog open={setupOpen} onOpenChange={setSetupOpen}>
+      <Dialog
+        open={setupOpen}
+        onOpenChange={(o) => {
+          setSetupOpen(o)
+          if (!o) {
+            setConfirmed(null)
+            setPassword('')
+            setError(null)
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Configurar 2FA</DialogTitle>
             <DialogDescription>Ao concluir, o autenticador anterior e os códigos de recuperação antigos deixam de valer.</DialogDescription>
           </DialogHeader>
-          {setupOpen && (
-            <TwoFactorSetup
-              onDone={async () => {
-                await refresh()
-                setSetupOpen(false)
-                toast.success('2FA ativado.')
-              }}
-            />
+          {setupOpen && me.totpEnabled && !confirmed ? (
+            <form onSubmit={confirmPassword} className="space-y-4">
+              <p className="text-sm text-muted-foreground">Por segurança, confirme sua senha para trocar o aplicativo autenticador.</p>
+              <Input type="password" autoComplete="current-password" aria-label="Senha" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus />
+              <FormError message={error} />
+              <DialogFooter>
+                <Button type="submit" disabled={busy || !password}>
+                  {busy && <Loader2Icon className="animate-spin" />}
+                  Continuar
+                </Button>
+              </DialogFooter>
+            </form>
+          ) : (
+            setupOpen && (
+              <TwoFactorSetup
+                password={confirmed ?? undefined}
+                onDone={async () => {
+                  await refresh()
+                  setSetupOpen(false)
+                  setConfirmed(null)
+                  setPassword('')
+                  toast.success(me.totpEnabled ? '2FA reconfigurado.' : '2FA ativado.')
+                }}
+              />
+            )
           )}
         </DialogContent>
       </Dialog>
@@ -308,6 +353,58 @@ function TwoFactorCard({ me }: { me: Me }) {
           </form>
         </DialogContent>
       </Dialog>
+    </Card>
+  )
+}
+
+function SessionsCard() {
+  const qc = useQueryClient()
+  const q = useQuery({ queryKey: ['me-sessoes'], queryFn: () => api.get<Session[]>('/me/sessoes') })
+  const [busy, setBusy] = useState<string | null>(null)
+  const revoke = async (s: Session) => {
+    setBusy(s.id)
+    try {
+      await api.delete(`/me/sessoes/${s.id}`)
+      toast.success(`${s.device} desconectado.`)
+      await qc.invalidateQueries({ queryKey: ['me-sessoes'] })
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+  const revokeOthers = async () => {
+    setBusy('outros')
+    try {
+      await api.post('/me/sessoes/encerrar-outras')
+      toast.success('Os outros aparelhos foram desconectados.')
+      await qc.invalidateQueries({ queryKey: ['me-sessoes'] })
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+  const others = (q.data ?? []).filter((s) => !s.current).length
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Aparelhos conectados</CardTitle>
+        <CardDescription>
+          Onde sua conta está aberta agora. Se não reconhecer algum, desconecte e troque a senha. Você recebe um e-mail quando a conta é acessada por um aparelho novo.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {q.error ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : q.data ? <SessionsList sessions={q.data} onRevoke={(s) => void revoke(s)} busyId={busy} /> : <TableSkeleton rows={2} />}
+      </CardContent>
+      {others > 0 && (
+        <CardFooter>
+          <Button variant="outline" onClick={() => void revokeOthers()} disabled={busy !== null}>
+            {busy === 'outros' && <Loader2Icon className="animate-spin" />}
+            Desconectar todos os outros ({others})
+          </Button>
+        </CardFooter>
+      )}
     </Card>
   )
 }

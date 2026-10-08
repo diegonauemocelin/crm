@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { AuthService } from './auth.service'
 import { hashPassword, passwordProblems, verifyPassword } from './password'
+import { SecurityService } from './security.service'
 
 @Injectable()
 export class AccountService {
@@ -16,6 +17,7 @@ export class AccountService {
     private readonly audit: AuditService,
     private readonly settings: SettingsService,
     private readonly auth: AuthService,
+    private readonly security: SecurityService,
   ) {}
 
   async profile(user: AuthUser) {
@@ -78,6 +80,7 @@ export class AccountService {
     })
     await this.auth.revokeAllSessions(user.id, user.familyId)
     await this.audit.byUser(user, ctx, 'me.password_changed', 'user', user.id)
+    this.security.alert(user.id, 'senha_alterada', ctx)
     // Token novo para a sessão atual, já que o anterior foi emitido antes da troca.
     return this.auth.signAccess({ sub: user.id, tid: user.tenantId, fam: user.familyId, p2fa: user.pending2faSetup })
   }

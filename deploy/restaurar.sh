@@ -45,7 +45,9 @@ docker run --rm -i -v "$(realpath "$CHAVE")":/chave:ro alpine:3 sh -c "apk add -
 
 if [ "$TESTE" -eq 1 ]; then
   info "Conferindo dados restaurados"
-  dc exec -T db psql -U crm -d "$BANCO" -c "SELECT (SELECT count(*) FROM users) AS usuarios, (SELECT count(*) FROM roles) AS perfis, (SELECT count(*) FROM audit_logs) AS auditoria, (SELECT max(version) FROM system_releases) AS versao"
+  dc exec -T db psql -U crm -d "$BANCO" -c "SELECT (SELECT count(*) FROM users) AS usuarios, (SELECT count(*) FROM leads) AS leads, (SELECT count(*) FROM service_records) AS atendimentos, (SELECT count(*) FROM ecommerce_orders) AS pedidos, (SELECT count(*) FROM email_campaigns) AS campanhas, (SELECT count(*) FROM audit_logs) AS auditoria, (SELECT max(version) FROM system_releases) AS versao"
+  info "Mesma contagem no banco de produção, para comparar (a diferença é o que entrou depois do backup)"
+  dc exec -T db psql -U crm -d crm -c "SELECT (SELECT count(*) FROM users) AS usuarios, (SELECT count(*) FROM leads) AS leads, (SELECT count(*) FROM service_records) AS atendimentos, (SELECT count(*) FROM ecommerce_orders) AS pedidos, (SELECT count(*) FROM email_campaigns) AS campanhas, (SELECT count(*) FROM audit_logs) AS auditoria"
   dc exec -T db psql -U crm -d crm -c "DROP DATABASE $BANCO"
   ok "Teste de restauração concluído com sucesso. Banco de teste removido."
   exit 0

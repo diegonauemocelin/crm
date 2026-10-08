@@ -7,6 +7,7 @@ import type { AuthUser } from '../common/types'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { verifyPassword } from './password'
+import { SecurityService } from './security.service'
 import { checkTotp, newTotpSecret, totpQrCode } from './totp'
 
 // Sem caracteres ambíguos (0/o, 1/l/i) para facilitar a digitação.
@@ -24,9 +25,19 @@ export class TwoFactorService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly settings: SettingsService,
+    private readonly security: SecurityService,
   ) {}
 
-  async setup(user: AuthUser) {
+  /**
+   * Com o 2FA já ativo, reconfigurar (trocar de celular) exige a senha: sem isso, quem pegasse uma sessão aberta
+   * poderia trocar o 2FA da conta pelo celular dele.
+   */
+  async setup(user: AuthUser, password?: string) {
+    const current = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { totpEnabled: true, passwordHash: true } })
+    if (current.totpEnabled) {
+      if (!password) throw new BadRequestException({ code: 'PASSWORD_REQUIRED', message: 'Confirme sua senha para reconfigurar o 2FA.' })
+      if (!(await verifyPassword(current.passwordHash, password))) throw new BadRequestException('Senha incorreta.')
+    }
     // Reabrir a tela (recarregar, voltar do app autenticador) mostra a MESMA chave ainda não confirmada.
     // Antes, cada abertura gerava uma chave nova e o QR já escaneado deixava de valer ("código inválido").
     const row = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { totpPendingSecretEnc: true } })
@@ -63,7 +74,8 @@ export class TwoFactorService {
         data: { totpSecretEnc: row.totpPendingSecretEnc, totpPendingSecretEnc: null, totpEnabled: true, totpLastStep: totp.step },
       }),
     ])
-    await this.audit.byUser(user, ctx, 'auth.2fa_enabled', 'user', user.id)
+    await this.audit.byUser(user, ctx, row.totpEnabled ? 'auth.2fa_reconfigured' : 'auth.2fa_enabled', 'user', user.id)
+    if (row.totpEnabled) this.security.alert(user.id, '2fa_reconfigurado', ctx)
     return { recoveryCodes: codes }
   }
 
@@ -79,6 +91,7 @@ export class TwoFactorService {
       }),
     ])
     await this.audit.byUser(user, ctx, 'auth.2fa_disabled', 'user', user.id)
+    this.security.alert(user.id, '2fa_desativado', ctx)
   }
 
   /** Administrador zera o 2FA de outro usuário (ex.: perdeu o celular). No próximo login ele configura de novo. */
@@ -94,5 +107,6 @@ export class TwoFactorService {
       }),
     ])
     await this.audit.byUser(admin, ctx, 'user.2fa_reset', 'user', userId, { email: target.email })
+    this.security.alert(userId, '2fa_zerado', ctx)
   }
 }

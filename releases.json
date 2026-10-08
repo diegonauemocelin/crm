@@ -2,6 +2,19 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.9.0",
+      "date": "2026-10-08",
+      "title": "Fase 8 — Segurança final",
+      "changes": [
+        { "type": "novo", "area": "Segurança", "text": "Aparelhos conectados em Meu perfil: veja onde sua conta está aberta (navegador, sistema, IP, último uso) e desconecte um aparelho ou todos os outros." },
+        { "type": "novo", "area": "Usuários", "text": "O administrador vê os aparelhos conectados de cada usuário e pode desconectá-lo de todos (ex.: celular perdido)." },
+        { "type": "novo", "area": "Segurança", "text": "Avisos por e-mail: acesso por aparelho novo, conta bloqueada por tentativas, senha trocada ou redefinida, 2FA desativado, reconfigurado ou zerado, e código de recuperação usado." },
+        { "type": "seguranca", "area": "Segurança", "text": "Reconfigurar o 2FA agora pede a senha (uma sessão aberta não consegue mais trocar o 2FA da conta)." },
+        { "type": "melhoria", "area": "Segurança", "text": "O limite de requisições passa a ser por usuário logado, e não por IP: a equipe inteira no mesmo escritório não esbarra mais no limite." },
+        { "type": "novo", "area": "Servidor", "text": "Script de segurança da VPS: diagnóstico só de leitura e ativação do fail2ban para o SSH e para o login do CRM. Teste de restauração do backup comparando com a produção, e script de teste de carga." }
+      ]
+    },
+    {
       "version": "0.8.0",
       "date": "2026-10-08",
       "title": "Fase 7 — Dashboards e relatórios",

@@ -144,3 +144,19 @@ sudo rm /etc/nginx/sites-enabled/usaparts-crm /etc/nginx/sites-available/usapart
 ```
 
 Os dados ficam nos volumes `usaparts-crm_pgdata` e `usaparts-crm_uploads` até serem removidos explicitamente com `docker volume rm`.
+
+## Segurança do servidor (Fase 8)
+
+```bash
+cd /opt/usaparts-crm && sudo bash deploy/seguranca-vps.sh
+```
+
+Diagnóstico só de leitura: portas abertas, containers expostos, firewall, SSH, fail2ban, tentativas de login, atualizações, relógio e backups. Não altera nada.
+
+```bash
+cd /opt/usaparts-crm && sudo bash deploy/seguranca-vps.sh --fail2ban
+```
+
+Instala e ativa o fail2ban com duas regras: SSH (5 erros em 10 min banem o IP por 1 h) e login do CRM (15 erros em 10 min, lendo só o log do CRM). O IP de quem está conectado por SSH no momento fica de fora. Para desfazer: apague `/etc/fail2ban/jail.d/usaparts-crm.conf` e rode `systemctl restart fail2ban`. Para desbanir: `sudo fail2ban-client unban <ip>`.
+
+Firewall (ufw) e configuração do SSH não são alterados por script, porque a VPS tem outros sistemas.

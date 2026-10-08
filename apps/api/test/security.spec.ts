@@ -158,3 +158,74 @@ describe('versões', () => {
     expect(compareSemver('0.1.0', '0.2.0')).toBeLessThan(0)
   })
 })
+
+describe('aparelhos e limite por usuário (Fase 8)', () => {
+  it('reconhece navegador e sistema, sem versão', async () => {
+    const { deviceOf, maskIp } = await import('../src/auth/dispositivo')
+    const chromeWin = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
+    const edge = `${chromeWin} Edg/141.0.0.0`
+    const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1'
+    const android = 'Mozilla/5.0 (Linux; Android 14; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/25.0 Chrome/121.0.0.0 Mobile Safari/537.36'
+    expect(deviceOf(chromeWin).label).toBe('Chrome no Windows')
+    expect(deviceOf(edge).label).toBe('Edge no Windows')
+    expect(deviceOf(iphone).label).toBe('Safari no iPhone')
+    expect(deviceOf(android).label).toBe('Samsung Internet no Android')
+    // Atualizar o navegador não conta como aparelho novo.
+    expect(deviceOf(chromeWin).key).toBe(deviceOf(chromeWin.replace('141.0.0.0', '142.0.0.0')).key)
+    expect(deviceOf(null).label).toBe('Aparelho não identificado')
+    expect(deviceOf('node').label).toBe('Aparelho não identificado')
+    expect(maskIp('::ffff:189.4.77.10')).toBe('189.4.x.x')
+    expect(maskIp(null)).toBe('desconhecido')
+  })
+
+  it('limite de requisições: usuário de token válido; token falso cai no IP', async () => {
+    const { JwtService } = await import('@nestjs/jwt')
+    const { UserThrottlerGuard } = await import('../src/common/throttle.guard')
+    const jwt = new JwtService({ secret: 'segredo-de-teste-com-mais-de-32-caracteres!!' })
+    const guard = Object.create(UserThrottlerGuard.prototype) as InstanceType<typeof UserThrottlerGuard>
+    Object.assign(guard, { jwt })
+    const tracker = (cookie?: string) => (guard as unknown as { getTracker(r: unknown): Promise<string> }).getTracker({ ip: '200.1.1.1', cookies: cookie ? { crm_at: cookie } : {} })
+    const valid = await jwt.signAsync({ sub: 'u1' }, { algorithm: 'HS256' })
+    const forged = await new JwtService({ secret: 'outro-segredo-qualquer-com-mais-de-32-caracteres' }).signAsync({ sub: 'u2' })
+    expect(await tracker(valid)).toBe('u:u1')
+    expect(await tracker(forged)).toBe('200.1.1.1')
+    expect(await tracker()).toBe('200.1.1.1')
+  })
+})
+
+describe('avisos de segurança por e-mail (Fase 8)', () => {
+  const ua = 'Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0'
+  const chrome = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36'
+
+  async function make(previousAgents: string[], total = previousAgents.length) {
+    const { SecurityService } = await import('../src/auth/security.service')
+    const sent: { to: string; subject: string; text: string }[] = []
+    const prisma = {
+      refreshToken: { findMany: async () => previousAgents.map((userAgent) => ({ userAgent })), count: async () => total },
+      user: { findUnique: async () => ({ tenantId: 't', email: 'ana@usaparts.com.br', name: 'Ana', active: true }) },
+    }
+    const mail = { send: async (_t: string, m: { to: string; subject: string; text: string }) => void sent.push(m), simpleTemplate: () => '<html></html>' }
+    const settings = { branding: async () => ({ appName: 'CRM USA Parts', primaryColor: '#1d4ed8' }) }
+    return { service: new SecurityService(prisma as never, mail as never, settings as never, {} as never), sent }
+  }
+
+  it('aparelho novo só quando o navegador/sistema nunca foi usado (e nunca no primeiro acesso)', async () => {
+    expect(await (await make([chrome])).service.isNewDevice('u', ua)).toBe(true)
+    expect(await (await make([chrome, ua.replace('131.0', '132.0')])).service.isNewDevice('u', ua)).toBe(false)
+    expect(await (await make([], 0)).service.isNewDevice('u', ua)).toBe(false)
+    // Último uso há mais de 180 dias: volta a avisar.
+    expect(await (await make([], 3)).service.isNewDevice('u', ua)).toBe(true)
+  })
+
+  it('e-mail diz o que aconteceu, o aparelho e o IP parcial, e orienta o que fazer', async () => {
+    const { service, sent } = await make([chrome])
+    service.alert('u', 'novo_dispositivo', { ip: '189.4.77.10', userAgent: ua })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(sent).toHaveLength(1)
+    expect(sent[0]!.to).toBe('ana@usaparts.com.br')
+    expect(sent[0]!.subject).toBe('Novo acesso à sua conta - CRM USA Parts')
+    expect(sent[0]!.text).toContain('Firefox no Linux · IP 189.4.x.x')
+    expect(sent[0]!.text).not.toContain('77.10')
+    expect(sent[0]!.text).toMatch(/troque a senha/)
+  })
+})

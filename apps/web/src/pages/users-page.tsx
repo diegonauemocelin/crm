@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { KeyRoundIcon, Loader2Icon, LockOpenIcon, MailIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, PowerIcon, SearchIcon, ShieldOffIcon, UsersIcon } from 'lucide-react'
+import { KeyRoundIcon, Loader2Icon, LockOpenIcon, MailIcon, MonitorSmartphoneIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, PowerIcon, SearchIcon, ShieldOffIcon, UsersIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { UserAvatar } from '@/components/layout/user-menu'
+import { type Session, SessionsList } from '@/components/sessions-list'
 import { Can, EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import {
   AlertDialog,
@@ -47,6 +48,7 @@ function UsersContent() {
   const [debounced, setDebounced] = useState('')
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all')
   const [editing, setEditing] = useState<UserRow | 'new' | null>(null)
+  const [devicesOf, setDevicesOf] = useState<UserRow | null>(null)
   const [confirm, setConfirm] = useState<Confirm>(null)
 
   useEffect(() => {
@@ -185,6 +187,9 @@ function UsersContent() {
                           >
                             <MailIcon /> Enviar link de senha
                           </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => setDevicesOf(u)}>
+                            <MonitorSmartphoneIcon /> Aparelhos conectados
+                          </DropdownMenuItem>
                           {u.totpEnabled && (
                             <DropdownMenuItem
                               onSelect={() =>
@@ -255,7 +260,44 @@ function UsersContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {devicesOf && <DevicesDialog user={devicesOf} onClose={() => setDevicesOf(null)} />}
     </>
+  )
+}
+
+/** Aparelhos em que o usuário está conectado; o administrador pode desconectá-lo de todos (ex.: celular perdido). */
+function DevicesDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
+  const { can } = useAuth()
+  const q = useQuery({ queryKey: ['user-sessoes', user.id], queryFn: () => api.get<Session[]>(`/users/${user.id}/sessoes`) })
+  const revoke = useMutation({
+    mutationFn: () => api.post<{ sessions: number }>(`/users/${user.id}/encerrar-sessoes`),
+    onSuccess: (r) => {
+      toast.success(r.sessions ? `${user.name} foi desconectado de ${r.sessions} aparelho(s).` : 'Nenhum aparelho estava conectado.')
+      void q.refetch()
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Aparelhos de {user.name}</DialogTitle>
+          <DialogDescription>Onde a conta está aberta agora. Desconectar obriga a entrar de novo com senha e 2FA.</DialogDescription>
+        </DialogHeader>
+        {q.error ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : q.data ? <SessionsList sessions={q.data} /> : <TableSkeleton rows={2} />}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Fechar
+          </Button>
+          {can('usuarios', 'edit') && !!q.data?.length && (
+            <Button variant="destructive" onClick={() => revoke.mutate()} disabled={revoke.isPending}>
+              {revoke.isPending && <Loader2Icon className="animate-spin" />}
+              Desconectar de todos
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

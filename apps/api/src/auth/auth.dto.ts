@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger'
-import { IsEmail, IsString, Length, MaxLength } from 'class-validator'
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { IsEmail, IsOptional, IsString, Length, MaxLength } from 'class-validator'
 
 export class LoginDto {
   @ApiProperty() @IsEmail({}, { message: 'Informe um e-mail válido.' }) @MaxLength(200) email!: string
@@ -20,6 +20,10 @@ export class ForgotPasswordDto {
 export class ResetPasswordDto {
   @ApiProperty() @IsString() @Length(20, 200) token!: string
   @ApiProperty() @IsString() @Length(1, 128) password!: string
+}
+
+export class OptionalPasswordDto {
+  @ApiPropertyOptional({ description: 'Obrigatória quando o 2FA já está ativo (reconfigurar).' }) @IsOptional() @IsString() @Length(1, 128) password?: string
 }
 
 export class PasswordDto {

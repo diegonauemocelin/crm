@@ -14,7 +14,7 @@ interface SetupData {
 }
 
 /** Passo a passo do 2FA: QR code → confirmação do código → códigos de recuperação. */
-export function TwoFactorSetup({ onDone }: { onDone: () => void }) {
+export function TwoFactorSetup({ onDone, password }: { onDone: () => void; password?: string }) {
   const branding = useBranding()
   const [setup, setSetup] = useState<SetupData | null>(null)
   const [code, setCode] = useState('')
@@ -25,10 +25,10 @@ export function TwoFactorSetup({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     api
-      .post<SetupData>('/auth/2fa/setup')
+      .post<SetupData>('/auth/2fa/setup', password ? { password } : undefined)
       .then(setSetup)
       .catch((err) => setError(errorMessage(err)))
-  }, [])
+  }, [password])
 
   const confirm = async (value: string) => {
     setBusy(true)

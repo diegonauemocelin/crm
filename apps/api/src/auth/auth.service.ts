@@ -10,6 +10,7 @@ import { TenantService } from '../prisma/prisma.module'
 import { MailService } from '../settings/mail.service'
 import { SettingsService } from '../settings/settings.service'
 import { dummyVerify, hashPassword, needsRehash, passwordProblems, verifyPassword } from './password'
+import { SecurityService } from './security.service'
 import { checkTotp } from './totp'
 
 export const MAX_FAILED_LOGINS = 5
@@ -50,6 +51,7 @@ export class AuthService {
     private readonly tenants: TenantService,
     private readonly settings: SettingsService,
     private readonly mail: MailService,
+    private readonly security: SecurityService,
   ) {}
 
   async login(emailRaw: string, password: string, ctx: RequestCtx): Promise<LoginResult> {
@@ -125,6 +127,7 @@ export class AuthService {
       if (Math.abs(totp.driftSeconds) >= 60) this.logger.warn(`2FA aceito com ${totp.driftSeconds} s de diferença de relógio (${user.email}). Confira o horário do servidor (timedatectl) e do celular.`)
     }
     const session = await this.startSession(user.id, user.tenantId, user.email, ctx, usedRecovery ? 'auth.login_recovery_code' : 'auth.login')
+    if (usedRecovery) this.security.alert(user.id, 'codigo_recuperacao', ctx)
     return { status: 'ok' as const, ...session }
   }
 
@@ -258,6 +261,7 @@ export class AuthService {
       }),
     ])
     await this.revokeAllSessions(stored.userId)
+    this.security.alert(stored.userId, 'senha_redefinida', ctx)
     await this.audit.log({
       tenantId: stored.user.tenantId,
       userId: stored.userId,
@@ -277,6 +281,7 @@ export class AuthService {
       data: { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date(), lastLoginIp: ctx.ip },
       include: { role: true },
     })
+    const newDevice = await this.security.isNewDevice(userId, ctx.userAgent)
     const familyId = randomUUID()
     const refreshToken = randomToken()
     await this.prisma.refreshToken.create({
@@ -291,7 +296,8 @@ export class AuthService {
     })
     const pending = user.role.require2fa && !user.totpEnabled
     const accessToken = await this.signAccess({ sub: userId, tid: tenantId, fam: familyId, p2fa: pending })
-    await this.audit.log({ tenantId, userId, userEmail: email, action, ...ctx })
+    await this.audit.log({ tenantId, userId, userEmail: email, action, ...ctx, ...(newDevice ? { data: { aparelhoNovo: true } } : {}) })
+    if (newDevice) this.security.alert(userId, 'novo_dispositivo', ctx)
     return { accessToken, refreshToken }
   }
 
@@ -320,6 +326,7 @@ export class AuthService {
       ...ctx,
       data: { reason, failedLogins, ...(lockMinutes ? { lockMinutes } : {}) },
     })
+    if (lockMinutes) this.security.alert(userId, 'conta_bloqueada', ctx)
   }
 
   private async consumeRecoveryCode(userId: string, code: string): Promise<boolean> {

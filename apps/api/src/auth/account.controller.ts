@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Patch, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiProperty, ApiTags } from '@nestjs/swagger'
 import { IsEnum, IsOptional, IsString, Length } from 'class-validator'
@@ -11,6 +11,7 @@ import { LayoutMode, ThemeMode } from '../generated/prisma/enums'
 import { AccountService } from './account.service'
 import { ChangePasswordDto } from './auth.dto'
 import { ACCESS_COOKIE } from './cookies'
+import { SecurityService } from './security.service'
 
 class PreferencesDto {
   @ApiProperty({ enum: LayoutMode, required: false }) @IsOptional() @IsEnum(LayoutMode) layout?: LayoutMode
@@ -27,7 +28,28 @@ export class AccountController {
   constructor(
     private readonly account: AccountService,
     private readonly files: FilesService,
+    private readonly security: SecurityService,
   ) {}
+
+  /** Aparelhos conectados: cada login aberto, com navegador, sistema, IP e último uso. */
+  @AllowPending2fa()
+  @Get('sessoes')
+  sessions(@CurrentUser() user: AuthUser) {
+    return this.security.sessions(user.id, user.familyId)
+  }
+
+  @AllowPending2fa()
+  @Delete('sessoes/:id')
+  revokeSession(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    return this.security.revokeSession(user, id, ctx)
+  }
+
+  @AllowPending2fa()
+  @Post('sessoes/encerrar-outras')
+  @HttpCode(200)
+  revokeOthers(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
+    return this.security.revokeOthers(user, ctx)
+  }
 
   @Patch('preferences')
   preferences(@CurrentUser() user: AuthUser, @Body() dto: PreferencesDto) {
