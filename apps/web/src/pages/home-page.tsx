@@ -20,7 +20,7 @@ const PHASES = [
   { n: 9, title: 'Chat WhatsApp', text: 'Atendimento pelo WhatsApp dentro do sistema (Evolution API), com acesso por usuário.' },
 ]
 
-const CURRENT_PHASE = 7
+const CURRENT_PHASE = 8
 
 function greeting() {
   const h = Number(new Intl.DateTimeFormat('pt-BR', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(new Date()))

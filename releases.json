@@ -2,6 +2,22 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.10.0",
+      "date": "2026-10-08",
+      "title": "Editor visual de pop-ups e formulários e Catálogo de produtos",
+      "changes": [
+        { "type": "novo", "area": "Captura", "text": "Editor visual de pop-ups e formulários (botão “Editor visual” em cada pop-up e formulário): monte o layout com blocos de imagem, título, texto, formulário, cupom, espaço, divisor e “Não, obrigado”; ajuste cores, fonte, tamanhos, cantos, sombra, largura, posição na tela (centro ou cantos) e escurecimento do fundo." },
+        { "type": "novo", "area": "Captura", "text": "Versão para celular: gaveta de baixo, centro da tela ou tela cheia, tamanho dos textos e opção de esconder imagens." },
+        { "type": "novo", "area": "Captura", "text": "Prévia ao vivo no computador e no celular, com o mesmo código que desenha no site (dá para testar o envio: na prévia nada é gravado). Clicar num bloco da prévia abre a edição dele." },
+        { "type": "novo", "area": "Captura", "text": "Modelos prontos: orçamento de peças, cupom de desconto (cupom aparece depois do cadastro), newsletter no canto e saída da página. Envio de imagens direto do computador." },
+        { "type": "melhoria", "area": "Captura", "text": "Formulário com estilo: campos em 2 colunas, nome dentro do campo, cores e cantos dos campos e do botão. Pop-ups e formulários antigos continuam iguais até você salvar um layout novo; o código para colar no site não muda." },
+        { "type": "novo", "area": "Catálogo", "text": "Tela do Catálogo de produtos: busca por nome, código ou marca, filtros de marca, estoque e promoção, preço de/por com desconto, estoque, link da loja e o interesse dos clientes (carrinhos dos últimos 90 dias com o produto, abandonados e comprados). Atualizar agora e exportar em CSV." },
+        { "type": "melhoria", "area": "Loja virtual", "text": "A busca dos carrinhos encontra também pelo código do produto (atalho a partir do Catálogo)." },
+        { "type": "correcao", "area": "WhatsApp", "text": "Links do WhatsApp para celulares de DDD 31 em diante (como 49 e 47) agora saem sem o nono dígito, como o WhatsApp registra esses números. Antes aparecia “o número não está no WhatsApp”. Vale para o botão do site, o botão do e-mail, os atendimentos e os carrinhos." },
+        { "type": "correcao", "area": "Sistema", "text": "Durante uma atualização do sistema, quem estava usando via a tela de login e precisava entrar de novo. Agora aparece “O sistema está sendo atualizado” e a página volta sozinha, ainda conectada." }
+      ]
+    },
+    {
       "version": "0.9.1",
       "date": "2026-10-08",
       "title": "Exportação da base de leads e limpeza do Pré-Vendas",

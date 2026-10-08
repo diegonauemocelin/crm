@@ -741,6 +741,8 @@ model CaptureForm {
   tags           String[]
   /// Também cria um atendimento na fila de Pré-Vendas.
   createRecord   Boolean  @default(true)
+  /// Layout do editor visual para o formulário embutido na página. Vazio = formulário simples.
+  design         Json?
   active         Boolean  @default(true)
   submissions    Int      @default(0)
   createdAt      DateTime @default(now())
@@ -774,6 +776,8 @@ model CapturePopup {
   /// Depois de fechado ou enviado, não aparece de novo por N dias para o mesmo visitante.
   frequencyDays Int  @default(7)
   color     String   @default("#1d4ed8")
+  /// Layout do editor visual (blocos, estilo, versão celular). Vazio = pop-up simples (título, texto e imagem).
+  design    Json?
   /// Opcionais: substituem os do formulário (vazio = usa o do formulário).
   ownerId        String?  @db.Uuid
   customerTypeId String?  @db.Uuid

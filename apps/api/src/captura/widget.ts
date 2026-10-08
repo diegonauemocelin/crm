@@ -9,7 +9,14 @@ export const CAPTURE_JS = `
   // ---------- Captura: formulários, pop-ups e botão de WhatsApp ----------
   var BASE = C.e.replace(/\\/api\\/public\\/rastreamento\\/coleta$/, '');
   var UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
-  var CSS = ':host{all:initial}*{box-sizing:border-box;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}'
+  var CSS = ':host{all:initial;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}*{box-sizing:border-box;font-family:inherit}'
+    + '.ovd{position:fixed;inset:0;display:flex;z-index:2147483000;padding:16px}'
+    + '.dz{position:relative;max-height:92vh;overflow:auto;-webkit-overflow-scrolling:touch}'
+    + '.cp{border:2px dashed currentColor;border-radius:10px;padding:10px 12px;text-align:center;margin:6px 0}'
+    + '.cp b{display:block;font-size:22px;letter-spacing:2px;margin:4px 0}.cp span{font-size:13px}'
+    + '.cp button{font:inherit;font-size:12px;font-weight:700;border:1px solid currentColor;background:transparent;color:inherit;border-radius:999px;padding:4px 12px;cursor:pointer}'
+    + '.f[data-d] .chk,.f[data-d] .priv,.f[data-d] .msg,.f[data-d] .ok,.f[data-d] .err{color:inherit}.f[data-d] .chk,.f[data-d] .priv{opacity:.85}.f[data-d] .ok{font-size:16px}'
+    + '.rc{display:block;margin:10px auto 0;background:none;border:0;font:inherit;font-size:13px;text-decoration:underline;cursor:pointer}'
     + '.f{display:flex;flex-direction:column;gap:10px;font-size:14px;color:#111}'
     + '.f label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:13px}'
     + '.f input,.f select,.f textarea{font:inherit;font-weight:400;padding:9px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#111;width:100%}'
@@ -54,8 +61,11 @@ export const CAPTURE_JS = `
     for (var j = 0; j < list.length; j++) if (hit(list[j])) return true;
     return false;
   }
-  function store(k, v) { try { if (v === undefined) return w.localStorage.getItem(k); w.localStorage.setItem(k, v); } catch (e) { return null; } }
+  // Prévia do editor visual (no painel do CRM): não grava nada no navegador e não envia nada.
+  var PREVIEW = !!w.__crmPreviewMode;
+  function store(k, v) { if (PREVIEW) return null; try { if (v === undefined) return w.localStorage.getItem(k); w.localStorage.setItem(k, v); } catch (e) { return null; } }
   function capSend(payload, done) {
+    if (PREVIEW) { setTimeout(function () { var f = CFG && CFG.forms[payload.formId]; done({ ok: true, message: (f && f.successMessage) || 'Enviado!' }); }, 400); return; }
     payload.k = C.k; payload.u = location.href; var vid = get('_crm_vid'); if (vid) payload.v = vid;
     fetch(BASE + '/api/public/captura/enviar', { method: 'POST', body: JSON.stringify(payload), credentials: 'omit' })
       .then(function (r) { return r.json(); }).then(done)
@@ -79,7 +89,114 @@ export const CAPTURE_JS = `
     lb.appendChild(input); var er = el('span', 'err'); lb.appendChild(er);
     return { lb: lb, input: input, err: er, f: f };
   }
-  /** Monta um formulário. opts: { kind, formId, popupId, color, fields?, submitLabel?, consentText?, onDone } */
+  // ---------- Layout do editor visual ----------
+  var FONTS = {
+    sistema: 'system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif',
+    moderna: '"Segoe UI","Helvetica Neue",Helvetica,Arial,sans-serif',
+    arredondada: '"Nunito","Varela Round","Trebuchet MS",system-ui,sans-serif',
+    serifada: 'Georgia,"Times New Roman",serif',
+    condensada: '"Arial Narrow","Roboto Condensed","Helvetica Neue",Arial,sans-serif'
+  };
+  var SHADOWS = { nenhuma: 'none', suave: '0 6px 20px rgba(0,0,0,.14)', forte: '0 20px 50px rgba(0,0,0,.32)' };
+  var ALIGN = { esquerda: 'left', centro: 'center', direita: 'right' };
+  // Valores já conferidos no servidor; conferidos de novo aqui antes de virar estilo.
+  function col(c, fb) { return /^#[0-9a-fA-F]{6}$/.test(c || '') ? c : fb; }
+  function px(n, fb) { n = Number(n); return (isFinite(n) ? n : fb) + 'px'; }
+  function styleForm(form, list, btn, st, scale) {
+    // Textos auxiliares (consentimento, privacidade, mensagens) seguem a cor do texto da caixa: legíveis em fundo escuro.
+    form.setAttribute('data-d', '1');
+    form.style.fontSize = px(14 * scale, 14);
+    var two = st.columns === 2 && !isMobile();
+    if (two) { form.style.display = 'grid'; form.style.gridTemplateColumns = '1fr 1fr'; form.style.columnGap = '10px'; }
+    list.forEach(function (x) {
+      x.lb.style.color = col(st.labelColor, '#111111');
+      x.input.style.background = col(st.inputBg, '#ffffff'); x.input.style.borderColor = col(st.inputBorder, '#cbd5e1'); x.input.style.borderRadius = px(st.inputRadius, 8);
+      if (two && x.f.key === 'message') x.lb.style.gridColumn = '1 / -1';
+      if (st.showLabels === false) {
+        var label = x.f.label + (x.f.required ? ' *' : '');
+        if (x.lb.firstChild && x.lb.firstChild.nodeType === 3) x.lb.removeChild(x.lb.firstChild);
+        x.input.setAttribute('aria-label', label);
+        if (x.input.tagName === 'SELECT') { if (x.input.options[0] && !x.input.options[0].value) x.input.options[0].textContent = label; } else x.input.placeholder = label;
+      }
+    });
+    Array.prototype.forEach.call(form.children, function (c) { if (two && (c.tagName !== 'LABEL' || c.className === 'chk')) c.style.gridColumn = '1 / -1'; });
+    btn.style.background = col(st.buttonBg, '#1d4ed8'); btn.style.color = col(st.buttonColor, '#ffffff'); btn.style.borderRadius = px(st.buttonRadius, 8);
+    btn.style.fontSize = px(15 * scale, 15);
+    if (st.buttonFull === false) { btn.style.justifySelf = 'start'; btn.style.alignSelf = 'flex-start'; btn.style.padding = '11px 22px'; }
+  }
+  /** Monta os blocos do layout. o: { kind, formId, popupId, whatsappId, popup, onClose, onDone } */
+  function renderDesign(ds, f, o) {
+    var box = ds.box || {}, mob = ds.mobile || {}, m = isMobile(), scale = m ? (Number(mob.fontScale) || 100) / 100 : 1;
+    var pad = Number(box.padding); if (!isFinite(pad)) pad = 20;
+    var card = el('div', 'dz');
+    card.style.background = col(box.bg, '#ffffff'); card.style.color = col(box.text, '#0f172a');
+    card.style.fontFamily = FONTS[box.font] || FONTS.sistema; card.style.borderRadius = px(box.radius, 14);
+    card.style.boxShadow = SHADOWS[box.shadow] || SHADOWS.forte; card.style.padding = pad + 'px';
+    card.style.width = '100%'; card.style.maxWidth = px(box.width, 420);
+    var hidden = [], first = true;
+    (ds.blocks || []).forEach(function (b) {
+      var n = null;
+      if (b.type === 'imagem') {
+        if ((m && mob.hideImages) || !/^https?:\\/\\//.test(b.url || '') || (!PREVIEW && !/^https:/.test(b.url))) return;
+        var img = el('img'); img.src = b.url; img.alt = ''; img.style.display = 'block'; img.style.width = '100%'; img.style.height = px(b.height, 180);
+        img.style.objectFit = b.fit === 'conter' ? 'contain' : 'cover'; img.style.borderRadius = b.bleed ? '0' : px(b.radius, 0);
+        n = el('div');
+        if (b.link && /^https:\\/\\//.test(b.link)) { var a = el('a'); a.href = b.link; a.target = '_blank'; a.rel = 'noopener'; a.appendChild(img); n.appendChild(a); } else n.appendChild(img);
+        if (b.bleed) { n.style.margin = '0 -' + pad + 'px 12px'; if (first) { n.style.marginTop = '-' + pad + 'px'; n.style.overflow = 'hidden'; n.style.borderRadius = px(box.radius, 14) + ' ' + px(box.radius, 14) + ' 0 0'; } }
+        else n.style.margin = '0 0 12px';
+      } else if (b.type === 'titulo') {
+        n = el('div', null, b.text); n.setAttribute('role', 'heading'); n.setAttribute('aria-level', '2');
+        n.style.fontSize = px(b.size * scale, 22); n.style.fontWeight = b.bold === false ? '400' : '700'; n.style.lineHeight = '1.2'; n.style.margin = '0 0 8px';
+        n.style.textAlign = ALIGN[b.align] || 'left'; n.style.color = col(b.color, 'inherit');
+      } else if (b.type === 'texto') {
+        n = el('div', null, b.text); n.style.whiteSpace = 'pre-line'; n.style.fontSize = px(b.size * scale, 14); n.style.lineHeight = '1.45'; n.style.margin = '0 0 12px';
+        n.style.textAlign = ALIGN[b.align] || 'left'; n.style.color = col(b.color, 'inherit');
+      } else if (b.type === 'formulario') {
+        n = el('div');
+        renderForm(n, { kind: o.kind, formId: f.id, popupId: o.popupId, fields: f.fields, submitLabel: b.buttonText || f.submitLabel, consentText: f.consentText, style: b, scale: scale,
+          onDone: function (res) { hidden.forEach(function (h) { h.style.display = ''; }); if (o.onDone) o.onDone(res); } });
+      } else if (b.type === 'cupom') {
+        n = el('div', 'cp'); n.style.background = col(b.bg, '#fef3c7'); n.style.color = col(b.color, '#92400e');
+        if (b.label) n.appendChild(el('span', null, b.label));
+        n.appendChild(el('b', null, b.code));
+        var cb = el('button', null, 'Copiar cupom'); cb.type = 'button';
+        cb.onclick = function () { try { nav.clipboard.writeText(b.code).then(function () { cb.textContent = 'Copiado!'; }); } catch (e) { cb.textContent = b.code; } };
+        n.appendChild(cb);
+        if (b.afterSubmit) { n.style.display = 'none'; hidden.push(n); }
+      } else if (b.type === 'espaco') {
+        n = el('div'); n.style.height = px(b.height, 12);
+      } else if (b.type === 'divisor') {
+        n = el('div'); n.style.height = '1px'; n.style.background = col(b.color, '#e2e8f0'); n.style.margin = '10px 0';
+      } else if (b.type === 'recusar') {
+        if (!o.popup) return;
+        n = el('button', 'rc', b.text || 'Não, obrigado'); n.type = 'button'; n.style.color = col(b.color, '#64748b'); n.onclick = function () { if (o.onClose) o.onClose(); };
+      }
+      if (!n) return;
+      first = false;
+      // Na prévia, clicar num bloco seleciona o bloco no editor.
+      if (PREVIEW) { n.addEventListener('click', function () { try { w.parent.postMessage({ crmBlock: b.id }, '*'); } catch (e) {} }); }
+      card.appendChild(n);
+    });
+    return card;
+  }
+  function showDesignPopup(p, f, close, hh) {
+    var ds = p.design, box = ds.box || {}, mob = ds.mobile || {}, m = isMobile();
+    var pos = m ? (mob.position || 'inferior') : (box.position || 'centro');
+    var ov = el('div', 'ovd'), corner = pos === 'inferior_direita' || pos === 'inferior_esquerda';
+    var card = renderDesign(ds, f, { kind: 'popup', popupId: p.id, popup: true, onClose: close, onDone: function () { store('_crm_pp_' + p.id, String(Date.now())); } });
+    if (box.overlay !== false && !corner) ov.style.background = 'rgba(15,23,42,' + Math.min(0.9, Math.max(0, (Number(box.overlayOpacity) || 0) / 100)) + ')';
+    else ov.style.pointerEvents = 'none';
+    card.style.pointerEvents = 'auto';
+    ov.style.justifyContent = pos === 'inferior_direita' ? 'flex-end' : pos === 'inferior_esquerda' ? 'flex-start' : 'center';
+    ov.style.alignItems = corner || pos === 'inferior' ? 'flex-end' : 'center';
+    if (pos === 'inferior') { ov.style.padding = '0'; card.style.maxWidth = 'none'; card.style.borderRadius = px(box.radius, 14) + ' ' + px(box.radius, 14) + ' 0 0'; card.style.maxHeight = '88vh'; }
+    if (pos === 'tela_cheia') { ov.style.padding = '0'; card.style.maxWidth = 'none'; card.style.height = '100%'; card.style.maxHeight = '100%'; card.style.borderRadius = '0'; }
+    var x = el('button', 'x', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Fechar'); x.onclick = close; x.style.color = col(box.closeColor, '#0f172a'); x.style.zIndex = '2';
+    card.insertBefore(x, card.firstChild);
+    if (!corner) ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
+    ov.appendChild(card); hh.r.appendChild(ov);
+  }
+  /** Monta um formulário. opts: { kind, formId, popupId, color, fields?, submitLabel?, consentText?, style?, scale?, onDone } */
   function renderForm(root, opts) {
     var started = Date.now();
     var form = el('form', 'f'); form.noValidate = true;
@@ -90,6 +207,7 @@ export const CAPTURE_JS = `
     if (CFG && CFG.privacyUrl) { var pv = el('span', 'priv', 'Seus dados são tratados conforme a nossa '); var a = el('a', null, 'Política de Privacidade'); a.href = CFG.privacyUrl; a.target = '_blank'; a.rel = 'noopener'; pv.appendChild(a); pv.appendChild(d.createTextNode('.')); form.appendChild(pv); }
     var msg = el('div', 'msg'); var btn = el('button', null, opts.submitLabel || 'Enviar'); btn.type = 'submit'; btn.style.background = opts.color || '#1d4ed8';
     form.appendChild(btn); form.appendChild(msg);
+    if (opts.style) styleForm(form, list, btn, opts.style, opts.scale || 1);
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
       var data = {};
@@ -115,13 +233,24 @@ export const CAPTURE_JS = `
     for (var i = 0; i < nodes.length; i++) {
       var n = nodes[i]; if (n.__crm) continue; var f = CFG.forms[n.getAttribute('data-usacrm-form')]; if (!f) continue; n.__crm = 1;
       var hh = shadowHost(); n.appendChild(hh.h);
+      if (f.design && f.design.blocks) {
+        var card = renderDesign(f.design, f, { kind: n.getAttribute('data-usacrm-kind') === 'landing' ? 'landing' : 'form', popup: false });
+        card.style.margin = '0 auto'; card.style.maxHeight = 'none'; hh.r.appendChild(card);
+        continue;
+      }
       renderForm(hh.r, { kind: n.getAttribute('data-usacrm-kind') === 'landing' ? 'landing' : 'form', formId: f.id, fields: f.fields, submitLabel: f.submitLabel, consentText: f.consentText, color: n.getAttribute('data-color') || '#1d4ed8' });
     }
   }
   function showPopup(p) {
     var f = CFG.forms[p.formId]; if (!f) return;
-    var hh = shadowHost(); var ov = el('div', 'ov'); var card = el('div', 'card'); ov.appendChild(card);
+    var hh = shadowHost();
     function close() { store('_crm_pp_' + p.id, String(Date.now())); if (hh.h.parentNode) hh.h.parentNode.removeChild(hh.h); }
+    if (p.design && p.design.blocks) {
+      showDesignPopup(p, f, close, hh); d.body.appendChild(hh.h);
+      capSend({ kind: 'popup_view', popupId: p.id }, function () {});
+      return;
+    }
+    var ov = el('div', 'ov'); var card = el('div', 'card'); ov.appendChild(card);
     var x = el('button', 'x', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Fechar'); x.onclick = close; card.appendChild(x);
     ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
     if (p.imageUrl && /^https:\\/\\//.test(p.imageUrl)) { var img = el('img'); img.src = p.imageUrl; img.alt = ''; card.appendChild(img); }
@@ -175,4 +304,23 @@ export const CAPTURE_JS = `
       })
       .catch(function () {});
   }
+  // Prévia do editor visual: desenha o pop-up ou o formulário pedido pelo painel, com o mesmo código do site.
+  if (PREVIEW) w.__crmPreview = function (cfg) {
+    CFG = { forms: {}, privacyUrl: cfg.privacyUrl || null }; CFG.forms[cfg.form.id] = cfg.form;
+    Array.prototype.slice.call(d.body.children).forEach(function (c) { if (c.tagName !== 'SCRIPT') d.body.removeChild(c); });
+    if (cfg.popup) { showPopup(cfg.popup); return; }
+    var n = el('div'); n.style.padding = '24px 16px'; n.setAttribute('data-usacrm-form', cfg.form.id); d.body.appendChild(n); embedForms();
+  };
+`
+
+/** Script da prévia do editor visual (carregado só dentro do painel): mesmo desenho do site, sem enviar nem gravar nada. */
+export const PREVIEW_JS = `/* CRM - prévia do editor visual */
+(function (w, d) {
+  'use strict';
+  w.__crmPreviewMode = 1;
+  var C = { e: '/api/public/rastreamento/coleta', k: 'previa' };
+  var nav = w.navigator || {};
+  function get() { return null; }
+${CAPTURE_JS}
+})(window, document);
 `

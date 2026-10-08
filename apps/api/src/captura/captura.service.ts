@@ -161,7 +161,7 @@ export class CapturaService {
     return {
       privacyUrl: s.privacyUrl || null,
       forms: Object.fromEntries(
-        forms.map((f) => [f.id, { id: f.id, fields: f.fields, submitLabel: f.submitLabel, successMessage: f.successMessage, consentText: f.consentText }]),
+        forms.map((f) => [f.id, { id: f.id, fields: f.fields, submitLabel: f.submitLabel, successMessage: f.successMessage, consentText: f.consentText, design: f.design ?? null }]),
       ),
       popups: popups.map((p) => ({
         id: p.id,
@@ -177,6 +177,7 @@ export class CapturaService {
         device: p.device,
         frequencyDays: p.frequencyDays,
         color: p.color,
+        design: p.design ?? null,
       })),
       // Vários botões: o script mostra o primeiro que combina com a página e o dispositivo. O número não vai junto.
       whatsapps: buttons.map((w) => ({ id: w.id, buttonText: w.buttonText, title: w.title, subtitle: w.subtitle, askEmail: w.askEmail, position: w.position, color: w.color, include: w.include, exclude: w.exclude, device: w.device })),

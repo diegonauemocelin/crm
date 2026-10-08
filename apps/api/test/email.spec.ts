@@ -88,7 +88,7 @@ describe('montagem do e-mail', () => {
   })
 
   it('links únicos, na ordem, e trocados pelo endereço rastreado (inclusive o do WhatsApp)', () => {
-    expect(collectLinks(blocks)).toEqual(['https://www.usaparts.com.br/jcb', 'https://www.usaparts.com.br/filtro', 'https://wa.me/5549999990000?text=Vim%20pelo%20e-mail'])
+    expect(collectLinks(blocks)).toEqual(['https://www.usaparts.com.br/jcb', 'https://www.usaparts.com.br/filtro', 'https://wa.me/554999990000?text=Vim%20pelo%20e-mail'])
     const r = renderEmail(blocks, { ...base, trackLink: (_u, i) => `https://crm/api/public/e/l/T/${i}`, openPixelUrl: 'https://crm/api/public/e/a/T' })
     expect(r.html).toContain('href="https://crm/api/public/e/l/T/0"')
     expect(r.html).toContain('href="https://crm/api/public/e/l/T/1"')
@@ -105,7 +105,7 @@ describe('montagem do e-mail', () => {
     expect(r.text).toContain('OLÁ, MARIA')
     expect(r.text).toContain('o catálogo (https://www.usaparts.com.br/jcb)')
     expect(r.text).toContain('- Filtro — R$ 75,74')
-    expect(r.text).toContain('Falar com vendas: https://wa.me/5549999990000')
+    expect(r.text).toContain('Falar com vendas: https://wa.me/554999990000')
   })
 })
 
@@ -128,7 +128,7 @@ describe('validação dos blocos', () => {
   })
 
   it('número do WhatsApp com DDI do Brasil', () => {
-    expect(whatsappUrl('49 99999-0000')).toBe('https://wa.me/5549999990000')
+    expect(whatsappUrl('49 99999-0000')).toBe('https://wa.me/554999990000')
     expect(whatsappUrl('+55 (49) 3333-0000', 'Olá & tchau')).toBe('https://wa.me/554933330000?text=Ol%C3%A1%20%26%20tchau')
     expect(whatsappUrl('12')).toBeNull()
   })

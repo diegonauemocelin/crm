@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
-import { formatPhone, int } from '@/lib/atendimento'
+import { formatPhone, int, waDigits } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import { type Cart, CONTACT_LABEL, type CartPage, type ContactStatus } from '@/lib/rastreamento'
 
@@ -188,7 +188,7 @@ function CartCard({ cart: c, onEdit, canEdit }: { cart: Cart; onEdit: () => void
       toast.error('Não foi possível copiar.')
     }
   }
-  const wa = c.customerPhone ? `https://wa.me/${c.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(c.message)}` : null
+  const wa = c.customerPhone ? `https://wa.me/${waDigits(c.customerPhone)}?text=${encodeURIComponent(c.message)}` : null
   const store = c.status === 3 ? 'Comprado' : c.status === 2 ? 'Abandonado' : 'Aberto'
   return (
     <Card className="py-4">

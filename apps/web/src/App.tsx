@@ -1,5 +1,5 @@
 import { Loader2Icon } from 'lucide-react'
-import { type ComponentType, lazy, type ReactNode, Suspense } from 'react'
+import { type ComponentType, lazy, type ReactNode, Suspense, useEffect } from 'react'
 import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
 import { ClassicLayout } from '@/components/layout/classic-layout'
@@ -81,6 +81,8 @@ const pages = {
   automacao: () => page(() => import('@/pages/automacao-page'), 'AutomacaoPage'),
   relatorios: () => page(() => import('@/pages/relatorios-page'), 'RelatoriosPage'),
   relatorio: () => page(() => import('@/pages/relatorio-page'), 'RelatorioPage'),
+  capturaEditor: () => page(() => import('@/pages/captura-editor-page'), 'CapturaEditorPage'),
+  catalogo: () => page(() => import('@/pages/catalogo-page'), 'CatalogoPage'),
   leadsConfig: () => page(() => import('@/pages/leads-config-page'), 'LeadsConfigPage'),
   unsubscribe: () => page(() => import('@/pages/unsubscribe-page'), 'UnsubscribePage'),
   comingSoon: () => page(() => import('@/pages/misc-pages'), 'ComingSoonPage'),
@@ -102,10 +104,36 @@ function Lazy({ children, fullscreen }: { children: ReactNode; fullscreen?: bool
   return <Suspense fallback={<Loader fullscreen={fullscreen} />}>{children}</Suspense>
 }
 
+/**
+ * Servidor fora do ar (atualização em andamento): a sessão continua valendo, então não manda para o login.
+ * Consulta o servidor a cada 5 s e recarrega a página quando ele volta (já com a versão nova, depois de um deploy).
+ */
+function Unavailable() {
+  useEffect(() => {
+    const check = () =>
+      fetch('/api/health', { cache: 'no-store' })
+        .then((r) => r.ok && window.location.reload())
+        .catch(() => undefined)
+    const t = setInterval(check, 5_000)
+    return () => clearInterval(t)
+  }, [])
+  return (
+    <div className="flex min-h-svh flex-col items-center justify-center gap-3 p-6 text-center">
+      <Loader2Icon className="size-6 animate-spin text-muted-foreground" aria-hidden />
+      <p className="font-medium">O sistema está sendo atualizado</p>
+      <p className="max-w-sm text-sm text-muted-foreground">Volta sozinho em alguns segundos. Você continua conectado: não precisa entrar de novo.</p>
+      <button type="button" className="text-sm underline" onClick={() => window.location.reload()}>
+        Tentar agora
+      </button>
+    </div>
+  )
+}
+
 /** Exige sessão; conta com senha provisória ou 2FA pendente vai para o assistente de primeiro acesso. */
 function Protected() {
-  const { me, loading } = useAuth()
+  const { me, loading, unavailable } = useAuth()
   const location = useLocation()
+  if (unavailable) return <Unavailable />
   if (loading) return <Loader fullscreen />
   if (!me) return <Navigate to="/login" replace state={{ from: location.pathname }} />
   if (me.mustChangePassword || me.pending2faSetup) return <Navigate to="/configurar-conta" replace />
@@ -149,6 +177,8 @@ const router = createBrowserRouter([
           { path: 'leads/importar', element: <Lazy>{pages.leadImport()}</Lazy> },
           { path: 'carrinhos', element: <Lazy>{pages.carts()}</Lazy> },
           { path: 'captura', element: <Lazy>{pages.captura()}</Lazy> },
+          { path: 'catalogo', element: <Lazy>{pages.catalogo()}</Lazy> },
+          { path: 'captura/editor/:tipo/:id', element: <Lazy>{pages.capturaEditor()}</Lazy> },
           { path: 'email-marketing', element: <Lazy>{pages.email()}</Lazy> },
           { path: 'email-marketing/:id', element: <Lazy>{pages.emailCampaign()}</Lazy> },
           { path: 'automacoes', element: <Lazy>{pages.automacoes()}</Lazy> },
@@ -166,7 +196,8 @@ const router = createBrowserRouter([
 ])
 
 export default function App() {
-  const { loading } = useAuth()
+  const { loading, unavailable } = useAuth()
+  if (unavailable) return <Unavailable />
   if (loading) return <Loader fullscreen />
   return <RouterProvider router={router} />
 }

@@ -170,6 +170,16 @@ export function todaySP(offsetDays = 0) {
   return d.toISOString().slice(0, 10)
 }
 
+/**
+ * Número do link do WhatsApp. No Brasil, celulares de DDD 31 em diante ficaram registrados no WhatsApp sem o nono
+ * dígito: com o 9, o link responde "o número não está no WhatsApp". Em DDD 11 a 28 o 9 faz parte do número.
+ */
+export function waDigits(phone: string) {
+  const d = phone.replace(/\D/g, '')
+  const m = /^55(\d{2})9(\d{8})$/.exec(d)
+  return m && Number(m[1]) >= 31 ? `55${m[1]}${m[2]}` : d
+}
+
 export function whatsappLink(e164: string | null) {
-  return e164 ? `https://wa.me/${e164.replace(/\D/g, '')}` : null
+  return e164 ? `https://wa.me/${waDigits(e164)}` : null
 }

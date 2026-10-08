@@ -4,6 +4,7 @@
  * Texto formatado vem do editor do painel e passa por uma lista de permissões (tags e estilos conhecidos,
  * reconstruídos do zero); o resto é escapado. Links só http(s) (e mailto/tel), passando pelo rastreamento de cliques.
  */
+import { waDigits } from '../captura/regras'
 
 export type Align = 'left' | 'center' | 'right'
 
@@ -291,7 +292,7 @@ export function whatsappUrl(phone: string, message?: string) {
   let digits = phone.replace(/\D/g, '')
   if (digits.length === 10 || digits.length === 11) digits = `55${digits}`
   if (digits.length < 12 || digits.length > 15) return null
-  return `https://wa.me/${digits}${message?.trim() ? `?text=${encodeURIComponent(message.trim())}` : ''}`
+  return `https://wa.me/${waDigits(digits)}${message?.trim() ? `?text=${encodeURIComponent(message.trim())}` : ''}`
 }
 
 /** Lista única de links da campanha, na ordem em que aparecem (o índice vai no link rastreado). */

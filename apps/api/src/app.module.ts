@@ -12,6 +12,7 @@ import { EmailModule } from './email/email.module'
 import { UserThrottlerGuard } from './common/throttle.guard'
 import { AutomacoesModule } from './automacoes/automacoes.module'
 import { RelatoriosModule } from './relatorios/relatorios.module'
+import { CatalogoModule } from './catalogo/catalogo.module'
 import { env } from './config/env'
 import { FilesModule } from './files/files.module'
 import { LeadsModule } from './leads/leads.module'
@@ -50,6 +51,7 @@ import { UsersService } from './users/users.service'
     EmailModule,
     AutomacoesModule,
     RelatoriosModule,
+    CatalogoModule,
   ],
   controllers: [UsersController, RolesController, SystemController],
   providers: [

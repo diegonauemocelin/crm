@@ -46,7 +46,8 @@ export class LojaService {
       })
     }
     const q = f.search?.trim()
-    if (q) and.push({ OR: [{ customerName: { contains: q, mode: 'insensitive' } }, { customerEmail: { contains: q, mode: 'insensitive' } }] })
+    // Nome ou e-mail do cliente, ou o código exato de um produto do carrinho (atalho do Catálogo).
+    if (q) and.push({ OR: [{ customerName: { contains: q, mode: 'insensitive' } }, { customerEmail: { contains: q, mode: 'insensitive' } }, { items: { array_contains: [{ code: q }] } }] })
     return { AND: and }
   }
 

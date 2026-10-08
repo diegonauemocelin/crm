@@ -147,8 +147,18 @@ export function whatsappText(template: string, v: { name: string | null; page: s
   return template.replaceAll('{nome}', first).replaceAll('{pagina}', v.page ?? '').replace(/\s+/g, ' ').trim()
 }
 
+/**
+ * Número do link do WhatsApp (wa.me). No Brasil, celulares de DDD 31 em diante ficaram registrados no WhatsApp
+ * sem o nono dígito: com o 9, o link responde "o número não está no WhatsApp". Em DDD 11 a 28 o 9 faz parte do número.
+ */
+export function waDigits(phone: string) {
+  const d = phone.replace(/\D/g, '')
+  const m = /^55(\d{2})9(\d{8})$/.exec(d)
+  return m && Number(m[1]) >= 31 ? `55${m[1]}${m[2]}` : d
+}
+
 export function waLink(phoneE164: string, text: string) {
-  return `https://wa.me/${phoneE164.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`
+  return `https://wa.me/${waDigits(phoneE164)}?text=${encodeURIComponent(text)}`
 }
 
 /** Endereço de redirecionamento só http(s) (nada de javascript:). */

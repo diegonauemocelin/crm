@@ -4,7 +4,8 @@ import { normalizePhone } from '../atendimento/br'
 import type { RequestCtx } from '../common/decorators'
 import { type Action, can } from '../common/permissions'
 import type { AuthUser } from '../common/types'
-import type { Prisma } from '../generated/prisma/client'
+import { Prisma } from '../generated/prisma/client'
+import { EMAIL_IMAGE_LIMIT, FilesService } from '../files/files.service'
 import { LeadConfigService } from '../leads/lead-config.service'
 import { normalizeTags } from '../leads/mapeamento'
 import { PrismaService } from '../prisma/prisma.service'
@@ -12,6 +13,7 @@ import { env } from '../config/env'
 import { RastreamentoService } from '../rastreamento/rastreamento.service'
 import { SettingsService } from '../settings/settings.service'
 import { type CaptureSettings, CapturaService } from './captura.service'
+import { cleanDesign } from './design'
 import { BASE_FIELDS, cleanFields, type CustomDef, safeRedirect } from './regras'
 
 export interface FormInput {
@@ -85,6 +87,7 @@ export class CapturaAdminService {
     private readonly config: LeadConfigService,
     private readonly audit: AuditService,
     private readonly tracking: RastreamentoService,
+    private readonly files: FilesService,
   ) {}
 
   assertCan(user: AuthUser, action: Action) {
@@ -209,6 +212,71 @@ export class CapturaAdminService {
     await this.audit.byUser(user, ctx, id ? 'captura.popup_updated' : 'captura.popup_created', 'capture_popup', popup.id, { nome: data.name, ativo: data.active })
     const { tenantId: _t, ...rest } = popup
     return rest
+  }
+
+  // ---------- Editor visual ----------
+
+  /** Tudo o que o editor precisa: o layout, o formulário (campos, botão, mensagem) e os dados do pop-up simples. */
+  async editor(user: AuthUser, kind: 'popup' | 'form', id: string) {
+    this.assertCan(user, 'view')
+    const s = await this.captura.settingsOf(user.tenantId)
+    const formView = (f: { id: string; name: string; fields: unknown; submitLabel: string; successMessage: string; consentText: string | null }) => ({
+      id: f.id,
+      name: f.name,
+      fields: f.fields,
+      submitLabel: f.submitLabel,
+      successMessage: f.successMessage,
+      consentText: f.consentText,
+    })
+    if (kind === 'popup') {
+      const p = await this.prisma.capturePopup.findFirst({ where: { id, tenantId: user.tenantId }, include: { form: true } })
+      if (!p) throw new NotFoundException('Pop-up não encontrado.')
+      return {
+        kind,
+        id: p.id,
+        name: p.name,
+        active: p.active,
+        design: p.design,
+        popup: { id: p.id, formId: p.formId, title: p.title, text: p.text, imageUrl: p.imageUrl, color: p.color },
+        form: formView(p.form),
+        privacyUrl: s.privacyUrl || null,
+      }
+    }
+    const f = await this.prisma.captureForm.findFirst({ where: { id, tenantId: user.tenantId } })
+    if (!f) throw new NotFoundException('Formulário não encontrado.')
+    return { kind, id: f.id, name: f.name, active: f.active, design: f.design, popup: null, form: formView(f), privacyUrl: s.privacyUrl || null }
+  }
+
+  /** Salva o layout do editor (ou volta ao modelo simples com design = null). */
+  async saveDesign(user: AuthUser, kind: 'popup' | 'form', id: string, raw: unknown, ctx: RequestCtx) {
+    this.assertCan(user, 'edit')
+    let design: Prisma.InputJsonValue | typeof Prisma.DbNull = Prisma.DbNull
+    if (raw !== null) {
+      const r = cleanDesign(raw, kind, new URL(env.appUrl).origin)
+      if ('error' in r) throw new BadRequestException(r.error)
+      design = r.design as unknown as Prisma.InputJsonValue
+    }
+    const where = { id, tenantId: user.tenantId }
+    const found = kind === 'popup' ? await this.prisma.capturePopup.count({ where }) : await this.prisma.captureForm.count({ where })
+    if (!found) throw new NotFoundException(kind === 'popup' ? 'Pop-up não encontrado.' : 'Formulário não encontrado.')
+    if (kind === 'popup') await this.prisma.capturePopup.update({ where: { id }, data: { design } })
+    else await this.prisma.captureForm.update({ where: { id }, data: { design } })
+    await this.audit.byUser(user, ctx, 'captura.design_saved', kind === 'popup' ? 'capture_popup' : 'capture_form', id, { layout: raw === null ? 'simples' : 'editor visual' })
+    return this.editor(user, kind, id)
+  }
+
+  /** Imagem para o pop-up/formulário: fica pública (o site precisa mostrar) e é servida pelo próprio CRM. */
+  async uploadImage(user: AuthUser, file: Express.Multer.File | undefined, ctx: RequestCtx) {
+    this.assertCan(user, 'edit')
+    const asset = await this.files.saveImage(user.tenantId, 'captura-image', file, true, { maxBytes: EMAIL_IMAGE_LIMIT, types: ['png', 'jpg', 'gif', 'webp'] })
+    await this.audit.byUser(user, ctx, 'captura.image_uploaded', 'file', asset.id, { tamanho: asset.size })
+    return { id: asset.id, url: `${env.appUrl}/api/files/public/${asset.id}` }
+  }
+
+  async listImages(user: AuthUser) {
+    this.assertCan(user, 'view')
+    const rows = await this.prisma.fileAsset.findMany({ where: { tenantId: user.tenantId, kind: { in: ['captura-image', 'email-image'] } }, orderBy: { createdAt: 'desc' }, take: 60, select: { id: true, createdAt: true } })
+    return rows.map((r) => ({ id: r.id, url: `${env.appUrl}/api/files/public/${r.id}` }))
   }
 
   async removePopup(user: AuthUser, id: string, ctx: RequestCtx) {

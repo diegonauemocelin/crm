@@ -7,6 +7,8 @@ import type { Action, Me } from './types'
 interface AuthContextValue {
   me: Me | null
   loading: boolean
+  /** Servidor fora do ar (ex.: reiniciando no deploy): não é falta de login. */
+  unavailable: boolean
   refresh: () => Promise<void>
   logout: () => Promise<void>
   can: (module: string, action?: Action) => boolean
@@ -17,7 +19,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient()
   const { setTheme } = useTheme()
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, failureCount } = useQuery({
     queryKey: ['me'],
     queryFn: async () => {
       try {
@@ -28,7 +30,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     },
     staleTime: 60_000,
-    retry: false,
+    // Servidor reiniciando (deploy): tenta de novo por ~1 minuto em vez de mandar para o login.
+    retry: (n, err) => err instanceof ApiError && err.status >= 500 && n < 10,
+    retryDelay: (n) => Math.min(1000 * 2 ** n, 8000),
   })
 
   // Tema salvo no perfil vale em qualquer computador em que o usuário entrar.
@@ -66,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   return (
-    <AuthContext.Provider value={{ me: data ?? null, loading: isLoading, refresh, logout, can }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ me: data ?? null, loading: isLoading, unavailable: data === undefined && (isError || failureCount > 0), refresh, logout, can }}>{children}</AuthContext.Provider>
   )
 }
 

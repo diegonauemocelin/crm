@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDownIcon, ArrowUpIcon, CodeIcon, InboxIcon, Loader2Icon, MegaphoneIcon, PencilIcon, PlusIcon, Trash2Icon, XIcon } from 'lucide-react'
+import { ArrowDownIcon, ArrowUpIcon, CodeIcon, InboxIcon, Loader2Icon, MegaphoneIcon, PaletteIcon, PencilIcon, PlusIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { type FormEvent, type ReactNode, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { CopyField } from '@/components/copy-field'
 import { MultiSelect } from '@/components/multi-select'
@@ -42,6 +42,8 @@ import { FormError } from './auth/auth-layout'
 const NONE = '__none__'
 
 export function CapturaPage() {
+  // Aba pelo endereço (?aba=popups), usada pela volta do editor visual.
+  const [params] = useSearchParams()
   return (
     <RequirePermission module="captura">
       <PageHeader
@@ -49,7 +51,7 @@ export function CapturaPage() {
         description="Formulários, pop-ups e botão de WhatsApp no site. Quem preenche vira lead (sem duplicar) e entra na fila de Pré-Vendas."
       />
       <InstallHint />
-      <Tabs defaultValue="formularios">
+      <Tabs defaultValue={['formularios', 'popups', 'whatsapp', 'envios'].includes(params.get('aba') ?? '') ? params.get('aba')! : 'formularios'}>
         <TabsList className="mb-4 h-auto flex-wrap">
           <TabsTrigger value="formularios">Formulários</TabsTrigger>
           <TabsTrigger value="popups">Pop-ups</TabsTrigger>
@@ -226,9 +228,16 @@ function FormsTab() {
                   </div>
                 </div>
                 {can('captura', 'edit') && (
-                  <Button variant="outline" size="sm" onClick={() => setOpen(f)}>
-                    <PencilIcon /> Editar
-                  </Button>
+                  <div className="flex shrink-0 flex-col gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setOpen(f)}>
+                      <PencilIcon /> Editar
+                    </Button>
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to={`/captura/editor/formulario/${f.id}`}>
+                        <PaletteIcon /> Editor visual
+                      </Link>
+                    </Button>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -498,9 +507,16 @@ function PopupsTab() {
                   <TableCell className="text-right tabular-nums">{p.views ? `${((p.submissions / p.views) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : '—'}</TableCell>
                   <TableCell className="pr-4 text-right whitespace-nowrap">
                     {can('captura', 'edit') && (
-                      <Button size="sm" variant="ghost" onClick={() => setOpen(p)} aria-label={`Editar ${p.name}`}>
-                        <PencilIcon />
-                      </Button>
+                      <>
+                        <Button size="sm" variant="outline" asChild>
+                          <Link to={`/captura/editor/popup/${p.id}`}>
+                            <PaletteIcon /> Editor visual
+                          </Link>
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setOpen(p)} aria-label={`Configurações de ${p.name}`}>
+                          <PencilIcon />
+                        </Button>
+                      </>
                     )}
                     {can('captura', 'delete') && (
                       <Button size="sm" variant="ghost" onClick={() => confirm(`Excluir o pop-up "${p.name}"?`) && remove.mutate(p.id)} aria-label={`Excluir ${p.name}`}>

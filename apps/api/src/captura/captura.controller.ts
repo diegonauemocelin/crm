@@ -1,14 +1,24 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, Res } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common'
+import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { SkipThrottle, Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
 import type { Request, Response } from 'express'
 import { CurrentUser, Public, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
+import { EMAIL_IMAGE_LIMIT } from '../files/files.service'
 import { CapturaAdminService } from './captura-admin.service'
 import { CapturaService, type PublicSubmit } from './captura.service'
 import { HEX_COLOR } from './regras'
+import { PREVIEW_JS } from './widget'
+
+const EDITOR_KINDS = { popup: 'popup', formulario: 'form' } as const
+
+/** Layout conferido em detalhe por src/captura/design.ts (cleanDesign). null volta ao modelo simples. */
+class DesignDto {
+  @ApiProperty({ nullable: true }) @ValidateIf((_, v) => v !== null) @IsObject() design!: Record<string, unknown> | null
+}
 
 class FormDto {
   @ApiProperty() @IsString() @Length(2, 80) name!: string
@@ -229,6 +239,45 @@ export class CapturaController {
   async removeWhatsapp(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
     await this.admin.removeWhatsapp(user, id, ctx)
     return { ok: true }
+  }
+
+  // ---------- Editor visual ----------
+
+  /** Script da prévia (mesmo desenho do site), carregado dentro do quadro de prévia do editor. */
+  @Get('previa.js')
+  @SkipThrottle()
+  preview(@Res({ passthrough: true }) res: Response) {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8')
+    res.setHeader('Cache-Control', 'private, max-age=60')
+    return PREVIEW_JS
+  }
+
+  @Get('editor/:tipo/:id')
+  editor(@CurrentUser() user: AuthUser, @Param('tipo') tipo: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.admin.editor(user, this.editorKind(tipo), id)
+  }
+
+  @Put('editor/:tipo/:id')
+  saveDesign(@CurrentUser() user: AuthUser, @Param('tipo') tipo: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DesignDto, @ReqContext() ctx: RequestCtx) {
+    return this.admin.saveDesign(user, this.editorKind(tipo), id, dto.design, ctx)
+  }
+
+  @Get('imagens')
+  images(@CurrentUser() user: AuthUser) {
+    return this.admin.listImages(user)
+  }
+
+  @Post('imagens')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: EMAIL_IMAGE_LIMIT } }))
+  uploadImage(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File | undefined, @ReqContext() ctx: RequestCtx) {
+    return this.admin.uploadImage(user, file, ctx)
+  }
+
+  private editorKind(tipo: string) {
+    const kind = EDITOR_KINDS[tipo as keyof typeof EDITOR_KINDS]
+    if (!kind) throw new BadRequestException('Tipo inválido.')
+    return kind
   }
 
   @Get('envios')
