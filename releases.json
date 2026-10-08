@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.9.1",
+      "date": "2026-10-08",
+      "title": "Exportação da base de leads e limpeza do Pré-Vendas",
+      "changes": [
+        { "type": "melhoria", "area": "Base de leads", "text": "Botão “Exportar base” no topo da tela, com a quantidade de leads. Com filtro, exporta só os leads do filtro. A planilha agora traz também a fonte, o meio e a campanha da primeira conversão, as datas da primeira e da última conversão, o descadastro do e-mail, se é cliente da loja virtual e os campos personalizados. O telefone sai no formato 55 11 98765-4321." },
+        { "type": "seguranca", "area": "Base de leads", "text": "Toda exportação da base fica registrada na auditoria, com a quantidade e os filtros usados (LGPD)." },
+        { "type": "novo", "area": "Pré-Vendas", "text": "Limpar e recomeçar (só administrador): apaga de vez os atendimentos de Pré-Vendas (e, se marcar, os de Pós-Vendas) para começar do zero com a importação da planilha. Pede para baixar uma cópia antes, a frase de confirmação e a senha, e fica na auditoria." },
+        { "type": "melhoria", "area": "Pré-Vendas", "text": "Os contatos não duplicam: depois da limpeza, cada atendimento importado volta a se ligar ao mesmo lead pelo telefone ou e-mail, e a linha do tempo do lead não fica com atendimentos repetidos. Importar a mesma planilha duas vezes não duplica os atendimentos." }
+      ]
+    },
+    {
       "version": "0.9.0",
       "date": "2026-10-08",
       "title": "Fase 8 — Segurança final",

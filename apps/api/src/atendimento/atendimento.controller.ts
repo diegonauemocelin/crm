@@ -113,6 +113,12 @@ class ImportDto {
   @ApiProperty() @IsBoolean() dryRun!: boolean
 }
 
+class ClearDto {
+  @ApiProperty({ description: 'Apagar também os Pós-Vendas' }) @IsBoolean() includePostSale!: boolean
+  @ApiProperty() @IsString() @Length(1, 128) password!: string
+  @ApiProperty({ description: 'Frase de confirmação' }) @IsString() @MaxLength(60) confirmation!: string
+}
+
 class LookupDto {
   @ApiProperty() @IsString() @Length(1, 80) name!: string
 }
@@ -207,6 +213,19 @@ export class AtendimentoController {
     res.setHeader('Content-Disposition', `attachment; filename="${name}"`)
     // BOM: o Excel em português abre com acentos corretos e separa as colunas pelo ";".
     res.send('﻿' + [header.join(';'), ...lines].join('\r\n'))
+  }
+
+  /** Limpeza para recomeçar do zero com a importação da planilha (só administrador). */
+  @Get('limpeza')
+  clearPreview(@CurrentUser() user: AuthUser) {
+    return this.imports.clearPreview(user)
+  }
+
+  @Post('limpeza')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  clearAll(@CurrentUser() user: AuthUser, @Body() dto: ClearDto, @ReqContext() ctx: RequestCtx) {
+    return this.imports.clearAll(user, dto, ctx)
   }
 
   @Get(':id')

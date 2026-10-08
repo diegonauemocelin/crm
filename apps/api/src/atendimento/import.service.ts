@@ -7,7 +7,11 @@ import type { LookupType, Prisma, ServiceKind } from '../generated/prisma/client
 import { LeadSyncService } from '../leads/lead-sync.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { CadastrosService } from './cadastros.service'
+import { verifyPassword } from '../auth/password'
 import { mapSheet, type MappedRecord } from './planilha'
+
+/** Frase digitada para confirmar a limpeza dos atendimentos. */
+export const CLEAR_PHRASE = 'APAGAR ATENDIMENTOS'
 
 const MAX_BYTES = 20 * 1024 * 1024
 
@@ -51,6 +55,50 @@ export class ImportService {
     private readonly audit: AuditService,
     private readonly leadSync: LeadSyncService,
   ) {}
+
+  /** Quantos registros a limpeza apagaria (para mostrar antes de confirmar). */
+  async clearPreview(user: AuthUser) {
+    if (!user.role.isSystem) throw new ForbiddenException('Somente administradores podem limpar os atendimentos.')
+    const [pre, pos, sales] = await Promise.all([
+      this.prisma.serviceRecord.count({ where: { tenantId: user.tenantId, kind: 'PRE_VENDAS' } }),
+      this.prisma.serviceRecord.count({ where: { tenantId: user.tenantId, kind: 'POS_VENDAS' } }),
+      this.prisma.serviceRecord.count({ where: { tenantId: user.tenantId, kind: 'PRE_VENDAS', saleStatus: 'SIM' } }),
+    ])
+    const leads = await this.prisma.lead.count({ where: { tenantId: user.tenantId, deletedAt: null } })
+    return { pre, pos, sales, leads }
+  }
+
+  /**
+   * Apaga DE VEZ os atendimentos (Pré-Vendas e, se pedido, Pós-Vendas) para recomeçar com a importação da planilha.
+   * Precisa ser definitivo: atendimento só marcado como apagado guarda a chave da planilha, e a reimportação o pularia.
+   * Os leads (contatos) ficam: na reimportação, cada atendimento volta a se ligar ao mesmo lead pelo telefone/e-mail.
+   * Da linha do tempo dos leads saem só os registros "Atendimento" e "Venda" desses atendimentos (senão ficariam em dobro).
+   */
+  async clearAll(user: AuthUser, input: { includePostSale: boolean; password: string; confirmation: string }, ctx: RequestCtx) {
+    if (!user.role.isSystem) throw new ForbiddenException('Somente administradores podem limpar os atendimentos.')
+    if (input.confirmation.trim().toUpperCase() !== CLEAR_PHRASE) throw new BadRequestException(`Digite ${CLEAR_PHRASE} para confirmar.`)
+    const row = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { passwordHash: true } })
+    if (!(await verifyPassword(row.passwordHash, input.password))) throw new BadRequestException('Senha incorreta.')
+
+    const kinds: ServiceKind[] = input.includePostSale ? ['PRE_VENDAS', 'POS_VENDAS'] : ['PRE_VENDAS']
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        const ids = (await tx.serviceRecord.findMany({ where: { tenantId: user.tenantId, kind: { in: kinds } }, select: { id: true } })).map((r) => r.id)
+        let events = 0
+        for (let i = 0; i < ids.length; i += 1000) {
+          const chunk = ids.slice(i, i + 1000)
+          events += await tx.$executeRaw`DELETE FROM lead_events WHERE "tenantId" = ${user.tenantId}::uuid AND type IN ('atendimento', 'venda') AND data->>'recordId' = ANY(${chunk}::text[])`
+        }
+        // Pós-Vendas que ficam perdem só o vínculo com a pré-venda apagada.
+        if (!input.includePostSale) await tx.serviceRecord.updateMany({ where: { tenantId: user.tenantId, kind: 'POS_VENDAS', parentId: { not: null } }, data: { parentId: null } })
+        const deleted = await tx.serviceRecord.deleteMany({ where: { tenantId: user.tenantId, kind: { in: kinds } } })
+        return { records: deleted.count, events }
+      },
+      { timeout: 120_000 },
+    )
+    await this.audit.byUser(user, ctx, 'atendimento.cleared', 'service_record', undefined, { tipos: kinds, atendimentosApagados: result.records, eventosDaLinhaDoTempo: result.events })
+    return { ok: true, ...result }
+  }
 
   /** Importação em massa é restrita ao perfil Administrador. */
   async run(user: AuthUser, source: { url?: string; csv?: string }, kind: ServiceKind, dryRun: boolean, ctx: RequestCtx) {

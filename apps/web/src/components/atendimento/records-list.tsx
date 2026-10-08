@@ -6,6 +6,7 @@ import {
   ChevronRightIcon,
   ClockAlertIcon,
   DownloadIcon,
+  EraserIcon,
   FilterXIcon,
   InboxIcon,
   Loader2Icon,
@@ -49,6 +50,7 @@ import {
 } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
+import { ClearDialog } from './clear-dialog'
 import { ImportDialog } from './import-dialog'
 import { RecordSheet } from './record-sheet'
 
@@ -106,6 +108,7 @@ export function RecordsList({ kind }: { kind: Kind }) {
   const [open, setOpen] = useState<ServiceRecord | 'new' | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [importing, setImporting] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const page = Number(params.get('page') ?? '1')
   const openId = params.get('abrir')
 
@@ -223,6 +226,11 @@ export function RecordsList({ kind }: { kind: Kind }) {
         {me?.role.isSystem && (
           <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
             <UploadIcon /> Importar planilha
+          </Button>
+        )}
+        {me?.role.isSystem && kind === 'PRE_VENDAS' && (
+          <Button size="sm" variant="outline" onClick={() => setClearing(true)}>
+            <EraserIcon /> Limpar e recomeçar
           </Button>
         )}
       </div>
@@ -482,6 +490,15 @@ export function RecordsList({ kind }: { kind: Kind }) {
 
       {open && <RecordSheet kind={kind} record={open === 'new' ? null : open} onClose={() => setOpen(null)} />}
       {importing && <ImportDialog kind={kind} onClose={() => setImporting(false)} />}
+      {clearing && (
+        <ClearDialog
+          onClose={() => setClearing(false)}
+          onImport={() => {
+            setClearing(false)
+            setImporting(true)
+          }}
+        />
+      )}
     </>
   )
 

@@ -115,14 +115,21 @@ function LeadsContent() {
   const allOnPage = !!data?.items.length && data.items.every((l) => selected.has(l.id))
   const o = options.data
 
+  const [exporting, setExporting] = useState(false)
   const exportCsv = async () => {
     const q = new URLSearchParams(query)
     for (const k of ['page', 'pageSize', 'sort']) q.delete(k)
-    const res = await fetch(`/api/leads/exportar?${q}`, { credentials: 'same-origin' })
-    if (!res.ok) return toast.error(((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? 'Falha ao exportar.')
-    const url = URL.createObjectURL(await res.blob())
-    Object.assign(document.createElement('a'), { href: url, download: `leads-${new Date().toISOString().slice(0, 10)}.csv` }).click()
-    URL.revokeObjectURL(url)
+    setExporting(true)
+    try {
+      const res = await fetch(`/api/leads/exportar?${q}`, { credentials: 'same-origin' })
+      if (!res.ok) return toast.error(((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? 'Falha ao exportar.')
+      const url = URL.createObjectURL(await res.blob())
+      Object.assign(document.createElement('a'), { href: url, download: `leads-${new Date().toISOString().slice(0, 10)}.csv` }).click()
+      URL.revokeObjectURL(url)
+      toast.success('Arquivo gerado. Abra no Excel ou no Google Planilhas.')
+    } finally {
+      setExporting(false)
+    }
   }
 
   return (
@@ -132,6 +139,12 @@ function LeadsContent() {
         description="Todas as pessoas identificadas: importadas do RD, vindas do WhatsApp/atendimentos e, nas próximas etapas, de formulários e landing pages."
         actions={
           <>
+            <Can module="leads" action="export">
+              <Button variant="outline" onClick={() => void exportCsv()} disabled={exporting || !data?.total} title="Exporta os leads do filtro atual (ou a base inteira, sem filtro) em planilha CSV">
+                {exporting ? <Loader2Icon className="animate-spin" /> : <DownloadIcon />}
+                {active ? `Exportar ${data ? int.format(data.total) : ''} lead(s) do filtro` : `Exportar base${data ? ` (${int.format(data.total)})` : ''}`}
+              </Button>
+            </Can>
             <Can module="configuracoes" action="edit">
               <Button variant="outline" asChild>
                 <Link to="/leads/configuracoes">
@@ -190,11 +203,6 @@ function LeadsContent() {
             <SelectItem value="name">Nome (A–Z)</SelectItem>
           </SelectContent>
         </Select>
-        <Can module="leads" action="export">
-          <Button size="sm" variant="outline" onClick={exportCsv}>
-            <DownloadIcon /> Exportar
-          </Button>
-        </Can>
       </div>
 
       <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">

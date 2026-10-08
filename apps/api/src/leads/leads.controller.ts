@@ -148,15 +148,32 @@ export class LeadsController {
   }
 
   @Get('exportar')
-  async export(@CurrentUser() user: AuthUser, @Query() q: FiltersDto, @Res() res: Response) {
-    const rows = await this.leads.exportRows(user, q)
-    const header = ['Nome', 'E-mail', 'Telefone', 'Empresa', 'Cargo', 'Cidade', 'Estado', 'Estágio', 'Nota', 'Pontos perfil', 'Pontos interesse', 'Tags', 'Responsável', 'Unidade', 'Origem', 'Aceita e-mail', 'Última venda', 'Valor última venda', 'Cadastro']
+  async export(@CurrentUser() user: AuthUser, @Query() q: FiltersDto, @ReqContext() ctx: RequestCtx, @Res() res: Response) {
+    const { rows, fields } = await this.leads.exportRows(user, q, ctx)
+    const header = [
+      'Nome', 'E-mail', 'Telefone', 'Empresa', 'Cargo', 'Cidade', 'Estado', 'Estágio', 'Nota', 'Pontos perfil', 'Pontos interesse', 'Tags', 'Responsável', 'Unidade', 'Origem',
+      'Aceita e-mail', 'Descadastro do e-mail', 'Fonte (1ª conversão)', 'Meio (1ª conversão)', 'Campanha (1ª conversão)', 'Primeira conversão', 'Última conversão',
+      'Cliente da loja virtual', 'Última venda', 'Valor última venda', 'Cadastro', ...fields.map((f) => f.label),
+    ]
     const fmt = (d: Date | null) => (d ? new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(d) : '')
+    const touch = (j: unknown, k: string) => (j && typeof j === 'object' ? String((j as Record<string, unknown>)[k] ?? '') : '')
+    // "55 11 98765-4321": o Excel lê como texto (sem "+" no começo, que ele trataria como fórmula).
+    const phone = (p: string | null) => {
+      if (!p) return ''
+      const br = p.match(/^\+55(\d{2})(\d{4,5})(\d{4})$/)
+      if (br) return `55 ${br[1]} ${br[2]}-${br[3]}`
+      const d = p.replace(/\D/g, '')
+      return d.length > 4 ? `${d.slice(0, 2)} ${d.slice(2)}` : d
+    }
+    const custom = (v: unknown) => (v === null || v === undefined ? '' : Array.isArray(v) ? v.join(', ') : typeof v === 'boolean' ? (v ? 'Sim' : 'Não') : String(v))
     const lines = rows.map((l) =>
       [
-        l.name, l.email, l.phone, l.company, l.jobTitle, l.city, l.state ? (UFS[l.state as keyof typeof UFS]?.name ?? l.state) : '', STAGE_LABEL[l.stage],
-        l.scoreGrade, l.scoreProfile, l.scoreInterest, l.tags.join(', '), l.owner?.name, l.unit?.name, l.origin?.name, l.emailOptIn ? 'Sim' : 'Não',
+        l.name, l.email, phone(l.phone), l.company, l.jobTitle, l.city, l.state ? (UFS[l.state as keyof typeof UFS]?.name ?? l.state) : '', STAGE_LABEL[l.stage],
+        l.scoreGrade, l.scoreProfile, l.scoreInterest, l.tags.join(', '), l.owner?.name, l.unit?.name, l.origin?.name,
+        l.emailOptIn ? 'Sim' : 'Não', fmt(l.emailOptOutAt), touch(l.firstConversion, 'source') || touch(l.firstConversion, 'origem'), touch(l.firstConversion, 'medium'), touch(l.firstConversion, 'campaign'),
+        fmt(l.firstConversionAt), fmt(l.lastConversionAt), l.ecommerceId ? 'Sim' : 'Não',
         fmt(l.lastSaleAt), l.lastSaleValue === null ? '' : Number(l.lastSaleValue).toLocaleString('pt-BR', { minimumFractionDigits: 2 }), fmt(l.createdAt),
+        ...fields.map((f) => custom((l.customFields as Record<string, unknown> | null)?.[f.key])),
       ]
         .map(csvCell)
         .join(';'),

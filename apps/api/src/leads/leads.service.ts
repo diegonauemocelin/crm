@@ -133,15 +133,23 @@ export class LeadsService {
     }
   }
 
-  async exportRows(user: AuthUser, f: LeadFilters) {
+  /** Exportação da base (com os filtros da tela). Fica na auditoria: é saída de dado pessoal (LGPD). */
+  async exportRows(user: AuthUser, f: LeadFilters, ctx: RequestCtx) {
     this.assertCan(user, 'export')
-    const where = this.where(user, f)
-    if ((await this.prisma.lead.count({ where })) > 100_000) throw new BadRequestException('Muitos leads para exportar de uma vez (máximo 100.000). Use os filtros.')
-    return this.prisma.lead.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: { owner: { select: { name: true } }, unit: { select: { name: true } }, origin: { select: { name: true } } },
-    })
+    const where = { ...this.where(user, f), anonymizedAt: null }
+    const total = await this.prisma.lead.count({ where })
+    if (total > 100_000) throw new BadRequestException('Muitos leads para exportar de uma vez (máximo 100.000). Use os filtros.')
+    const [rows, fields] = await Promise.all([
+      this.prisma.lead.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: { owner: { select: { name: true } }, unit: { select: { name: true } }, origin: { select: { name: true } } },
+      }),
+      this.prisma.customFieldDef.findMany({ where: { tenantId: user.tenantId, active: true }, orderBy: [{ position: 'asc' }, { label: 'asc' }], select: { key: true, label: true } }),
+    ])
+    const filtros = Object.fromEntries(Object.entries(f).filter(([, v]) => v !== undefined && v !== ''))
+    await this.audit.byUser(user, ctx, 'lead.exported', 'lead', undefined, { quantidade: rows.length, filtros })
+    return { rows, fields }
   }
 
   view(l: Prisma.LeadGetPayload<object>) {
