@@ -7,6 +7,8 @@ import type { AuthUser } from '../common/types'
 import type { Prisma } from '../generated/prisma/client'
 import { OrigemAdsService } from '../leads/origem-ads.service'
 import { PrismaService } from '../prisma/prisma.service'
+import { cleanStats, adsScript } from './painel'
+import { GoogleAdsPanelService } from './painel.service'
 import { GA_TOKEN_URL, parseKeyFile, signJwt } from '../relatorios/ga4'
 import { SettingsService } from '../settings/settings.service'
 import {
@@ -14,7 +16,6 @@ import {
   adsError,
   adsInfoOf,
   campaignLabel,
-  campaignsScript,
   cleanCampaignList,
   BATCH_SIZE,
   buildEvent,
@@ -103,6 +104,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
     private readonly settings: SettingsService,
     private readonly audit: AuditService,
     @Optional() private readonly origemAds?: OrigemAdsService,
+    @Optional() private readonly panel?: GoogleAdsPanelService,
   ) {}
 
   onApplicationBootstrap() {
@@ -124,7 +126,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
   view(s: GoogleAdsSettings) {
     const { privateKeyEnc, campaignsToken, ...rest } = s
     const url = campaignsToken ? `${env.appUrl}/api/webhooks/google-ads/campanhas/${campaignsToken}` : null
-    return { ...rest, hasKey: !!privateKeyEnc, campaignsScript: url ? campaignsScript(url) : null }
+    return { ...rest, hasKey: !!privateKeyEnc, campaignsScript: url ? adsScript(url) : null }
   }
 
   /** Configuração com a chave do endereço dos nomes das campanhas (criada na primeira vez). */
@@ -145,11 +147,23 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
       return typeof t === 'string' && safeEqual(t, token)
     })
     if (!row) return null
-    const r = cleanCampaignList(body)
-    if ('error' in r) throw new BadRequestException(r.error)
-    const s = await this.config(row.tenantId)
-    await this.settings.set(row.tenantId, 'google_ads', { ...s, campaigns: { ...s.campaigns, ...r.campaigns }, campaignsSyncedAt: new Date().toISOString() })
-    return { ok: true, campanhas: r.count }
+    const b = (body ?? {}) as { campaigns?: unknown; stats?: unknown }
+    if (b.campaigns === undefined && b.stats === undefined) throw new BadRequestException('Nada para receber.')
+    const out: Record<string, unknown> = { ok: true }
+    if (b.campaigns !== undefined) {
+      const r = cleanCampaignList(body)
+      if ('error' in r) throw new BadRequestException(r.error)
+      const s = await this.config(row.tenantId)
+      await this.settings.set(row.tenantId, 'google_ads', { ...s, campaigns: { ...s.campaigns, ...r.campaigns }, campaignsSyncedAt: new Date().toISOString() })
+      out.campanhas = r.count
+    }
+    // Investimento por dia, campanha e palavra-chave (script novo), para o painel do Google Ads.
+    if (b.stats !== undefined && this.panel) {
+      const st = cleanStats(body)
+      if ('error' in st) throw new BadRequestException(st.error)
+      Object.assign(out, await this.panel.store(row.tenantId, st))
+    }
+    return out
   }
 
   async save(user: AuthUser, input: GoogleAdsInput, ctx: RequestCtx) {

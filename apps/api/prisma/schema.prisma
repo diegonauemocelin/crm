@@ -427,6 +427,8 @@ model ServiceRecord {
   entryPage      String?
   /// Por onde entrou no site: formulário, pop-up ou botão de WhatsApp (com o nome dado na Captura).
   entryChannel   String?
+  /// Palavra-chave do anúncio (utm_term={keyword} no sufixo do link do Google Ads).
+  adsTerm        String?
   createdById    String?       @db.Uuid
   updatedById    String?       @db.Uuid
   createdAt      DateTime      @default(now())
@@ -1227,4 +1229,46 @@ model GoogleAdsConversion {
   @@index([tenantId, status])
   @@index([recordId])
   @@map("google_ads_conversions")
+}
+
+/// Custo e cliques por dia e campanha, enviados pelo script do Google Ads (Ferramentas → Scripts).
+model GoogleAdsCampaignDay {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @db.Uuid
+  date         DateTime @db.Date
+  campaignId   String
+  campaignName String
+  /// Valor investido no dia (moeda da conta).
+  cost         Decimal  @db.Decimal(14, 2)
+  clicks       Int
+  impressions  Int
+  /// Conversões contadas pelo Google (inclui as que o CRM devolve).
+  conversions  Decimal  @db.Decimal(12, 2)
+  updatedAt    DateTime @updatedAt
+
+  @@unique([tenantId, date, campaignId])
+  @@index([tenantId, date])
+  @@map("google_ads_campaign_days")
+}
+
+/// Custo e cliques por dia e palavra-chave (do script do Google Ads).
+model GoogleAdsKeywordDay {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  date        DateTime @db.Date
+  campaignId  String
+  adGroupId   String
+  criterionId String
+  keyword     String
+  /// EXACT, PHRASE ou BROAD
+  matchType   String
+  cost        Decimal  @db.Decimal(14, 2)
+  clicks      Int
+  impressions Int
+  conversions Decimal  @db.Decimal(12, 2)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, date, adGroupId, criterionId])
+  @@index([tenantId, date])
+  @@map("google_ads_keyword_days")
 }

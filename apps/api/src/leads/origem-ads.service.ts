@@ -143,7 +143,7 @@ export class OrigemAdsService implements OnApplicationBootstrap, OnModuleDestroy
       const entryPage = entryPageForRecord(touches.get(r.leadId ?? '') ?? [], r.leadAt)
       const via = info ? 'ANUNCIO' : /google/i.test(r.origin?.name ?? '') || (!!r.originId && adsOrigins.has(r.originId)) ? 'ORIGEM' : null
       await this.prisma.$executeRaw`
-        UPDATE service_records SET "adsVia" = ${via}, "adsCampaignId" = ${info?.campaignId ?? null}, "adsCampaign" = ${info?.campaign ?? null}, "adsTouchAt" = ${info?.at ?? null}, "entryPage" = CASE WHEN "entryChannel" IS NOT NULL AND "entryPage" IS NOT NULL THEN "entryPage" ELSE ${entryPage} END, "adsCheckedAt" = ${now}
+        UPDATE service_records SET "adsVia" = ${via}, "adsCampaignId" = ${info?.campaignId ?? null}, "adsCampaign" = ${info?.campaign ?? null}, "adsTouchAt" = ${info?.at ?? null}, "adsTerm" = ${info?.term ?? null}, "entryPage" = CASE WHEN "entryChannel" IS NOT NULL AND "entryPage" IS NOT NULL THEN "entryPage" ELSE ${entryPage} END, "adsCheckedAt" = ${now}
         WHERE id = ${r.id}::uuid`
     }
   }

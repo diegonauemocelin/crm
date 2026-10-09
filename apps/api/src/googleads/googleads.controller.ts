@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, NotFoundException, Param, Post, Put } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, NotFoundException, Param, Post, Put, Query } from '@nestjs/common'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
@@ -6,6 +6,7 @@ import { ArrayMaxSize, IsArray, IsBoolean, IsObject, IsOptional, IsString, IsUUI
 import { CurrentUser, Public, ReqContext, type RequestCtx, RequirePermission } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { GoogleAdsService } from './googleads.service'
+import { GoogleAdsPanelService } from './painel.service'
 
 class ActionsDto {
   @IsOptional() @IsString() @MaxLength(20) contato?: string
@@ -50,7 +51,17 @@ export class GoogleAdsWebhookController {
 @ApiTags('Integrações')
 @Controller('integracoes/google-ads')
 export class GoogleAdsController {
-  constructor(private readonly ads: GoogleAdsService) {}
+  constructor(
+    private readonly ads: GoogleAdsService,
+    private readonly panel: GoogleAdsPanelService,
+  ) {}
+
+  /** Painel: investimento x contatos e vendas, por campanha, palavra-chave e origem. */
+  @Get('painel')
+  @RequirePermission('relatorios', 'view')
+  painel(@CurrentUser() user: AuthUser, @Query('de') de?: string, @Query('ate') ate?: string) {
+    return this.panel.panel(user, { from: de, to: ate })
+  }
 
   @Get()
   @RequirePermission('configuracoes', 'view')

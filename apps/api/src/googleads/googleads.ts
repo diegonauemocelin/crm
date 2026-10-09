@@ -222,6 +222,8 @@ export interface AdsInfo {
   /** Nome da campanha (do utm_campaign ou do cadastro de nomes); null quando só se sabe o número. */
   campaign: string | null
   at: Date | null
+  /** Palavra-chave do anúncio (utm_term={keyword}), quando o link traz. */
+  term?: string | null
 }
 
 /**
@@ -241,7 +243,8 @@ export function touchAdsInfo(t: TouchLike, at: Date | null, names: Record<string
   const id = (typeof t.campaignId === 'string' && CAMPAIGN_ID.test(t.campaignId) ? t.campaignId : null) ?? campaignIdFromUrl(t.landing) ?? (CAMPAIGN_ID.test(rawName) ? rawName : null)
   // O nome oficial (vindo do Google Ads pelo script, ou cadastrado) vale mais que o utm_campaign digitado no link.
   const name = (id && names[id]) || (rawName && !CAMPAIGN_ID.test(rawName) ? rawName : null)
-  return { campaignId: id, campaign: name, at }
+  const term = typeof t.term === 'string' && t.term.trim() ? t.term.trim().slice(0, 200) : null
+  return { campaignId: id, campaign: name, at, term }
 }
 
 /** Primeira e última campanha do Google Ads entre os toques (com data) do lead. */

@@ -310,3 +310,44 @@ describe('Google Ads: ritmo de envio', () => {
     }
   })
 })
+
+describe('Painel do Google Ads', () => {
+  it('script manda campanhas, dias de campanha e de palavra-chave, só lendo a conta', async () => {
+    const { adsScript } = await import('../src/googleads/painel')
+    const code = adsScript('https://crm.usaparts.com.br/api/webhooks/google-ads/campanhas/abc')
+    const sent: { campaigns?: unknown[]; stats?: { campaigns?: Record<string, unknown>[]; keywords?: Record<string, unknown>[] } }[] = []
+    const iter = <T>(list: T[]) => ({ hasNext: () => list.length > 0, next: () => list.shift()! })
+    const AdsApp = {
+      campaigns: () => ({ get: () => iter([{ getId: () => 21987654321, getName: () => 'Busca JCB' }]) }),
+      performanceMaxCampaigns: () => ({ get: () => iter([]) }),
+      shoppingCampaigns: () => ({ get: () => iter([]) }),
+      videoCampaigns: () => ({ get: () => iter([]) }),
+      currentAccount: () => ({ getTimeZone: () => 'America/Sao_Paulo' }),
+      search: (q: string) =>
+        q.includes('FROM campaign')
+          ? iter([{ segments: { date: '2026-10-01' }, campaign: { id: 21987654321, name: 'Busca JCB' }, metrics: { costMicros: '12340000', clicks: '10', impressions: '200', conversions: 1 } }])
+          : iter([{ segments: { date: '2026-10-01' }, campaign: { id: 21987654321 }, adGroup: { id: 555 }, adGroupCriterion: { criterionId: 777, keyword: { text: 'peças jcb', matchType: 'PHRASE' } }, metrics: { costMicros: '5000000', clicks: '4', impressions: '50', conversions: 0 } }]),
+    }
+    const UrlFetchApp = { fetch: (_u: string, o: { payload: string }) => (sent.push(JSON.parse(o.payload)), { getResponseCode: () => 200, getContentText: () => 'ok' }) }
+    const Utilities = { formatDate: (d: Date) => d.toISOString().slice(0, 10), sleep: () => undefined }
+    new Function('AdsApp', 'UrlFetchApp', 'Logger', 'Utilities', `${code}\nmain()`)(AdsApp, UrlFetchApp, { log: () => undefined }, Utilities)
+    expect(sent[0]).toEqual({ campaigns: [{ id: '21987654321', name: 'Busca JCB' }] })
+    expect(sent[1]!.stats!.campaigns![0]).toMatchObject({ d: '2026-10-01', c: '21987654321', n: 'Busca JCB', cost: 12.34, cl: 10, im: 200, cv: 1 })
+    expect(sent[2]!.stats!.keywords![0]).toMatchObject({ c: '21987654321', g: '555', k: '777', t: 'peças jcb', m: 'PHRASE', cost: 5 })
+    expect(code).not.toMatch(/\.(set|pause|enable|remove|apply)\w*\(/)
+  })
+
+  it('limpa o que chega: descarta linhas inválidas e valores negativos', async () => {
+    const { cleanStats, keywordKey, ratios, panelPeriod } = await import('../src/googleads/painel')
+    const r = cleanStats({ stats: { campaigns: [{ d: '2026-10-01', c: '123', n: 'A<b>', cost: 10.005, cl: 3, im: 9, cv: 0 }, { d: 'x', c: '1', cost: 1, cl: 1, im: 1, cv: 0 }, { d: '2026-10-01', c: '9', cost: -5, cl: 1, im: 1, cv: 0 }], keywords: [{ d: '2026-10-01', c: '1', g: '2', k: '3', t: '"peças jcb"', m: 'DROP TABLE', cost: 1, cl: 1, im: 1, cv: 0 }] } })
+    expect('error' in r).toBe(false)
+    if ('error' in r) return
+    expect(r.campaigns).toHaveLength(1)
+    expect(r.keywords[0]!.matchType).toBe('BROAD')
+    expect(keywordKey('[Peças  JCB]')).toBe('peças jcb')
+    expect(keywordKey('+peças +jcb')).toBe('peças jcb')
+    expect(ratios({ cost: 100, clicks: 50, leads: 4, sales: 1, revenue: 500 })).toEqual({ cpc: 2, costPerLead: 25, costPerSale: 100, conversionRate: 0.25, roas: 5 })
+    expect(ratios({ cost: 0, clicks: 0, leads: 3, sales: 0, revenue: 0 })).toMatchObject({ costPerLead: null, roas: null })
+    expect(panelPeriod('2026-10-10', '2026-10-01')).toEqual({ from: '2026-10-01', to: '2026-10-10' })
+  })
+})

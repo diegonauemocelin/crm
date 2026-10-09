@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.16.0",
+      "date": "2026-10-09",
+      "title": "Painel do Google Ads",
+      "changes": [
+        { "type": "novo", "area": "Google Ads", "text": "Painel Google Ads (menu Análise): valor investido total, por campanha e por palavra-chave, cruzado com os leads, as vendas e o valor vendido do Pré-Vendas. Custo por lead, custo por venda, conversão, CPC e retorno (ROAS), gráficos por dia e quebra por origem do lead." },
+        { "type": "novo", "area": "Google Ads", "text": "Script do Google Ads passa a mandar também o investimento por dia, campanha e palavra-chave (últimos 35 dias), uma vez por dia. Só lê a conta. Troque o script colado no Google Ads pelo novo (Configurações → Google Ads)." },
+        { "type": "melhoria", "area": "Atendimento", "text": "Atendimento guarda a palavra-chave do anúncio (utm_term), para o custo por lead de cada palavra." }
+      ]
+    },
+    {
       "version": "0.15.0",
       "date": "2026-10-09",
       "title": "Página de entrada, um botão por LP e campos obrigatórios",

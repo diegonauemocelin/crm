@@ -286,6 +286,9 @@ function Editor({ initial }: { initial: Config }) {
                       Clique em <strong>Visualizar</strong> para testar, depois em Salvar. Na lista de scripts, em Frequência, escolha <strong>Diariamente</strong>.
                     </li>
                   </ol>
+                  <p className="text-xs text-muted-foreground">
+                    O script traz os nomes das campanhas e o <strong>valor investido</strong> por dia, campanha e palavra-chave (últimos 35 dias), para o painel <strong>Google Ads</strong> do menu Análise. Ele só lê a conta, não altera nada. Se você já tinha colado o script antigo, troque pelo código abaixo.
+                  </p>
                   <CopyField value={initial.campaignsScript} multiline />
                   <p className="text-xs text-muted-foreground">
                     {initial.campaignsSyncedAt ? `Última lista recebida: ${formatDateTime(initial.campaignsSyncedAt)}.` : 'Ainda não recebeu nenhuma lista.'} O código contém um endereço

@@ -9,6 +9,7 @@ import {
   ListChecksIcon,
   MailIcon,
   MegaphoneIcon,
+  TargetIcon,
   MessageCircleIcon,
   PackageIcon,
   SettingsIcon,
@@ -68,7 +69,10 @@ export const NAVIGATION: NavGroup[] = [
   },
   {
     title: 'Análise',
-    items: [{ title: 'Dashboards e relatórios', to: '/relatorios', icon: BarChart3Icon, module: 'relatorios' }],
+    items: [
+      { title: 'Dashboards e relatórios', to: '/relatorios', icon: BarChart3Icon, module: 'relatorios' },
+      { title: 'Google Ads', to: '/google-ads', icon: TargetIcon, module: 'relatorios' },
+    ],
   },
   {
     title: 'Administração',
