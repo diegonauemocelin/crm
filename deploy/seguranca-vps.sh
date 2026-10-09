@@ -128,6 +128,8 @@ ignoreip = $ignore
 [sshd]
 enabled  = true
 port     = $ssh_port
+# Ubuntu chama o serviço de "ssh" e o OpenSSH novo registra as tentativas como "sshd-session".
+journalmatch = _SYSTEMD_UNIT=sshd.service + _SYSTEMD_UNIT=ssh.service + _COMM=sshd + _COMM=sshd-session
 maxretry = 5
 findtime = 10m
 bantime  = 1h
