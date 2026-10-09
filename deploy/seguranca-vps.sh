@@ -2,7 +2,7 @@
 # Segurança da VPS (Fase 8). Dois modos:
 #
 #   sudo bash deploy/seguranca-vps.sh              -> DIAGNÓSTICO, somente leitura: não instala nem altera nada.
-#   sudo bash deploy/seguranca-vps.sh --fail2ban   -> instala/ativa o fail2ban com DUAS regras:
+#   sudo bash deploy/seguranca-vps.sh --fail2ban [--meu-ip 200.1.2.3]   -> instala/ativa o fail2ban com DUAS regras:
 #        1) SSH: bane por 1 hora o IP que errar a senha 5 vezes em 10 minutos;
 #        2) CRM: bane por 1 hora o IP que errar o login do CRM 15 vezes em 10 minutos (lê só o log do CRM).
 #      O IP de onde você está conectado agora (SSH) entra na lista de exceções, para você não se bloquear.
@@ -23,11 +23,19 @@ porta_ssh() {
   echo "${p:-22}"
 }
 
-# Primeiro IP de quem está conectado por SSH agora (variável do próprio SSH, ou do sudo).
+# IP de quem está rodando o script por SSH. O sudo não repassa SSH_CLIENT, então também procura a sessão
+# SSH dona deste terminal. Pode ser informado à mão: --fail2ban --meu-ip 200.1.2.3
 ip_atual() {
-  local ip="${SSH_CLIENT%% *}"
+  local ip="${MEU_IP:-}"
+  [ -n "$ip" ] || ip="${SSH_CLIENT:-}"; ip="${ip%% *}"
+  [ -n "$ip" ] || { ip="${SSH_CONNECTION:-}"; ip="${ip%% *}"; }
   [ -n "$ip" ] || ip="$(who -m 2>/dev/null | sed -nE 's/.*\(([0-9a-fA-F:.]+)\).*/\1/p')"
-  echo "$ip"
+  if [ -z "$ip" ]; then
+    local tty
+    tty="$(ps -o tty= -p $$ 2>/dev/null | tr -d ' ')"
+    [ -n "$tty" ] && [ "$tty" != "?" ] && ip="$(who 2>/dev/null | awk -v t="$tty" '$2 == t { gsub(/[()]/, "", $NF); print $NF; exit }')"
+  fi
+  [[ "$ip" =~ ^[0-9a-fA-F:.]+$ ]] && echo "$ip" || echo ""
 }
 
 diagnostico() {
@@ -103,7 +111,7 @@ instalar_fail2ban() {
   cat > /etc/fail2ban/filter.d/usaparts-crm.conf <<'EOF'
 # Login, 2FA e recuperação de senha recusados no CRM (log de acesso do Nginx no formato padrão).
 [Definition]
-failregex = ^<HOST> \S+ \S+ \[[^\]]+\] "POST /api/auth/(login|2fa/verify|forgot-password|reset-password) HTTP/[0-9.]+" (401|429)
+failregex = ^<HOST> \S+ \S+ \[[^\]]*\] "POST /api/auth/(login|2fa/verify|forgot-password|reset-password) HTTP/[0-9.]+" (401|429)
 ignoreregex =
 datepattern = %%d/%%b/%%Y:%%H:%%M:%%S %%z
 EOF
@@ -150,6 +158,8 @@ EOF
   [ -n "$meu_ip" ] && ok "Seu IP atual ($meu_ip) nunca é banido." || aviso "Não identifiquei seu IP de conexão: cuidado para não errar a senha do SSH 5 vezes."
   echo "Para desbanir um IP: sudo fail2ban-client unban <ip>"
 }
+
+if [ "${2:-}" = "--meu-ip" ]; then MEU_IP="${3:-}"; fi
 
 case "${1:-}" in
   --fail2ban) instalar_fail2ban ;;
