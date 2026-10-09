@@ -106,9 +106,9 @@ describe('Google Ads: campanha do contato', () => {
     const at = new Date('2026-10-01T12:00:00Z')
     const withName = adsInfoOf([{ t: { source: 'google', medium: 'cpc', campaign: 'JCB Peças', campaignId: '111222' }, at }])
     expect(withName).toMatchObject({ campaignId: '111222', campaign: 'JCB Peças' })
-    expect(campaignLabel(withName!)).toBe('JCB Peças (nº 111222)')
+    expect(campaignLabel(withName!)).toBe('JCB Peças')
     const fromList = adsInfoOf([{ t: { source: 'google', medium: 'cpc', landing: 'https://x.com/?gad_campaignid=333444&gclid=Cj0KCQjwAAA111' }, at }], { '333444': 'Filtros Caterpillar' })
-    expect(campaignLabel(fromList!)).toBe('Filtros Caterpillar (nº 333444)')
+    expect(campaignLabel(fromList!)).toBe('Filtros Caterpillar')
     const onlyId = adsInfoOf([{ t: { source: 'google', medium: 'cpc', campaign: '555666' }, at }])
     expect(onlyId).toMatchObject({ campaignId: '555666', campaign: null })
     expect(campaignLabel(onlyId!)).toBe('campanha nº 555666')
@@ -131,9 +131,36 @@ describe('Google Ads: links como os da conta da USA Parts', () => {
       'https://teste.usaparts.com.br/?utm_source=google&utm_medium=cpc&utm_campaign=concorrentes&utm_term=&utm_content=jcb_ad01&utm_source=google&utm_medium=cpa&utm_campaign=17622332326&gclid=Cj0KCQjwAbc123'
     const t = classifyTouch(url, null, ['usaparts.com.br'])
     expect(t).toMatchObject({ source: 'google', medium: 'cpc', campaign: 'concorrentes', campaignId: '17622332326', content: 'jcb_ad01' })
-    expect(campaignLabel(adsInfoOf([{ t, at: new Date() }])!)).toBe('concorrentes (nº 17622332326)')
+    expect(campaignLabel(adsInfoOf([{ t, at: new Date() }])!)).toBe('concorrentes')
     // Só o modelo atual (meio "cpa", número na campanha), sem gclid: ainda é anúncio do Google.
     const only = classifyTouch('https://teste.usaparts.com.br/?utm_source=google&utm_medium=cpa&utm_campaign=17622332326', null, ['usaparts.com.br'])
     expect(adsInfoOf([{ t: only, at: new Date() }])).toMatchObject({ campaignId: '17622332326', campaign: null })
+  })
+})
+
+describe('Google Ads: nomes das campanhas pelo script', () => {
+  it('nome oficial do Google vale mais que o utm_campaign do link', async () => {
+    const { adsInfoOf, campaignLabel } = await import('../src/googleads/googleads')
+    const info = adsInfoOf([{ t: { source: 'google', medium: 'cpc', campaign: 'concorrentes', campaignId: '17622332326' }, at: new Date() }], { '17622332326': '[V4] [SEARCH] [LP JCB]' })
+    expect(campaignLabel(info!)).toBe('[V4] [SEARCH] [LP JCB]')
+    expect(campaignLabel({ campaign: null, campaignId: '999999' })).toBe('campanha nº 999999')
+  })
+
+  it('confere a lista enviada (só números como id, nomes sem caracteres de controle)', async () => {
+    const { cleanCampaignList } = await import('../src/googleads/googleads')
+    expect(cleanCampaignList({ campaigns: [{ id: '22031677137', name: ' [kw3] Paraná\u0007 ' }, { id: 'abc', name: 'x' }, { id: '123456', name: '' }] })).toEqual({ campaigns: { '22031677137': '[kw3] Paraná' }, count: 1 })
+    expect(cleanCampaignList({})).toMatchObject({ error: expect.any(String) })
+  })
+
+  it('script do Google Ads é JavaScript válido, lê todos os tipos de campanha e envia ao endereço', async () => {
+    const { campaignsScript } = await import('../src/googleads/googleads')
+    const code = campaignsScript('https://crm.usaparts.com.br/api/webhooks/google-ads/campanhas/abc')
+    const sent: { url: string; body: unknown }[] = []
+    const camp = (id: number, name: string) => ({ getId: () => id, getName: () => name })
+    const iter = (list: ReturnType<typeof camp>[]) => () => ({ get: () => { let i = 0; return { hasNext: () => i < list.length, next: () => list[i++]! } } })
+    const AdsApp = { campaigns: iter([camp(111, 'Busca JCB')]), performanceMaxCampaigns: iter([camp(222, 'PMax Peças')]), shoppingCampaigns: () => { throw new Error('sem shopping') }, videoCampaigns: iter([]) }
+    const UrlFetchApp = { fetch: (url: string, o: { payload: string }) => (sent.push({ url, body: JSON.parse(o.payload) }), { getResponseCode: () => 200, getContentText: () => 'ok' }) }
+    new Function('AdsApp', 'UrlFetchApp', 'Logger', `${code}\nmain()`)(AdsApp, UrlFetchApp, { log: () => undefined })
+    expect(sent).toEqual([{ url: 'https://crm.usaparts.com.br/api/webhooks/google-ads/campanhas/abc', body: { campaigns: [{ id: '111', name: 'Busca JCB' }, { id: '222', name: 'PMax Peças' }] } }])
   })
 })

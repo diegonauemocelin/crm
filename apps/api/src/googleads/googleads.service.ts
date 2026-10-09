@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
-import { decrypt, encrypt, sha256 } from '../common/crypto'
+import { decrypt, encrypt, randomToken, safeEqual, sha256 } from '../common/crypto'
+import { env } from '../config/env'
 import type { RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import type { Prisma } from '../generated/prisma/client'
@@ -12,6 +13,8 @@ import {
   adsError,
   adsInfoOf,
   campaignLabel,
+  campaignsScript,
+  cleanCampaignList,
   BATCH_SIZE,
   buildEvent,
   CLICK_WINDOW_DAYS,
@@ -88,8 +91,34 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
   }
 
   view(s: GoogleAdsSettings) {
-    const { privateKeyEnc, ...rest } = s
-    return { ...rest, hasKey: !!privateKeyEnc }
+    const { privateKeyEnc, campaignsToken, ...rest } = s
+    const url = campaignsToken ? `${env.appUrl}/api/webhooks/google-ads/campanhas/${campaignsToken}` : null
+    return { ...rest, hasKey: !!privateKeyEnc, campaignsScript: url ? campaignsScript(url) : null }
+  }
+
+  /** Configuração com a chave do endereço dos nomes das campanhas (criada na primeira vez). */
+  async configWithToken(tenantId: string) {
+    const s = await this.config(tenantId)
+    if (s.campaignsToken) return s
+    const next = { ...s, campaignsToken: randomToken(24) }
+    await this.settings.set(tenantId, 'google_ads', next)
+    return next
+  }
+
+  /** Recebe do script do Google Ads a lista número → nome das campanhas. O nome do Google vale mais que o cadastrado à mão. */
+  async receiveCampaigns(token: string, body: unknown) {
+    if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) return null
+    const rows = await this.prisma.tenantSetting.findMany({ where: { key: 'google_ads' }, select: { tenantId: true, value: true } })
+    const row = rows.find((r) => {
+      const t = (r.value as { campaignsToken?: string } | null)?.campaignsToken
+      return typeof t === 'string' && safeEqual(t, token)
+    })
+    if (!row) return null
+    const r = cleanCampaignList(body)
+    if ('error' in r) throw new BadRequestException(r.error)
+    const s = await this.config(row.tenantId)
+    await this.settings.set(row.tenantId, 'google_ads', { ...s, campaigns: { ...s.campaigns, ...r.campaigns }, campaignsSyncedAt: new Date().toISOString() })
+    return { ok: true, campanhas: r.count }
   }
 
   async save(user: AuthUser, input: GoogleAdsInput, ctx: RequestCtx) {
@@ -117,6 +146,8 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
     const originIds = wanted.length ? (await this.prisma.lookupItem.findMany({ where: { tenantId: user.tenantId, type: 'ORIGEM', id: { in: wanted } }, select: { id: true } })).map((o) => o.id) : []
     const startDate = input.startDate && /^\d{4}-\d{2}-\d{2}$/.test(input.startDate) ? input.startDate : (current.startDate ?? new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10))
     const next: GoogleAdsSettings = {
+      campaignsToken: current.campaignsToken,
+      campaignsSyncedAt: current.campaignsSyncedAt,
       enabled: input.enabled,
       customerId,
       loginCustomerId,

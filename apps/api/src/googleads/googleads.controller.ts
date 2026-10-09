@@ -1,9 +1,9 @@
-import { Body, Controller, Get, HttpCode, Post, Put } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, NotFoundException, Param, Post, Put } from '@nestjs/common'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
 import { ArrayMaxSize, IsArray, IsBoolean, IsObject, IsOptional, IsString, IsUUID, Matches, MaxLength, ValidateIf, ValidateNested } from 'class-validator'
-import { CurrentUser, ReqContext, type RequestCtx, RequirePermission } from '../common/decorators'
+import { CurrentUser, Public, ReqContext, type RequestCtx, RequirePermission } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { GoogleAdsService } from './googleads.service'
 
@@ -30,6 +30,23 @@ class GoogleAdsDto {
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @Matches(/^\d{4}-\d{2}-\d{2}$/) startDate?: string | null
 }
 
+/** O script do Google Ads (Ferramentas → Scripts) manda para cá, todo dia, o número e o nome das campanhas. */
+@ApiTags('Integrações')
+@Controller('webhooks/google-ads')
+export class GoogleAdsWebhookController {
+  constructor(private readonly ads: GoogleAdsService) {}
+
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('campanhas/:token')
+  @HttpCode(200)
+  async campaigns(@Param('token') token: string, @Body() body: unknown) {
+    const r = await this.ads.receiveCampaigns(token, body)
+    if (!r) throw new NotFoundException()
+    return r
+  }
+}
+
 @ApiTags('Integrações')
 @Controller('integracoes/google-ads')
 export class GoogleAdsController {
@@ -38,7 +55,7 @@ export class GoogleAdsController {
   @Get()
   @RequirePermission('configuracoes', 'view')
   async get(@CurrentUser() user: AuthUser) {
-    return this.ads.view(await this.ads.config(user.tenantId))
+    return this.ads.view(await this.ads.configWithToken(user.tenantId))
   }
 
   @Put()

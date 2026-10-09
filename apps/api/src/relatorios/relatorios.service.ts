@@ -22,6 +22,8 @@ export interface SavedInput {
 }
 
 const GA_CACHE_MS = 15 * 60_000
+/** Campos de campanha que podem vir como número do Google Ads (mostrados com o nome da campanha). */
+const CAMPAIGN_DIMS = new Set(['campanha', 'lead_campanha', 'lead_campanha_ultima', 'lead_campanha_numero'])
 
 @Injectable()
 export class RelatoriosService {
@@ -59,6 +61,11 @@ export class RelatoriosService {
     )
   }
 
+  private async campaignNames(tenantId: string): Promise<Record<string, string> | null> {
+    const s = await this.settings.get<{ campaigns?: Record<string, string> }>(tenantId, 'google_ads', {})
+    return s.campaigns && Object.keys(s.campaigns).length ? s.campaigns : null
+  }
+
   catalog(user: AuthUser) {
     this.assertCan(user, 'view')
     return { scope: this.scopeOf(user), sources: catalog(this.scopeOf(user)) }
@@ -85,7 +92,16 @@ export class RelatoriosService {
     return {
       config,
       period,
-      dimensions: main.dims.map((d) => ({ key: d.key, label: d.label, labels: d.labels ?? null, time: !!d.time, list: !!d.array })),
+      // Campanha que veio só como número: mostra o nome (lista número → nome do Google Ads). O filtro continua pelo valor guardado.
+      dimensions: await Promise.all(
+        main.dims.map(async (d) => ({
+          key: d.key,
+          label: d.label,
+          labels: CAMPAIGN_DIMS.has(d.key) ? await this.campaignNames(user.tenantId) : (d.labels ?? null),
+          time: !!d.time,
+          list: !!d.array,
+        })),
+      ),
       metrics: main.metrics.map((m) => ({ key: m.key, label: m.label, format: m.format })),
       rows,
       totals,
@@ -107,7 +123,7 @@ export class RelatoriosService {
     if (!source || !dim || dim.time) throw new BadRequestException('Campo inválido.')
     const config = this.clean(user, { source: source.key, dimensions: [field], metrics: [source.metrics[0]!.key], period: { preset: '12m' }, limit: 500, chart: 'tabela', compare: false })
     const r = await this.readOnly((exec) => this.execute(exec, user, config))
-    return r.rows.map((row) => ({ value: row.dims[0] ?? null, label: row.dims[0] === null ? 'Não informado' : (dim.labels?.[row.dims[0]!] ?? row.dims[0]), count: row.values[0] ?? 0 }))
+    return r.rows.map((row) => ({ value: row.dims[0] ?? null, label: row.dims[0] === null ? 'Não informado' : (r.dimensions[0]?.labels?.[row.dims[0]!] ?? dim.labels?.[row.dims[0]!] ?? row.dims[0]), count: row.values[0] ?? 0 }))
   }
 
   async exportCsv(user: AuthUser, raw: unknown, ctx: RequestCtx) {

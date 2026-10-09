@@ -3,6 +3,7 @@ import { CheckCircle2Icon, FileJsonIcon, Loader2Icon, PlugZapIcon, SendIcon, XCi
 import { type FormEvent, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
+import { CopyField } from '@/components/copy-field'
 import { MultiSelect } from '@/components/multi-select'
 import { ErrorState, formatDateTime, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
@@ -29,6 +30,8 @@ interface Config {
   onlyGoogle: boolean
   originIds: string[]
   campaigns: Record<string, string>
+  campaignsScript: string | null
+  campaignsSyncedAt: string | null
   startDate: string | null
   updatedAt: string | null
 }
@@ -261,6 +264,25 @@ function Editor({ initial }: { initial: Config }) {
 
             <div className="space-y-3 rounded-md border p-3">
               <p className="text-sm font-medium">Nomes das campanhas</p>
+              {initial.campaignsScript && (
+                <div className="space-y-2 rounded-md bg-muted/40 p-3">
+                  <p className="text-sm font-medium">Buscar os nomes do Google Ads automaticamente</p>
+                  <ol className="list-decimal space-y-1 pl-5 text-xs text-muted-foreground">
+                    <li>
+                      No Google Ads: <em>Ferramentas → Ações em massa → Scripts</em> → botão <strong>+</strong> → Novo script.
+                    </li>
+                    <li>Apague o que vier escrito, cole o código abaixo e clique em Autorizar (com a conta que administra o Google Ads).</li>
+                    <li>
+                      Clique em <strong>Visualizar</strong> para testar, depois em Salvar. Na lista de scripts, em Frequência, escolha <strong>Diariamente</strong>.
+                    </li>
+                  </ol>
+                  <CopyField value={initial.campaignsScript} multiline />
+                  <p className="text-xs text-muted-foreground">
+                    {initial.campaignsSyncedAt ? `Última lista recebida: ${formatDateTime(initial.campaignsSyncedAt)}.` : 'Ainda não recebeu nenhuma lista.'} O código contém um endereço
+                    secreto: não compartilhe fora da conta do Google Ads.
+                  </p>
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
                 O Google Ads põe sozinho o <strong>número da campanha</strong> no link do anúncio (marcação automática ligada). O nome só vem se a campanha tiver
                 <span className="font-mono"> utm_campaign</span>; quando vem junto com o número, o CRM guarda o nome aqui sozinho. Também dá para cadastrar ou corrigir: o número fica

@@ -40,6 +40,9 @@ export interface GoogleAdsSettings {
   originIds: string[]
   /** Nomes das campanhas pelo número (aprendidos do utm_campaign ou cadastrados à mão). */
   campaigns: Record<string, string>
+  /** Chave secreta do endereço que recebe os nomes das campanhas enviados pelo script do Google Ads. */
+  campaignsToken: string | null
+  campaignsSyncedAt: string | null
   /** Atendimentos a partir desta data (não manda o histórico antigo de uma vez ao ligar). */
   startDate: string | null
   updatedAt: string | null
@@ -56,6 +59,8 @@ export const DEFAULT_GOOGLE_ADS: GoogleAdsSettings = {
   onlyGoogle: true,
   originIds: [],
   campaigns: {},
+  campaignsToken: null,
+  campaignsSyncedAt: null,
   startDate: null,
   updatedAt: null,
 }
@@ -229,16 +234,56 @@ export function adsInfoOf(touches: { t: TouchLike | null | undefined; at: Date |
   const t = google.t
   const rawName = typeof t.campaign === 'string' ? t.campaign.trim() : ''
   const id = (typeof t.campaignId === 'string' && CAMPAIGN_ID.test(t.campaignId) ? t.campaignId : null) ?? campaignIdFromUrl(t.landing) ?? (CAMPAIGN_ID.test(rawName) ? rawName : null)
-  const name = rawName && !CAMPAIGN_ID.test(rawName) ? rawName : id ? (names[id] ?? null) : null
+  // O nome oficial (vindo do Google Ads pelo script, ou cadastrado) vale mais que o utm_campaign digitado no link.
+  const name = (id && names[id]) || (rawName && !CAMPAIGN_ID.test(rawName) ? rawName : null)
   return { campaignId: id, campaign: name, at: google.at }
 }
 
-/** Texto curto: "Campanha JCB Peças (nº 1234567)", "Campanha nº 1234567" ou "Campanha não identificada". */
+/** Texto curto: o nome da campanha; só quando o nome não é conhecido, o número ("campanha nº 1234567"). */
 export function campaignLabel(a: Pick<AdsInfo, 'campaign' | 'campaignId'>) {
-  if (a.campaign && a.campaignId) return `${a.campaign} (nº ${a.campaignId})`
   if (a.campaign) return a.campaign
   if (a.campaignId) return `campanha nº ${a.campaignId}`
   return 'campanha não identificada'
+}
+
+export interface CampaignSync {
+  campaigns: Record<string, string>
+  count: number
+}
+
+/** Lista enviada pelo script do Google Ads: [{ id, name }]. Só números como id e nomes de texto simples. */
+export function cleanCampaignList(raw: unknown): CampaignSync | { error: string } {
+  const list = (raw as { campaigns?: unknown } | null)?.campaigns
+  if (!Array.isArray(list)) return { error: 'Lista de campanhas ausente.' }
+  if (list.length > 10_000) return { error: 'Campanhas demais.' }
+  const out: Record<string, string> = {}
+  for (const c of list) {
+    const id = String((c as { id?: unknown })?.id ?? '').trim()
+    const name = String((c as { name?: unknown })?.name ?? '')
+      .replace(/[\u0000-\u001f\u007f]/g, '')
+      .trim()
+      .slice(0, 160)
+    if (CAMPAIGN_ID.test(id) && name) out[id] = name
+  }
+  return { campaigns: out, count: Object.keys(out).length }
+}
+
+/** Script para colar em Google Ads → Ferramentas → Ações em massa → Scripts (programar: diariamente). */
+export function campaignsScript(url: string) {
+  return `/** CRM USA Parts: envia ao CRM o número e o nome de todas as campanhas desta conta (programe para rodar diariamente). */
+function main() {
+  var lista = [];
+  var fontes = ['campaigns', 'performanceMaxCampaigns', 'shoppingCampaigns', 'videoCampaigns'];
+  for (var i = 0; i < fontes.length; i++) {
+    try {
+      var it = AdsApp[fontes[i]]().get();
+      while (it.hasNext()) { var c = it.next(); lista.push({ id: String(c.getId()), name: c.getName() }); }
+    } catch (e) { Logger.log('Pulando ' + fontes[i] + ': ' + e); }
+  }
+  var r = UrlFetchApp.fetch('${url}', { method: 'post', contentType: 'application/json', payload: JSON.stringify({ campaigns: lista }), muteHttpExceptions: true });
+  Logger.log('CRM respondeu ' + r.getResponseCode() + ': ' + r.getContentText() + ' (' + lista.length + ' campanhas)');
+}
+`
 }
 
 /**

@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.13.0",
+      "date": "2026-10-09",
+      "title": "Nome das campanhas do Google Ads no CRM",
+      "changes": [
+        { "type": "novo", "area": "Google Ads", "text": "Nome da campanha no lugar do número: um script pronto para colar no Google Ads (Ferramentas → Scripts, rodando diariamente) envia ao CRM o número e o nome de todas as campanhas. A ficha do lead, o atendimento, a linha do tempo, o retorno ao Google Ads e os relatórios passam a mostrar o nome." },
+        { "type": "melhoria", "area": "Dashboards e relatórios", "text": "Nos relatórios, campanhas que chegaram só com o número aparecem com o nome (também na lista de valores dos filtros e na exportação)." }
+      ]
+    },
+    {
       "version": "0.12.1",
       "date": "2026-10-09",
       "title": "Campanhas do Google Ads com parâmetros repetidos",
