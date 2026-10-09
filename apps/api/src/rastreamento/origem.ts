@@ -114,14 +114,19 @@ export function classifyTouch(pageUrl: string, referrer: string | null | undefin
   const refHost = hostOf(referrer)
   const internal = !!refHost && (domainAllowed(refHost, siteDomains) || refHost === page.hostname.toLowerCase())
   const utmSource = clip(p.get('utm_source'), 80)
-  const idRaw = p.get('gad_campaignid') ?? p.get('utm_id')
+  // O link pode trazer utm_campaign repetido (o nome posto na URL final + o número posto pelo modelo do Google Ads):
+  // fica o nome como campanha e o número como número da campanha.
+  const campaigns = p.getAll('utm_campaign').map((v) => v.trim()).filter(Boolean)
+  const campaignName = campaigns.find((v) => !/^\d+$/.test(v))
+  const numericCampaign = campaigns.find((v) => /^\d{4,20}$/.test(v))
+  const idRaw = p.get('gad_campaignid') ?? p.get('utm_id') ?? numericCampaign ?? null
   const campaignId = idRaw && /^\d{4,20}$/.test(idRaw) ? idRaw : undefined
 
   if (utmSource) {
     return {
       source: utmSource.toLowerCase(),
       medium: clip(p.get('utm_medium'), 80)?.toLowerCase() ?? 'desconhecido',
-      campaign: clip(p.get('utm_campaign')),
+      campaign: clip(campaignName ?? campaigns[0]),
       ...(campaignId ? { campaignId } : {}),
       term: clip(p.get('utm_term')),
       content: clip(p.get('utm_content')),

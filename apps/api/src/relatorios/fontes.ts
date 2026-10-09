@@ -92,7 +92,7 @@ const leadDims = (prefix = 'Lead'): Dimension[] => [
   {
     key: 'lead_google_ads',
     label: `${prefix}: veio de anúncio do Google`,
-    sql: `CASE WHEN l.id IS NULL THEN NULL WHEN (l."firstConversion"->>'landing' ~ '[?&](gclid|gbraid|wbraid)=') OR (l."lastConversion"->>'landing' ~ '[?&](gclid|gbraid|wbraid)=') OR (lower(l."firstConversion"->>'source') = 'google' AND lower(l."firstConversion"->>'medium') IN ('cpc','ppc','paid')) OR (lower(l."lastConversion"->>'source') = 'google' AND lower(l."lastConversion"->>'medium') IN ('cpc','ppc','paid')) THEN 'Sim' ELSE 'Não' END`,
+    sql: `CASE WHEN l.id IS NULL THEN NULL WHEN (l."firstConversion"->>'landing' ~ '[?&](gclid|gbraid|wbraid)=') OR (l."lastConversion"->>'landing' ~ '[?&](gclid|gbraid|wbraid)=') OR (lower(l."firstConversion"->>'source') = 'google' AND lower(l."firstConversion"->>'medium') IN ('cpc','ppc','paid','cpa','cpm','cpv')) OR (lower(l."lastConversion"->>'source') = 'google' AND lower(l."lastConversion"->>'medium') IN ('cpc','ppc','paid','cpa','cpm','cpv')) THEN 'Sim' ELSE 'Não' END`,
     joins: ['lead'],
   },
   { key: 'lead_estado', label: `${prefix}: estado`, sql: `l.state`, joins: ['lead'] },

@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.12.1",
+      "date": "2026-10-09",
+      "title": "Campanhas do Google Ads com parâmetros repetidos",
+      "changes": [
+        { "type": "correcao", "area": "Google Ads", "text": "Links com utm_campaign repetido (o nome na URL final e o número posto pelo modelo de rastreamento do Google Ads) agora ficam com o nome como campanha e o número como número da campanha. O meio “cpa” também é reconhecido como anúncio." }
+      ]
+    },
+    {
       "version": "0.12.0",
       "date": "2026-10-08",
       "title": "Google Ads: origens escolhidas e campanha marcada no lead",

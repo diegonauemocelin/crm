@@ -98,6 +98,9 @@ export function clickIdsFromUrl(url: string | null | undefined): ClickIds | null
   return Object.keys(out).length ? out : null
 }
 
+/** Meios que indicam anúncio pago (inclui "cpa", usado por engano em alguns modelos de rastreamento). */
+export const PAID_MEDIUMS = ['cpc', 'ppc', 'paid', 'pago', 'anuncio', 'ads', 'cpa', 'cpm', 'cpv']
+
 interface TouchLike {
   source?: string
   medium?: string
@@ -111,7 +114,7 @@ export function isGoogleAdsTouch(t: TouchLike | null | undefined) {
   if (clickIdsFromUrl(t.landing)) return true
   const src = String(t.source ?? '').toLowerCase()
   const med = String(t.medium ?? '').toLowerCase()
-  return (src === 'google' || src === 'googleads' || src === 'adwords') && ['cpc', 'ppc', 'paid', 'pago', 'anuncio', 'ads'].includes(med)
+  return (src === 'google' || src === 'googleads' || src === 'adwords') && PAID_MEDIUMS.includes(med)
 }
 
 export const sha256Hex = (v: string) => createHash('sha256').update(v).digest('hex')

@@ -122,3 +122,18 @@ describe('Google Ads: campanha do contato', () => {
     expect(adsInfoOf([{ t: { source: 'google', medium: 'organico' }, at }])).toBeNull()
   })
 })
+
+describe('Google Ads: links como os da conta da USA Parts', () => {
+  it('utm_campaign repetido (nome + número) e meio "cpa"', async () => {
+    const { classifyTouch } = await import('../src/rastreamento/origem')
+    const { adsInfoOf, campaignLabel } = await import('../src/googleads/googleads')
+    const url =
+      'https://teste.usaparts.com.br/?utm_source=google&utm_medium=cpc&utm_campaign=concorrentes&utm_term=&utm_content=jcb_ad01&utm_source=google&utm_medium=cpa&utm_campaign=17622332326&gclid=Cj0KCQjwAbc123'
+    const t = classifyTouch(url, null, ['usaparts.com.br'])
+    expect(t).toMatchObject({ source: 'google', medium: 'cpc', campaign: 'concorrentes', campaignId: '17622332326', content: 'jcb_ad01' })
+    expect(campaignLabel(adsInfoOf([{ t, at: new Date() }])!)).toBe('concorrentes (nº 17622332326)')
+    // Só o modelo atual (meio "cpa", número na campanha), sem gclid: ainda é anúncio do Google.
+    const only = classifyTouch('https://teste.usaparts.com.br/?utm_source=google&utm_medium=cpa&utm_campaign=17622332326', null, ['usaparts.com.br'])
+    expect(adsInfoOf([{ t: only, at: new Date() }])).toMatchObject({ campaignId: '17622332326', campaign: null })
+  })
+})
