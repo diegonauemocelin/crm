@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.13.1",
+      "date": "2026-10-09",
+      "title": "Google Ads: envio explicado e lotes divididos",
+      "changes": [
+        { "type": "melhoria", "area": "Google Ads", "text": "“Enviar agora” explica o resultado: quantos atendimentos do Pré-Vendas olhou desde a data de início, quantos vieram de anúncio ou de origem marcada, e o que ajustar quando fica zero." },
+        { "type": "melhoria", "area": "Google Ads", "text": "Quando o Google recusa um lote por causa de alguns contatos, o CRM divide o lote e reenvia: os bons passam e só os problemáticos ficam com erro (antes o lote inteiro ficava com erro)." }
+      ]
+    },
+    {
       "version": "0.13.0",
       "date": "2026-10-09",
       "title": "Nome das campanhas do Google Ads no CRM",

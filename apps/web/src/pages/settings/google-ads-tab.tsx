@@ -125,8 +125,14 @@ function Editor({ initial }: { initial: Config }) {
   const sendNow = async () => {
     setBusy('send')
     try {
-      const r = await api.post<{ registered: number; sent: number; failed: number; ignored: number }>('/integracoes/google-ads/enviar')
-      toast.success(`${int.format(r.sent)} enviado(s), ${int.format(r.failed)} com erro, ${int.format(r.ignored)} sem como casar.`)
+      const r = await api.post<{ since: string; considered: number; matched: number; registered: number; sent: number; failed: number; ignored: number }>('/integracoes/google-ads/enviar')
+      const desde = r.since.split('-').reverse().join('/')
+      // Explica o resultado: quantos atendimentos olhou, quantos entraram nas regras e por que ficou zero.
+      const resumo = `${int.format(r.considered)} atendimento(s) do Pré-Vendas desde ${desde}; ${int.format(r.matched)} vieram de anúncio ou de origem marcada.`
+      if (r.considered === 0) toast.info(`Nenhum atendimento do Pré-Vendas desde ${desde}. Volte a data de “Atendimentos a partir de” (até 60 dias).`, { duration: 10_000 })
+      else if (r.matched === 0) toast.info(`${resumo} Marque em “Quais contatos enviar” as origens que recebem os contatos dos anúncios (ex.: WhatsApp, Site - LP).`, { duration: 12_000 })
+      else if (r.sent + r.failed + r.ignored === 0) toast.info(`${resumo} Nenhum resultado novo: os que tinham já foram enviados, ou falta preencher o ID da conversão desse resultado.`, { duration: 12_000 })
+      else toast.success(`${resumo} ${int.format(r.sent)} enviado(s), ${int.format(r.failed)} com erro, ${int.format(r.ignored)} sem como o Google reconhecer o cliente.`, { duration: 10_000 })
       void qc.invalidateQueries({ queryKey: ['google-ads-envios'] })
     } catch (err) {
       toast.error(errorMessage(err))

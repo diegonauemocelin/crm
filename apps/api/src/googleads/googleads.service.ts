@@ -33,6 +33,14 @@ import {
 } from './googleads'
 
 const DAY = 86_400_000
+
+/** Resumo de uma rodada: atendimentos olhados, quantos se encaixam nas regras e quantos resultados novos entraram na fila. */
+export interface ScanStats {
+  since: string
+  considered: number
+  matched: number
+  registered: number
+}
 const TICK_MS = 15 * 60_000
 const MAX_ATTEMPTS = 5
 
@@ -276,7 +284,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
   }
 
   /** Registra como PENDENTE os resultados novos dos atendimentos de Pré-Vendas que vieram de anúncio. */
-  async scan(tenantId: string, s: GoogleAdsSettings) {
+  async scan(tenantId: string, s: GoogleAdsSettings): Promise<ScanStats> {
     const floor = Math.max(Date.now() - CLICK_WINDOW_DAYS * DAY, s.startDate ? Date.parse(`${s.startDate}T00:00:00-03:00`) : 0)
     const records = await this.prisma.serviceRecord.findMany({
       where: { tenantId, kind: 'PRE_VENDAS', deletedAt: null, leadAt: { gte: new Date(floor) } },
@@ -295,7 +303,9 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
       },
       take: 5000,
     })
-    if (!records.length) return 0
+    const since = new Date(floor - 3 * 3_600_000).toISOString().slice(0, 10)
+    if (!records.length) return { since, considered: 0, matched: 0, registered: 0 }
+    let matched = 0
     const ids = records.map((r) => r.id)
     const existing = new Set((await this.prisma.googleAdsConversion.findMany({ where: { tenantId, recordId: { in: ids } }, select: { transactionId: true } })).map((c) => c.transactionId))
     const changes = await this.prisma.$queryRaw<{ recordId: string; field: string; at: Date }[]>`
@@ -330,6 +340,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
       const google = before.find((x) => isGoogleAdsTouch(x.t))
       const fromGoogle = !!google || /google/i.test(r.origin?.name ?? '')
       if (!shouldSend(s, fromGoogle, r.originId)) continue
+      matched++
       const clickIds: ClickIds | null = google ? clickIdsFromUrl(google.t.landing) : null
       const clickAt = google?.at ?? null
 
@@ -361,7 +372,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
       }
     }
     if (rows.length) await this.prisma.googleAdsConversion.createMany({ data: rows, skipDuplicates: true })
-    return rows.length
+    return { since, considered: records.length, matched, registered: rows.length }
   }
 
   /** Envia os pendentes (e tenta de novo os que deram erro, até 5 vezes, com intervalo de 1 hora). */
@@ -401,27 +412,45 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
           included.push(p.id)
         }
         if (!events.length) continue
-        try {
-          const requestId = await this.ingest(tenantId, s, actionId, events)
-          await this.prisma.googleAdsConversion.updateMany({ where: { id: { in: included } }, data: { status: 'ENVIADO', requestId, error: null, sentAt: new Date(), attempts: { increment: 1 } } })
-          sent += included.length
-        } catch (err) {
-          await this.prisma.googleAdsConversion.updateMany({ where: { id: { in: included } }, data: { status: 'ERRO', error: (err as Error).message.slice(0, 500), attempts: { increment: 1 } } })
-          failed += included.length
-          this.logger.warn(`Google Ads: envio recusado (${included.length} conversões): ${(err as Error).message}`)
-        }
+        const r = await this.sendChunk(tenantId, s, actionId, included.map((id, k) => ({ id, ev: events[k]! })), 0)
+        sent += r.sent
+        failed += r.failed
       }
     }
     return { sent, failed, ignored }
   }
 
+  /**
+   * O Google recusa o lote inteiro se um evento tiver problema. Quando a recusa é por dado inválido, divide o lote
+   * ao meio e reenvia (até 4 vezes), para os eventos bons passarem e só os problemáticos ficarem com erro.
+   */
+  private async sendChunk(tenantId: string, s: GoogleAdsSettings, actionId: string, items: { id: string; ev: object }[], depth: number): Promise<{ sent: number; failed: number }> {
+    const ids = items.map((x) => x.id)
+    try {
+      const requestId = await this.ingest(tenantId, s, actionId, items.map((x) => x.ev))
+      await this.prisma.googleAdsConversion.updateMany({ where: { id: { in: ids } }, data: { status: 'ENVIADO', requestId, error: null, sentAt: new Date(), attempts: { increment: 1 } } })
+      return { sent: ids.length, failed: 0 }
+    } catch (err) {
+      const msg = (err as Error).message
+      if (items.length > 1 && depth < 4 && msg.startsWith('O Google recusou o envio')) {
+        const half = Math.ceil(items.length / 2)
+        const a = await this.sendChunk(tenantId, s, actionId, items.slice(0, half), depth + 1)
+        const b = await this.sendChunk(tenantId, s, actionId, items.slice(half), depth + 1)
+        return { sent: a.sent + b.sent, failed: a.failed + b.failed }
+      }
+      await this.prisma.googleAdsConversion.updateMany({ where: { id: { in: ids } }, data: { status: 'ERRO', error: msg.slice(0, 500), attempts: { increment: 1 } } })
+      this.logger.warn(`Google Ads: envio recusado (${ids.length} conversões, ação ${actionId}): ${msg}`)
+      return { sent: 0, failed: ids.length }
+    }
+  }
+
   async sendNow(user: AuthUser, ctx: RequestCtx) {
     const s = await this.config(user.tenantId)
     if (!s.enabled) throw new BadRequestException('Ligue a integração antes de enviar.')
-    const registered = await this.scan(user.tenantId, s)
+    const stats = await this.scan(user.tenantId, s)
     const r = await this.send(user.tenantId, s)
-    await this.audit.byUser(user, ctx, 'google_ads.sent_now', 'settings', 'google_ads', { registrados: registered, ...r })
-    return { registered, ...r }
+    await this.audit.byUser(user, ctx, 'google_ads.sent_now', 'settings', 'google_ads', { registrados: stats.registered, ...r })
+    return { ...stats, ...r }
   }
 
   /** Acompanhamento: quantos de cada resultado e situação, e os últimos registros. */

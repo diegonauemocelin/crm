@@ -164,3 +164,45 @@ describe('Google Ads: nomes das campanhas pelo script', () => {
     expect(sent).toEqual([{ url: 'https://crm.usaparts.com.br/api/webhooks/google-ads/campanhas/abc', body: { campaigns: [{ id: '111', name: 'Busca JCB' }, { id: '222', name: 'PMax Peças' }] } }])
   })
 })
+
+describe('Google Ads: lote recusado por alguns eventos', () => {
+  it('divide o lote e envia os bons; só os problemáticos ficam com erro', async () => {
+    const { generateKeyPairSync } = await import('node:crypto')
+    const { GoogleAdsService } = await import('../src/googleads/googleads.service')
+    const { encrypt } = await import('../src/common/crypto')
+    const { DEFAULT_GOOGLE_ADS } = await import('../src/googleads/googleads')
+    const pem = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
+    const rows = Array.from({ length: 42 }, (_, i) => ({ id: `c${i}`, leadId: null, transactionId: `r${i}:venda`, actionId: '200', eventAt: new Date(), value: null, clickIds: { gclid: i === 7 || i === 30 ? 'RUIM_xxxxxxxx' : `Cj0KCQjwBom${i}xx` } }))
+    const status = new Map<string, string>()
+    const prisma = {
+      googleAdsConversion: {
+        findMany: async () => rows,
+        update: async () => undefined,
+        updateMany: async ({ where, data }: { where: { id: { in: string[] } }; data: { status: string } }) => where.id.in.forEach((id) => status.set(id, data.status)),
+      },
+      lead: { findMany: async () => [] },
+    }
+    const s = { ...DEFAULT_GOOGLE_ADS, enabled: true, customerId: '1234567890', clientEmail: 'crm@p.iam.gserviceaccount.com', privateKeyEnc: encrypt(pem) }
+    const service = new GoogleAdsService(prisma as never, {} as never, {} as never)
+    const original = globalThis.fetch
+    let calls = 0
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      if (String(url).includes('oauth2')) return new Response(JSON.stringify({ access_token: 't', expires_in: 3600 }))
+      calls++
+      const body = JSON.parse(String(init.body)) as { events: { adIdentifiers?: { gclid?: string } }[] }
+      if (body.events.some((e) => e.adIdentifiers?.gclid?.startsWith('RUIM'))) return new Response(JSON.stringify({ error: { status: 'INVALID_ARGUMENT', message: 'Invalid gclid' } }), { status: 400 })
+      return new Response(JSON.stringify({ requestId: 'ok' }))
+    }) as typeof fetch
+    try {
+      const r = await service.send('t', s)
+      expect(r.sent).toBeGreaterThanOrEqual(36)
+      expect(r.sent + r.failed).toBe(42)
+      expect(status.get('c0')).toBe('ENVIADO')
+      expect(status.get('c7')).toBe('ERRO')
+      expect(status.get('c30')).toBe('ERRO')
+      expect(calls).toBeLessThan(40)
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+})
