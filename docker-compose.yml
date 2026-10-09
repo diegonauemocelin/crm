@@ -164,7 +164,11 @@ services:
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-}
       AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "false"
       DEL_INSTANCE: "false"
-      CORS_ORIGIN: http://api:3000
+      # Pedidos entre servidores não mandam a origem que o CORS confere; sem porta publicada, nenhum navegador chega aqui.
+      # A proteção é a chave (AUTHENTICATION_API_KEY), exigida em todo pedido.
+      CORS_ORIGIN: "*"
+      CORS_METHODS: GET,POST,PUT,DELETE
+      CORS_CREDENTIALS: "false"
       DATABASE_ENABLED: "true"
       DATABASE_PROVIDER: postgresql
       DATABASE_CONNECTION_URI: postgresql://crm:${POSTGRES_PASSWORD}@db:5432/evolution?schema=evolution_api&connection_limit=5

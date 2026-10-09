@@ -27,6 +27,11 @@ versao_rodando() {
   dc exec -T evolution node -e "fetch('http://127.0.0.1:8080/').then(r=>r.json()).then(j=>console.log(j.version||'')).catch(()=>process.exit(1))" 2>/dev/null || true
 }
 
+# O que a Evolution responde (ou por que não responde), para o status e para os erros.
+diagnostico() {
+  dc exec -T evolution node -e "fetch('http://127.0.0.1:8080/').then(async r=>console.log('HTTP '+r.status+' '+(await r.text()).slice(0,160))).catch(e=>console.log('sem resposta ('+(e.cause&&e.cause.code||e.message)+')'))" 2>/dev/null || echo "contêiner parado"
+}
+
 aguardar_evolution() {
   local _
   for _ in $(seq 1 60); do
@@ -48,7 +53,7 @@ cmd_status() {
   if whatsapp_ativo; then ok "Ligado no .env (COMPOSE_PROFILES=$(env_get COMPOSE_PROFILES))"; else aviso "Desligado (rode: sudo bash deploy/whatsapp.sh ativar)"; fi
   echo "  Versão configurada: $(env_get EVOLUTION_VERSION || true)"
   local v; v="$(versao_rodando)"
-  if [ -n "$v" ]; then ok "Evolution respondendo, versão $v"; else aviso "Evolution não está respondendo"; fi
+  if [ -n "$v" ]; then ok "Evolution respondendo, versão $v"; else aviso "Evolution não está respondendo: $(diagnostico)"; fi
   echo "  Limites: $(env_get WHATSAPP_MAX_NUMBERS || true) números cadastrados (padrão 10), $(env_get WHATSAPP_MAX_CONNECTED || true) conectados ao mesmo tempo (padrão 3)"
   echo "  Memória livre na VPS: $(memoria_livre_mb) MB"
   dc ps evolution evolution-redis 2>/dev/null || true
@@ -76,7 +81,7 @@ cmd_ativar() {
   info "Baixando e subindo a Evolution $(env_get EVOLUTION_VERSION)"
   dc pull --quiet evolution evolution-redis
   dc up -d evolution-redis evolution
-  aguardar_evolution || fatal "A Evolution não respondeu. Veja: docker compose logs --tail 80 evolution"
+  aguardar_evolution || fatal "A Evolution não respondeu: $(diagnostico). Veja também: docker compose logs --tail 80 evolution"
   ok "Evolution respondendo, versão $(versao_rodando)"
   recarregar_api
   registrar "whatsapp-ativado" "$(env_get EVOLUTION_VERSION)"
