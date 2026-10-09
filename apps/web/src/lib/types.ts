@@ -6,6 +6,8 @@ export interface ModuleDef {
   key: string
   label: string
   group: string
+  /** O que cada ação libera neste módulo. */
+  help?: string
 }
 
 export interface PermissionEntry {

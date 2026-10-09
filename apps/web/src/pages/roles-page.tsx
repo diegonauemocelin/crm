@@ -283,7 +283,10 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
                         const all = ACTIONS.every((a) => p[a.key])
                         return (
                           <TableRow key={m.key}>
-                            <TableCell className="font-medium">{m.label}</TableCell>
+                            <TableCell className="max-w-80 whitespace-normal">
+                              <p className="font-medium">{m.label}</p>
+                              {m.help && <p className="text-xs text-muted-foreground">{m.help}</p>}
+                            </TableCell>
                             {ACTIONS.map((a) => (
                               <TableCell key={a.key} className="text-center">
                                 <Checkbox

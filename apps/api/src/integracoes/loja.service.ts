@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import type { RequestCtx } from '../common/decorators'
+import { type Action, can } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import type { Prisma } from '../generated/prisma/client'
 import { LeadsService } from '../leads/leads.service'
@@ -30,6 +31,11 @@ export class LojaService {
     private readonly audit: AuditService,
   ) {}
 
+  /** Carrinhos e checkout têm permissão própria (antes seguiam a da base de leads). */
+  private assertCan(user: AuthUser, action: Action) {
+    if (!can(user.permissions, user.role.isSystem, 'carrinhos', action)) throw new ForbiddenException('Você não tem permissão para esta ação.')
+  }
+
   private async where(user: AuthUser, f: CartFilters): Promise<Prisma.EcommerceCartWhereInput> {
     const s = await this.magazord.config(user.tenantId)
     const limit = new Date(Date.now() - s.abandonHours * 3_600_000)
@@ -52,7 +58,7 @@ export class LojaService {
   }
 
   async list(user: AuthUser, f: CartFilters, page: number, pageSize: number) {
-    this.leads.assertCan(user, 'view')
+    this.assertCan(user, 'view')
     const where = await this.where(user, f)
     const s = await this.magazord.config(user.tenantId)
     const [total, rows, counts] = await Promise.all([
@@ -83,7 +89,7 @@ export class LojaService {
   }
 
   async updateContact(user: AuthUser, id: string, status: ContactStatus, note: string | null, ctx: RequestCtx) {
-    this.leads.assertCan(user, 'edit')
+    this.assertCan(user, 'edit')
     const cart = await this.prisma.ecommerceCart.findFirst({ where: { id, ...(await this.where(user, { view: 'todos' })) } })
     if (!cart) throw new NotFoundException('Carrinho não encontrado.')
     if (status !== cart.contactStatus && status !== 'PENDENTE' && !note?.trim() && status !== 'RECUPERADO') throw new BadRequestException('Escreva uma observação sobre o contato.')
@@ -102,7 +108,7 @@ export class LojaService {
   }
 
   async exportRows(user: AuthUser, f: CartFilters) {
-    this.leads.assertCan(user, 'export')
+    this.assertCan(user, 'export')
     const where = await this.where(user, f)
     if ((await this.prisma.ecommerceCart.count({ where })) > 20_000) throw new BadRequestException('Muitos carrinhos para exportar de uma vez. Use os filtros.')
     return this.prisma.ecommerceCart.findMany({ where, orderBy: { lastActivityAt: 'desc' } })

@@ -351,3 +351,26 @@ describe('Painel do Google Ads', () => {
     expect(panelPeriod('2026-10-10', '2026-10-01')).toEqual({ from: '2026-10-01', to: '2026-10-10' })
   })
 })
+
+describe('Saldo pré-pago do Google Ads (estimado)', () => {
+  it('saldo informado + recargas depois dele - gasto desde então; avisa quando dura menos que o limite', async () => {
+    const { estimateBalance, DEFAULT_BALANCE } = await import('../src/googleads/painel')
+    expect(estimateBalance(DEFAULT_BALANCE, 100, [])).toBeNull()
+    const s = {
+      ...DEFAULT_BALANCE,
+      alertDays: 5,
+      // Informado às 10h: R$ 1.000; naquela hora o gasto conhecido do dia era R$ 40.
+      anchor: { amount: 1000, at: '2026-10-05T13:00:00.000Z', date: '2026-10-05', knownCost: 40 },
+      deposits: [
+        { id: 'a', amount: 999, at: '2026-10-01T12:00:00.000Z' }, // antes do saldo informado: já está nele
+        { id: 'b', amount: 500, at: '2026-10-07T12:00:00.000Z' },
+      ],
+    }
+    // Do dia 05 em diante o script já mostra R$ 640 (R$ 40 já conhecidos não contam de novo).
+    const e = estimateBalance(s, 640, [100, 100, 100, 100, 100, 100, 100])!
+    expect(e).toMatchObject({ spent: 600, deposits: 500, balance: 900, avgDaily: 100, low: false })
+    expect(e.daysLeft).toBe(9)
+    expect(estimateBalance(s, 1140, [100, 100, 100, 100, 100, 100, 100])).toMatchObject({ balance: 400, low: true })
+    expect(estimateBalance(s, 2000, [])).toMatchObject({ balance: -460, low: true, daysLeft: null })
+  })
+})

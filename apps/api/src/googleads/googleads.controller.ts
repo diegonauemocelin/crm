@@ -1,8 +1,8 @@
-import { Body, Controller, Get, HttpCode, NotFoundException, Param, Post, Put, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, Post, Put, Query } from '@nestjs/common'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
-import { ArrayMaxSize, IsArray, IsBoolean, IsObject, IsOptional, IsString, IsUUID, Matches, MaxLength, ValidateIf, ValidateNested } from 'class-validator'
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
 import { CurrentUser, Public, ReqContext, type RequestCtx, RequirePermission } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { GoogleAdsService } from './googleads.service'
@@ -15,6 +15,16 @@ class ActionsDto {
   @IsOptional() @IsString() @MaxLength(20) perda?: string
   /** Conferido em detalhe no serviço (ids da lista de motivos e IDs numéricos). */
   @IsOptional() @IsObject() perdaPorMotivo?: Record<string, string>
+}
+
+class AmountDto {
+  @ApiProperty() @Type(() => Number) @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100_000_000) amount!: number
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) note?: string
+}
+
+class BalanceAlertDto {
+  @ApiProperty() @Type(() => Number) @IsInt() @Min(1) @Max(60) days!: number
+  @ApiProperty({ type: [String] }) @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(200, { each: true }) emails!: string[]
 }
 
 class GoogleAdsDto {
@@ -58,9 +68,36 @@ export class GoogleAdsController {
 
   /** Painel: investimento x contatos e vendas, por campanha, palavra-chave e origem. */
   @Get('painel')
-  @RequirePermission('relatorios', 'view')
+  @RequirePermission('google_ads', 'view')
   painel(@CurrentUser() user: AuthUser, @Query('de') de?: string, @Query('ate') ate?: string) {
     return this.panel.panel(user, { from: de, to: ate })
+  }
+
+  /** Saldo pré-pago: o saldo como aparece no Google Ads agora (vira o ponto de partida da estimativa). */
+  @Post('saldo')
+  @HttpCode(200)
+  @RequirePermission('google_ads', 'edit')
+  setBalance(@CurrentUser() user: AuthUser, @Body() dto: AmountDto, @ReqContext() ctx: RequestCtx) {
+    return this.panel.setBalance(user, dto.amount, ctx)
+  }
+
+  @Post('saldo/recargas')
+  @HttpCode(200)
+  @RequirePermission('google_ads', 'edit')
+  addDeposit(@CurrentUser() user: AuthUser, @Body() dto: AmountDto, @ReqContext() ctx: RequestCtx) {
+    return this.panel.addDeposit(user, dto.amount, dto.note, ctx)
+  }
+
+  @Delete('saldo/recargas/:id')
+  @RequirePermission('google_ads', 'edit')
+  removeDeposit(@CurrentUser() user: AuthUser, @Param('id') id: string, @ReqContext() ctx: RequestCtx) {
+    return this.panel.removeDeposit(user, id, ctx)
+  }
+
+  @Put('saldo/aviso')
+  @RequirePermission('google_ads', 'edit')
+  setAlert(@CurrentUser() user: AuthUser, @Body() dto: BalanceAlertDto, @ReqContext() ctx: RequestCtx) {
+    return this.panel.setAlert(user, dto.days, dto.emails, ctx)
   }
 
   @Get()

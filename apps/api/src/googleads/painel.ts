@@ -157,3 +157,33 @@ function enviar(corpo, nome) {
 }
 `
 }
+
+/** Saldo pré-pago do Google Ads (Pix/boleto): o Google não informa pela API, então o CRM estima. */
+export interface BalanceState {
+  /** Saldo informado (como aparece no Google Ads) e o gasto já conhecido, a partir daquele dia, naquele momento. */
+  anchor?: { amount: number; at: string; date: string; knownCost: number; by?: string }
+  /** Recargas registradas depois do saldo informado (valor creditado no Google, já sem impostos). */
+  deposits: { id: string; amount: number; at: string; note?: string; by?: string }[]
+  /** Avisar quando o saldo durar menos que estes dias. */
+  alertDays: number
+  alertEmails: string[]
+  lastAlertAt?: string | null
+}
+export const DEFAULT_BALANCE: BalanceState = { deposits: [], alertDays: 5, alertEmails: [] }
+
+/**
+ * Saldo estimado = saldo informado + recargas depois dele - gasto desde então.
+ * costFromAnchorDate: gasto (do script) a partir do dia do saldo informado, inclusive; o que já era conhecido no momento
+ * do saldo informado não conta de novo. last7: gasto de cada um dos últimos 7 dias completos (média diária).
+ */
+export function estimateBalance(s: BalanceState, costFromAnchorDate: number, last7: number[]) {
+  if (!s.anchor) return null
+  const anchorAt = Date.parse(s.anchor.at)
+  const spent = round2(Math.max(0, costFromAnchorDate - s.anchor.knownCost))
+  const deposits = round2(s.deposits.filter((d) => Date.parse(d.at) > anchorAt).reduce((a, d) => a + d.amount, 0))
+  const balance = round2(s.anchor.amount + deposits - spent)
+  const avgDaily = last7.length ? round2(last7.reduce((a, v) => a + v, 0) / 7) : null
+  const daysLeft = avgDaily && avgDaily > 0 ? Math.max(0, balance) / avgDaily : null
+  const low = balance <= 0 || (daysLeft !== null && daysLeft < s.alertDays)
+  return { balance, spent, deposits, avgDaily, daysLeft, low, anchor: s.anchor }
+}

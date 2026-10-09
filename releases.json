@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.17.0",
+      "date": "2026-10-09",
+      "title": "Saldo do Google Ads e permissões novas",
+      "changes": [
+        { "type": "novo", "area": "Google Ads", "text": "Saldo estimado do Google Ads (pré-pago por Pix/boleto) no topo do painel: parte do saldo informado, soma as recargas registradas e desconta o gasto de cada dia; diz para quantos dias o saldo dura no ritmo dos últimos 7 dias." },
+        { "type": "novo", "area": "Google Ads", "text": "Aviso de saldo acabando: alerta no painel e e-mail (no máximo 1 por dia) quando o saldo durar menos que os dias escolhidos." },
+        { "type": "novo", "area": "Perfis de acesso", "text": "Permissões próprias para o Painel do Google Ads (ver; editar saldo e recargas) e para Carrinhos e checkout. Os perfis existentes continuam com o mesmo acesso de antes." },
+        { "type": "melhoria", "area": "Perfis de acesso", "text": "Cada módulo mostra o que Ver, Criar, Editar, Excluir e Exportar liberam." }
+      ]
+    },
+    {
       "version": "0.16.0",
       "date": "2026-10-09",
       "title": "Painel do Google Ads",

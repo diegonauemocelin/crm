@@ -4,6 +4,7 @@ import { type ReactNode, useState } from 'react'
 import { Link } from 'react-router'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { Stat } from '@/components/atendimento/dashboard'
+import { type Balance, BalanceCard } from '@/components/google-ads/balance-card'
 import { ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -36,6 +37,7 @@ interface Panel {
   costSyncedAt: string | null
   hasCost: boolean
   hasKeywordCost: boolean
+  balance: Balance
   totals: Row & { unidentifiedLeads: number }
   campaigns: (Row & { id: string | null; name: string })[]
   keywords: (Row & { keyword: string; matchTypes: string[]; campaigns: string[] })[]
@@ -58,7 +60,7 @@ const dayLabel = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`
 
 export function GoogleAdsPainelPage() {
   return (
-    <RequirePermission module="relatorios">
+    <RequirePermission module="google_ads">
       <Painel />
     </RequirePermission>
   )
@@ -123,6 +125,8 @@ function Painel() {
                 </span>
               </p>
             )}
+
+            <BalanceCard balance={d.balance} />
 
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Stat label="Valor investido" value={brl.format(t.cost)} delta={null} hint={`${int.format(t.clicks)} cliques · CPC ${money(t.cpc)}`} />

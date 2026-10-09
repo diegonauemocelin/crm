@@ -55,7 +55,7 @@ export const NAVIGATION: NavGroup[] = [
     title: 'CRM',
     items: [
       { title: 'Base de leads', to: '/leads', icon: UsersRoundIcon, module: 'leads' },
-      { title: 'Carrinhos e checkout', to: '/carrinhos', icon: ShoppingCartIcon, module: 'leads' },
+      { title: 'Carrinhos e checkout', to: '/carrinhos', icon: ShoppingCartIcon, module: 'carrinhos' },
     ],
   },
   {
@@ -71,7 +71,7 @@ export const NAVIGATION: NavGroup[] = [
     title: 'Análise',
     items: [
       { title: 'Dashboards e relatórios', to: '/relatorios', icon: BarChart3Icon, module: 'relatorios' },
-      { title: 'Google Ads', to: '/google-ads', icon: TargetIcon, module: 'relatorios' },
+      { title: 'Google Ads', to: '/google-ads', icon: TargetIcon, module: 'google_ads' },
     ],
   },
   {

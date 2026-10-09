@@ -36,7 +36,7 @@ const CONTACT_TONE: Record<ContactStatus, string> = {
 
 export function CartsPage() {
   return (
-    <RequirePermission module="leads">
+    <RequirePermission module="carrinhos">
       <Carts />
     </RequirePermission>
   )
@@ -93,7 +93,7 @@ function Carts() {
         title="Carrinhos e checkout"
         description="Clientes da loja virtual que colocaram produtos no carrinho ou começaram o checkout e não compraram. Chame no WhatsApp com o link do carrinho e um cupom, ou exporte a lista para campanhas."
         actions={
-          can('leads', 'export') && (
+          can('carrinhos', 'export') && (
             <Button variant="outline" onClick={() => void download()}>
               <DownloadIcon /> Exportar lista
             </Button>
@@ -155,7 +155,7 @@ function Carts() {
         <>
           <div className="space-y-3">
             {data.items.map((c) => (
-              <CartCard key={c.id} cart={c} onEdit={() => setEditing(c)} canEdit={can('leads', 'edit')} />
+              <CartCard key={c.id} cart={c} onEdit={() => setEditing(c)} canEdit={can('carrinhos', 'edit')} />
             ))}
           </div>
           <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">

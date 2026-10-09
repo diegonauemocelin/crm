@@ -11,8 +11,8 @@ import { randomBytes } from 'node:crypto'
 import { PrismaClient } from '../src/generated/prisma/client'
 
 const MODULES = [
-  'dashboard', 'leads', 'pre_vendas', 'pos_vendas', 'cadastros', 'chat', 'captura', 'email_marketing',
-  'automacoes', 'catalogo', 'relatorios', 'usuarios', 'perfis', 'configuracoes', 'auditoria',
+  'dashboard', 'leads', 'carrinhos', 'pre_vendas', 'pos_vendas', 'cadastros', 'chat', 'captura', 'email_marketing',
+  'automacoes', 'catalogo', 'relatorios', 'google_ads', 'usuarios', 'perfis', 'configuracoes', 'auditoria',
 ] as const
 type Mod = (typeof MODULES)[number]
 type P = { v?: 1; c?: 1; e?: 1; d?: 1; x?: 1; own?: 1 }
@@ -28,13 +28,13 @@ const ROLES: { name: string; description: string; require2fa: boolean; isSystem?
     name: 'Marketing',
     description: 'Leads, captura, email marketing, automações e relatórios.',
     require2fa: false,
-    perms: { dashboard: VIEW, leads: ALL, captura: ALL, email_marketing: ALL, automacoes: ALL, catalogo: WORK, relatorios: VIEW_EXPORT },
+    perms: { dashboard: VIEW, leads: ALL, captura: ALL, email_marketing: ALL, automacoes: ALL, catalogo: WORK, relatorios: VIEW_EXPORT, carrinhos: WORK, google_ads: { v: 1, e: 1, x: 1 } },
   },
   {
     name: 'Pré-Vendas',
     description: 'Atendimento de pré-vendas e chat.',
     require2fa: false,
-    perms: { dashboard: VIEW, leads: WORK, pre_vendas: WORK, chat: WORK, relatorios: VIEW },
+    perms: { dashboard: VIEW, leads: WORK, carrinhos: WORK, pre_vendas: WORK, chat: WORK, relatorios: VIEW },
   },
   {
     name: 'Pós-Vendas',
