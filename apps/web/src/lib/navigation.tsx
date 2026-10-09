@@ -9,6 +9,7 @@ import {
   ListChecksIcon,
   MailIcon,
   MegaphoneIcon,
+  SmartphoneIcon,
   TargetIcon,
   MessageCircleIcon,
   PackageIcon,
@@ -49,6 +50,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Pós-Vendas', to: '/pos-vendas', icon: ClipboardListIcon, module: 'pos_vendas' },
       { title: 'Cadastros', to: '/cadastros-atendimento', icon: ListChecksIcon, module: 'cadastros' },
       { title: 'Chat WhatsApp', to: '/chat', icon: MessageCircleIcon, module: 'chat', phase: 9 },
+      { title: 'Números de WhatsApp', to: '/whatsapp/numeros', icon: SmartphoneIcon, module: 'whatsapp' },
     ],
   },
   {

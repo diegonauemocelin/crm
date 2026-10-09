@@ -66,4 +66,15 @@ aguardar_saude() {
   return 1
 }
 
+# WhatsApp ligado no .env (COMPOSE_PROFILES contém "whatsapp")?
+whatsapp_ativo() { [[ ",$(env_get COMPOSE_PROFILES)," == *",whatsapp,"* ]]; }
+
+# Banco próprio da Evolution, no mesmo PostgreSQL do CRM (criado uma vez).
+garantir_banco_evolution() {
+  if ! dc exec -T db psql -U crm -d crm -tAc "SELECT 1 FROM pg_database WHERE datname = 'evolution'" | grep -q 1; then
+    info "Criando o banco da Evolution"
+    dc exec -T db psql -U crm -d crm -c "CREATE DATABASE evolution" >/dev/null
+  fi
+}
+
 registrar() { printf '%s\t%s\t%s\n' "$(date -Iseconds)" "$1" "$2" >> "$ESTADO/historico.log"; }

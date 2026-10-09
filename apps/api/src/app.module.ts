@@ -14,6 +14,7 @@ import { AutomacoesModule } from './automacoes/automacoes.module'
 import { RelatoriosModule } from './relatorios/relatorios.module'
 import { CatalogoModule } from './catalogo/catalogo.module'
 import { GoogleAdsModule } from './googleads/googleads.module'
+import { WhatsappModule } from './whatsapp/whatsapp.module'
 import { env } from './config/env'
 import { FilesModule } from './files/files.module'
 import { LeadsModule } from './leads/leads.module'
@@ -54,6 +55,7 @@ import { UsersService } from './users/users.service'
     RelatoriosModule,
     CatalogoModule,
     GoogleAdsModule,
+    WhatsappModule,
   ],
   controllers: [UsersController, RolesController, SystemController],
   providers: [

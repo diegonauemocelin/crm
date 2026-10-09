@@ -7,6 +7,7 @@ export const MODULES = [
   { key: 'pos_vendas', label: 'Pós-Vendas', group: 'Atendimento', help: 'Ver: acompanhamentos e dashboard. Criar/Editar: registrar e atualizar. Excluir: apagar. Exportar: baixar a planilha.' },
   { key: 'cadastros', label: 'Cadastros de atendimento (vendedores e listas)', group: 'Atendimento', help: 'Vendedores, unidades, origens, marcas, tipos de peça e motivos de perda.' },
   { key: 'chat', label: 'Chat WhatsApp', group: 'Atendimento', help: 'Conversas de WhatsApp (em preparação).' },
+  { key: 'whatsapp', label: 'Números de WhatsApp', group: 'Atendimento', help: 'Ver: números e situação. Criar: cadastrar. Editar: conectar (QR Code), desconectar e alterar. Excluir: remover o número.' },
   { key: 'captura', label: 'Formulários, LPs e pop-ups', group: 'Marketing', help: 'Formulários, pop-ups, botões de WhatsApp e o editor visual.' },
   { key: 'email_marketing', label: 'Email marketing', group: 'Marketing', help: 'Segmentos e campanhas. Criar/Editar inclui enviar.' },
   { key: 'automacoes', label: 'Automações', group: 'Marketing', help: 'Fluxos automáticos. Editar inclui ligar e desligar.' },

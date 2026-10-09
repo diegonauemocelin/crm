@@ -54,6 +54,8 @@ obter_imagens
 info "Subindo o banco"
 dc up -d --wait db
 
+if whatsapp_ativo; then garantir_banco_evolution; fi
+
 info "Aplicando migrations"
 dc run --rm --no-deps api prisma migrate deploy
 

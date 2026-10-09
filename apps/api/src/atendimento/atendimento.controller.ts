@@ -281,7 +281,7 @@ export class CadastrosController {
   /** Listas para formulários e filtros: liberado para quem usa Pré ou Pós-Vendas (ou gerencia os cadastros). */
   @Get('opcoes')
   options(@CurrentUser() user: AuthUser) {
-    const allowed = ['pre_vendas', 'pos_vendas', 'cadastros'].some((m) => can(user.permissions, user.role.isSystem, m, 'view'))
+    const allowed = ['pre_vendas', 'pos_vendas', 'cadastros', 'whatsapp'].some((m) => can(user.permissions, user.role.isSystem, m, 'view'))
     if (!allowed) throw new ForbiddenException('Você não tem permissão para esta ação.')
     return this.cadastros.options(user.tenantId)
   }

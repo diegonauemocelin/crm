@@ -1272,3 +1272,32 @@ model GoogleAdsKeywordDay {
   @@index([tenantId, date])
   @@map("google_ads_keyword_days")
 }
+
+/// Número de WhatsApp da empresa conectado pela Evolution API (um por vendedor ou setor).
+/// Limites no .env: WHATSAPP_MAX_NUMBERS cadastrados e WHATSAPP_MAX_CONNECTED conectados ao mesmo tempo.
+model WhatsappNumber {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  name           String
+  /// Nome da instância na Evolution (fixo, gerado pelo CRM).
+  instanceName   String    @unique
+  /// Preenchido quando conecta (o número do WhatsApp que leu o QR Code).
+  phone          String?
+  profileName    String?
+  /// CONECTADO, CONECTANDO ou DESCONECTADO
+  status         String    @default("DESCONECTADO")
+  statusReason   String?
+  unitId         String?   @db.Uuid
+  /// Vendedores que atendem por este número.
+  sellerIds      String[]  @default([]) @db.Uuid
+  connectingAt   DateTime?
+  connectedAt    DateTime?
+  disconnectedAt DateTime?
+  lastEventAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  @@index([tenantId, status])
+  @@map("whatsapp_numbers")
+}

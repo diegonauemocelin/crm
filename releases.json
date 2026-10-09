@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.18.0",
+      "date": "2026-10-09",
+      "title": "WhatsApp: números e conexão (etapa 1)",
+      "changes": [
+        { "type": "novo", "area": "WhatsApp", "text": "Números de WhatsApp (Atendimento → Números de WhatsApp): cadastre até 10 números da empresa, cada um com unidade e vendedores, e conecte pelo QR Code no WhatsApp Business do celular." },
+        { "type": "novo", "area": "WhatsApp", "text": "Limite de números conectados ao mesmo tempo (3 por enquanto): para conectar outro, desconecte um. A conferência é feita com trava no banco, sem passar do limite nem com cliques simultâneos." },
+        { "type": "novo", "area": "WhatsApp", "text": "Situação de cada número em tempo real (conectado, aguardando QR Code, desconectado e o motivo), com o número e o nome do perfil preenchidos ao conectar." },
+        { "type": "infra", "area": "WhatsApp", "text": "Evolution API e Redis no Docker, desligados até rodar deploy/whatsapp.sh ativar (que confere a memória livre). Sem porta aberta na internet; atualização automática semanal só de versões estáveis 2.x, com volta automática se falhar." },
+        { "type": "novo", "area": "Perfis de acesso", "text": "Permissão “Números de WhatsApp” (ver, cadastrar, conectar/desconectar, excluir)." }
+      ]
+    },
+    {
       "version": "0.17.0",
       "date": "2026-10-09",
       "title": "Saldo do Google Ads e permissões novas",

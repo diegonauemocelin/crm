@@ -160,3 +160,27 @@ cd /opt/usaparts-crm && sudo bash deploy/seguranca-vps.sh --fail2ban
 Instala e ativa o fail2ban com duas regras: SSH (5 erros em 10 min banem o IP por 1 h) e login do CRM (15 erros em 10 min, lendo só o log do CRM). O IP de quem está conectado por SSH no momento fica de fora. Para desfazer: apague `/etc/fail2ban/jail.d/usaparts-crm.conf` e rode `systemctl restart fail2ban`. Para desbanir: `sudo fail2ban-client unban <ip>`.
 
 Firewall (ufw) e configuração do SSH não são alterados por script, porque a VPS tem outros sistemas.
+
+## WhatsApp (Fase 9, Evolution API)
+
+O WhatsApp fica **desligado** até ser ativado. A Evolution API e o Redis sobem só com `COMPOSE_PROFILES=whatsapp` no `.env`,
+sem nenhuma porta publicada: só a API do CRM fala com eles, pela rede interna do Docker. As conversas ficam no CRM
+(com as regras de LGPD); a Evolution guarda só as sessões dos aparelhos (volume `evolution`).
+
+```bash
+sudo bash deploy/whatsapp.sh status        # situação, versão e memória livre
+sudo bash deploy/whatsapp.sh ativar        # gera as chaves no .env, cria o banco "evolution" e sobe tudo
+sudo bash deploy/whatsapp.sh atualizacao-automatica ligar   # confere toda semana (domingo, 4h), só versões estáveis 2.x
+sudo bash deploy/whatsapp.sh atualizar     # atualiza na hora (volta sozinho para a versão anterior se a nova não responder)
+sudo bash deploy/whatsapp.sh desativar     # para a Evolution; as sessões ficam guardadas
+```
+
+- **Memória:** o `ativar` recusa com menos de 700 MB livres (`--forcar` passa por cima, por sua conta). Evolution + Redis usam
+  por volta de 400-600 MB com 3 números conectados.
+- **Limites:** `WHATSAPP_MAX_NUMBERS` (padrão 10 cadastrados) e `WHATSAPP_MAX_CONNECTED` (padrão 3 conectados ao mesmo tempo).
+  Depois do upgrade da VPS: `sudo bash deploy/whatsapp.sh limite 5`.
+- **Números:** cadastrados e conectados no CRM (Atendimento → Números de WhatsApp), lendo o QR Code no WhatsApp Business do
+  celular. Para conectar um 4º, desconecte um (voltar exige ler o QR Code de novo).
+- **Chaves:** `EVOLUTION_API_KEY` (CRM → Evolution) e `EVOLUTION_WEBHOOK_SECRET` (Evolution → CRM) ficam só no `.env`.
+- **Backup:** o backup diário copia o banco do CRM (onde ficarão as conversas). As sessões não entram: se o volume `evolution`
+  se perder, basta ler o QR Code de novo em cada número.

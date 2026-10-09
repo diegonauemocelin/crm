@@ -71,6 +71,11 @@ services:
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
       SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-}
       SEED_TENANT_NAME: ${SEED_TENANT_NAME:-USA Parts}
+      # WhatsApp (Evolution API). Vazio = módulo desligado. Gerados por deploy/whatsapp.sh ativar.
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
+      EVOLUTION_WEBHOOK_SECRET: ${EVOLUTION_WEBHOOK_SECRET:-}
+      WHATSAPP_MAX_NUMBERS: ${WHATSAPP_MAX_NUMBERS:-10}
+      WHATSAPP_MAX_CONNECTED: ${WHATSAPP_MAX_CONNECTED:-3}
     volumes:
       - uploads:/data/uploads
     depends_on:
@@ -127,6 +132,90 @@ services:
       resources:
         limits: { memory: 128m }
 
+  # ---------- WhatsApp (Evolution API) ----------
+  # Só sobe com COMPOSE_PROFILES=whatsapp no .env (deploy/whatsapp.sh ativar). Nenhuma porta publicada:
+  # só a API do CRM fala com a Evolution, pela rede interna. Conversas ficam no CRM, não na Evolution.
+  evolution-redis:
+    <<: *hardening
+    profiles: [whatsapp]
+    image: redis:7.4-alpine
+    cap_add: [CHOWN, SETUID, SETGID]
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "48mb", "--maxmemory-policy", "allkeys-lru"]
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits: { memory: 80m }
+
+  evolution:
+    <<: *hardening
+    profiles: [whatsapp]
+    image: evoapicloud/evolution-api:${EVOLUTION_VERSION:-v2.3.7}
+    cap_add: [CHOWN, SETUID, SETGID, FOWNER, DAC_OVERRIDE]
+    environment:
+      SERVER_TYPE: http
+      SERVER_PORT: "8080"
+      SERVER_URL: http://evolution:8080
+      LANGUAGE: pt-BR
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "false"
+      DEL_INSTANCE: "false"
+      CORS_ORIGIN: http://api:3000
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://crm:${POSTGRES_PASSWORD}@db:5432/evolution?schema=evolution_api&connection_limit=5
+      DATABASE_CONNECTION_CLIENT_NAME: evolution
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      # Conversas e contatos ficam no CRM (com as regras de LGPD), não aqui.
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
+      DATABASE_SAVE_DATA_LABELS: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://evolution-redis:6379/1
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_REDIS_SAVE_INSTANCES: "false"
+      CACHE_LOCAL_ENABLED: "false"
+      CONFIG_SESSION_PHONE_CLIENT: CRM USA Parts
+      CONFIG_SESSION_PHONE_NAME: Chrome
+      QRCODE_LIMIT: "30"
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      WEBSOCKET_ENABLED: "false"
+      RABBITMQ_ENABLED: "false"
+      SQS_ENABLED: "false"
+      PROVIDER_ENABLED: "false"
+      TELEMETRY_ENABLED: "false"
+      LOG_LEVEL: ERROR,WARN
+      LOG_COLOR: "false"
+      LOG_BAILEYS: error
+      NODE_OPTIONS: --max-old-space-size=320
+      TZ: America/Sao_Paulo
+    volumes:
+      - evolution:/evolution/instances
+    depends_on:
+      db:
+        condition: service_healthy
+      evolution-redis:
+        condition: service_healthy
+    # "internal" alcança o banco, o Redis e a API do CRM; "egress" é a saída para os servidores do WhatsApp.
+    networks: [internal, egress]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 15
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: ${EVOLUTION_MEMORY:-512m}
+
 networks:
   # Sem saída para a internet: só a API e o backup falam com o banco.
   internal:
@@ -136,3 +225,5 @@ networks:
 volumes:
   pgdata:
   uploads:
+  # Sessões do WhatsApp (os aparelhos conectados). Apagar = ler o QR Code de novo em todos os números.
+  evolution:

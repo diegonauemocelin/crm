@@ -12,7 +12,7 @@ import { PrismaClient } from '../src/generated/prisma/client'
 
 const MODULES = [
   'dashboard', 'leads', 'carrinhos', 'pre_vendas', 'pos_vendas', 'cadastros', 'chat', 'captura', 'email_marketing',
-  'automacoes', 'catalogo', 'relatorios', 'google_ads', 'usuarios', 'perfis', 'configuracoes', 'auditoria',
+  'whatsapp', 'automacoes', 'catalogo', 'relatorios', 'google_ads', 'usuarios', 'perfis', 'configuracoes', 'auditoria',
 ] as const
 type Mod = (typeof MODULES)[number]
 type P = { v?: 1; c?: 1; e?: 1; d?: 1; x?: 1; own?: 1 }

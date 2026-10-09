@@ -37,6 +37,14 @@ function loadEnv() {
     githubToken: process.env.GITHUB_TOKEN || null,
     tenantSlug: optional('TENANT_SLUG', 'default'),
     smtpAllowPrivate: optional('SMTP_ALLOW_PRIVATE', 'false') === 'true',
+    // WhatsApp (Evolution API na rede interna do Docker). Sem a chave, o módulo fica desligado.
+    evolutionUrl: optional('EVOLUTION_URL', 'http://evolution:8080').replace(/\/+$/, ''),
+    evolutionApiKey: process.env.EVOLUTION_API_KEY || null,
+    evolutionWebhookSecret: process.env.EVOLUTION_WEBHOOK_SECRET || null,
+    /** Endereço da API do CRM visto de dentro da rede do Docker (a Evolution manda os eventos para cá). */
+    internalApiUrl: optional('INTERNAL_API_URL', 'http://api:3000').replace(/\/+$/, ''),
+    whatsappMaxNumbers: Math.max(1, Number(optional('WHATSAPP_MAX_NUMBERS', '10')) || 10),
+    whatsappMaxConnected: Math.max(1, Number(optional('WHATSAPP_MAX_CONNECTED', '3')) || 3),
     accessTokenTtlSec: 15 * 60,
     refreshTokenTtlSec: 12 * 60 * 60,
   }
