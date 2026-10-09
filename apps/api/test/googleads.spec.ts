@@ -223,3 +223,26 @@ describe('Google Ads: detalhes do erro e origem do evento', () => {
     expect(eventSourceFor(null)).toBe('WEB')
   })
 })
+
+describe('Google Ads: origem gravada no lead e no atendimento', () => {
+  it('lead: primeira e última campanha; atendimento: anúncio mais recente até o contato', async () => {
+    const { adsFirstLast, adsForRecord } = await import('../src/googleads/googleads')
+    const d = (s: string) => new Date(`${s}T12:00:00-03:00`)
+    const touches = [
+      { t: { source: 'google', medium: 'cpc', campaign: 'Busca JCB', campaignId: '21987654321' }, at: d('2026-08-01') },
+      { t: { source: 'facebook', medium: 'social' }, at: d('2026-08-20') },
+      { t: { source: 'google', medium: 'cpc', landing: 'https://lp.usaparts.com.br/x?gclid=abc&gad_campaignid=21987654322' }, at: d('2026-09-10') },
+    ]
+    const names = { '21987654322': 'PMax Peças' }
+    const fl = adsFirstLast(touches, names)!
+    expect(fl.first).toMatchObject({ campaignId: '21987654321', campaign: 'Busca JCB' })
+    expect(fl.last).toMatchObject({ campaignId: '21987654322', campaign: 'PMax Peças' })
+    // Atendimento de agosto: só o anúncio de agosto conta; o de setembro é posterior.
+    expect(adsForRecord(touches, d('2026-08-25'), names)).toMatchObject({ campaignId: '21987654321' })
+    // Atendimento de outubro (venda seguinte): mantém a campanha mais recente.
+    expect(adsForRecord(touches, d('2026-10-05'), names)).toMatchObject({ campaignId: '21987654322', campaign: 'PMax Peças' })
+    // Antes de qualquer anúncio: sem campanha.
+    expect(adsForRecord(touches, d('2026-07-01'), names)).toBeNull()
+    expect(adsFirstLast([{ t: { source: 'direto', medium: 'direto' }, at: null }])).toBeNull()
+  })
+})

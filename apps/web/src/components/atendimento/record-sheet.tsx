@@ -283,7 +283,19 @@ export function RecordSheet({ kind, record, onClose }: { kind: Kind; record: Ser
                 <p className="flex flex-wrap items-center gap-2 rounded-md border border-sky-500/40 bg-sky-500/10 p-2.5 text-sm">
                   <MegaphoneIcon className="size-4 text-sky-700 dark:text-sky-300" />
                   <span>
-                    Veio do <strong>Google Ads</strong>: {linked.googleAds.label}.
+                    {linked.googleAds.byOrigin ? (
+                      <>
+                        <strong>Google Ads</strong>: {linked.googleAds.label}.
+                      </>
+                    ) : (
+                      <>
+                        Veio do <strong>Google Ads</strong>: {linked.googleAds.label}
+                        {linked.googleAds.at ? ` (clique em ${formatDateTime(linked.googleAds.at)})` : ''}.
+                      </>
+                    )}
+                    {linked.googleAds.first && !linked.googleAds.byOrigin && linked.googleAds.first.label !== linked.googleAds.label && (
+                      <> O lead veio originalmente da campanha {linked.googleAds.first.label}{linked.googleAds.first.at ? `, em ${formatDateTime(linked.googleAds.first.at)}` : ''}.</>
+                    )}
                   </span>
                 </p>
               )}

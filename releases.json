@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.14.0",
+      "date": "2026-10-09",
+      "title": "Campanha do Google Ads em cada lead e atendimento",
+      "changes": [
+        { "type": "novo", "area": "Google Ads", "text": "Cada lead guarda a primeira e a última campanha do Google Ads por onde passou, e cada atendimento do Pré/Pós-Vendas guarda a campanha do anúncio que trouxe aquele contato. Fica gravado: as próximas pré-vendas, vendas e atualizações do lead mantêm de onde ele veio." },
+        { "type": "novo", "area": "Leads", "text": "Ficha do lead com o quadro “De onde veio”: todas as entradas do lead (conversões, visitas e formulários), com a origem e a campanha do Google Ads." },
+        { "type": "melhoria", "area": "Atendimento", "text": "Lista do Pré/Pós-Vendas e lista de leads mostram a campanha do Google Ads; a ficha do atendimento diz também a campanha de onde o lead veio originalmente." },
+        { "type": "melhoria", "area": "Relatórios", "text": "Novos campos: “Veio do Google Ads” e “Campanha do Google Ads” nos atendimentos; primeira e última campanha do Google Ads do lead." },
+        { "type": "melhoria", "area": "Exportação", "text": "Exportação de leads e de atendimentos com as colunas de campanha do Google Ads." }
+      ]
+    },
+    {
       "version": "0.13.3",
       "date": "2026-10-09",
       "title": "Google Ads: envios usam a conversão atual",

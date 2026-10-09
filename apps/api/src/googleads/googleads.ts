@@ -232,13 +232,31 @@ export function adsInfoOf(touches: { t: TouchLike | null | undefined; at: Date |
   const google = touches
     .filter((x) => isGoogleAdsTouch(x.t))
     .sort((a, b) => (b.at?.getTime() ?? 0) - (a.at?.getTime() ?? 0))[0]
-  if (!google?.t) return null
-  const t = google.t
+  return google?.t ? touchAdsInfo(google.t, google.at, names) : null
+}
+
+/** Número e nome da campanha de um toque de anúncio. */
+export function touchAdsInfo(t: TouchLike, at: Date | null, names: Record<string, string> = {}): AdsInfo {
   const rawName = typeof t.campaign === 'string' ? t.campaign.trim() : ''
   const id = (typeof t.campaignId === 'string' && CAMPAIGN_ID.test(t.campaignId) ? t.campaignId : null) ?? campaignIdFromUrl(t.landing) ?? (CAMPAIGN_ID.test(rawName) ? rawName : null)
   // O nome oficial (vindo do Google Ads pelo script, ou cadastrado) vale mais que o utm_campaign digitado no link.
   const name = (id && names[id]) || (rawName && !CAMPAIGN_ID.test(rawName) ? rawName : null)
-  return { campaignId: id, campaign: name, at: google.at }
+  return { campaignId: id, campaign: name, at }
+}
+
+/** Primeira e última campanha do Google Ads entre os toques (com data) do lead. */
+export function adsFirstLast(touches: { t: TouchLike | null | undefined; at: Date | null }[], names: Record<string, string> = {}) {
+  const google = touches.filter((x) => isGoogleAdsTouch(x.t)).sort((a, b) => (a.at?.getTime() ?? 0) - (b.at?.getTime() ?? 0))
+  if (!google.length) return null
+  const first = google[0]!
+  const last = google[google.length - 1]!
+  return { first: touchAdsInfo(first.t!, first.at, names), last: touchAdsInfo(last.t!, last.at, names) }
+}
+
+/** Campanha de um atendimento: o anúncio mais recente até o contato (aceita até 1 dia depois, pelo atraso da integração). */
+export function adsForRecord(touches: { t: TouchLike | null | undefined; at: Date | null }[], leadAt: Date, names: Record<string, string> = {}) {
+  const limit = leadAt.getTime() + 86_400_000
+  return adsInfoOf(touches.filter((x) => !x.at || x.at.getTime() <= limit), names)
 }
 
 /** Texto curto: o nome da campanha; só quando o nome não é conhecido, o número ("campanha nº 1234567"). */

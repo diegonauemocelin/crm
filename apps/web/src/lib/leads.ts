@@ -25,12 +25,33 @@ export interface GoogleAdsInfo {
   campaignId: string | null
   campaign: string | null
   label: string
+  /** Quando foi o clique no anúncio. */
+  at?: string | null
   byOrigin?: boolean
+  /** Primeira campanha por onde o lead passou (de onde ele veio originalmente). */
+  first?: { campaignId: string | null; label: string; at: string | null } | null
+}
+
+/** Uma passagem do lead: conversão (formulário, integração), visita ao site ou formulário, com a origem. */
+export interface LeadOrigin {
+  at: string | null
+  via: 'conversao' | 'visita' | 'formulario'
+  title: string | null
+  source: string | null
+  medium: string | null
+  campaign: string | null
+  campaignId: string | null
+  googleAds: boolean
+  landing: string | null
 }
 
 export interface Lead {
   id: string
   googleAds?: GoogleAdsInfo | null
+  /** Nas listas: última campanha do Google Ads do lead. */
+  adsLabel?: string | null
+  /** Só na ficha: histórico de onde o lead veio. */
+  origins?: LeadOrigin[]
   name: string | null
   email: string | null
   phone: string | null

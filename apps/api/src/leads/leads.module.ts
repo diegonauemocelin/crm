@@ -5,10 +5,11 @@ import { LeadImportService } from './lead-import.service'
 import { LeadSyncService } from './lead-sync.service'
 import { LeadsController, UnsubscribeController } from './leads.controller'
 import { LeadsService } from './leads.service'
+import { OrigemAdsService } from './origem-ads.service'
 
 @Module({
   controllers: [LeadsController, UnsubscribeController],
-  providers: [LeadsService, LeadConfigService, LeadImportService, LeadSyncService, LeadCaptureService],
-  exports: [LeadSyncService, LeadsService, LeadConfigService, LeadCaptureService],
+  providers: [LeadsService, LeadConfigService, LeadImportService, LeadSyncService, LeadCaptureService, OrigemAdsService],
+  exports: [LeadSyncService, LeadsService, LeadConfigService, LeadCaptureService, OrigemAdsService],
 })
 export class LeadsModule {}

@@ -197,13 +197,13 @@ export class AtendimentoController {
     const n = (id: string | null) => (id ? (names.get(id) ?? '') : '')
     const header = [
       'Data do lead', 'Nome', 'Código do cliente', 'Telefone', 'E-mail', 'Unidade', 'Vendedor', 'Origem', 'Tipo de cliente', 'País', 'Estado', 'Cidade',
-      'Marca da máquina', 'Tipo de peça', 'Repassou ao vendedor', 'Vendedor retornou', 'Venda realizada', 'Motivo da perda', 'Nota fiscal', 'Valor da venda', 'Observações',
+      'Marca da máquina', 'Tipo de peça', 'Repassou ao vendedor', 'Vendedor retornou', 'Venda realizada', 'Motivo da perda', 'Nota fiscal', 'Valor da venda', 'Observações', 'Google Ads (campanha)',
     ]
     const lines = rows.map((r) =>
       [
         fmtDate(r.leadAt), r.name, r.customerCode, r.phone, r.email, n(r.unitId), n(r.sellerId), n(r.originId), n(r.customerTypeId), r.country,
         r.state ? UFS[r.state as keyof typeof UFS]?.name ?? r.state : '', r.city, r.brandIds.map(n).join(', '), r.partTypeIds.map(n).join(', '),
-        r.forwarded ? 'Sim' : 'Não', r.returnStatus ? LABEL[r.returnStatus] : '', LABEL[r.saleStatus], n(r.lostReasonId), r.invoiceNumber, fmtMoney(r.saleValue), r.notes,
+        r.forwarded ? 'Sim' : 'Não', r.returnStatus ? LABEL[r.returnStatus] : '', LABEL[r.saleStatus], n(r.lostReasonId), r.invoiceNumber, fmtMoney(r.saleValue), r.notes, r.adsLabel,
       ]
         .map(csvCell)
         .join(';'),

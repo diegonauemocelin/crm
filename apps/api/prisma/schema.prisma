@@ -415,6 +415,14 @@ model ServiceRecord {
   /// Chave de deduplicação da importação: reimportar a mesma planilha não duplica registros.
   externalKey    String?
   importBatch    String?
+  /// Google Ads: ANUNCIO (passou por anúncio até o contato) ou ORIGEM (origem com "Google" no nome, sem campanha).
+  adsVia         String?
+  /// Campanha do anúncio mais recente até o contato (número e nome); adsTouchAt diz quando foi o clique.
+  adsCampaignId  String?
+  adsCampaign    String?
+  adsTouchAt     DateTime?
+  /// Quando a campanha foi conferida (é refeita se o atendimento ou o lead mudar depois disso).
+  adsCheckedAt   DateTime?
   createdById    String?       @db.Uuid
   updatedById    String?       @db.Uuid
   createdAt      DateTime      @default(now())
@@ -507,6 +515,16 @@ model Lead {
   ecommerceId String?
   /// Dados pessoais apagados a pedido do titular (LGPD): o registro fica só para estatística.
   anonymizedAt DateTime?
+
+  /// Google Ads: primeira e última campanha por onde o lead passou (histórico completo nas conversões e visitas).
+  adsFirstCampaignId String?
+  adsFirstCampaign   String?
+  adsFirstAt         DateTime?
+  adsLastCampaignId  String?
+  adsLastCampaign    String?
+  adsLastAt          DateTime?
+  adsCheckedAt       DateTime?
+
   createdById  String?   @db.Uuid
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt

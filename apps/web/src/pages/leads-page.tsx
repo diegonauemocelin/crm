@@ -321,6 +321,11 @@ function LeadsContent() {
                     <TableCell className="max-w-72">
                       <p className="truncate font-medium">{l.anonymizedAt ? 'Dados removidos (LGPD)' : (l.name ?? l.email ?? formatPhone(l.phone))}</p>
                       <p className="truncate text-xs text-muted-foreground">{[l.email, formatPhone(l.phone)].filter(Boolean).join(' · ') || '—'}</p>
+                      {l.adsLabel && (
+                        <p className="truncate text-xs text-sky-700 dark:text-sky-300" title={`Google Ads: ${l.adsLabel}`}>
+                          Google Ads · {l.adsLabel}
+                        </p>
+                      )}
                     </TableCell>
                     <TableCell className="hidden text-sm md:table-cell">{STAGE_LABEL[l.stage]}</TableCell>
                     <TableCell>

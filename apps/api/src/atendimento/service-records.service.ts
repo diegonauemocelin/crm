@@ -5,7 +5,7 @@ import { type Action, can, type Scope } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import { Prisma, type ServiceKind } from '../generated/prisma/client'
 import { LeadSyncService } from '../leads/lead-sync.service'
-import { adsInfoOf, campaignLabel, DEFAULT_GOOGLE_ADS, type GoogleAdsSettings, isGoogleAdsTouch } from '../googleads/googleads'
+import { adsName, OrigemAdsService } from '../leads/origem-ads.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { normalizePhone, REGIONS, regionOf, UF_LIST, UFS } from './br'
@@ -92,6 +92,7 @@ export class ServiceRecordsService {
     private readonly audit: AuditService,
     private readonly settings: SettingsService,
     private readonly leadSync: LeadSyncService,
+    private readonly origemAds: OrigemAdsService,
   ) {}
 
   assertCan(user: AuthUser, kind: ServiceKind, action: Action) {
@@ -169,12 +170,13 @@ export class ServiceRecordsService {
     this.assertCan(user, f.kind, 'view')
     const where = await this.where(user, f)
     const orderBy = SORTABLE.has(sort) ? [{ [sort]: dir }, { createdAt: 'desc' as const }] : [{ leadAt: 'desc' as const }]
-    const [total, rows, { alertHours }] = await Promise.all([
+    const [total, rows, { alertHours }, names] = await Promise.all([
       this.prisma.serviceRecord.count({ where }),
       this.prisma.serviceRecord.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize }),
       this.alertSettings(user.tenantId),
+      this.origemAds.names(user.tenantId),
     ])
-    return { total, page, pageSize, alertHours, items: rows.map((r) => this.view(r, alertHours)) }
+    return { total, page, pageSize, alertHours, items: rows.map((r) => ({ ...this.view(r, alertHours), adsLabel: recordAdsLabel(names, r) })) }
   }
 
   private view(r: Prisma.ServiceRecordGetPayload<object>, alertHours: number) {
@@ -203,24 +205,23 @@ export class ServiceRecordsService {
     return { ...this.view(r, alertHours), parent, children, googleAds: await this.googleAdsOf(r) }
   }
 
-  /** O atendimento veio de anúncio do Google? Pela conversão do lead (campanha) ou pela origem com "Google" no nome. */
-  private async googleAdsOf(r: { tenantId: string; leadId: string | null; originId: string | null }) {
-    const [lead, origin] = await Promise.all([
-      r.leadId ? this.prisma.lead.findUnique({ where: { id: r.leadId }, select: { firstConversion: true, firstConversionAt: true, lastConversion: true, lastConversionAt: true } }) : null,
-      r.originId ? this.prisma.lookupItem.findUnique({ where: { id: r.originId }, select: { name: true } }) : null,
+  /**
+   * O atendimento veio de anúncio do Google? Pelo anúncio mais recente até o contato (campanha) ou pela origem com "Google"
+   * no nome. Traz também a primeira campanha do lead (de onde ele veio originalmente), para os atendimentos seguintes.
+   */
+  private async googleAdsOf(r: { id: string; tenantId: string; leadId: string | null; updatedAt: Date; adsCheckedAt: Date | null }) {
+    const own = await this.origemAds.freshRecord(r.tenantId, r)
+    const [names, lead] = await Promise.all([
+      this.origemAds.names(r.tenantId),
+      r.leadId ? this.prisma.lead.findUnique({ where: { id: r.leadId }, select: { adsFirstCampaignId: true, adsFirstCampaign: true, adsFirstAt: true } }) : null,
     ])
-    const touches = lead
-      ? [
-          { t: lead.firstConversion as Record<string, unknown> | null, at: lead.firstConversionAt },
-          { t: lead.lastConversion as Record<string, unknown> | null, at: lead.lastConversionAt },
-        ]
-      : []
-    if (touches.some((x) => isGoogleAdsTouch(x.t))) {
-      const s = await this.settings.get<GoogleAdsSettings>(r.tenantId, 'google_ads', DEFAULT_GOOGLE_ADS)
-      const info = adsInfoOf(touches, s.campaigns)
-      if (info) return { campaignId: info.campaignId, campaign: info.campaign, label: campaignLabel(info), byOrigin: false }
+    const first = lead && (lead.adsFirstAt || lead.adsFirstCampaignId || lead.adsFirstCampaign)
+      ? { campaignId: lead.adsFirstCampaignId, label: adsName(names, lead.adsFirstCampaignId, lead.adsFirstCampaign) ?? 'campanha não identificada', at: lead.adsFirstAt }
+      : null
+    if (own?.adsVia === 'ANUNCIO') {
+      return { campaignId: own.adsCampaignId, campaign: (own.adsCampaignId && names[own.adsCampaignId]) || own.adsCampaign, label: adsName(names, own.adsCampaignId, own.adsCampaign) ?? 'campanha não identificada', at: own.adsTouchAt, byOrigin: false, first }
     }
-    if (origin && /google/i.test(origin.name)) return { campaignId: null, campaign: null, label: 'campanha não identificada (pela origem do atendimento)', byOrigin: true }
+    if (own?.adsVia === 'ORIGEM') return { campaignId: null, campaign: null, label: first ? `origem do atendimento (o lead veio antes pela campanha ${first.label})` : 'campanha não identificada (pela origem do atendimento)', at: null, byOrigin: true, first }
     return null
   }
 
@@ -559,7 +560,14 @@ export class ServiceRecordsService {
       this.prisma.lookupItem.findMany({ where: { tenantId: user.tenantId }, select: { id: true, name: true } }),
       this.prisma.seller.findMany({ where: { tenantId: user.tenantId }, select: { id: true, name: true } }),
     ])
-    const units = await this.prisma.unit.findMany({ where: { tenantId: user.tenantId }, select: { id: true, name: true } })
-    return { rows, names: new Map([...lookups, ...sellers, ...units].map((x) => [x.id, x.name])) }
+    const [units, adsNames] = await Promise.all([this.prisma.unit.findMany({ where: { tenantId: user.tenantId }, select: { id: true, name: true } }), this.origemAds.names(user.tenantId)])
+    return { rows: rows.map((r) => ({ ...r, adsLabel: recordAdsLabel(adsNames, r) })), names: new Map([...lookups, ...sellers, ...units].map((x) => [x.id, x.name])) }
   }
+}
+
+/** Texto curto da campanha do Google Ads do atendimento, para listas e exportação. */
+export function recordAdsLabel(names: Record<string, string>, r: { adsVia: string | null; adsCampaignId: string | null; adsCampaign: string | null }) {
+  if (r.adsVia === 'ANUNCIO') return adsName(names, r.adsCampaignId, r.adsCampaign) ?? 'campanha não identificada'
+  if (r.adsVia === 'ORIGEM') return 'campanha não identificada (pela origem)'
+  return null
 }

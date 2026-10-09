@@ -23,7 +23,7 @@ export interface SavedInput {
 
 const GA_CACHE_MS = 15 * 60_000
 /** Campos de campanha que podem vir como número do Google Ads (mostrados com o nome da campanha). */
-const CAMPAIGN_DIMS = new Set(['campanha', 'lead_campanha', 'lead_campanha_ultima', 'lead_campanha_numero'])
+const CAMPAIGN_DIMS = new Set(['campanha', 'lead_campanha', 'lead_campanha_ultima', 'lead_campanha_numero', 'lead_ads_primeira', 'lead_ads_ultima', 'google_ads_campanha'])
 
 @Injectable()
 export class RelatoriosService {

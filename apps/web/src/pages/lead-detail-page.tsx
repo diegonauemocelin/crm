@@ -40,7 +40,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, errorMessage } from '@/lib/api'
 import { brl, formatPhone, KIND_INFO, type Kind, maskPhone, namesOf, SALE_LABEL, type SaleStatus, UF_LIST, UF_NAMES, useOptions, whatsappLink } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
-import { type CustomField, type Lead, type LeadStage, STAGE_LABEL, STAGES, useCustomFields } from '@/lib/leads'
+import { type CustomField, type Lead, type LeadStage, STAGE_LABEL, STAGES, useCustomFields, type LeadOrigin } from '@/lib/leads'
 import { CONTACT_LABEL, DEVICE_LABEL, type LeadShop, type LeadSite, pathOf, SHOP_LABEL, touchLabel } from '@/lib/rastreamento'
 import { FormError } from './auth/auth-layout'
 import { GradeBadge } from './leads-page'
@@ -353,7 +353,12 @@ function LeadView({ lead }: { lead: Lead | null }) {
                 )}
               </form>
             </Card>
-            {lead && <Summary lead={lead} />}
+            {lead && (
+              <div className="space-y-4">
+                <Summary lead={lead} />
+                <Origins lead={lead} />
+              </div>
+            )}
           </div>
         </TabsContent>
         {lead && (
@@ -383,7 +388,12 @@ function Summary({ lead }: { lead: Lead }) {
     ['Perfil / interesse', `${lead.scoreProfile} / ${lead.scoreInterest} pts`],
     ['Última atividade', formatDateTime(lead.lastActivityAt)],
     ['Primeira conversão', formatDateTime(lead.firstConversionAt)],
-    ...(lead.googleAds ? ([['Google Ads', lead.googleAds.label]] as [string, string][]) : []),
+    ...(lead.googleAds
+      ? ([
+          ['Google Ads (última campanha)', lead.googleAds.label],
+          ...(lead.googleAds.first && lead.googleAds.first.label !== lead.googleAds.label ? [['Google Ads (primeira campanha)', lead.googleAds.first.label]] : []),
+        ] as [string, string][])
+      : []),
     ['Última oportunidade', formatDateTime(lead.lastOpportunityAt)],
     ['Última venda', lead.lastSaleAt ? `${formatDateTime(lead.lastSaleAt)}${lead.lastSaleValue ? ` · ${brl.format(lead.lastSaleValue)}` : ''}` : '—'],
     ['E-mail marketing', lead.emailOptIn ? 'Aceita receber' : 'Não aceita'],
@@ -403,6 +413,44 @@ function Summary({ lead }: { lead: Lead }) {
           ))}
         </dl>
         <LeadAutomations leadId={lead.id} />
+      </CardContent>
+    </Card>
+  )
+}
+
+const VIA_LABEL: Record<LeadOrigin['via'], string> = { conversao: 'Conversão', visita: 'Visita ao site', formulario: 'Formulário' }
+
+/** Histórico de onde o lead veio: cada conversão e visita com a origem e a campanha do Google Ads. */
+function Origins({ lead }: { lead: Lead }) {
+  const list = lead.origins ?? []
+  return (
+    <Card className="h-fit">
+      <CardHeader>
+        <CardTitle className="text-base">De onde veio</CardTitle>
+        <CardDescription>Cada entrada do lead, da mais recente para a mais antiga.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {list.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma origem registrada (lead importado ou cadastrado à mão).</p>
+        ) : (
+          <ol className="space-y-3 text-sm">
+            {list.map((o, i) => (
+              <li key={i} className="border-l-2 pl-3" style={{ borderColor: o.googleAds ? 'var(--color-sky-500)' : 'var(--border)' }}>
+                <p className="text-xs text-muted-foreground">
+                  {formatDateTime(o.at)} · {VIA_LABEL[o.via]}
+                </p>
+                {o.googleAds ? (
+                  <p>
+                    <strong>Google Ads</strong> · {o.campaign ?? 'campanha não identificada'}
+                  </p>
+                ) : (
+                  <p>{[o.source, o.medium].filter(Boolean).join(' / ') || 'Direto'}{o.campaign ? ` · ${o.campaign}` : ''}</p>
+                )}
+                {o.title && <p className="truncate text-xs text-muted-foreground">{o.title}</p>}
+              </li>
+            ))}
+          </ol>
+        )}
       </CardContent>
     </Card>
   )

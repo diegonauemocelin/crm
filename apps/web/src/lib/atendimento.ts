@@ -1,3 +1,4 @@
+import type { GoogleAdsInfo } from './leads'
 import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
 
@@ -62,7 +63,9 @@ export interface Options {
 export interface ServiceRecord {
   id: string
   /** Só na ficha completa: campanha do Google Ads de onde o contato veio. */
-  googleAds?: { campaignId: string | null; campaign: string | null; label: string; byOrigin?: boolean } | null
+  googleAds?: GoogleAdsInfo | null
+  /** Nas listas: campanha do Google Ads do atendimento (gravada; segue nos próximos atendimentos do mesmo lead). */
+  adsLabel?: string | null
   kind: Kind
   leadAt: string
   name: string

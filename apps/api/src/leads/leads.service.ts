@@ -8,9 +8,9 @@ import type { RequestCtx } from '../common/decorators'
 import { type Action, can, type Scope } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import { type LeadStage, Prisma } from '../generated/prisma/client'
-import { adsInfoOf, campaignLabel, DEFAULT_GOOGLE_ADS, type GoogleAdsSettings, isGoogleAdsTouch } from '../googleads/googleads'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
+import { adsName, OrigemAdsService } from './origem-ads.service'
 import { LeadConfigService } from './lead-config.service'
 import { convertCustom, normalizeEmail, normalizeTags } from './mapeamento'
 
@@ -66,6 +66,7 @@ export class LeadsService {
     private readonly audit: AuditService,
     private readonly config: LeadConfigService,
     private readonly settings: SettingsService,
+    private readonly origemAds: OrigemAdsService,
   ) {}
 
   assertCan(user: AuthUser, action: Action) {
@@ -122,17 +123,18 @@ export class LeadsService {
   async list(user: AuthUser, f: LeadFilters, page: number, pageSize: number, sort: string) {
     this.assertCan(user, 'view')
     const where = this.where(user, f)
-    const [total, items, stages] = await Promise.all([
+    const [total, items, stages, names] = await Promise.all([
       this.prisma.lead.count({ where }),
       this.prisma.lead.findMany({ where, orderBy: SORTS[sort] ?? SORTS.recent, skip: (page - 1) * pageSize, take: pageSize }),
       this.prisma.lead.groupBy({ by: ['stage'], where, _count: { _all: true } }),
+      this.origemAds.names(user.tenantId),
     ])
     return {
       total,
       page,
       pageSize,
       byStage: Object.fromEntries(stages.map((s) => [s.stage, s._count._all])),
-      items: items.map((l) => this.view(l)),
+      items: items.map((l) => ({ ...this.view(l), adsLabel: googleAdsOfLead(names, l)?.label ?? null })),
     }
   }
 
@@ -142,17 +144,18 @@ export class LeadsService {
     const where = { ...this.where(user, f), anonymizedAt: null }
     const total = await this.prisma.lead.count({ where })
     if (total > 100_000) throw new BadRequestException('Muitos leads para exportar de uma vez (máximo 100.000). Use os filtros.')
-    const [rows, fields] = await Promise.all([
+    const [rows, fields, adsNames] = await Promise.all([
       this.prisma.lead.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         include: { owner: { select: { name: true } }, unit: { select: { name: true } }, origin: { select: { name: true } } },
       }),
       this.prisma.customFieldDef.findMany({ where: { tenantId: user.tenantId, active: true }, orderBy: [{ position: 'asc' }, { label: 'asc' }], select: { key: true, label: true } }),
+      this.origemAds.names(user.tenantId),
     ])
     const filtros = Object.fromEntries(Object.entries(f).filter(([, v]) => v !== undefined && v !== ''))
     await this.audit.byUser(user, ctx, 'lead.exported', 'lead', undefined, { quantidade: rows.length, filtros })
-    return { rows, fields }
+    return { rows: rows.map((l) => ({ ...l, googleAds: googleAdsOfLead(adsNames, l) })), fields }
   }
 
   view(l: Prisma.LeadGetPayload<object>) {
@@ -168,20 +171,10 @@ export class LeadsService {
 
   async get(user: AuthUser, id: string) {
     this.assertCan(user, 'view')
+    await this.origemAds.freshLead(user.tenantId, await this.load(user, id))
     const lead = await this.load(user, id)
-    return { ...this.view(lead), googleAds: await this.googleAdsOf(user.tenantId, lead) }
-  }
-
-  /** De qual campanha do Google Ads o lead veio (última conversão por anúncio), com o nome cadastrado da campanha. */
-  async googleAdsOf(tenantId: string, lead: { firstConversion: unknown; firstConversionAt: Date | null; lastConversion: unknown; lastConversionAt: Date | null }) {
-    const touches = [
-      { t: lead.firstConversion as Record<string, unknown> | null, at: lead.firstConversionAt },
-      { t: lead.lastConversion as Record<string, unknown> | null, at: lead.lastConversionAt },
-    ]
-    if (!touches.some((x) => isGoogleAdsTouch(x.t))) return null
-    const s = await this.settings.get<GoogleAdsSettings>(tenantId, 'google_ads', DEFAULT_GOOGLE_ADS)
-    const info = adsInfoOf(touches, s.campaigns)
-    return info ? { campaignId: info.campaignId, campaign: info.campaign, label: campaignLabel(info), at: info.at } : null
+    const [names, origins] = await Promise.all([this.origemAds.names(user.tenantId), this.origemAds.history(user.tenantId, id)])
+    return { ...this.view(lead), googleAds: googleAdsOfLead(names, lead), origins }
   }
 
   /** Linha do tempo: eventos do lead + atendimentos de Pré/Pós-Vendas vinculados + consentimentos. */
@@ -513,5 +506,17 @@ export class LeadsService {
     }
     await this.audit.log({ tenantId: lead.tenantId, action: 'lead.unsubscribed', entity: 'lead', entityId: lead.id, ip })
     return { ok: true }
+  }
+}
+
+/** Campanha do Google Ads do lead: a última por onde passou e a primeira (de onde ele veio originalmente). */
+export function googleAdsOfLead(names: Record<string, string>, l: { adsFirstCampaignId: string | null; adsFirstCampaign: string | null; adsFirstAt: Date | null; adsLastCampaignId: string | null; adsLastCampaign: string | null; adsLastAt: Date | null }) {
+  if (!l.adsLastAt && !l.adsLastCampaignId && !l.adsLastCampaign) return null
+  return {
+    campaignId: l.adsLastCampaignId,
+    campaign: (l.adsLastCampaignId && names[l.adsLastCampaignId]) || l.adsLastCampaign,
+    label: adsName(names, l.adsLastCampaignId, l.adsLastCampaign) ?? 'campanha não identificada',
+    at: l.adsLastAt,
+    first: { campaignId: l.adsFirstCampaignId, label: adsName(names, l.adsFirstCampaignId, l.adsFirstCampaign) ?? 'campanha não identificada', at: l.adsFirstAt },
   }
 }

@@ -383,7 +383,14 @@ export function RecordsList({ kind }: { kind: Kind }) {
                         {[r.customerCode && `Cód. ${r.customerCode}`, formatPhone(r.phone)].filter(Boolean).join(' · ') || '—'}
                       </p>
                     </TableCell>
-                    <TableCell className="hidden text-sm lg:table-cell">{r.originId ? names.get(r.originId) : '—'}</TableCell>
+                    <TableCell className="hidden max-w-48 text-sm lg:table-cell">
+                      <p className="truncate">{r.originId ? names.get(r.originId) : '—'}</p>
+                      {r.adsLabel && (
+                        <p className="truncate text-xs text-sky-700 dark:text-sky-300" title={`Google Ads: ${r.adsLabel}`}>
+                          Google Ads · {r.adsLabel}
+                        </p>
+                      )}
+                    </TableCell>
                     <TableCell className="hidden max-w-48 truncate text-sm xl:table-cell">
                       {[...r.brandIds, ...r.partTypeIds].map((id) => names.get(id)).filter(Boolean).join(', ') || '—'}
                     </TableCell>

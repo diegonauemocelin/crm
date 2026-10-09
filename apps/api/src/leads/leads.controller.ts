@@ -152,7 +152,7 @@ export class LeadsController {
     const { rows, fields } = await this.leads.exportRows(user, q, ctx)
     const header = [
       'Nome', 'E-mail', 'Telefone', 'Empresa', 'Cargo', 'Cidade', 'Estado', 'Estágio', 'Nota', 'Pontos perfil', 'Pontos interesse', 'Tags', 'Responsável', 'Unidade', 'Origem',
-      'Aceita e-mail', 'Descadastro do e-mail', 'Fonte (1ª conversão)', 'Meio (1ª conversão)', 'Campanha (1ª conversão)', 'Primeira conversão', 'Última conversão',
+      'Aceita e-mail', 'Descadastro do e-mail', 'Fonte (1ª conversão)', 'Meio (1ª conversão)', 'Campanha (1ª conversão)', 'Primeira conversão', 'Última conversão', 'Google Ads (primeira campanha)', 'Google Ads (última campanha)',
       'Cliente da loja virtual', 'Última venda', 'Valor última venda', 'Cadastro', ...fields.map((f) => f.label),
     ]
     const fmt = (d: Date | null) => (d ? new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(d) : '')
@@ -171,7 +171,7 @@ export class LeadsController {
         l.name, l.email, phone(l.phone), l.company, l.jobTitle, l.city, l.state ? (UFS[l.state as keyof typeof UFS]?.name ?? l.state) : '', STAGE_LABEL[l.stage],
         l.scoreGrade, l.scoreProfile, l.scoreInterest, l.tags.join(', '), l.owner?.name, l.unit?.name, l.origin?.name,
         l.emailOptIn ? 'Sim' : 'Não', fmt(l.emailOptOutAt), touch(l.firstConversion, 'source') || touch(l.firstConversion, 'origem'), touch(l.firstConversion, 'medium'), touch(l.firstConversion, 'campaign'),
-        fmt(l.firstConversionAt), fmt(l.lastConversionAt), l.ecommerceId ? 'Sim' : 'Não',
+        fmt(l.firstConversionAt), fmt(l.lastConversionAt), l.googleAds?.first.label, l.googleAds?.label, l.ecommerceId ? 'Sim' : 'Não',
         fmt(l.lastSaleAt), l.lastSaleValue === null ? '' : Number(l.lastSaleValue).toLocaleString('pt-BR', { minimumFractionDigits: 2 }), fmt(l.createdAt),
         ...fields.map((f) => custom((l.customFields as Record<string, unknown> | null)?.[f.key])),
       ]
