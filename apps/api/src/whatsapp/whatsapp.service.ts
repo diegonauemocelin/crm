@@ -5,12 +5,14 @@ import type { RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { env } from '../config/env'
 import { PrismaService } from '../prisma/prisma.service'
+import { ChatService } from './chat.service'
 import { EvolutionClient, EvolutionError, cleanQr, type NumberStatus, statusOf } from './evolution'
 
 export interface NumberInput {
   name: string
   unitId?: string | null
   sellerIds?: string[]
+  createRecords?: boolean
 }
 
 /** QR Code vale ~40 s na Evolution; sem leitura em 3 minutos, a conexão é cancelada. */
@@ -37,12 +39,23 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly chat: ChatService,
   ) {}
 
   onApplicationBootstrap() {
     if (!this.client) return
     this.timer = setInterval(() => void this.tick(), TICK_MS)
     this.timer.unref()
+    // Instâncias criadas por versões anteriores passam a mandar as mensagens (e o endereço certo do CRM).
+    setTimeout(() => void this.syncWebhooks(), 20_000).unref()
+  }
+
+  private async syncWebhooks() {
+    if (!this.client || !env.evolutionWebhookSecret) return
+    const numbers = await this.prisma.whatsappNumber.findMany({ where: { deletedAt: null, status: { not: 'DESCONECTADO' } }, select: { instanceName: true, name: true } })
+    for (const n of numbers) {
+      await this.client.setWebhook(n.instanceName, this.webhookUrl()).catch((err: unknown) => this.logger.warn(`Eventos do número ${n.name} não atualizados: ${(err as Error).message}`))
+    }
   }
 
   onModuleDestroy() {
@@ -107,7 +120,7 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
       const count = await tx.whatsappNumber.count({ where: { tenantId: user.tenantId, deletedAt: null } })
       if (count >= env.whatsappMaxNumbers) throw new BadRequestException(`Limite de ${env.whatsappMaxNumbers} números cadastrados. Exclua um para cadastrar outro.`)
       return tx.whatsappNumber.create({
-        data: { tenantId: user.tenantId, name, instanceName: `crm-${randomToken(9).toLowerCase().replace(/[^a-z0-9]/g, 'x')}`, unitId: d.unitId ?? null, sellerIds },
+        data: { tenantId: user.tenantId, name, instanceName: `crm-${randomToken(9).toLowerCase().replace(/[^a-z0-9]/g, 'x')}`, unitId: d.unitId ?? null, sellerIds, createRecords: d.createRecords ?? true },
       })
     })
     await this.audit.byUser(user, ctx, 'whatsapp.numero_criado', 'whatsapp_number', n.id, { nome: name })
@@ -119,7 +132,7 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
     const name = d.name.trim().slice(0, 80)
     if (name.length < 2) throw new BadRequestException('Dê um nome ao número.')
     const sellerIds = await this.assertRefs(user.tenantId, d)
-    const n = await this.prisma.whatsappNumber.update({ where: { id }, data: { name, unitId: d.unitId ?? null, sellerIds } })
+    const n = await this.prisma.whatsappNumber.update({ where: { id }, data: { name, unitId: d.unitId ?? null, sellerIds, ...(d.createRecords !== undefined ? { createRecords: d.createRecords } : {}) } })
     await this.audit.byUser(user, ctx, 'whatsapp.numero_alterado', 'whatsapp_number', id, { nome: name, vendedores: sellerIds.length })
     return this.view(n)
   }
@@ -227,9 +240,15 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
     if (!env.evolutionWebhookSecret || !safeEqual(secret, env.evolutionWebhookSecret)) return false
     const b = (body ?? {}) as { event?: string; instance?: string; data?: Record<string, unknown> }
     if (typeof b.instance !== 'string' || !/^crm-[a-z0-9x]{6,20}$/.test(b.instance)) return true
-    const n = await this.prisma.whatsappNumber.findUnique({ where: { instanceName: b.instance }, select: { id: true, deletedAt: true } })
+    const n = await this.prisma.whatsappNumber.findUnique({ where: { instanceName: b.instance } })
     if (!n || n.deletedAt) return true
     const event = String(b.event ?? '').toLowerCase().replace(/_/g, '.')
+    // Mensagem recebida, enviada pelo celular (upsert com fromMe) ou pelo CRM (send.message).
+    if (event === 'messages.upsert' || event === 'send.message') {
+      const list = Array.isArray(b.data) ? b.data : [b.data]
+      for (const item of list.slice(0, 50)) void this.chat.ingest(n, item, this.client)
+      return true
+    }
     if (event === 'qrcode.updated') {
       const qr = cleanQr((b.data?.qrcode as { base64?: unknown } | undefined)?.base64)
       if (qr) this.qrs.set(n.id, { qr, at: Date.now() })

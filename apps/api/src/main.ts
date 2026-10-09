@@ -26,6 +26,8 @@ async function bootstrap() {
   app.use('/api/public/captura/enviar', text({ type: () => true, limit: '16kb' }))
   // O webhook do Meta é validado pela assinatura do corpo exato que chegou: precisa do corpo bruto.
   app.use('/api/webhooks/meta', raw({ type: () => true, limit: '1mb' }))
+  // Eventos do WhatsApp (rede interna): mensagens com miniaturas de foto/vídeo podem passar de 1 MB.
+  app.use('/api/webhooks/whatsapp', json({ limit: '5mb' }))
   app.useBodyParser('json', { limit: '1mb' })
   app.useBodyParser('urlencoded', { limit: '1mb', extended: false })
 

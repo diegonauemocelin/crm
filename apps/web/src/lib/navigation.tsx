@@ -49,7 +49,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Pré-Vendas', to: '/pre-vendas', icon: HeadsetIcon, module: 'pre_vendas' },
       { title: 'Pós-Vendas', to: '/pos-vendas', icon: ClipboardListIcon, module: 'pos_vendas' },
       { title: 'Cadastros', to: '/cadastros-atendimento', icon: ListChecksIcon, module: 'cadastros' },
-      { title: 'Chat WhatsApp', to: '/chat', icon: MessageCircleIcon, module: 'chat', phase: 9 },
+      { title: 'Chat WhatsApp', to: '/chat', icon: MessageCircleIcon, module: 'chat' },
       { title: 'Números de WhatsApp', to: '/whatsapp/numeros', icon: SmartphoneIcon, module: 'whatsapp' },
     ],
   },

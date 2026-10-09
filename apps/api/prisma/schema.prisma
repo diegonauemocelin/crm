@@ -1290,6 +1290,8 @@ model WhatsappNumber {
   unitId         String?   @db.Uuid
   /// Vendedores que atendem por este número.
   sellerIds      String[]  @default([]) @db.Uuid
+  /// Contato novo vira lead e atendimento no Pré-Vendas (desligue em números que também recebem conversas que não são de clientes).
+  createRecords  Boolean   @default(true)
   connectingAt   DateTime?
   connectedAt    DateTime?
   disconnectedAt DateTime?
@@ -1300,4 +1302,59 @@ model WhatsappNumber {
 
   @@index([tenantId, status])
   @@map("whatsapp_numbers")
+}
+
+/// Conversa de um número da empresa com um contato (uma por número + contato).
+model WhatsappConversation {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @db.Uuid
+  numberId         String    @db.Uuid
+  /// Contato no WhatsApp (5549...@s.whatsapp.net, ou ...@lid quando o WhatsApp esconde o número).
+  jid              String
+  phone            String?
+  name             String?
+  leadId           String?   @db.Uuid
+  recordId         String?   @db.Uuid
+  assignedSellerId String?   @db.Uuid
+  /// ABERTA ou ARQUIVADA
+  status           String    @default("ABERTA")
+  unread           Int       @default(0)
+  lastMessageAt    DateTime?
+  lastPreview      String?
+  lastFromMe       Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  messages WhatsappMessage[]
+
+  @@unique([numberId, jid])
+  @@index([tenantId, lastMessageAt])
+  @@index([leadId])
+  @@map("whatsapp_conversations")
+}
+
+/// Mensagem de uma conversa (recebida ou enviada pelo celular / pelo CRM).
+model WhatsappMessage {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @db.Uuid
+  conversationId String   @db.Uuid
+  /// Id da mensagem no WhatsApp (evita gravar a mesma duas vezes).
+  waId           String
+  fromMe         Boolean
+  /// texto, imagem, audio, video, documento, figurinha, localizacao, contato, outro
+  type           String
+  text           String?
+  /// Mídia guardada no CRM (FileAsset, tipo "whatsapp"); mediaStatus: PENDENTE, OK, GRANDE, ERRO.
+  fileId         String?  @db.Uuid
+  fileName       String?
+  mime           String?
+  mediaStatus    String?
+  sentAt         DateTime
+  createdAt      DateTime @default(now())
+
+  conversation WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, waId])
+  @@index([conversationId, sentAt])
+  @@map("whatsapp_messages")
 }

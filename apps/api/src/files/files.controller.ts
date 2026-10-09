@@ -24,6 +24,8 @@ export class FilesController {
   async private(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request, @Res() res: Response) {
     const { asset, content } = await this.files.read(id)
     if (asset.tenantId !== req.user?.tenantId) throw new NotFoundException()
+    // Mídia do WhatsApp só abre pelo chat (que confere quem pode ver a conversa).
+    if (asset.kind === 'whatsapp') throw new NotFoundException()
     this.send(res, asset.mime, content, 'private, max-age=3600')
   }
 

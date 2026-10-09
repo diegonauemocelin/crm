@@ -321,7 +321,8 @@ export class CapturaService {
    * Abre o atendimento na fila de Pré-Vendas. Se o lead já tem um aberto nas últimas 24 h (ex.: clicou duas
    * vezes no WhatsApp), não duplica: usa o existente.
    */
-  private async preVendas(
+  /** Cria (ou reaproveita, se houver um das últimas 24 h) o atendimento do Pré-Vendas do lead. Usado também pelo WhatsApp. */
+  async preVendas(
     tenantId: string,
     leadId: string,
     c: { name: string | null; email: string | null; phone: string | null; city: string | null; state: string | null },

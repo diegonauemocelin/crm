@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.19.0",
+      "date": "2026-10-09",
+      "title": "WhatsApp: conversas no CRM (etapa 2)",
+      "changes": [
+        { "type": "novo", "area": "WhatsApp", "text": "Chat WhatsApp (menu Atendimento): as conversas dos números conectados chegam ao CRM, com texto, fotos, áudios, vídeos, documentos, figurinhas e localização. Lista com busca, filtro por número e não lidas; atualiza sozinha a cada poucos segundos." },
+        { "type": "novo", "area": "WhatsApp", "text": "Contato novo que chama no WhatsApp vira lead e atendimento no Pré-Vendas (origem “WhatsApp - nome do número”); quem volta depois de 7 dias sem conversa abre um novo atendimento. Pode ser desligado em cada número." },
+        { "type": "novo", "area": "WhatsApp", "text": "A conversa liga ao lead pelo telefone (com e sem o 9, sem duplicar), mostra os atalhos para o lead e a pré-venda e a campanha do Google Ads, quando houver." },
+        { "type": "melhoria", "area": "WhatsApp", "text": "Quem vê o quê segue a permissão “Chat WhatsApp”: próprios (números em que o vendedor atende), unidade ou todos. As mídias só abrem para quem pode ver a conversa." },
+        { "type": "seguranca", "area": "LGPD", "text": "Excluir os dados de um lead (LGPD) apaga também as conversas de WhatsApp e as mídias dele." }
+      ]
+    },
+    {
       "version": "0.18.1",
       "date": "2026-10-09",
       "title": "WhatsApp: correção da Evolution no servidor",

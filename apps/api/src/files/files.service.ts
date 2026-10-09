@@ -49,6 +49,16 @@ export class FilesService {
     })
   }
 
+  /** Guarda um arquivo já conferido por quem chama (ex.: mídia do WhatsApp). Nunca público. */
+  async saveBuffer(tenantId: string, kind: string, buffer: Buffer, mime: string, ext: string) {
+    const id = randomUUID()
+    const safeExt = /^[a-z0-9]{1,5}$/.test(ext) ? ext : 'bin'
+    const relative = join(tenantId, `${id}.${safeExt}`)
+    await mkdir(resolve(env.uploadDir, tenantId), { recursive: true })
+    await writeFile(resolve(env.uploadDir, relative), buffer, { mode: 0o644 })
+    return this.prisma.fileAsset.create({ data: { id, tenantId, kind, mime: mime.slice(0, 120), size: buffer.length, path: relative, isPublic: false } })
+  }
+
   /** Apaga o arquivo e o registro (quem chama confere se pode). */
   async remove(id: string) {
     const asset = await this.prisma.fileAsset.findUnique({ where: { id } })

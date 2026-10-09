@@ -6,8 +6,8 @@
 export type EvolutionState = 'open' | 'connecting' | 'close'
 export type NumberStatus = 'CONECTADO' | 'CONECTANDO' | 'DESCONECTADO'
 
-/** Eventos que a Evolution manda para o CRM em cada instância (a etapa de mensagens acrescenta MESSAGES_UPSERT). */
-export const WEBHOOK_EVENTS = ['CONNECTION_UPDATE', 'QRCODE_UPDATED']
+/** Eventos que a Evolution manda para o CRM em cada instância. */
+export const WEBHOOK_EVENTS = ['CONNECTION_UPDATE', 'QRCODE_UPDATED', 'MESSAGES_UPSERT', 'SEND_MESSAGE']
 
 export class EvolutionError extends Error {
   constructor(
@@ -116,6 +116,19 @@ export class EvolutionClient {
       // Já desconectada: tudo certo.
       if (!(err instanceof EvolutionError && (err.status === 400 || err.status === 404))) throw err
     })
+  }
+
+  /** Atualiza o endereço e os eventos de uma instância já criada (ex.: depois de uma atualização do CRM). */
+  setWebhook(instanceName: string, webhookUrl: string) {
+    return this.call('POST', `/webhook/set/${encodeURIComponent(instanceName)}`, {
+      webhook: { enabled: true, url: webhookUrl, byEvents: false, base64: false, events: WEBHOOK_EVENTS },
+    })
+  }
+
+  /** Baixa a mídia de uma mensagem (a Evolution não guarda as mensagens: vai a mensagem inteira). */
+  async media(instanceName: string, raw: { key: unknown; message: unknown }) {
+    const r = await this.call<{ base64?: string; mimetype?: string }>('POST', `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`, { message: raw, convertToMp4: false }, 60_000)
+    return typeof r?.base64 === 'string' ? { base64: r.base64, mime: typeof r.mimetype === 'string' ? r.mimetype : null } : null
   }
 
   async deleteInstance(instanceName: string) {

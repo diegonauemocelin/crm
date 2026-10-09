@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { api, errorMessage } from '@/lib/api'
 import { formatPhone, namesOf, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
@@ -26,6 +27,7 @@ interface WaNumber {
   statusReason: string | null
   unitId: string | null
   sellerIds: string[]
+  createRecords: boolean
   connectedAt: string | null
   disconnectedAt: string | null
 }
@@ -198,10 +200,11 @@ function NumberDialog({ number, onClose }: { number: WaNumber | null; onClose: (
   const [name, setName] = useState(number?.name ?? '')
   const [unitId, setUnitId] = useState<string | null>(number?.unitId ?? null)
   const [sellerIds, setSellerIds] = useState<string[]>(number?.sellerIds ?? [])
+  const [createRecords, setCreateRecords] = useState(number?.createRecords ?? true)
   const [error, setError] = useState<string | null>(null)
   const save = useMutation({
     mutationFn: () => {
-      const body = { name, unitId, sellerIds }
+      const body = { name, unitId, sellerIds, createRecords }
       return number ? api.put(`/whatsapp/numeros/${number.id}`, body) : api.post('/whatsapp/numeros', body)
     },
     onSuccess: () => {
@@ -249,7 +252,15 @@ function NumberDialog({ number, onClose }: { number: WaNumber | null; onClose: (
           <div className="space-y-1.5">
             <Label htmlFor="wa-n-sellers">Vendedores que atendem por este número</Label>
             <MultiSelect id="wa-n-sellers" items={options.data?.sellers ?? []} value={sellerIds} onChange={setSellerIds} placeholder="Selecione os vendedores" />
+            <p className="text-xs text-muted-foreground">Com um vendedor só, os contatos novos vão para a fila dele.</p>
           </div>
+          <label className="flex items-start justify-between gap-3 rounded-md border p-3 text-sm">
+            <span>
+              Contato novo vira lead e atendimento no Pré-Vendas
+              <span className="block text-xs text-muted-foreground">Também quando o cliente volta depois de 7 dias sem conversa. Desligue se o número recebe conversas que não são de clientes.</span>
+            </span>
+            <Switch checked={createRecords} onCheckedChange={setCreateRecords} />
+          </label>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
@@ -276,7 +287,9 @@ function ConnectDialog({ number, onClose }: { number: WaNumber; onClose: () => v
   })
   // Só começa uma vez ao abrir.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => start.mutate(), [])
+  useEffect(() => {
+    start.mutate()
+  }, [])
   const poll = useQuery({
     queryKey: ['whatsapp-qr', number.id],
     queryFn: () => api.get<QrData>(`/whatsapp/numeros/${number.id}/qr`),

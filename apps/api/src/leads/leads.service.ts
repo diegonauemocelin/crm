@@ -8,6 +8,7 @@ import type { RequestCtx } from '../common/decorators'
 import { type Action, can, type Scope } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import { type LeadStage, Prisma } from '../generated/prisma/client'
+import { FilesService } from '../files/files.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { adsName, OrigemAdsService } from './origem-ads.service'
@@ -67,6 +68,7 @@ export class LeadsService {
     private readonly config: LeadConfigService,
     private readonly settings: SettingsService,
     private readonly origemAds: OrigemAdsService,
+    private readonly files: FilesService,
   ) {}
 
   assertCan(user: AuthUser, action: Action) {
@@ -427,6 +429,8 @@ export class LeadsService {
   async anonymize(user: AuthUser, id: string, ctx: RequestCtx) {
     this.assertCan(user, 'delete')
     await this.load(user, id)
+    // Conversas de WhatsApp com a pessoa: mensagens e mídias saem junto.
+    const waFiles = (await this.prisma.whatsappMessage.findMany({ where: { conversation: { leadId: id }, fileId: { not: null } }, select: { fileId: true } })).map((m) => m.fileId!)
     await this.prisma.$transaction([
       this.prisma.lead.update({
         where: { id },
@@ -456,7 +460,9 @@ export class LeadsService {
       this.prisma.ecommerceOrder.updateMany({ where: { leadId: id }, data: { leadId: null, customerId: null } }),
       this.prisma.leadConsent.updateMany({ where: { leadId: id }, data: { ip: null, text: null } }),
       this.prisma.serviceRecord.updateMany({ where: { leadId: id }, data: { name: 'Dados removidos (LGPD)', phone: null, email: null, customerCode: null, notes: null } }),
+      this.prisma.whatsappConversation.deleteMany({ where: { leadId: id } }),
     ])
+    for (const f of waFiles) await this.files.remove(f).catch(() => undefined)
     await this.audit.byUser(user, ctx, 'lead.anonymized', 'lead', id)
   }
 

@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
-import { ArrayMaxSize, IsArray, IsOptional, IsString, IsUUID, Length, ValidateIf } from 'class-validator'
+import { ArrayMaxSize, IsArray, IsBoolean, IsOptional, IsString, IsUUID, Length, ValidateIf } from 'class-validator'
 import { CurrentUser, Public, ReqContext, type RequestCtx, RequirePermission } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { WhatsappService } from './whatsapp.service'
@@ -10,6 +10,7 @@ class NumberDto {
   @ApiProperty() @IsString() @Length(2, 80) name!: string
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() unitId?: string | null
   @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) sellerIds?: string[]
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() createRecords?: boolean
 }
 
 /** Eventos da Evolution API (só pela rede interna do Docker; o segredo vai no caminho). */
