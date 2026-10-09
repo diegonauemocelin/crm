@@ -219,10 +219,10 @@ export class ServiceRecordsService {
       ? { campaignId: lead.adsFirstCampaignId, label: adsName(names, lead.adsFirstCampaignId, lead.adsFirstCampaign) ?? 'campanha não identificada', at: lead.adsFirstAt }
       : null
     if (own?.adsVia === 'ANUNCIO') {
-      return { campaignId: own.adsCampaignId, campaign: (own.adsCampaignId && names[own.adsCampaignId]) || own.adsCampaign, label: adsName(names, own.adsCampaignId, own.adsCampaign) ?? 'campanha não identificada', at: own.adsTouchAt, byOrigin: false, first }
+      return { campaignId: own.adsCampaignId, campaign: (own.adsCampaignId && names[own.adsCampaignId]) || own.adsCampaign, label: adsName(names, own.adsCampaignId, own.adsCampaign) ?? 'campanha não identificada', at: own.adsTouchAt, page: own.entryPage, channel: own.entryChannel, byOrigin: false, first }
     }
-    if (own?.adsVia === 'ORIGEM') return { campaignId: null, campaign: null, label: first ? `origem do atendimento (o lead veio antes pela campanha ${first.label})` : 'campanha não identificada (pela origem do atendimento)', at: null, byOrigin: true, first }
-    return null
+    if (own?.adsVia === 'ORIGEM') return { campaignId: null, campaign: null, label: first ? `origem do atendimento (o lead veio antes pela campanha ${first.label})` : 'campanha não identificada (pela origem do atendimento)', at: null, page: own.entryPage, channel: own.entryChannel, byOrigin: true, first }
+    return own?.entryPage || own?.entryChannel ? { campaignId: null, campaign: null, label: '', at: null, page: own.entryPage, channel: own.entryChannel, byOrigin: false, first, notAds: true } : null
   }
 
   async history(user: AuthUser, id: string) {

@@ -66,6 +66,9 @@ class WhatsappDto {
   @ApiProperty() @IsString() @Length(1, 80) title!: string
   @ApiProperty() @IsString() @MaxLength(200) subtitle!: string
   @ApiProperty() @IsBoolean() askEmail!: boolean
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() requireName?: boolean
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() requireEmail?: boolean
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) originName?: string
   @ApiProperty() @IsString() @Length(1, 500) message!: string
   @ApiProperty() @IsIn(['direita', 'esquerda']) position!: 'direita' | 'esquerda'
   @ApiProperty() @Matches(HEX_COLOR) color!: string

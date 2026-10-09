@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangleIcon, ArrowRightLeftIcon, ClockIcon, Loader2Icon, MegaphoneIcon, MessageCircleIcon, Trash2Icon } from 'lucide-react'
+import { AlertTriangleIcon, ArrowRightLeftIcon, ClockIcon, Loader2Icon, MegaphoneIcon, MessageCircleIcon, Trash2Icon, GlobeIcon } from 'lucide-react'
 import { type FormEvent, type ReactNode, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -279,7 +279,22 @@ export function RecordSheet({ kind, record, onClose }: { kind: Kind; record: Ser
           )}
           <TabsContent value="dados">
             <form onSubmit={submit} className="space-y-6">
-              {linked?.googleAds && (
+              {linked?.googleAds?.notAds && (
+                <p className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 p-2.5 text-sm">
+                  <GlobeIcon className="size-4 text-muted-foreground" />
+                  <span>
+                    {linked.googleAds.channel ? `Entrou pelo ${linked.googleAds.channel}` : 'Chegou'}
+                    {linked.googleAds.page && (
+                      <>
+                        {' '}
+                        {linked.googleAds.channel ? 'na' : 'pela'} página <strong className="break-all">{linked.googleAds.page}</strong>
+                      </>
+                    )}
+                    .
+                  </span>
+                </p>
+              )}
+              {linked?.googleAds && !linked.googleAds.notAds && (
                 <p className="flex flex-wrap items-center gap-2 rounded-md border border-sky-500/40 bg-sky-500/10 p-2.5 text-sm">
                   <MegaphoneIcon className="size-4 text-sky-700 dark:text-sky-300" />
                   <span>
@@ -291,6 +306,12 @@ export function RecordSheet({ kind, record, onClose }: { kind: Kind; record: Ser
                       <>
                         Veio do <strong>Google Ads</strong>: {linked.googleAds.label}
                         {linked.googleAds.at ? ` (clique em ${formatDateTime(linked.googleAds.at)})` : ''}.
+                      </>
+                    )}
+                    {linked.googleAds.page && (
+                      <>
+                        {' '}
+                        {linked.googleAds.channel ? `Entrou pelo ${linked.googleAds.channel} na página` : 'Página de entrada:'} <strong className="break-all">{linked.googleAds.page}</strong>.
                       </>
                     )}
                     {linked.googleAds.first && !linked.googleAds.byOrigin && linked.googleAds.first.label !== linked.googleAds.label && (

@@ -855,6 +855,9 @@ const NEW_WHATSAPP = (): Omit<WhatsappButton, 'id' | 'submissions'> => ({
   title: 'Fale com a USA Parts',
   subtitle: 'Deixe seu nome e WhatsApp para iniciar a conversa.',
   askEmail: false,
+  requireName: true,
+  requireEmail: false,
+  originName: 'WhatsApp',
   message: 'Olá! Meu nome é {nome}. Vim pelo site e gostaria de atendimento.',
   position: 'direita',
   color: '#25D366',
@@ -870,6 +873,7 @@ const NEW_WHATSAPP = (): Omit<WhatsappButton, 'id' | 'submissions'> => ({
 
 function WhatsappEditor({ button, onClose }: { button: WhatsappButton | null; onClose: () => void }) {
   const qc = useQueryClient()
+  const options = useOptions()
   const [w, setW] = useState(() => (button ? { ...button, phone: formatPhone(button.phone) } : NEW_WHATSAPP()))
   const [include, setInclude] = useState(w.include.join('\n'))
   const [exclude, setExclude] = useState(w.exclude.join('\n'))
@@ -886,6 +890,9 @@ function WhatsappEditor({ button, onClose }: { button: WhatsappButton | null; on
         title: w.title,
         subtitle: w.subtitle,
         askEmail: w.askEmail,
+        requireName: w.requireName,
+        requireEmail: w.requireEmail,
+        originName: w.originName,
         message: w.message,
         position: w.position,
         color: w.color,
@@ -943,6 +950,10 @@ function WhatsappEditor({ button, onClose }: { button: WhatsappButton | null; on
             <Field label="Mensagem que abre no WhatsApp" htmlFor="wa-msg" hint="Variáveis: {nome} e {pagina}." className="space-y-1.5 sm:col-span-2">
               <Textarea id="wa-msg" rows={2} maxLength={500} value={w.message} onChange={(e) => set('message', e.target.value)} />
             </Field>
+            <Field label="Origem do lead" htmlFor="wa-origin" hint="Use um nome por LP para separar nos relatórios. Ex.: WhatsApp - LP Hyundai">
+              <Input id="wa-origin" list="wa-origins" maxLength={80} value={w.originName} onChange={(e) => set('originName', e.target.value)} />
+              <datalist id="wa-origins">{options.data?.origins.map((o) => <option key={o.id} value={o.name} />)}</datalist>
+            </Field>
             <Field label="Vendedor (fila de quem recebe)" htmlFor="wa-owner">
               <SellerPick id="wa-owner" value={w.ownerId} onChange={(v) => set('ownerId', v)} />
             </Field>
@@ -989,10 +1000,22 @@ function WhatsappEditor({ button, onClose }: { button: WhatsappButton | null; on
             </Field>
           </div>
           <div className="space-y-3 rounded-md border p-3">
+            <p className="text-sm font-medium">Campos do formulário do botão</p>
+            <p className="text-xs text-muted-foreground">O WhatsApp é sempre obrigatório. Campo obrigatório vazio não deixa iniciar a conversa.</p>
             <label className="flex items-center justify-between gap-3 text-sm">
-              Pedir também o e-mail (opcional para o visitante)
-              <Switch checked={w.askEmail} onCheckedChange={(c) => set('askEmail', c)} />
+              Nome obrigatório
+              <Switch checked={w.requireName} onCheckedChange={(c) => set('requireName', c)} />
             </label>
+            <label className="flex items-center justify-between gap-3 text-sm">
+              Pedir também o e-mail
+              <Switch checked={w.askEmail || w.requireEmail} onCheckedChange={(c) => setW((x) => ({ ...x, askEmail: c, requireEmail: c ? x.requireEmail : false }))} />
+            </label>
+            {(w.askEmail || w.requireEmail) && (
+              <label className="flex items-center justify-between gap-3 pl-4 text-sm">
+                E-mail obrigatório
+                <Switch checked={w.requireEmail} onCheckedChange={(c) => set('requireEmail', c)} />
+              </label>
+            )}
             <label className="flex items-center justify-between gap-3 text-sm">
               Criar atendimento na fila de Pré-Vendas
               <Switch checked={w.createRecord} onCheckedChange={(c) => set('createRecord', c)} />

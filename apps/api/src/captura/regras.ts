@@ -60,6 +60,15 @@ export interface SubmittedData {
 }
 
 /** Confere o envio contra o formulário. Devolve os dados limpos ou a lista de problemas por campo. */
+/** Campos do botão de WhatsApp: nome e e-mail conforme o cadastro do botão; o WhatsApp é sempre obrigatório. */
+export function whatsappFields(w: { askEmail: boolean; requireName?: boolean; requireEmail?: boolean }): FormField[] {
+  return [
+    { key: 'name', label: 'Nome', required: w.requireName !== false },
+    { key: 'phone', label: 'WhatsApp', required: true },
+    ...(w.askEmail || w.requireEmail ? [{ key: 'email', label: 'E-mail', required: !!w.requireEmail }] : []),
+  ] as FormField[]
+}
+
 export function validateSubmission(fields: FormField[], input: Record<string, unknown>): { data: SubmittedData } | { errors: Record<string, string> } {
   const errors: Record<string, string> = {}
   const data: SubmittedData = { contact: { name: null, email: null, phone: null, company: null, jobTitle: null, city: null, state: null }, custom: {}, message: null }
@@ -148,13 +157,11 @@ export function whatsappText(template: string, v: { name: string | null; page: s
 }
 
 /**
- * Número do link do WhatsApp (wa.me). No Brasil, celulares de DDD 31 em diante ficaram registrados no WhatsApp
- * sem o nono dígito: com o 9, o link responde "o número não está no WhatsApp". Em DDD 11 a 28 o 9 faz parte do número.
+ * Número para o link do WhatsApp (wa.me): só os dígitos, exatamente como cadastrado (celular com o 9).
+ * O próprio WhatsApp acerta o 9º dígito das contas antigas; tirar o 9 aqui leva a um número que não existe.
  */
 export function waDigits(phone: string) {
-  const d = phone.replace(/\D/g, '')
-  const m = /^55(\d{2})9(\d{8})$/.exec(d)
-  return m && Number(m[1]) >= 31 ? `55${m[1]}${m[2]}` : d
+  return phone.replace(/\D/g, '')
 }
 
 export function waLink(phoneE164: string, text: string) {

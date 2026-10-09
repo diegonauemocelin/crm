@@ -66,6 +66,10 @@ export interface ServiceRecord {
   googleAds?: GoogleAdsInfo | null
   /** Nas listas: campanha do Google Ads do atendimento (gravada; segue nos próximos atendimentos do mesmo lead). */
   adsLabel?: string | null
+  /** Página por onde o contato chegou (LP ou site). */
+  entryPage?: string | null
+  /** Formulário, pop-up ou botão de WhatsApp por onde entrou. */
+  entryChannel?: string | null
   kind: Kind
   leadAt: string
   name: string
@@ -175,14 +179,9 @@ export function todaySP(offsetDays = 0) {
   return d.toISOString().slice(0, 10)
 }
 
-/**
- * Número do link do WhatsApp. No Brasil, celulares de DDD 31 em diante ficaram registrados no WhatsApp sem o nono
- * dígito: com o 9, o link responde "o número não está no WhatsApp". Em DDD 11 a 28 o 9 faz parte do número.
- */
+/** Número para o link do WhatsApp (wa.me): só os dígitos, como cadastrado (celular com o 9; o WhatsApp acerta o resto). */
 export function waDigits(phone: string) {
-  const d = phone.replace(/\D/g, '')
-  const m = /^55(\d{2})9(\d{8})$/.exec(d)
-  return m && Number(m[1]) >= 31 ? `55${m[1]}${m[2]}` : d
+  return phone.replace(/\D/g, '')
 }
 
 export function whatsappLink(e164: string | null) {

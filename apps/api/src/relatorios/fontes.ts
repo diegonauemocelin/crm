@@ -186,6 +186,8 @@ export const SOURCES: Source[] = [
       { key: 'unidade', label: 'Unidade', sql: 'ru.name', joins: ['unit'] },
       { key: 'origem', label: 'Origem', sql: 'ro.name', joins: ['origin'] },
       { key: 'google_ads', label: 'Veio do Google Ads', sql: `CASE WHEN t."adsVia" IS NOT NULL THEN 'Sim' ELSE 'Não' END` },
+      { key: 'pagina_entrada', label: 'Página de entrada (LP / site)', sql: 't."entryPage"' },
+      { key: 'canal_entrada', label: 'Entrou por (formulário / pop-up / botão)', sql: 't."entryChannel"' },
       { key: 'google_ads_campanha', label: 'Campanha do Google Ads', sql: `CASE t."adsVia" WHEN 'ANUNCIO' THEN coalesce(t."adsCampaignId", t."adsCampaign", 'não identificada') WHEN 'ORIGEM' THEN 'não identificada (pela origem)' END` },
       { key: 'tipo_cliente', label: 'Tipo de cliente', sql: 'rc.name', joins: ['customerType'] },
       { key: 'estado', label: 'Estado', sql: `CASE WHEN t.country <> 'BR' THEN 'Exterior' ELSE t.state END` },

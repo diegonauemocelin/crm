@@ -423,6 +423,10 @@ model ServiceRecord {
   adsTouchAt     DateTime?
   /// Quando a campanha foi conferida (é refeita se o atendimento ou o lead mudar depois disso).
   adsCheckedAt   DateTime?
+  /// Página por onde o contato chegou (LP ou página do site), sem os parâmetros do link. Ex.: lp.usaparts.com.br/hyundai
+  entryPage      String?
+  /// Por onde entrou no site: formulário, pop-up ou botão de WhatsApp (com o nome dado na Captura).
+  entryChannel   String?
   createdById    String?       @db.Uuid
   updatedById    String?       @db.Uuid
   createdAt      DateTime      @default(now())
@@ -825,6 +829,9 @@ model CaptureWhatsapp {
   title          String   @default("Fale com a gente")
   subtitle       String   @default("")
   askEmail       Boolean  @default(false)
+  /// Campos obrigatórios do botão (o WhatsApp é sempre obrigatório).
+  requireName    Boolean  @default(true)
+  requireEmail   Boolean  @default(false)
   message        String
   position       String   @default("direita")
   color          String   @default("#25D366")
@@ -835,6 +842,8 @@ model CaptureWhatsapp {
   customerTypeId String?  @db.Uuid
   brandIds       String[] @default([]) @db.Uuid
   tags           String[]
+  /// Origem do atendimento criado pelo botão (ex.: "WhatsApp - LP Hyundai"), para separar cada LP.
+  originName     String   @default("WhatsApp")
   createRecord   Boolean  @default(true)
   active         Boolean  @default(false)
   /// Ordem de prioridade quando mais de um botão serve para a mesma página (menor primeiro).

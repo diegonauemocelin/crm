@@ -1,5 +1,5 @@
 import { Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
-import { adsFirstLast, adsForRecord, campaignLabel, DEFAULT_GOOGLE_ADS, type GoogleAdsSettings, isGoogleAdsTouch, touchAdsInfo } from '../googleads/googleads'
+import { adsFirstLast, adsForRecord, campaignLabel, DEFAULT_GOOGLE_ADS, entryPageForRecord, type GoogleAdsSettings, isGoogleAdsTouch, pageLabel, touchAdsInfo } from '../googleads/googleads'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 
@@ -107,7 +107,11 @@ export class OrigemAdsService implements OnApplicationBootstrap, OnModuleDestroy
       push(v.leadId, v.firstTouch, v.firstSeenAt, 'visita')
       push(v.leadId, v.lastTouch, v.lastSeenAt, 'visita')
     }
-    for (const c of captures) push(c.leadId, c.touch ?? (c.pageUrl ? { landing: c.pageUrl } : null), c.createdAt, 'formulario')
+    // Formulário: a página de entrada da visita; sem ela, a página onde o formulário foi enviado.
+    for (const c of captures) {
+      const t = (c.touch && typeof c.touch === 'object' ? c.touch : {}) as TouchJson
+      push(c.leadId, t.landing || !c.pageUrl ? (c.touch ?? null) : { ...t, landing: c.pageUrl }, c.createdAt, 'formulario')
+    }
     return out
   }
 
@@ -136,9 +140,10 @@ export class OrigemAdsService implements OnApplicationBootstrap, OnModuleDestroy
     const now = new Date()
     for (const r of records) {
       const info = adsForRecord(touches.get(r.leadId ?? '') ?? [], r.leadAt, names)
+      const entryPage = entryPageForRecord(touches.get(r.leadId ?? '') ?? [], r.leadAt)
       const via = info ? 'ANUNCIO' : /google/i.test(r.origin?.name ?? '') || (!!r.originId && adsOrigins.has(r.originId)) ? 'ORIGEM' : null
       await this.prisma.$executeRaw`
-        UPDATE service_records SET "adsVia" = ${via}, "adsCampaignId" = ${info?.campaignId ?? null}, "adsCampaign" = ${info?.campaign ?? null}, "adsTouchAt" = ${info?.at ?? null}, "adsCheckedAt" = ${now}
+        UPDATE service_records SET "adsVia" = ${via}, "adsCampaignId" = ${info?.campaignId ?? null}, "adsCampaign" = ${info?.campaign ?? null}, "adsTouchAt" = ${info?.at ?? null}, "entryPage" = CASE WHEN "entryChannel" IS NOT NULL AND "entryPage" IS NOT NULL THEN "entryPage" ELSE ${entryPage} END, "adsCheckedAt" = ${now}
         WHERE id = ${r.id}::uuid`
     }
   }
@@ -155,7 +160,7 @@ export class OrigemAdsService implements OnApplicationBootstrap, OnModuleDestroy
       if (lead) await this.freshLead(tenantId, lead)
     }
     await this.syncRecords(tenantId, [r.id])
-    return this.prisma.serviceRecord.findUnique({ where: { id: r.id }, select: { adsVia: true, adsCampaignId: true, adsCampaign: true, adsTouchAt: true } })
+    return this.prisma.serviceRecord.findUnique({ where: { id: r.id }, select: { adsVia: true, adsCampaignId: true, adsCampaign: true, adsTouchAt: true, entryPage: true, entryChannel: true } })
   }
 
   /** Histórico de onde o lead veio: cada conversão e visita, do mais recente ao mais antigo, com a campanha do Google Ads. */
@@ -177,11 +182,12 @@ export class OrigemAdsService implements OnApplicationBootstrap, OnModuleDestroy
           campaignId: ads?.campaignId ?? null,
           googleAds: google,
           landing: str('landing'),
+          page: pageLabel(x.t.landing),
         }
       })
       .filter((h) => {
         // A primeira/última visita costuma repetir a conversão do mesmo momento: mostra uma vez só.
-        const key = `${h.at ? Math.floor(h.at.getTime() / 600_000) : 'x'}|${h.source}|${h.medium}|${h.campaign}`
+        const key = `${h.at ? Math.floor(h.at.getTime() / 600_000) : 'x'}|${h.source}|${h.medium}|${h.campaign}|${h.page}`
         if (seen.has(key)) return false
         seen.add(key)
         return true

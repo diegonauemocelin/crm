@@ -87,7 +87,7 @@ describe('WhatsApp e redirecionamento', () => {
   it('mensagem com o primeiro nome e link wa.me', () => {
     const text = whatsappText('Olá! Meu nome é {nome}. Vim pela página {pagina}', { name: 'Maria Souza', page: 'https://loja.com/x' })
     expect(text).toBe('Olá! Meu nome é Maria. Vim pela página https://loja.com/x')
-    expect(waLink('+5547996470159', 'Oi tudo bem')).toBe('https://wa.me/554796470159?text=Oi%20tudo%20bem')
+    expect(waLink('+5547996470159', 'Oi tudo bem')).toBe('https://wa.me/5547996470159?text=Oi%20tudo%20bem')
   })
 
   it('só aceita endereços http(s)', () => {
@@ -162,14 +162,29 @@ describe('editor visual: layout', () => {
 })
 
 describe('link do WhatsApp', () => {
-  it('celular de DDD 31 em diante vai sem o nono dígito; DDD 11 a 28 mantém', async () => {
+  it('usa o número como cadastrado, com o nono dígito', async () => {
     const { waDigits, waLink } = await import('../src/captura/regras')
-    expect(waDigits('+5549988861936')).toBe('554988861936')
-    expect(waDigits('+5547996470159')).toBe('554796470159')
+    // Como cadastrado, com o 9: sem ele o WhatsApp diz que o número não existe.
+    expect(waDigits('+5549988831936')).toBe('5549988831936')
+    expect(waDigits('+5547996470159')).toBe('5547996470159')
     expect(waDigits('+5511987654321')).toBe('5511987654321')
     expect(waDigits('+5521998887766')).toBe('5521998887766')
     expect(waDigits('+554933221100')).toBe('554933221100')
     expect(waDigits('+351912345678')).toBe('351912345678')
-    expect(waLink('+5549988861936', 'Olá')).toBe('https://wa.me/554988861936?text=Ol%C3%A1')
+    expect(waLink('+5549988831936', 'Olá')).toBe('https://wa.me/5549988831936?text=Ol%C3%A1')
+  })
+})
+
+describe('botão de WhatsApp: campos obrigatórios', () => {
+  it('nome e e-mail conforme o cadastro; WhatsApp sempre obrigatório; vazio não passa', async () => {
+    const { whatsappFields, validateSubmission } = await import('../src/captura/regras')
+    expect(whatsappFields({ askEmail: false })).toEqual([
+      { key: 'name', label: 'Nome', required: true },
+      { key: 'phone', label: 'WhatsApp', required: true },
+    ])
+    const f = whatsappFields({ askEmail: true, requireName: false, requireEmail: true })
+    expect(f.map((x) => [x.key, x.required])).toEqual([['name', false], ['phone', true], ['email', true]])
+    const r = validateSubmission(f, {})
+    expect('errors' in r && Object.keys(r.errors).sort()).toEqual(['email', 'phone'])
   })
 })

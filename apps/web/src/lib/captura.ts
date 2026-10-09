@@ -79,6 +79,9 @@ export interface WhatsappButton {
   title: string
   subtitle: string
   askEmail: boolean
+  requireName: boolean
+  requireEmail: boolean
+  originName: string
   message: string
   position: 'direita' | 'esquerda'
   color: string

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import { normalizePhone } from '../atendimento/br'
 import { Prisma } from '../generated/prisma/client'
+import { pageLabel } from '../googleads/googleads'
 import { LeadCaptureService } from '../leads/lead-capture.service'
 import { LeadConfigService } from '../leads/lead-config.service'
 import { LeadsService } from '../leads/leads.service'
@@ -11,7 +12,7 @@ import { classifyDevice, CLIENT_ID, domainAllowed, type Touch } from '../rastrea
 import { RastreamentoService } from '../rastreamento/rastreamento.service'
 import { env } from '../config/env'
 import { SettingsService } from '../settings/settings.service'
-import { BASE_FIELDS, type FormField, safeRedirect, validateSubmission, waLink, whatsappText } from './regras'
+import { BASE_FIELDS, type FormField, safeRedirect, validateSubmission, waLink, whatsappText, whatsappFields } from './regras'
 
 export interface WhatsappWidget {
   enabled: boolean
@@ -21,6 +22,7 @@ export interface WhatsappWidget {
   title: string
   subtitle: string
   askEmail: boolean
+  fields?: FormField[]
   message: string
   position: 'direita' | 'esquerda'
   color: string
@@ -180,7 +182,7 @@ export class CapturaService {
         design: p.design ?? null,
       })),
       // Vários botões: o script mostra o primeiro que combina com a página e o dispositivo. O número não vai junto.
-      whatsapps: buttons.map((w) => ({ id: w.id, buttonText: w.buttonText, title: w.title, subtitle: w.subtitle, askEmail: w.askEmail, position: w.position, color: w.color, include: w.include, exclude: w.exclude, device: w.device })),
+      whatsapps: buttons.map((w) => ({ id: w.id, buttonText: w.buttonText, title: w.title, subtitle: w.subtitle, askEmail: w.askEmail, fields: whatsappFields(w), position: w.position, color: w.color, include: w.include, exclude: w.exclude, device: w.device })),
     }
   }
 
@@ -190,8 +192,6 @@ export class CapturaService {
       return { ok: true }
     }
     const s = await this.settingsOf(tenantId)
-    // Robô: responde como se tivesse dado certo, sem gravar nada.
-    if (p.hp || (typeof p.t === 'number' && p.t < MIN_FILL_MS)) return { ok: true, message: 'Recebido.' }
 
     let fields: FormField[]
     let form: Awaited<ReturnType<typeof this.prisma.captureForm.findFirst>> = null
@@ -206,11 +206,7 @@ export class CapturaService {
         : null
     if (p.kind === 'whatsapp') {
       if (!wa) return { ok: false, message: 'Atendimento por WhatsApp indisponível no momento.' }
-      fields = [
-        { key: 'name', label: 'Nome', required: true },
-        { key: 'phone', label: 'WhatsApp', required: true },
-        ...(wa!.askEmail ? [{ key: 'email', label: 'E-mail', required: false }] : []),
-      ]
+      fields = whatsappFields(wa)
     } else {
       if (!p.formId || !UUID.test(p.formId)) return { ok: false, message: 'Formulário inválido.' }
       form = await this.prisma.captureForm.findFirst({ where: { id: p.formId, tenantId, active: true } })
@@ -219,8 +215,11 @@ export class CapturaService {
       fields = form.fields as unknown as FormField[]
     }
 
+    // Campos obrigatórios primeiro: quem envia vazio (pessoa ou robô) recebe o aviso do campo, nunca "Recebido".
     const checked = validateSubmission(fields, p.d ?? {})
     if ('errors' in checked) return { ok: false, message: 'Confira os campos destacados.', errors: checked.errors }
+    // Robô (campo escondido preenchido ou envio rápido demais): responde como se tivesse dado certo, sem gravar nada.
+    if (p.hp || (typeof p.t === 'number' && p.t < MIN_FILL_MS)) return { ok: true, message: 'Recebido.' }
     const { contact, custom, message } = checked.data
 
     // Campos personalizados no tipo certo (número, data, lista...).
@@ -251,7 +250,7 @@ export class CapturaService {
     const channelName = p.kind === 'whatsapp' ? `botão de WhatsApp "${wa!.name}"` : popup ? `pop-up "${popup.name}"` : p.kind === 'landing' ? `landing page (formulário "${form!.name}")` : `formulário "${form!.name}"`
     const result = await this.capture.capture(tenantId, contact, {
       title: p.kind === 'whatsapp' ? 'Chamou no WhatsApp pelo site' : `Converteu no ${channelName}`,
-      originName: p.kind === 'whatsapp' ? 'WhatsApp' : form!.originName,
+      originName: p.kind === 'whatsapp' ? wa!.originName || 'WhatsApp' : form!.originName,
       touch: { ...touch, conversao: channelName, pagina: pageUrl },
       details: {
         canal: p.kind,
@@ -276,7 +275,7 @@ export class CapturaService {
     if (visitor) await this.tracking.identify(tenantId, visitor.id, result.leadId).catch(() => undefined)
 
     const createRecord = p.kind === 'whatsapp' ? wa!.createRecord : form!.createRecord
-    const recordId = createRecord ? await this.preVendas(tenantId, result.leadId, contact, channelName, p.kind === 'whatsapp' ? 'WhatsApp' : form!.originName, ownerId, message, custom, customerType?.id ?? null, brands.map((b) => b.id)).catch((err) => {
+    const recordId = createRecord ? await this.preVendas(tenantId, result.leadId, contact, channelName, p.kind === 'whatsapp' ? wa!.originName || 'WhatsApp' : form!.originName, ownerId, message, custom, customerType?.id ?? null, brands.map((b) => b.id), pageUrl).catch((err) => {
       this.logger.error(`Captura: atendimento de Pré-Vendas não criado: ${(err as Error).message}`)
       return null
     }) : null
@@ -333,6 +332,7 @@ export class CapturaService {
     custom: Record<string, string>,
     customerTypeId: string | null,
     brandIds: string[],
+    pageUrl: string | null = null,
   ) {
     const recent = await this.prisma.serviceRecord.findFirst({
       where: { tenantId, leadId, kind: 'PRE_VENDAS', deletedAt: null, createdAt: { gte: new Date(Date.now() - 24 * 3_600_000) } },
@@ -363,6 +363,9 @@ export class CapturaService {
         customerTypeId,
         brandIds,
         leadId,
+        // Formulário/botão e página exata da conversão: separa cada LP mesmo com o mesmo tipo de captura.
+        entryChannel: channel.slice(0, 160),
+        entryPage: pageLabel(pageUrl),
         notes: notes.slice(0, 5000),
         history: { create: { userName: 'Captura do site', action: 'criado automaticamente', changes: {} } },
       },

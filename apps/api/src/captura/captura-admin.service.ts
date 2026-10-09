@@ -40,6 +40,9 @@ export interface WhatsappInput {
   title: string
   subtitle: string
   askEmail: boolean
+  requireName?: boolean
+  requireEmail?: boolean
+  originName?: string
   message: string
   position: 'direita' | 'esquerda'
   color: string
@@ -327,7 +330,10 @@ export class CapturaAdminService {
       buttonText: d.buttonText.trim(),
       title: d.title.trim(),
       subtitle: d.subtitle.trim(),
-      askEmail: d.askEmail,
+      askEmail: d.askEmail || !!d.requireEmail,
+      requireName: d.requireName !== false,
+      requireEmail: !!d.requireEmail,
+      originName: d.originName?.trim().slice(0, 80) || 'WhatsApp',
       message: d.message.trim(),
       position: d.position,
       color: d.color,

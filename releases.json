@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.15.0",
+      "date": "2026-10-09",
+      "title": "Página de entrada, um botão por LP e campos obrigatórios",
+      "changes": [
+        { "type": "correcao", "area": "Captura", "text": "Botão de WhatsApp abria o número sem o 9 (ex.: 49 8883-1936) e o WhatsApp dizia que o número não existe. Agora o link usa o número como cadastrado, com o 9." },
+        { "type": "correcao", "area": "Captura", "text": "Formulário do botão de WhatsApp (e dos formulários e pop-ups) enviado vazio respondia “Recebido”. Agora os campos obrigatórios são conferidos na página e no servidor antes de tudo, com o aviso em cada campo." },
+        { "type": "novo", "area": "Captura", "text": "Botão de WhatsApp: escolha quais campos são obrigatórios (nome; e-mail pedido e/ou obrigatório; o WhatsApp é sempre obrigatório)." },
+        { "type": "novo", "area": "Captura", "text": "Botão de WhatsApp com a própria origem do lead (ex.: “WhatsApp - LP Hyundai”), para ter um botão por LP e separar nos relatórios." },
+        { "type": "novo", "area": "Atendimento", "text": "Cada atendimento guarda a página de entrada (LP ou site, ex.: lp.usaparts.com.br/hyundai) e por qual formulário, pop-up ou botão entrou. Aparece na lista, na ficha, na exportação e nos relatórios; na ficha do lead, cada entrada mostra a página." }
+      ]
+    },
+    {
       "version": "0.14.2",
       "date": "2026-10-09",
       "title": "Google Ads: atendimentos das origens dos anúncios",

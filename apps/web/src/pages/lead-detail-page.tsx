@@ -446,6 +446,11 @@ function Origins({ lead }: { lead: Lead }) {
                 ) : (
                   <p>{[o.source, o.medium].filter(Boolean).join(' / ') || 'Direto'}{o.campaign ? ` · ${o.campaign}` : ''}</p>
                 )}
+                {o.page && (
+                  <p className="truncate text-xs" title={o.landing ?? o.page}>
+                    Página: {o.page}
+                  </p>
+                )}
                 {o.title && <p className="truncate text-xs text-muted-foreground">{o.title}</p>}
               </li>
             ))}

@@ -211,7 +211,13 @@ export const CAPTURE_JS = `
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
       var data = {};
-      list.forEach(function (x) { x.err.textContent = ''; var v = x.input.multiple ? Array.prototype.filter.call(x.input.options, function (o) { return o.selected; }).map(function (o) { return o.value; }) : x.input.value; data[x.f.key] = v; });
+      var missing = null;
+      list.forEach(function (x) {
+        x.err.textContent = ''; var v = x.input.multiple ? Array.prototype.filter.call(x.input.options, function (o) { return o.selected; }).map(function (o) { return o.value; }) : x.input.value; data[x.f.key] = v;
+        // Obrigatório vazio: avisa no campo e não envia.
+        if (x.f.required && !(x.input.multiple ? v.length : String(v).trim())) { x.err.textContent = 'Preencha este campo.'; if (!missing) missing = x.input; }
+      });
+      if (missing) { msg.textContent = 'Preencha os campos obrigatórios (*).'; try { missing.focus(); } catch (e) {} return; }
       btn.disabled = true; msg.textContent = '';
       capSend({ kind: opts.kind, formId: opts.formId, popupId: opts.popupId, whatsappId: opts.whatsappId, d: data, consent: consent ? consent.checked : undefined, hp: hp.value, t: Date.now() - started }, function (res) {
         btn.disabled = false;
@@ -285,8 +291,8 @@ export const CAPTURE_JS = `
       panel = el('div', 'pn'); panel.style[side] = '18px';
       var hd = el('div', 'hd'); hd.style.background = c.color; hd.appendChild(el('b', null, c.title)); if (c.subtitle) hd.appendChild(el('span', null, c.subtitle)); panel.appendChild(hd);
       var inner = el('div', 'in'); panel.appendChild(inner);
-      var fields = [{ key: 'name', label: 'Nome', required: true }, { key: 'phone', label: 'WhatsApp', required: true }];
-      if (c.askEmail) fields.push({ key: 'email', label: 'E-mail', required: false });
+      var fields = c.fields || [{ key: 'name', label: 'Nome', required: true }, { key: 'phone', label: 'WhatsApp', required: true }];
+      if (!c.fields && c.askEmail) fields.push({ key: 'email', label: 'E-mail', required: false });
       renderForm(inner, { kind: 'whatsapp', whatsappId: c.id, fields: fields, submitLabel: 'Iniciar conversa', color: c.color });
       hh.r.appendChild(panel);
     };

@@ -253,6 +253,30 @@ export function adsFirstLast(touches: { t: TouchLike | null | undefined; at: Dat
   return { first: touchAdsInfo(first.t!, first.at, names), last: touchAdsInfo(last.t!, last.at, names) }
 }
 
+/** Página de entrada para mostrar: domínio + caminho, sem "www", sem parâmetros. Ex.: lp.usaparts.com.br/hyundai */
+export function pageLabel(url: unknown): string | null {
+  if (typeof url !== 'string' || !url) return null
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
+    const path = u.pathname.replace(/\/+$/, '')
+    return `${u.hostname.replace(/^www\./, '')}${path}`.slice(0, 200)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Página por onde chegou o contato de um atendimento: a do anúncio (quando veio do Google Ads) ou a da entrada mais
+ * recente até o contato (aceita até 1 dia depois, como a campanha).
+ */
+export function entryPageForRecord(touches: { t: TouchLike | null | undefined; at: Date | null }[], leadAt: Date) {
+  const limit = leadAt.getTime() + 86_400_000
+  const before = touches.filter((x) => x.t && (!x.at || x.at.getTime() <= limit) && pageLabel(x.t.landing)).sort((a, b) => (b.at?.getTime() ?? 0) - (a.at?.getTime() ?? 0))
+  const pick = before.find((x) => isGoogleAdsTouch(x.t)) ?? before[0]
+  return pick ? pageLabel(pick.t!.landing) : null
+}
+
 /** Campanha de um atendimento: o anúncio mais recente até o contato (aceita até 1 dia depois, pelo atraso da integração). */
 export function adsForRecord(touches: { t: TouchLike | null | undefined; at: Date | null }[], leadAt: Date, names: Record<string, string> = {}) {
   const limit = leadAt.getTime() + 86_400_000

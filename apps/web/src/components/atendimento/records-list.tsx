@@ -390,6 +390,11 @@ export function RecordsList({ kind }: { kind: Kind }) {
                           Google Ads · {r.adsLabel}
                         </p>
                       )}
+                      {r.entryPage && (
+                        <p className="truncate text-xs text-muted-foreground" title={`Página de entrada: ${r.entryPage}${r.entryChannel ? ` · pelo ${r.entryChannel}` : ''}`}>
+                          {r.entryPage}
+                        </p>
+                      )}
                     </TableCell>
                     <TableCell className="hidden max-w-48 truncate text-sm xl:table-cell">
                       {[...r.brandIds, ...r.partTypeIds].map((id) => names.get(id)).filter(Boolean).join(', ') || '—'}

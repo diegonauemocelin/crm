@@ -27,6 +27,12 @@ export interface GoogleAdsInfo {
   label: string
   /** Quando foi o clique no anúncio. */
   at?: string | null
+  /** Atendimento: página por onde o contato chegou (LP ou site). */
+  page?: string | null
+  /** Atendimento: formulário, pop-up ou botão de WhatsApp por onde entrou. */
+  channel?: string | null
+  /** Atendimento que não veio do Google Ads, mas tem a página de entrada. */
+  notAds?: boolean
   byOrigin?: boolean
   /** Primeira campanha por onde o lead passou (de onde ele veio originalmente). */
   first?: { campaignId: string | null; label: string; at: string | null } | null
@@ -43,6 +49,8 @@ export interface LeadOrigin {
   campaignId: string | null
   googleAds: boolean
   landing: string | null
+  /** Página de entrada (domínio + caminho). */
+  page: string | null
 }
 
 export interface Lead {
