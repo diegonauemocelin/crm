@@ -389,14 +389,19 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
       (await this.prisma.lead.findMany({ where: { id: { in: [...new Set(pending.map((p) => p.leadId).filter((x): x is string => !!x))] } }, select: { id: true, email: true, phone: true, anonymizedAt: true } })).map((l) => [l.id, l]),
     )
     // Origem do atendimento: diz ao Google se o contato veio por mensagem (WhatsApp), ligação ou site.
-    const origins = new Map(
-      (await this.prisma.serviceRecord.findMany({ where: { id: { in: [...new Set(pending.map((p) => p.recordId))] } }, select: { id: true, origin: { select: { name: true } } } })).map((r) => [r.id, r.origin?.name ?? null]),
+    const records = new Map(
+      (await this.prisma.serviceRecord.findMany({ where: { id: { in: [...new Set(pending.map((p) => p.recordId))] } }, select: { id: true, lostReasonId: true, origin: { select: { name: true } } } })).map((r) => [r.id, r]),
     )
     let sent = 0
     let failed = 0
     let ignored = 0
+    // Usa sempre a conversão configurada agora: se a pessoa trocar o ID no painel, os pendentes e os com erro vão para o novo.
     const byAction = new Map<string, typeof pending>()
-    for (const p of pending) byAction.set(p.actionId, [...(byAction.get(p.actionId) ?? []), p])
+    for (const p of pending) {
+      const actionId = actionFor(s, p.kind as ConversionKind, records.get(p.recordId)?.lostReasonId ?? null)
+      if (!actionId) continue
+      byAction.set(actionId, [...(byAction.get(actionId) ?? []), p])
+    }
     for (const [actionId, list] of byAction) {
       for (let i = 0; i < list.length; i += BATCH_SIZE) {
         const chunk = list.slice(i, i + BATCH_SIZE)
@@ -408,7 +413,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
           const anon = !!lead?.anonymizedAt
           const ev = anon
             ? null
-            : buildEvent({ transactionId: p.transactionId, eventAt: p.eventAt, value: p.value === null ? null : Number(p.value), clickIds: p.clickIds as ClickIds | null, email: lead?.email ?? null, phone: lead?.phone ?? null, source: eventSourceFor(origins.get(p.recordId)) }, s.sendUserData)
+            : buildEvent({ transactionId: p.transactionId, eventAt: p.eventAt, value: p.value === null ? null : Number(p.value), clickIds: p.clickIds as ClickIds | null, email: lead?.email ?? null, phone: lead?.phone ?? null, source: eventSourceFor(records.get(p.recordId)?.origin?.name) }, s.sendUserData)
           if (!ev) {
             await this.prisma.googleAdsConversion.update({ where: { id: p.id }, data: { status: 'IGNORADO', error: anon ? 'Dados do cliente apagados a pedido (LGPD).' : 'Sem código de clique nem e-mail/telefone: o Google não teria como reconhecer o cliente.' } })
             ignored++
@@ -434,7 +439,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
     const ids = items.map((x) => x.id)
     try {
       const requestId = await this.ingest(tenantId, s, actionId, items.map((x) => x.ev))
-      await this.prisma.googleAdsConversion.updateMany({ where: { id: { in: ids } }, data: { status: 'ENVIADO', requestId, error: null, sentAt: new Date(), attempts: { increment: 1 } } })
+      await this.prisma.googleAdsConversion.updateMany({ where: { id: { in: ids } }, data: { status: 'ENVIADO', actionId, requestId, error: null, sentAt: new Date(), attempts: { increment: 1 } } })
       return { sent: ids.length, failed: 0 }
     } catch (err) {
       const msg = (err as Error).message
@@ -444,7 +449,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
         const b = await this.sendChunk(tenantId, s, actionId, items.slice(half), depth + 1)
         return { sent: a.sent + b.sent, failed: a.failed + b.failed }
       }
-      await this.prisma.googleAdsConversion.updateMany({ where: { id: { in: ids } }, data: { status: 'ERRO', error: msg.slice(0, 500), attempts: { increment: 1 } } })
+      await this.prisma.googleAdsConversion.updateMany({ where: { id: { in: ids } }, data: { status: 'ERRO', actionId, error: msg.slice(0, 500), attempts: { increment: 1 } } })
       this.logger.warn(`Google Ads: envio recusado (${ids.length} conversões, ação ${actionId}): ${msg}`)
       return { sent: 0, failed: ids.length }
     }

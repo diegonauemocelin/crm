@@ -172,7 +172,7 @@ describe('Google Ads: lote recusado por alguns eventos', () => {
     const { encrypt } = await import('../src/common/crypto')
     const { DEFAULT_GOOGLE_ADS } = await import('../src/googleads/googleads')
     const pem = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
-    const rows = Array.from({ length: 42 }, (_, i) => ({ id: `c${i}`, recordId: `rec${i}`, leadId: null, transactionId: `r${i}:venda`, actionId: '200', eventAt: new Date(), value: null, clickIds: { gclid: i === 7 || i === 30 ? 'RUIM_xxxxxxxx' : `Cj0KCQjwBom${i}xx` } }))
+    const rows = Array.from({ length: 42 }, (_, i) => ({ id: `c${i}`, recordId: `rec${i}`, leadId: null, kind: 'venda', transactionId: `r${i}:venda`, actionId: '200', eventAt: new Date(), value: null, clickIds: { gclid: i === 7 || i === 30 ? 'RUIM_xxxxxxxx' : `Cj0KCQjwBom${i}xx` } }))
     const status = new Map<string, string>()
     const prisma = {
       googleAdsConversion: {
@@ -183,14 +183,16 @@ describe('Google Ads: lote recusado por alguns eventos', () => {
       lead: { findMany: async () => [] },
       serviceRecord: { findMany: async () => [] },
     }
-    const s = { ...DEFAULT_GOOGLE_ADS, enabled: true, customerId: '1234567890', clientEmail: 'crm@p.iam.gserviceaccount.com', privateKeyEnc: encrypt(pem) }
+    const s = { ...DEFAULT_GOOGLE_ADS, enabled: true, customerId: '1234567890', clientEmail: 'crm@p.iam.gserviceaccount.com', privateKeyEnc: encrypt(pem), actions: { ...DEFAULT_GOOGLE_ADS.actions, venda: '300' } }
     const service = new GoogleAdsService(prisma as never, {} as never, {} as never)
     const original = globalThis.fetch
     let calls = 0
     globalThis.fetch = (async (url: string, init: RequestInit) => {
       if (String(url).includes('oauth2')) return new Response(JSON.stringify({ access_token: 't', expires_in: 3600 }))
       calls++
-      const body = JSON.parse(String(init.body)) as { events: { adIdentifiers?: { gclid?: string } }[] }
+      const body = JSON.parse(String(init.body)) as { destinations: { productDestinationId: string }[]; events: { adIdentifiers?: { gclid?: string } }[] }
+      // Vai para a conversão configurada agora (300), não a guardada quando o envio foi registrado (200).
+      if (body.destinations[0]!.productDestinationId !== '300') return new Response(JSON.stringify({ error: { status: 'INVALID_ARGUMENT', message: 'wrong action' } }), { status: 400 })
       if (body.events.some((e) => e.adIdentifiers?.gclid?.startsWith('RUIM'))) return new Response(JSON.stringify({ error: { status: 'INVALID_ARGUMENT', message: 'Invalid gclid' } }), { status: 400 })
       return new Response(JSON.stringify({ requestId: 'ok' }))
     }) as typeof fetch

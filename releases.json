@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.13.3",
+      "date": "2026-10-09",
+      "title": "Google Ads: envios usam a conversão atual",
+      "changes": [
+        { "type": "correcao", "area": "Google Ads", "text": "Ao trocar o ID de uma conversão nas configurações, os envios pendentes e os que deram erro passam a ir para a conversão nova. Antes continuavam indo para a antiga." }
+      ]
+    },
+    {
       "version": "0.13.2",
       "date": "2026-10-09",
       "title": "Google Ads: origem do evento e motivo dos erros",
