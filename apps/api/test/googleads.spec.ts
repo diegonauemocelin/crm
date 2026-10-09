@@ -184,7 +184,10 @@ describe('Google Ads: lote recusado por alguns eventos', () => {
       serviceRecord: { findMany: async () => [] },
     }
     const s = { ...DEFAULT_GOOGLE_ADS, enabled: true, customerId: '1234567890', clientEmail: 'crm@p.iam.gserviceaccount.com', privateKeyEnc: encrypt(pem), actions: { ...DEFAULT_GOOGLE_ADS.actions, venda: '300' } }
-    const service = new GoogleAdsService(prisma as never, {} as never, {} as never)
+    const store = new Map<string, object>()
+    const settings = { get: async (_t: string, k: string, d: object) => store.get(k) ?? d, set: async (_t: string, k: string, v: object) => (store.set(k, v), v) }
+    const service = new GoogleAdsService(prisma as never, settings as never, {} as never)
+    service.gapMs = 0
     const original = globalThis.fetch
     let calls = 0
     globalThis.fetch = (async (url: string, init: RequestInit) => {
@@ -244,5 +247,66 @@ describe('Google Ads: origem gravada no lead e no atendimento', () => {
     // Antes de qualquer anúncio: sem campanha.
     expect(adsForRecord(touches, d('2026-07-01'), names)).toBeNull()
     expect(adsFirstLast([{ t: { source: 'direto', medium: 'direto' }, at: null }])).toBeNull()
+  })
+})
+
+describe('Google Ads: ritmo de envio', () => {
+  async function setup(fetchImpl: (body: unknown) => Response) {
+    const { generateKeyPairSync } = await import('node:crypto')
+    const { GoogleAdsService } = await import('../src/googleads/googleads.service')
+    const { encrypt } = await import('../src/common/crypto')
+    const { DEFAULT_GOOGLE_ADS } = await import('../src/googleads/googleads')
+    const pem = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
+    const rows = Array.from({ length: 1200 }, (_, i) => ({ id: `c${i}`, recordId: `rec${i}`, leadId: null, kind: 'venda', transactionId: `r${i}:venda`, actionId: '300', eventAt: new Date(), value: null, clickIds: { gclid: `Cj0KCQjwBom${i}xx` } }))
+    const status = new Map<string, string>()
+    const prisma = {
+      googleAdsConversion: {
+        findMany: async () => rows,
+        update: async () => undefined,
+        updateMany: async ({ where, data }: { where: { id: { in: string[] } }; data: { status?: string } }) => where.id.in.forEach((id) => data.status && status.set(id, data.status)),
+      },
+      lead: { findMany: async () => [] },
+      serviceRecord: { findMany: async () => [] },
+    }
+    const s = { ...DEFAULT_GOOGLE_ADS, enabled: true, customerId: '1234567890', clientEmail: 'crm@p.iam.gserviceaccount.com', privateKeyEnc: encrypt(pem), actions: { ...DEFAULT_GOOGLE_ADS.actions, venda: '300' } }
+    const store = new Map<string, object>([['google_ads', s]])
+    const settings = { get: async (_t: string, k: string, d: object) => store.get(k) ?? d, set: async (_t: string, k: string, v: object) => (store.set(k, v), v) }
+    const service = new GoogleAdsService(prisma as never, settings as never, { byUser: async () => undefined } as never)
+    service.gapMs = 0
+    let calls = 0
+    const original = globalThis.fetch
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      if (String(url).includes('oauth2')) return new Response(JSON.stringify({ access_token: 't', expires_in: 3600 }))
+      calls++
+      return fetchImpl(JSON.parse(String(init.body)))
+    }) as typeof fetch
+    return { service, s, status, store, calls: () => calls, restore: () => (globalThis.fetch = original) }
+  }
+
+  it('para tudo quando o Google pede para esperar (429), sem contar tentativa nem dividir o lote', async () => {
+    const t = await setup(() => new Response(JSON.stringify({ error: { status: 'RESOURCE_EXHAUSTED', message: 'Quota' } }), { status: 429 }))
+    try {
+      const r = await t.service.send('t', t.s)
+      expect(t.calls()).toBe(1)
+      expect(r.sent).toBe(0)
+      expect(r.paused).toMatch(/Limite de envios do Google/)
+      expect(t.status.size).toBe(0)
+      expect((t.store.get('google_ads_sync') as { pausedReason?: string }).pausedReason).toMatch(/Limite/)
+    } finally {
+      t.restore()
+    }
+  })
+
+  it('"Enviar agora" no máximo 1 vez a cada 10 minutos', async () => {
+    const t = await setup(() => new Response(JSON.stringify({ requestId: 'ok' })))
+    const user = { id: 'u', tenantId: 't' } as never
+    try {
+      await t.service.sendNow(user, {} as never)
+      await expect(t.service.sendNow(user, {} as never)).rejects.toThrow(/1 vez a cada 10 minutos/)
+      const sync = t.store.get('google_ads_sync') as { lastAutoAt?: string; lastManualAt?: string }
+      expect(sync.lastAutoAt).toBe(sync.lastManualAt)
+    } finally {
+      t.restore()
+    }
   })
 })

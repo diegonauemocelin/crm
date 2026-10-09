@@ -36,6 +36,9 @@ interface Config {
   updatedAt: string | null
 }
 interface Status {
+  lastRunAt: string | null
+  nextRunAt: string | null
+  pausedReason: string | null
   counts: { kind: Kind; status: string; count: number }[]
   recent: { id: string; leadId: string | null; leadName: string | null; kind: Kind; status: string; error: string | null; eventAt: string; value: number | null; campaign: string | null; byClick: boolean; sentAt: string | null }[]
 }
@@ -125,13 +128,14 @@ function Editor({ initial }: { initial: Config }) {
   const sendNow = async () => {
     setBusy('send')
     try {
-      const r = await api.post<{ since: string; considered: number; matched: number; registered: number; sent: number; failed: number; ignored: number }>('/integracoes/google-ads/enviar')
+      const r = await api.post<{ since: string; considered: number; matched: number; registered: number; sent: number; failed: number; ignored: number; paused: string | null }>('/integracoes/google-ads/enviar')
       const desde = r.since.split('-').reverse().join('/')
       // Explica o resultado: quantos atendimentos olhou, quantos entraram nas regras e por que ficou zero.
       const resumo = `${int.format(r.considered)} atendimento(s) do Pré-Vendas desde ${desde}; ${int.format(r.matched)} vieram de anúncio ou de origem marcada.`
       if (r.considered === 0) toast.info(`Nenhum atendimento do Pré-Vendas desde ${desde}. Volte a data de “Atendimentos a partir de” (até 60 dias).`, { duration: 10_000 })
       else if (r.matched === 0) toast.info(`${resumo} Marque em “Quais contatos enviar” as origens que recebem os contatos dos anúncios (ex.: WhatsApp, Site - LP).`, { duration: 12_000 })
       else if (r.sent + r.failed + r.ignored === 0) toast.info(`${resumo} Nenhum resultado novo: os que tinham já foram enviados, ou falta preencher o ID da conversão desse resultado.`, { duration: 12_000 })
+      else if (r.paused) toast.warning(`${resumo} ${int.format(r.sent)} enviado(s) antes de o Google pedir uma pausa: ${r.paused} O restante vai no próximo envio automático (em até 2 horas).`, { duration: 14_000 })
       else toast.success(`${resumo} ${int.format(r.sent)} enviado(s), ${int.format(r.failed)} com erro, ${int.format(r.ignored)} sem como o Google reconhecer o cliente.`, { duration: 10_000 })
       void qc.invalidateQueries({ queryKey: ['google-ads-envios'] })
     } catch (err) {
@@ -154,7 +158,7 @@ function Editor({ initial }: { initial: Config }) {
             </CardTitle>
             <CardDescription>
               Devolve ao Google Ads o resultado de cada contato que veio de anúncio (venda com o valor, perda pelo motivo, retorno do vendedor), direto pela API do Google, a cada
-              15 minutos. O Google usa isso para mostrar os anúncios a quem compra de verdade.
+              2 horas. O Google usa isso para mostrar os anúncios a quem compra de verdade.
             </CardDescription>
           </CardHeader>
           <CardContent className="mt-4 space-y-5">
@@ -384,9 +388,19 @@ function Sends() {
     <Card>
       <CardHeader>
         <CardTitle>Envios ao Google Ads</CardTitle>
-        <CardDescription>Cada resultado vai uma vez só. Erros são tentados de novo a cada hora (até 5 vezes).</CardDescription>
+        <CardDescription>Cada resultado vai uma vez só. Envio automático a cada 2 horas; os erros são tentados de novo nesses envios (até 5 vezes).</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {(q.data.lastRunAt || q.data.pausedReason) && (
+          <p className="text-sm text-muted-foreground">
+            {q.data.lastRunAt && <>Último envio: {formatDateTime(q.data.lastRunAt)} · próximo automático: {formatDateTime(q.data.nextRunAt)}.</>}
+          </p>
+        )}
+        {q.data.pausedReason && (
+          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-sm">
+            O último envio foi pausado a pedido do Google: {q.data.pausedReason} O restante vai no próximo envio automático.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           {(['venda', 'perda', 'negociacao', 'contato'] as Kind[]).map((k) => (
             <div key={k} className="rounded-md border p-3">

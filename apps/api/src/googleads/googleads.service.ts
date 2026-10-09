@@ -42,8 +42,26 @@ export interface ScanStats {
   matched: number
   registered: number
 }
-const TICK_MS = 15 * 60_000
+/** Confere a cada 10 minutos se já passou o intervalo; o envio automático em si é a cada 2 horas. */
+const TICK_MS = 10 * 60_000
+/** Intervalo do envio automático ao Google (ritmo calmo; o Google pede ao menos 1 envio por dia). */
+export const AUTO_INTERVAL_MS = 2 * 3_600_000
+/** "Enviar agora": no máximo 1 vez a cada 10 minutos. */
+export const MANUAL_GAP_MS = 10 * 60_000
+/** Pausa entre um pedido e outro ao Google, para não mandar em rajada. */
+const REQUEST_GAP_MS = 1000
 const MAX_ATTEMPTS = 5
+const SYNC_KEY = 'google_ads_sync'
+interface SyncState {
+  lastAutoAt?: string
+  lastManualAt?: string
+  /** Último aviso do Google para esperar (limite atingido / fora do ar): o resto fica para a janela seguinte. */
+  pausedReason?: string | null
+}
+
+/** Limite do Google, Google fora do ar ou falha de rede: para de enviar agora e tenta na próxima janela. */
+export class AdsRetryLater extends Error {}
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 interface TouchJson {
   source?: string
@@ -67,7 +85,7 @@ export interface GoogleAdsInput {
 }
 
 /**
- * Retorno dos atendimentos para o Google Ads: a cada 15 minutos registra os resultados novos (contato, retorno do
+ * Retorno dos atendimentos para o Google Ads: a cada 2 horas registra os resultados novos (contato, retorno do
  * vendedor, venda, perda por motivo) de quem veio de anúncio e envia pela Data Manager API. Cada resultado vai uma vez só.
  */
 @Injectable()
@@ -76,6 +94,8 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
   private timer: NodeJS.Timeout | null = null
   private running = false
   private readonly tokens = new Map<string, { token: Promise<string>; until: number }>()
+  /** Pausa entre pedidos ao Google (os testes zeram). */
+  gapMs = REQUEST_GAP_MS
 
   constructor(
     private readonly prisma: PrismaService,
@@ -245,9 +265,15 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
       body: JSON.stringify(ingestBody(s, actionId, events, validateOnly)),
       signal: AbortSignal.timeout(30_000),
       redirect: 'error',
+    }).catch((err: unknown) => {
+      throw new AdsRetryLater(`Sem conexão com o Google (${(err as Error).name === 'TimeoutError' ? 'demorou demais' : 'falha de rede'}). O CRM tenta de novo mais tarde.`)
     })
     const body = (await res.json().catch(() => null)) as { requestId?: string } | null
-    if (!res.ok) throw new Error(adsError(res.status, body, s.clientEmail))
+    if (!res.ok) {
+      const msg = adsError(res.status, body, s.clientEmail)
+      if (res.status === 429 || res.status >= 500) throw new AdsRetryLater(msg)
+      throw new Error(msg)
+    }
     return body?.requestId ?? null
   }
 
@@ -268,6 +294,14 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
 
   // ---------- Registro dos resultados ----------
 
+  private async syncState(tenantId: string) {
+    return this.settings.get<SyncState>(tenantId, SYNC_KEY, {})
+  }
+
+  private async setSyncState(tenantId: string, patch: SyncState) {
+    await this.settings.set(tenantId, SYNC_KEY, { ...(await this.syncState(tenantId)), ...patch })
+  }
+
   private async tick() {
     if (this.running) return
     this.running = true
@@ -276,6 +310,10 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
       for (const r of rows) {
         const s = await this.config(r.tenantId)
         if (!s.enabled || !s.customerId || !s.privateKeyEnc) continue
+        // A hora do último envio fica no banco: reiniciar ou atualizar o CRM não dispara envio fora do ritmo de 2 horas.
+        const state = await this.syncState(r.tenantId)
+        if (state.lastAutoAt && Date.now() - Date.parse(state.lastAutoAt) < AUTO_INTERVAL_MS) continue
+        await this.setSyncState(r.tenantId, { lastAutoAt: new Date().toISOString() })
         await this.scan(r.tenantId, s).catch((err: unknown) => this.logger.error(`Google Ads (registro): ${(err as Error).message}`))
         await this.send(r.tenantId, s).catch((err: unknown) => this.logger.error(`Google Ads (envio): ${(err as Error).message}`))
       }
@@ -376,15 +414,18 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
     return { since, considered: records.length, matched, registered: rows.length }
   }
 
-  /** Envia os pendentes (e tenta de novo os que deram erro, até 5 vezes, com intervalo de 1 hora). */
+  /** Envia os pendentes (e tenta de novo os que deram erro, até 5 vezes, um por envio automático de 2 horas). */
   /** retryNow (botão "Enviar agora"): tenta de novo na hora todos os que deram erro, sem esperar e sem o limite de tentativas. */
   async send(tenantId: string, s: GoogleAdsSettings, retryNow = false) {
     const pending = await this.prisma.googleAdsConversion.findMany({
-      where: { tenantId, OR: [{ status: 'PENDENTE' }, retryNow ? { status: 'ERRO' } : { status: 'ERRO', attempts: { lt: MAX_ATTEMPTS }, updatedAt: { lt: new Date(Date.now() - 3_600_000) } }] },
+      where: { tenantId, OR: [{ status: 'PENDENTE' }, retryNow ? { status: 'ERRO' } : { status: 'ERRO', attempts: { lt: MAX_ATTEMPTS }, updatedAt: { lt: new Date(Date.now() - AUTO_INTERVAL_MS + 2 * TICK_MS) } }] },
       orderBy: { eventAt: 'asc' },
       take: 5000,
     })
-    if (!pending.length) return { sent: 0, failed: 0, ignored: 0 }
+    if (!pending.length) {
+      await this.setSyncState(tenantId, { pausedReason: null })
+      return { sent: 0, failed: 0, ignored: 0, paused: null as string | null }
+    }
     const leads = new Map(
       (await this.prisma.lead.findMany({ where: { id: { in: [...new Set(pending.map((p) => p.leadId).filter((x): x is string => !!x))] } }, select: { id: true, email: true, phone: true, anonymizedAt: true } })).map((l) => [l.id, l]),
     )
@@ -423,12 +464,21 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
           included.push(p.id)
         }
         if (!events.length) continue
-        const r = await this.sendChunk(tenantId, s, actionId, included.map((id, k) => ({ id, ev: events[k]! })), 0)
-        sent += r.sent
-        failed += r.failed
+        try {
+          const r = await this.sendChunk(tenantId, s, actionId, included.map((id, k) => ({ id, ev: events[k]! })), 0)
+          sent += r.sent
+          failed += r.failed
+        } catch (err) {
+          if (!(err instanceof AdsRetryLater)) throw err
+          // O Google pediu para esperar (ou não respondeu): para tudo agora; o resto fica para a próxima janela.
+          this.logger.warn(`Google Ads: envio pausado até a próxima janela: ${err.message}`)
+          await this.setSyncState(tenantId, { pausedReason: err.message })
+          return { sent, failed, ignored, paused: err.message }
+        }
       }
     }
-    return { sent, failed, ignored }
+    await this.setSyncState(tenantId, { pausedReason: null })
+    return { sent, failed, ignored, paused: null as string | null }
   }
 
   /**
@@ -438,11 +488,17 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
   private async sendChunk(tenantId: string, s: GoogleAdsSettings, actionId: string, items: { id: string; ev: object }[], depth: number): Promise<{ sent: number; failed: number }> {
     const ids = items.map((x) => x.id)
     try {
+      if (this.gapMs) await sleep(this.gapMs)
       const requestId = await this.ingest(tenantId, s, actionId, items.map((x) => x.ev))
       await this.prisma.googleAdsConversion.updateMany({ where: { id: { in: ids } }, data: { status: 'ENVIADO', actionId, requestId, error: null, sentAt: new Date(), attempts: { increment: 1 } } })
       return { sent: ids.length, failed: 0 }
     } catch (err) {
       const msg = (err as Error).message
+      if (err instanceof AdsRetryLater) {
+        // Não conta como tentativa: o problema é do lado do Google ou da rede, não do dado.
+        await this.prisma.googleAdsConversion.updateMany({ where: { id: { in: ids }, status: 'ERRO' }, data: { error: msg.slice(0, 500) } })
+        throw err
+      }
       if (items.length > 1 && depth < 4 && msg.startsWith('O Google recusou o envio')) {
         const half = Math.ceil(items.length / 2)
         const a = await this.sendChunk(tenantId, s, actionId, items.slice(0, half), depth + 1)
@@ -458,6 +514,12 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
   async sendNow(user: AuthUser, ctx: RequestCtx) {
     const s = await this.config(user.tenantId)
     if (!s.enabled) throw new BadRequestException('Ligue a integração antes de enviar.')
+    const state = await this.syncState(user.tenantId)
+    const wait = state.lastManualAt ? MANUAL_GAP_MS - (Date.now() - Date.parse(state.lastManualAt)) : 0
+    if (wait > 0) throw new BadRequestException(`Para não sobrecarregar o Google, “Enviar agora” pode ser usado 1 vez a cada 10 minutos. Tente de novo em ${Math.ceil(wait / 60_000)} min.`)
+    // Também reinicia a contagem do envio automático (o próximo fica para daqui a 2 horas).
+    const now = new Date().toISOString()
+    await this.setSyncState(user.tenantId, { lastManualAt: now, lastAutoAt: now })
     const stats = await this.scan(user.tenantId, s)
     const r = await this.send(user.tenantId, s, true)
     await this.audit.byUser(user, ctx, 'google_ads.sent_now', 'settings', 'google_ads', { registrados: stats.registered, ...r })
@@ -466,14 +528,18 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
 
   /** Acompanhamento: quantos de cada resultado e situação, e os últimos registros. */
   async status(user: AuthUser) {
-    const [groups, recent] = await Promise.all([
+    const [groups, recent, sync] = await Promise.all([
       this.prisma.googleAdsConversion.groupBy({ by: ['kind', 'status'], where: { tenantId: user.tenantId }, _count: { _all: true } }),
       this.prisma.googleAdsConversion.findMany({ where: { tenantId: user.tenantId }, orderBy: { updatedAt: 'desc' }, take: 50 }),
+      this.syncState(user.tenantId),
     ])
     const names = new Map(
       (await this.prisma.lead.findMany({ where: { id: { in: recent.map((r) => r.leadId).filter((x): x is string => !!x) } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]),
     )
     return {
+      lastRunAt: sync.lastAutoAt ?? null,
+      nextRunAt: sync.lastAutoAt ? new Date(Date.parse(sync.lastAutoAt) + AUTO_INTERVAL_MS).toISOString() : null,
+      pausedReason: sync.pausedReason ?? null,
       counts: groups.map((g) => ({ kind: g.kind, status: g.status, count: g._count._all })),
       recent: recent.map((r) => ({
         id: r.id,

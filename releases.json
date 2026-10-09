@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.14.1",
+      "date": "2026-10-09",
+      "title": "Google Ads: envio a cada 2 horas, com pausa a pedido do Google",
+      "changes": [
+        { "type": "melhoria", "area": "Google Ads", "text": "Envio automático a cada 2 horas (antes, 15 minutos). A hora do último envio fica gravada: reiniciar ou atualizar o CRM não gera envio fora do ritmo." },
+        { "type": "melhoria", "area": "Google Ads", "text": "“Enviar agora” pode ser usado 1 vez a cada 10 minutos e reinicia a contagem das 2 horas." },
+        { "type": "melhoria", "area": "Google Ads", "text": "Se o Google pedir para esperar (limite atingido), estiver fora do ar ou a rede falhar, o CRM para o envio na hora e manda o restante na próxima janela, sem gastar tentativas. Pausa de 1 segundo entre um pedido e outro." },
+        { "type": "melhoria", "area": "Google Ads", "text": "Painel mostra o último envio, o próximo automático e o aviso quando o Google pediu pausa." }
+      ]
+    },
+    {
       "version": "0.14.0",
       "date": "2026-10-09",
       "title": "Campanha do Google Ads em cada lead e atendimento",
