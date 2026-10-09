@@ -74,6 +74,10 @@ diagnostico() {
   echo "Pacotes com atualização pendente: $(apt list --upgradable 2>/dev/null | grep -c upgradable)"
   [ -f /var/run/reboot-required ] && echo "O servidor pede reinicialização para concluir atualizações."
 
+  secao "Memória"
+  free -h
+  if tem docker; then docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}' 2>/dev/null; fi
+
   secao "Relógio (2FA depende dele)"
   timedatectl 2>/dev/null | grep -E 'Local time|synchronized'
 
