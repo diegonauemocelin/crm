@@ -568,6 +568,6 @@ export class ServiceRecordsService {
 /** Texto curto da campanha do Google Ads do atendimento, para listas e exportação. */
 export function recordAdsLabel(names: Record<string, string>, r: { adsVia: string | null; adsCampaignId: string | null; adsCampaign: string | null }) {
   if (r.adsVia === 'ANUNCIO') return adsName(names, r.adsCampaignId, r.adsCampaign) ?? 'campanha não identificada'
-  if (r.adsVia === 'ORIGEM') return 'campanha não identificada (pela origem)'
+  if (r.adsVia === 'ORIGEM') return 'campanha não identificada (pela origem do atendimento)'
   return null
 }

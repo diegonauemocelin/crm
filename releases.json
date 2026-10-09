@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.14.2",
+      "date": "2026-10-09",
+      "title": "Google Ads: atendimentos das origens dos anúncios",
+      "changes": [
+        { "type": "melhoria", "area": "Google Ads", "text": "Atendimentos das origens marcadas em “Quais contatos enviar” (ex.: WhatsApp da LP) passam a aparecer como Google Ads nas listas, na ficha, nos relatórios e na exportação (“campanha não identificada”, quando o contato não passou pelo site). Ao mudar essas origens, a marcação é refeita." }
+      ]
+    },
+    {
       "version": "0.14.1",
       "date": "2026-10-09",
       "title": "Google Ads: envio a cada 2 horas, com pausa a pedido do Google",

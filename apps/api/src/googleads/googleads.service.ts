@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger, Optional, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import { decrypt, encrypt, randomToken, safeEqual, sha256 } from '../common/crypto'
 import { env } from '../config/env'
 import type { RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import type { Prisma } from '../generated/prisma/client'
+import { OrigemAdsService } from '../leads/origem-ads.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { GA_TOKEN_URL, parseKeyFile, signJwt } from '../relatorios/ga4'
 import { SettingsService } from '../settings/settings.service'
@@ -101,6 +102,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly audit: AuditService,
+    @Optional() private readonly origemAds?: OrigemAdsService,
   ) {}
 
   onApplicationBootstrap() {
@@ -210,6 +212,9 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
       if (!Object.values(main).some(Boolean) && !Object.values(perdaPorMotivo).some((v) => v && v !== '-')) throw new BadRequestException('Informe ao menos uma conversão (ex.: a de venda).')
     }
     await this.settings.set(user.tenantId, 'google_ads', next)
+    // Mudaram as origens dos anúncios: refaz a marcação "veio do Google Ads" dos atendimentos.
+    const sameOrigins = [...(current.originIds ?? [])].sort().join() === [...next.originIds].sort().join()
+    if (!sameOrigins) await this.origemAds?.recheckRecords(user.tenantId)
     for (const k of this.tokens.keys()) if (k.startsWith(`${user.tenantId}:`)) this.tokens.delete(k)
     await this.audit.byUser(user, ctx, 'settings.google_ads_updated', 'settings', 'google_ads', {
       ativo: next.enabled,
