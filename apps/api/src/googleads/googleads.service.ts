@@ -26,6 +26,7 @@ import {
   DEFAULT_GOOGLE_ADS,
   DM_INGEST_URL,
   DM_SCOPE,
+  eventSourceFor,
   type GoogleAdsSettings,
   ingestBody,
   isGoogleAdsTouch,
@@ -376,15 +377,20 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
   }
 
   /** Envia os pendentes (e tenta de novo os que deram erro, até 5 vezes, com intervalo de 1 hora). */
-  async send(tenantId: string, s: GoogleAdsSettings) {
+  /** retryNow (botão "Enviar agora"): tenta de novo na hora todos os que deram erro, sem esperar e sem o limite de tentativas. */
+  async send(tenantId: string, s: GoogleAdsSettings, retryNow = false) {
     const pending = await this.prisma.googleAdsConversion.findMany({
-      where: { tenantId, OR: [{ status: 'PENDENTE' }, { status: 'ERRO', attempts: { lt: MAX_ATTEMPTS }, updatedAt: { lt: new Date(Date.now() - 3_600_000) } }] },
+      where: { tenantId, OR: [{ status: 'PENDENTE' }, retryNow ? { status: 'ERRO' } : { status: 'ERRO', attempts: { lt: MAX_ATTEMPTS }, updatedAt: { lt: new Date(Date.now() - 3_600_000) } }] },
       orderBy: { eventAt: 'asc' },
       take: 5000,
     })
     if (!pending.length) return { sent: 0, failed: 0, ignored: 0 }
     const leads = new Map(
       (await this.prisma.lead.findMany({ where: { id: { in: [...new Set(pending.map((p) => p.leadId).filter((x): x is string => !!x))] } }, select: { id: true, email: true, phone: true, anonymizedAt: true } })).map((l) => [l.id, l]),
+    )
+    // Origem do atendimento: diz ao Google se o contato veio por mensagem (WhatsApp), ligação ou site.
+    const origins = new Map(
+      (await this.prisma.serviceRecord.findMany({ where: { id: { in: [...new Set(pending.map((p) => p.recordId))] } }, select: { id: true, origin: { select: { name: true } } } })).map((r) => [r.id, r.origin?.name ?? null]),
     )
     let sent = 0
     let failed = 0
@@ -402,7 +408,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
           const anon = !!lead?.anonymizedAt
           const ev = anon
             ? null
-            : buildEvent({ transactionId: p.transactionId, eventAt: p.eventAt, value: p.value === null ? null : Number(p.value), clickIds: p.clickIds as ClickIds | null, email: lead?.email ?? null, phone: lead?.phone ?? null }, s.sendUserData)
+            : buildEvent({ transactionId: p.transactionId, eventAt: p.eventAt, value: p.value === null ? null : Number(p.value), clickIds: p.clickIds as ClickIds | null, email: lead?.email ?? null, phone: lead?.phone ?? null, source: eventSourceFor(origins.get(p.recordId)) }, s.sendUserData)
           if (!ev) {
             await this.prisma.googleAdsConversion.update({ where: { id: p.id }, data: { status: 'IGNORADO', error: anon ? 'Dados do cliente apagados a pedido (LGPD).' : 'Sem código de clique nem e-mail/telefone: o Google não teria como reconhecer o cliente.' } })
             ignored++
@@ -448,7 +454,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
     const s = await this.config(user.tenantId)
     if (!s.enabled) throw new BadRequestException('Ligue a integração antes de enviar.')
     const stats = await this.scan(user.tenantId, s)
-    const r = await this.send(user.tenantId, s)
+    const r = await this.send(user.tenantId, s, true)
     await this.audit.byUser(user, ctx, 'google_ads.sent_now', 'settings', 'google_ads', { registrados: stats.registered, ...r })
     return { ...stats, ...r }
   }

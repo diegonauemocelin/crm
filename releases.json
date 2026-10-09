@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.13.2",
+      "date": "2026-10-09",
+      "title": "Google Ads: origem do evento e motivo dos erros",
+      "changes": [
+        { "type": "correcao", "area": "Google Ads", "text": "O evento vai com a origem certa para o Google: mensagem (WhatsApp), telefone (ligação) ou site. Antes ia como “outra”, que pode ser recusada." },
+        { "type": "melhoria", "area": "Google Ads", "text": "Erro do Google com o motivo detalhado (qual campo foi recusado e por quê), em vez de só “There was a problem with the request”." },
+        { "type": "melhoria", "area": "Google Ads", "text": "“Enviar agora” tenta de novo na hora todos os envios que deram erro." }
+      ]
+    },
+    {
       "version": "0.13.1",
       "date": "2026-10-09",
       "title": "Google Ads: envio explicado e lotes divididos",

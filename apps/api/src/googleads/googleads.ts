@@ -148,6 +148,8 @@ export interface PendingConversion {
   clickIds: ClickIds | null
   email: string | null
   phone: string | null
+  /** Por onde o contato chegou (WhatsApp = MESSAGE, ligação = PHONE, site = WEB). */
+  source?: 'WEB' | 'MESSAGE' | 'PHONE'
 }
 
 /** Um evento do Data Manager. Sem código de clique e sem dado do cliente, não há como o Google casar: devolve null. */
@@ -165,7 +167,7 @@ export function buildEvent(c: PendingConversion, sendUserData: boolean) {
   return {
     transactionId: c.transactionId,
     eventTimestamp: isoWithOffset(c.eventAt),
-    eventSource: 'OTHER',
+    eventSource: c.source ?? 'WEB',
     ...(hasClick ? { adIdentifiers: { ...(ids.gclid ? { gclid: ids.gclid } : {}), ...(ids.gbraid ? { gbraid: ids.gbraid } : {}), ...(ids.wbraid ? { wbraid: ids.wbraid } : {}) } } : {}),
     ...(userIdentifiers.length ? { userData: { userIdentifiers } } : {}),
     ...(c.value !== null && c.value > 0 ? { conversionValue: Math.round(c.value * 100) / 100, currency: 'BRL' } : {}),
@@ -296,11 +298,35 @@ export function shouldSend(s: Pick<GoogleAdsSettings, 'onlyGoogle' | 'originIds'
   return (s.onlyGoogle && fromGoogle) || (!!originId && origins.includes(originId))
 }
 
+/** Detalhes do erro do Google (BadRequest.fieldViolations e ErrorInfo.reason), em texto curto. */
+export function errorDetails(details: unknown[] | undefined): string {
+  if (!Array.isArray(details)) return ''
+  const parts: string[] = []
+  for (const d of details as Record<string, unknown>[]) {
+    const fv = d.fieldViolations
+    if (Array.isArray(fv)) for (const v of fv.slice(0, 3) as { field?: string; description?: string; reason?: string }[]) parts.push([v.field, v.description ?? v.reason].filter(Boolean).join(': '))
+    if (typeof d.reason === 'string') parts.push(`motivo ${d.reason}`)
+    const md = d.metadata as Record<string, unknown> | undefined
+    if (md && typeof md === 'object') for (const [k, v] of Object.entries(md).slice(0, 3)) if (typeof v === 'string') parts.push(`${k}=${v}`)
+  }
+  return parts.filter(Boolean).join(' | ').slice(0, 400)
+}
+
+/** Origem do evento para o Google: WhatsApp = mensagem, ligação = telefone; o resto = site. */
+export function eventSourceFor(originName: string | null | undefined): 'WEB' | 'MESSAGE' | 'PHONE' {
+  const n = (originName ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  if (/whats|zap|mensagem|chat/.test(n)) return 'MESSAGE'
+  if (/liga|telefone|fone|call/.test(n)) return 'PHONE'
+  return 'WEB'
+}
+
 /** Mensagem clara para os erros mais comuns da API do Google. */
 export function adsError(status: number, body: unknown, clientEmail: string): string {
-  const e = (body as { error?: { status?: string; message?: string } | string } | null)?.error
+  const e = (body as { error?: { status?: string; message?: string; details?: unknown[] } | string } | null)?.error
   const code = typeof e === 'object' ? e?.status : undefined
-  const raw = typeof e === 'string' ? e : (e?.message ?? '')
+  // O motivo de verdade vem nos detalhes (campo recusado e o porquê); a mensagem principal é genérica.
+  const extra = typeof e === 'object' ? errorDetails(e?.details) : ''
+  const raw = (typeof e === 'string' ? e : (e?.message ?? '')) + (extra ? ` ${extra}` : '')
   if (status === 403 || code === 'PERMISSION_DENIED') {
     if (/has not been used|is disabled|SERVICE_DISABLED/i.test(raw)) return 'A “Data Manager API” não está ativada no projeto do Google Cloud desta conta de serviço. Ative em APIs e serviços → Biblioteca.'
     return `A conta de serviço não tem acesso à conta do Google Ads. Adicione ${clientEmail} como usuário (acesso padrão) em Google Ads → Administrador → Acesso e segurança.`

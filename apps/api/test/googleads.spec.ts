@@ -49,7 +49,7 @@ describe('Google Ads: evento enviado', () => {
     expect(ev).toEqual({
       transactionId: 'r1:venda',
       eventTimestamp: '2026-10-08T12:30:00-03:00',
-      eventSource: 'OTHER',
+      eventSource: 'WEB',
       adIdentifiers: { gclid: 'Cj0KCQjw_ABC' },
       userData: { userIdentifiers: [{ emailAddress: sha256Hex('ana@x.com') }, { phoneNumber: sha256Hex('+5549988861936') }] },
       conversionValue: 1234.57,
@@ -172,7 +172,7 @@ describe('Google Ads: lote recusado por alguns eventos', () => {
     const { encrypt } = await import('../src/common/crypto')
     const { DEFAULT_GOOGLE_ADS } = await import('../src/googleads/googleads')
     const pem = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
-    const rows = Array.from({ length: 42 }, (_, i) => ({ id: `c${i}`, leadId: null, transactionId: `r${i}:venda`, actionId: '200', eventAt: new Date(), value: null, clickIds: { gclid: i === 7 || i === 30 ? 'RUIM_xxxxxxxx' : `Cj0KCQjwBom${i}xx` } }))
+    const rows = Array.from({ length: 42 }, (_, i) => ({ id: `c${i}`, recordId: `rec${i}`, leadId: null, transactionId: `r${i}:venda`, actionId: '200', eventAt: new Date(), value: null, clickIds: { gclid: i === 7 || i === 30 ? 'RUIM_xxxxxxxx' : `Cj0KCQjwBom${i}xx` } }))
     const status = new Map<string, string>()
     const prisma = {
       googleAdsConversion: {
@@ -181,6 +181,7 @@ describe('Google Ads: lote recusado por alguns eventos', () => {
         updateMany: async ({ where, data }: { where: { id: { in: string[] } }; data: { status: string } }) => where.id.in.forEach((id) => status.set(id, data.status)),
       },
       lead: { findMany: async () => [] },
+      serviceRecord: { findMany: async () => [] },
     }
     const s = { ...DEFAULT_GOOGLE_ADS, enabled: true, customerId: '1234567890', clientEmail: 'crm@p.iam.gserviceaccount.com', privateKeyEnc: encrypt(pem) }
     const service = new GoogleAdsService(prisma as never, {} as never, {} as never)
@@ -204,5 +205,19 @@ describe('Google Ads: lote recusado por alguns eventos', () => {
     } finally {
       globalThis.fetch = original
     }
+  })
+})
+
+describe('Google Ads: detalhes do erro e origem do evento', () => {
+  it('mostra o campo recusado e o motivo; WhatsApp vira MESSAGE, ligação PHONE', async () => {
+    const { adsError, eventSourceFor } = await import('../src/googleads/googleads')
+    const body = { error: { code: 400, status: 'INVALID_ARGUMENT', message: 'There was a problem with the request.', details: [{ '@type': 'type.googleapis.com/google.rpc.BadRequest', fieldViolations: [{ field: 'events.events[0].event_source', description: 'Invalid value' }] }, { '@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'INVALID_ARGUMENT', metadata: { requestId: 'x1' } }] } }
+    const msg = adsError(400, body, '')
+    expect(msg).toContain('events.events[0].event_source: Invalid value')
+    expect(msg).toContain('motivo INVALID_ARGUMENT')
+    expect(eventSourceFor('WhatsApp')).toBe('MESSAGE')
+    expect(eventSourceFor('Ligação')).toBe('PHONE')
+    expect(eventSourceFor('Site - LP')).toBe('WEB')
+    expect(eventSourceFor(null)).toBe('WEB')
   })
 })
