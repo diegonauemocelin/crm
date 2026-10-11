@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.19.1",
+      "date": "2026-10-09",
+      "title": "Roteiro: Chat WhatsApp em andamento",
+      "changes": [
+        { "type": "correcao", "area": "Início", "text": "Roteiro de implantação mostra a Fase 9 (Chat WhatsApp) como “Em andamento”, e não mais “Planejada”." }
+      ]
+    },
+    {
       "version": "0.19.0",
       "date": "2026-10-09",
       "title": "WhatsApp: conversas no CRM (etapa 2)",

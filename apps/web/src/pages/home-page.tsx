@@ -21,6 +21,8 @@ const PHASES = [
 ]
 
 const CURRENT_PHASE = 8
+/** Fase sendo entregue por etapas (já em uso). */
+const IN_PROGRESS = 9
 
 function greeting() {
   const h = Number(new Intl.DateTimeFormat('pt-BR', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(new Date()))
@@ -102,15 +104,16 @@ export function HomePage() {
           <ol className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {PHASES.map((p) => {
               const done = p.n <= CURRENT_PHASE
+              const doing = p.n === IN_PROGRESS
               return (
-                <li key={p.n} className={cn('rounded-lg border p-3', done && 'border-emerald-500/40 bg-emerald-500/5')}>
+                <li key={p.n} className={cn('rounded-lg border p-3', done && 'border-emerald-500/40 bg-emerald-500/5', doing && 'border-sky-500/40 bg-sky-500/5')}>
                   <div className="flex items-center justify-between gap-2">
                     <span className="flex items-center gap-1.5 text-sm font-medium">
                       {done ? <CheckCircle2Icon className="size-4 text-emerald-600" /> : <CircleDashedIcon className="size-4 text-muted-foreground" />}
                       Fase {p.n}
                     </span>
                     <Badge variant={done ? 'secondary' : 'outline'} className="text-[10px]">
-                      {done ? 'Entregue' : 'Planejada'}
+                      {done ? 'Entregue' : doing ? 'Em andamento' : 'Planejada'}
                     </Badge>
                   </div>
                   <p className="mt-1 font-medium">{p.title}</p>
