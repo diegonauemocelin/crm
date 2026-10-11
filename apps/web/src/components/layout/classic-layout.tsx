@@ -21,6 +21,7 @@ import { BrandMark } from './brand-logo'
 import { GlobalSearch } from './global-search'
 import { useBreadcrumb } from './modern-layout'
 import { ThemeToggle } from './theme-toggle'
+import { ChatNotifier, useChatAlerts } from '@/lib/chat-alerts'
 import { UserAvatar, UserMenuContent } from './user-menu'
 
 const navText = 'text-[var(--brand-nav-foreground)]'
@@ -30,6 +31,7 @@ const navText = 'text-[var(--brand-nav-foreground)]'
  * por área, faixa de título da página e conteúdo em largura limitada com espaçamentos mais compactos.
  */
 export function ClassicLayout() {
+  const chatUnread = useChatAlerts().data?.unreadConversations ?? 0
   const { can, me } = useAuth()
   const branding = useBranding()
   const { pathname } = useLocation()
@@ -104,6 +106,11 @@ export function ClassicLayout() {
                     )}
                   >
                     {g.title}
+                    {g.items.some((i) => i.to === '/chat') && chatUnread > 0 && (
+                      <span className="rounded-full bg-white px-1.5 text-[11px] leading-4 font-semibold text-[#111] tabular-nums" aria-label={`${chatUnread} conversas não lidas`}>
+                        {chatUnread}
+                      </span>
+                    )}
                     <ChevronDownIcon className="size-3.5" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="min-w-56">
@@ -117,6 +124,7 @@ export function ClassicLayout() {
                               Em breve
                             </Badge>
                           )}
+                          {item.to === '/chat' && chatUnread > 0 && <Badge className="h-5 px-1.5 tabular-nums">{chatUnread}</Badge>}
                         </Link>
                       </DropdownMenuItem>
                     ))}
@@ -159,6 +167,7 @@ export function ClassicLayout() {
 
       <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-5">
         <SellerLinkWarning />
+          <ChatNotifier />
           <Outlet />
       </main>
       <AppFooter className="bg-background" />

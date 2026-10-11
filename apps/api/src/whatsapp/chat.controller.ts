@@ -3,11 +3,12 @@ import { FileInterceptor } from '@nestjs/platform-express'
 import { Throttle } from '@nestjs/throttler'
 import { ApiTags } from '@nestjs/swagger'
 import { Transform, Type } from 'class-transformer'
-import { IsBoolean, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateIf } from 'class-validator'
+import { IsBoolean, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator'
 import type { Response } from 'express'
 import { CurrentUser } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { ChatService } from './chat.service'
+import { WhatsappDashboardService } from './dashboard.service'
 import { INLINE_MIME, MEDIA_MAX_BYTES } from './mensagens'
 
 class ListDto {
@@ -17,6 +18,7 @@ class ListDto {
   @IsOptional() @IsString() @MaxLength(100) busca?: string
   @IsOptional() @IsIn(['CLIENTE', 'COLEGA', 'FORNECEDOR', 'OUTRO']) tipo?: string
   @IsOptional() @IsUUID() lead?: string
+  @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() lembretes?: boolean
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) pagina?: number
 }
 
@@ -42,6 +44,15 @@ class UpdateDto {
 class CategoryDto {
   @IsIn(['CLIENTE', 'COLEGA', 'FORNECEDOR', 'OUTRO']) category!: 'CLIENTE' | 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
   @IsOptional() @IsBoolean() removeAuto?: boolean
+}
+
+class ReminderDto {
+  @IsISO8601() dueAt!: string
+  @IsOptional() @IsString() @MaxLength(500) note?: string
+}
+
+class SnoozeDto {
+  @Type(() => Number) @IsInt() @Min(5) @Max(10_080) minutes!: number
 }
 
 class QuickReplyDto {
@@ -70,6 +81,13 @@ class ImportDto {
   @IsIn(['COLEGA', 'FORNECEDOR', 'OUTRO']) category!: 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
 }
 
+class DashQuery {
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) de?: string
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) ate?: string
+  @IsOptional() @IsUUID() numero?: string
+  @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() todos?: boolean
+}
+
 class ContactsQuery {
   @IsOptional() @IsString() @MaxLength(100) busca?: string
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) pagina?: number
@@ -79,7 +97,16 @@ class ContactsQuery {
 @ApiTags('WhatsApp')
 @Controller('whatsapp')
 export class WhatsappRulesController {
-  constructor(private readonly chat: ChatService) {}
+  constructor(
+    private readonly chat: ChatService,
+    private readonly dash: WhatsappDashboardService,
+  ) {}
+
+  /** Dashboard de atendimento (respeita o escopo da permissão "Chat WhatsApp"). */
+  @Get('dashboard')
+  dashboard(@CurrentUser() user: AuthUser, @Query() q: DashQuery) {
+    return this.dash.dashboard(user, { from: q.de, to: q.ate, numberId: q.numero, all: q.todos })
+  }
 
   @Get('regras')
   rules(@CurrentUser() user: AuthUser) {
@@ -122,7 +149,7 @@ export class ChatController {
 
   @Get('conversas')
   list(@CurrentUser() user: AuthUser, @Query() q: ListDto) {
-    return this.chat.conversations(user, { numberId: q.numero, unread: q.naoLidas, archived: q.arquivadas, search: q.busca, page: q.pagina, category: q.tipo, leadId: q.lead })
+    return this.chat.conversations(user, { numberId: q.numero, unread: q.naoLidas, archived: q.arquivadas, search: q.busca, page: q.pagina, category: q.tipo, leadId: q.lead, reminders: q.lembretes })
   }
 
   /** Números em que o usuário pode iniciar conversa. */
@@ -161,6 +188,55 @@ export class ChatController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MEDIA_MAX_BYTES, files: 1 } }))
   sendFile(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File | undefined, @Body() dto: CaptionDto) {
     return this.chat.sendFile(user, id, file, dto.legenda)
+  }
+
+  /** Mensagem de voz gravada no navegador (vai como áudio de voz do WhatsApp). */
+  @Post('conversas/:id/audio')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MEDIA_MAX_BYTES, files: 1 } }))
+  sendVoice(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File | undefined) {
+    return this.chat.sendFile(user, id, file, undefined, true)
+  }
+
+  /** Alertas para todas as telas: não lidas e lembretes vencidos (consultado a cada poucos segundos). */
+  @Get('alertas')
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  alerts(@CurrentUser() user: AuthUser) {
+    return this.chat.alerts(user)
+  }
+
+  @Get('conversas/:id/lembretes')
+  reminders(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.chat.reminders(user, id)
+  }
+
+  @Post('conversas/:id/lembretes')
+  createReminder(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReminderDto) {
+    return this.chat.createReminder(user, id, dto)
+  }
+
+  @Post('lembretes/:id/concluir')
+  @HttpCode(200)
+  completeReminder(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.chat.completeReminder(user, id)
+  }
+
+  @Post('lembretes/:id/adiar')
+  @HttpCode(200)
+  snoozeReminder(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SnoozeDto) {
+    return this.chat.snoozeReminder(user, id, dto.minutes)
+  }
+
+  @Post('lembretes/:id/avisado')
+  @HttpCode(200)
+  notified(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.chat.markReminderNotified(user, id)
+  }
+
+  @Delete('lembretes/:id')
+  removeReminder(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.chat.removeReminder(user, id)
   }
 
   @Get('respostas')

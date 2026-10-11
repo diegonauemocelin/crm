@@ -1329,7 +1329,8 @@ model WhatsappConversation {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  messages WhatsappMessage[]
+  messages  WhatsappMessage[]
+  reminders WhatsappReminder[]
 
   @@unique([numberId, jid])
   @@index([tenantId, lastMessageAt])
@@ -1397,4 +1398,25 @@ model WhatsappContact {
 
   @@unique([tenantId, contactKey])
   @@map("whatsapp_contacts")
+}
+
+/// Lembrete de retorno numa conversa: no horário, quem criou recebe o aviso no CRM.
+model WhatsappReminder {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  conversationId String    @db.Uuid
+  userId         String    @db.Uuid
+  userName       String
+  dueAt          DateTime
+  note           String?
+  doneAt         DateTime?
+  /// Quando o aviso apareceu (para não repetir em todas as abas e a cada consulta).
+  notifiedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  conversation WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, doneAt, dueAt])
+  @@index([conversationId])
+  @@map("whatsapp_reminders")
 }

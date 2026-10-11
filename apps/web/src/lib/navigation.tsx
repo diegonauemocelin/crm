@@ -74,6 +74,7 @@ export const NAVIGATION: NavGroup[] = [
     items: [
       { title: 'Dashboards e relatórios', to: '/relatorios', icon: BarChart3Icon, module: 'relatorios' },
       { title: 'Google Ads', to: '/google-ads', icon: TargetIcon, module: 'google_ads' },
+      { title: 'WhatsApp', to: '/whatsapp/dashboard', icon: MessageCircleIcon, module: 'chat' },
     ],
   },
   {

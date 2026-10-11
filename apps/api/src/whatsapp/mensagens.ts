@@ -1,6 +1,6 @@
 /** Leitura das mensagens que a Evolution manda (evento MESSAGES_UPSERT), sem depender do banco. */
 
-export type MessageType = 'texto' | 'imagem' | 'audio' | 'video' | 'documento' | 'figurinha' | 'localizacao' | 'contato' | 'outro'
+export type MessageType = 'texto' | 'imagem' | 'audio' | 'video' | 'documento' | 'figurinha' | 'localizacao' | 'contato' | 'chamada' | 'outro'
 
 export interface ParsedMessage {
   waId: string
@@ -119,7 +119,7 @@ export function phoneVariants(e164: string | null): string[] {
   return m ? [e164, `+55${m[1]}${m[2]}`] : [e164]
 }
 
-const LABEL: Record<MessageType, string> = { texto: '', imagem: 'Foto', audio: 'Áudio', video: 'Vídeo', documento: 'Documento', figurinha: 'Figurinha', localizacao: 'Localização', contato: 'Contato', outro: '' }
+const LABEL: Record<MessageType, string> = { texto: '', imagem: 'Foto', audio: 'Áudio', video: 'Vídeo', documento: 'Documento', figurinha: 'Figurinha', localizacao: 'Localização', contato: 'Contato', chamada: '', outro: '' }
 
 /** Texto curto para a lista de conversas. */
 export function previewOf(p: Pick<ParsedMessage, 'type' | 'text'>) {
@@ -132,10 +132,42 @@ export function previewOf(p: Pick<ParsedMessage, 'type' | 'text'>) {
 export const MEDIA_MAX_BYTES = 16 * 1024 * 1024
 
 /** Tipos que o navegador pode abrir direto; o resto vai como download (nunca HTML/SVG/script na tela). */
-export const INLINE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'audio/ogg', 'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/amr', 'video/mp4', 'video/3gpp', 'application/pdf'])
+export const INLINE_MIME = new Set(['audio/webm', 'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'audio/ogg', 'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/amr', 'video/mp4', 'video/3gpp', 'application/pdf'])
 
 const EXT: Record<string, string> = {
   'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/aac': 'aac', 'audio/amr': 'amr',
-  'video/mp4': 'mp4', 'video/3gpp': '3gp', 'application/pdf': 'pdf',
+  'audio/webm': 'webm', 'video/mp4': 'mp4', 'video/3gpp': '3gp', 'application/pdf': 'pdf',
 }
 export const extOf = (mime: string | null) => (mime && EXT[mime]) || 'bin'
+
+// ---------- Ligações recebidas (evento CALL) ----------
+
+export interface ParsedCall {
+  callId: string
+  jid: string
+  phoneDigits: string | null
+  isVideo: boolean
+  at: Date
+}
+
+/**
+ * Ligação que o cliente fez para o número da empresa. O CRM não atende (o WhatsApp não libera o áudio para aparelhos
+ * vinculados): só avisa no chat, para ninguém perder a chamada. Só o primeiro aviso de cada ligação ("offer").
+ */
+export function parseCalls(data: unknown): ParsedCall[] {
+  const list = (Array.isArray(data) ? data : [data]) as Record<string, unknown>[]
+  const out: ParsedCall[] = []
+  for (const c of list.slice(0, 10)) {
+    if (!c || typeof c !== 'object' || typeof c.id !== 'string') continue
+    if (c.status && c.status !== 'offer') continue
+    if (c.isGroup === true) continue
+    const from = [c.from, c.chatId].find((v) => typeof v === 'string' && v.endsWith('@s.whatsapp.net')) as string | undefined
+    const lid = [c.from, c.chatId].find((v) => typeof v === 'string' && v.endsWith('@lid')) as string | undefined
+    const jid = from ?? lid
+    if (!jid) continue
+    const digits = /^(\d{8,15})(?::\d+)?@s\.whatsapp\.net$/.exec(jid)?.[1] ?? null
+    const ts = c.date instanceof Date ? c.date.getTime() : typeof c.date === 'string' || typeof c.date === 'number' ? new Date(c.date).getTime() : NaN
+    out.push({ callId: c.id.slice(0, 100), jid: digits ? `${digits}@s.whatsapp.net` : jid, phoneDigits: digits, isVideo: c.isVideo === true, at: Number.isFinite(ts) ? new Date(ts) : new Date() })
+  }
+  return out
+}

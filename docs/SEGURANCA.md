@@ -54,7 +54,7 @@ Referências: OWASP Top 10 (2021/2025) e OWASP ASVS nível 2. Esta página regis
 ## Cabeçalhos e transporte
 
 - HTTPS obrigatório com redirecionamento e HSTS (certbot `--hsts`).
-- CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`.
+- CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy` (microfone só no próprio site, para gravar áudio no chat), `Cross-Origin-Opener-Policy`.
 - `server_tokens off` e sem `X-Powered-By`.
 
 ## Infraestrutura

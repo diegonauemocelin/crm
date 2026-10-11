@@ -23,7 +23,7 @@ describe('Evolution API (cliente)', () => {
     await c.createInstance('crm-abc123', 'http://api:3000/api/webhooks/whatsapp/s')
     expect((calls[0]!.init.headers as Record<string, string>).apikey).toBe('chave')
     const body = JSON.parse(String(calls[0]!.init.body))
-    expect(body).toMatchObject({ instanceName: 'crm-abc123', integration: 'WHATSAPP-BAILEYS', groupsIgnore: true, syncFullHistory: false, webhook: { url: 'http://api:3000/api/webhooks/whatsapp/s', events: ['CONNECTION_UPDATE', 'QRCODE_UPDATED', 'MESSAGES_UPSERT', 'SEND_MESSAGE'] } })
+    expect(body).toMatchObject({ instanceName: 'crm-abc123', integration: 'WHATSAPP-BAILEYS', groupsIgnore: true, syncFullHistory: false, webhook: { url: 'http://api:3000/api/webhooks/whatsapp/s', events: ['CONNECTION_UPDATE', 'QRCODE_UPDATED', 'MESSAGES_UPSERT', 'SEND_MESSAGE', 'CALL'] } })
     const err = await c.connect('crm-abc123').catch((e: unknown) => e)
     expect(err).toBeInstanceOf(EvolutionError)
     expect((err as EvolutionError).status).toBe(404)
@@ -134,5 +134,55 @@ describe('Regras do WhatsApp (administrador)', () => {
     const simples = parseContactList('Peças Brasil;(47) 3222-1100;fornecedor\nJoão\t49999990000\tcolega', 'OUTRO')
     expect(simples.rows.map((r) => [r.name, r.category])).toEqual([['Peças Brasil', 'FORNECEDOR']])
     expect(parseContactList('João\t49999990000\tcolega', 'OUTRO').rows).toEqual([{ name: 'João', phone: '49999990000', category: 'COLEGA' }])
+  })
+})
+
+describe('Áudio gravado e ligações', () => {
+  it('aceita a gravação do navegador como voz e registra só o primeiro aviso de cada ligação', async () => {
+    const { detectOutgoing } = await import('../src/whatsapp/envio')
+    const { parseCalls } = await import('../src/whatsapp/mensagens')
+    const webm = Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0])
+    expect(detectOutgoing(webm, 'audio.webm', true)).toEqual({ kind: 'audio', mime: 'audio/webm', ext: 'webm' })
+    expect(detectOutgoing(webm, 'video.webm')).toBeNull()
+    expect(detectOutgoing(Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypmp42')]), 'audio.m4a', true)).toMatchObject({ kind: 'audio', mime: 'audio/mp4' })
+    expect(detectOutgoing(Buffer.from('<html>'), 'audio.webm', true)).toBeNull()
+    const calls = parseCalls([
+      { id: 'C1', from: '554988831936@s.whatsapp.net', status: 'offer', isVideo: false, date: '2026-10-11T12:00:00Z' },
+      { id: 'C1', from: '554988831936@s.whatsapp.net', status: 'ringing' },
+      { id: 'C2', chatId: '5511987654321@s.whatsapp.net', status: 'offer', isVideo: true },
+      { id: 'G1', from: '120363@g.us', isGroup: true, status: 'offer' },
+    ])
+    expect(calls.map((c) => [c.callId, c.phoneDigits, c.isVideo])).toEqual([['C1', '554988831936', false], ['C2', '5511987654321', true]])
+    expect(parseCalls({ id: 'C3', from: '5547991112222@s.whatsapp.net' })).toHaveLength(1)
+  })
+})
+
+describe('Métricas do atendimento', () => {
+  it('atendimentos, primeira resposta, tempo entre pergunta e resposta e horário comercial', async () => {
+    const { analyze, businessMs, stats, slaBuckets, waitingBuckets } = await import('../src/whatsapp/metricas')
+    // Segunda, 12/10/2026 (horário de Brasília = UTC-3).
+    const at = (h: number, m = 0, day = 12) => new Date(Date.UTC(2026, 9, day, h + 3, m))
+    const msg = (c: string, fromMe: boolean, d: Date, by: string | null = null) => ({ conversationId: c, fromMe, sentAt: d, sentById: by, type: 'texto' })
+    const { sessions, turns } = analyze([
+      // Conversa A: cliente escreve 2x às 9h, Ana responde 9h10; cliente pergunta 10h, resposta pelo celular 10h30.
+      msg('A', false, at(9)), msg('A', false, at(9, 2)), msg('A', true, at(9, 10), 'ana'), msg('A', false, at(10)), msg('A', true, at(10, 30)),
+      // Dois dias depois: novo atendimento iniciado pela empresa, cliente responde e fica sem retorno.
+      msg('A', true, at(9, 0, 14), 'ana'), msg('A', false, at(9, 5, 14)),
+      // Conversa B: cliente às 17h50, resposta na terça às 8h10 (comercial: 10 min + 10 min).
+      msg('B', false, at(17, 50)), msg('B', true, at(8, 10, 13), 'bia'),
+    ])
+    expect(sessions.map((s) => [s.conversationId, s.startedBy])).toEqual([['A', 'cliente'], ['A', 'empresa'], ['B', 'cliente']])
+    expect(turns.map((t) => [t.conversationId, t.first, t.ms === null ? null : t.ms / 60_000, t.responder])).toEqual([
+      ['A', true, 10, 'ana'],
+      ['A', false, 30, 'celular'],
+      ['A', false, null, null],
+      ['B', true, 860, 'bia'],
+    ])
+    expect(turns[3]!.businessMs! / 60_000).toBe(20)
+    // Sábado 11h às segunda 9h: 1 h no sábado + 1 h na segunda.
+    expect(businessMs(at(11, 0, 17), at(9, 0, 19)) / 3_600_000).toBe(2)
+    expect(stats([1, 2, 3, 4, 100])).toMatchObject({ median: 3, p90: 100, avg: 22 })
+    expect(slaBuckets([4, 10, 50, 300].map((m) => m * 60_000)).map((b) => b.share)).toEqual([0.25, 0.5, 0.75, 0.75])
+    expect(waitingBuckets([30 * 60_000, 2 * 3_600_000, 30 * 3_600_000])).toEqual({ ate1h: 1, ate4h: 1, ate24h: 0, mais24h: 1 })
   })
 })

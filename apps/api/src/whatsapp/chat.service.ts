@@ -10,7 +10,7 @@ import { SettingsService } from '../settings/settings.service'
 import { normalizePhone } from '../atendimento/br'
 import { type EvolutionClient, EvolutionError } from './evolution'
 import { applyVariables, cleanRules, type CompanyCategory, decide, DEFAULT_RULES, detectOutgoing, parseContactList, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
-import { extOf, MEDIA_MAX_BYTES, parseMessage, type ParsedMessage, phoneFromDigits, phoneVariants, previewOf } from './mensagens'
+import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, type ParsedMessage, phoneFromDigits, phoneVariants, previewOf } from './mensagens'
 
 const PAGE = 60
 
@@ -130,6 +130,28 @@ export class ChatService {
     if (p.media && !tooBig && client) void this.downloadMedia(n, saved[0]!.id, p, client)
   }
 
+  /** Ligação recebida: vira um aviso na conversa (atender pelo celular). Não cria lead nem pré-venda. */
+  async ingestCalls(n: WhatsappNumber, data: unknown) {
+    for (const c of parseCalls(data)) {
+      const phone = phoneFromDigits(c.phoneDigits)
+      let conv =
+        (await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: n.id, jid: c.jid } } })) ??
+        (phone ? await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, phone } }) : null)
+      if (!conv) {
+        const contact = await this.prisma.whatsappContact.findUnique({ where: { tenantId_contactKey: { tenantId: n.tenantId, contactKey: phone ?? c.jid } } })
+        const lead = phone && (!contact || contact.category === 'CLIENTE') ? await this.prisma.lead.findFirst({ where: { tenantId: n.tenantId, deletedAt: null, anonymizedAt: null, phone: { in: phoneVariants(phone) } }, select: { id: true } }) : null
+        conv = await this.prisma.whatsappConversation.create({ data: { tenantId: n.tenantId, numberId: n.id, jid: c.jid, phone, category: contact?.category ?? 'CLIENTE', leadId: lead?.id ?? null } })
+      }
+      const text = c.isVideo ? 'Ligação de vídeo recebida. Atenda pelo celular deste número.' : 'Ligação de voz recebida. Atenda pelo celular deste número.'
+      const saved = await this.prisma.whatsappMessage.createMany({ data: [{ tenantId: n.tenantId, conversationId: conv.id, waId: `call-${c.callId}`, fromMe: false, type: 'chamada', text, sentAt: c.at }], skipDuplicates: true })
+      if (!saved.count) continue
+      await this.prisma.whatsappConversation.update({
+        where: { id: conv.id },
+        data: { lastMessageAt: c.at, lastPreview: c.isVideo ? 'Ligação de vídeo recebida' : 'Ligação de voz recebida', lastFromMe: false, unread: { increment: 1 }, status: 'ABERTA' },
+      })
+    }
+  }
+
   /** Regras do WhatsApp definidas pelo administrador (Números de WhatsApp → Regras). */
   async rules(tenantId: string) {
     return cleanRules(await this.settings.get<Partial<WaRules>>(tenantId, 'whatsapp_regras', DEFAULT_RULES))
@@ -181,7 +203,8 @@ export class ChatService {
   }
 
   /** Próprios: números em que o vendedor do usuário atende (ou conversas passadas para ele). Unidade: números da unidade. */
-  private async where(user: AuthUser): Promise<Prisma.WhatsappConversationWhereInput> {
+  /** Também usado pelo dashboard do WhatsApp. */
+  async where(user: AuthUser): Promise<Prisma.WhatsappConversationWhereInput> {
     const s = this.scopeOf(user)
     const base = { tenantId: user.tenantId }
     if (s === 'ALL') return base
@@ -196,7 +219,7 @@ export class ChatService {
     return { ...base, OR: [{ numberId: { in: nums.map((x) => x.id) } }, { assignedSellerId: seller.id }] }
   }
 
-  async conversations(user: AuthUser, q: { numberId?: string; unread?: boolean; archived?: boolean; search?: string; page?: number; category?: string; leadId?: string }) {
+  async conversations(user: AuthUser, q: { numberId?: string; unread?: boolean; archived?: boolean; search?: string; page?: number; category?: string; leadId?: string; reminders?: boolean }) {
     this.assertCan(user)
     const scope = await this.where(user)
     // Na ficha do lead aparecem todas as conversas dele (abertas e arquivadas).
@@ -204,6 +227,7 @@ export class ChatService {
     if (q.numberId) and.push({ numberId: q.numberId })
     if (q.unread) and.push({ unread: { gt: 0 } })
     if (q.category) and.push({ category: q.category })
+    if (q.reminders) and.push({ reminders: { some: { userId: user.id, doneAt: null } } })
     const s = q.search?.trim()
     if (s) {
       const digits = s.replace(/\D/g, '')
@@ -218,6 +242,9 @@ export class ChatService {
       this.visibleNumbers(user, scope),
     ])
     const leads = new Map((await this.prisma.lead.findMany({ where: { id: { in: rows.map((r) => r.leadId).filter((x): x is string => !!x) } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]))
+    const reminders = new Map(
+      (await this.prisma.whatsappReminder.groupBy({ by: ['conversationId'], where: { userId: user.id, doneAt: null, conversationId: { in: rows.map((r) => r.id) } }, _min: { dueAt: true } })).map((r) => [r.conversationId, r._min.dueAt]),
+    )
     return {
       total,
       page,
@@ -236,6 +263,7 @@ export class ChatService {
         lastFromMe: r.lastFromMe,
         category: r.category,
         status: r.status,
+        reminderAt: reminders.get(r.id) ?? null,
       })),
     }
   }
@@ -351,11 +379,11 @@ export class ChatService {
     return this.recordSent(user, c, r, { type: 'texto', text: body })
   }
 
-  async sendFile(user: AuthUser, id: string, file: Express.Multer.File | undefined, caption?: string) {
+  async sendFile(user: AuthUser, id: string, file: Express.Multer.File | undefined, caption?: string, voice = false) {
     if (!file?.buffer?.length) throw new BadRequestException('Escolha um arquivo.')
     if (file.size > MEDIA_MAX_BYTES) throw new BadRequestException('Arquivo maior que 16 MB.')
-    const kind = detectOutgoing(file.buffer, file.originalname ?? '')
-    if (!kind) throw new BadRequestException('Tipo de arquivo não aceito. Envie foto (JPG, PNG, WEBP), vídeo MP4, áudio (OGG, MP3, M4A), PDF, Word, Excel, CSV ou TXT.')
+    const kind = detectOutgoing(file.buffer, file.originalname ?? '', voice)
+    if (!kind) throw new BadRequestException(voice ? 'Não foi possível ler o áudio gravado. Tente gravar de novo.' : 'Tipo de arquivo não aceito. Envie foto (JPG, PNG, WEBP), vídeo MP4, áudio (OGG, MP3, M4A), PDF, Word, Excel, CSV ou TXT.')
     const c = await this.sendContext(user, id)
     const fileName = safeFileName(uploadName(file.originalname), kind.ext)
     const cap = caption?.trim().slice(0, 1000) || null
@@ -599,6 +627,88 @@ export class ChatService {
     await this.prisma.whatsappContact.delete({ where: { id } })
     // Volta a valer a regra de contato comum.
     await this.prisma.whatsappConversation.updateMany({ where: { tenantId: user.tenantId, OR: [{ phone: { in: phoneVariants(c.contactKey) } }, { jid: c.contactKey }] }, data: { category: 'CLIENTE' } })
+    return { ok: true }
+  }
+
+  // ---------- Lembretes de retorno e alertas ----------
+
+  async reminders(user: AuthUser, convId: string) {
+    await this.load(user, convId)
+    const rows = await this.prisma.whatsappReminder.findMany({ where: { conversationId: convId, doneAt: null }, orderBy: { dueAt: 'asc' } })
+    return rows.map((r) => ({ id: r.id, dueAt: r.dueAt, note: r.note, userName: r.userName, mine: r.userId === user.id }))
+  }
+
+  async createReminder(user: AuthUser, convId: string, d: { dueAt: string; note?: string }) {
+    await this.load(user, convId)
+    const due = new Date(d.dueAt)
+    if (Number.isNaN(due.getTime())) throw new BadRequestException('Data inválida.')
+    if (due.getTime() < Date.now() - 60_000) throw new BadRequestException('Escolha uma data e hora no futuro.')
+    if (due.getTime() > Date.now() + 366 * 86_400_000) throw new BadRequestException('No máximo 1 ano à frente.')
+    if ((await this.prisma.whatsappReminder.count({ where: { userId: user.id, doneAt: null } })) >= 500) throw new BadRequestException('Você tem lembretes demais em aberto. Conclua alguns antes.')
+    const r = await this.prisma.whatsappReminder.create({
+      data: { tenantId: user.tenantId, conversationId: convId, userId: user.id, userName: user.name.slice(0, 120), dueAt: due, note: d.note?.trim().slice(0, 500) || null },
+    })
+    return { id: r.id, dueAt: r.dueAt, note: r.note, userName: r.userName, mine: true }
+  }
+
+  /** Concluir/excluir: quem criou, ou quem pode editar o chat. */
+  private async loadReminder(user: AuthUser, id: string) {
+    const r = await this.prisma.whatsappReminder.findFirst({ where: { id, tenantId: user.tenantId } })
+    if (!r) throw new NotFoundException('Lembrete não encontrado.')
+    if (r.userId !== user.id && !can(user.permissions, user.role.isSystem, 'chat', 'edit')) throw new ForbiddenException('Você não tem permissão para esta ação.')
+    return r
+  }
+
+  async completeReminder(user: AuthUser, id: string) {
+    await this.loadReminder(user, id)
+    await this.prisma.whatsappReminder.update({ where: { id }, data: { doneAt: new Date() } })
+    return { ok: true }
+  }
+
+  async removeReminder(user: AuthUser, id: string) {
+    await this.loadReminder(user, id)
+    await this.prisma.whatsappReminder.delete({ where: { id } })
+    return { ok: true }
+  }
+
+  /** Adiar: novo horário, e o aviso volta a aparecer nele. */
+  async snoozeReminder(user: AuthUser, id: string, minutes: number) {
+    await this.loadReminder(user, id)
+    const m = Math.min(Math.max(Math.round(minutes), 5), 7 * 24 * 60)
+    await this.prisma.whatsappReminder.update({ where: { id }, data: { dueAt: new Date(Date.now() + m * 60_000), notifiedAt: null } })
+    return { ok: true }
+  }
+
+  /**
+   * Consultado a cada poucos segundos por todas as telas: conversas não lidas (no escopo do usuário), a mais recente
+   * (para o aviso) e os lembretes do usuário que já venceram.
+   */
+  async alerts(user: AuthUser) {
+    this.assertCan(user)
+    const scope = await this.where(user)
+    const unreadWhere = { AND: [scope, { unread: { gt: 0 } }, { status: 'ABERTA' }] }
+    const [count, sum, latest, due, upcoming] = await Promise.all([
+      this.prisma.whatsappConversation.count({ where: unreadWhere }),
+      this.prisma.whatsappConversation.aggregate({ where: unreadWhere, _sum: { unread: true } }),
+      this.prisma.whatsappConversation.findFirst({ where: unreadWhere, orderBy: { lastMessageAt: 'desc' }, select: { id: true, name: true, phone: true, lastPreview: true, lastMessageAt: true, leadId: true } }),
+      this.prisma.whatsappReminder.findMany({ where: { userId: user.id, doneAt: null, dueAt: { lte: new Date() } }, orderBy: { dueAt: 'asc' }, take: 20, include: { conversation: { select: { id: true, name: true, phone: true, leadId: true } } } }),
+      this.prisma.whatsappReminder.count({ where: { userId: user.id, doneAt: null, dueAt: { gt: new Date() } } }),
+    ])
+    const leadIds = [latest?.leadId, ...due.map((r) => r.conversation.leadId)].filter((x): x is string => !!x)
+    const names = new Map((await this.prisma.lead.findMany({ where: { id: { in: leadIds } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]))
+    const nameOf = (c: { name: string | null; phone: string | null; leadId: string | null }) => (c.leadId && names.get(c.leadId)) || c.name || c.phone || 'Contato'
+    return {
+      unreadConversations: count,
+      unreadMessages: sum._sum.unread ?? 0,
+      latest: latest ? { conversationId: latest.id, name: nameOf(latest), preview: latest.lastPreview, at: latest.lastMessageAt } : null,
+      dueReminders: due.map((r) => ({ id: r.id, conversationId: r.conversationId, name: nameOf(r.conversation), note: r.note, dueAt: r.dueAt, notified: !!r.notifiedAt })),
+      upcomingReminders: upcoming,
+    }
+  }
+
+  /** O aviso do lembrete já apareceu (as outras abas não repetem). */
+  async markReminderNotified(user: AuthUser, id: string) {
+    await this.prisma.whatsappReminder.updateMany({ where: { id, userId: user.id, notifiedAt: null }, data: { notifiedAt: new Date() } })
     return { ok: true }
   }
 }

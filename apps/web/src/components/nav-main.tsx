@@ -9,11 +9,13 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
+import { useChatAlerts } from '@/lib/chat-alerts'
 import type { NavGroup, NavItem } from '@/lib/navigation'
 
 function Items({ items }: { items: NavItem[] }) {
   const { pathname } = useLocation()
   const isActive = (to: string) => (to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(`${to}/`))
+  const unread = useChatAlerts().data?.unreadConversations ?? 0
   return (
     <SidebarMenu>
       {items.map((item) => (
@@ -25,6 +27,11 @@ function Items({ items }: { items: NavItem[] }) {
             </NavLink>
           </SidebarMenuButton>
           {item.phase && <SidebarMenuBadge className="text-[10px] font-normal opacity-60">Em breve</SidebarMenuBadge>}
+          {item.to === '/chat' && unread > 0 && (
+            <SidebarMenuBadge className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground tabular-nums" aria-label={`${unread} conversas não lidas`}>
+              {unread}
+            </SidebarMenuBadge>
+          )}
         </SidebarMenuItem>
       ))}
     </SidebarMenu>

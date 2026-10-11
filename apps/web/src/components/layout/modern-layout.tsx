@@ -17,6 +17,7 @@ import { SellerLinkWarning } from './seller-link-warning'
 import { AppFooter } from './app-footer'
 import { GlobalSearch } from './global-search'
 import { ThemeToggle } from './theme-toggle'
+import { ChatNotifier } from '@/lib/chat-alerts'
 
 const EXTRA_TITLES: Record<string, string> = { '/meu-perfil': 'Meu perfil' }
 
@@ -62,6 +63,7 @@ export function ModernLayout() {
         </header>
         <main className="flex-1 p-4 md:p-6">
           <SellerLinkWarning />
+          <ChatNotifier />
           <Outlet />
         </main>
         <AppFooter />

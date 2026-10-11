@@ -23,8 +23,15 @@ const startsWith = (b: Buffer, sig: number[], at = 0) => sig.every((v, i) => b[a
  * Tipo do arquivo pelos bytes (não pela extensão nem pelo tipo informado pelo navegador).
  * Aceita foto (JPG/PNG/WEBP), vídeo MP4, áudio (OGG/MP3/M4A) e documentos comuns. Nada de executável, HTML ou SVG.
  */
-export function detectOutgoing(buf: Buffer, fileName: string): OutgoingFile | null {
+export function detectOutgoing(buf: Buffer, fileName: string, voice = false): OutgoingFile | null {
   const ext = (/\.([a-z0-9]{1,5})$/i.exec(fileName)?.[1] ?? '').toLowerCase()
+  // Áudio gravado no navegador (mensagem de voz): Chrome grava WebM, Firefox OGG, Safari MP4. A Evolution converte.
+  if (voice) {
+    if (startsWith(buf, [0x1a, 0x45, 0xdf, 0xa3])) return { kind: 'audio', mime: 'audio/webm', ext: 'webm' }
+    if (buf.toString('ascii', 0, 4) === 'OggS') return { kind: 'audio', mime: 'audio/ogg', ext: 'ogg' }
+    if (buf.toString('ascii', 4, 8) === 'ftyp') return { kind: 'audio', mime: 'audio/mp4', ext: 'm4a' }
+    return null
+  }
   if (startsWith(buf, [0xff, 0xd8, 0xff])) return { kind: 'image', mime: 'image/jpeg', ext: 'jpg' }
   if (startsWith(buf, [0x89, 0x50, 0x4e, 0x47])) return { kind: 'image', mime: 'image/png', ext: 'png' }
   if (buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return { kind: 'image', mime: 'image/webp', ext: 'webp' }

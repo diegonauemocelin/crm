@@ -252,6 +252,10 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
       for (const item of list.slice(0, 50)) void this.chat.ingest(n, item, this.client)
       return true
     }
+    if (event === 'call') {
+      void this.chat.ingestCalls(n, b.data).catch((err: unknown) => this.logger.warn(`Ligação não registrada: ${(err as Error).message}`))
+      return true
+    }
     if (event === 'qrcode.updated') {
       const qr = cleanQr((b.data?.qrcode as { base64?: unknown } | undefined)?.base64)
       if (qr) this.qrs.set(n.id, { qr, at: Date.now() })

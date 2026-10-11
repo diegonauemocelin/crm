@@ -2,6 +2,19 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.21.0",
+      "date": "2026-10-09",
+      "title": "WhatsApp: áudio, lembretes, avisos e dashboard de atendimento",
+      "changes": [
+        { "type": "novo", "area": "WhatsApp", "text": "Gravar áudio no chat (botão do microfone): vai como mensagem de voz do WhatsApp, até 5 minutos." },
+        { "type": "novo", "area": "WhatsApp", "text": "Ligação recebida aparece na conversa (“Ligação de voz/vídeo recebida, atenda pelo celular”) e botão Ligar abre a discagem pelo telefone. Ligação pelo CRM não é possível: o WhatsApp não libera o áudio das chamadas para aparelhos vinculados." },
+        { "type": "novo", "area": "WhatsApp", "text": "Lembrete de retorno em cada conversa (em 1 hora, amanhã às 9h, em 3 dias ou data livre, com observação): no horário aparece o aviso com som e notificação do navegador, com “Abrir conversa” e “Adiar 1 h”. Filtro de conversas com lembrete." },
+        { "type": "novo", "area": "WhatsApp", "text": "Aviso de mensagem nova em qualquer tela: contador de não lidas no menu e no título da aba, som (pode desligar) e notificação do navegador (ative no Chat)." },
+        { "type": "novo", "area": "Análise", "text": "Dashboard do WhatsApp (Análise → WhatsApp): atendimentos recebidos e iniciados, 1ª resposta e tempo entre pergunta e resposta (típico, média e 10% piores; corrido e em horário comercial), metas de resposta, quem está esperando agora e há quanto tempo, mapa de calor de dia e hora, equipe, números, resultado comercial (pré-vendas, vendas, valor, Google Ads), lembretes, ligações e uma leitura automática do que chama atenção." },
+        { "type": "seguranca", "area": "Segurança", "text": "Microfone liberado só para o próprio site (para gravar áudio no chat); câmera e localização continuam bloqueadas." }
+      ]
+    },
+    {
       "version": "0.20.0",
       "date": "2026-10-09",
       "title": "WhatsApp: responder pelo CRM, regras e contatos da empresa (etapa 3)",

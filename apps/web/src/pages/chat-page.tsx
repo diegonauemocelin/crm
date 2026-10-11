@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, CheckIcon, FileIcon, HeadsetIcon, Loader2Icon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, PaperclipIcon, SearchIcon, SendIcon, SmartphoneIcon, UserIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, MicIcon, PhoneIcon, PhoneIncomingIcon, Trash2Icon, Volume2Icon, VolumeXIcon, VideoIcon, FileIcon, HeadsetIcon, Loader2Icon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, PaperclipIcon, SearchIcon, SendIcon, SmartphoneIcon, UserIcon, ZapIcon } from 'lucide-react'
 import { type FormEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -17,6 +17,7 @@ import { Switch } from '@/components/ui/switch'
 import { api, errorMessage } from '@/lib/api'
 import { formatPhone, maskPhone, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
+import { setSoundOn, soundOn } from '@/lib/chat-alerts'
 import { cn } from '@/lib/utils'
 
 interface NumberRef {
@@ -38,6 +39,7 @@ interface ConvItem {
   lastFromMe: boolean
   category?: ContactCategory
   status?: string
+  reminderAt?: string | null
 }
 interface ListData {
   total: number
@@ -48,7 +50,7 @@ interface ListData {
 interface Message {
   id: string
   fromMe: boolean
-  type: 'texto' | 'imagem' | 'audio' | 'video' | 'documento' | 'figurinha' | 'localizacao' | 'contato' | 'outro'
+  type: 'texto' | 'imagem' | 'audio' | 'video' | 'documento' | 'figurinha' | 'localizacao' | 'contato' | 'chamada' | 'outro'
   text: string | null
   fileName: string | null
   mime: string | null
@@ -96,6 +98,7 @@ function Chat() {
   const [numberId, setNumberId] = useState<string | null>(null)
   const [unread, setUnread] = useState(false)
   const [archived, setArchived] = useState(false)
+  const [withReminder, setWithReminder] = useState(false)
   const [category, setCategory] = useState<ContactCategory | null>(null)
   const [starting, setStarting] = useState(false)
   const { can } = useAuth()
@@ -105,7 +108,7 @@ function Chat() {
     const t = setTimeout(() => setQ(search.trim()), 300)
     return () => clearTimeout(t)
   }, [search])
-  const qs = new URLSearchParams({ ...(numberId ? { numero: numberId } : {}), ...(unread ? { naoLidas: 'true' } : {}), ...(archived ? { arquivadas: 'true' } : {}), ...(category ? { tipo: category } : {}), ...(q ? { busca: q } : {}) }).toString()
+  const qs = new URLSearchParams({ ...(numberId ? { numero: numberId } : {}), ...(unread ? { naoLidas: 'true' } : {}), ...(archived ? { arquivadas: 'true' } : {}), ...(category ? { tipo: category } : {}), ...(withReminder ? { lembretes: 'true' } : {}), ...(q ? { busca: q } : {}) }).toString()
   const list = useQuery({ queryKey: ['chat-conversas', qs], queryFn: () => api.get<ListData>(`/chat/conversas?${qs}`), refetchInterval: 5000, placeholderData: keepPreviousData })
   const numbers = useMemo(() => new Map((list.data?.numbers ?? []).map((n) => [n.id, n])), [list.data?.numbers])
   const open = (id: string | null) => setParams((p) => {
@@ -120,11 +123,14 @@ function Chat() {
         title="Chat WhatsApp"
         description="Conversas dos números da empresa. Responda por aqui ou pelo celular: tudo fica no histórico do lead."
         actions={
-          can('chat', 'create') && (
-            <Button onClick={() => setStarting(true)}>
-              <MessageSquarePlusIcon /> Nova conversa
-            </Button>
-          )
+          <div className="flex flex-wrap items-center gap-2">
+            <AlertSettings />
+            {can('chat', 'create') && (
+              <Button onClick={() => setStarting(true)}>
+                <MessageSquarePlusIcon /> Nova conversa
+              </Button>
+            )}
+          </div>
         }
       />
       {starting && <StartDialog onClose={() => setStarting(false)} onStarted={(cid) => (setStarting(false), open(cid))} />}
@@ -166,6 +172,9 @@ function Chat() {
                   </SelectContent>
                 </Select>
                 <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                  <Switch checked={withReminder} onCheckedChange={setWithReminder} aria-label="Só com lembrete" /> Lembretes
+                </label>
+                <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
                   <Switch checked={archived} onCheckedChange={setArchived} aria-label="Ver arquivadas" /> Arquivadas
                 </label>
                 <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -175,7 +184,7 @@ function Chat() {
               </div>
             </div>
             <ul className="min-h-0 flex-1 overflow-y-auto">
-              {list.data.items.length === 0 && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa{archived ? ' arquivada' : ''}{q || unread || numberId || category ? ' com esses filtros' : archived ? '' : ' ainda'}.</li>}
+              {list.data.items.length === 0 && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa{archived ? ' arquivada' : ''}{q || unread || numberId || category || withReminder ? ' com esses filtros' : archived ? '' : ' ainda'}.</li>}
               {list.data.items.map((c) => (
                 <li key={c.id}>
                   <button
@@ -196,6 +205,11 @@ function Chat() {
                           {c.lastFromMe && <CheckIcon className="mr-0.5 inline size-3" aria-label="Enviada pela empresa" />}
                           {c.lastPreview}
                         </span>
+                        {c.reminderAt && (
+                          <span className={cn('inline-flex shrink-0 items-center gap-0.5 text-[11px] tabular-nums', new Date(c.reminderAt) <= new Date() ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-muted-foreground')} title="Lembrete de retorno">
+                            <AlarmClockIcon className="size-3" /> {when(c.reminderAt)}
+                          </span>
+                        )}
                         {c.unread > 0 && <Badge className="h-5 shrink-0 px-1.5 tabular-nums" aria-label={`${c.unread} não lidas`}>{c.unread}</Badge>}
                       </span>
                       {(list.data.numbers.length > 1 || (c.category && c.category !== 'CLIENTE')) && (
@@ -272,6 +286,14 @@ export function ThreadView({ id, onBack }: { id: string; onBack?: () => void }) 
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
+          {d.conversation.phone && (
+            <Button asChild size="sm" variant="outline" title="Ligação pelo telefone (a ligação pelo WhatsApp é atendida no celular)">
+              <a href={`tel:${d.conversation.phone}`}>
+                <PhoneIcon /> Ligar
+              </a>
+            </Button>
+          )}
+          <ReminderButton conversationId={d.conversation.id} />
           <ConversationActions thread={d} />
           {d.lead && (
             <Button asChild size="sm" variant="outline">
@@ -294,6 +316,7 @@ export function ThreadView({ id, onBack }: { id: string; onBack?: () => void }) 
           </p>
         )}
       </div>
+      <ReminderBar conversationId={d.conversation.id} />
       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto bg-muted/30 px-3 py-3">
         {(d.hasMore || older.length > 0) && (
           <div className="text-center">
@@ -334,6 +357,17 @@ function Composer({ thread }: { thread: Thread }) {
   const [file, setFile] = useState<File | null>(null)
   const input = useRef<HTMLInputElement>(null)
   const id = thread.conversation.id
+  const voice = useVoiceRecorder(async (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    try {
+      await api.post(`/chat/conversas/${id}/audio`, fd)
+      void qc.invalidateQueries({ queryKey: ['chat-conversa', id] })
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+    } catch (err) {
+      toast.error(errorMessage(err))
+    }
+  })
   const replies = useQuery({ queryKey: ['chat-respostas', id], queryFn: () => api.get<{ id: string; title: string; preview: string }[]>(`/chat/respostas?conversa=${id}`), enabled: can('chat', 'create'), staleTime: 60_000 })
   const send = useMutation({
     mutationFn: () => {
@@ -424,9 +458,27 @@ function Composer({ thread }: { thread: Thread }) {
           className="max-h-40 min-h-9 flex-1 resize-none"
           aria-label="Mensagem"
         />
-        <Button type="submit" size="icon" disabled={send.isPending || (!text.trim() && !file)} aria-label="Enviar">
-          {send.isPending ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
-        </Button>
+        {voice.recording ? (
+          <div className="flex items-center gap-1.5">
+            <span className="flex items-center gap-1.5 text-sm tabular-nums text-destructive" aria-live="polite">
+              <span className="size-2 animate-pulse rounded-full bg-destructive" /> {voice.elapsed}
+            </span>
+            <Button type="button" size="icon" variant="ghost" onClick={voice.cancel} aria-label="Descartar áudio" title="Descartar">
+              <Trash2Icon />
+            </Button>
+            <Button type="button" size="icon" onClick={voice.stop} aria-label="Enviar áudio" title="Enviar áudio">
+              <SendIcon />
+            </Button>
+          </div>
+        ) : !text.trim() && !file ? (
+          <Button type="button" size="icon" onClick={() => void voice.start()} disabled={voice.sending} aria-label="Gravar áudio" title="Gravar mensagem de voz">
+            {voice.sending ? <Loader2Icon className="animate-spin" /> : <MicIcon />}
+          </Button>
+        ) : (
+          <Button type="submit" size="icon" disabled={send.isPending} aria-label="Enviar">
+            {send.isPending ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
+          </Button>
+        )}
       </div>
     </form>
   )
@@ -616,6 +668,15 @@ function Bubble({ m }: { m: Message }) {
       </div>
     )
   }
+  if (m.type === 'chamada') {
+    const video = /vídeo/i.test(m.text ?? '')
+    return (
+      <p className="flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-300">
+        {video ? <VideoIcon className="size-4 shrink-0" /> : <PhoneIncomingIcon className="size-4 shrink-0" />}
+        {m.text}
+      </p>
+    )
+  }
   if (m.type === 'localizacao') {
     const coords = m.text?.match(/(-?\d+\.\d+), (-?\d+\.\d+)$/)
     return (
@@ -729,5 +790,232 @@ export function LeadConversations({ leadId }: { leadId: string }) {
         <ThreadView id={current} />
       </Card>
     </div>
+  )
+}
+
+/**
+ * Gravação de voz no navegador (microfone só com permissão da pessoa). Chrome grava WebM, Firefox OGG e Safari MP4;
+ * o servidor manda como mensagem de voz do WhatsApp. Até 5 minutos.
+ */
+function useVoiceRecorder(onDone: (file: File) => Promise<void>) {
+  const [recording, setRecording] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [seconds, setSeconds] = useState(0)
+  const rec = useRef<MediaRecorder | null>(null)
+  const chunks = useRef<Blob[]>([])
+  const discard = useRef(false)
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const cleanup = () => {
+    if (timer.current) clearInterval(timer.current)
+    timer.current = null
+    rec.current?.stream.getTracks().forEach((tr) => tr.stop())
+    rec.current = null
+    setRecording(false)
+  }
+  useEffect(() => () => {
+    discard.current = true
+    if (rec.current?.state === 'recording') rec.current.stop()
+    cleanup()
+  }, [])
+  const start = async () => {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') return void toast.error('Este navegador não grava áudio.')
+    let stream: MediaStream
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch {
+      return void toast.error('Sem acesso ao microfone. Libere o microfone para este site no navegador.')
+    }
+    const type = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus', 'audio/mp4'].find((m) => MediaRecorder.isTypeSupported(m))
+    const r = new MediaRecorder(stream, type ? { mimeType: type } : undefined)
+    chunks.current = []
+    discard.current = false
+    r.ondataavailable = (e) => e.data.size && chunks.current.push(e.data)
+    r.onstop = () => {
+      const mime = r.mimeType || type || 'audio/webm'
+      const blob = new Blob(chunks.current, { type: mime })
+      cleanup()
+      if (discard.current || blob.size < 1000) return
+      const ext = mime.includes('ogg') ? 'ogg' : mime.includes('mp4') ? 'm4a' : 'webm'
+      setSending(true)
+      void onDone(new File([blob], `audio.${ext}`, { type: mime })).finally(() => setSending(false))
+    }
+    rec.current = r
+    r.start(1000)
+    setSeconds(0)
+    setRecording(true)
+    timer.current = setInterval(() => {
+      setSeconds((s) => {
+        if (s + 1 >= 300) rec.current?.stop()
+        return s + 1
+      })
+    }, 1000)
+  }
+  return {
+    recording,
+    sending,
+    elapsed: `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`,
+    start,
+    stop: () => rec.current?.stop(),
+    cancel: () => {
+      discard.current = true
+      rec.current?.stop()
+    },
+  }
+}
+
+/** Som dos avisos e notificação do navegador (preferências deste computador). */
+function AlertSettings() {
+  const [sound, setSound] = useState(soundOn())
+  const [perm, setPerm] = useState(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission)
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => {
+          setSoundOn(!sound)
+          setSound(!sound)
+        }}
+        title={sound ? 'Desligar o som dos avisos' : 'Ligar o som dos avisos'}
+        aria-label={sound ? 'Desligar o som dos avisos' : 'Ligar o som dos avisos'}
+      >
+        {sound ? <Volume2Icon /> : <VolumeXIcon />} Som
+      </Button>
+      {perm === 'default' && (
+        <Button size="sm" variant="outline" onClick={() => void Notification.requestPermission().then(setPerm)} title="Avisar mensagem nova mesmo com o CRM em outra aba">
+          <BellIcon /> Ativar notificações
+        </Button>
+      )}
+      {perm === 'denied' && (
+        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title="Libere as notificações para este site nas configurações do navegador">
+          <BellOffIcon className="size-3.5" /> Notificações bloqueadas no navegador
+        </span>
+      )}
+    </>
+  )
+}
+
+interface Reminder {
+  id: string
+  dueAt: string
+  note: string | null
+  userName: string
+  mine: boolean
+}
+
+/** Horário pronto: em 1 hora, amanhã às 9h, em 3 dias às 9h. */
+function preset(kind: '1h' | 'amanha' | '3d') {
+  const d = new Date()
+  if (kind === '1h') return new Date(d.getTime() + 3_600_000)
+  d.setDate(d.getDate() + (kind === 'amanha' ? 1 : 3))
+  d.setHours(9, 0, 0, 0)
+  return d
+}
+const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
+const dateTime = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })
+
+function ReminderButton({ conversationId }: { conversationId: string }) {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [due, setDue] = useState(() => localInput(preset('amanha')))
+  const [note, setNote] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const save = useMutation({
+    mutationFn: () => api.post(`/chat/conversas/${conversationId}/lembretes`, { dueAt: new Date(due).toISOString(), note: note || undefined }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['chat-lembretes', conversationId] })
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+      void qc.invalidateQueries({ queryKey: ['chat-alertas'] })
+      toast.success(`Lembrete para ${dateTime.format(new Date(due))}.`)
+      setOpen(false)
+      setNote('')
+    },
+    onError: (err) => setError(errorMessage(err)),
+  })
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)} title="Lembrete de retorno">
+        <AlarmClockIcon /> Lembrete
+      </Button>
+      {open && (
+        <Dialog open onOpenChange={(o) => !o && setOpen(false)}>
+          <DialogContent>
+            <form
+              className="space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault()
+                setError(null)
+                save.mutate()
+              }}
+            >
+              <DialogHeader>
+                <DialogTitle>Lembrete de retorno</DialogTitle>
+                <DialogDescription>No horário, o CRM avisa você (na tela, com som e notificação do navegador) com o atalho para esta conversa.</DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-wrap gap-2">
+                {([['1h', 'Em 1 hora'], ['amanha', 'Amanhã às 9h'], ['3d', 'Em 3 dias']] as const).map(([k, label]) => (
+                  <Button key={k} type="button" size="sm" variant="outline" onClick={() => setDue(localInput(preset(k)))}>
+                    {label}
+                  </Button>
+                ))}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="rem-due">Data e hora</Label>
+                <Input id="rem-due" type="datetime-local" required value={due} onChange={(e) => setDue(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="rem-note">Observação (opcional)</Label>
+                <Input id="rem-note" maxLength={500} placeholder="Ex.: confirmar se aprovou o orçamento" value={note} onChange={(e) => setNote(e.target.value)} />
+              </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={save.isPending}>
+                  Criar lembrete
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  )
+}
+
+/** Lembretes em aberto da conversa, com concluir. */
+function ReminderBar({ conversationId }: { conversationId: string }) {
+  const qc = useQueryClient()
+  const q = useQuery({ queryKey: ['chat-lembretes', conversationId], queryFn: () => api.get<Reminder[]>(`/chat/conversas/${conversationId}/lembretes`) })
+  const done = useMutation({
+    mutationFn: (id: string) => api.post(`/chat/lembretes/${id}/concluir`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['chat-lembretes', conversationId] })
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+      void qc.invalidateQueries({ queryKey: ['chat-alertas'] })
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  if (!q.data?.length) return null
+  return (
+    <ul className="space-y-1 border-b bg-amber-500/5 px-3 py-2">
+      {q.data.map((r) => {
+        const late = new Date(r.dueAt) <= new Date()
+        return (
+          <li key={r.id} className="flex items-center gap-2 text-xs">
+            <AlarmClockIcon className={cn('size-3.5 shrink-0', late ? 'text-amber-600' : 'text-muted-foreground')} />
+            <span className={cn('tabular-nums', late && 'font-medium text-amber-800 dark:text-amber-300')}>{dateTime.format(new Date(r.dueAt))}</span>
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">
+              {r.note ?? 'Retornar a conversa'}
+              {!r.mine ? ` · de ${r.userName}` : ''}
+            </span>
+            <Button size="sm" variant="ghost" className="h-6 px-2" disabled={done.isPending} onClick={() => done.mutate(r.id)}>
+              <CheckIcon /> Concluir
+            </Button>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
