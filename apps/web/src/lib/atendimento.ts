@@ -77,6 +77,8 @@ export interface ServiceRecord {
   phone: string | null
   email: string | null
   sellerId: string | null
+  /** Lead da base ligado ao atendimento. */
+  leadId?: string | null
   unitId: string | null
   originId: string | null
   customerTypeId: string | null

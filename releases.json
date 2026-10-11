@@ -2,6 +2,20 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.20.0",
+      "date": "2026-10-09",
+      "title": "WhatsApp: responder pelo CRM, regras e contatos da empresa (etapa 3)",
+      "changes": [
+        { "type": "novo", "area": "WhatsApp", "text": "Responder pelo CRM: texto (Enter envia), fotos, vídeos, áudios e documentos até 16 MB, com o nome de quem enviou. A mensagem sai pelo número da empresa e aparece no celular." },
+        { "type": "novo", "area": "WhatsApp", "text": "Respostas rápidas com {nome} (cliente) e {vendedor}; transferir a conversa para outro vendedor; arquivar conversas encerradas." },
+        { "type": "novo", "area": "Leads", "text": "Botão WhatsApp da ficha do lead e da pré-venda abre a conversa dentro do CRM (com um número conectado, vai direto). Aba WhatsApp na ficha do lead com todo o histórico de conversas." },
+        { "type": "novo", "area": "WhatsApp", "text": "Regras do WhatsApp (administrador): o que um contato novo gera (lead e pré-venda, só lead ou “a classificar”), o que acontece com quem já é lead e em quantos dias sem conversa abre um novo atendimento. O operador não precisa fazer nada." },
+        { "type": "novo", "area": "WhatsApp", "text": "Contatos da empresa: colegas, fornecedores e outros, importados do Google Contatos/Excel ou cadastrados à mão, nunca viram lead nem pré-venda. No chat, o tipo do contato pode ser corrigido (com a opção de excluir o lead e a pré-venda criados por engano)." },
+        { "type": "melhoria", "area": "WhatsApp", "text": "Proteção contra bloqueio: no máximo 20 mensagens por minuto e 300 por hora por número; só arquivos conferidos pelo conteúdo (nada de HTML, SVG ou executável). Formatação do WhatsApp (*negrito*, _itálico_) aparece no CRM." },
+        { "type": "melhoria", "area": "WhatsApp", "text": "Celular registrado sem o 9 no WhatsApp não abre conversa duplicada." }
+      ]
+    },
+    {
       "version": "0.19.1",
       "date": "2026-10-09",
       "title": "Roteiro: Chat WhatsApp em andamento",

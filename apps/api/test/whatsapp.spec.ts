@@ -68,3 +68,71 @@ describe('Mensagens recebidas (Evolution)', () => {
     expect(previewOf({ type: 'audio', text: null })).toBe('Áudio')
   })
 })
+
+describe('Envio pelo CRM', () => {
+  it('aceita só arquivos conhecidos pelos bytes; variáveis, assinatura e ritmo por número', async () => {
+    const { detectOutgoing, safeFileName, applyVariables, signed, SendRate } = await import('../src/whatsapp/envio')
+    const b = (...v: number[]) => Buffer.from(v)
+    expect(detectOutgoing(b(0xff, 0xd8, 0xff, 0xe0), 'foto.png')).toMatchObject({ kind: 'image', mime: 'image/jpeg', ext: 'jpg' })
+    expect(detectOutgoing(Buffer.from('%PDF-1.7 ...'), 'orcamento.pdf')).toMatchObject({ kind: 'document', ext: 'pdf' })
+    expect(detectOutgoing(Buffer.from('OggS....'), 'audio.ogg')).toMatchObject({ kind: 'audio' })
+    expect(detectOutgoing(Buffer.concat([b(0, 0, 0, 0x20), Buffer.from('ftypisom')]), 'video.mp4')).toMatchObject({ kind: 'video', mime: 'video/mp4' })
+    expect(detectOutgoing(b(0x50, 0x4b, 0x03, 0x04), 'planilha.xlsx')).toMatchObject({ kind: 'document', ext: 'xlsx' })
+    // Zip com outra extensão, HTML, SVG e executável: recusados.
+    expect(detectOutgoing(b(0x50, 0x4b, 0x03, 0x04), 'pacote.zip')).toBeNull()
+    expect(detectOutgoing(Buffer.from('<html><script>alert(1)</script>'), 'pagina.html')).toBeNull()
+    expect(detectOutgoing(Buffer.from('<svg onload=alert(1)>'), 'imagem.svg')).toBeNull()
+    expect(detectOutgoing(Buffer.from('MZ\x90\x00'), 'programa.exe')).toBeNull()
+    expect(detectOutgoing(Buffer.from('a;b\x00c'), 'dados.csv')).toBeNull()
+    expect(safeFileName('../../etc/passwd<script>.pdf', 'pdf')).toBe('.._.._etc_passwd_script_.pdf')
+    const { uploadName } = await import('../src/whatsapp/envio')
+    expect(uploadName(Buffer.from('Orçamento.pdf', 'utf8').toString('latin1'))).toBe('Orçamento.pdf')
+    expect(uploadName('Orçamento.pdf')).toBe('Orçamento.pdf')
+    expect(applyVariables('Olá {nome}, aqui é o {vendedor}!', { nome: 'João Silva', vendedor: 'Diego Naue' })).toBe('Olá João, aqui é o Diego!')
+    expect(applyVariables('Olá {nome}, tudo bem?', { nome: null })).toBe('Olá, tudo bem?')
+    expect(signed('Temos sim', 'Diego Naue Mocelin')).toBe('*Diego:*\nTemos sim')
+    const rate = new SendRate(3, 5)
+    expect([rate.check('n', 0), rate.check('n', 1000), rate.check('n', 2000)]).toEqual([null, null, null])
+    expect(rate.check('n', 3000)).toBe(57)
+    expect(rate.check('outro', 3000)).toBeNull()
+    expect(rate.check('n', 61_000)).toBeNull()
+  })
+})
+
+describe('Regras do WhatsApp (administrador)', () => {
+  it('decide sozinho o que vira lead, histórico e pré-venda', async () => {
+    const { decide, DEFAULT_RULES, cleanRules } = await import('../src/whatsapp/envio')
+    const base = { marked: null, hasLead: false, idle: true, fromMe: false, hasPhone: true, numberOpensRecords: true }
+    // Padrão: contato novo que chama vira lead e abre pré-venda.
+    expect(decide(DEFAULT_RULES, base)).toEqual({ category: 'CLIENTE', linkLead: true, createLead: true, openRecord: true })
+    // Contato da empresa: nada além do chat.
+    expect(decide(DEFAULT_RULES, { ...base, marked: 'FORNECEDOR', hasLead: true })).toEqual({ category: 'FORNECEDOR', linkLead: false, createLead: false, openRecord: false })
+    // Lead já cadastrado: histórico sempre; pré-venda só depois de X dias sem conversa e se a regra pedir.
+    expect(decide(DEFAULT_RULES, { ...base, hasLead: true, idle: false })).toEqual({ category: 'CLIENTE', linkLead: true, createLead: false, openRecord: false })
+    expect(decide({ ...DEFAULT_RULES, knownLead: 'SO_HISTORICO' }, { ...base, hasLead: true })).toMatchObject({ linkLead: true, openRecord: false })
+    // Número que não abre pré-venda: vira lead com histórico, sem pré-venda.
+    expect(decide(DEFAULT_RULES, { ...base, numberOpensRecords: false })).toMatchObject({ createLead: true, openRecord: false })
+    // Regra "só lead" e regra "a classificar".
+    expect(decide({ ...DEFAULT_RULES, newContact: 'SO_LEAD' }, base)).toMatchObject({ createLead: true, openRecord: false })
+    expect(decide({ ...DEFAULT_RULES, newContact: 'NADA' }, base)).toEqual({ category: 'NOVO', linkLead: false, createLead: false, openRecord: false })
+    expect(decide({ ...DEFAULT_RULES, newContact: 'NADA' }, { ...base, marked: 'CLIENTE' })).toMatchObject({ createLead: true, openRecord: true })
+    // A empresa que iniciou (mensagem do celular): não cria lead.
+    expect(decide(DEFAULT_RULES, { ...base, fromMe: true })).toMatchObject({ createLead: false, openRecord: false })
+    expect(cleanRules({ newContact: 'X' as never, reopenDays: 500 })).toEqual(DEFAULT_RULES)
+  })
+
+  it('importa a lista de contatos da empresa (Google Contatos, CSV, colado do Excel)', async () => {
+    const { parseContactList } = await import('../src/whatsapp/envio')
+    const google = 'Name,Given Name,Phone 1 - Type,Phone 1 - Value,E-mail 1 - Value\n"Carlos Souza",Carlos,Mobile,+55 49 98877-6655,carlos@usaparts.com.br\nMaria,,Work,(41) 3333-2222 ::: (41) 99888-7777,'
+    const g = parseContactList(google, 'COLEGA')
+    expect(g.rows).toEqual([
+      { name: 'Carlos Souza', phone: '+55 49 98877-6655', category: 'COLEGA' },
+      { name: 'Maria', phone: '(41) 3333-2222', category: 'COLEGA' },
+      { name: 'Maria', phone: '(41) 99888-7777', category: 'COLEGA' },
+    ])
+    expect(g.skipped).toBe(1)
+    const simples = parseContactList('Peças Brasil;(47) 3222-1100;fornecedor\nJoão\t49999990000\tcolega', 'OUTRO')
+    expect(simples.rows.map((r) => [r.name, r.category])).toEqual([['Peças Brasil', 'FORNECEDOR']])
+    expect(parseContactList('João\t49999990000\tcolega', 'OUTRO').rows).toEqual([{ name: 'João', phone: '49999990000', category: 'COLEGA' }])
+  })
+})

@@ -13,6 +13,7 @@ export interface NumberInput {
   unitId?: string | null
   sellerIds?: string[]
   createRecords?: boolean
+  signMessages?: boolean
 }
 
 /** QR Code vale ~40 s na Evolution; sem leitura em 3 minutos, a conexão é cancelada. */
@@ -40,7 +41,9 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly chat: ChatService,
-  ) {}
+  ) {
+    this.chat.clientOf = () => this.client
+  }
 
   onApplicationBootstrap() {
     if (!this.client) return
@@ -120,7 +123,7 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
       const count = await tx.whatsappNumber.count({ where: { tenantId: user.tenantId, deletedAt: null } })
       if (count >= env.whatsappMaxNumbers) throw new BadRequestException(`Limite de ${env.whatsappMaxNumbers} números cadastrados. Exclua um para cadastrar outro.`)
       return tx.whatsappNumber.create({
-        data: { tenantId: user.tenantId, name, instanceName: `crm-${randomToken(9).toLowerCase().replace(/[^a-z0-9]/g, 'x')}`, unitId: d.unitId ?? null, sellerIds, createRecords: d.createRecords ?? true },
+        data: { tenantId: user.tenantId, name, instanceName: `crm-${randomToken(9).toLowerCase().replace(/[^a-z0-9]/g, 'x')}`, unitId: d.unitId ?? null, sellerIds, createRecords: d.createRecords ?? true, signMessages: d.signMessages ?? true },
       })
     })
     await this.audit.byUser(user, ctx, 'whatsapp.numero_criado', 'whatsapp_number', n.id, { nome: name })
@@ -132,7 +135,7 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
     const name = d.name.trim().slice(0, 80)
     if (name.length < 2) throw new BadRequestException('Dê um nome ao número.')
     const sellerIds = await this.assertRefs(user.tenantId, d)
-    const n = await this.prisma.whatsappNumber.update({ where: { id }, data: { name, unitId: d.unitId ?? null, sellerIds, ...(d.createRecords !== undefined ? { createRecords: d.createRecords } : {}) } })
+    const n = await this.prisma.whatsappNumber.update({ where: { id }, data: { name, unitId: d.unitId ?? null, sellerIds, ...(d.createRecords !== undefined ? { createRecords: d.createRecords } : {}), ...(d.signMessages !== undefined ? { signMessages: d.signMessages } : {}) } })
     await this.audit.byUser(user, ctx, 'whatsapp.numero_alterado', 'whatsapp_number', id, { nome: name, vendedores: sellerIds.length })
     return this.view(n)
   }

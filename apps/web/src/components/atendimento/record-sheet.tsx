@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangleIcon, ArrowRightLeftIcon, ClockIcon, Loader2Icon, MegaphoneIcon, MessageCircleIcon, Trash2Icon, GlobeIcon } from 'lucide-react'
 import { type FormEvent, type ReactNode, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { MoneyInput } from '@/components/money-input'
 import { MultiSelect } from '@/components/multi-select'
@@ -48,6 +48,7 @@ import {
   whatsappLink,
 } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
+import { StartDialog } from '@/pages/chat-page'
 
 const NONE = '__none__'
 
@@ -240,9 +241,15 @@ export function RecordSheet({ kind, record, onClose }: { kind: Kind; record: Ser
   }
 
   const wa = whatsappLink(record?.phone ?? null)
+  const [chatOpen, setChatOpen] = useState(false)
+  const chatNav = useNavigate()
+  const { can: chatCan } = useAuth()
 
   return (
     <Sheet open onOpenChange={(open) => !open && onClose()}>
+      {chatOpen && record && (
+        <StartDialog leadId={record.leadId} phone={record.phone} external={wa} onClose={() => setChatOpen(false)} onStarted={(cid) => chatNav(`/chat?conversa=${cid}`)} />
+      )}
       <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
         <SheetHeader className="border-b">
           <SheetTitle>{record ? record.name : `Novo atendimento — ${KIND_INFO[kind].title}`}</SheetTitle>
@@ -251,10 +258,16 @@ export function RecordSheet({ kind, record, onClose }: { kind: Kind; record: Ser
               <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span>Lead de {formatDateTime(record.leadAt)}</span>
                 {record.importBatch && <span>· importado da planilha</span>}
-                {wa && (
-                  <a href={wa} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-emerald-700 hover:underline dark:text-emerald-400">
-                    <MessageCircleIcon className="size-3.5" /> Abrir no WhatsApp
-                  </a>
+                {record.phone && chatCan('chat', 'create') ? (
+                  <button type="button" onClick={() => setChatOpen(true)} className="inline-flex items-center gap-1 text-emerald-700 hover:underline dark:text-emerald-400">
+                    <MessageCircleIcon className="size-3.5" /> Conversar no WhatsApp
+                  </button>
+                ) : (
+                  wa && (
+                    <a href={wa} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-emerald-700 hover:underline dark:text-emerald-400">
+                      <MessageCircleIcon className="size-3.5" /> Abrir no WhatsApp
+                    </a>
+                  )
                 )}
               </span>
             ) : (

@@ -1290,8 +1290,10 @@ model WhatsappNumber {
   unitId         String?   @db.Uuid
   /// Vendedores que atendem por este número.
   sellerIds      String[]  @default([]) @db.Uuid
-  /// Contato novo vira lead e atendimento no Pré-Vendas (desligue em números que também recebem conversas que não são de clientes).
+  /// Este número abre pré-venda (desligue em números que não são de venda). O que vira lead segue as regras do WhatsApp.
   createRecords  Boolean   @default(true)
+  /// Mensagens enviadas pelo CRM começam com o nome de quem enviou (*Diego:*), para o cliente saber com quem fala.
+  signMessages   Boolean   @default(true)
   connectingAt   DateTime?
   connectedAt    DateTime?
   disconnectedAt DateTime?
@@ -1316,6 +1318,8 @@ model WhatsappConversation {
   leadId           String?   @db.Uuid
   recordId         String?   @db.Uuid
   assignedSellerId String?   @db.Uuid
+  /// CLIENTE, COLEGA, FORNECEDOR ou OUTRO (vem do cadastro do contato, para filtrar a lista)
+  category         String    @default("CLIENTE")
   /// ABERTA ou ARQUIVADA
   status           String    @default("ABERTA")
   unread           Int       @default(0)
@@ -1349,6 +1353,11 @@ model WhatsappMessage {
   fileName       String?
   mime           String?
   mediaStatus    String?
+  /// Enviada pelo CRM: quem enviou e a situação (ENVIADA ou ERRO, com o motivo).
+  sentById       String?  @db.Uuid
+  sentByName     String?
+  status         String?
+  error          String?
   sentAt         DateTime
   createdAt      DateTime @default(now())
 
@@ -1357,4 +1366,35 @@ model WhatsappMessage {
   @@unique([conversationId, waId])
   @@index([conversationId, sentAt])
   @@map("whatsapp_messages")
+}
+
+/// Respostas rápidas do chat ({nome} = primeiro nome do cliente, {vendedor} = nome de quem envia).
+model WhatsappQuickReply {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  title     String
+  text      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("whatsapp_quick_replies")
+}
+
+/// Tipo do contato no WhatsApp (vale para todos os números): colega, fornecedor ou outro não viram lead nem pré-venda.
+model WhatsappContact {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  /// Telefone (+55...) ou, sem telefone conhecido, o identificador do WhatsApp.
+  contactKey  String
+  /// Nome (contatos da empresa importados ou cadastrados pelo administrador).
+  name        String?
+  /// CLIENTE, COLEGA, FORNECEDOR ou OUTRO
+  category    String
+  updatedById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, contactKey])
+  @@map("whatsapp_contacts")
 }

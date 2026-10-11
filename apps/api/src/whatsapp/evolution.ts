@@ -131,6 +131,29 @@ export class EvolutionClient {
     return typeof r?.base64 === 'string' ? { base64: r.base64, mime: typeof r.mimetype === 'string' ? r.mimetype : null } : null
   }
 
+  /** Resposta dos envios: id da mensagem no WhatsApp e o contato como o WhatsApp registrou. */
+  private sent(r: { key?: { id?: unknown; remoteJid?: unknown }; messageTimestamp?: unknown } | null) {
+    const id = typeof r?.key?.id === 'string' ? r.key.id : null
+    if (!id) throw new EvolutionError('O serviço de WhatsApp não confirmou o envio.', null)
+    const ts = Number(r?.messageTimestamp)
+    return { waId: id, remoteJid: typeof r?.key?.remoteJid === 'string' ? r.key.remoteJid : null, at: Number.isFinite(ts) && ts > 0 ? new Date(ts * 1000) : new Date() }
+  }
+
+  async sendText(instanceName: string, number: string, text: string) {
+    return this.sent(await this.call('POST', `/message/sendText/${encodeURIComponent(instanceName)}`, { number, text }, 30_000))
+  }
+
+  async sendMedia(instanceName: string, number: string, m: { mediatype: 'image' | 'video' | 'document'; mimetype: string; base64: string; fileName: string; caption?: string }) {
+    return this.sent(
+      await this.call('POST', `/message/sendMedia/${encodeURIComponent(instanceName)}`, { number, mediatype: m.mediatype, mimetype: m.mimetype, media: m.base64, fileName: m.fileName, caption: m.caption ?? '' }, 90_000),
+    )
+  }
+
+  /** Áudio de voz (a Evolution converte para o formato do WhatsApp). */
+  async sendAudio(instanceName: string, number: string, base64: string) {
+    return this.sent(await this.call('POST', `/message/sendWhatsAppAudio/${encodeURIComponent(instanceName)}`, { number, audio: base64 }, 90_000))
+  }
+
   async deleteInstance(instanceName: string) {
     await this.call('DELETE', `/instance/delete/${encodeURIComponent(instanceName)}`).catch((err: unknown) => {
       if (!(err instanceof EvolutionError && err.status === 404)) throw err

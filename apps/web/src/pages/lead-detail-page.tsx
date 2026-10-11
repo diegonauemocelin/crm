@@ -17,6 +17,7 @@ import { type FormEvent, type KeyboardEvent, type ReactNode, useState } from 're
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { MultiSelect } from '@/components/multi-select'
+import { LeadConversations, StartDialog } from '@/pages/chat-page'
 import { ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import {
   AlertDialog,
@@ -183,6 +184,9 @@ function LeadDetail() {
 }
 
 function LeadView({ lead }: { lead: Lead | null }) {
+  const [chatOpen, setChatOpen] = useState(false)
+  const chatNav = useNavigate()
+  const chatAuth = useAuth()
   const qc = useQueryClient()
   const navigate = useNavigate()
   const { can } = useAuth()
@@ -241,13 +245,21 @@ function LeadView({ lead }: { lead: Lead | null }) {
             <div className="flex items-center gap-2">
               <GradeBadge grade={lead.scoreGrade} total={lead.scoreTotal} />
               <Badge variant="outline">{STAGE_LABEL[lead.stage]}</Badge>
-              {wa && (
-                <Button variant="outline" size="sm" asChild>
-                  <a href={wa} target="_blank" rel="noreferrer noopener">
-                    <MessageCircleIcon /> WhatsApp
-                  </a>
+              {/* Com acesso ao chat, a conversa fica dentro do CRM; sem acesso, abre o WhatsApp externo. */}
+              {lead.phone && !lead.anonymizedAt && chatAuth.can('chat', 'create') ? (
+                <Button variant="outline" size="sm" onClick={() => setChatOpen(true)}>
+                  <MessageCircleIcon /> WhatsApp
                 </Button>
+              ) : (
+                wa && (
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={wa} target="_blank" rel="noreferrer noopener">
+                      <MessageCircleIcon /> WhatsApp
+                    </a>
+                  </Button>
+                )
               )}
+              {chatOpen && <StartDialog leadId={lead.id} phone={lead.phone} external={wa} onClose={() => setChatOpen(false)} onStarted={(cid) => chatNav(`/chat?conversa=${cid}`)} />}
             </div>
           )
         }
@@ -258,6 +270,7 @@ function LeadView({ lead }: { lead: Lead | null }) {
           <TabsList className="mb-4">
             <TabsTrigger value="dados">Dados</TabsTrigger>
             <TabsTrigger value="linha">Linha do tempo</TabsTrigger>
+            {chatAuth.can('chat') && <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>}
             <TabsTrigger value="site">Site</TabsTrigger>
             <TabsTrigger value="loja">Loja virtual</TabsTrigger>
             <TabsTrigger value="privacidade">Privacidade (LGPD)</TabsTrigger>
@@ -366,6 +379,11 @@ function LeadView({ lead }: { lead: Lead | null }) {
             <TabsContent value="linha">
               <Timeline lead={lead} />
             </TabsContent>
+            {chatAuth.can('chat') && (
+              <TabsContent value="whatsapp">
+                <LeadConversations leadId={lead.id} />
+              </TabsContent>
+            )}
             <TabsContent value="site">
               <SiteVisits lead={lead} />
             </TabsContent>
