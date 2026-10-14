@@ -97,7 +97,7 @@ export function buildScript(o: { key: string; endpoint: string; requireConsent: 
   function api(cmd, arg) {
     if (cmd === 'consent') {
       if (arg === false) { consent = false; set('_crm_ok', '0', 0); set('_crm_vid', '', 0); set('_crm_sid', '', 0); return; }
-      consent = true; if (C.c) set('_crm_ok', '1', 31536000); send(); scan();
+      consent = true; if (C.c) set('_crm_ok', '1', 31536000); send(); scan(); adsInit();
     } else if (cmd === 'pageview') { send(); }
   }
   var q = (w.usaCrm && w.usaCrm.q) || [];

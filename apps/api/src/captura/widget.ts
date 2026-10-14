@@ -307,12 +307,21 @@ export const CAPTURE_JS = `
   // Só com o consentimento do visitante (mesma regra do rastreamento) e sem o "não rastrear" do navegador.
   function adsTag() { return (CFG && CFG.adsTag) || null; }
   function adsAllowed() { return !PREVIEW && (typeof consent === 'undefined' || consent) && !(typeof noTrack !== 'undefined' && noTrack); }
-  function adsInit() {
-    var t = adsTag(); if (!t || !t.tagId || !t.loadTag || !adsAllowed()) return;
+  // Sites com Google Tag Manager carregam a tag do Google sem criar a função gtag: os comandos vão pelo dataLayer,
+  // que a tag (do GTM ou carregada aqui) lê do mesmo jeito.
+  function gtagFn() {
     w.dataLayer = w.dataLayer || [];
-    if (typeof w.gtag !== 'function') { w.gtag = function () { w.dataLayer.push(arguments); }; w.gtag('js', new Date()); }
-    w.gtag('config', t.tagId, { allow_enhanced_conversions: true });
-    if (!d.querySelector('script[src*="googletagmanager.com/gtag/js"]')) { var s = d.createElement('script'); s.async = true; s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(t.tagId); d.head.appendChild(s); }
+    if (typeof w.gtag !== 'function') w.gtag = function () { w.dataLayer.push(arguments); };
+    return w.gtag;
+  }
+  var adsReady = false;
+  function adsInit() {
+    var t = adsTag(); if (adsReady || !t || !t.tagId || !adsAllowed()) return;
+    adsReady = true;
+    var g = gtagFn();
+    var loaded = d.querySelector('script[src*="googletagmanager.com/gtag/js"]');
+    if (t.loadTag && !loaded) { g('js', new Date()); var s = d.createElement('script'); s.async = true; s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(t.tagId); d.head.appendChild(s); }
+    if (t.loadTag || loaded) g('config', t.tagId, { allow_enhanced_conversions: true });
   }
   function e164(v) { var x = String(v || '').replace(/\\D/g, ''); if (!x) return ''; if (x.length === 10 || x.length === 11) x = '55' + x; return x.length >= 12 ? '+' + x : ''; }
   function adsTrack(opts, data) {
@@ -323,12 +332,15 @@ export const CAPTURE_JS = `
       var email = String(data.email || '').trim().toLowerCase(), phone = e164(data.phone || data.whatsapp || data.telefone);
       w.dataLayer = w.dataLayer || [];
       w.dataLayer.push({ event: 'crm_lead', crm_canal: canal, crm_id: opts.formId || opts.popupId || opts.whatsappId || '', crm_email: email || undefined, crm_telefone: phone || undefined });
-      if (typeof w.gtag !== 'function') return;
-      var ud = {}; if (email) ud.email = email; if (phone) ud.phone_number = phone;
-      if (email || phone) w.gtag('set', 'user_data', ud);
-      w.gtag('event', 'generate_lead', { lead_source: canal });
       var sendTo = canal === 'whatsapp' ? t.whatsappSendTo : t.formSendTo;
-      if (sendTo) w.gtag('event', 'conversion', { send_to: sendTo, transport_type: 'beacon' });
+      // Sem tag do Google no CRM nem gtag na página: fica só o evento "crm_lead" para o GTM.
+      if (typeof w.gtag !== 'function' && !t.tagId && !sendTo) return;
+      adsInit();
+      var g = gtagFn();
+      var ud = {}; if (email) ud.email = email; if (phone) ud.phone_number = phone;
+      if (email || phone) g('set', 'user_data', ud);
+      g('event', 'generate_lead', { lead_source: canal });
+      if (sendTo) g('event', 'conversion', { send_to: sendTo, transport_type: 'beacon' });
     } catch (e) {}
   }
   function startCapture() {

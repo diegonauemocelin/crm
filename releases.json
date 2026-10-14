@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.37.1",
+      "date": "2026-10-16",
+      "title": "Correção das conversões do Google Ads com o Tag Manager",
+      "changes": [
+        { "type": "correcao", "area": "Captura", "text": "Conversões do Google Ads em sites com Google Tag Manager (como a LP): o formulário, o pop-up e o botão de WhatsApp agora enviam a conversão mesmo quando a página não tem a função gtag." },
+        { "type": "correcao", "area": "Captura", "text": "Quando o visitante aceita os cookies depois de abrir a página, a tag do Google Ads passa a ser ligada na hora." }
+      ]
+    },
+    {
       "version": "0.37.0",
       "date": "2026-10-16",
       "title": "E-mail marketing pelo resultado do atendimento",
