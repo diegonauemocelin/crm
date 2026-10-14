@@ -227,10 +227,13 @@ export const CAPTURE_JS = `
           return;
         }
         form.textContent = ''; form.appendChild(el('div', 'ok', res.message || 'Enviado!'));
-        adsTrack(opts, data);
+        // Antes de abrir o WhatsApp, espera as tags do Google Tag Manager terminarem (no máximo 1,5 s) para a
+        // conversão sair antes de trocar de página. Sem GTM, uma pausa curta.
+        var left = false;
+        function leave() { if (left || !res.redirect) return; left = true; go(res.redirect); }
+        var viaGtm = adsTrack(opts, data, leave);
         if (opts.onDone) opts.onDone(res);
-        // Pausa curta antes de abrir o WhatsApp, para o aviso de conversão sair antes de trocar de página.
-        if (res.redirect) setTimeout(function () { go(res.redirect); }, opts.kind === 'whatsapp' ? 400 : 1200);
+        if (res.redirect) setTimeout(leave, viaGtm ? 1500 : opts.kind === 'whatsapp' ? 400 : 1200);
       });
     });
     root.appendChild(form);
@@ -324,17 +327,24 @@ export const CAPTURE_JS = `
     if (t.loadTag || loaded) g('config', t.tagId, { allow_enhanced_conversions: true });
   }
   function e164(v) { var x = String(v || '').replace(/\\D/g, ''); if (!x) return ''; if (x.length === 10 || x.length === 11) x = '55' + x; return x.length >= 12 ? '+' + x : ''; }
-  function adsTrack(opts, data) {
-    if (!adsAllowed()) return;
+  /** Devolve true quando o Google Tag Manager da página vai avisar (pelo eventCallback) que as tags terminaram. */
+  function adsTrack(opts, data, done) {
+    if (!adsAllowed()) return false;
+    var viaGtm = false;
     try {
       var t = adsTag() || {};
       var canal = opts.kind === 'whatsapp' ? 'whatsapp' : opts.kind === 'popup' ? 'popup' : 'formulario';
       var email = String(data.email || '').trim().toLowerCase(), phone = e164(data.phone || data.whatsapp || data.telefone);
       w.dataLayer = w.dataLayer || [];
-      w.dataLayer.push({ event: 'crm_lead', crm_canal: canal, crm_id: opts.formId || opts.popupId || opts.whatsappId || '', crm_email: email || undefined, crm_telefone: phone || undefined });
+      var crmId = opts.formId || opts.popupId || opts.whatsappId || '';
+      // Evento "usacrm_form_submit" com formKind (landing, form, popup ou whatsapp): o nome que os acionadores do
+      // GTM usam. "crm_lead" continua para quem já configurou por ele.
+      viaGtm = !!(done && w.google_tag_manager);
+      w.dataLayer.push({ event: 'usacrm_form_submit', formKind: opts.kind, formId: crmId, crm_canal: canal, eventCallback: viaGtm ? done : undefined, eventTimeout: 1200 });
+      w.dataLayer.push({ event: 'crm_lead', crm_canal: canal, crm_id: crmId, crm_email: email || undefined, crm_telefone: phone || undefined });
       var sendTo = canal === 'whatsapp' ? t.whatsappSendTo : t.formSendTo;
-      // Sem tag do Google no CRM nem gtag na página: fica só o evento "crm_lead" para o GTM.
-      if (typeof w.gtag !== 'function' && !t.tagId && !sendTo) return;
+      // Sem tag do Google no CRM nem gtag na página: ficam só os eventos para o GTM.
+      if (typeof w.gtag !== 'function' && !t.tagId && !sendTo) return viaGtm;
       adsInit();
       var g = gtagFn();
       var ud = {}; if (email) ud.email = email; if (phone) ud.phone_number = phone;
@@ -342,6 +352,7 @@ export const CAPTURE_JS = `
       g('event', 'generate_lead', { lead_source: canal });
       if (sendTo) g('event', 'conversion', { send_to: sendTo, transport_type: 'beacon' });
     } catch (e) {}
+    return viaGtm;
   }
   function startCapture() {
     if (w.__crmCap || typeof fetch !== 'function' || !d.body) return; w.__crmCap = 1;

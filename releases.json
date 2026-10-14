@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.38.1",
+      "date": "2026-10-16",
+      "title": "Conversões pelo Google Tag Manager",
+      "changes": [
+        { "type": "correcao", "area": "Captura", "text": "Conversões pelo Google Tag Manager: o formulário e o botão de WhatsApp agora publicam o evento “usacrm_form_submit” com “formKind” (landing, form, popup ou whatsapp), o nome usado nos acionadores do GTM da LP, que antes nunca disparavam." },
+        { "type": "melhoria", "area": "Captura", "text": "Antes de abrir o WhatsApp, o CRM espera as tags do Tag Manager terminarem (até 1,5 s), para a conversão não se perder na troca de página." }
+      ]
+    },
+    {
       "version": "0.38.0",
       "date": "2026-10-16",
       "title": "Resposta do Google às conversões enviadas",
