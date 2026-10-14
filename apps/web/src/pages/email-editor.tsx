@@ -30,6 +30,7 @@ import {
   RemoveFormattingIcon,
   SearchIcon,
   SendIcon,
+  Share2Icon,
   ShoppingBagIcon,
   SmartphoneIcon,
   StrikethroughIcon,
@@ -81,8 +82,7 @@ import {
   productItem,
   type ProductSearch,
   type Segment,
-  type WhatsappNumber,
-} from '@/lib/email'
+  type WhatsappNumber, SOCIAL_LABEL, SOCIAL_NETWORKS, SOCIAL_PLACEHOLDER, socialIcon } from '@/lib/email'
 import { cleanRich, legacyToHtml } from '@/lib/rich-text'
 import { cn } from '@/lib/utils'
 
@@ -124,6 +124,7 @@ const BLOCK_ICON: Record<BlockType, typeof TypeIcon> = {
   botao: MousePointerClickIcon,
   whatsapp: MessageCircleIcon,
   produtos: ShoppingBagIcon,
+  redes: Share2Icon,
   divisor: MinusIcon,
   espaco: MoveVerticalIcon,
 }
@@ -233,7 +234,7 @@ export function Editor({ campaign }: { campaign: Campaign }) {
       return
     }
     if (p.kind === 'move') return move(p.id, target.at)
-    if (p.kind === 'new') return insert(target.at, newBlock(p.type, numbers.data?.[0]?.phone ?? ''))
+    if (p.kind === 'new') return insert(target.at, newBlock(p.type, numbers.data?.[0]?.phone ?? '', settings.data?.social))
     if (p.kind === 'image') return insert(target.at, { type: 'imagem', url: p.url, alt: '', width: 100 })
     insert(target.at, { type: 'produtos', columns: 3, items: [p.item] })
   }
@@ -383,7 +384,7 @@ export function Editor({ campaign }: { campaign: Campaign }) {
             </TabsList>
             <div className="max-h-[calc(100vh-9rem)] overflow-y-auto border-t p-3">
               <TabsContent value="blocos">
-                <BlocksPanel canEdit={canEdit} onAdd={(t) => insertAfterSelected(newBlock(t, numbers.data?.[0]?.phone ?? ''))} />
+                <BlocksPanel canEdit={canEdit} onAdd={(t) => insertAfterSelected(newBlock(t, numbers.data?.[0]?.phone ?? '', settings.data?.social))} />
               </TabsContent>
               <TabsContent value="imagens">
                 <ImagesPanel canEdit={canEdit} onPick={addImage} replacing={selected?.b.type === 'imagem'} />
@@ -584,6 +585,13 @@ function Canvas(props: {
         </div>
 
         <div className="border-t border-[#f3f4f6] px-8 pt-6 pb-8 text-center text-xs leading-[18px] text-[#6b7280]">
+          {settings?.socialInFooter && !items.some((x) => x.b.type === 'redes') && SOCIAL_NETWORKS.some((n) => settings.social?.[n]) && (
+            <div className="mb-3 flex justify-center gap-3">
+              {SOCIAL_NETWORKS.filter((n) => settings.social?.[n]).map((n) => (
+                <img key={n} src={socialIcon(n, 'cinza')} alt={SOCIAL_LABEL[n]} width={24} height={24} className="size-6" />
+              ))}
+            </div>
+          )}
           {settings?.footerText && (
             <p className="mb-3 whitespace-pre-line">{settings.footerText}</p>
           )}
@@ -740,6 +748,18 @@ function BlockView({ block: b, brand, editing, onChange }: { block: Block; brand
               )}
             </div>
           ))}
+        </div>
+      )
+    }
+    case 'redes': {
+      const nets = SOCIAL_NETWORKS.filter((n) => b.links[n])
+      return (
+        <div className="flex gap-3 px-8 py-3" style={{ justifyContent: justify(b.align, 'center') }}>
+          {nets.length ? (
+            nets.map((n) => <img key={n} src={socialIcon(n, b.style ?? 'cor')} alt={SOCIAL_LABEL[n]} width={32} height={32} className="size-8" />)
+          ) : (
+            <span className="rounded-md border-2 border-dashed border-[#d1d5db] px-4 py-2 text-sm text-[#6b7280]">Preencha os endereços das redes ao lado (ou em Configurações).</span>
+          )}
         </div>
       )
     }
@@ -1409,6 +1429,34 @@ function Inspector({ block: b, numbers, disabled, onChange, onPickImage }: { blo
         </div>
       )
     }
+    case 'redes':
+      return (
+        <div className="space-y-3">
+          {head}
+          <p className="text-xs text-muted-foreground">Cada ícone abre a rede em nova aba e conta como clique da campanha. Deixe vazio para não mostrar a rede.</p>
+          {SOCIAL_NETWORKS.map((n) => (
+            <Field key={n} label={SOCIAL_LABEL[n]} htmlFor={`s-${n}`}>
+              <Input id={`s-${n}`} type="url" placeholder={SOCIAL_PLACEHOLDER[n]} value={b.links[n] ?? ''} onChange={(e) => onChange({ ...b, links: { ...b.links, [n]: e.target.value } })} disabled={disabled} />
+            </Field>
+          ))}
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-sm font-normal">Ícones</Label>
+            <Select value={b.style ?? 'cor'} onValueChange={(v) => onChange({ ...b, style: v as 'cor' | 'cinza' })} disabled={disabled}>
+              <SelectTrigger size="sm" className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cor">Coloridos</SelectItem>
+                <SelectItem value="cinza">Cinza</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-normal">Posição</Label>
+            <AlignPick value={b.align ?? 'center'} onChange={(align) => onChange({ ...b, align })} disabled={disabled} />
+          </div>
+        </div>
+      )
     case 'espaco':
       return (
         <div className="space-y-3">

@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.22.0",
+      "date": "2026-10-09",
+      "title": "Redes sociais no e-mail marketing",
+      "changes": [
+        { "type": "novo", "area": "Email marketing", "text": "Bloco “Redes sociais” no editor: ícones do Facebook, Instagram, YouTube e TikTok (coloridos ou cinza, à esquerda, no centro ou à direita); cada um abre a rede em nova aba e conta como clique da campanha." },
+        { "type": "novo", "area": "Email marketing", "text": "Endereços das redes cadastrados uma vez em E-mail marketing → Configurações (o bloco já vem preenchido); o CRM confere se cada endereço é da própria rede." },
+        { "type": "novo", "area": "Email marketing", "text": "Opção de mostrar os ícones das redes, discretos, no rodapé de todo e-mail (sem repetir quando o e-mail já tem o bloco)." },
+        { "type": "melhoria", "area": "Email marketing", "text": "Ícones em imagem própria do CRM, nítidos em tela de celular e mostrados por todos os programas de e-mail (Gmail, Outlook, celular)." }
+      ]
+    },
+    {
       "version": "0.21.0",
       "date": "2026-10-09",
       "title": "WhatsApp: áudio, lembretes, avisos e dashboard de atendimento",

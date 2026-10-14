@@ -5,6 +5,7 @@
  * reconstruídos do zero); o resto é escapado. Links só http(s) (e mailto/tel), passando pelo rastreamento de cliques.
  */
 import { waDigits } from '../captura/regras'
+import type { SocialNetwork, SocialStyle } from './icones'
 
 export type Align = 'left' | 'center' | 'right'
 
@@ -26,9 +27,47 @@ export type Block =
   | { type: 'whatsapp'; text: string; phone: string; message?: string; align?: Align }
   | { type: 'produtos'; items: ProductItem[]; columns?: 2 | 3 }
   | { type: 'divisor' }
+  | { type: 'redes'; links: SocialLinks; style?: SocialStyle; align?: Align }
   | { type: 'espaco'; height?: number }
 
-export const BLOCK_TYPES = ['titulo', 'texto', 'imagem', 'botao', 'whatsapp', 'produtos', 'divisor', 'espaco'] as const
+export const BLOCK_TYPES = ['titulo', 'texto', 'imagem', 'botao', 'whatsapp', 'produtos', 'redes', 'divisor', 'espaco'] as const
+
+export type SocialLinks = Partial<Record<SocialNetwork, string>>
+export const SOCIAL_NETWORKS: SocialNetwork[] = ['facebook', 'instagram', 'youtube', 'tiktok']
+export const SOCIAL_LABEL: Record<SocialNetwork, string> = { facebook: 'Facebook', instagram: 'Instagram', youtube: 'YouTube', tiktok: 'TikTok' }
+const SOCIAL_HOSTS: Record<SocialNetwork, string[]> = {
+  facebook: ['facebook.com', 'fb.com', 'fb.me'],
+  instagram: ['instagram.com', 'instagr.am'],
+  youtube: ['youtube.com', 'youtu.be'],
+  tiktok: ['tiktok.com'],
+}
+
+/** Endereço da rede social: https e do domínio da própria rede (ex.: https://www.instagram.com/usaparts). */
+export function socialUrl(network: SocialNetwork, raw: string | undefined | null): string | null {
+  const v = raw?.trim()
+  if (!v) return null
+  try {
+    const u = new URL(/^https?:\/\//i.test(v) ? v : `https://${v}`)
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
+    const host = u.hostname.toLowerCase().replace(/^(www|m|web)\./, '')
+    if (!SOCIAL_HOSTS[network].some((h) => host === h || host.endsWith(`.${h}`))) return null
+    u.protocol = 'https:'
+    return u.toString().slice(0, 300)
+  } catch {
+    return null
+  }
+}
+
+/** Só as redes com endereço válido, na ordem padrão. */
+export function cleanSocial(raw: unknown): SocialLinks {
+  const r = (raw ?? {}) as Record<string, unknown>
+  const out: SocialLinks = {}
+  for (const n of SOCIAL_NETWORKS) {
+    const u = socialUrl(n, typeof r[n] === 'string' ? (r[n] as string) : null)
+    if (u) out[n] = u
+  }
+  return out
+}
 
 export interface Brand {
   appName: string
@@ -36,6 +75,12 @@ export interface Brand {
   logoUrl: string | null
   /** Endereço e dados da empresa no rodapé (boa prática e exigência dos provedores). */
   footerText: string
+  /** Redes sociais da empresa (cadastradas em E-mail marketing → Configurações). */
+  social?: SocialLinks
+  /** Ícones das redes no rodapé de todo e-mail (quando o e-mail não tem o bloco de redes). */
+  socialInFooter?: boolean
+  /** Endereço público dos ícones (ex.: https://crm.usaparts.com.br/api/public/e/icones). */
+  iconBase?: string
 }
 
 export interface Person {
@@ -307,6 +352,7 @@ export function collectLinks(blocks: Block[]): string[] {
     if (b.type === 'botao') add(safeUrl(b.url, true))
     if (b.type === 'whatsapp') add(whatsappUrl(b.phone, b.message))
     if (b.type === 'produtos') for (const i of b.items) add(safeUrl(i.url))
+    if (b.type === 'redes') for (const n of SOCIAL_NETWORKS) add(socialUrl(n, b.links[n]))
   }
   return out
 }
@@ -395,6 +441,17 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
         text.push('')
         break
       }
+      case 'redes': {
+        const icons = socialIcons(b.links, b.style ?? 'cor', o.brand.iconBase, track)
+        if (!icons) break
+        rows.push(`<tr><td align="${alignOf(b.align, 'center')}" style="padding:12px 32px">${icons}</td></tr>`)
+        for (const n of SOCIAL_NETWORKS) {
+          const u = socialUrl(n, b.links[n])
+          if (u) text.push(`${SOCIAL_LABEL[n]}: ${u}`)
+        }
+        text.push('')
+        break
+      }
       case 'divisor':
         rows.push('<tr><td style="padding:12px 32px"><hr style="border:0;border-top:1px solid #e5e7eb;margin:0"></td></tr>')
         break
@@ -410,7 +467,10 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
   const header = logo
     ? `<tr><td align="center" style="padding:24px 32px 8px"><img src="${escape(logo)}" alt="${escape(o.brand.appName)}" height="48" style="display:block;height:48px;width:auto;max-width:260px;border:0"></td></tr>`
     : `<tr><td align="center" style="padding:24px 32px 8px;font-size:20px;font-weight:700;color:${color}">${escape(o.brand.appName)}</td></tr>`
+  // Rodapé com as redes (discretas, em cinza) quando o e-mail não tem o bloco de redes.
+  const footerIcons = o.brand.socialInFooter && !blocks.some((b) => b.type === 'redes') ? socialIcons(o.brand.social ?? {}, 'cinza', o.brand.iconBase, (u) => u, 24) : ''
   const footer = `<tr><td style="padding:24px 32px 32px;font-size:12px;line-height:18px;color:#6b7280;text-align:center;border-top:1px solid #f3f4f6">
+${footerIcons ? `<div style="padding-bottom:14px">${footerIcons}</div>` : ''}
 ${o.brand.footerText ? `${escape(o.brand.footerText).replace(/\n/g, '<br>')}<br><br>` : ''}Você recebe este e-mail porque autorizou o contato de ${escape(o.brand.appName)}.<br>
 <a href="${escape(o.unsubscribeUrl)}" style="color:#6b7280;text-decoration:underline">Não quero mais receber estes e-mails</a></td></tr>`
   const preheader = o.preheader?.trim()
@@ -429,6 +489,18 @@ ${footer}
 
   const plain = [...text, '---', o.brand.footerText, `Para não receber mais: ${o.unsubscribeUrl}`].filter((l) => l !== undefined).join('\n').trim()
   return { html, text: plain, subject: P(o.subject), links }
+}
+
+/** Ícones das redes lado a lado (imagem PNG, que todo programa de e-mail mostra), cada um abre a rede em nova aba. */
+function socialIcons(links: SocialLinks, style: SocialStyle, base: string | undefined, track: (u: string) => string, size = 32) {
+  if (!base) return ''
+  const cells = SOCIAL_NETWORKS.flatMap((n) => {
+    const u = socialUrl(n, links[n])
+    if (!u) return []
+    const img = `<img src="${escape(`${base}/${n}-${style}.png`)}" width="${size}" height="${size}" alt="${SOCIAL_LABEL[n]}" style="display:block;width:${size}px;height:${size}px;border:0">`
+    return [`<td style="padding:0 6px"><a href="${escape(track(u))}" target="_blank" rel="noopener" title="${SOCIAL_LABEL[n]}">${img}</a></td>`]
+  })
+  return cells.length ? `<table role="presentation" cellpadding="0" cellspacing="0" style="display:inline-table;margin:0 auto"><tr>${cells.join('')}</tr></table>` : ''
 }
 
 /** Confere os blocos vindos do painel (tipos conhecidos, tamanhos, endereços, texto formatado). */
@@ -479,6 +551,14 @@ export function cleanBlocks(raw: unknown): { blocks: Block[] } | { error: string
             url: str(i?.url, 500) || undefined,
           })),
         })
+        break
+      }
+      case 'redes': {
+        const links = (b.links ?? {}) as Record<string, unknown>
+        for (const n of SOCIAL_NETWORKS) {
+          if (typeof links[n] === 'string' && (links[n] as string).trim() && !socialUrl(n, links[n] as string)) return { error: `Endereço do ${SOCIAL_LABEL[n]} inválido (ex.: https://www.${n}.com/usaparts).` }
+        }
+        out.push({ type: 'redes', links: cleanSocial(links), style: b.style === 'cinza' ? 'cinza' : 'cor', align: alignOf(b.align, 'center') })
         break
       }
       case 'divisor':

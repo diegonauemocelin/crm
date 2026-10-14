@@ -13,11 +13,12 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { int, UF_LIST, UF_NAMES, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
-import { type Campaign, type EmailSettings, newBlock, pct, type Segment, type SegmentFilters, STATUS_LABEL, STATUS_TONE } from '@/lib/email'
+import { type Campaign, type EmailSettings, newBlock, pct, type Segment, type SegmentFilters, STATUS_LABEL, STATUS_TONE, SOCIAL_LABEL, SOCIAL_NETWORKS, SOCIAL_PLACEHOLDER } from '@/lib/email'
 import { STAGES, useTags } from '@/lib/leads'
 import { FormError } from './auth/auth-layout'
 
@@ -455,7 +456,7 @@ function SettingsEditor({ initial }: { initial: EmailSettings }) {
   const [s, setS] = useState(initial)
   const [error, setError] = useState<string | null>(null)
   const save = useMutation({
-    mutationFn: () => api.put<EmailSettings>('/email/configuracoes', { fromName: s.fromName, replyTo: s.replyTo, footerText: s.footerText, ratePerMinute: s.ratePerMinute }),
+    mutationFn: () => api.put<EmailSettings>('/email/configuracoes', { fromName: s.fromName, replyTo: s.replyTo, footerText: s.footerText, ratePerMinute: s.ratePerMinute, social: s.social ?? {}, socialInFooter: s.socialInFooter ?? true }),
     onSuccess: (saved) => {
       qc.setQueryData(['email-settings'], saved)
       toast.success('Configurações salvas.')
@@ -488,6 +489,24 @@ function SettingsEditor({ initial }: { initial: EmailSettings }) {
             <Row label="Rodapé (dados da empresa)" htmlFor="em-footer" hint="Razão social, endereço e telefone: os provedores de e-mail exigem e passa confiança.">
               <Textarea id="em-footer" rows={3} maxLength={500} placeholder={'USA Parts Importadora e Distribuidora\nMaravilha/SC · (49) 0000-0000'} value={s.footerText} onChange={(e) => setS({ ...s, footerText: e.target.value })} />
             </Row>
+            <div className="space-y-2 rounded-md border p-3">
+              <p className="text-sm font-medium">Redes sociais</p>
+              <p className="text-xs text-muted-foreground">Cadastre uma vez: o bloco “Redes sociais” do editor já vem com estes endereços. Cada ícone abre a rede em nova aba.</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {SOCIAL_NETWORKS.map((n) => (
+                  <Row key={n} label={SOCIAL_LABEL[n]} htmlFor={`em-${n}`}>
+                    <Input id={`em-${n}`} type="url" placeholder={SOCIAL_PLACEHOLDER[n]} value={s.social?.[n] ?? ''} onChange={(e) => setS({ ...s, social: { ...s.social, [n]: e.target.value } })} />
+                  </Row>
+                ))}
+              </div>
+              <label className="flex items-center justify-between gap-3 pt-1 text-sm">
+                <span>
+                  Mostrar os ícones no rodapé de todo e-mail
+                  <span className="block text-xs text-muted-foreground">Em cinza, discretos. Se o e-mail tiver o bloco de redes, o rodapé não repete.</span>
+                </span>
+                <Switch checked={s.socialInFooter ?? true} onCheckedChange={(c) => setS({ ...s, socialInFooter: c })} />
+              </label>
+            </div>
             <Row label="Envios por minuto" htmlFor="em-rate" hint="Envio gradual protege o domínio contra spam. 60/min = 3.600 por hora.">
               <Input id="em-rate" type="number" min={5} max={1000} className="w-28" value={s.ratePerMinute} onChange={(e) => setS({ ...s, ratePerMinute: Number(e.target.value) })} />
             </Row>

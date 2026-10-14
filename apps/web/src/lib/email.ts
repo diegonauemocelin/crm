@@ -36,9 +36,23 @@ export type Block =
   | { type: 'whatsapp'; text: string; phone: string; message?: string; align?: Align }
   | { type: 'produtos'; items: ProductItem[]; columns?: 2 | 3 }
   | { type: 'divisor' }
+  | { type: 'redes'; links: SocialLinks; style?: 'cor' | 'cinza'; align?: Align }
   | { type: 'espaco'; height?: number }
 
 export type BlockType = Block['type']
+
+export type SocialNetwork = 'facebook' | 'instagram' | 'youtube' | 'tiktok'
+export type SocialLinks = Partial<Record<SocialNetwork, string>>
+export const SOCIAL_NETWORKS: SocialNetwork[] = ['facebook', 'instagram', 'youtube', 'tiktok']
+export const SOCIAL_LABEL: Record<SocialNetwork, string> = { facebook: 'Facebook', instagram: 'Instagram', youtube: 'YouTube', tiktok: 'TikTok' }
+export const SOCIAL_PLACEHOLDER: Record<SocialNetwork, string> = {
+  facebook: 'https://www.facebook.com/usaparts',
+  instagram: 'https://www.instagram.com/usaparts',
+  youtube: 'https://www.youtube.com/@usaparts',
+  tiktok: 'https://www.tiktok.com/@usaparts',
+}
+/** Ícone servido pelo CRM (o mesmo que vai no e-mail). */
+export const socialIcon = (n: SocialNetwork, style: 'cor' | 'cinza') => `/api/public/e/icones/${n}-${style}.png`
 
 export const BLOCK_LABEL: Record<BlockType, string> = {
   titulo: 'Título',
@@ -47,11 +61,12 @@ export const BLOCK_LABEL: Record<BlockType, string> = {
   botao: 'Botão',
   whatsapp: 'WhatsApp',
   produtos: 'Produtos',
+  redes: 'Redes sociais',
   divisor: 'Linha divisória',
   espaco: 'Espaço',
 }
 
-export function newBlock(type: BlockType, whatsappPhone = ''): Block {
+export function newBlock(type: BlockType, whatsappPhone = '', social: SocialLinks = {}): Block {
   switch (type) {
     case 'titulo':
       return { type, html: 'Olá, {primeiro_nome}!', align: 'left' }
@@ -65,6 +80,8 @@ export function newBlock(type: BlockType, whatsappPhone = ''): Block {
       return { type, text: 'Falar no WhatsApp', phone: whatsappPhone, message: 'Olá! Vim pelo e-mail e quero saber mais.', align: 'center' }
     case 'produtos':
       return { type, columns: 3, items: [] }
+    case 'redes':
+      return { type, links: { ...social }, style: 'cor', align: 'center' }
     case 'espaco':
       return { type, height: 24 }
     default:
@@ -180,6 +197,8 @@ export interface EmailSettings {
   ratePerMinute: number
   logoUrl: string | null
   ownLogo: boolean
+  social: SocialLinks
+  socialInFooter: boolean
 }
 
 export const pct = (part: number, of: number) => (of ? `${((part / of) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : '—')

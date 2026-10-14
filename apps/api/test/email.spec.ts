@@ -138,3 +138,29 @@ describe('validação dos blocos', () => {
     expect(safeUrl('mailto:vendas@x.com')).toBeNull()
   })
 })
+
+describe('redes sociais no e-mail', () => {
+  it('só aceita o endereço da própria rede; bloco com ícones que abrem em nova aba e entram no rastreio', async () => {
+    const { socialUrl, cleanSocial } = await import('../src/email/blocos')
+    expect(socialUrl('instagram', 'instagram.com/usaparts')).toBe('https://instagram.com/usaparts')
+    expect(socialUrl('facebook', 'http://www.facebook.com/usaparts')).toBe('https://www.facebook.com/usaparts')
+    expect(socialUrl('youtube', 'https://youtu.be/abc')).toBe('https://youtu.be/abc')
+    expect(socialUrl('tiktok', 'https://www.tiktok.com/@usaparts')).toBe('https://www.tiktok.com/@usaparts')
+    expect(socialUrl('facebook', 'https://facebook.com.golpe.com/x')).toBeNull()
+    expect(socialUrl('instagram', 'javascript:alert(1)')).toBeNull()
+    expect(cleanSocial({ facebook: 'https://facebook.com/usaparts', youtube: 'https://evil.com', x: 'y' })).toEqual({ facebook: 'https://facebook.com/usaparts' })
+    expect('error' in cleanBlocks([{ type: 'redes', links: { tiktok: 'https://tiktok.golpe.com/a' } }])).toBe(true)
+
+    const blocks = clean([{ type: 'redes', links: { facebook: 'https://facebook.com/usaparts', instagram: 'https://instagram.com/usaparts' }, style: 'cor' }])
+    expect(collectLinks(blocks)).toEqual(['https://facebook.com/usaparts', 'https://instagram.com/usaparts'])
+    const r = renderEmail(blocks, { ...base, brand: { ...brand, iconBase: 'https://crm/api/public/e/icones', social: { youtube: 'https://youtube.com/@usaparts' }, socialInFooter: true }, trackLink: (_u, i) => `https://crm/l/${i}` })
+    expect(r.html).toContain('src="https://crm/api/public/e/icones/facebook-cor.png"')
+    expect(r.html).toContain('href="https://crm/l/1" target="_blank"')
+    // Com o bloco no e-mail, o rodapé não repete os ícones.
+    expect(r.html).not.toContain('youtube-cinza.png')
+    expect(r.text).toContain('Instagram: https://instagram.com/usaparts')
+    // Sem o bloco: ícones cinza no rodapé.
+    const f = renderEmail(clean([{ type: 'texto', html: 'Oi' }]), { ...base, brand: { ...brand, iconBase: 'https://crm/api/public/e/icones', social: { youtube: 'https://youtube.com/@usaparts' }, socialInFooter: true } })
+    expect(f.html).toContain('youtube-cinza.png')
+  })
+})

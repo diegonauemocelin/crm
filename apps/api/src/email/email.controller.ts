@@ -1,9 +1,10 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common'
+import { SOCIAL_ICONS, type SocialNetwork, type SocialStyle } from './icones'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { SkipThrottle, Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
-import { IsArray, IsDateString, IsEmail, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
+import { IsArray, IsDateString, IsEmail, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateIf, ValidateNested, IsBoolean } from 'class-validator'
 import type { Response } from 'express'
 import { CurrentUser, Public, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
@@ -69,6 +70,9 @@ class SettingsDto {
   @ApiProperty() @ValidateIf((_, v) => v !== '') @IsEmail() replyTo!: string
   @ApiProperty() @IsString() @MaxLength(500) footerText!: string
   @ApiProperty() @Type(() => Number) @IsInt() @Min(5) @Max(1000) ratePerMinute!: number
+  /** Endereços conferidos no serviço (só o domínio de cada rede). */
+  @ApiPropertyOptional() @IsOptional() @IsObject() social?: Record<string, string>
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() socialInFooter?: boolean
 }
 
 class ProductQueryDto {
@@ -250,6 +254,22 @@ export class EmailTrackingController {
     res.setHeader('Cache-Control', 'no-store, private')
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
     res.end(PIXEL)
+  }
+
+  /** Ícones das redes sociais (PNG) usados nos e-mails: públicos, abertos pelos programas de e-mail. */
+  @Public()
+  @SkipThrottle()
+  @Get('icones/:file')
+  icon(@Param('file') file: string, @Res() res: Response) {
+    const m = /^(facebook|instagram|youtube|tiktok)-(cor|cinza)\.png$/.exec(file)
+    if (!m) {
+      res.status(404).end()
+      return
+    }
+    res.setHeader('Content-Type', 'image/png')
+    res.setHeader('Cache-Control', 'public, max-age=2592000, immutable')
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+    res.end(Buffer.from(SOCIAL_ICONS[m[1] as SocialNetwork][m[2] as SocialStyle], 'base64'))
   }
 
   @Public()

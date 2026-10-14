@@ -16,7 +16,7 @@ import { EMAIL_IMAGE_LIMIT, FilesService } from '../files/files.service'
 import { MagazordService } from '../integracoes/magazord.service'
 import { MailService } from '../settings/mail.service'
 import { publicBranding, SettingsService } from '../settings/settings.service'
-import { type Block, type Brand, cleanBlocks, collectLinks, renderEmail } from './blocos'
+import { type Block, type Brand, cleanBlocks, collectLinks, renderEmail, cleanSocial, SOCIAL_LABEL, SOCIAL_NETWORKS, type SocialLinks, socialUrl } from './blocos'
 
 export interface EmailSettings {
   /** Nome do remetente das campanhas (vazio = o do SMTP). */
@@ -28,9 +28,13 @@ export interface EmailSettings {
   ratePerMinute: number
   /** Logo próprio dos e-mails (fundo branco); vazio = o logo do sistema. */
   logoFileId: string | null
+  /** Redes sociais da empresa (Facebook, Instagram, YouTube, TikTok). */
+  social: SocialLinks
+  /** Ícones das redes no rodapé de todo e-mail. */
+  socialInFooter: boolean
 }
 
-export const DEFAULT_EMAIL: EmailSettings = { fromName: '', replyTo: '', footerText: '', ratePerMinute: 60, logoFileId: null }
+export const DEFAULT_EMAIL: EmailSettings = { fromName: '', replyTo: '', footerText: '', ratePerMinute: 60, logoFileId: null, social: {}, socialInFooter: true }
 
 const fileUrl = (id: string) => `${env.appUrl}/api/files/public/${id}`
 
@@ -93,10 +97,14 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     return { ...cfg, logoUrl: brand.logoUrl, ownLogo: !!cfg.logoFileId }
   }
 
-  async saveConfig(user: AuthUser, d: Omit<EmailSettings, 'logoFileId'>, ctx: RequestCtx) {
+  async saveConfig(user: AuthUser, d: Omit<EmailSettings, 'logoFileId' | 'social' | 'socialInFooter'> & { social?: Record<string, string>; socialInFooter?: boolean }, ctx: RequestCtx) {
     this.assertCan(user, 'edit')
     const current = await this.config(user.tenantId)
-    const next = { fromName: d.fromName.trim(), replyTo: d.replyTo.trim(), footerText: d.footerText.trim(), ratePerMinute: d.ratePerMinute, logoFileId: current.logoFileId }
+    const raw = (d.social ?? {}) as Record<string, unknown>
+    for (const n of SOCIAL_NETWORKS) {
+      if (typeof raw[n] === 'string' && (raw[n] as string).trim() && !socialUrl(n, raw[n] as string)) throw new BadRequestException(`Endereço do ${SOCIAL_LABEL[n]} inválido. Use o link da página (ex.: https://www.${n}.com/usaparts).`)
+    }
+    const next = { fromName: d.fromName.trim(), replyTo: d.replyTo.trim(), footerText: d.footerText.trim(), ratePerMinute: d.ratePerMinute, logoFileId: current.logoFileId, social: cleanSocial(raw), socialInFooter: d.socialInFooter ?? current.socialInFooter ?? true }
     await this.settings.set(user.tenantId, 'email_marketing', next)
     await this.audit.byUser(user, ctx, 'email.settings_updated', 'settings', 'email_marketing', next)
     return this.configView(user.tenantId)
@@ -304,7 +312,7 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     const [b, cfg] = await Promise.all([this.settings.branding(tenantId), this.config(tenantId)])
     const pub = publicBranding(b)
     const logoUrl = cfg.logoFileId ? fileUrl(cfg.logoFileId) : pub.logoUrl ? `${env.appUrl}${pub.logoUrl}` : null
-    return { appName: b.appName, color: b.primaryColor, logoUrl, footerText: cfg.footerText }
+    return { appName: b.appName, color: b.primaryColor, logoUrl, footerText: cfg.footerText, social: cfg.social ?? {}, socialInFooter: cfg.socialInFooter ?? true, iconBase: `${env.appUrl}/api/public/e/icones` }
   }
 
   /** Pré-visualização com os dados de quem está editando (nada é rastreado). */
