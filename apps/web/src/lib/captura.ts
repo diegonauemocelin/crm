@@ -95,8 +95,16 @@ export interface WhatsappButton {
   createRecord: boolean
 }
 
+export interface AdsTag {
+  tagId: string
+  formSendTo: string
+  whatsappSendTo: string
+  loadTag: boolean
+}
+
 export interface CaptureSettings {
   privacyUrl: string
+  adsTag?: AdsTag
 }
 
 export interface Submission {

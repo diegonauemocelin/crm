@@ -188,3 +188,32 @@ describe('botão de WhatsApp: campos obrigatórios', () => {
     expect('errors' in r && Object.keys(r.errors).sort()).toEqual(['email', 'phone'])
   })
 })
+
+describe('conversão no Google (tag do site)', () => {
+  it('o script do site é JavaScript válido e manda o telefone no formato do Google (+55...)', async () => {
+    const { buildScript } = await import('../src/rastreamento/script')
+    const js = buildScript({ key: 'k', endpoint: 'https://crm.exemplo.com/api/public/rastreamento/coleta', requireConsent: true, cookieDomains: ['exemplo.com'] })
+    expect(() => new Function(js)).not.toThrow()
+    const src = /function e164\(v\) \{[^\n]*\}/.exec(js)![0]
+    const e164 = new Function(`${src}; return e164`)() as (v: string) => string
+    expect(e164('(49) 99999-0001')).toBe('+5549999990001')
+    expect(e164('+55 49 3333-4444')).toBe('+554933334444')
+    expect(e164('123')).toBe('')
+    // Só com consentimento: a conversão respeita a mesma regra do rastreamento.
+    expect(js).toContain("function adsAllowed() { return !PREVIEW && (typeof consent === 'undefined' || consent)")
+  })
+})
+
+describe('origem de anúncio no meio da visita', () => {
+  it('reconhece marcas de campanha e guarda o gclid na origem (usado no envio ao Google Ads)', async () => {
+    const { hasCampaign, classifyTouch } = await import('../src/rastreamento/origem')
+    const { clickIdsFromUrl } = await import('../src/googleads/googleads')
+    expect(hasCampaign('https://lp.usaparts.com.br/pecas-jcb?gclid=ABC123')).toBe(true)
+    expect(hasCampaign('https://lp.usaparts.com.br/pecas-jcb?utm_source=google&utm_medium=cpc')).toBe(true)
+    expect(hasCampaign('https://lp.usaparts.com.br/pecas-jcb?page=2')).toBe(false)
+    expect(hasCampaign('não é url')).toBe(false)
+    const t = classifyTouch('https://lp.usaparts.com.br/pecas-jcb?gclid=Cj0KCQjwTesteClique123_ABC', null, [])!
+    expect(t).toMatchObject({ source: 'google', medium: 'cpc' })
+    expect(clickIdsFromUrl(t.landing)).toMatchObject({ gclid: 'Cj0KCQjwTesteClique123_ABC' })
+  })
+})

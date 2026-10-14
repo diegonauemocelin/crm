@@ -227,8 +227,10 @@ export const CAPTURE_JS = `
           return;
         }
         form.textContent = ''; form.appendChild(el('div', 'ok', res.message || 'Enviado!'));
+        adsTrack(opts, data);
         if (opts.onDone) opts.onDone(res);
-        if (res.redirect) setTimeout(function () { go(res.redirect); }, opts.kind === 'whatsapp' ? 0 : 1200);
+        // Pausa curta antes de abrir o WhatsApp, para o aviso de conversão sair antes de trocar de página.
+        if (res.redirect) setTimeout(function () { go(res.redirect); }, opts.kind === 'whatsapp' ? 400 : 1200);
       });
     });
     root.appendChild(form);
@@ -298,12 +300,43 @@ export const CAPTURE_JS = `
     };
     hh.r.appendChild(b); d.body.appendChild(hh.h);
   }
+
+  // ---------- Conversão no Google (tag do site) ----------
+  // Avisa a página de cada contato: evento "crm_lead" no dataLayer (para o Google Tag Manager) e, com a tag do
+  // Google Ads configurada no CRM, a conversão direta (com e-mail e telefone para as conversões otimizadas).
+  // Só com o consentimento do visitante (mesma regra do rastreamento) e sem o "não rastrear" do navegador.
+  function adsTag() { return (CFG && CFG.adsTag) || null; }
+  function adsAllowed() { return !PREVIEW && (typeof consent === 'undefined' || consent) && !(typeof noTrack !== 'undefined' && noTrack); }
+  function adsInit() {
+    var t = adsTag(); if (!t || !t.tagId || !t.loadTag || !adsAllowed()) return;
+    w.dataLayer = w.dataLayer || [];
+    if (typeof w.gtag !== 'function') { w.gtag = function () { w.dataLayer.push(arguments); }; w.gtag('js', new Date()); }
+    w.gtag('config', t.tagId, { allow_enhanced_conversions: true });
+    if (!d.querySelector('script[src*="googletagmanager.com/gtag/js"]')) { var s = d.createElement('script'); s.async = true; s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(t.tagId); d.head.appendChild(s); }
+  }
+  function e164(v) { var x = String(v || '').replace(/\\D/g, ''); if (!x) return ''; if (x.length === 10 || x.length === 11) x = '55' + x; return x.length >= 12 ? '+' + x : ''; }
+  function adsTrack(opts, data) {
+    if (!adsAllowed()) return;
+    try {
+      var t = adsTag() || {};
+      var canal = opts.kind === 'whatsapp' ? 'whatsapp' : opts.kind === 'popup' ? 'popup' : 'formulario';
+      var email = String(data.email || '').trim().toLowerCase(), phone = e164(data.phone || data.whatsapp || data.telefone);
+      w.dataLayer = w.dataLayer || [];
+      w.dataLayer.push({ event: 'crm_lead', crm_canal: canal, crm_id: opts.formId || opts.popupId || opts.whatsappId || '', crm_email: email || undefined, crm_telefone: phone || undefined });
+      if (typeof w.gtag !== 'function') return;
+      var ud = {}; if (email) ud.email = email; if (phone) ud.phone_number = phone;
+      if (email || phone) w.gtag('set', 'user_data', ud);
+      w.gtag('event', 'generate_lead', { lead_source: canal });
+      var sendTo = canal === 'whatsapp' ? t.whatsappSendTo : t.formSendTo;
+      if (sendTo) w.gtag('event', 'conversion', { send_to: sendTo, transport_type: 'beacon' });
+    } catch (e) {}
+  }
   function startCapture() {
     if (w.__crmCap || typeof fetch !== 'function' || !d.body) return; w.__crmCap = 1;
     fetch(BASE + '/api/public/captura/config?k=' + encodeURIComponent(C.k), { credentials: 'omit' })
       .then(function (r) { return r.json(); })
       .then(function (cfg) {
-        CFG = cfg || {}; CFG.forms = CFG.forms || {}; embedForms(); popups(); whatsapp();
+        CFG = cfg || {}; CFG.forms = CFG.forms || {}; adsInit(); embedForms(); popups(); whatsapp();
         // Lojas que montam o conteúdo depois de abrir a página (ex.: Magazord): desenha os formulários quando o marcador aparecer.
         w.__crmEmbed = embedForms;
         if (w.MutationObserver) { var tm = null; new MutationObserver(function () { if (tm) return; tm = setTimeout(function () { tm = null; embedForms(); }, 300); }).observe(d.body, { childList: true, subtree: true }); }

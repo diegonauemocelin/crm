@@ -209,3 +209,15 @@ export function pagePath(url: string | null | undefined): string | null {
     .toLowerCase()
   return p ? p.slice(0, 500) : null
 }
+
+/** Marcas de campanha no endereço (anúncio do Google/Meta ou UTM): indicam uma nova origem, mesmo no meio da visita. */
+const CAMPAIGN_PARAMS = ['gclid', 'gbraid', 'wbraid', 'gad_source', 'gad_campaignid', 'fbclid', 'utm_source', 'utm_campaign', 'utm_medium']
+export function hasCampaign(url: string | null | undefined) {
+  if (!url) return false
+  try {
+    const p = new URL(url).searchParams
+    return CAMPAIGN_PARAMS.some((k) => !!p.get(k))
+  } catch {
+    return false
+  }
+}

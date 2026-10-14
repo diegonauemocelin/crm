@@ -82,8 +82,16 @@ class WhatsappDto {
   @ApiProperty() @IsBoolean() createRecord!: boolean
 }
 
+class AdsTagDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(30) tagId?: string
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) formSendTo?: string
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) whatsappSendTo?: string
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() loadTag?: boolean
+}
+
 class SettingsDto {
   @ApiProperty() @IsString() @MaxLength(500) privacyUrl!: string
+  @ApiPropertyOptional({ type: AdsTagDto }) @IsOptional() @ValidateNested() @Type(() => AdsTagDto) adsTag?: AdsTagDto
 }
 
 class SubmissionsDto {

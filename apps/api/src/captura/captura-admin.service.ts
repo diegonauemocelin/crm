@@ -12,7 +12,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { env } from '../config/env'
 import { RastreamentoService } from '../rastreamento/rastreamento.service'
 import { SettingsService } from '../settings/settings.service'
-import { type CaptureSettings, CapturaService } from './captura.service'
+import { type AdsTag, type CaptureSettings, CapturaService, cleanAdsTag, DEFAULT_ADS_TAG } from './captura.service'
 import { cleanDesign } from './design'
 import { BASE_FIELDS, cleanFields, type CustomDef, safeRedirect } from './regras'
 
@@ -293,19 +293,20 @@ export class CapturaAdminService {
 
   async getSettings(user: AuthUser) {
     this.assertCan(user, 'view')
-    return { privacyUrl: (await this.captura.settingsOf(user.tenantId)).privacyUrl }
+    const s = await this.captura.settingsOf(user.tenantId)
+    return { privacyUrl: s.privacyUrl, adsTag: { ...DEFAULT_ADS_TAG, ...s.adsTag } }
   }
 
-  /** Configuração geral da captura: link da política de privacidade (os botões de WhatsApp têm cadastro próprio). */
-  async saveSettings(user: AuthUser, d: { privacyUrl: string }, ctx: RequestCtx) {
+  async saveSettings(user: AuthUser, d: { privacyUrl: string; adsTag?: Partial<AdsTag> }, ctx: RequestCtx) {
     this.assertCan(user, 'edit')
     const privacyUrl = d.privacyUrl.trim() ? safeRedirect(d.privacyUrl) : ''
     if (privacyUrl === null) throw new BadRequestException('Link da política de privacidade inválido.')
     const current = await this.captura.settingsOf(user.tenantId)
-    const next: CaptureSettings = { ...current, privacyUrl }
+    const adsTag = d.adsTag ? cleanAdsTag(d.adsTag) : { ...DEFAULT_ADS_TAG, ...current.adsTag }
+    const next: CaptureSettings = { ...current, privacyUrl, adsTag }
     await this.settings.set(user.tenantId, 'captura', next)
-    await this.audit.byUser(user, ctx, 'captura.settings_updated', 'settings', 'captura', { privacyUrl })
-    return { privacyUrl }
+    await this.audit.byUser(user, ctx, 'captura.settings_updated', 'settings', 'captura', { privacyUrl, tagGoogleAds: adsTag.tagId || null })
+    return { privacyUrl, adsTag }
   }
 
   // ---------- Botões de WhatsApp ----------

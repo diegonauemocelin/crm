@@ -24,6 +24,7 @@ import {
   type AfterSubmit,
   type CaptureForm,
   type CapturePopup,
+  type AdsTag,
   type CaptureSettings,
   CHANNEL_LABEL,
   DEFAULT_CONSENT,
@@ -805,8 +806,72 @@ function WhatsappTab() {
         </Card>
       )}
       <PrivacyCard />
+      <AdsTagCard />
       {open && <WhatsappEditor button={open === 'new' ? null : open} onClose={() => setOpen(null)} />}
     </div>
+  )
+}
+
+/** Tag do Google Ads no site: cada contato (formulário, pop-up e WhatsApp) vira conversão na hora. */
+function AdsTagCard() {
+  const q = useQuery({ queryKey: ['captura-settings'], queryFn: () => api.get<CaptureSettings>('/captura/configuracoes') })
+  const { can } = useAuth()
+  const qc = useQueryClient()
+  const [form, setForm] = useState<AdsTag | null>(null)
+  const cur: AdsTag = form ?? { tagId: '', formSendTo: '', whatsappSendTo: '', loadTag: true, ...q.data?.adsTag }
+  const set = (k: keyof AdsTag, v: string | boolean) => setForm({ ...cur, [k]: v })
+  const save = useMutation({
+    mutationFn: () => api.put<CaptureSettings>('/captura/configuracoes', { privacyUrl: q.data?.privacyUrl ?? '', adsTag: { ...cur, tagId: cur.tagId.trim(), formSendTo: cur.formSendTo.trim(), whatsappSendTo: cur.whatsappSendTo.trim() } }),
+    onSuccess: (saved) => {
+      qc.setQueryData(['captura-settings'], saved)
+      setForm(null)
+      toast.success('Tag do Google Ads salva. Vale para as páginas com o script do CRM.')
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  if (!q.data) return null
+  const edit = can('captura', 'edit')
+  return (
+    <Card className="max-w-2xl">
+      <CardHeader>
+        <CardTitle className="text-base">Conversões do Google Ads no site</CardTitle>
+        <CardDescription>
+          Cada contato pelo formulário, pop-up ou botão de WhatsApp avisa o Google Ads na hora, com e-mail e telefone para as conversões otimizadas. Também sai o evento <code>crm_lead</code> no dataLayer (para quem usa o Google Tag Manager). Só com o consentimento do visitante.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="ads-tag">ID da tag do Google Ads</Label>
+          <Input id="ads-tag" placeholder="AW-123456789" value={cur.tagId} onChange={(e) => set('tagId', e.target.value)} disabled={!edit} />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="ads-form">Conversão do formulário (send_to)</Label>
+            <Input id="ads-form" placeholder="AW-123456789/AbCdEfGh" value={cur.formSendTo} onChange={(e) => set('formSendTo', e.target.value)} disabled={!edit} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ads-wa">Conversão do WhatsApp (send_to)</Label>
+            <Input id="ads-wa" placeholder="AW-123456789/XyZ12345" value={cur.whatsappSendTo} onChange={(e) => set('whatsappSendTo', e.target.value)} disabled={!edit} />
+          </div>
+        </div>
+        <label className="flex items-start justify-between gap-3 rounded-md border p-3 text-sm">
+          <span>
+            Carregar a tag do Google pelo CRM
+            <span className="block text-xs text-muted-foreground">Desligue se a página já tem a tag do Google ou o Google Tag Manager com essa tag (evita contar duas vezes).</span>
+          </span>
+          <Switch checked={cur.loadTag} onCheckedChange={(v) => set('loadTag', v)} disabled={!edit} />
+        </label>
+        <p className="text-xs text-muted-foreground">No Google Ads: Metas → Conversões → Nova ação de conversão → Site → criar manualmente (categoria “Enviar formulário de lead” e outra para o WhatsApp) e copiar o “send_to” do trecho do evento.</p>
+      </CardContent>
+      {edit && (
+        <CardFooter>
+          <Button onClick={() => save.mutate()} disabled={save.isPending || form === null}>
+            {save.isPending && <Loader2Icon className="animate-spin" />}
+            Salvar
+          </Button>
+        </CardFooter>
+      )}
+    </Card>
   )
 }
 

@@ -6,7 +6,7 @@ import { Prisma } from '../generated/prisma/client'
 import { LeadConfigService } from '../leads/lead-config.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
-import { CLIENT_ID, classifyDevice, classifyTouch, cleanUrl, describeTouch, type Device, domainAllowed, pagePath, type Touch } from './origem'
+import { CLIENT_ID, classifyDevice, classifyTouch, cleanUrl, describeTouch, type Device, domainAllowed, hasCampaign, pagePath, type Touch } from './origem'
 import { buildScript } from './script'
 
 export interface TrackingSettings {
@@ -205,7 +205,9 @@ export class RastreamentoService implements OnApplicationBootstrap, OnModuleDest
     const now = new Date()
     const device: Device = classifyDevice(userAgent, hit.h, site.s.appMarkers)
     if (hit.x) return this.collectEvent(tenantId, hit, url, device, now)
-    const touch: Touch | null = hit.n ? (classifyTouch(hit.u, hit.r, domains) ?? { source: 'direto', medium: 'direto', landing: url }) : null
+    // Nova visita, ou chegou de um anúncio/campanha no meio da visita (ex.: entrou direto e depois clicou no anúncio): registra a origem.
+    const campaign = !hit.n && hasCampaign(hit.u)
+    const touch: Touch | null = hit.n || campaign ? (classifyTouch(hit.u, hit.r, domains) ?? { source: 'direto', medium: 'direto', landing: url }) : null
 
     let visitor = await this.prisma.siteVisitor.findUnique({ where: { tenantId_clientId: { tenantId, clientId: hit.v } } })
     if (!visitor) {
@@ -226,14 +228,14 @@ export class RastreamentoService implements OnApplicationBootstrap, OnModuleDest
       }),
       this.prisma.siteVisitor.update({
         where: { id: visitor.id },
-        data: { lastSeenAt: now, device, pageviews: { increment: 1 }, ...(hit.n ? { sessions: { increment: 1 }, lastTouch: touch as Prisma.InputJsonValue } : {}) },
+        data: { lastSeenAt: now, device, pageviews: { increment: 1 }, ...(hit.n ? { sessions: { increment: 1 } } : {}), ...(touch ? { lastTouch: touch as Prisma.InputJsonValue } : {}) },
       }),
     ])
 
     const tokenLead = hit.l ? this.leadFromToken(hit.l) : null
     if (tokenLead && tokenLead !== visitor.leadId) {
       await this.identify(tenantId, visitor.id, tokenLead)
-    } else if (visitor.leadId && hit.n) {
+    } else if (visitor.leadId && (hit.n || campaign)) {
       await this.registerVisits(tenantId, visitor.leadId, [{ at: now, url, touch }])
     }
   }

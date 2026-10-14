@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.35.1",
+      "date": "2026-10-15",
+      "title": "Conversões do Google Ads nas LPs e correção da origem do clique",
+      "changes": [
+        { "type": "correcao", "area": "Marketing", "text": "Rastreamento: quem já estava no site e chegava por um anúncio (ou link com UTM) na mesma visita ficava com a origem antiga (ex.: “direto”) e perdia o código do clique (gclid). Agora a nova origem é registrada na hora, e o formulário/WhatsApp usa a origem da própria página do envio." },
+        { "type": "novo", "area": "Marketing", "text": "Conversões do Google Ads no site (Marketing → Captura): cada contato por formulário, pop-up ou botão de WhatsApp avisa o Google Ads na hora, com e-mail e telefone para as conversões otimizadas, e envia o evento “crm_lead” no dataLayer para o Google Tag Manager." },
+        { "type": "seguranca", "area": "Marketing", "text": "O aviso ao Google só sai com o consentimento do visitante (mesma regra do rastreamento) e nunca com o “não rastrear” do navegador." }
+      ]
+    },
+    {
       "version": "0.35.0",
       "date": "2026-10-15",
       "title": "Trilha de conhecimento",

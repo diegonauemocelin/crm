@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import { normalizePhone } from '../atendimento/br'
 import { Prisma } from '../generated/prisma/client'
@@ -8,7 +8,7 @@ import { LeadConfigService } from '../leads/lead-config.service'
 import { LeadsService } from '../leads/leads.service'
 import { convertCustom, type CustomFieldShape } from '../leads/mapeamento'
 import { PrismaService } from '../prisma/prisma.service'
-import { classifyDevice, CLIENT_ID, domainAllowed, type Touch } from '../rastreamento/origem'
+import { classifyDevice, classifyTouch, CLIENT_ID, domainAllowed, hasCampaign, type Touch } from '../rastreamento/origem'
 import { RastreamentoService } from '../rastreamento/rastreamento.service'
 import { env } from '../config/env'
 import { SettingsService } from '../settings/settings.service'
@@ -37,9 +37,23 @@ export interface WhatsappWidget {
   createRecord: boolean
 }
 
+/** Tag do Google Ads no site: o script do CRM avisa cada contato (formulário, pop-up e botão de WhatsApp). */
+export interface AdsTag {
+  /** ID da tag (AW-123456789). */
+  tagId: string
+  /** Ação de conversão (AW-123456789/AbCdEf) do formulário e do WhatsApp; vazio = só o evento no dataLayer. */
+  formSendTo: string
+  whatsappSendTo: string
+  /** O CRM carrega a tag do Google se a página ainda não tiver. */
+  loadTag: boolean
+}
+
+export const DEFAULT_ADS_TAG: AdsTag = { tagId: '', formSendTo: '', whatsappSendTo: '', loadTag: true }
+
 export interface CaptureSettings {
   /** Link da política de privacidade do site (aparece nos formulários). */
   privacyUrl: string
+  adsTag?: AdsTag
   whatsapp: WhatsappWidget
 }
 
@@ -162,6 +176,8 @@ export class CapturaService {
     ])
     return {
       privacyUrl: s.privacyUrl || null,
+      // Os mesmos IDs que ficariam no código da página (não são segredo).
+      adsTag: s.adsTag && (s.adsTag.tagId || s.adsTag.formSendTo || s.adsTag.whatsappSendTo) ? { ...DEFAULT_ADS_TAG, ...s.adsTag } : null,
       forms: Object.fromEntries(
         forms.map((f) => [f.id, { id: f.id, fields: f.fields, submitLabel: f.submitLabel, successMessage: f.successMessage, consentText: f.consentText, design: f.design ?? null }]),
       ),
@@ -236,7 +252,9 @@ export class CapturaService {
     const visitor = p.v && CLIENT_ID.test(p.v) ? await this.prisma.siteVisitor.findUnique({ where: { tenantId_clientId: { tenantId, clientId: p.v } } }) : null
     const pageUrl = p.u ? safeRedirect(p.u) : null
     const device = classifyDevice(meta.userAgent, null, (await this.tracking.config(tenantId)).appMarkers)
-    const touch = ((visitor?.lastTouch ?? visitor?.firstTouch) as Touch | null) ?? { source: 'direto', medium: 'direto' }
+    // A página do envio com marca de campanha (gclid, UTM...) vale mais que a origem guardada da visita.
+    const fromPage = pageUrl && hasCampaign(pageUrl) ? classifyTouch(pageUrl, null, []) : null
+    const touch = fromPage ?? ((visitor?.lastTouch ?? visitor?.firstTouch) as Touch | null) ?? { source: 'direto', medium: 'direto' }
 
     // Vendedor, tipo de cliente e marcas: do botão de WhatsApp, do pop-up (se ele definir) ou do formulário.
     const source = p.kind === 'whatsapp' ? wa! : form!
@@ -381,4 +399,16 @@ export class CapturaService {
   }
 
   static readonly fieldCatalog = BASE_FIELDS
+}
+
+/** Confere os IDs da tag do Google Ads (formato do Google); campo inválido é recusado com mensagem clara. */
+export function cleanAdsTag(d: Partial<AdsTag>): AdsTag {
+  const tagId = String(d.tagId ?? '').trim().toUpperCase()
+  if (tagId && !/^AW-\d{6,15}$/.test(tagId)) throw new BadRequestException('ID da tag do Google Ads inválido. Use o formato AW-123456789 (Google Ads → Metas → Conversões → Configurar a tag).')
+  const sendTo = (v: unknown, what: string) => {
+    const s = String(v ?? '').trim()
+    if (s && !/^AW-\d{6,15}\/[A-Za-z0-9_-]{4,40}$/.test(s)) throw new BadRequestException(`Conversão do ${what} inválida. Use o “send_to” do Google Ads, no formato AW-123456789/AbCdEfGh.`)
+    return s
+  }
+  return { tagId, formSendTo: sendTo(d.formSendTo, 'formulário'), whatsappSendTo: sendTo(d.whatsappSendTo, 'WhatsApp'), loadTag: d.loadTag !== false }
 }
