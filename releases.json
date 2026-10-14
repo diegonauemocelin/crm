@@ -2,6 +2,19 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.25.0",
+      "date": "2026-10-14",
+      "title": "Produtos vistos na loja virtual",
+      "changes": [
+        { "type": "novo", "area": "Catálogo", "text": "Produtos vistos na loja (Análise → Produtos vistos): os produtos mais vistos no período, com pessoas, leads, carrinhos e compras de cada um." },
+        { "type": "novo", "area": "Catálogo", "text": "Lista “Viram e não compraram”: leads identificados que abriram o produto e ainda não compraram, com quem está com ele no carrinho primeiro. Respeita quais leads cada usuário pode ver." },
+        { "type": "novo", "area": "Catálogo", "text": "Aviso de produtos procurados e sem estoque, para repor ou avisar quem procurou." },
+        { "type": "novo", "area": "Leads", "text": "Na aba Site da ficha do lead, os produtos que ele viu na loja, quantas vezes e se comprou, está no carrinho ou só viu." },
+        { "type": "melhoria", "area": "Catálogo", "text": "Visualizações da página de cada produto (90 dias) na lista do catálogo, na nova ordem “Mais vistos no site” e na exportação." },
+        { "type": "melhoria", "area": "Catálogo", "text": "Funciona também com as visitas já registradas: as páginas vistas antes desta versão entram na conta." }
+      ]
+    },
+    {
       "version": "0.24.0",
       "date": "2026-10-14",
       "title": "Dashboard do e-mail marketing",

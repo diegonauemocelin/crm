@@ -2,6 +2,7 @@ import {
   BarChart3Icon,
   BotIcon,
   ClipboardListIcon,
+  EyeIcon,
   FileClockIcon,
   HeadsetIcon,
   HistoryIcon,
@@ -76,6 +77,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Google Ads', to: '/google-ads', icon: TargetIcon, module: 'google_ads' },
       { title: 'Email marketing', to: '/email-marketing/dashboard', icon: MailIcon, module: 'email_marketing' },
       { title: 'WhatsApp', to: '/whatsapp/dashboard', icon: MessageCircleIcon, module: 'chat' },
+      { title: 'Produtos vistos', to: '/catalogo/vistos', icon: EyeIcon, module: 'catalogo' },
     ],
   },
   {

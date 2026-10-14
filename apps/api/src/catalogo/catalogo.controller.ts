@@ -1,12 +1,13 @@
-import { Controller, Get, HttpCode, Post, Query, Res } from '@nestjs/common'
+import { Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Res } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
-import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
+import { IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator'
 import type { Response } from 'express'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { type CatalogFilters, CatalogoService, type Sort, SORTS } from './catalogo.service'
+import { ProdutosVistosService } from './vistos.service'
 
 class FiltersDto implements CatalogFilters {
   @IsOptional() @IsString() @MaxLength(120) search?: string
@@ -22,6 +23,12 @@ class ListDto extends FiltersDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(12) @Max(100) pageSize = 48
 }
 
+class SeenDto {
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) de?: string
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) ate?: string
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(10) min?: number
+}
+
 function csvCell(v: unknown) {
   const s = v === null || v === undefined ? '' : String(v)
   const safe = /^[=+\-@\t\r]/.test(s) ? `'${s}` : s
@@ -33,7 +40,22 @@ const money = (v: number | null) => (v === null ? '' : v.toLocaleString('pt-BR',
 @ApiTags('Catálogo')
 @Controller('catalogo')
 export class CatalogoController {
-  constructor(private readonly catalogo: CatalogoService) {}
+  constructor(
+    private readonly catalogo: CatalogoService,
+    private readonly vistos: ProdutosVistosService,
+  ) {}
+
+  /** Produtos vistos na loja: mais vistos, sem estoque e leads que viram e não compraram. */
+  @Get('vistos')
+  seen(@CurrentUser() user: AuthUser, @Query() q: SeenDto) {
+    return this.vistos.dashboard(user, { from: q.de, to: q.ate, min: q.min })
+  }
+
+  /** Produtos que um lead viu no site (aba Site da ficha do lead; exige acesso ao lead). */
+  @Get('vistos/leads/:id')
+  seenByLead(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.vistos.forLead(user, id)
+  }
 
   @Get()
   list(@CurrentUser() user: AuthUser, @Query() q: ListDto) {
@@ -56,9 +78,9 @@ export class CatalogoController {
   @Get('exportar')
   async export(@CurrentUser() user: AuthUser, @Query() q: FiltersDto, @ReqContext() ctx: RequestCtx, @Res() res: Response) {
     const rows = await this.catalogo.exportRows(user, q, ctx)
-    const header = ['Código', 'Produto', 'Marca', 'Preço', 'Preço de (antes do desconto)', 'Desconto (%)', 'Estoque', 'Ativo na loja', 'Carrinhos (90 dias)', 'Abandonados (90 dias)', 'Comprados (90 dias)', 'Link', 'Imagem']
+    const header = ['Código', 'Produto', 'Marca', 'Preço', 'Preço de (antes do desconto)', 'Desconto (%)', 'Estoque', 'Ativo na loja', 'Carrinhos (90 dias)', 'Abandonados (90 dias)', 'Comprados (90 dias)', 'Visualizações da página (90 dias)', 'Link', 'Imagem']
     const lines = rows.map((p) =>
-      [p.code, p.name, p.brand, money(p.price), money(p.priceFrom), p.discount ?? '', p.stock ?? '', p.active ? 'Sim' : 'Não', p.carts, p.abandoned, p.bought, p.url, p.image].map(csvCell).join(';'),
+      [p.code, p.name, p.brand, money(p.price), money(p.priceFrom), p.discount ?? '', p.stock ?? '', p.active ? 'Sim' : 'Não', p.carts, p.abandoned, p.bought, p.views, p.url, p.image].map(csvCell).join(';'),
     )
     res.setHeader('Content-Type', 'text/csv; charset=utf-8')
     res.setHeader('Content-Disposition', `attachment; filename="catalogo-${new Date().toISOString().slice(0, 10)}.csv"`)

@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeftIcon, ChevronRightIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, ImageOffIcon, Loader2Icon, PackageIcon, RefreshCwIcon, SearchIcon, ShoppingCartIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, CopyIcon, DownloadIcon, EyeIcon, ExternalLinkIcon, ImageOffIcon, Loader2Icon, PackageIcon, RefreshCwIcon, SearchIcon, ShoppingCartIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -31,6 +31,7 @@ interface Product {
   carts: number
   abandoned: number
   bought: number
+  views: number
 }
 interface ProductPage {
   items: Product[]
@@ -51,6 +52,7 @@ interface Summary {
 
 const SORT_LABEL: Record<string, string> = {
   nome: 'Nome (A–Z)',
+  vistos: 'Mais vistos no site',
   interesse: 'Mais colocados no carrinho',
   abandonados: 'Mais abandonados no carrinho',
   desconto: 'Maior desconto',
@@ -152,6 +154,11 @@ function Catalog() {
         description={`Produtos da loja virtual, copiados da Magazord a cada 12 horas. Mostra também o interesse dos clientes: quantos carrinhos dos últimos ${s.interestDays} dias tiveram o produto. Os produtos entram nos e-mails pelo editor do Email marketing.`}
         actions={
           <div className="flex flex-wrap gap-2">
+            <Button variant="outline" asChild>
+              <Link to="/catalogo/vistos">
+                <EyeIcon /> Produtos vistos
+              </Link>
+            </Button>
             <Can module="catalogo" action="export">
               <Button variant="outline" onClick={() => void exportCsv()} disabled={exporting || !data?.total}>
                 {exporting ? <Loader2Icon className="animate-spin" /> : <DownloadIcon />} Exportar
@@ -338,6 +345,11 @@ function Catalog() {
                           {p.carts > 0 && (
                             <p className="text-xs text-muted-foreground">
                               {int.format(p.abandoned)} abandonado(s) · {int.format(p.bought)} comprado(s)
+                            </p>
+                          )}
+                          {p.views > 0 && (
+                            <p className="flex items-center justify-end gap-1 text-xs text-muted-foreground" title={`Visualizações da página do produto nos últimos ${s.interestDays} dias`}>
+                              <EyeIcon className="size-3" /> {int.format(p.views)} visualização(ões)
                             </p>
                           )}
                         </TableCell>

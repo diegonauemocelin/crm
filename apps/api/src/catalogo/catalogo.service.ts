@@ -10,7 +10,7 @@ import { PrismaService } from '../prisma/prisma.service'
 /** Interesse dos clientes: carrinhos dos últimos N dias que tiveram o produto. */
 export const INTEREST_DAYS = 90
 
-export const SORTS = ['nome', 'preco_menor', 'preco_maior', 'estoque', 'interesse', 'abandonados', 'desconto'] as const
+export const SORTS = ['nome', 'preco_menor', 'preco_maior', 'estoque', 'interesse', 'abandonados', 'desconto', 'vistos'] as const
 export type Sort = (typeof SORTS)[number]
 
 export interface CatalogFilters {
@@ -38,6 +38,7 @@ interface Row {
   carts: number
   abandoned: number
   bought: number
+  views: number
 }
 
 const ORDER: Record<Sort, string> = {
@@ -48,6 +49,7 @@ const ORDER: Record<Sort, string> = {
   interesse: 'carts DESC, abandoned DESC, p.name ASC',
   abandonados: 'abandoned DESC, carts DESC, p.name ASC',
   desconto: '(1 - p.price / NULLIF(p."priceFrom", 0)) DESC NULLS LAST, p.name ASC',
+  vistos: 'views DESC, carts DESC, p.name ASC',
 }
 
 /** Catálogo de produtos da loja (cópia da Magazord), com o interesse dos clientes vindo dos carrinhos. */
@@ -92,10 +94,15 @@ export class CatalogoService {
         CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(c.items) = 'array' THEN c.items ELSE '[]'::jsonb END) it
         WHERE c."tenantId" = ${tenantId}::uuid AND coalesce(c."startedAt", c."createdAt") >= ${since}
         GROUP BY 1
+      ),
+      seen AS (
+        SELECT path, count(*)::int AS views FROM site_pageviews
+        WHERE "tenantId" = ${tenantId}::uuid AND "occurredAt" >= ${since} AND path IS NOT NULL
+        GROUP BY 1
       )
       SELECT p.id, p.code, p."externalId", p.name, p.brand, p.price::text AS price, p."priceFrom"::text AS "priceFrom", p.stock, p.image, p.url, p.active, p."syncedAt",
-        coalesce(i.carts, 0) AS carts, coalesce(i.abandoned, 0) AS abandoned, coalesce(i.bought, 0) AS bought
-      FROM store_products p LEFT JOIN interest i ON i.code = p.code
+        coalesce(i.carts, 0) AS carts, coalesce(i.abandoned, 0) AS abandoned, coalesce(i.bought, 0) AS bought, coalesce(s.views, 0) AS views
+      FROM store_products p LEFT JOIN interest i ON i.code = p.code LEFT JOIN seen s ON s.path = p.path
       WHERE ${this.where(tenantId, f)}
       ORDER BY ${Prisma.raw(ORDER[f.sort ?? 'nome'])}
       LIMIT ${limit} OFFSET ${offset}`

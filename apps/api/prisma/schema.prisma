@@ -597,6 +597,8 @@ model SitePageview {
   sessionId  String
   /// URL sem parâmetros desconhecidos (só UTMs e afins), para não guardar dado pessoal por acidente.
   url        String
+  /// Caminho da página (sem domínio e parâmetros), para cruzar com os produtos do catálogo.
+  path       String?
   title      String?
   newSession Boolean  @default(false)
   /// Origem, só na primeira página de cada visita.
@@ -608,6 +610,7 @@ model SitePageview {
 
   @@index([visitorId, occurredAt])
   @@index([tenantId, occurredAt])
+  @@index([tenantId, path])
   @@map("site_pageviews")
 }
 
@@ -712,6 +715,8 @@ model StoreProduct {
   stock      Int?
   image      String?
   url        String?
+  /// Caminho da página do produto (ver pagePath), para saber quem viu o produto no site.
+  path       String?
   active     Boolean  @default(true)
   /// Última sincronização em que o produto apareceu (os que somem ficam inativos).
   syncedAt   DateTime
@@ -722,6 +727,7 @@ model StoreProduct {
 
   @@unique([tenantId, externalId])
   @@index([tenantId, active, name])
+  @@index([tenantId, path])
   @@map("store_products")
 }
 

@@ -195,3 +195,17 @@ export const DEVICE_LABEL: Record<Device, string> = { celular: 'Celular', tablet
 
 /** Identificadores gerados pelo navegador: aleatórios, curtos, sem dado pessoal. */
 export const CLIENT_ID = /^[A-Za-z0-9_-]{16,64}$/
+
+/**
+ * Caminho da página para cruzar páginas vistas com os produtos do catálogo: sem domínio, parâmetros e barra final,
+ * em minúsculas ("/filtro-racor-re539465"). Mesma regra do SQL da migração 20261014150000_produtos_vistos.
+ */
+export function pagePath(url: string | null | undefined): string | null {
+  if (!url) return null
+  const p = url
+    .replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^/?#]*/, '')
+    .replace(/[?#].*$/, '')
+    .replace(/\/+$/, '')
+    .toLowerCase()
+  return p ? p.slice(0, 500) : null
+}

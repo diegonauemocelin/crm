@@ -29,6 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { LeadProductsSeen } from '@/components/catalogo/produtos-vistos'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { RUN_STATUS, type RunStatus } from '@/lib/automacoes'
@@ -595,6 +596,7 @@ function SiteVisits({ lead }: { lead: Lead }) {
   ]
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <LeadProductsSeen leadId={lead.id} className="lg:col-span-2" />
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Páginas visitadas</CardTitle>

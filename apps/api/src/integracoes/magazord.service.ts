@@ -5,6 +5,7 @@ import { Prisma } from '../generated/prisma/client'
 import { LeadCaptureService } from '../leads/lead-capture.service'
 import { LeadConfigService } from '../leads/lead-config.service'
 import { PrismaService } from '../prisma/prisma.service'
+import { pagePath } from '../rastreamento/origem'
 import { RastreamentoService } from '../rastreamento/rastreamento.service'
 import { SettingsService } from '../settings/settings.service'
 import { cartItems, cleanBaseUrl, cleanHttpsBase, type CustomerData, customerFrom, DEFAULT_CART_MESSAGE, type MagazordPessoa, type MzSiteProduct, mzDateTime, orderGroup, parseMzDate, productFrom } from './magazord'
@@ -540,7 +541,7 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
         for (const raw of items) {
           const p = productFrom(raw, ctx)
           if (!p) continue
-          const data = { code: p.code, name: p.name, brand: p.brand, price: p.price, priceFrom: p.priceFrom, stock: p.stock, image: p.image, url: p.url, active: p.active, syncedAt: started }
+          const data = { code: p.code, name: p.name, brand: p.brand, price: p.price, priceFrom: p.priceFrom, stock: p.stock, image: p.image, url: p.url, path: pagePath(p.url), active: p.active, syncedAt: started }
           await this.prisma.storeProduct.upsert({ where: { tenantId_externalId: { tenantId, externalId: p.externalId } }, create: { tenantId, externalId: p.externalId, ...data }, update: data })
           count++
         }

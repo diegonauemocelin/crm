@@ -6,7 +6,7 @@ import { Prisma } from '../generated/prisma/client'
 import { LeadConfigService } from '../leads/lead-config.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
-import { CLIENT_ID, classifyDevice, classifyTouch, cleanUrl, describeTouch, type Device, domainAllowed, type Touch } from './origem'
+import { CLIENT_ID, classifyDevice, classifyTouch, cleanUrl, describeTouch, type Device, domainAllowed, pagePath, type Touch } from './origem'
 import { buildScript } from './script'
 
 export interface TrackingSettings {
@@ -222,7 +222,7 @@ export class RastreamentoService implements OnApplicationBootstrap, OnModuleDest
 
     await this.prisma.$transaction([
       this.prisma.sitePageview.create({
-        data: { tenantId, visitorId: visitor.id, sessionId: hit.s, url, title: hit.t?.trim().slice(0, 200) || null, newSession: hit.n, touch: (touch ?? undefined) as Prisma.InputJsonValue | undefined, device, occurredAt: now },
+        data: { tenantId, visitorId: visitor.id, sessionId: hit.s, url, path: pagePath(url), title: hit.t?.trim().slice(0, 200) || null, newSession: hit.n, touch: (touch ?? undefined) as Prisma.InputJsonValue | undefined, device, occurredAt: now },
       }),
       this.prisma.siteVisitor.update({
         where: { id: visitor.id },
