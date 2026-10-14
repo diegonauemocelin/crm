@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HeadsetIcon, InfoIcon, Loader2Icon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, Trash2Icon, UserIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HeadsetIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
 import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -12,6 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -29,6 +30,8 @@ interface NumberRef {
 }
 interface ConvItem {
   id: string
+  /** Nota interna nova, ainda não vista por quem atende. */
+  noteUnread?: boolean
   /** Só no monitoramento: quem atende a conversa. */
   attendant?: string | null
   numberId: string
@@ -59,6 +62,8 @@ interface Message {
   text: string | null
   fileName: string | null
   mime: string | null
+  /** Nota interna: só no CRM, o cliente não recebe. */
+  internal?: boolean
   mediaStatus: 'PENDENTE' | 'OK' | 'GRANDE' | 'ERRO' | null
   hasFile: boolean
   sentAt: string
@@ -263,6 +268,11 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                             <AlarmClockIcon className="size-3" /> {when(c.reminderAt)}
                           </span>
                         )}
+                        {c.noteUnread && !monitor && (
+                          <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-100 px-1 text-[11px] font-medium text-amber-800 dark:bg-amber-500/20 dark:text-amber-300" title="Nota interna nova da gestão">
+                            <StickyNoteIcon className="size-3" /> Nota
+                          </span>
+                        )}
                         {c.unread > 0 && <Badge className="h-5 shrink-0 px-1.5 tabular-nums" aria-label={`${c.unread} não lidas`}>{c.unread}</Badge>}
                       </span>
                       {(list.data.numbers.length > 1 || (c.category && c.category !== 'CLIENTE') || monitor) && (
@@ -294,6 +304,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
 }
 
 export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack?: () => void; monitor?: boolean }) {
+  const { can } = useAuth()
   const mq = monitor ? 'monitorar=true' : ''
   const q = useQuery({ queryKey: ['chat-conversa', id, monitor], queryFn: () => api.get<Thread>(`/chat/conversas/${id}${mq ? `?${mq}` : ''}`), refetchInterval: 4000 })
   const [older, setOlder] = useState<Message[]>([])
@@ -351,6 +362,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
               </a>
             </Button>
           )}
+          {can('monitoramento', 'create') && <NoteButton conversationId={d.conversation.id} monitor={monitor} />}
           {!monitor && <ReminderButton conversationId={d.conversation.id} />}
           {!monitor && <ConversationActions thread={d} />}
           {d.lead && (
@@ -388,6 +400,18 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
           return (
             <div key={m.id}>
               {showDay && <p className="my-2 text-center text-xs text-muted-foreground">{dayKey(m.sentAt)}</p>}
+              {m.internal ? (
+                <div className="mx-auto my-1 max-w-[90%] rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 sm:max-w-[75%] dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+                  <p className="mb-0.5 flex items-center gap-1 text-[11px] font-semibold tracking-wide uppercase">
+                    <LockIcon className="size-3" /> Nota interna · o cliente não vê
+                  </p>
+                  <p className="break-words whitespace-pre-wrap">{m.text}</p>
+                  <p className="mt-0.5 text-right text-[11px] tabular-nums opacity-70">
+                    {m.sentByName ? `${m.sentByName} · ` : ''}
+                    {time.format(new Date(m.sentAt))}
+                  </p>
+                </div>
+              ) : (
               <div className={cn('flex', m.fromMe ? 'justify-end' : 'justify-start')}>
                 <div className={cn('max-w-[85%] rounded-lg px-3 py-1.5 text-sm shadow-xs sm:max-w-[70%]', m.fromMe ? 'bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]' : 'bg-card')}>
                   <Bubble m={m} />
@@ -397,6 +421,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
                   </p>
                 </div>
               </div>
+              )}
             </div>
           )
         })}
@@ -411,6 +436,47 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
       )}
     </div>
     </MonitorContext.Provider>
+  )
+}
+
+/** Nota interna: orientação da gestão na conversa (liberação de desconto, advertência). Fica só no CRM. */
+function NoteButton({ conversationId, monitor }: { conversationId: string; monitor: boolean }) {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const save = useMutation({
+    mutationFn: () => api.post(`/chat/conversas/${conversationId}/notas`, { text: text.trim() }),
+    onSuccess: () => {
+      setText('')
+      setOpen(false)
+      toast.success('Nota interna salva. O cliente não recebe; quem atende vê na conversa.')
+      void qc.invalidateQueries({ queryKey: ['chat-conversa', conversationId] })
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button size="sm" variant="outline" title="Nota interna: só aparece no CRM">
+          <StickyNoteIcon /> Nota interna
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80 space-y-2">
+        <p className="flex items-center gap-1.5 text-sm font-medium">
+          <LockIcon className="size-3.5" /> Nota interna
+        </p>
+        <p className="text-xs text-muted-foreground">Só aparece aqui no CRM, para quem atende{monitor ? ' (o vendedor é avisado na lista de conversas)' : ''}. O cliente nunca recebe.</p>
+        <Textarea rows={4} maxLength={4000} value={text} onChange={(e) => setText(e.target.value)} placeholder="Ex.: desconto de 5% liberado para este pedido." aria-label="Texto da nota interna" />
+        <div className="flex justify-end gap-2">
+          <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+            Cancelar
+          </Button>
+          <Button size="sm" onClick={() => save.mutate()} disabled={!text.trim() || save.isPending}>
+            {save.isPending && <Loader2Icon className="animate-spin" />} Salvar nota
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
 

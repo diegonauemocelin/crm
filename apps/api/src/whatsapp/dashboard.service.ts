@@ -40,7 +40,8 @@ export class WhatsappDashboardService {
     // Um dia antes do início para saber se a primeira mensagem do período continua um atendimento já aberto.
     const msgs: Msg[] = convIds.length
       ? await this.prisma.whatsappMessage.findMany({
-          where: { conversationId: { in: convIds }, sentAt: { gte: new Date(prevStart.getTime() - SESSION_GAP_MS), lt: end } },
+          // Notas internas não são mensagens para o cliente: ficam fora dos tempos de resposta.
+          where: { conversationId: { in: convIds }, internal: false, sentAt: { gte: new Date(prevStart.getTime() - SESSION_GAP_MS), lt: end } },
           orderBy: [{ conversationId: 'asc' }, { sentAt: 'asc' }, { createdAt: 'asc' }],
           select: { conversationId: true, fromMe: true, sentAt: true, sentById: true, type: true },
         })

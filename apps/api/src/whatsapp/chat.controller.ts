@@ -267,6 +267,14 @@ export class ChatController {
     return this.chat.removeQuickReply(user, id)
   }
 
+  /** Nota interna: só no CRM, o cliente não recebe. */
+  @Post('conversas/:id/notas')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  addNote(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TextDto, @ReqContext() ctx: RequestCtx) {
+    return this.chat.addNote(user, id, dto.text, ctx)
+  }
+
   @Get('conversas/:id')
   thread(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Query() q: ThreadDto, @ReqContext() ctx: RequestCtx) {
     return this.chat.conversation(user, id, q.antes, q.monitorar ? { ctx } : undefined)

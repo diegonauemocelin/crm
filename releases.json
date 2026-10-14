@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.29.0",
+      "date": "2026-10-14",
+      "title": "Nota interna no chat",
+      "changes": [
+        { "type": "novo", "area": "WhatsApp", "text": "Nota interna no chat: administrador e gestor comercial escrevem na conversa uma orientação (liberação de desconto, advertência), que aparece em destaque só no CRM. O cliente nunca recebe." },
+        { "type": "novo", "area": "WhatsApp", "text": "Quem atende vê o aviso “Nota” na lista de conversas até abrir a conversa." },
+        { "type": "melhoria", "area": "WhatsApp", "text": "A nota não muda a prévia, o “aguardando resposta” nem os tempos de resposta do dashboard, e fica registrada na auditoria." },
+        { "type": "melhoria", "area": "Sistema", "text": "Permissão “Monitorar conversas”: a ação Criar libera escrever nota interna (já ligada no perfil Gestor comercial)." }
+      ]
+    },
+    {
       "version": "0.28.0",
       "date": "2026-10-14",
       "title": "Monitorar conversas e perfil Gestor comercial",

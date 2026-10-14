@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import { CapturaService } from '../captura/captura.service'
@@ -299,6 +300,7 @@ export class ChatService {
         category: r.category,
         status: r.status,
         reminderAt: reminders.get(r.id) ?? null,
+        noteUnread: r.noteUnread,
       })),
     }
   }
@@ -352,7 +354,8 @@ export class ChatService {
       conv.leadId ? this.prisma.lead.findUnique({ where: { id: conv.leadId }, select: { id: true, name: true, email: true, phone: true, adsLastCampaign: true, adsLastCampaignId: true } }) : null,
       conv.recordId ? this.prisma.serviceRecord.findUnique({ where: { id: conv.recordId }, select: { id: true, kind: true, leadAt: true, saleStatus: true, adsVia: true, adsCampaign: true, adsCampaignId: true, entryChannel: true } }) : null,
     ])
-    if (!monitor && conv.unread > 0 && !beforeDate) await this.prisma.whatsappConversation.update({ where: { id }, data: { unread: 0 } })
+    // Quem atende abriu: mensagens e nota interna vistas (no monitoramento, nada muda).
+    if (!monitor && !beforeDate && (conv.unread > 0 || conv.noteUnread)) await this.prisma.whatsappConversation.update({ where: { id }, data: { unread: 0, noteUnread: false } })
     const more = rows.length > PAGE
     return {
       conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, category: conv.category, unread: conv.unread },
@@ -364,8 +367,27 @@ export class ChatService {
       messages: rows
         .slice(0, PAGE)
         .reverse()
-        .map((m) => ({ id: m.id, fromMe: m.fromMe, type: m.type, text: m.text, fileName: m.fileName, mime: m.mime, mediaStatus: m.mediaStatus, hasFile: !!m.fileId, sentAt: m.sentAt, sentByName: m.sentByName, status: m.status })),
+        .map((m) => ({ id: m.id, fromMe: m.fromMe, type: m.type, text: m.text, fileName: m.fileName, mime: m.mime, mediaStatus: m.mediaStatus, hasFile: !!m.fileId, sentAt: m.sentAt, sentByName: m.sentByName, status: m.status, internal: m.internal })),
     }
+  }
+
+  /**
+   * Nota interna na conversa (permissão "Monitorar conversas", ação Criar): orientação, liberação de desconto, advertência.
+   * Fica só no CRM: não vai para o WhatsApp, não muda a prévia nem o "aguardando resposta", e avisa quem atende.
+   */
+  async addNote(user: AuthUser, id: string, text: string, ctx: RequestCtx) {
+    if (!can(user.permissions, user.role.isSystem, 'monitoramento', 'create')) throw new ForbiddenException('Você não tem permissão para escrever nota interna.')
+    const conv = await this.prisma.whatsappConversation.findFirst({ where: { id, tenantId: user.tenantId }, select: { id: true, name: true, phone: true } })
+    if (!conv) throw new NotFoundException('Conversa não encontrada.')
+    const body = text.trim().slice(0, 4000)
+    if (!body) throw new BadRequestException('Escreva a nota.')
+    const now = new Date()
+    const msg = await this.prisma.whatsappMessage.create({
+      data: { tenantId: user.tenantId, conversationId: id, waId: `nota:${randomUUID()}`, fromMe: true, type: 'nota', text: body, internal: true, sentById: user.id, sentByName: user.name.slice(0, 120), status: 'NOTA', sentAt: now },
+    })
+    await this.prisma.whatsappConversation.update({ where: { id }, data: { noteUnread: true } })
+    await this.audit.byUser(user, ctx, 'chat.nota_interna', 'whatsapp_conversation', id, { contato: conv.name ?? conv.phone ?? null })
+    return { id: msg.id, fromMe: true, type: msg.type, text: msg.text, fileName: null, mime: null, mediaStatus: null, hasFile: false, sentAt: msg.sentAt, sentByName: msg.sentByName, status: msg.status, internal: true }
   }
 
   /** Mídia de uma mensagem, só para quem pode ver a conversa. */

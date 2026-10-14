@@ -1335,6 +1335,8 @@ model WhatsappConversation {
   lastMessageAt    DateTime?
   lastPreview      String?
   lastFromMe       Boolean   @default(false)
+  /// Nota interna nova, ainda não vista por quem atende.
+  noteUnread       Boolean   @default(false)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -1369,6 +1371,8 @@ model WhatsappMessage {
   status         String?
   error          String?
   sentAt         DateTime
+  /// Nota interna (administrador ou gestor): só aparece no CRM, nunca vai para o WhatsApp do cliente.
+  internal       Boolean  @default(false)
   createdAt      DateTime @default(now())
 
   conversation WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
