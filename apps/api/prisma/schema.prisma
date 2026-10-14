@@ -1299,6 +1299,8 @@ model WhatsappNumber {
   unitId         String?   @db.Uuid
   /// Vendedores que atendem por este número.
   sellerIds      String[]  @default([]) @db.Uuid
+  /// Usuários (logins) que usam este número: com o escopo "Próprios" no Chat WhatsApp, só eles veem as conversas dele.
+  userIds        String[]  @default([]) @db.Uuid
   /// Este número abre pré-venda (desligue em números que não são de venda). O que vira lead segue as regras do WhatsApp.
   createRecords  Boolean   @default(true)
   /// Mensagens enviadas pelo CRM começam com o nome de quem enviou (*Diego:*), para o cliente saber com quem fala.

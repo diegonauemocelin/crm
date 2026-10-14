@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.30.0",
+      "date": "2026-10-14",
+      "title": "Cada login vê só o seu chat",
+      "changes": [
+        { "type": "novo", "area": "WhatsApp", "text": "Cada login vê só o seu chat: em Números de WhatsApp, escolha os usuários que usam cada número. Com a permissão Chat WhatsApp em “Próprios”, a pessoa só vê (e só inicia conversa por) os números ligados a ela ou ao vendedor dela, mais as conversas passadas para ela." },
+        { "type": "melhoria", "area": "WhatsApp", "text": "Funciona também para quem não tem cadastro de vendedor (ex.: equipe de Pré-Vendas). Administrador e Gestor comercial continuam vendo todos os números." },
+        { "type": "melhoria", "area": "WhatsApp", "text": "O cartão de cada número mostra quem usa o número." }
+      ]
+    },
+    {
       "version": "0.29.0",
       "date": "2026-10-14",
       "title": "Nota interna no chat",

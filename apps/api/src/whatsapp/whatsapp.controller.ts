@@ -10,6 +10,7 @@ class NumberDto {
   @ApiProperty() @IsString() @Length(2, 80) name!: string
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() unitId?: string | null
   @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) sellerIds?: string[]
+  @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() @ArrayMaxSize(100) @IsUUID('all', { each: true }) userIds?: string[]
   @ApiPropertyOptional() @IsOptional() @IsBoolean() createRecords?: boolean
   @ApiPropertyOptional() @IsOptional() @IsBoolean() signMessages?: boolean
 }

@@ -235,10 +235,19 @@ export class ChatService {
       const nums = await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, unitId: user.unitId }, select: { id: true } })
       return { ...base, numberId: { in: nums.map((x) => x.id) } }
     }
+    const { numberIds, sellerId } = await this.ownNumbers(user)
+    if (!numberIds.length && !sellerId) return { id: { in: [] } }
+    return { ...base, OR: [{ numberId: { in: numberIds } }, ...(sellerId ? [{ assignedSellerId: sellerId }] : [])] }
+  }
+
+  /** Números do usuário: ligados ao login dele ou ao vendedor dele (cadastro do número em Números de WhatsApp). */
+  private async ownNumbers(user: AuthUser) {
     const seller = await this.prisma.seller.findUnique({ where: { userId: user.id }, select: { id: true } })
-    if (!seller) return { id: { in: [] } }
-    const nums = await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, sellerIds: { has: seller.id } }, select: { id: true } })
-    return { ...base, OR: [{ numberId: { in: nums.map((x) => x.id) } }, { assignedSellerId: seller.id }] }
+    const nums = await this.prisma.whatsappNumber.findMany({
+      where: { tenantId: user.tenantId, deletedAt: null, OR: [{ userIds: { has: user.id } }, ...(seller ? [{ sellerIds: { has: seller.id } }] : [])] },
+      select: { id: true },
+    })
+    return { numberIds: nums.map((n) => n.id), sellerId: seller?.id ?? null }
   }
 
   async conversations(user: AuthUser, q: { numberId?: string; unread?: boolean; archived?: boolean; search?: string; page?: number; category?: string; leadId?: string; reminders?: boolean; monitor?: boolean; sellerId?: string; awaiting?: boolean }) {
@@ -317,8 +326,7 @@ export class ChatService {
     const all = await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, deletedAt: null }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, phone: true, status: true } })
     if (this.scopeOf(user) === 'ALL') return all
     const ids = new Set((await this.prisma.whatsappConversation.findMany({ where: scope, select: { numberId: true }, distinct: ['numberId'] })).map((c) => c.numberId))
-    const seller = await this.prisma.seller.findUnique({ where: { userId: user.id }, select: { id: true } })
-    const mine = seller ? (await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, sellerIds: { has: seller.id } }, select: { id: true } })).map((x) => x.id) : []
+    const mine = (await this.ownNumbers(user)).numberIds
     return all.filter((n) => ids.has(n.id) || mine.includes(n.id))
   }
 
@@ -481,15 +489,12 @@ export class ChatService {
     return this.recordSent(user, c, r, { type, text: kind.kind === 'audio' ? null : text, fileId: asset.id, fileName, mime: kind.mime })
   }
 
-  /** Números em que o usuário pode iniciar conversa (próprios: onde o vendedor dele atende; unidade: da unidade). */
+  /** Números em que o usuário pode iniciar conversa (próprios: os ligados a ele ou ao vendedor dele; unidade: da unidade). */
   private async numbersForStart(user: AuthUser) {
     const s = this.scopeOf(user)
     const where: Prisma.WhatsappNumberWhereInput = { tenantId: user.tenantId, deletedAt: null }
     if (s === 'UNIT') where.unitId = user.unitId ?? '00000000-0000-0000-0000-000000000000'
-    if (s === 'OWN') {
-      const seller = await this.prisma.seller.findUnique({ where: { userId: user.id }, select: { id: true } })
-      where.sellerIds = { has: seller?.id ?? '00000000-0000-0000-0000-000000000000' }
-    }
+    if (s === 'OWN') where.id = { in: (await this.ownNumbers(user)).numberIds }
     return this.prisma.whatsappNumber.findMany({ where, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, phone: true, status: true } })
   }
 

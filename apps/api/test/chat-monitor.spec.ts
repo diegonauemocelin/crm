@@ -36,3 +36,31 @@ describe('nota interna', () => {
     expect(updates).toEqual([{ noteUnread: true }])
   })
 })
+
+describe('cada login vê só o seu chat', () => {
+  const own = { view: true, create: true, edit: false, delete: false, export: false, scope: 'OWN' }
+  const numbers = [
+    { id: 'n1', userIds: ['u1'], sellerIds: [] },
+    { id: 'n2', userIds: [], sellerIds: ['s2'] },
+    { id: 'n3', userIds: ['u9'], sellerIds: [] },
+  ]
+  const prisma = (sellerOf: Record<string, string>) => ({
+    seller: { findUnique: async (a: { where: { userId: string } }) => (sellerOf[a.where.userId] ? { id: sellerOf[a.where.userId] } : null) },
+    whatsappNumber: {
+      findMany: async (a: { where: { OR: ({ userIds?: { has: string } } | { sellerIds?: { has: string } })[] } }) =>
+        numbers.filter((n) => a.where.OR.some((o) => ('userIds' in o && n.userIds.includes(o.userIds!.has)) || ('sellerIds' in o && n.sellerIds.includes(o.sellerIds!.has)))).map((n) => ({ id: n.id })),
+    },
+  })
+  const who = (id: string) => ({ id, name: id, tenantId: 't', role: { isSystem: false }, permissions: { chat: own } }) as never
+
+  it('login sem cadastro de vendedor (ex.: Pré-Vendas) vê só os números ligados a ele', async () => {
+    const s = new ChatService(prisma({}) as never, {} as never, {} as never, {} as never, {} as never, {} as never)
+    expect(await s.where(who('u1'))).toEqual({ tenantId: 't', OR: [{ numberId: { in: ['n1'] } }] })
+    expect(await s.where(who('u5'))).toEqual({ id: { in: [] } })
+  })
+
+  it('vendedor: números do vendedor e do login, mais as conversas passadas para ele', async () => {
+    const s = new ChatService(prisma({ u1: 's2' }) as never, {} as never, {} as never, {} as never, {} as never, {} as never)
+    expect(await s.where(who('u1'))).toEqual({ tenantId: 't', OR: [{ numberId: { in: ['n1', 'n2'] } }, { assignedSellerId: 's2' }] })
+  })
+})

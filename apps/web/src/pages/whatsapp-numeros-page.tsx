@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangleIcon, Loader2Icon, PencilIcon, PlugIcon, PlusIcon, SmartphoneIcon, Trash2Icon, UnplugIcon } from 'lucide-react'
+import { AlertTriangleIcon, Loader2Icon, PencilIcon, PlugIcon, PlusIcon, SmartphoneIcon, Trash2Icon, UnplugIcon, UsersIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { MultiSelect } from '@/components/multi-select'
@@ -28,12 +28,15 @@ interface WaNumber {
   statusReason: string | null
   unitId: string | null
   sellerIds: string[]
+  /** Logins que usam o número (com o escopo "Próprios", só eles veem as conversas). */
+  userIds: string[]
   createRecords: boolean
   signMessages: boolean
   connectedAt: string | null
   disconnectedAt: string | null
 }
 interface ListData {
+  users: { id: string; name: string }[]
   numbers: WaNumber[]
   limits: { maxNumbers: number; maxConnected: number; connected: number; registered: number }
   service: { configured: boolean; online: boolean; version: string | null; error: string | null }
@@ -125,6 +128,10 @@ function Numbers() {
                       {n.unitId ? `${names.get(n.unitId) ?? 'Unidade'} · ` : ''}
                       {n.sellerIds.length ? n.sellerIds.map((id) => names.get(id) ?? '—').join(', ') : 'Sem vendedor definido'}
                     </p>
+                    <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                      <UsersIcon className="mt-0.5 size-3.5 shrink-0" />
+                      {n.userIds?.length ? `Usam: ${n.userIds.map((id) => d?.users.find((u) => u.id === id)?.name ?? 'usuário removido').join(', ')}` : 'Nenhum usuário ligado (só quem vê todas as conversas)'}
+                    </p>
                     {n.status === 'CONECTADO' && n.connectedAt && <p className="text-xs text-muted-foreground">Conectado desde {formatDateTime(n.connectedAt)}</p>}
                     {n.status === 'DESCONECTADO' && n.statusReason && (
                       <p className="text-xs text-muted-foreground">
@@ -171,7 +178,7 @@ function Numbers() {
           <QuickReplies editable={can('whatsapp', 'edit')} />
         </div>
       )}
-      {editing && <NumberDialog number={editing === 'novo' ? null : editing} onClose={() => setEditing(null)} />}
+      {editing && <NumberDialog number={editing === 'novo' ? null : editing} users={d?.users ?? []} onClose={() => setEditing(null)} />}
       {connecting && <ConnectDialog number={connecting} onClose={() => setConnecting(null)} />}
       {confirm && <ConfirmDialog {...confirm} onClose={() => setConfirm(null)} />}
     </div>
@@ -199,18 +206,19 @@ function Count({ label, value, hint }: { label: string; value: string; hint?: st
   )
 }
 
-function NumberDialog({ number, onClose }: { number: WaNumber | null; onClose: () => void }) {
+function NumberDialog({ number, users, onClose }: { number: WaNumber | null; users: { id: string; name: string }[]; onClose: () => void }) {
   const qc = useQueryClient()
   const options = useOptions()
   const [name, setName] = useState(number?.name ?? '')
   const [unitId, setUnitId] = useState<string | null>(number?.unitId ?? null)
   const [sellerIds, setSellerIds] = useState<string[]>(number?.sellerIds ?? [])
+  const [userIds, setUserIds] = useState<string[]>(number?.userIds ?? [])
   const [createRecords, setCreateRecords] = useState(number?.createRecords ?? true)
   const [signMessages, setSignMessages] = useState(number?.signMessages ?? true)
   const [error, setError] = useState<string | null>(null)
   const save = useMutation({
     mutationFn: () => {
-      const body = { name, unitId, sellerIds, createRecords, signMessages }
+      const body = { name, unitId, sellerIds, userIds, createRecords, signMessages }
       return number ? api.put(`/whatsapp/numeros/${number.id}`, body) : api.post('/whatsapp/numeros', body)
     },
     onSuccess: () => {
@@ -259,6 +267,11 @@ function NumberDialog({ number, onClose }: { number: WaNumber | null; onClose: (
             <Label htmlFor="wa-n-sellers">Vendedores que atendem por este número</Label>
             <MultiSelect id="wa-n-sellers" items={options.data?.sellers ?? []} value={sellerIds} onChange={setSellerIds} placeholder="Selecione os vendedores" />
             <p className="text-xs text-muted-foreground">Com um vendedor só, os contatos novos vão para a fila dele.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="wa-n-users">Usuários que usam este número</Label>
+            <MultiSelect id="wa-n-users" items={users} value={userIds} onChange={setUserIds} placeholder="Selecione os usuários" />
+            <p className="text-xs text-muted-foreground">Quem tem a permissão Chat WhatsApp como “Próprios” só vê os números ligados a ele (ou ao vendedor dele). Administrador e Gestor comercial veem todos.</p>
           </div>
           <label className="flex items-start justify-between gap-3 rounded-md border p-3 text-sm">
             <span>

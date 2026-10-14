@@ -12,6 +12,7 @@ export interface NumberInput {
   name: string
   unitId?: string | null
   sellerIds?: string[]
+  userIds?: string[]
   createRecords?: boolean
   signMessages?: boolean
 }
@@ -100,7 +101,10 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
         service = { ...service, error: (err as Error).message }
       }
     }
+    // Para escolher quem usa cada número (só nome; quem vê esta tela é o administrador dos números).
+    const users = await this.prisma.user.findMany({ where: { tenantId: user.tenantId, active: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } })
     return {
+      users,
       numbers: numbers.map((n) => this.view(n)),
       limits: { ...this.limits(), connected: numbers.filter((n) => n.status !== 'DESCONECTADO').length, registered: numbers.length },
       service,
@@ -114,16 +118,23 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
     return ids
   }
 
+  private async assertUsers(tenantId: string, d: NumberInput) {
+    const ids = [...new Set(d.userIds ?? [])]
+    if (ids.length && (await this.prisma.user.count({ where: { tenantId, id: { in: ids } } })) !== ids.length) throw new BadRequestException('Usuário inválido.')
+    return ids
+  }
+
   async create(user: AuthUser, d: NumberInput, ctx: RequestCtx) {
     const name = d.name.trim().slice(0, 80)
     if (name.length < 2) throw new BadRequestException('Dê um nome ao número (ex.: Vendas Paraná).')
     const sellerIds = await this.assertRefs(user.tenantId, d)
+    const userIds = await this.assertUsers(user.tenantId, d)
     const n = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`wa-numbers:${user.tenantId}`}))`
       const count = await tx.whatsappNumber.count({ where: { tenantId: user.tenantId, deletedAt: null } })
       if (count >= env.whatsappMaxNumbers) throw new BadRequestException(`Limite de ${env.whatsappMaxNumbers} números cadastrados. Exclua um para cadastrar outro.`)
       return tx.whatsappNumber.create({
-        data: { tenantId: user.tenantId, name, instanceName: `crm-${randomToken(9).toLowerCase().replace(/[^a-z0-9]/g, 'x')}`, unitId: d.unitId ?? null, sellerIds, createRecords: d.createRecords ?? true, signMessages: d.signMessages ?? true },
+        data: { tenantId: user.tenantId, name, instanceName: `crm-${randomToken(9).toLowerCase().replace(/[^a-z0-9]/g, 'x')}`, unitId: d.unitId ?? null, sellerIds, userIds, createRecords: d.createRecords ?? true, signMessages: d.signMessages ?? true },
       })
     })
     await this.audit.byUser(user, ctx, 'whatsapp.numero_criado', 'whatsapp_number', n.id, { nome: name })
@@ -135,8 +146,10 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
     const name = d.name.trim().slice(0, 80)
     if (name.length < 2) throw new BadRequestException('Dê um nome ao número.')
     const sellerIds = await this.assertRefs(user.tenantId, d)
-    const n = await this.prisma.whatsappNumber.update({ where: { id }, data: { name, unitId: d.unitId ?? null, sellerIds, ...(d.createRecords !== undefined ? { createRecords: d.createRecords } : {}), ...(d.signMessages !== undefined ? { signMessages: d.signMessages } : {}) } })
-    await this.audit.byUser(user, ctx, 'whatsapp.numero_alterado', 'whatsapp_number', id, { nome: name, vendedores: sellerIds.length })
+    // Sem a lista na requisição (tela antiga), mantém os usuários atuais.
+    const userIds = d.userIds ? await this.assertUsers(user.tenantId, d) : undefined
+    const n = await this.prisma.whatsappNumber.update({ where: { id }, data: { name, unitId: d.unitId ?? null, sellerIds, ...(userIds ? { userIds } : {}), ...(d.createRecords !== undefined ? { createRecords: d.createRecords } : {}), ...(d.signMessages !== undefined ? { signMessages: d.signMessages } : {}) } })
+    await this.audit.byUser(user, ctx, 'whatsapp.numero_alterado', 'whatsapp_number', id, { nome: name, vendedores: sellerIds.length, usuarios: userIds?.length ?? null })
     return this.view(n)
   }
 

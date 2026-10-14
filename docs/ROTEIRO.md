@@ -12,7 +12,7 @@ Ordem definida em 14/10/2026. Cada item vira uma versão (ou mais), publicada e 
 | 13 | 6 | **Menus reorganizados** (feito na v0.27.0; "Sugestões" entra com o item 11) | Dashboards · Análise · Atendimento Comercial · CRM · Marketing · Sugestões · Administração · Sistema. |
 | 4 | 7 | **Monitorar conversas** (feito na v0.28.0) | Administrador lê as conversas; perfil novo **Gestor comercial** acompanha todos os vendedores, incluindo as conversas com clientes. |
 | 5 | 8 | **Nota interna no chat** (feito na v0.29.0) | Administrador e gestor comercial escrevem na conversa uma mensagem que só aparece no CRM (o cliente não recebe): liberação de desconto, orientação, advertência. |
-| 7 | 9 | **Cada login vê só o seu chat** | Só os números ligados ao usuário (administrador e gestor comercial veem todos). |
+| 7 | 9 | **Cada login vê só o seu chat** (feito na v0.30.0) | Só os números ligados ao usuário (administrador e gestor comercial veem todos). |
 | 8 | 10 | **Nome do atendente nas mensagens** | Cada usuário escolhe como seu nome aparece para o cliente (ex.: *Diego - Vendas:*). |
 | 11 | 11 | **Sugestões de melhoria** | Usuários enviam sugestões; o administrador analisa, aplica e responde a quem pediu. |
 | 3 | 12 | **Vários atendentes no mesmo número** | Por setor; atendentes não leem as conversas de clientes um do outro; conversas com colegas de trabalho são visíveis a todos do número. |
