@@ -16,10 +16,10 @@ Ordem definida em 14/10/2026. Cada item vira uma versão (ou mais), publicada e 
 | 8 | 10 | **Nome do atendente nas mensagens** | Cada usuário escolhe como seu nome aparece para o cliente (ex.: *Diego - Vendas:*). |
 | 11 | 11 | **Sugestões de melhoria** | Usuários enviam sugestões; o administrador analisa, aplica e responde a quem pediu. |
 | 3 | 12 | **Vários atendentes no mesmo número** | Por setor; atendentes não leem as conversas de clientes um do outro; conversas com colegas de trabalho são visíveis a todos do número. |
-| 12 | 13 | **Um só sistema (Assistente de vendas Usaparts)** | Tela de escolha do sistema conforme o login e troca rápida entre eles; um login e um endereço só. As telas do outro sistema passam para dentro do CRM, e depois ele pode sair da VPS. |
-| 2 | 14 | **Integração com a Tcar** | A definir: o que a Tcar é para a empresa, que dados trocar e se ela tem API. |
-| 14 | 15 | **Plano: melhoria do catálogo da loja virtual** | Primeiro um plano. Título, descrição, título e descrição de SEO e palavras-chave de cada produto, melhorados por IA (paga ou gratuita) ou à mão, e enviados de volta para a Magazord. |
-| 10 | — | **Trilha de conhecimento** | Por perfil e por módulo, com "o que fazer e como fazer" de cada tela. Fora da lista de prioridades: encaixar quando for definido. |
+| 2 | 13 | **Integração com a Tcar: consulta de produtos** | Pesquisa por código SKU, código de referência, código de integração, "utilizado em" (aplicação), título, estoque e código de fábrica. Falta saber como a Tcar entrega os dados (API, banco ou arquivo). |
+| 14 | 14 | **Plano: melhoria do catálogo da loja virtual** | Primeiro um plano. Título, descrição, título e descrição de SEO e palavras-chave de cada produto, melhorados por IA (paga ou gratuita) ou à mão, e enviados de volta para a Magazord. |
+| 10 | 15 | **Trilha de conhecimento** | Por perfil e por módulo, com "o que fazer e como fazer" de cada tela. |
+| 12 | — | **Um só sistema (Assistente de vendas Usaparts = usaparts-bi)** | Só quando o usuário liberar. Tela de escolha do sistema conforme o login e troca rápida; um login e um endereço. As telas do usaparts-bi passam para dentro do CRM, e depois ele pode sair da VPS. |
 
 ## Pendências fora desta lista
 
