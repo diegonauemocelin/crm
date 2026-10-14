@@ -82,6 +82,8 @@ class RulesDto {
   @IsIn(['LEAD_E_PREVENDA', 'SO_LEAD', 'NADA']) newContact!: 'LEAD_E_PREVENDA' | 'SO_LEAD' | 'NADA'
   @IsIn(['HISTORICO_E_PREVENDA', 'SO_HISTORICO']) knownLead!: 'HISTORICO_E_PREVENDA' | 'SO_HISTORICO'
   @Type(() => Number) @IsInt() @Min(1) @Max(90) reopenDays!: number
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1440) yellowMinutes?: number
+  @IsOptional() @Type(() => Number) @IsInt() @Min(2) @Max(2880) redMinutes?: number
 }
 
 class CompanyContactDto {

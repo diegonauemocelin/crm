@@ -16,13 +16,17 @@ export const MODULE_BY_KIND: Record<ServiceKind, 'pre_vendas' | 'pos_vendas'> = 
 
 export interface AtendimentoSettings {
   alertHours: number
+  /** Pré-venda nova sem ninguém mexer: depois destes minutos fica "aguardando atendimento" (destaque e sino). */
+  newRecordMinutes?: number
   /** Prazo para o pós-venda fazer o primeiro contato. */
   postSaleHours: number
   /** Quem recebe o pós-venda gerado da pré-venda: por unidade e, sem unidade configurada, o padrão. */
   postSaleOwnerId: string | null
   postSaleOwnerByUnit: Record<string, string>
 }
-export const DEFAULT_ATENDIMENTO: AtendimentoSettings = { alertHours: 24, postSaleHours: 24, postSaleOwnerId: null, postSaleOwnerByUnit: {} }
+export const DEFAULT_ATENDIMENTO: AtendimentoSettings = { alertHours: 24, newRecordMinutes: 10, postSaleHours: 24, postSaleOwnerId: null, postSaleOwnerByUnit: {} }
+/** Pré-venda nova só conta como "aguardando" nos últimos dias (o histórico antigo não vira aviso). */
+const WAITING_WINDOW_MS = 7 * 86_400_000
 
 export interface RecordFilters {
   kind: ServiceKind
@@ -46,6 +50,8 @@ export interface RecordFilters {
   followOverdue?: 'true'
   /** Pré-vendas cujo pós-venda devolveu o caso ao vendedor. */
   postSaleReturned?: 'true'
+  /** Pré-vendas novas que ninguém atendeu ainda. */
+  waiting?: 'true'
 }
 
 export interface RecordInput {
@@ -127,6 +133,11 @@ export class ServiceRecordsService {
     return this.settings.get(tenantId, 'atendimento', DEFAULT_ATENDIMENTO)
   }
 
+  /** Pré-venda nova que ninguém atendeu: criada sozinha (formulário, WhatsApp, chat) e sem nenhuma alteração de uma pessoa. */
+  private waitingWhere(now: number): Prisma.ServiceRecordWhereInput {
+    return { kind: 'PRE_VENDAS', firstActionAt: null, forwarded: false, saleStatus: 'NEGOCIACAO', createdAt: { gte: new Date(now - WAITING_WINDOW_MS) } }
+  }
+
   async where(user: AuthUser, f: RecordFilters): Promise<Prisma.ServiceRecordWhereInput> {
     const and: Prisma.ServiceRecordWhereInput[] = [{ tenantId: user.tenantId, kind: f.kind, deletedAt: null }, this.scope(user, f.kind)]
     const search = f.search?.trim()
@@ -159,6 +170,7 @@ export class ServiceRecordsService {
     if (f.followStatus) and.push({ followStatus: f.followStatus })
     if (f.postSaleReturned === 'true') and.push({ children: { some: { followStatus: 'VOLTOU_AO_VENDEDOR', deletedAt: null } } })
     if (f.followOverdue === 'true') and.push({ followStatus: 'PENDENTE', dueAt: { lt: new Date() } })
+    if (f.waiting === 'true') and.push(this.waitingWhere(Date.now()))
     if (f.overdue === 'true') {
       const { alertHours } = await this.alertSettings(user.tenantId)
       and.push({ forwarded: true, returnStatus: 'PENDENTE', forwardedAt: { lt: new Date(Date.now() - alertHours * 3_600_000) } })
@@ -333,6 +345,7 @@ export class ServiceRecordsService {
         partTypeIds: d.partTypeIds ?? [],
         createdById: user.id,
         updatedById: user.id,
+        ...(d.kind === 'PRE_VENDAS' ? { firstActionAt: new Date() } : {}),
         ...(d.kind === 'POS_VENDAS' ? await this.followStart(user.tenantId) : {}),
         history: { create: { userId: user.id, userName: user.name, action: 'criado', changes: {} } },
       },
@@ -371,6 +384,8 @@ export class ServiceRecordsService {
     for (const k of ['forwardedAt', 'returnedAt'] as const) data[k] = next[k]
     // Primeiro contato do pós-venda: é o que conta para o prazo.
     if (changes.followStatus && next.followStatus !== 'PENDENTE' && !current.firstActionAt) data.firstActionAt = new Date()
+    // Pré-venda: a primeira alteração de uma pessoa tira o "aguardando atendimento".
+    if (current.kind === 'PRE_VENDAS' && !current.firstActionAt) data.firstActionAt = new Date()
 
     const record = await this.prisma.serviceRecord.update({
       where: { id },
@@ -471,8 +486,29 @@ export class ServiceRecordsService {
   }
 
   async alerts(user: AuthUser) {
-    const { alertHours } = await this.alertSettings(user.tenantId)
+    const { alertHours, newRecordMinutes = 10 } = await this.alertSettings(user.tenantId)
     const limit = new Date(Date.now() - alertHours * 3_600_000)
+    // Pré-vendas novas (para o aviso na tela) e as que passaram do prazo sem ninguém atender.
+    let fresh: { id: string; name: string; leadAt: Date; createdAt: Date; origin: string | null; channel: string | null }[] = []
+    let waiting = 0
+    const overdueList: { id: string; name: string; forwardedAt: Date | null; seller: string | null; sellerPhone: string | null }[] = []
+    if (can(user.permissions, user.role.isSystem, 'pre_vendas', 'view')) {
+      const scope = this.scope(user, 'PRE_VENDAS')
+      const base = { tenantId: user.tenantId, deletedAt: null, ...this.waitingWhere(Date.now()), ...scope }
+      const [rows, late, over] = await Promise.all([
+        this.prisma.serviceRecord.findMany({ where: base, orderBy: { createdAt: 'desc' }, take: 10, select: { id: true, name: true, leadAt: true, createdAt: true, entryChannel: true, origin: { select: { name: true } } } }),
+        this.prisma.serviceRecord.count({ where: { ...base, createdAt: { gte: new Date(Date.now() - WAITING_WINDOW_MS), lt: new Date(Date.now() - newRecordMinutes * 60_000) } } }),
+        this.prisma.serviceRecord.findMany({
+          where: { tenantId: user.tenantId, kind: 'PRE_VENDAS', deletedAt: null, forwarded: true, returnStatus: 'PENDENTE', forwardedAt: { lt: limit }, ...scope },
+          orderBy: { forwardedAt: 'asc' },
+          take: 5,
+          select: { id: true, name: true, forwardedAt: true, seller: { select: { name: true, phone: true } } },
+        }),
+      ])
+      fresh = rows.map((r) => ({ id: r.id, name: r.name, leadAt: r.leadAt, createdAt: r.createdAt, origin: r.origin?.name ?? null, channel: r.entryChannel }))
+      waiting = late
+      for (const o of over) overdueList.push({ id: o.id, name: o.name, forwardedAt: o.forwardedAt, seller: o.seller?.name ?? null, sellerPhone: o.seller?.phone ?? null })
+    }
     const result: { kind: ServiceKind; overdue: number }[] = []
     for (const kind of ['PRE_VENDAS', 'POS_VENDAS'] as ServiceKind[]) {
       if (!can(user.permissions, user.role.isSystem, MODULE_BY_KIND[kind], 'view')) continue
@@ -497,11 +533,15 @@ export class ServiceRecordsService {
     const { postSaleHours } = await this.alertSettings(user.tenantId)
     return {
       alertHours,
+      newRecordMinutes,
       postSaleHours,
       items: result,
       followOverdue,
       returnedToMe,
-      total: result.reduce((s, r) => s + r.overdue, 0) + followOverdue + returnedToMe,
+      waiting,
+      fresh,
+      overdueList,
+      total: result.reduce((s, r) => s + r.overdue, 0) + followOverdue + returnedToMe + waiting,
     }
   }
 

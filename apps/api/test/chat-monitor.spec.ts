@@ -110,3 +110,19 @@ describe('vários atendentes no mesmo número', () => {
     expect(sees({ ...base, numberId: 'n2', assignedUserId: null })).toBe(false)
   })
 })
+
+describe('cores do atraso de resposta', () => {
+  it('verde, amarelo e vermelho pelo tempo desde a última mensagem do cliente', async () => {
+    const { responseColor, cleanRules } = await import('../src/whatsapp/envio')
+    const r = { yellowMinutes: 15, redMinutes: 60 }
+    const now = Date.parse('2026-10-16T12:00:00Z')
+    const ago = (m: number) => new Date(now - m * 60_000)
+    expect(responseColor(false, ago(5), r, now)).toBe('verde')
+    expect(responseColor(false, ago(20), r, now)).toBe('amarelo')
+    expect(responseColor(false, ago(90), r, now)).toBe('vermelho')
+    expect(responseColor(true, ago(90), r, now)).toBeNull()
+    expect(responseColor(false, null, r, now)).toBeNull()
+    expect(cleanRules({ yellowMinutes: 30, redMinutes: 20 })).toMatchObject({ yellowMinutes: 30, redMinutes: 60 })
+    expect(cleanRules({})).toMatchObject({ yellowMinutes: 15, redMinutes: 60 })
+  })
+})

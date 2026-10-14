@@ -57,7 +57,7 @@ export function beep() {
 }
 
 /** Notificação do sistema (só com permissão dada no Chat). Clicar leva para a conversa. */
-function systemNotify(title: string, body: string, onClick: () => void, tag: string) {
+export function systemNotify(title: string, body: string, onClick: () => void, tag: string) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
   try {
     const n = new Notification(title, { body, tag, icon: '/favicon.ico' })

@@ -8,6 +8,7 @@ import {
   DownloadIcon,
   EraserIcon,
   FilterXIcon,
+  HeadsetIcon,
   InboxIcon,
   Loader2Icon,
   PlusIcon,
@@ -50,12 +51,13 @@ import {
 } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
+import { useAttendanceAlerts } from '@/components/layout/alerts-bell'
 import { ClearDialog } from './clear-dialog'
 import { ImportDialog } from './import-dialog'
 import { RecordSheet } from './record-sheet'
 
 const ALL = '__all__'
-export const FILTER_KEYS = ['search', 'from', 'to', 'unitId', 'sellerId', 'originId', 'customerTypeId', 'state', 'region', 'brandId', 'partTypeId', 'forwarded', 'returnStatus', 'saleStatus', 'lostReasonId', 'overdue', 'followStatus', 'followOverdue', 'postSaleReturned'] as const
+export const FILTER_KEYS = ['search', 'from', 'to', 'unitId', 'sellerId', 'originId', 'customerTypeId', 'state', 'region', 'brandId', 'partTypeId', 'forwarded', 'returnStatus', 'saleStatus', 'lostReasonId', 'overdue', 'followStatus', 'followOverdue', 'postSaleReturned', 'waiting'] as const
 
 interface Page {
   total: number
@@ -97,8 +99,17 @@ function FilterSelect({ label, value, onChange, items, withNone }: { label: stri
   )
 }
 
+/** Minutos esperando o primeiro atendimento (pré-venda nova que ninguém mexeu), ou null. */
+function waitingMin(r: { kind?: string; firstActionAt: string | null; forwarded?: boolean; saleStatus: string; createdAt: string }) {
+  if (r.kind !== 'PRE_VENDAS' || r.firstActionAt || r.forwarded || r.saleStatus !== 'NEGOCIACAO') return null
+  const min = (Date.now() - Date.parse(r.createdAt)) / 60_000
+  return min <= 7 * 1440 ? Math.max(0, Math.floor(min)) : null
+}
+const minutesLabel = (m: number) => (m < 60 ? `${m} min` : m < 1440 ? `${Math.floor(m / 60)} h` : `${Math.floor(m / 1440)} dia(s)`)
+
 export function RecordsList({ kind }: { kind: Kind }) {
   const info = KIND_INFO[kind]
+  const newMinutes = useAttendanceAlerts().data?.newRecordMinutes ?? 10
   const qc = useQueryClient()
   const { can, me } = useAuth()
   const options = useOptions()
@@ -255,6 +266,18 @@ export function RecordsList({ kind }: { kind: Kind }) {
         <FilterSelect label="Retorno" value={params.get('returnStatus')} onChange={(v) => setFilter('returnStatus', v)} items={(['SIM', 'NAO', 'PENDENTE'] as const).map((s) => ({ id: s, name: RETURN_LABEL[s] }))} />
         <FilterSelect label="Venda" value={params.get('saleStatus')} onChange={(v) => setFilter('saleStatus', v)} items={(['SIM', 'NAO', 'NEGOCIACAO'] as const).map((s) => ({ id: s, name: SALE_LABEL[s] }))} />
         <FilterSelect label="Motivo de perda" value={params.get('lostReasonId')} onChange={(v) => setFilter('lostReasonId', v)} items={o?.lostReasons ?? []} />
+        {kind === 'PRE_VENDAS' && (
+          <Button
+            size="sm"
+            variant={params.get('waiting') ? 'default' : 'outline'}
+            className="h-8"
+            onClick={() => setFilter('waiting', params.get('waiting') ? null : 'true')}
+            aria-pressed={!!params.get('waiting')}
+            title="Pré-vendas novas que ninguém atendeu ainda"
+          >
+            <HeadsetIcon /> Aguardando atendimento
+          </Button>
+        )}
         <Button
           size="sm"
           variant={params.get('overdue') ? 'default' : 'outline'}
@@ -359,7 +382,7 @@ export function RecordsList({ kind }: { kind: Kind }) {
               </TableHeader>
               <TableBody>
                 {data.items.map((r) => (
-                  <TableRow key={r.id} className={cn('cursor-pointer', r.overdue && 'bg-amber-500/5')} onClick={() => setOpen(r)}>
+                  <TableRow key={r.id} className={cn('cursor-pointer', r.overdue && 'bg-amber-500/5', waitingMin(r) !== null && waitingMin(r)! >= newMinutes && 'bg-rose-500/5')} onClick={() => setOpen(r)}>
                     {canMove && (
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Checkbox
@@ -378,7 +401,14 @@ export function RecordsList({ kind }: { kind: Kind }) {
                     )}
                     <TableCell className="text-sm whitespace-nowrap tabular-nums">{formatDay(r.leadAt)}</TableCell>
                     <TableCell className="max-w-64">
-                      <p className="truncate font-medium">{r.name}</p>
+                      <p className="flex items-center gap-1.5 font-medium">
+                        <span className="truncate">{r.name}</span>
+                        {waitingMin(r) !== null && (
+                          <Badge variant="outline" className={cn('shrink-0 font-normal', waitingMin(r)! >= newMinutes ? 'border-rose-500/50 text-rose-700 dark:text-rose-300' : 'border-sky-500/50 text-sky-700 dark:text-sky-300')} title="Ninguém atendeu ainda">
+                            {waitingMin(r)! >= newMinutes ? `aguardando há ${minutesLabel(waitingMin(r)!)}` : 'nova'}
+                          </Badge>
+                        )}
+                      </p>
                       <p className="truncate text-xs text-muted-foreground">
                         {[r.customerCode && `Cód. ${r.customerCode}`, formatPhone(r.phone)].filter(Boolean).join(' · ') || '—'}
                       </p>

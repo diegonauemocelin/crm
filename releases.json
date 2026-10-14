@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.36.0",
+      "date": "2026-10-16",
+      "title": "Avisos de pré-venda e cores de atraso no chat",
+      "changes": [
+        { "type": "novo", "area": "Atendimento", "text": "Aviso de pré-venda nova: toda pré-venda que entra (formulário, botão de WhatsApp, chat) aparece na hora para quem atende, com som e notificação do navegador." },
+        { "type": "novo", "area": "Atendimento", "text": "“Aguardando atendimento”: pré-venda que ninguém mexeu em X minutos (Cadastros → Alertas, padrão 10) fica em vermelho na lista, ganha o filtro “Aguardando atendimento” e entra no sino. Responder pelo chat do CRM ou alterar a pré-venda conta como atendida." },
+        { "type": "melhoria", "area": "Atendimento", "text": "Sino: os atendimentos sem retorno do vendedor mostram o nome do cliente, o vendedor e os botões Ligar e WhatsApp, para o Pré-Vendas conferir se ele falou com o cliente." },
+        { "type": "novo", "area": "WhatsApp", "text": "Cores do tempo sem resposta no chat: verde, amarelo ou vermelho pelo tempo desde a última mensagem do cliente sem resposta, com os prazos ajustáveis nas regras do WhatsApp (padrão 15 e 60 minutos)." }
+      ]
+    },
+    {
       "version": "0.35.1",
       "date": "2026-10-15",
       "title": "Conversões do Google Ads nas LPs e correção da origem do clique",

@@ -556,6 +556,8 @@ interface WaRules {
   newContact: 'LEAD_E_PREVENDA' | 'SO_LEAD' | 'NADA'
   knownLead: 'HISTORICO_E_PREVENDA' | 'SO_HISTORICO'
   reopenDays: number
+  yellowMinutes?: number
+  redMinutes?: number
 }
 const NEW_CONTACT: Record<WaRules['newContact'], string> = {
   LEAD_E_PREVENDA: 'Vira lead (com o histórico da conversa) e abre pré-venda',
@@ -628,6 +630,17 @@ function Rules({ editable }: { editable: boolean }) {
           <div className="space-y-1.5">
             <Label htmlFor="wr-days">Dias sem conversa para abrir um novo atendimento</Label>
             <Input id="wr-days" type="number" min={1} max={90} className="w-28" value={form.reopenDays} onChange={(e) => set('reopenDays', Number(e.target.value))} disabled={!editable} />
+          </div>
+        </div>
+        <div className="space-y-2 rounded-md border p-3">
+          <p className="text-sm font-medium">Cores do tempo sem resposta no chat</p>
+          <p className="text-xs text-muted-foreground">Contadas desde a última mensagem do cliente sem resposta (tempo corrido).</p>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="inline-flex items-center gap-1.5"><span className="size-2.5 rounded-full bg-[#16a34a]" /> verde até</span>
+            <Input aria-label="Minutos até ficar amarelo" type="number" min={1} max={1440} className="h-8 w-20" value={form.yellowMinutes ?? 15} onChange={(e) => set('yellowMinutes', Number(e.target.value))} disabled={!editable} />
+            <span className="inline-flex items-center gap-1.5">min · <span className="size-2.5 rounded-full bg-[#eab308]" /> amarelo até</span>
+            <Input aria-label="Minutos até ficar vermelho" type="number" min={2} max={2880} className="h-8 w-20" value={form.redMinutes ?? 60} onChange={(e) => set('redMinutes', Number(e.target.value))} disabled={!editable} />
+            <span className="inline-flex items-center gap-1.5">min · <span className="size-2.5 rounded-full bg-[#dc2626]" /> vermelho depois</span>
           </div>
         </div>
         <p className="text-xs text-muted-foreground">A pré-venda só abre em números marcados com “Este número abre pré-venda” e quando é o cliente que chama (não quando a empresa inicia a conversa).</p>

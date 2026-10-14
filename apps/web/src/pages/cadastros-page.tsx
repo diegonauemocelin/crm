@@ -612,6 +612,7 @@ function UnitDialog({ unit, onClose }: { unit: UnitRow | null; onClose: () => vo
 
 interface AlertConfig {
   alertHours: number
+  newRecordMinutes?: number
   postSaleHours: number
   postSaleOwnerId: string | null
   postSaleOwnerByUnit: Record<string, string>
@@ -622,6 +623,7 @@ function AlertsTab() {
   if (q.isLoading || !q.data) return <TableSkeleton rows={2} />
   return (
     <div className="grid gap-4 xl:grid-cols-2">
+      <NewRecordAlertCard config={q.data} />
       <ReturnAlertCard config={q.data} />
       <PostSaleCard config={q.data} />
     </div>
@@ -727,6 +729,38 @@ function PostSaleCard({ config }: { config: AlertConfig }) {
   )
 }
 
+function NewRecordAlertCard({ config }: { config: AlertConfig }) {
+  const { can } = useAuth()
+  const [minutes, setMinutes] = useState<number | null>(null)
+  const save = useSaveAlerts('Prazo da pré-venda nova salvo.')
+  const value = minutes ?? config.newRecordMinutes ?? 10
+  return (
+    <Card className="h-fit">
+      <CardHeader>
+        <CardTitle>Aviso de pré-venda nova</CardTitle>
+        <CardDescription>
+          Toda pré-venda que entra (formulário, botão de WhatsApp, chat) avisa na hora quem atende, com som e notificação. Se ninguém mexer nela neste prazo, ela fica em vermelho como “aguardando atendimento” e entra no sino.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Label htmlFor="new-minutes">Prazo para o primeiro atendimento (minutos)</Label>
+        <div className="mt-2 flex items-center gap-2">
+          <Input id="new-minutes" type="number" min={1} max={1440} className="w-28" value={value} onChange={(e) => setMinutes(Number(e.target.value))} disabled={!can('cadastros', 'edit')} />
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">Conta como atendida quando alguém altera a pré-venda ou responde o cliente pelo chat do CRM.</p>
+      </CardContent>
+      {can('cadastros', 'edit') && (
+        <CardFooter>
+          <Button onClick={() => save.mutate({ ...config, newRecordMinutes: value })} disabled={save.isPending || !(value >= 1 && value <= 1440)}>
+            {save.isPending && <Loader2Icon className="animate-spin" />}
+            Salvar
+          </Button>
+        </CardFooter>
+      )}
+    </Card>
+  )
+}
+
 function ReturnAlertCard({ config }: { config: AlertConfig }) {
   const { can } = useAuth()
   const [hours, setHours] = useState<number | null>(null)
@@ -737,7 +771,7 @@ function ReturnAlertCard({ config }: { config: AlertConfig }) {
       <CardHeader>
         <CardTitle>Alerta de retorno do vendedor</CardTitle>
         <CardDescription>
-          Atendimentos repassados ao vendedor e ainda “Pendentes” depois deste prazo ficam destacados na lista, entram no filtro “Sem retorno” e aparecem no sino de notificações.
+          Atendimentos repassados ao vendedor e ainda “Pendentes” depois deste prazo ficam destacados na lista, entram no filtro “Sem retorno” e aparecem no sino, com o nome e o telefone do vendedor para o Pré-Vendas ligar e conferir se ele falou com o cliente.
         </CardDescription>
       </CardHeader>
       <CardContent>

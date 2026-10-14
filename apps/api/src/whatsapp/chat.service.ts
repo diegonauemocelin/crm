@@ -311,6 +311,8 @@ export class ChatService {
       total,
       page,
       unreadConversations: unread._count._all,
+      // Prazos das cores de atraso de resposta (verde, amarelo, vermelho).
+      responseColors: await this.rules(user.tenantId).then((r) => ({ yellowMinutes: r.yellowMinutes, redMinutes: r.redMinutes })),
       numbers,
       ...(q.monitor ? { sellers: [...(sellerName ?? new Map()).entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)) } : {}),
       items: rows.map((r) => ({
@@ -472,6 +474,9 @@ export class ChatService {
       where: { id: c.conv.id },
       data: { lastMessageAt: r.at, lastPreview: previewOf({ type: m.type as ParsedMessage['type'], text: m.text }), lastFromMe: true, unread: 0, status: 'ABERTA', ...(c.number.splitAttendance && !c.conv.assignedUserId ? { assignedUserId: user.id } : {}) },
     })
+    // Responder pelo CRM atende a pré-venda ligada à conversa (tira o aviso de pré-venda aguardando).
+    const recordId = (await this.prisma.whatsappConversation.findUnique({ where: { id: c.conv.id }, select: { recordId: true } }))?.recordId
+    if (recordId) await this.prisma.serviceRecord.updateMany({ where: { id: recordId, kind: 'PRE_VENDAS', firstActionAt: null }, data: { firstActionAt: r.at } })
     // O WhatsApp registrou o contato com outro identificador (ex.: celular sem o 9): a conversa passa a usar o dele.
     if (r.remoteJid?.endsWith('@s.whatsapp.net') && r.remoteJid !== c.conv.jid) {
       const taken = await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: c.conv.numberId, jid: r.remoteJid } } })
@@ -705,7 +710,8 @@ export class ChatService {
 
   async saveRules(user: AuthUser, d: Partial<WaRules>) {
     this.assertAdmin(user, 'edit')
-    const r = cleanRules(d)
+    // Campos ausentes mantêm o valor salvo (ex.: os prazos das cores).
+    const r = cleanRules({ ...(await this.rules(user.tenantId)), ...Object.fromEntries(Object.entries(d).filter(([, v]) => v !== undefined)) })
     await this.settings.set(user.tenantId, 'whatsapp_regras', r)
     return r
   }

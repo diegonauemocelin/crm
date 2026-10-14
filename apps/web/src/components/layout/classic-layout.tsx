@@ -15,7 +15,7 @@ import { useBranding } from '@/lib/branding'
 import { useNavBadges } from '@/lib/nav-badges'
 import { findNavItem, visibleNavigation } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
-import { AlertsBell } from './alerts-bell'
+import { AlertsBell, AttendanceNotifier } from './alerts-bell'
 import { SellerLinkWarning } from './seller-link-warning'
 import { AppFooter } from './app-footer'
 import { BrandMark } from './brand-logo'
@@ -172,6 +172,7 @@ export function ClassicLayout() {
       <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-5">
         <SellerLinkWarning />
           <ChatNotifier />
+          <AttendanceNotifier />
           <Outlet />
       </main>
       <AppFooter className="bg-background" />

@@ -117,8 +117,18 @@ export interface WaRules {
   knownLead: 'HISTORICO_E_PREVENDA' | 'SO_HISTORICO'
   /** Dias sem conversa para a próxima mensagem do cliente abrir um novo atendimento. */
   reopenDays: number
+  /** Cores do tempo sem resposta (desde a última mensagem do cliente): verde até yellowMinutes, amarelo até redMinutes, depois vermelho. */
+  yellowMinutes: number
+  redMinutes: number
 }
-export const DEFAULT_RULES: WaRules = { newContact: 'LEAD_E_PREVENDA', knownLead: 'HISTORICO_E_PREVENDA', reopenDays: 7 }
+export const DEFAULT_RULES: WaRules = { newContact: 'LEAD_E_PREVENDA', knownLead: 'HISTORICO_E_PREVENDA', reopenDays: 7, yellowMinutes: 15, redMinutes: 60 }
+
+/** Cor do atraso de resposta: só quando a última mensagem é do cliente. */
+export function responseColor(lastFromMe: boolean, lastMessageAt: Date | null, r: Pick<WaRules, 'yellowMinutes' | 'redMinutes'>, now = Date.now()): 'verde' | 'amarelo' | 'vermelho' | null {
+  if (lastFromMe || !lastMessageAt) return null
+  const min = (now - lastMessageAt.getTime()) / 60_000
+  return min < r.yellowMinutes ? 'verde' : min < r.redMinutes ? 'amarelo' : 'vermelho'
+}
 
 export function cleanRules(raw: Partial<WaRules> | null | undefined): WaRules {
   const r = raw ?? {}
@@ -126,6 +136,11 @@ export function cleanRules(raw: Partial<WaRules> | null | undefined): WaRules {
     newContact: r.newContact === 'SO_LEAD' || r.newContact === 'NADA' ? r.newContact : 'LEAD_E_PREVENDA',
     knownLead: r.knownLead === 'SO_HISTORICO' ? 'SO_HISTORICO' : 'HISTORICO_E_PREVENDA',
     reopenDays: Number.isInteger(r.reopenDays) && r.reopenDays! >= 1 && r.reopenDays! <= 90 ? r.reopenDays! : 7,
+    ...(() => {
+      const y = Number.isInteger(r.yellowMinutes) && r.yellowMinutes! >= 1 && r.yellowMinutes! <= 1440 ? r.yellowMinutes! : 15
+      const red = Number.isInteger(r.redMinutes) && r.redMinutes! > y && r.redMinutes! <= 2880 ? r.redMinutes! : Math.max(y + 1, 60)
+      return { yellowMinutes: y, redMinutes: red }
+    })(),
   }
 }
 

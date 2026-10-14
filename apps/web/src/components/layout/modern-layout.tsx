@@ -12,7 +12,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { findNavItem } from '@/lib/navigation'
-import { AlertsBell } from './alerts-bell'
+import { AlertsBell, AttendanceNotifier } from './alerts-bell'
 import { SellerLinkWarning } from './seller-link-warning'
 import { AppFooter } from './app-footer'
 import { TrailHelp } from '@/components/trilha'
@@ -66,6 +66,7 @@ export function ModernLayout() {
         <main className="flex-1 p-4 md:p-6">
           <SellerLinkWarning />
           <ChatNotifier />
+          <AttendanceNotifier />
           <Outlet />
         </main>
         <AppFooter />

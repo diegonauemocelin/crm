@@ -54,6 +54,8 @@ interface ConvItem {
   reminderAt?: string | null
 }
 interface ListData {
+  /** Prazos das cores de atraso de resposta (minutos desde a última mensagem do cliente). */
+  responseColors?: { yellowMinutes: number; redMinutes: number }
   /** Só no monitoramento: vendedores para o filtro. */
   sellers?: { id: string; name: string }[]
   total: number
@@ -97,6 +99,20 @@ const day = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', da
 const dayKey = (iso: string) => day.format(new Date(iso))
 
 /** Hora se for hoje; senão, a data. */
+/** Cor do atraso de resposta: só quando a última mensagem é do cliente (verde, amarelo, vermelho). */
+const WAIT_COLOR = {
+  verde: { dot: 'bg-[#16a34a]', text: 'text-[#15803d] dark:text-[#4ade80]', label: 'dentro do prazo' },
+  amarelo: { dot: 'bg-[#eab308]', text: 'text-[#a16207] dark:text-[#facc15]', label: 'atenção' },
+  vermelho: { dot: 'bg-[#dc2626]', text: 'text-[#b91c1c] dark:text-[#f87171]', label: 'atrasada' },
+} as const
+function waitColor(c: { lastFromMe: boolean; lastMessageAt: string | null; status?: string }, r: ListData['responseColors']) {
+  if (!r || c.lastFromMe || !c.lastMessageAt || c.status === 'ARQUIVADA') return null
+  const min = Math.max(0, Math.floor((Date.now() - Date.parse(c.lastMessageAt)) / 60_000))
+  const k = min < r.yellowMinutes ? 'verde' : min < r.redMinutes ? 'amarelo' : 'vermelho'
+  return { ...WAIT_COLOR[k], min }
+}
+const waitText = (m: number) => (m < 60 ? `${m} min` : m < 1440 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${Math.floor(m / 1440)} dia(s)`)
+
 function when(iso: string | null) {
   if (!iso) return ''
   return dayKey(iso) === day.format(new Date()) ? time.format(new Date(iso)) : day.format(new Date(iso)).slice(0, 5)
@@ -256,20 +272,25 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
             </div>
             <ul className="min-h-0 flex-1 overflow-y-auto">
               {list.data.items.length === 0 && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa{archived ? ' arquivada' : ''}{q || unread || numberId || category || withReminder || sellerId || awaiting || queue ? ' com esses filtros' : archived ? '' : ' ainda'}.</li>}
-              {list.data.items.map((c) => (
+              {list.data.items.map((c) => {
+                const wc = c.category === 'CLIENTE' || !c.category ? waitColor(c, list.data.responseColors) : null
+                return (
                 <li key={c.id}>
                   <button
                     type="button"
                     onClick={() => open(c.id)}
                     className={cn('flex w-full items-start gap-3 border-b px-3 py-2.5 text-left hover:bg-muted/50', openId === c.id && 'bg-muted')}
                   >
-                    <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                    <span className="relative mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
                       <UserIcon className="size-4" />
+                      {wc && <span className={cn('absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-background', wc.dot)} aria-label={`Sem resposta há ${waitText(wc.min)} (${wc.label})`} />}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between gap-2">
                         <span className={cn('truncate text-sm', c.unread > 0 && 'font-semibold')}>{c.name || formatPhone(c.phone) || 'Contato'}</span>
-                        <span className={cn('shrink-0 text-xs tabular-nums', c.unread > 0 ? 'font-medium text-foreground' : 'text-muted-foreground')}>{when(c.lastMessageAt)}</span>
+                        <span className={cn('shrink-0 text-xs tabular-nums', wc ? `font-medium ${wc.text}` : c.unread > 0 ? 'font-medium text-foreground' : 'text-muted-foreground')} title={wc ? `Cliente esperando resposta há ${waitText(wc.min)}` : undefined}>
+                          {wc ? `há ${waitText(wc.min)}` : when(c.lastMessageAt)}
+                        </span>
                       </span>
                       <span className="flex items-center justify-between gap-2">
                         <span className="truncate text-xs text-muted-foreground">
@@ -298,7 +319,8 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                     </span>
                   </button>
                 </li>
-              ))}
+                )
+              })}
             </ul>
           </div>
           <div className={cn('min-h-0', !openId && 'hidden md:block')}>

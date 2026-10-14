@@ -57,6 +57,7 @@ class FiltersDto implements RecordFilters {
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) from?: string
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) to?: string
   @IsOptional() @IsIn(['true']) overdue?: 'true'
+  @IsOptional() @IsIn(['true']) waiting?: 'true'
   @IsOptional() @IsIn(FOLLOW) followStatus?: (typeof FOLLOW)[number]
   @IsOptional() @IsIn(['true']) followOverdue?: 'true'
   @IsOptional() @IsIn(['true']) postSaleReturned?: 'true'
@@ -151,6 +152,7 @@ class MergeDto {
 
 class AlertSettingsDto {
   @ApiProperty() @Type(() => Number) @IsInt() @Min(1) @Max(720) alertHours!: number
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1440) newRecordMinutes?: number
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(720) postSaleHours?: number
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() postSaleOwnerId?: string | null
   @ApiPropertyOptional({ description: 'unidade -> vendedor responsável pelo pós-venda' }) @IsOptional() @IsObject() postSaleOwnerByUnit?: Record<string, string>
@@ -347,6 +349,7 @@ export class CadastrosController {
     const next = {
       ...current,
       alertHours: dto.alertHours,
+      newRecordMinutes: dto.newRecordMinutes ?? current.newRecordMinutes ?? 10,
       postSaleHours: dto.postSaleHours ?? current.postSaleHours,
       postSaleOwnerId: dto.postSaleOwnerId !== undefined ? dto.postSaleOwnerId : current.postSaleOwnerId,
       postSaleOwnerByUnit: byUnit,
