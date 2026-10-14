@@ -18,6 +18,7 @@ export const MODULES = [
   { key: 'usuarios', label: 'Usuários', group: 'Administração', help: 'Cadastrar, bloquear e desconectar usuários e aparelhos.' },
   { key: 'perfis', label: 'Perfis de acesso', group: 'Administração', help: 'Criar e alterar os perfis e estas permissões.' },
   { key: 'configuracoes', label: 'Configurações', group: 'Administração', help: 'Marca, e-mail, rastreamento, loja, Meta, GA4 e Google Ads (chaves e conversões).' },
+  { key: 'sugestoes', label: 'Sugestões de melhoria (analisar)', group: 'Administração', help: 'Todos enviam e acompanham as próprias sugestões. Ver: ler as sugestões de todos. Editar: mudar a situação e responder (quem enviou é avisado).' },
   { key: 'auditoria', label: 'Auditoria', group: 'Administração', help: 'Ver o registro de quem fez o quê.' },
 ] as const
 

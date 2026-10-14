@@ -6,7 +6,9 @@ import {
   FileClockIcon,
   HeadsetIcon,
   HistoryIcon,
+  InboxIcon,
   LayoutDashboardIcon,
+  LightbulbIcon,
   ListChecksIcon,
   MailIcon,
   MegaphoneIcon,
@@ -80,6 +82,13 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Captura', to: '/captura', icon: MegaphoneIcon, module: 'captura' },
       { title: 'Email marketing', to: '/email-marketing', icon: MailIcon, module: 'email_marketing' },
       { title: 'Automações', to: '/automacoes', icon: BotIcon, module: 'automacoes' },
+    ],
+  },
+  {
+    title: 'Sugestões',
+    items: [
+      { title: 'Minhas sugestões', to: '/sugestoes', icon: LightbulbIcon },
+      { title: 'Analisar sugestões', to: '/sugestoes/analisar', icon: InboxIcon, module: 'sugestoes' },
     ],
   },
   {

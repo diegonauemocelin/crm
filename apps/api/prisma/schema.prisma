@@ -1437,3 +1437,31 @@ model WhatsappReminder {
   @@index([conversationId])
   @@map("whatsapp_reminders")
 }
+
+/// Sugestão de melhoria enviada por um usuário; o administrador analisa, muda a situação e responde.
+model Suggestion {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  userId      String    @db.Uuid
+  userName    String
+  title       String
+  description String
+  /// Tela ou módulo do sistema (chave do menu), opcional.
+  area        String?
+  /// Imagem opcional (print da tela).
+  imageFileId String?   @db.Uuid
+  /// NOVA, ANALISE, PLANEJADA, APLICADA, RECUSADA
+  status      String    @default("NOVA")
+  reply       String?
+  repliedById String?   @db.Uuid
+  repliedByName String?
+  repliedAt   DateTime?
+  /// Resposta ou mudança de situação ainda não vista por quem enviou.
+  unreadByAuthor Boolean @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId, status, createdAt])
+  @@index([userId, createdAt])
+  @@map("suggestions")
+}

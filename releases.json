@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.32.0",
+      "date": "2026-10-15",
+      "title": "Sugestões de melhoria",
+      "changes": [
+        { "type": "novo", "area": "Sistema", "text": "Sugestões de melhoria (menu Sugestões): qualquer usuário envia uma sugestão com título, descrição, tela do sistema e print opcional, e acompanha a situação e a resposta em “Minhas sugestões”." },
+        { "type": "novo", "area": "Sistema", "text": "“Analisar sugestões” (permissão nova “Sugestões”, já liberada ao administrador): ver as sugestões de todos, filtrar por situação, mudar para Em análise, Planejada, Aplicada ou Não será feita, e responder." },
+        { "type": "novo", "area": "Sistema", "text": "Quem enviou é avisado no menu e por e-mail quando a sugestão é respondida ou muda de situação; quem analisa vê no menu quantas sugestões novas chegaram." }
+      ]
+    },
+    {
       "version": "0.31.0",
       "date": "2026-10-14",
       "title": "Nome do atendente nas mensagens",

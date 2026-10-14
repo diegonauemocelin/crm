@@ -12,6 +12,7 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { useAuth } from '@/lib/auth'
 import { useBranding } from '@/lib/branding'
+import { useNavBadges } from '@/lib/nav-badges'
 import { findNavItem, visibleNavigation } from '@/lib/navigation'
 import { cn } from '@/lib/utils'
 import { AlertsBell } from './alerts-bell'
@@ -21,7 +22,7 @@ import { BrandMark } from './brand-logo'
 import { GlobalSearch } from './global-search'
 import { useBreadcrumb } from './modern-layout'
 import { ThemeToggle } from './theme-toggle'
-import { ChatNotifier, useChatAlerts } from '@/lib/chat-alerts'
+import { ChatNotifier } from '@/lib/chat-alerts'
 import { UserAvatar, UserMenuContent } from './user-menu'
 
 const navText = 'text-[var(--brand-nav-foreground)]'
@@ -31,7 +32,7 @@ const navText = 'text-[var(--brand-nav-foreground)]'
  * por área, faixa de título da página e conteúdo em largura limitada com espaçamentos mais compactos.
  */
 export function ClassicLayout() {
-  const chatUnread = useChatAlerts().data?.unreadConversations ?? 0
+  const badge = useNavBadges()
   const { can, me } = useAuth()
   const branding = useBranding()
   const { pathname, search } = useLocation()
@@ -107,9 +108,9 @@ export function ClassicLayout() {
                     )}
                   >
                     {g.title}
-                    {g.items.some((i) => i.to === '/chat') && chatUnread > 0 && (
-                      <span className="rounded-full bg-white px-1.5 text-[11px] leading-4 font-semibold text-[#111] tabular-nums" aria-label={`${chatUnread} conversas não lidas`}>
-                        {chatUnread}
+                    {g.items.reduce((n, i) => n + badge(i.to).n, 0) > 0 && (
+                      <span className="rounded-full bg-white px-1.5 text-[11px] leading-4 font-semibold text-[#111] tabular-nums" aria-label={`${g.items.reduce((n, i) => n + badge(i.to).n, 0)} avisos`}>
+                        {g.items.reduce((n, i) => n + badge(i.to).n, 0)}
                       </span>
                     )}
                     <ChevronDownIcon className="size-3.5" />
@@ -125,7 +126,7 @@ export function ClassicLayout() {
                               Em breve
                             </Badge>
                           )}
-                          {item.to === '/chat' && chatUnread > 0 && <Badge className="h-5 px-1.5 tabular-nums">{chatUnread}</Badge>}
+                          {badge(item.to).n > 0 && <Badge className="h-5 px-1.5 tabular-nums">{badge(item.to).n}</Badge>}
                         </Link>
                       </DropdownMenuItem>
                     ))}
