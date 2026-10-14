@@ -374,3 +374,66 @@ describe('Saldo pré-pago do Google Ads (estimado)', () => {
     expect(estimateBalance(s, 2000, [])).toMatchObject({ balance: -460, low: true, daysLeft: null })
   })
 })
+
+describe('Google Ads: conferência depois do envio', () => {
+  it('traduz a resposta final do Google (aceito, parcial, recusado com os motivos)', async () => {
+    const { summarizeRequestStatus } = await import('../src/googleads/googleads')
+    expect(summarizeRequestStatus({ requestStatusPerDestination: [{ requestStatus: 'SUCCESS', eventsIngestionStatus: { recordCount: '12' } }] })).toEqual({ status: 'ACEITO', detail: null })
+    expect(summarizeRequestStatus({ requestStatusPerDestination: [{ requestStatus: 'PROCESSING' }] })?.status).toBe('PROCESSANDO')
+    const r = summarizeRequestStatus({
+      requestStatusPerDestination: [
+        {
+          requestStatus: 'PARTIAL_SUCCESS',
+          eventsIngestionStatus: { recordCount: '10' },
+          errorInfo: { errorCounts: [{ recordCount: '3', reason: 'PROCESSING_ERROR_REASON_CLICK_NOT_FOUND' }, { recordCount: '1', reason: 'PROCESSING_ERROR_OPERATING_ACCOUNT_MISMATCH_FOR_AD_IDENTIFIER' }] },
+        },
+      ],
+    })
+    expect(r?.status).toBe('PARCIAL')
+    expect(r?.detail).toBe('3 de 10: o Google não achou o clique · 1 de 10: o clique é de outra conta do Google Ads (confira o ID da conta)')
+    expect(summarizeRequestStatus({ requestStatusPerDestination: [{ requestStatus: 'FAILED', errorInfo: { errorCounts: [{ recordCount: 2, reason: 'PROCESSING_ERROR_REASON_NOVO_MOTIVO' }] } }] })?.detail).toBe('2: novo motivo')
+    expect(summarizeRequestStatus({})).toBeNull()
+  })
+
+  it('consulta cada envio uma vez (pelo requestId) e grava o resultado em todas as conversões dele', async () => {
+    const { generateKeyPairSync } = await import('node:crypto')
+    const { GoogleAdsService } = await import('../src/googleads/googleads.service')
+    const { encrypt } = await import('../src/common/crypto')
+    const { DEFAULT_GOOGLE_ADS } = await import('../src/googleads/googleads')
+    const pem = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
+    const updates: { where: { requestId: string }; data: { googleStatus: string; googleDetail: string | null } }[] = []
+    let query: { where?: { sentAt?: { lt: Date } } } = {}
+    const prisma = {
+      googleAdsConversion: {
+        findMany: async (q: typeof query) => ((query = q), [{ requestId: 'req-1' }, { requestId: 'req-2' }]),
+        updateMany: async (u: (typeof updates)[number]) => void updates.push(u),
+      },
+    }
+    const s = { ...DEFAULT_GOOGLE_ADS, enabled: true, customerId: '1234567890', clientEmail: 'crm@p.iam.gserviceaccount.com', privateKeyEnc: encrypt(pem) }
+    const service = new GoogleAdsService(prisma as never, {} as never, {} as never)
+    service.gapMs = 0
+    const original = globalThis.fetch
+    const asked: string[] = []
+    globalThis.fetch = (async (url: string) => {
+      if (String(url).includes('oauth2')) return new Response(JSON.stringify({ access_token: 't', expires_in: 3600 }))
+      asked.push(String(url))
+      return String(url).includes('req-1')
+        ? new Response(JSON.stringify({ requestStatusPerDestination: [{ requestStatus: 'SUCCESS' }] }))
+        : new Response(JSON.stringify({ requestStatusPerDestination: [{ requestStatus: 'FAILED', errorInfo: { errorCounts: [{ recordCount: '5', reason: 'PROCESSING_ERROR_REASON_INVALID_CLICK' }] } }] }))
+    }) as typeof fetch
+    try {
+      const now = Date.parse('2026-10-17T12:00:00Z')
+      expect(await service.checkResults('t', s, now)).toBe(2)
+      expect(asked.every((u) => u.startsWith('https://datamanager.googleapis.com/v1/requestStatus:retrieve?requestId='))).toBe(true)
+      // Só pergunta depois de 30 minutos do envio (o Google ainda está conferindo).
+      expect(query.where?.sentAt?.lt.getTime()).toBe(now - 30 * 60_000)
+      expect(updates.map((u) => [u.where.requestId, u.data.googleStatus])).toEqual([
+        ['req-1', 'ACEITO'],
+        ['req-2', 'RECUSADO'],
+      ])
+      expect(updates[1]!.data.googleDetail).toBe('5: o clique não é de anúncio do Google Ads')
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+})

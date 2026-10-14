@@ -7,6 +7,8 @@ import { createHash } from 'node:crypto'
 
 export const DM_SCOPE = 'https://www.googleapis.com/auth/datamanager'
 export const DM_INGEST_URL = 'https://datamanager.googleapis.com/v1/events:ingest'
+/** O Google confere cada envio depois de receber: o resultado final sai aqui (pelo requestId do envio). */
+export const DM_STATUS_URL = 'https://datamanager.googleapis.com/v1/requestStatus:retrieve'
 /** O Google só aceita conversões até 90 dias depois do clique (63 dias quando casa só pelo e-mail/telefone). */
 export const CLICK_WINDOW_DAYS = 90
 export const USER_DATA_WINDOW_DAYS = 63
@@ -381,4 +383,53 @@ export function adsError(status: number, body: unknown, clientEmail: string): st
   if (status === 429 || code === 'RESOURCE_EXHAUSTED') return 'Limite de envios do Google atingido. O CRM tenta de novo mais tarde.'
   if (status === 400 || code === 'INVALID_ARGUMENT') return `O Google recusou o envio: ${raw.slice(0, 300) || 'dados inválidos'}.`
   return `O Google não respondeu (erro ${status}). O CRM tenta de novo mais tarde.`
+}
+
+/** Motivos de recusa do Google (conferência depois do envio), em português e com o que fazer. */
+const REASON_PT: Record<string, string> = {
+  EVENT_TOO_OLD: 'conversão antiga demais',
+  DENIED_CONSENT: 'consentimento de dados negado (confira “Dados do usuário” nas configurações de conversão do Google Ads)',
+  NO_CONSENT: 'a conta do Google Ads não aceitou os termos de dados de clientes',
+  UNKNOWN_CONSENT: 'consentimento não definido',
+  DUPLICATE_GCLID: 'já havia conversão desse clique nesse horário',
+  DUPLICATE_TRANSACTION_ID: 'já enviada antes (repetida)',
+  INVALID_GCLID: 'código de clique inválido',
+  INVALID_GBRAID: 'código de clique (gbraid) inválido',
+  INVALID_WBRAID: 'código de clique (wbraid) inválido',
+  INVALID_EVENT: 'dados inválidos',
+  INVALID_FORMAT: 'formato inválido',
+  DESTINATION_ACCOUNT_ENHANCED_CONVERSIONS_TERMS_NOT_SIGNED: 'falta aceitar os termos de conversões otimizadas para leads no Google Ads (Metas → Configurações)',
+  ONE_PER_CLICK_CONVERSION_ACTION_NOT_PERMITTED_WITH_BRAID: 'ação “uma por clique” não aceita gbraid/wbraid (mude a contagem para “todas”)',
+  CONVERSION_PRECEDES_CLICK: 'conversão com data antes do clique',
+  TOO_RECENT_CLICK: 'clique recente demais (o Google pede algumas horas)',
+  INVALID_CLICK: 'o clique não é de anúncio do Google Ads',
+  INVALID_OPERATING_ACCOUNT_FOR_CLICK: 'o clique é de outra conta do Google Ads (confira o ID da conta)',
+  OPERATING_ACCOUNT_MISMATCH_FOR_AD_IDENTIFIER: 'o clique é de outra conta do Google Ads (confira o ID da conta)',
+  CLICK_NOT_FOUND: 'o Google não achou o clique',
+  USER_ID_NOT_FOUND_FOR_GCLID: 'o Google não achou o clique',
+  EXTERNAL_ATTRIBUTION_DATA_MISSING: 'a ação de conversão é de atribuição externa (use “Importação → Cliques”)',
+  DESTINATION_TOO_RECENTLY_CREATED: 'ação de conversão criada há pouco (o Google pede algumas horas)',
+  EXPIRED_CLICK: 'clique fora da janela de conversão da ação',
+}
+
+export function reasonLabel(reason: string) {
+  const k = reason.replace(/^PROCESSING_ERROR_(REASON_)?/, '')
+  return REASON_PT[k] ?? k.toLowerCase().replace(/_/g, ' ')
+}
+
+export type GoogleCheck = 'PROCESSANDO' | 'ACEITO' | 'PARCIAL' | 'RECUSADO'
+
+/** Resumo da resposta do requestStatus:retrieve (uma destinação por envio do CRM). */
+export function summarizeRequestStatus(body: unknown): { status: GoogleCheck; detail: string | null } | null {
+  const list = (body as { requestStatusPerDestination?: unknown[] } | null)?.requestStatusPerDestination
+  const d = (Array.isArray(list) ? list[0] : null) as { requestStatus?: string; errorInfo?: { errorCounts?: { recordCount?: string | number; reason?: string }[] }; eventsIngestionStatus?: { recordCount?: string | number } } | null
+  if (!d?.requestStatus) return null
+  const map: Record<string, GoogleCheck> = { PROCESSING: 'PROCESSANDO', SUCCESS: 'ACEITO', PARTIAL_SUCCESS: 'PARCIAL', FAILED: 'RECUSADO' }
+  const status = map[d.requestStatus]
+  if (!status) return null
+  const total = Number(d.eventsIngestionStatus?.recordCount ?? 0) || null
+  const parts = (d.errorInfo?.errorCounts ?? [])
+    .filter((c) => c.reason)
+    .map((c) => `${Number(c.recordCount ?? 0) || '?'}${total ? ` de ${total}` : ''}: ${reasonLabel(String(c.reason))}`)
+  return { status, detail: parts.length ? parts.join(' · ').slice(0, 500) : null }
 }

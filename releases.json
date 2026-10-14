@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.38.0",
+      "date": "2026-10-16",
+      "title": "Resposta do Google às conversões enviadas",
+      "changes": [
+        { "type": "novo", "area": "Google Ads", "text": "Resposta do Google a cada envio: o Google confere as conversões depois de receber; o CRM agora consulta esse resultado e mostra quantas foram aceitas ou recusadas e o motivo (clique não encontrado, conta errada, tipo de conversão errado...)." },
+        { "type": "novo", "area": "Google Ads", "text": "Diagnóstico da última conferência: quantos atendimentos foram olhados, quantos vieram de anúncio e quantos entraram na fila, com aviso quando nenhum é reconhecido como vindo do Google." }
+      ]
+    },
+    {
       "version": "0.37.1",
       "date": "2026-10-16",
       "title": "Correção das conversões do Google Ads com o Tag Manager",

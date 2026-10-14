@@ -1231,6 +1231,11 @@ model GoogleAdsConversion {
   status        String    @default("PENDENTE")
   error         String?
   requestId     String?
+  /// Resposta final do Google ao envio (ele confere depois): PROCESSANDO, ACEITO, PARCIAL ou RECUSADO.
+  googleStatus  String?
+  /// Motivos das recusas informados pelo Google (por envio, com quantas conversões).
+  googleDetail  String?
+  googleCheckedAt DateTime?
   attempts      Int       @default(0)
   sentAt        DateTime?
   createdAt     DateTime  @default(now())

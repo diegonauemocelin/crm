@@ -5,7 +5,7 @@ import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { CopyField } from '@/components/copy-field'
 import { MultiSelect } from '@/components/multi-select'
-import { ErrorState, formatDateTime, TableSkeleton } from '@/components/page'
+import { ErrorState, formatDate, formatDateTime, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { api, errorMessage } from '@/lib/api'
 import { brl, int, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
+import { cn } from '@/lib/utils'
 import { FormError } from '../auth/auth-layout'
 
 type Kind = 'contato' | 'negociacao' | 'venda' | 'perda'
@@ -40,11 +41,18 @@ interface Status {
   nextRunAt: string | null
   pausedReason: string | null
   counts: { kind: Kind; status: string; count: number }[]
-  recent: { id: string; leadId: string | null; leadName: string | null; kind: Kind; status: string; error: string | null; eventAt: string; value: number | null; campaign: string | null; byClick: boolean; sentAt: string | null }[]
+  /** Última conferência dos atendimentos (a cada 2 horas ou no "Enviar agora"). */
+  lastScan: { since: string; considered: number; matched: number; registered: number; at: string } | null
+  /** Resposta final do Google aos enviados (ele confere depois de receber). */
+  google: { status: GoogleCheck | null; count: number }[]
+  rejections: { detail: string | null; kind: Kind; sentAt: string | null }[]
+  recent: { id: string; leadId: string | null; leadName: string | null; kind: Kind; status: string; error: string | null; eventAt: string; value: number | null; campaign: string | null; byClick: boolean; sentAt: string | null; googleStatus: GoogleCheck | null; googleDetail: string | null }[]
 }
 
 const KIND_LABEL: Record<Kind, string> = { contato: 'Contato recebido', negociacao: 'Vendedor retornou (qualificado)', venda: 'Venda', perda: 'Perda' }
 const STATUS_LABEL: Record<string, string> = { PENDENTE: 'Na fila', ENVIADO: 'Enviado', ERRO: 'Erro', IGNORADO: 'Não enviado' }
+type GoogleCheck = 'PROCESSANDO' | 'ACEITO' | 'PARCIAL' | 'RECUSADO'
+const GOOGLE_LABEL: Record<GoogleCheck, string> = { PROCESSANDO: 'Google conferindo', ACEITO: 'Aceito pelo Google', PARCIAL: 'Aceito em parte', RECUSADO: 'Recusado pelo Google' }
 
 export function GoogleAdsTab() {
   const q = useQuery({ queryKey: ['google-ads-config'], queryFn: () => api.get<Config>('/integracoes/google-ads') })
@@ -385,8 +393,10 @@ function Editor({ initial }: { initial: Config }) {
 
 function Sends() {
   const q = useQuery({ queryKey: ['google-ads-envios'], queryFn: () => api.get<Status>('/integracoes/google-ads/envios'), refetchInterval: 60_000 })
-  if (!q.data || q.data.counts.length === 0) return null
+  if (!q.data || (q.data.counts.length === 0 && !q.data.lastScan)) return null
   const total = (kind: Kind, status: string) => q.data!.counts.find((c) => c.kind === kind && c.status === status)?.count ?? 0
+  const g = (st: GoogleCheck | null) => q.data!.google.find((x) => x.status === st)?.count ?? 0
+  const scan = q.data.lastScan
   return (
     <Card>
       <CardHeader>
@@ -403,6 +413,33 @@ function Sends() {
           <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-sm">
             O último envio foi pausado a pedido do Google: {q.data.pausedReason} O restante vai no próximo envio automático.
           </p>
+        )}
+        {scan && (
+          <div className="rounded-md border p-3 text-sm">
+            <p className="font-medium">Última conferência dos atendimentos ({formatDateTime(scan.at)})</p>
+            <p className="text-muted-foreground">
+              {int.format(scan.considered)} atendimento(s) de Pré-Vendas desde {formatDate(`${scan.since}T12:00:00`)} · {int.format(scan.matched)} vieram de anúncio do Google (ou das origens marcadas) · {int.format(scan.registered)} resultado(s) novo(s) na fila.
+            </p>
+            {scan.considered > 0 && scan.matched === 0 && (
+              <p className="mt-1 text-amber-700 dark:text-amber-400">
+                Nenhum atendimento foi reconhecido como vindo de anúncio. Confira se a marcação automática (gclid) está ligada no Google Ads e se os contatos entram pelo formulário ou botão de WhatsApp do CRM; ou marque as origens (ex.: WhatsApp) acima.
+              </p>
+            )}
+          </div>
+        )}
+        {q.data.google.length > 0 && (
+          <div className="rounded-md border p-3 text-sm">
+            <p className="font-medium">Resposta do Google aos enviados</p>
+            <p className="text-muted-foreground">
+              {int.format(g('ACEITO'))} aceitos · {int.format(g('PARCIAL'))} em envios aceitos em parte · {int.format(g('RECUSADO'))} recusados · {int.format(g('PROCESSANDO') + g(null))} aguardando a conferência do Google (leva de 30 minutos a algumas horas)
+            </p>
+            {q.data.rejections.map((r, i) => (
+              <p key={i} className="mt-1 text-destructive">
+                {r.sentAt ? `${formatDateTime(r.sentAt)} · ` : ''}
+                {KIND_LABEL[r.kind]}: {r.detail}
+              </p>
+            ))}
+          </div>
         )}
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
           {(['venda', 'perda', 'negociacao', 'contato'] as Kind[]).map((k) => (
@@ -439,6 +476,12 @@ function Sends() {
                   <TableCell>
                     <Badge variant={r.status === 'ENVIADO' ? 'secondary' : r.status === 'ERRO' ? 'destructive' : 'outline'}>{STATUS_LABEL[r.status] ?? r.status}</Badge>
                     {r.error && <p className="mt-1 max-w-xs text-xs text-muted-foreground">{r.error}</p>}
+                    {r.status === 'ENVIADO' && (
+                      <p className={cn('mt-1 max-w-xs text-xs', r.googleStatus === 'RECUSADO' || r.googleStatus === 'PARCIAL' ? 'text-destructive' : 'text-muted-foreground')}>
+                        {r.googleStatus ? GOOGLE_LABEL[r.googleStatus] : 'Aguardando a conferência do Google'}
+                        {r.googleDetail ? `: ${r.googleDetail}` : ''}
+                      </p>
+                    )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{formatDateTime(r.sentAt ?? r.eventAt)}</TableCell>
                 </TableRow>
