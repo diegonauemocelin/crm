@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2Icon, PackageSearchIcon, RefreshCwIcon, SearchIcon } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -48,7 +48,7 @@ interface SearchData {
   total: number
   page: number
   pageSize: number
-  sync: { enabled: boolean; lastPingAt: string | null; lastFullAt: string | null; products: number; usedInConfigured: boolean }
+  sync: { enabled: boolean; lastPingAt: string | null; online?: boolean; lastFullAt: string | null; products: number; usedInConfigured: boolean }
   items: Product[]
 }
 
@@ -86,6 +86,7 @@ function Search() {
   const q = useQuery({ queryKey: ['tcar-produtos', qs], queryFn: () => api.get<SearchData>(`/tcar/produtos?${qs}`), placeholderData: keepPreviousData })
   const d = q.data
   const pages = d ? Math.max(1, Math.ceil(d.total / d.pageSize)) : 1
+  const updating = useLiveStock(d)
   return (
     <div>
       <PageHeader
@@ -135,6 +136,9 @@ function Search() {
             }
           />
         )}
+        {d && d.sync.products > 0 && d.sync.enabled && d.sync.online === false && (
+          <p className="text-xs text-amber-700 dark:text-amber-400">A Tcar está sem contato agora: o estoque mostrado é o da última cópia ({d.sync.lastPingAt ? `último contato ${formatDateTime(d.sync.lastPingAt)}` : 'sem contato ainda'}).</p>
+        )}
         {d && d.sync.products > 0 && (
           <Card className="overflow-hidden py-0">
             <Table>
@@ -157,7 +161,7 @@ function Search() {
                   </TableRow>
                 )}
                 {d.items.map((p) => (
-                  <ProductRow key={p.id} p={p} usedIn={d.sync.usedInConfigured} />
+                  <ProductRow key={p.id} p={p} usedIn={d.sync.usedInConfigured} updating={updating.has(p.code)} />
                 ))}
               </TableBody>
             </Table>
@@ -182,7 +186,51 @@ function Search() {
   )
 }
 
-function ProductRow({ p, usedIn }: { p: Product; usedIn: boolean }) {
+/**
+ * Estoque na hora: a cada busca, pede à Tcar as primeiras peças do resultado e acompanha as respostas
+ * (chegam no próximo contato da Tcar, em poucos segundos). Devolve os códigos ainda em atualização.
+ */
+function useLiveStock(d: SearchData | undefined) {
+  const qc = useQueryClient()
+  const [pending, setPending] = useState<Map<string, string>>(new Map())
+  const asked = useRef('')
+  const codes = d?.sync.online ? d.items.slice(0, 10).map((p) => p.code) : []
+  const key = codes.join('|')
+  // Pede quando o resultado muda (nova busca ou página).
+  useEffect(() => {
+    if (!key || key === asked.current) return
+    asked.current = key
+    const t = setTimeout(() => {
+      api
+        .post<{ online: boolean; pending: { code: string; actionId: string }[] }>('/tcar/produtos/atualizar', { codes: key.split('|') })
+        .then((r) => setPending(new Map(r.pending.map((x) => [x.code, x.actionId]))))
+        .catch(() => undefined)
+    }, 400)
+    return () => clearTimeout(t)
+  }, [key])
+  // Acompanha até 1 minuto; a cada resposta, recarrega a lista.
+  useEffect(() => {
+    if (!pending.size) return
+    let tries = 0
+    const timer = setInterval(() => {
+      tries++
+      const ids = [...pending.values()]
+      api
+        .get<{ id: string; status: string }[]>(`/tcar/acoes?ids=${ids.join(',')}`)
+        .then((rows) => {
+          const done = new Set(rows.filter((r) => r.status === 'OK' || r.status === 'ERRO').map((r) => r.id))
+          if (!done.size && tries < 30) return
+          if (rows.some((r) => r.status === 'OK' && done.has(r.id))) void qc.invalidateQueries({ queryKey: ['tcar-produtos'] })
+          setPending((cur) => (tries >= 30 ? new Map() : new Map([...cur].filter(([, id]) => !done.has(id)))))
+        })
+        .catch(() => undefined)
+    }, 2000)
+    return () => clearInterval(timer)
+  }, [pending, qc])
+  return new Set(pending.keys())
+}
+
+function ProductRow({ p, usedIn, updating }: { p: Product; usedIn: boolean; updating: boolean }) {
   const qc = useQueryClient()
   const [busy, setBusy] = useState(false)
   // "Atualizar": a Tcar responde no próximo contato (alguns segundos); acompanha até 1 minuto.
@@ -261,7 +309,17 @@ function ProductRow({ p, usedIn }: { p: Product; usedIn: boolean }) {
             {qty(p.stock)} {p.unit ?? ''}
           </span>
         )}
-        <p className="text-[11px] text-muted-foreground">{formatDateTime(p.stockAt)}</p>
+        <p className="text-[11px] text-muted-foreground">
+          {updating ? (
+            <span className="inline-flex items-center gap-1">
+              <Loader2Icon className="size-3 animate-spin" /> atualizando…
+            </span>
+          ) : Date.now() - Date.parse(p.stockAt) < 5 * 60_000 ? (
+            'atualizado agora'
+          ) : (
+            formatDateTime(p.stockAt)
+          )}
+        </p>
       </TableCell>
       <TableCell className="text-right whitespace-nowrap tabular-nums">
         <p className="font-medium">{p.price === null ? '—' : brl.format(p.price)}</p>

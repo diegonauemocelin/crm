@@ -14,6 +14,14 @@ class SearchDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) pagina?: number
 }
 
+class RefreshManyDto {
+  @ApiProperty({ type: [String] }) @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(60, { each: true }) codes!: string[]
+}
+
+class StatusQuery {
+  @IsString() @MaxLength(2000) ids!: string
+}
+
 class ConfigDto {
   @ApiProperty() @IsBoolean() enabled!: boolean
   @ApiPropertyOptional({ type: [Number] }) @IsOptional() @IsArray() @ArrayMaxSize(20) @IsInt({ each: true }) @Min(1, { each: true }) branchIds?: number[]
@@ -57,6 +65,19 @@ export class TcarController {
   @Get('produtos')
   search(@CurrentUser() user: AuthUser, @Query() q: SearchDto) {
     return this.tcar.search(user, { term: q.busca, field: q.campo, inStock: q.estoque, page: q.pagina })
+  }
+
+  /** Estoque na hora das primeiras peças da busca. */
+  @Post('produtos/atualizar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 40, ttl: 60_000 } })
+  refreshMany(@CurrentUser() user: AuthUser, @Body() dto: RefreshManyDto) {
+    return this.tcar.refreshMany(user, dto.codes)
+  }
+
+  @Get('acoes')
+  actions(@CurrentUser() user: AuthUser, @Query() q: StatusQuery) {
+    return this.tcar.actionsStatus(user, q.ids.split(',').filter((x) => /^[0-9a-f-]{36}$/i.test(x)))
   }
 
   @Post('produtos/:codigo/atualizar')

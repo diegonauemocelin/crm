@@ -8,7 +8,7 @@ import { env } from '../config/env'
 import { Prisma } from '../generated/prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
-import { ACTION_TIMEOUT_MS, allowedAction, DEFAULT_TCAR, detailQuery, fold, MAX_ACTIONS_PER_PING, nextSync, PAGE_SIZE, productFrom, productQuery, rowsOf, type TcarSettings } from './tcar'
+import { ACTION_TIMEOUT_MS, allowedAction, DEFAULT_TCAR, detailQuery, fold, AUTO_REFRESH_MIN_AGE_MS, AUTO_REFRESH_TOP, MAX_ACTIONS_PER_PING, MAX_LIVE_PER_PING, nextSync, OFFLINE_AFTER_MS, PAGE_SIZE, productFrom, productQuery, rowsOf, type TcarSettings } from './tcar'
 
 const KEY = 'tcar'
 const STATE = 'tcar_state'
@@ -87,9 +87,12 @@ export class TcarService {
     })
     await this.expireStale(tenantId, now)
     await this.plan(tenantId, s, now)
-    const pending = await this.prisma.tcarAction.findMany({ where: { tenantId, status: 'PENDENTE' }, orderBy: [{ createdAt: 'asc' }], take: 50 })
-    // Pedido feito na tela (uma peça) passa na frente da cópia.
-    const batch = [...pending.filter((a) => a.kind === 'live'), ...pending.filter((a) => a.kind !== 'live')].slice(0, MAX_ACTIONS_PER_PING)
+    // Pedido feito na tela (estoque de uma peça na hora) passa na frente da cópia.
+    const [live, sync] = await Promise.all([
+      this.prisma.tcarAction.findMany({ where: { tenantId, status: 'PENDENTE', kind: 'live' }, orderBy: [{ createdAt: 'asc' }], take: MAX_LIVE_PER_PING }),
+      this.prisma.tcarAction.findMany({ where: { tenantId, status: 'PENDENTE', kind: { not: 'live' } }, orderBy: [{ createdAt: 'asc' }], take: MAX_ACTIONS_PER_PING }),
+    ])
+    const batch = [...live, ...sync]
     if (batch.length) await this.prisma.tcarAction.updateMany({ where: { id: { in: batch.map((a) => a.id) } }, data: { status: 'ENVIADA', sentAt: now, attempts: { increment: 1 } } })
     return {
       status: 'success',
@@ -232,7 +235,7 @@ export class TcarService {
       total: count[0]?.n ?? 0,
       page,
       pageSize: size,
-      sync: { enabled: s.enabled, lastPingAt: st.lastPingAt, lastFullAt: st.lastFullAt, products: st.products, usedInConfigured: !!s.usedInField },
+      sync: { enabled: s.enabled, lastPingAt: st.lastPingAt, online: s.enabled && !!st.lastPingAt && Date.now() - Date.parse(st.lastPingAt) < OFFLINE_AFTER_MS, lastFullAt: st.lastFullAt, products: st.products, usedInConfigured: !!s.usedInField },
       items: rows.map((r) => ({ ...r, stock: n(r.stock), price: n(r.price), resalePrice: n(r.resalePrice) })),
     }
   }
@@ -249,6 +252,40 @@ export class TcarService {
     const q = detailQuery(p.code, s.branchIds)
     const a = await this.prisma.tcarAction.create({ data: { tenantId: user.tenantId, kind: 'live', cmd: q.cmd, query: q.query_params as Prisma.InputJsonValue } })
     return { actionId: a.id }
+  }
+
+  /**
+   * Busca na tela: pede à Tcar o estoque e o preço atuais das primeiras peças do resultado (as atualizadas há menos de
+   * 2 minutos ficam como estão). Sem contato recente da Tcar, não pede nada: a tela mostra a última cópia.
+   */
+  async refreshMany(user: AuthUser, codes: string[]) {
+    this.assertView(user)
+    const T = user.tenantId
+    const [s, st] = await Promise.all([this.config(T), this.state(T)])
+    const online = s.enabled && !!st.lastPingAt && Date.now() - Date.parse(st.lastPingAt) < OFFLINE_AFTER_MS
+    if (!online) return { online: false, pending: [] as { code: string; actionId: string }[] }
+    const wanted = [...new Set(codes.map((c) => String(c).slice(0, 60)))].slice(0, AUTO_REFRESH_TOP)
+    const products = await this.prisma.tcarProduct.findMany({ where: { tenantId: T, code: { in: wanted } }, select: { code: true, stockAt: true } })
+    const cmds = products.map((p) => detailQuery(p.code, []).cmd)
+    const open = new Map((await this.prisma.tcarAction.findMany({ where: { tenantId: T, kind: 'live', cmd: { in: cmds }, status: { in: ['PENDENTE', 'ENVIADA'] } }, select: { id: true, cmd: true } })).map((a) => [a.cmd, a.id]))
+    const pending: { code: string; actionId: string }[] = []
+    for (const p of products) {
+      const q = detailQuery(p.code, s.branchIds)
+      const already = open.get(q.cmd)
+      if (already) pending.push({ code: p.code, actionId: already })
+      else if (Date.now() - p.stockAt.getTime() >= AUTO_REFRESH_MIN_AGE_MS) {
+        const a = await this.prisma.tcarAction.create({ data: { tenantId: T, kind: 'live', cmd: q.cmd, query: q.query_params as Prisma.InputJsonValue } })
+        pending.push({ code: p.code, actionId: a.id })
+      }
+    }
+    return { online: true, pending }
+  }
+
+  /** Andamento de várias consultas da tela de uma vez. */
+  async actionsStatus(user: AuthUser, ids: string[]) {
+    this.assertView(user)
+    const rows = await this.prisma.tcarAction.findMany({ where: { id: { in: ids.slice(0, 50) }, tenantId: user.tenantId, kind: 'live' }, select: { id: true, status: true, error: true } })
+    return rows
   }
 
   async actionStatus(user: AuthUser, id: string) {

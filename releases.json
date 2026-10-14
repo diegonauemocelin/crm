@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.34.1",
+      "date": "2026-10-15",
+      "title": "Estoque atualizado a cada busca de produto",
+      "changes": [
+        { "type": "melhoria", "area": "Atendimento", "text": "Consulta de produtos: a cada busca, o CRM já pede à Tcar o estoque e o preço atuais das 10 primeiras peças do resultado; cada linha mostra “atualizando…” e, em poucos segundos, “atualizado agora”." },
+        { "type": "melhoria", "area": "Atendimento", "text": "As consultas pedidas pela tela passam na frente da cópia automática; peças atualizadas há menos de 2 minutos não são pedidas de novo. Com a Tcar sem contato, a tela avisa que o estoque é o da última cópia." }
+      ]
+    },
+    {
       "version": "0.34.0",
       "date": "2026-10-15",
       "title": "Consulta de produtos da Tcar",

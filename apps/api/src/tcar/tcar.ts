@@ -24,6 +24,13 @@ export const DEFAULT_TCAR: TcarSettings = { enabled: false, keyHash: null, compa
 
 export const PAGE_SIZE = 200
 export const MAX_ACTIONS_PER_PING = 4
+/** Consultas de uma peça pedidas pela tela (estoque na hora): vão na frente e em maior número. */
+export const MAX_LIVE_PER_PING = 20
+/** Peças da busca atualizadas sozinhas e o intervalo mínimo entre duas atualizações da mesma peça. */
+export const AUTO_REFRESH_TOP = 10
+export const AUTO_REFRESH_MIN_AGE_MS = 2 * 60_000
+/** Sem contato da Tcar há mais que isso: a busca não pede atualização (mostra a última cópia). */
+export const OFFLINE_AFTER_MS = 2 * 60_000
 /** Ação enviada sem resposta depois disso volta para a fila (até 3 tentativas). */
 export const ACTION_TIMEOUT_MS = 10 * 60_000
 
