@@ -1,7 +1,7 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Res, UploadedFile, UseInterceptors } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
-import { IsEnum, IsOptional, IsString, Length, MaxLength, ValidateIf } from 'class-validator'
+import { IsBoolean, IsEnum, IsOptional, IsString, Length, MaxLength, ValidateIf } from 'class-validator'
 import type { Response } from 'express'
 import { env } from '../config/env'
 import { AllowPending2fa, CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
@@ -16,6 +16,10 @@ import { SecurityService } from './security.service'
 class PreferencesDto {
   @ApiProperty({ enum: LayoutMode, required: false }) @IsOptional() @IsEnum(LayoutMode) layout?: LayoutMode
   @ApiProperty({ enum: ThemeMode, required: false }) @IsOptional() @IsEnum(ThemeMode) theme?: ThemeMode
+}
+
+class LessonDto {
+  @ApiProperty() @IsBoolean() done!: boolean
 }
 
 class ProfileDto {
@@ -55,6 +59,23 @@ export class AccountController {
   @Patch('preferences')
   preferences(@CurrentUser() user: AuthUser, @Body() dto: PreferencesDto) {
     return this.account.updatePreferences(user, dto)
+  }
+
+  /** Trilha de conhecimento: lições concluídas por mim. */
+  @Get('trilha')
+  trail(@CurrentUser() user: AuthUser) {
+    return this.account.trail(user)
+  }
+
+  @Put('trilha/:licao')
+  markLesson(@CurrentUser() user: AuthUser, @Param('licao') lesson: string, @Body() dto: LessonDto) {
+    return this.account.markLesson(user, lesson, dto.done)
+  }
+
+  /** Progresso da equipe (quem pode ver Usuários). */
+  @Get('trilha/equipe')
+  teamTrail(@CurrentUser() user: AuthUser) {
+    return this.account.teamTrail(user)
   }
 
   @Patch('profile')

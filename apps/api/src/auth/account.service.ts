@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import type { RequestCtx } from '../common/decorators'
-import { fullPermissions, MODULES } from '../common/permissions'
+import { can, fullPermissions, MODULES } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import type { LayoutMode, ThemeMode } from '../generated/prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
@@ -62,6 +62,29 @@ export class AccountService {
     await this.prisma.user.update({ where: { id: user.id }, data: { name: name.trim(), ...(signature !== undefined ? { chatSignature: signature } : {}) } })
     await this.audit.byUser(user, ctx, 'me.profile_updated', 'user', user.id, { name, ...(signature !== undefined ? { nomeNoWhatsapp: signature } : {}) })
     return this.profile(user)
+  }
+
+  async trail(user: AuthUser) {
+    const row = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { trailDone: true } })
+    return { done: row.trailDone }
+  }
+
+  /** Marca ou desmarca uma lição (ids curtos, definidos pela tela: ex. "chat.responder"). */
+  async markLesson(user: AuthUser, lesson: string, done: boolean) {
+    if (!/^[a-z0-9][a-z0-9_.-]{1,59}$/.test(lesson)) throw new BadRequestException('Lição inválida.')
+    const row = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { trailDone: true } })
+    const set = new Set(row.trailDone)
+    if (done) set.add(lesson)
+    else set.delete(lesson)
+    const next = [...set].slice(0, 300)
+    await this.prisma.user.update({ where: { id: user.id }, data: { trailDone: next } })
+    return { done: next }
+  }
+
+  async teamTrail(user: AuthUser) {
+    if (!can(user.permissions, user.role.isSystem, 'usuarios', 'view')) throw new ForbiddenException('Você não tem permissão para esta ação.')
+    const rows = await this.prisma.user.findMany({ where: { tenantId: user.tenantId, active: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, trailDone: true, role: { select: { name: true } } } })
+    return rows.map((r) => ({ id: r.id, name: r.name, role: r.role.name, done: r.trailDone }))
   }
 
   async setAvatar(user: AuthUser, fileId: string) {

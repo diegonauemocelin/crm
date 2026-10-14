@@ -184,6 +184,8 @@ model User {
   layout LayoutMode?
   /// Como o nome aparece nas mensagens do WhatsApp enviadas pelo CRM (ex.: "Diego - Vendas"); vazio = primeiro nome.
   chatSignature String?
+  /// Lições da trilha de conhecimento concluídas (ids definidos na tela).
+  trailDone String[] @default([])
   theme  ThemeMode   @default(SYSTEM)
 
   /// Unidade do usuário: base do escopo "somente da sua unidade" nos perfis de acesso.

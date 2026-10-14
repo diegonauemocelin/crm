@@ -15,6 +15,7 @@ import { findNavItem } from '@/lib/navigation'
 import { AlertsBell } from './alerts-bell'
 import { SellerLinkWarning } from './seller-link-warning'
 import { AppFooter } from './app-footer'
+import { TrailHelp } from '@/components/trilha'
 import { GlobalSearch } from './global-search'
 import { ThemeToggle } from './theme-toggle'
 import { ChatNotifier } from '@/lib/chat-alerts'
@@ -58,6 +59,7 @@ export function ModernLayout() {
             </BreadcrumbList>
           </Breadcrumb>
           <GlobalSearch />
+          <TrailHelp className="size-8" />
           <AlertsBell />
           <ThemeToggle />
         </header>

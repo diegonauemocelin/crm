@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.35.0",
+      "date": "2026-10-15",
+      "title": "Trilha de conhecimento",
+      "changes": [
+        { "type": "novo", "area": "Sistema", "text": "Trilha de conhecimento (Sistema → Trilha de conhecimento): o que fazer e como fazer em cada tela, em passos curtos, mostrando só as telas que o perfil da pessoa usa." },
+        { "type": "novo", "area": "Sistema", "text": "Botão “?” no topo de todas as telas: abre o passo a passo da tela aberta, sem sair dela." },
+        { "type": "novo", "area": "Sistema", "text": "Cada pessoa marca as lições que já domina e acompanha o progresso; quem administra usuários vê o progresso da equipe." }
+      ]
+    },
+    {
       "version": "0.34.1",
       "date": "2026-10-15",
       "title": "Estoque atualizado a cada busca de produto",

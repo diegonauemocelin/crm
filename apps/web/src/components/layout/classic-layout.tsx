@@ -19,6 +19,7 @@ import { AlertsBell } from './alerts-bell'
 import { SellerLinkWarning } from './seller-link-warning'
 import { AppFooter } from './app-footer'
 import { BrandMark } from './brand-logo'
+import { TrailHelp } from '@/components/trilha'
 import { GlobalSearch } from './global-search'
 import { useBreadcrumb } from './modern-layout'
 import { ThemeToggle } from './theme-toggle'
@@ -138,6 +139,7 @@ export function ClassicLayout() {
 
           <div className="ml-auto flex items-center gap-1">
             <GlobalSearch iconOnly className={cn('hover:bg-white/10', navText)} />
+            <TrailHelp className={cn('size-8 hover:bg-white/10', navText)} />
             <AlertsBell className={cn('hover:bg-white/10', navText)} />
             <ThemeToggle className={cn('hover:bg-white/10', navText)} />
             {me && (

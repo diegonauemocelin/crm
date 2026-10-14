@@ -4,6 +4,7 @@ import {
   ClipboardListIcon,
   EyeIcon,
   FileClockIcon,
+  GraduationCapIcon,
   HeadsetIcon,
   HistoryIcon,
   InboxIcon,
@@ -105,7 +106,10 @@ export const NAVIGATION: NavGroup[] = [
   },
   {
     title: 'Sistema',
-    items: [{ title: 'Atualizações', to: '/atualizacoes', icon: HistoryIcon }],
+    items: [
+      { title: 'Trilha de conhecimento', to: '/trilha', icon: GraduationCapIcon },
+      { title: 'Atualizações', to: '/atualizacoes', icon: HistoryIcon },
+    ],
   },
 ]
 
