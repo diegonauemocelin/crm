@@ -7,7 +7,8 @@
       "title": "Conversões pelo Google Tag Manager",
       "changes": [
         { "type": "correcao", "area": "Captura", "text": "Conversões pelo Google Tag Manager: o formulário e o botão de WhatsApp agora publicam o evento “usacrm_form_submit” com “formKind” (landing, form, popup ou whatsapp), o nome usado nos acionadores do GTM da LP, que antes nunca disparavam." },
-        { "type": "melhoria", "area": "Captura", "text": "Antes de abrir o WhatsApp, o CRM espera as tags do Tag Manager terminarem (até 1,5 s), para a conversão não se perder na troca de página." }
+        { "type": "melhoria", "area": "Captura", "text": "Antes de abrir o WhatsApp, o CRM espera as tags do Tag Manager terminarem (até 1,5 s), para a conversão não se perder na troca de página." },
+        { "type": "melhoria", "area": "Captura", "text": "O evento do Tag Manager leva também o e-mail (minúsculo) e o telefone (+55...) do contato, para as conversões otimizadas de leads." }
       ]
     },
     {

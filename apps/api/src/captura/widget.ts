@@ -340,7 +340,7 @@ export const CAPTURE_JS = `
       // Evento "usacrm_form_submit" com formKind (landing, form, popup ou whatsapp): o nome que os acionadores do
       // GTM usam. "crm_lead" continua para quem já configurou por ele.
       viaGtm = !!(done && w.google_tag_manager);
-      w.dataLayer.push({ event: 'usacrm_form_submit', formKind: opts.kind, formId: crmId, crm_canal: canal, eventCallback: viaGtm ? done : undefined, eventTimeout: 1200 });
+      w.dataLayer.push({ event: 'usacrm_form_submit', formKind: opts.kind, formId: crmId, crm_canal: canal, crm_email: email || undefined, crm_telefone: phone || undefined, eventCallback: viaGtm ? done : undefined, eventTimeout: 1200 });
       w.dataLayer.push({ event: 'crm_lead', crm_canal: canal, crm_id: crmId, crm_email: email || undefined, crm_telefone: phone || undefined });
       var sendTo = canal === 'whatsapp' ? t.whatsappSendTo : t.formSendTo;
       // Sem tag do Google no CRM nem gtag na página: ficam só os eventos para o GTM.
