@@ -593,8 +593,8 @@ function AiCard() {
         <CardContent className="mt-4 space-y-4">
           <fieldset disabled={!editable} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Row label="Chave do Gemini" htmlFor="ia-key" hint={q.data.configured ? 'Já cadastrada (guardada criptografada). Preencha só para trocar.' : 'Começa com AIza…'}>
-                <Input id="ia-key" type="password" autoComplete="off" placeholder={q.data.configured ? '••••••••••••' : 'AIza...'} value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+              <Row label="Chave do Gemini" htmlFor="ia-key" hint={q.data.configured ? 'Já cadastrada (guardada criptografada). Preencha só para trocar.' : 'Começa com AQ. ou AIza. Use o botão “Copiar chave” do AI Studio.'}>
+                <Input id="ia-key" type="password" autoComplete="off" placeholder={q.data.configured ? '••••••••••••' : 'AQ.…'} value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
               </Row>
               <Row label="Modelo" htmlFor="ia-model">
                 <Select value={model ?? q.data.model} onValueChange={setModel}>

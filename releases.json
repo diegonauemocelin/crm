@@ -12,6 +12,7 @@
         { "type": "novo", "area": "Email marketing", "text": "Mapa de quando os e-mails são abertos (dia da semana e hora), com o melhor horário para agendar, e dicas automáticas (devolução e descadastro altos, abertura baixa)." },
         { "type": "novo", "area": "Email marketing", "text": "Saúde da base: leads com e-mail, quantos podem receber, sem consentimento e com e-mail inexistente." },
         { "type": "melhoria", "area": "Email marketing", "text": "O CRM passa a guardar a data dos envios recusados, para contá-los no período certo." },
+        { "type": "correcao", "area": "Email marketing", "text": "O assistente de IA aceita o formato novo de chave do Google AI Studio (começa com AQ.)." },
         { "type": "correcao", "area": "Sistema", "text": "No menu, só o item da tela aberta fica destacado (antes, telas com endereço parecido acendiam dois itens)." }
       ]
     },

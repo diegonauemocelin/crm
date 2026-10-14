@@ -45,7 +45,8 @@ export class EmailAiService {
     this.assertCan(user, 'edit')
     const cur = await this.config(user.tenantId)
     const key = d.apiKey?.trim()
-    if (key && !/^[A-Za-z0-9_-]{20,100}$/.test(key)) throw new BadRequestException('Chave do Gemini inválida. Copie a chave inteira do Google AI Studio (começa com AIza...).')
+    // Formatos do Google AI Studio: o antigo (AIza...) e o novo (AQ.xxxx), só letras, números, ponto, hífen e sublinhado.
+    if (key && !/^[A-Za-z0-9][A-Za-z0-9._-]{19,199}$/.test(key)) throw new BadRequestException('Chave do Gemini inválida. No Google AI Studio, use o botão “Copiar chave” e cole aqui a chave inteira (começa com AQ. ou AIza).')
     const next: AiSettings = {
       apiKeyEnc: d.removeKey ? null : key ? encrypt(key) : cur.apiKeyEnc,
       model: (AI_MODELS as readonly string[]).includes(d.model ?? '') ? (d.model as AiModel) : cur.model,

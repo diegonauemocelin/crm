@@ -228,3 +228,18 @@ describe('2 colunas, texto justificado e cores mais usadas', () => {
     }
   })
 })
+
+describe('chave do Gemini', () => {
+  it('aceita o formato novo (AQ.) e o antigo (AIza), recusa texto estranho', async () => {
+    const { EmailAiService } = await import('../src/email/ia.service')
+    let saved: { apiKeyEnc: string | null } | null = null
+    const settings = { get: async (_t: string, _k: string, d: object) => d, set: async (_t: string, _k: string, v: { apiKeyEnc: string | null }) => void (saved = v), branding: async () => ({ appName: 'USA Parts' }) }
+    const svc = new EmailAiService(settings as never, { byUser: async () => undefined } as never)
+    const user = { tenantId: 't', role: { isSystem: true }, permissions: {} } as never
+    await svc.save(user, { apiKey: 'AQ.FakeNewFormatKey_for-tests1234567890' }, {} as never)
+    expect(saved!.apiKeyEnc).toBeTruthy()
+    await svc.save(user, { apiKey: 'AIzaFakeKeyForTests1234567890' }, {} as never)
+    await expect(svc.save(user, { apiKey: 'AQ.chave com espaço 1234567890' }, {} as never)).rejects.toThrow(/inválida/)
+    await expect(svc.save(user, { apiKey: '.AQcomecaComPonto1234567890' }, {} as never)).rejects.toThrow(/inválida/)
+  })
+})
