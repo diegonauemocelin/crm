@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.27.0",
+      "date": "2026-10-14",
+      "title": "Menus reorganizados",
+      "changes": [
+        { "type": "melhoria", "area": "Sistema", "text": "Menu reorganizado: Dashboards (Início, Atendimento WhatsApp, Resultados do e-mail, Google Ads) · Análise (Relatórios, Produtos vistos) · Atendimento Comercial · CRM · Marketing · Administração · Sistema." },
+        { "type": "melhoria", "area": "Sistema", "text": "Catálogo passa para o grupo CRM e Números de WhatsApp para Administração; os painéis ficam todos juntos em Dashboards." },
+        { "type": "melhoria", "area": "Sistema", "text": "No layout Clássico, o menu do topo cabe inteiro em telas de 1024 px." }
+      ]
+    },
+    {
       "version": "0.26.0",
       "date": "2026-10-14",
       "title": "Catálogo da Magazord copiado 1 vez por dia, com aviso de falha",

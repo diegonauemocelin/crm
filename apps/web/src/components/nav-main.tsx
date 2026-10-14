@@ -44,7 +44,8 @@ export function NavMain({ groups }: { groups: NavGroup[] }) {
   return (
     <>
       {groups.map((group, index) =>
-        index === 0 ? (
+        // Primeiro grupo com um item só (Início) fica sem título; os demais são recolhíveis.
+        index === 0 && group.items.length === 1 ? (
           <SidebarGroup key={group.title} className="py-1">
             <Items items={group.items} />
           </SidebarGroup>

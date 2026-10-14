@@ -41,17 +41,28 @@ export interface NavGroup {
 /** Menu único, usado pelos dois layouts (Moderno e Clássico). Cada item respeita a permissão do perfil. */
 export const NAVIGATION: NavGroup[] = [
   {
-    title: 'Geral',
-    items: [{ title: 'Início', to: '/', icon: LayoutDashboardIcon }],
+    title: 'Dashboards',
+    items: [
+      { title: 'Início', to: '/', icon: LayoutDashboardIcon },
+      { title: 'Atendimento WhatsApp', to: '/whatsapp/dashboard', icon: MessageCircleIcon, module: 'chat' },
+      { title: 'Resultados do e-mail', to: '/email-marketing/dashboard', icon: MailIcon, module: 'email_marketing' },
+      { title: 'Google Ads', to: '/google-ads', icon: TargetIcon, module: 'google_ads' },
+    ],
   },
   {
-    title: 'Atendimento',
+    title: 'Análise',
+    items: [
+      { title: 'Relatórios', to: '/relatorios', icon: BarChart3Icon, module: 'relatorios' },
+      { title: 'Produtos vistos', to: '/catalogo/vistos', icon: EyeIcon, module: 'catalogo' },
+    ],
+  },
+  {
+    title: 'Atendimento Comercial',
     items: [
       { title: 'Pré-Vendas', to: '/pre-vendas', icon: HeadsetIcon, module: 'pre_vendas' },
       { title: 'Pós-Vendas', to: '/pos-vendas', icon: ClipboardListIcon, module: 'pos_vendas' },
-      { title: 'Cadastros', to: '/cadastros-atendimento', icon: ListChecksIcon, module: 'cadastros' },
       { title: 'Chat WhatsApp', to: '/chat', icon: MessageCircleIcon, module: 'chat' },
-      { title: 'Números de WhatsApp', to: '/whatsapp/numeros', icon: SmartphoneIcon, module: 'whatsapp' },
+      { title: 'Cadastros', to: '/cadastros-atendimento', icon: ListChecksIcon, module: 'cadastros' },
     ],
   },
   {
@@ -59,6 +70,7 @@ export const NAVIGATION: NavGroup[] = [
     items: [
       { title: 'Base de leads', to: '/leads', icon: UsersRoundIcon, module: 'leads' },
       { title: 'Carrinhos e checkout', to: '/carrinhos', icon: ShoppingCartIcon, module: 'carrinhos' },
+      { title: 'Catálogo', to: '/catalogo', icon: PackageIcon, module: 'catalogo' },
     ],
   },
   {
@@ -66,18 +78,7 @@ export const NAVIGATION: NavGroup[] = [
     items: [
       { title: 'Captura', to: '/captura', icon: MegaphoneIcon, module: 'captura' },
       { title: 'Email marketing', to: '/email-marketing', icon: MailIcon, module: 'email_marketing' },
-      { title: 'Catálogo', to: '/catalogo', icon: PackageIcon, module: 'catalogo' },
       { title: 'Automações', to: '/automacoes', icon: BotIcon, module: 'automacoes' },
-    ],
-  },
-  {
-    title: 'Análise',
-    items: [
-      { title: 'Dashboards e relatórios', to: '/relatorios', icon: BarChart3Icon, module: 'relatorios' },
-      { title: 'Google Ads', to: '/google-ads', icon: TargetIcon, module: 'google_ads' },
-      { title: 'Email marketing', to: '/email-marketing/dashboard', icon: MailIcon, module: 'email_marketing' },
-      { title: 'WhatsApp', to: '/whatsapp/dashboard', icon: MessageCircleIcon, module: 'chat' },
-      { title: 'Produtos vistos', to: '/catalogo/vistos', icon: EyeIcon, module: 'catalogo' },
     ],
   },
   {
@@ -85,6 +86,7 @@ export const NAVIGATION: NavGroup[] = [
     items: [
       { title: 'Usuários', to: '/usuarios', icon: UsersIcon, module: 'usuarios' },
       { title: 'Perfis de acesso', to: '/perfis', icon: ShieldCheckIcon, module: 'perfis' },
+      { title: 'Números de WhatsApp', to: '/whatsapp/numeros', icon: SmartphoneIcon, module: 'whatsapp' },
       { title: 'Configurações', to: '/configuracoes', icon: SettingsIcon, module: 'configuracoes' },
       { title: 'Auditoria', to: '/auditoria', icon: FileClockIcon, module: 'auditoria' },
     ],

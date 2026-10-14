@@ -92,7 +92,7 @@ export function ClassicLayout() {
                   to={g.items[0]!.to}
                   end={g.items[0]!.to === '/'}
                   className={({ isActive }) =>
-                    cn('rounded px-3 py-2 text-sm font-medium opacity-85 hover:bg-white/10 hover:opacity-100', navText, isActive && 'bg-white/15 opacity-100')
+                    cn('rounded px-2 py-2 text-sm font-medium opacity-85 hover:bg-white/10 hover:opacity-100 xl:px-3', navText, isActive && 'bg-white/15 opacity-100')
                   }
                 >
                   {g.items[0]!.title === 'Início' ? 'Início' : g.title}
@@ -101,7 +101,7 @@ export function ClassicLayout() {
                 <DropdownMenu key={g.title}>
                   <DropdownMenuTrigger
                     className={cn(
-                      'flex items-center gap-1 rounded px-3 py-2 text-sm font-medium opacity-85 outline-none hover:bg-white/10 hover:opacity-100 data-[state=open]:bg-white/15',
+                      'flex items-center gap-1 rounded px-2 py-2 text-sm font-medium opacity-85 outline-none xl:px-3 hover:bg-white/10 hover:opacity-100 data-[state=open]:bg-white/15',
                       navText,
                       activeGroup === g.title && 'bg-white/15 opacity-100',
                     )}
