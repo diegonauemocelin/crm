@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.28.0",
+      "date": "2026-10-14",
+      "title": "Monitorar conversas e perfil Gestor comercial",
+      "changes": [
+        { "type": "novo", "area": "WhatsApp", "text": "Monitorar conversas: quem tem a permissão nova lê as conversas de todos os números e vendedores, só leitura, com filtro por vendedor e “aguardando resposta”, e vê quem atende cada conversa." },
+        { "type": "novo", "area": "WhatsApp", "text": "No monitoramento, abrir a conversa não marca como lida: o vendedor continua vendo as mensagens novas. Cada conversa aberta fica registrada na auditoria." },
+        { "type": "novo", "area": "Sistema", "text": "Perfil novo “Gestor comercial” (criado automaticamente, ajustável em Perfis de acesso): acompanha todos os vendedores em Pré-Vendas, Pós-Vendas, leads, dashboards e conversas, com 2 fatores obrigatório." },
+        { "type": "seguranca", "area": "WhatsApp", "text": "Aviso no chat para a equipe: as conversas dos números da empresa podem ser acompanhadas pela gestão comercial (transparência exigida pela LGPD)." },
+        { "type": "melhoria", "area": "Sistema", "text": "Atalho “Monitorar conversas” no menu Atendimento Comercial." }
+      ]
+    },
+    {
       "version": "0.27.1",
       "date": "2026-10-14",
       "title": "IA do e-mail: escolhe sozinha o Gemini mais rápido",

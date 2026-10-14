@@ -1,5 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { AuditService } from '../audit/audit.service'
 import { CapturaService } from '../captura/captura.service'
+import type { RequestCtx } from '../common/decorators'
 import { can, type Scope } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import { FilesService } from '../files/files.service'
@@ -33,7 +35,11 @@ export class ChatService {
     private readonly capture: LeadCaptureService,
     private readonly captura: CapturaService,
     private readonly settings: SettingsService,
+    private readonly audit: AuditService,
   ) {}
+
+  /** Última leitura em monitoramento registrada na auditoria (usuário + conversa), para não registrar a cada atualização da tela. */
+  private readonly monitored = new Map<string, number>()
 
   // ---------- Recebimento ----------
 
@@ -198,6 +204,21 @@ export class ChatService {
     if (!can(user.permissions, user.role.isSystem, 'chat', 'view')) throw new ForbiddenException('Você não tem permissão para esta ação.')
   }
 
+  /** Monitorar conversas: ler todas as conversas da empresa, sem responder e sem marcar como lidas. */
+  canMonitor(user: AuthUser) {
+    return can(user.permissions, user.role.isSystem, 'monitoramento', 'view')
+  }
+
+  private assertMonitor(user: AuthUser) {
+    if (!this.canMonitor(user)) throw new ForbiddenException('Você não tem permissão para monitorar as conversas.')
+  }
+
+  /** Conversas de um vendedor: as passadas para ele e as dos números em que ele atende. */
+  private async sellerWhere(tenantId: string, sellerId: string): Promise<Prisma.WhatsappConversationWhereInput> {
+    const nums = await this.prisma.whatsappNumber.findMany({ where: { tenantId, sellerIds: { has: sellerId } }, select: { id: true } })
+    return { OR: [{ assignedSellerId: sellerId }, { assignedSellerId: null, numberId: { in: nums.map((x) => x.id) } }] }
+  }
+
   private scopeOf(user: AuthUser): Scope {
     return user.role.isSystem ? 'ALL' : (user.permissions.chat?.scope ?? 'ALL')
   }
@@ -219,15 +240,19 @@ export class ChatService {
     return { ...base, OR: [{ numberId: { in: nums.map((x) => x.id) } }, { assignedSellerId: seller.id }] }
   }
 
-  async conversations(user: AuthUser, q: { numberId?: string; unread?: boolean; archived?: boolean; search?: string; page?: number; category?: string; leadId?: string; reminders?: boolean }) {
-    this.assertCan(user)
-    const scope = await this.where(user)
+  async conversations(user: AuthUser, q: { numberId?: string; unread?: boolean; archived?: boolean; search?: string; page?: number; category?: string; leadId?: string; reminders?: boolean; monitor?: boolean; sellerId?: string; awaiting?: boolean }) {
+    if (q.monitor) this.assertMonitor(user)
+    else this.assertCan(user)
+    const scope: Prisma.WhatsappConversationWhereInput = q.monitor ? { tenantId: user.tenantId } : await this.where(user)
     // Na ficha do lead aparecem todas as conversas dele (abertas e arquivadas).
     const and: Prisma.WhatsappConversationWhereInput[] = q.leadId ? [scope, { leadId: q.leadId }] : [scope, { lastMessageAt: { not: null } }, { status: q.archived ? 'ARQUIVADA' : 'ABERTA' }]
     if (q.numberId) and.push({ numberId: q.numberId })
     if (q.unread) and.push({ unread: { gt: 0 } })
     if (q.category) and.push({ category: q.category })
     if (q.reminders) and.push({ reminders: { some: { userId: user.id, doneAt: null } } })
+    if (q.monitor && q.sellerId) and.push(await this.sellerWhere(user.tenantId, q.sellerId))
+    // Aguardando resposta: a última mensagem é do contato.
+    if (q.awaiting) and.push({ lastFromMe: false })
     const s = q.search?.trim()
     if (s) {
       const digits = s.replace(/\D/g, '')
@@ -239,18 +264,28 @@ export class ChatService {
       this.prisma.whatsappConversation.count({ where }),
       this.prisma.whatsappConversation.findMany({ where, orderBy: { lastMessageAt: 'desc' }, skip: (page - 1) * 50, take: 50 }),
       this.prisma.whatsappConversation.aggregate({ where: { AND: [scope, { unread: { gt: 0 } }] }, _count: { _all: true } }),
-      this.visibleNumbers(user, scope),
+      q.monitor ? this.allNumbers(user.tenantId) : this.visibleNumbers(user, scope),
     ])
     const leads = new Map((await this.prisma.lead.findMany({ where: { id: { in: rows.map((r) => r.leadId).filter((x): x is string => !!x) } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]))
     const reminders = new Map(
       (await this.prisma.whatsappReminder.groupBy({ by: ['conversationId'], where: { userId: user.id, doneAt: null, conversationId: { in: rows.map((r) => r.id) } }, _min: { dueAt: true } })).map((r) => [r.conversationId, r._min.dueAt]),
     )
+    // No monitoramento, quem atende cada conversa (vendedor da conversa ou os do número).
+    const sellerName = q.monitor ? await this.sellerNames(user.tenantId) : null
+    const numberSellers = q.monitor ? new Map((await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId }, select: { id: true, sellerIds: true } })).map((n) => [n.id, n.sellerIds])) : null
+    const attendant = (r: { assignedSellerId: string | null; numberId: string }) => {
+      if (!sellerName) return undefined
+      const ids = r.assignedSellerId ? [r.assignedSellerId] : (numberSellers?.get(r.numberId) ?? [])
+      return ids.map((id) => sellerName.get(id)).filter(Boolean).join(', ') || null
+    }
     return {
       total,
       page,
       unreadConversations: unread._count._all,
       numbers,
+      ...(q.monitor ? { sellers: [...(sellerName ?? new Map()).entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)) } : {}),
       items: rows.map((r) => ({
+        attendant: attendant(r),
         id: r.id,
         numberId: r.numberId,
         name: (r.leadId && leads.get(r.leadId)) || r.name,
@@ -266,6 +301,14 @@ export class ChatService {
         reminderAt: reminders.get(r.id) ?? null,
       })),
     }
+  }
+
+  private allNumbers(tenantId: string) {
+    return this.prisma.whatsappNumber.findMany({ where: { tenantId, deletedAt: null }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, phone: true, status: true } })
+  }
+
+  private async sellerNames(tenantId: string) {
+    return new Map((await this.prisma.seller.findMany({ where: { tenantId }, select: { id: true, name: true } })).map((s) => [s.id, s.name]))
   }
 
   private async visibleNumbers(user: AuthUser, scope: Prisma.WhatsappConversationWhereInput) {
@@ -284,9 +327,24 @@ export class ChatService {
     return conv
   }
 
-  /** Conversa com as mensagens (as mais recentes; "antes" pagina para trás). Abrir marca como lida. */
-  async conversation(user: AuthUser, id: string, before?: string) {
-    const conv = await this.load(user, id)
+  /** Monitoramento: qualquer conversa da empresa, só para ler (registra na auditoria quem leu). */
+  private async loadMonitor(user: AuthUser, id: string, ctx?: RequestCtx) {
+    this.assertMonitor(user)
+    const conv = await this.prisma.whatsappConversation.findFirst({ where: { id, tenantId: user.tenantId } })
+    if (!conv) throw new NotFoundException('Conversa não encontrada.')
+    const key = `${user.id}:${id}`
+    const last = this.monitored.get(key) ?? 0
+    if (ctx && Date.now() - last > 30 * 60_000) {
+      this.monitored.set(key, Date.now())
+      if (this.monitored.size > 5000) this.monitored.clear()
+      await this.audit.byUser(user, ctx, 'chat.monitorada', 'whatsapp_conversation', id, { contato: conv.name ?? conv.phone ?? null })
+    }
+    return conv
+  }
+
+  /** Conversa com as mensagens (as mais recentes; "antes" pagina para trás). Abrir marca como lida (no monitoramento, não). */
+  async conversation(user: AuthUser, id: string, before?: string, monitor?: { ctx: RequestCtx }) {
+    const conv = monitor ? await this.loadMonitor(user, id, monitor.ctx) : await this.load(user, id)
     const beforeDate = before && !Number.isNaN(Date.parse(before)) ? new Date(before) : null
     const [rows, number, lead, record] = await Promise.all([
       this.prisma.whatsappMessage.findMany({ where: { conversationId: id, ...(beforeDate ? { sentAt: { lt: beforeDate } } : {}) }, orderBy: [{ sentAt: 'desc' }, { createdAt: 'desc' }], take: PAGE + 1 }),
@@ -294,10 +352,11 @@ export class ChatService {
       conv.leadId ? this.prisma.lead.findUnique({ where: { id: conv.leadId }, select: { id: true, name: true, email: true, phone: true, adsLastCampaign: true, adsLastCampaignId: true } }) : null,
       conv.recordId ? this.prisma.serviceRecord.findUnique({ where: { id: conv.recordId }, select: { id: true, kind: true, leadAt: true, saleStatus: true, adsVia: true, adsCampaign: true, adsCampaignId: true, entryChannel: true } }) : null,
     ])
-    if (conv.unread > 0 && !beforeDate) await this.prisma.whatsappConversation.update({ where: { id }, data: { unread: 0 } })
+    if (!monitor && conv.unread > 0 && !beforeDate) await this.prisma.whatsappConversation.update({ where: { id }, data: { unread: 0 } })
     const more = rows.length > PAGE
     return {
-      conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, category: conv.category },
+      conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, category: conv.category, unread: conv.unread },
+      monitor: !!monitor,
       number,
       lead,
       record,
@@ -310,10 +369,12 @@ export class ChatService {
   }
 
   /** Mídia de uma mensagem, só para quem pode ver a conversa. */
-  async media(user: AuthUser, messageId: string) {
+  async media(user: AuthUser, messageId: string, monitor = false) {
+    if (monitor) this.assertMonitor(user)
     const m = await this.prisma.whatsappMessage.findFirst({ where: { id: messageId, tenantId: user.tenantId } })
     if (!m?.fileId) throw new NotFoundException()
-    await this.load(user, m.conversationId)
+    if (monitor) await this.loadMonitor(user, m.conversationId)
+    else await this.load(user, m.conversationId)
     const { asset, content } = await this.files.read(m.fileId)
     return { mime: asset.mime, content, fileName: m.fileName }
   }

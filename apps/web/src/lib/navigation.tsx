@@ -62,6 +62,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Pré-Vendas', to: '/pre-vendas', icon: HeadsetIcon, module: 'pre_vendas' },
       { title: 'Pós-Vendas', to: '/pos-vendas', icon: ClipboardListIcon, module: 'pos_vendas' },
       { title: 'Chat WhatsApp', to: '/chat', icon: MessageCircleIcon, module: 'chat' },
+      { title: 'Monitorar conversas', to: '/chat?monitorar=1', icon: EyeIcon, module: 'monitoramento' },
       { title: 'Cadastros', to: '/cadastros-atendimento', icon: ListChecksIcon, module: 'cadastros' },
     ],
   },
@@ -103,12 +104,19 @@ export function visibleNavigation(can: (module: string, action?: Action) => bool
   )
 }
 
-/** Item do menu da tela atual: o de endereço mais específico (/email-marketing/dashboard ganha de /email-marketing). */
-export function findNavItem(pathname: string): { group: NavGroup; item: NavItem } | null {
+/**
+ * Item do menu da tela atual: o de endereço mais específico (/email-marketing/dashboard ganha de /email-marketing).
+ * Item com parâmetros (/chat?monitorar=1) só vale quando o endereço tem os mesmos parâmetros (search).
+ */
+export function findNavItem(pathname: string, search = ''): { group: NavGroup; item: NavItem } | null {
+  const current = new URLSearchParams(search)
   let best: { group: NavGroup; item: NavItem } | null = null
   for (const group of NAVIGATION) {
     for (const item of group.items) {
-      const hit = item.to === '/' ? pathname === '/' : pathname === item.to || pathname.startsWith(`${item.to}/`)
+      const [path = '', query] = item.to.split('?')
+      const params = [...new URLSearchParams(query ?? '').entries()]
+      const pathHit = path === '/' ? pathname === '/' : pathname === path || pathname.startsWith(`${path}/`)
+      const hit = pathHit && params.every(([k, v]) => current.get(k) === v)
       if (hit && (!best || item.to.length > best.item.to.length)) best = { group, item }
     }
   }

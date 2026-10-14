@@ -5,7 +5,7 @@ import { ApiTags } from '@nestjs/swagger'
 import { Transform, Type } from 'class-transformer'
 import { IsBoolean, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator'
 import type { Response } from 'express'
-import { CurrentUser } from '../common/decorators'
+import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { ChatService } from './chat.service'
 import { WhatsappDashboardService } from './dashboard.service'
@@ -20,6 +20,9 @@ class ListDto {
   @IsOptional() @IsUUID() lead?: string
   @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() lembretes?: boolean
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) pagina?: number
+  @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() monitorar?: boolean
+  @IsOptional() @IsUUID() vendedor?: string
+  @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() aguardando?: boolean
 }
 
 class TextDto {
@@ -62,6 +65,11 @@ class QuickReplyDto {
 
 class ThreadDto {
   @IsOptional() @IsISO8601() antes?: string
+  @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() monitorar?: boolean
+}
+
+class MediaQuery {
+  @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() monitorar?: boolean
 }
 
 class RulesDto {
@@ -149,7 +157,7 @@ export class ChatController {
 
   @Get('conversas')
   list(@CurrentUser() user: AuthUser, @Query() q: ListDto) {
-    return this.chat.conversations(user, { numberId: q.numero, unread: q.naoLidas, archived: q.arquivadas, search: q.busca, page: q.pagina, category: q.tipo, leadId: q.lead, reminders: q.lembretes })
+    return this.chat.conversations(user, { numberId: q.numero, unread: q.naoLidas, archived: q.arquivadas, search: q.busca, page: q.pagina, category: q.tipo, leadId: q.lead, reminders: q.lembretes, monitor: q.monitorar, sellerId: q.vendedor, awaiting: q.aguardando })
   }
 
   /** Números em que o usuário pode iniciar conversa. */
@@ -260,14 +268,14 @@ export class ChatController {
   }
 
   @Get('conversas/:id')
-  thread(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Query() q: ThreadDto) {
-    return this.chat.conversation(user, id, q.antes)
+  thread(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Query() q: ThreadDto, @ReqContext() ctx: RequestCtx) {
+    return this.chat.conversation(user, id, q.antes, q.monitorar ? { ctx } : undefined)
   }
 
   /** Mídia: imagens, áudios, vídeos e PDF abrem na tela; o resto vai como download (nunca é executado no navegador). */
   @Get('midias/:id')
-  async media(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
-    const m = await this.chat.media(user, id)
+  async media(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Query() q: MediaQuery, @Res() res: Response) {
+    const m = await this.chat.media(user, id, !!q.monitorar)
     const inline = INLINE_MIME.has(m.mime)
     res.setHeader('Content-Type', inline ? m.mime : 'application/octet-stream')
     res.setHeader('X-Content-Type-Options', 'nosniff')

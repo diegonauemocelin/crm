@@ -34,11 +34,11 @@ export function ClassicLayout() {
   const chatUnread = useChatAlerts().data?.unreadConversations ?? 0
   const { can, me } = useAuth()
   const branding = useBranding()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const groups = visibleNavigation(can)
   const crumbs = useBreadcrumb()
-  const activeGroup = findNavItem(pathname)?.group.title
-  const activeItem = findNavItem(pathname)?.item.to
+  const activeGroup = findNavItem(pathname, search)?.group.title
+  const activeItem = findNavItem(pathname, search)?.item.to
   const [mobileOpen, setMobileOpen] = useState(false)
 
   return (

@@ -22,8 +22,8 @@ import { ChatNotifier } from '@/lib/chat-alerts'
 const EXTRA_TITLES: Record<string, string> = { '/meu-perfil': 'Meu perfil' }
 
 export function useBreadcrumb() {
-  const { pathname } = useLocation()
-  const found = findNavItem(pathname)
+  const { pathname, search } = useLocation()
+  const found = findNavItem(pathname, search)
   if (found) return found.item.to === '/' ? [{ title: 'Início' }] : [{ title: found.group.title }, { title: found.item.title, to: found.item.to }]
   return [{ title: EXTRA_TITLES[pathname] ?? 'Página' }]
 }

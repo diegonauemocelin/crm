@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, MicIcon, PhoneIcon, PhoneIncomingIcon, Trash2Icon, Volume2Icon, VolumeXIcon, VideoIcon, FileIcon, HeadsetIcon, Loader2Icon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, PaperclipIcon, SearchIcon, SendIcon, SmartphoneIcon, UserIcon, ZapIcon } from 'lucide-react'
-import { type FormEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { AlarmClockIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HeadsetIcon, InfoIcon, Loader2Icon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, Trash2Icon, UserIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
+import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { api, errorMessage } from '@/lib/api'
 import { formatPhone, maskPhone, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
@@ -28,6 +29,8 @@ interface NumberRef {
 }
 interface ConvItem {
   id: string
+  /** Só no monitoramento: quem atende a conversa. */
+  attendant?: string | null
   numberId: string
   name: string | null
   phone: string | null
@@ -42,6 +45,8 @@ interface ConvItem {
   reminderAt?: string | null
 }
 interface ListData {
+  /** Só no monitoramento: vendedores para o filtro. */
+  sellers?: { id: string; name: string }[]
   total: number
   unreadConversations: number
   numbers: NumberRef[]
@@ -67,6 +72,7 @@ interface Thread {
   record: { id: string; kind: 'PRE_VENDAS' | 'POS_VENDAS'; leadAt: string; saleStatus: string; adsVia: string | null; adsCampaign: string | null; adsCampaignId: string | null; entryChannel: string | null } | null
   hasMore: boolean
   messages: Message[]
+  monitor?: boolean
 }
 
 const ALL = '__all__'
@@ -84,7 +90,13 @@ function when(iso: string | null) {
   return dayKey(iso) === day.format(new Date()) ? time.format(new Date(iso)) : day.format(new Date(iso)).slice(0, 5)
 }
 
+/** Monitoramento (ler as conversas da equipe sem responder e sem marcar como lidas): a mídia usa a mesma regra. */
+const MonitorContext = createContext(false)
+
 export function ChatPage() {
+  const { can } = useAuth()
+  // Quem só tem "Monitorar conversas" entra direto no monitoramento.
+  if (!can('chat') && can('monitoramento')) return <Chat onlyMonitor />
   return (
     <RequirePermission module="chat">
       <Chat />
@@ -92,9 +104,12 @@ export function ChatPage() {
   )
 }
 
-function Chat() {
+function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
   const [params, setParams] = useSearchParams()
   const openId = params.get('conversa')
+  const monitor = onlyMonitor || params.get('monitorar') === '1'
+  const [sellerId, setSellerId] = useState<string | null>(null)
+  const [awaiting, setAwaiting] = useState(false)
   const [numberId, setNumberId] = useState<string | null>(null)
   const [unread, setUnread] = useState(false)
   const [archived, setArchived] = useState(false)
@@ -108,7 +123,7 @@ function Chat() {
     const t = setTimeout(() => setQ(search.trim()), 300)
     return () => clearTimeout(t)
   }, [search])
-  const qs = new URLSearchParams({ ...(numberId ? { numero: numberId } : {}), ...(unread ? { naoLidas: 'true' } : {}), ...(archived ? { arquivadas: 'true' } : {}), ...(category ? { tipo: category } : {}), ...(withReminder ? { lembretes: 'true' } : {}), ...(q ? { busca: q } : {}) }).toString()
+  const qs = new URLSearchParams({ ...(numberId ? { numero: numberId } : {}), ...(unread ? { naoLidas: 'true' } : {}), ...(archived ? { arquivadas: 'true' } : {}), ...(category ? { tipo: category } : {}), ...(withReminder && !monitor ? { lembretes: 'true' } : {}), ...(q ? { busca: q } : {}), ...(monitor ? { monitorar: 'true' } : {}), ...(monitor && sellerId ? { vendedor: sellerId } : {}), ...(monitor && awaiting ? { aguardando: 'true' } : {}) }).toString()
   const list = useQuery({ queryKey: ['chat-conversas', qs], queryFn: () => api.get<ListData>(`/chat/conversas?${qs}`), refetchInterval: 5000, placeholderData: keepPreviousData })
   const numbers = useMemo(() => new Map((list.data?.numbers ?? []).map((n) => [n.id, n])), [list.data?.numbers])
   const open = (id: string | null) => setParams((p) => {
@@ -117,15 +132,32 @@ function Chat() {
     else n.delete('conversa')
     return n
   })
+  const setMonitor = (on: boolean) => setParams((p) => {
+    const n = new URLSearchParams(p)
+    n.delete('conversa')
+    if (on) n.set('monitorar', '1')
+    else n.delete('monitorar')
+    return n
+  })
   return (
     <div>
       <PageHeader
-        title="Chat WhatsApp"
-        description="Conversas dos números da empresa. Responda por aqui ou pelo celular: tudo fica no histórico do lead."
+        title={monitor ? 'Monitorar conversas' : 'Chat WhatsApp'}
+        description={monitor ? 'Conversas de todos os números e vendedores, só para leitura. Abrir aqui não marca como lida: o vendedor continua vendo as mensagens novas.' : 'Conversas dos números da empresa. Responda por aqui ou pelo celular: tudo fica no histórico do lead.'}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <AlertSettings />
-            {can('chat', 'create') && (
+            {!onlyMonitor && can('monitoramento') && (
+              <ToggleGroup type="single" variant="outline" size="sm" value={monitor ? 'equipe' : 'minhas'} onValueChange={(v) => v && setMonitor(v === 'equipe')} aria-label="Conversas">
+                <ToggleGroupItem value="minhas" className="px-3">
+                  Minhas conversas
+                </ToggleGroupItem>
+                <ToggleGroupItem value="equipe" className="px-3">
+                  <EyeIcon /> Monitorar equipe
+                </ToggleGroupItem>
+              </ToggleGroup>
+            )}
+            {!monitor && <AlertSettings />}
+            {!monitor && can('chat', 'create') && (
               <Button onClick={() => setStarting(true)}>
                 <MessageSquarePlusIcon /> Nova conversa
               </Button>
@@ -171,9 +203,30 @@ function Chat() {
                     ))}
                   </SelectContent>
                 </Select>
-                <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                  <Switch checked={withReminder} onCheckedChange={setWithReminder} aria-label="Só com lembrete" /> Lembretes
-                </label>
+                {monitor && (
+                  <Select value={sellerId ?? ALL} onValueChange={(v) => setSellerId(v === ALL ? null : v)}>
+                    <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label="Vendedor">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>Todos os vendedores</SelectItem>
+                      {(list.data.sellers ?? []).map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {monitor ? (
+                  <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title="A última mensagem é do contato">
+                    <Switch checked={awaiting} onCheckedChange={setAwaiting} aria-label="Só aguardando resposta" /> Aguardando resposta
+                  </label>
+                ) : (
+                  <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                    <Switch checked={withReminder} onCheckedChange={setWithReminder} aria-label="Só com lembrete" /> Lembretes
+                  </label>
+                )}
                 <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
                   <Switch checked={archived} onCheckedChange={setArchived} aria-label="Ver arquivadas" /> Arquivadas
                 </label>
@@ -184,7 +237,7 @@ function Chat() {
               </div>
             </div>
             <ul className="min-h-0 flex-1 overflow-y-auto">
-              {list.data.items.length === 0 && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa{archived ? ' arquivada' : ''}{q || unread || numberId || category || withReminder ? ' com esses filtros' : archived ? '' : ' ainda'}.</li>}
+              {list.data.items.length === 0 && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa{archived ? ' arquivada' : ''}{q || unread || numberId || category || withReminder || sellerId || awaiting ? ' com esses filtros' : archived ? '' : ' ainda'}.</li>}
               {list.data.items.map((c) => (
                 <li key={c.id}>
                   <button
@@ -212,9 +265,9 @@ function Chat() {
                         )}
                         {c.unread > 0 && <Badge className="h-5 shrink-0 px-1.5 tabular-nums" aria-label={`${c.unread} não lidas`}>{c.unread}</Badge>}
                       </span>
-                      {(list.data.numbers.length > 1 || (c.category && c.category !== 'CLIENTE')) && (
+                      {(list.data.numbers.length > 1 || (c.category && c.category !== 'CLIENTE') || monitor) && (
                         <span className="block truncate text-[11px] text-muted-foreground">
-                          {[list.data.numbers.length > 1 ? numbers.get(c.numberId)?.name : null, c.category && c.category !== 'CLIENTE' ? categoryLabel(c.category) : null].filter(Boolean).join(' · ')}
+                          {[monitor ? c.attendant || 'sem vendedor' : null, list.data.numbers.length > 1 ? numbers.get(c.numberId)?.name : null, c.category && c.category !== 'CLIENTE' ? categoryLabel(c.category) : null].filter(Boolean).join(' · ')}
                         </span>
                       )}
                     </span>
@@ -224,7 +277,7 @@ function Chat() {
             </ul>
           </div>
           <div className={cn('min-h-0', !openId && 'hidden md:block')}>
-            {openId ? <ThreadView id={openId} onBack={() => open(null)} /> : (
+            {openId ? <ThreadView id={openId} onBack={() => open(null)} monitor={monitor} /> : (
               <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
                 <MessageCircleIcon className="size-8" />
                 Escolha uma conversa.
@@ -233,12 +286,16 @@ function Chat() {
           </div>
         </Card>
       )}
+      <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+        <InfoIcon className="size-3.5 shrink-0" /> As conversas dos números da empresa podem ser acompanhadas pela gestão comercial, conforme a política interna de uso do WhatsApp.
+      </p>
     </div>
   )
 }
 
-export function ThreadView({ id, onBack }: { id: string; onBack?: () => void }) {
-  const q = useQuery({ queryKey: ['chat-conversa', id], queryFn: () => api.get<Thread>(`/chat/conversas/${id}`), refetchInterval: 4000 })
+export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack?: () => void; monitor?: boolean }) {
+  const mq = monitor ? 'monitorar=true' : ''
+  const q = useQuery({ queryKey: ['chat-conversa', id, monitor], queryFn: () => api.get<Thread>(`/chat/conversas/${id}${mq ? `?${mq}` : ''}`), refetchInterval: 4000 })
   const [older, setOlder] = useState<Message[]>([])
   const [loadingOlder, setLoadingOlder] = useState(false)
   const end = useRef<HTMLDivElement>(null)
@@ -259,7 +316,7 @@ export function ThreadView({ id, onBack }: { id: string; onBack?: () => void }) 
     if (!messages[0]) return
     setLoadingOlder(true)
     try {
-      const r = await api.get<Thread>(`/chat/conversas/${id}?antes=${encodeURIComponent(messages[0].sentAt)}`)
+      const r = await api.get<Thread>(`/chat/conversas/${id}?antes=${encodeURIComponent(messages[0].sentAt)}${mq ? `&${mq}` : ''}`)
       setOlder((o) => [...r.messages, ...o])
     } finally {
       setLoadingOlder(false)
@@ -267,6 +324,7 @@ export function ThreadView({ id, onBack }: { id: string; onBack?: () => void }) 
   }
   const title = d.conversation.name || formatPhone(d.conversation.phone) || 'Contato'
   return (
+    <MonitorContext.Provider value={monitor}>
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-3 py-2">
         {onBack && (
@@ -293,8 +351,8 @@ export function ThreadView({ id, onBack }: { id: string; onBack?: () => void }) 
               </a>
             </Button>
           )}
-          <ReminderButton conversationId={d.conversation.id} />
-          <ConversationActions thread={d} />
+          {!monitor && <ReminderButton conversationId={d.conversation.id} />}
+          {!monitor && <ConversationActions thread={d} />}
           {d.lead && (
             <Button asChild size="sm" variant="outline">
               <Link to={`/leads/${d.lead.id}`}>
@@ -316,7 +374,7 @@ export function ThreadView({ id, onBack }: { id: string; onBack?: () => void }) 
           </p>
         )}
       </div>
-      <ReminderBar conversationId={d.conversation.id} />
+      {!monitor && <ReminderBar conversationId={d.conversation.id} />}
       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto bg-muted/30 px-3 py-3">
         {(d.hasMore || older.length > 0) && (
           <div className="text-center">
@@ -344,8 +402,15 @@ export function ThreadView({ id, onBack }: { id: string; onBack?: () => void }) 
         })}
         <div ref={end} />
       </div>
-      <Composer thread={d} />
+      {monitor ? (
+        <p className="flex items-center gap-2 border-t bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
+          <EyeIcon className="size-4 shrink-0" /> Monitoramento: só leitura. O vendedor e o cliente não são avisados, e a conversa continua como não lida para quem atende.
+        </p>
+      ) : (
+        <Composer thread={d} />
+      )}
     </div>
+    </MonitorContext.Provider>
   )
 }
 
@@ -632,7 +697,8 @@ function waFormat(text: string) {
 }
 
 function Bubble({ m }: { m: Message }) {
-  const src = `/api/chat/midias/${m.id}`
+  const monitor = useContext(MonitorContext)
+  const src = `/api/chat/midias/${m.id}${monitor ? '?monitorar=true' : ''}`
   const text = m.text && <p className="break-words whitespace-pre-wrap">{waFormat(m.text)}</p>
   const pending = m.mediaStatus === 'PENDENTE' && <p className="text-xs italic opacity-70">Baixando a mídia…</p>
   const missing = (m.mediaStatus === 'GRANDE' || m.mediaStatus === 'ERRO') && (

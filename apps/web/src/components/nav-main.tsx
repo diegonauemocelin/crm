@@ -13,8 +13,8 @@ import { useChatAlerts } from '@/lib/chat-alerts'
 import { findNavItem, type NavGroup, type NavItem } from '@/lib/navigation'
 
 function Items({ items }: { items: NavItem[] }) {
-  const { pathname } = useLocation()
-  const current = findNavItem(pathname)?.item.to
+  const { pathname, search } = useLocation()
+  const current = findNavItem(pathname, search)?.item.to
   const isActive = (to: string) => to === current
   const unread = useChatAlerts().data?.unreadConversations ?? 0
   return (
