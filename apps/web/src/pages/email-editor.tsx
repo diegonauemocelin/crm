@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlignCenterIcon,
+  AlignJustifyIcon,
   AlignLeftIcon,
   AlignRightIcon,
   ArrowDownIcon,
@@ -8,6 +9,7 @@ import {
   ArrowUpIcon,
   BoldIcon,
   CalendarClockIcon,
+  Columns2Icon,
   CopyIcon,
   EyeIcon,
   GripVerticalIcon,
@@ -68,6 +70,8 @@ import { api, errorMessage } from '@/lib/api'
 import { int } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import { useBranding } from '@/lib/branding'
+import { AiAssist, AiSuggest } from '@/components/email/ai-assist'
+import { Swatches, useEmailPalette } from '@/components/email/palette'
 import {
   type Align,
   type Block,
@@ -82,7 +86,7 @@ import {
   productItem,
   type ProductSearch,
   type Segment,
-  type WhatsappNumber, SOCIAL_LABEL, SOCIAL_NETWORKS, SOCIAL_PLACEHOLDER, socialIcon } from '@/lib/email'
+  type WhatsappNumber, SOCIAL_LABEL, SOCIAL_NETWORKS, SOCIAL_PLACEHOLDER, socialIcon, type ColumnContent, type TextAlign } from '@/lib/email'
 import { cleanRich, legacyToHtml } from '@/lib/rich-text'
 import { cn } from '@/lib/utils'
 
@@ -120,6 +124,7 @@ function normalize(b: Block): Block {
 const BLOCK_ICON: Record<BlockType, typeof TypeIcon> = {
   titulo: HeadingIcon,
   texto: TypeIcon,
+  colunas: Columns2Icon,
   imagem: ImageIcon,
   botao: MousePointerClickIcon,
   whatsapp: MessageCircleIcon,
@@ -239,6 +244,8 @@ export function Editor({ campaign }: { campaign: Campaign }) {
     insert(target.at, { type: 'produtos', columns: 3, items: [p.item] })
   }
 
+  // Texto do e-mail (para a IA sugerir assunto e pré-cabeçalho).
+  const contentHtml = blocks.map((x) => (x.type === 'texto' || x.type === 'titulo' ? x.html : x.type === 'colunas' ? x.columns.map((k) => k.html).join(' ') : '')).join(' ').slice(0, 20_000)
   const body = () => ({ name: c.name, subject: c.subject, preheader: c.preheader || null, fromName: c.fromName || null, replyTo: c.replyTo || null, segmentId: c.segmentId, blocks })
   const persist = async () => {
     await api.put<Campaign>(`/email/campanhas/${campaign.id}`, body())
@@ -339,9 +346,11 @@ export function Editor({ campaign }: { campaign: Campaign }) {
           )}
           <Field label="Assunto" htmlFor="c-subject" hint="Use {primeiro_nome} para personalizar.">
             <Input id="c-subject" maxLength={200} placeholder="Ex.: {primeiro_nome}, peças JCB com frete grátis" value={c.subject} onChange={(e) => set('subject', e.target.value)} disabled={!canEdit} />
+            <AiSuggest action="assunto" content={contentHtml} onPick={(v) => set('subject', v)} disabled={!canEdit} />
           </Field>
           <Field label="Pré-cabeçalho" htmlFor="c-pre" hint="Aparece ao lado do assunto na caixa de entrada.">
             <Input id="c-pre" maxLength={200} value={c.preheader ?? ''} onChange={(e) => set('preheader', e.target.value)} disabled={!canEdit} />
+            <AiSuggest action="preheader" content={contentHtml} onPick={(v) => set('preheader', v)} disabled={!canEdit} />
           </Field>
           <Field label="Nome do remetente (opcional)" htmlFor="c-from">
             <Input id="c-from" maxLength={80} placeholder="Padrão das configurações" value={c.fromName ?? ''} onChange={(e) => set('fromName', e.target.value)} disabled={!canEdit} />
@@ -695,6 +704,34 @@ function BlockView({ block: b, brand, editing, onChange }: { block: Block; brand
         </div>
       )
     }
+    case 'colunas': {
+      const left = b.ratio === 40 || b.ratio === 60 ? b.ratio : 50
+      const setHtml = (i: 0 | 1, html: string) => {
+        const columns = [...b.columns] as [ColumnContent, ColumnContent]
+        columns[i] = { ...columns[i], html }
+        onChange({ ...b, columns })
+      }
+      return (
+        <div className="grid gap-0 px-6 py-2" style={{ gridTemplateColumns: `${left}fr ${100 - left}fr` }}>
+          {([0, 1] as const).map((i) => {
+            const c = b.columns[i]
+            return (
+              <div key={i} className="p-2" style={{ color: b.color ?? '#374151', textAlign: b.align ?? 'left', fontSize: 15, lineHeight: '22px' }}>
+                {c.image && <img src={c.image} alt="" draggable={false} className="mb-2.5 block h-auto w-full rounded-md" />}
+                <RichEditable html={c.html} editable={editing} onChange={(html) => setHtml(i, html)} />
+                {c.buttonText && (
+                  <div className="pt-3" style={{ textAlign: b.align === 'justify' ? 'left' : (b.align ?? 'left') }}>
+                    <span className="inline-block rounded-md px-5 py-2.5 text-sm font-bold text-white" style={{ background: b.buttonColor ?? brand }}>
+                      {c.buttonText}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )
+    }
     case 'imagem':
       return (
         <div className="flex justify-center px-8 py-2">
@@ -813,7 +850,6 @@ function RichEditable({ html, editable, onChange }: { html: string; editable: bo
 // ---------- Barra de formatação ----------
 
 const SIZES = [12, 14, 15, 16, 18, 20, 24, 28, 32, 40]
-const SWATCHES = ['#111827', '#374151', '#6b7280', '#1d4ed8', '#16a34a', '#dc2626', '#ea580c', '#ca8a04', '#7c3aed', '#ffffff']
 
 function FormatBar({ active }: { active: boolean }) {
   const saved = useRef<{ range: Range; el: HTMLElement } | null>(null)
@@ -949,6 +985,12 @@ function FormatBar({ active }: { active: boolean }) {
 
 function ColorPick({ label, icon, onPick }: { label: string; icon: ReactNode; onPick: (c: string) => void }) {
   const [open, setOpen] = useState(false)
+  const palette = useEmailPalette()
+  const choose = (c: string) => {
+    palette.remember(c)
+    onPick(c)
+    setOpen(false)
+  }
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -958,21 +1000,9 @@ function ColorPick({ label, icon, onPick }: { label: string; icon: ReactNode; on
       </PopoverTrigger>
       <PopoverContent className="w-56 space-y-2" onMouseDown={(e) => (e.target as HTMLElement).tagName !== 'INPUT' && e.preventDefault()}>
         <p className="text-xs font-medium">{label}</p>
-        <div className="grid grid-cols-5 gap-1.5">
-          {SWATCHES.map((c) => (
-            <button
-              key={c}
-              type="button"
-              className="size-8 rounded-md border"
-              style={{ background: c }}
-              aria-label={c}
-              onClick={() => {
-                onPick(c)
-                setOpen(false)
-              }}
-            />
-          ))}
-        </div>
+        <Swatches label="Marca e mais usadas" colors={palette.top} onPick={choose} />
+        <Swatches label="Recentes" colors={palette.recent} onPick={choose} />
+        <Swatches label="Paleta" colors={palette.classic} onPick={choose} />
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           Outra cor
           <input type="color" className="h-7 w-12 cursor-pointer rounded border p-0.5" onChange={(e) => onPick(e.target.value)} />
@@ -1209,12 +1239,13 @@ function ProductsPanel({ canEdit, onPick, intoSelected }: { canEdit: boolean; on
 
 // ---------- Propriedades do bloco selecionado ----------
 
-function AlignPick({ value, onChange, disabled }: { value: Align | undefined; onChange: (a: Align) => void; disabled: boolean }) {
+function AlignPick<T extends TextAlign>({ value, onChange, disabled, withJustify }: { value: T | undefined; onChange: (a: T) => void; disabled: boolean; withJustify?: boolean }) {
   const opts = [
     ['left', AlignLeftIcon, 'Esquerda'],
     ['center', AlignCenterIcon, 'Centro'],
     ['right', AlignRightIcon, 'Direita'],
-  ] as const
+    ...(withJustify ? ([['justify', AlignJustifyIcon, 'Justificado']] as const) : []),
+  ] as unknown as [T, typeof AlignLeftIcon, string][]
   return (
     <div className="flex gap-1">
       {opts.map(([a, Icon, label]) => (
@@ -1227,17 +1258,25 @@ function AlignPick({ value, onChange, disabled }: { value: Align | undefined; on
 }
 
 function ColorField({ label, value, fallback, onChange, disabled, clearable }: { label: string; value: string | undefined; fallback: string; onChange: (v: string | undefined) => void; disabled: boolean; clearable?: boolean }) {
+  const palette = useEmailPalette()
+  const pick = (c: string) => {
+    palette.remember(c)
+    onChange(c)
+  }
   return (
+    <div className="space-y-1.5">
     <div className="flex items-center justify-between gap-2">
       <Label className="text-sm font-normal">{label}</Label>
       <div className="flex items-center gap-1">
-        <input type="color" aria-label={label} className="h-8 w-12 cursor-pointer rounded border p-0.5" value={value ?? fallback} onChange={(e) => onChange(e.target.value)} disabled={disabled} />
+        <input type="color" aria-label={label} className="h-8 w-12 cursor-pointer rounded border p-0.5" value={value ?? fallback} onChange={(e) => onChange(e.target.value)} onBlur={(e) => palette.remember(e.target.value)} disabled={disabled} />
         {clearable && value && (
           <Button type="button" size="icon" variant="ghost" className="size-8" aria-label="Sem cor" onClick={() => onChange(undefined)} disabled={disabled}>
             <XIcon />
           </Button>
         )}
       </div>
+    </div>
+      {!disabled && <Swatches colors={[...palette.top, ...palette.recent].slice(0, 12)} onPick={pick} size="sm" />}
     </div>
   )
 }
@@ -1263,7 +1302,7 @@ function Inspector({ block: b, numbers, disabled, onChange, onPickImage }: { blo
           <p className="rounded-md bg-muted p-2 text-xs text-muted-foreground">Edite o texto direto no e-mail. Selecione um trecho e use a barra acima do e-mail para negrito, itálico, sublinhado, cor, tamanho e link.</p>
           <div className="flex items-center justify-between">
             <Label className="text-sm font-normal">Alinhamento</Label>
-            <AlignPick value={b.align ?? 'left'} onChange={(align) => onChange({ ...b, align })} disabled={disabled} />
+            <AlignPick value={b.align ?? 'left'} onChange={(align) => onChange({ ...b, align })} disabled={disabled} withJustify />
           </div>
           <div className="flex items-center justify-between gap-2">
             <Label className="text-sm font-normal">Tamanho base</Label>
@@ -1282,6 +1321,59 @@ function Inspector({ block: b, numbers, disabled, onChange, onPickImage }: { blo
           </div>
           <ColorField label="Cor do texto" value={b.color} fallback={title ? '#111827' : '#374151'} onChange={(color) => onChange({ ...b, color })} disabled={disabled} />
           <ColorField label="Fundo da faixa" value={b.bg} fallback="#f3f4f6" onChange={(bg) => onChange({ ...b, bg })} disabled={disabled} clearable />
+          <AiAssist html={b.html} onApply={(html) => onChange({ ...b, html })} disabled={disabled} />
+        </div>
+      )
+    }
+    case 'colunas': {
+      const setCol = (i: 0 | 1, patch: Partial<ColumnContent>) => {
+        const columns = [...b.columns] as [ColumnContent, ColumnContent]
+        columns[i] = { ...columns[i], ...patch }
+        onChange({ ...b, columns })
+      }
+      return (
+        <div className="space-y-4">
+          {head}
+          <p className="rounded-md bg-muted p-2 text-xs text-muted-foreground">Edite o texto de cada coluna direto no e-mail. No celular, as colunas ficam uma embaixo da outra.</p>
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-sm font-normal">Divisão</Label>
+            <Select value={String(b.ratio ?? 50)} onValueChange={(v) => onChange({ ...b, ratio: Number(v) as 40 | 50 | 60 })} disabled={disabled}>
+              <SelectTrigger size="sm" className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="50">Metade / metade</SelectItem>
+                <SelectItem value="40">Menor / maior</SelectItem>
+                <SelectItem value="60">Maior / menor</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-normal">Alinhamento</Label>
+            <AlignPick value={b.align ?? 'left'} onChange={(align) => onChange({ ...b, align })} disabled={disabled} withJustify />
+          </div>
+          <ColorField label="Cor do texto" value={b.color} fallback="#374151" onChange={(color) => onChange({ ...b, color })} disabled={disabled} />
+          <ColorField label="Cor dos botões" value={b.buttonColor} fallback="#1d4ed8" onChange={(buttonColor) => onChange({ ...b, buttonColor })} disabled={disabled} />
+          {([0, 1] as const).map((i) => (
+            <div key={i} className="space-y-2 rounded-md border p-2.5">
+              <p className="text-sm font-medium">Coluna da {i === 0 ? 'esquerda' : 'direita'}</p>
+              <Field label="Imagem (opcional)" htmlFor={`c${i}-img`}>
+                <Input id={`c${i}-img`} placeholder="https://..." value={b.columns[i].image ?? ''} onChange={(e) => setCol(i, { image: e.target.value })} disabled={disabled} />
+              </Field>
+              <Field label="Link da imagem" htmlFor={`c${i}-imgl`}>
+                <Input id={`c${i}-imgl`} placeholder="https://..." value={b.columns[i].imageLink ?? ''} onChange={(e) => setCol(i, { imageLink: e.target.value })} disabled={disabled} />
+              </Field>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Botão (texto)" htmlFor={`c${i}-bt`}>
+                  <Input id={`c${i}-bt`} maxLength={40} placeholder="Ver mais" value={b.columns[i].buttonText ?? ''} onChange={(e) => setCol(i, { buttonText: e.target.value })} disabled={disabled} />
+                </Field>
+                <Field label="Botão (link)" htmlFor={`c${i}-bu`}>
+                  <Input id={`c${i}-bu`} placeholder="https://..." value={b.columns[i].buttonUrl ?? ''} onChange={(e) => setCol(i, { buttonUrl: e.target.value })} disabled={disabled} />
+                </Field>
+              </div>
+              <AiAssist html={b.columns[i].html} onApply={(html) => setCol(i, { html })} disabled={disabled} />
+            </div>
+          ))}
         </div>
       )
     }

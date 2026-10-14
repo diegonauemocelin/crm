@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CopyIcon, ImageIcon, Loader2Icon, MailIcon, PencilIcon, PlusIcon, Trash2Icon, UploadIcon, UsersRoundIcon } from 'lucide-react'
+import { CopyIcon, ImageIcon, Loader2Icon, MailIcon, PencilIcon, PlusIcon, SparklesIcon, Trash2Icon, UploadIcon, UsersRoundIcon } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -436,6 +436,7 @@ function SettingsTab() {
     <div className="grid max-w-5xl gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
       <SettingsEditor initial={q.data} />
       <LogoCard settings={q.data} />
+      <AiCard />
     </div>
   )
 }
@@ -519,6 +520,113 @@ function SettingsEditor({ initial }: { initial: EmailSettings }) {
               {save.isPending && <Loader2Icon className="animate-spin" />}
               Salvar
             </Button>
+          </CardFooter>
+        )}
+      </form>
+    </Card>
+  )
+}
+
+const AI_MODEL_LABEL: Record<string, string> = {
+  'gemini-2.5-flash': 'Gemini 2.5 Flash (recomendado)',
+  'gemini-2.5-flash-lite': 'Gemini 2.5 Flash-Lite (mais rápido, limite maior)',
+  'gemini-2.0-flash': 'Gemini 2.0 Flash',
+}
+
+function AiCard() {
+  const qc = useQueryClient()
+  const { can } = useAuth()
+  const q = useQuery({ queryKey: ['email-ia'], queryFn: () => api.get<{ configured: boolean; model: string; about: string; models: string[] }>('/email/ia') })
+  const [apiKey, setApiKey] = useState('')
+  const [model, setModel] = useState<string | null>(null)
+  const [about, setAbout] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const done = (v: NonNullable<typeof q.data>) => {
+    qc.setQueryData(['email-ia'], v)
+    setApiKey('')
+    setModel(null)
+    setAbout(null)
+  }
+  const save = useMutation({
+    mutationFn: (removeKey?: boolean) => api.put<NonNullable<typeof q.data>>('/email/ia', removeKey ? { removeKey: true } : { apiKey: apiKey.trim() || undefined, model: model ?? undefined, about: about ?? undefined }),
+    onSuccess: (v, removeKey) => {
+      done(v)
+      toast.success(removeKey ? 'Chave do Gemini removida.' : 'Assistente de IA salvo.')
+    },
+    onError: (err) => setError(errorMessage(err)),
+  })
+  const test = useMutation({
+    mutationFn: () => api.post<{ ok: boolean; message: string }>('/email/ia/testar'),
+    onSuccess: (r) => toast.success(r.message),
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  if (!q.data) return null
+  const editable = can('email_marketing', 'edit')
+  return (
+    <Card className="lg:col-span-2">
+      <form
+        onSubmit={(e: FormEvent) => {
+          e.preventDefault()
+          setError(null)
+          save.mutate(false)
+        }}
+      >
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <SparklesIcon className="size-4 text-violet-600" /> Assistente de texto (IA)
+            <Badge variant={q.data.configured ? 'default' : 'secondary'}>{q.data.configured ? 'Ativo' : 'Sem chave'}</Badge>
+          </CardTitle>
+          <CardDescription>
+            Usa o Google Gemini para escrever e melhorar textos, e sugerir assunto e pré-cabeçalho. A chave é gratuita: entre em aistudio.google.com com uma conta Google, clique em “Get API key” → “Create API key” e cole aqui.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="mt-4 space-y-4">
+          <fieldset disabled={!editable} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Row label="Chave do Gemini" htmlFor="ia-key" hint={q.data.configured ? 'Já cadastrada (guardada criptografada). Preencha só para trocar.' : 'Começa com AIza…'}>
+                <Input id="ia-key" type="password" autoComplete="off" placeholder={q.data.configured ? '••••••••••••' : 'AIza...'} value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+              </Row>
+              <Row label="Modelo" htmlFor="ia-model">
+                <Select value={model ?? q.data.model} onValueChange={setModel}>
+                  <SelectTrigger id="ia-model" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {q.data.models.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {AI_MODEL_LABEL[m] ?? m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Row>
+            </div>
+            <Row label="Sobre a empresa" htmlFor="ia-about" hint="Ajuda a IA a escrever no tom certo: o que vende, para quem, diferenciais. Sem dados de clientes.">
+              <Textarea id="ia-about" rows={2} maxLength={500} placeholder="Importadora de peças para máquinas pesadas (JCB, Case, Caterpillar), atende oficinas e frotistas de todo o Brasil." value={about ?? q.data.about} onChange={(e) => setAbout(e.target.value)} />
+            </Row>
+            <p className="rounded-md bg-muted p-2.5 text-xs text-muted-foreground">
+              Privacidade: só o texto que você está escrevendo no e-mail vai para o Google, nunca dados de leads. No plano gratuito o Google pode usar esses textos para melhorar os modelos, então não escreva informações sigilosas no editor. O plano gratuito tem limite de pedidos por minuto e por dia.
+            </p>
+          </fieldset>
+          <FormError message={error} />
+        </CardContent>
+        {editable && (
+          <CardFooter className="mt-4 flex flex-wrap gap-2">
+            <Button type="submit" disabled={save.isPending}>
+              {save.isPending && <Loader2Icon className="animate-spin" />}
+              Salvar
+            </Button>
+            {q.data.configured && (
+              <>
+                <Button type="button" variant="outline" onClick={() => test.mutate()} disabled={test.isPending}>
+                  {test.isPending && <Loader2Icon className="animate-spin" />}
+                  Testar conexão
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => save.mutate(true)} disabled={save.isPending}>
+                  Remover chave
+                </Button>
+              </>
+            )}
           </CardFooter>
         )}
       </form>

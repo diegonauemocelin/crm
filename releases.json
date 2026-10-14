@@ -2,6 +2,19 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.23.0",
+      "date": "2026-10-14",
+      "title": "Editor de e-mail com 2 colunas, texto justificado, IA e cores mais usadas",
+      "changes": [
+        { "type": "novo", "area": "Email marketing", "text": "Bloco “2 colunas” no editor: texto, imagem e botão lado a lado (metade/metade ou menor/maior). No celular, as colunas ficam uma embaixo da outra, inclusive no Outlook." },
+        { "type": "novo", "area": "Email marketing", "text": "Texto justificado nos blocos de título, texto e colunas." },
+        { "type": "novo", "area": "Email marketing", "text": "Assistente de texto com IA (Google Gemini, chave gratuita): escreve a partir de um tema, melhora, encurta, deixa mais persuasivo e corrige o português; o texto só entra no e-mail depois de aprovado." },
+        { "type": "novo", "area": "Email marketing", "text": "Sugestões de assunto e de pré-cabeçalho com IA a partir do conteúdo do e-mail." },
+        { "type": "novo", "area": "Email marketing", "text": "Cores mais usadas: os seletores de cor mostram a cor da marca, as cores mais usadas nas campanhas da empresa, as últimas escolhidas e uma paleta pronta." },
+        { "type": "seguranca", "area": "Email marketing", "text": "A chave do Gemini fica guardada criptografada e só o rascunho do e-mail vai para o Google (nunca dados de leads)." }
+      ]
+    },
+    {
       "version": "0.22.0",
       "date": "2026-10-09",
       "title": "Redes sociais no e-mail marketing",

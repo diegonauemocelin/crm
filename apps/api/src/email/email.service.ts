@@ -16,7 +16,7 @@ import { EMAIL_IMAGE_LIMIT, FilesService } from '../files/files.service'
 import { MagazordService } from '../integracoes/magazord.service'
 import { MailService } from '../settings/mail.service'
 import { publicBranding, SettingsService } from '../settings/settings.service'
-import { type Block, type Brand, cleanBlocks, collectLinks, renderEmail, cleanSocial, SOCIAL_LABEL, SOCIAL_NETWORKS, type SocialLinks, socialUrl } from './blocos'
+import { type Block, type Brand, cleanBlocks, collectLinks, renderEmail, cleanSocial, SOCIAL_LABEL, SOCIAL_NETWORKS, type SocialLinks, socialUrl, topColors } from './blocos'
 
 export interface EmailSettings {
   /** Nome do remetente das campanhas (vazio = o do SMTP). */
@@ -298,6 +298,13 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     if (!r.started) throw new BadRequestException(r.reason)
     await this.audit.byUser(user, ctx, 'email.catalog_refresh', 'settings', 'magazord')
     return { ok: true }
+  }
+
+  /** Cores mais usadas nas últimas campanhas e modelos (paleta do editor). */
+  async usedColors(user: AuthUser) {
+    this.assertCan(user, 'view')
+    const rows = await this.prisma.emailCampaign.findMany({ where: { tenantId: user.tenantId }, orderBy: { updatedAt: 'desc' }, take: 200, select: { blocks: true } })
+    return topColors(rows.map((r) => r.blocks))
   }
 
   /** Números de WhatsApp já cadastrados na Captura, para escolher no botão do e-mail. */

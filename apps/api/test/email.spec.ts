@@ -164,3 +164,67 @@ describe('redes sociais no e-mail', () => {
     expect(f.html).toContain('youtube-cinza.png')
   })
 })
+
+describe('2 colunas, texto justificado e cores mais usadas', () => {
+  it('colunas fluidas (lado a lado / empilhadas), links rastreados e justificado', async () => {
+    const { topColors } = await import('../src/email/blocos')
+    const blocks = clean([
+      { type: 'texto', html: '<p>Texto</p>', align: 'justify' },
+      {
+        type: 'colunas',
+        ratio: 40,
+        align: 'justify',
+        columns: [
+          { html: '<p>Filtro <strong>JCB</strong></p>', image: 'https://cdn.usaparts.com.br/f.jpg', imageLink: 'https://www.usaparts.com.br/f', buttonText: 'Comprar', buttonUrl: 'https://www.usaparts.com.br/f' },
+          { html: '<p>Veja a <a href="https://www.usaparts.com.br/ofertas">oferta</a></p><script>x</script>' },
+        ],
+      },
+    ])
+    expect(collectLinks(blocks)).toEqual(['https://www.usaparts.com.br/f', 'https://www.usaparts.com.br/ofertas'])
+    const r = renderEmail(blocks, { ...base, trackLink: (_u, i) => `https://crm/l/${i}` })
+    expect(r.html).toContain('text-align:justify')
+    expect(r.html).toContain('max-width:221px') // 40% de 552
+    expect(r.html).toContain('max-width:331px')
+    expect(r.html).toContain('<!--[if mso]>')
+    expect(r.html).toContain('href="https://crm/l/1"')
+    expect(r.html).not.toContain('<script')
+    expect(r.text).toContain('Comprar: https://www.usaparts.com.br/f')
+    expect('error' in cleanBlocks([{ type: 'colunas', columns: [{ html: '', buttonText: 'Ir', buttonUrl: 'javascript:alert(1)' }, {}] }])).toBe(true)
+    expect(topColors([[{ type: 'botao', color: '#1D4ED8' }, { type: 'texto', html: '<span style="color: #dc2626">a</span><span style="color:rgb(220, 38, 38)">b</span>', bg: '#ffffff' }], [{ type: 'titulo', color: '#1d4ed8' }]])).toEqual(['#1d4ed8', '#dc2626'])
+  })
+
+  it('IA: pedidos, limpeza da resposta (sem tags vindas do modelo) e chamada ao Gemini', async () => {
+    const { userPrompt, systemPrompt, answerHtml, answerOptions, cleanAnswer } = await import('../src/email/ia')
+    expect(userPrompt('escrever', '', '')).toBeNull()
+    expect(userPrompt('escrever', '', 'promoção de filtros JCB')).toContain('promoção de filtros JCB')
+    expect(userPrompt('melhorar', 'Olá {primeiro_nome}', '')).toContain('Olá {primeiro_nome}')
+    expect(systemPrompt('USA Parts', 'peças para máquinas')).toContain('{primeiro_nome}')
+    expect(cleanAnswer('"**Olá**, tudo bem?"')).toBe('Olá, tudo bem?')
+    expect(answerHtml('Primeiro <b>parágrafo</b>.\n\nSegundo.')).toBe('<p>Primeiro &lt;b&gt;parágrafo&lt;/b&gt;.</p><p>Segundo.</p>')
+    expect(answerOptions('1. Assunto um\n2. "Assunto dois"\n- Assunto três')).toEqual(['Assunto um', 'Assunto dois', 'Assunto três'])
+
+    const { EmailAiService } = await import('../src/email/ia.service')
+    const { encrypt } = await import('../src/common/crypto')
+    const store = new Map<string, object>([['email_ia', { apiKeyEnc: encrypt('AIzaFakeKeyForTests1234567890'), model: 'gemini-2.5-flash', about: '' }]])
+    const settings = { get: async (_t: string, k: string, d: object) => store.get(k) ?? d, set: async () => undefined, branding: async () => ({ appName: 'USA Parts' }) }
+    const svc = new EmailAiService(settings as never, { byUser: async () => undefined } as never)
+    const user = { tenantId: 't', role: { isSystem: true }, permissions: {} } as never
+    const original = globalThis.fetch
+    let sent: { url: string; headers: Record<string, string>; body: { contents: { parts: { text: string }[] }[]; generationConfig: Record<string, unknown> } } | null = null
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      sent = { url, headers: init.headers as Record<string, string>, body: JSON.parse(String(init.body)) }
+      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Olá {primeiro_nome}!\n\nConfira os filtros.' }] } }] }))
+    }) as typeof fetch
+    try {
+      const r = await svc.generate(user, { action: 'melhorar', html: '<p>Oi {primeiro_nome}, veja os filtros</p>' })
+      expect(r).toEqual({ html: '<p>Olá {primeiro_nome}!</p><p>Confira os filtros.</p>', text: 'Olá {primeiro_nome}!\n\nConfira os filtros.' })
+      expect(sent!.url).toContain('/models/gemini-2.5-flash:generateContent')
+      expect(sent!.headers['x-goog-api-key']).toBe('AIzaFakeKeyForTests1234567890')
+      expect(sent!.body.contents[0]!.parts[0]!.text).toContain('Oi {primeiro_nome}, veja os filtros')
+      globalThis.fetch = (async () => new Response(JSON.stringify({ error: { message: 'Quota exceeded' } }), { status: 429 })) as typeof fetch
+      await expect(svc.generate(user, { action: 'assunto', text: 'Filtros JCB' })).rejects.toThrow(/Limite do plano gratuito/)
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+})

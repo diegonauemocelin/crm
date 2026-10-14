@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common'
 import { SOCIAL_ICONS, type SocialNetwork, type SocialStyle } from './icones'
+import { EmailAiService } from './ia.service'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { SkipThrottle, Throttle } from '@nestjs/throttler'
@@ -65,6 +66,20 @@ class StatusDto {
   @ApiProperty() @IsIn(['pausar', 'retomar', 'cancelar']) action!: 'pausar' | 'retomar' | 'cancelar'
 }
 
+class AiConfigDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) apiKey?: string
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) model?: string
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) about?: string
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() removeKey?: boolean
+}
+
+class AiGenerateDto {
+  @ApiProperty() @IsIn(['escrever', 'melhorar', 'encurtar', 'persuasivo', 'corrigir', 'assunto', 'preheader']) action!: 'escrever' | 'melhorar' | 'encurtar' | 'persuasivo' | 'corrigir' | 'assunto' | 'preheader'
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(30_000) html?: string
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(6000) text?: string
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(1000) topic?: string
+}
+
 class SettingsDto {
   @ApiProperty() @IsString() @MaxLength(80) fromName!: string
   @ApiProperty() @ValidateIf((_, v) => v !== '') @IsEmail() replyTo!: string
@@ -87,7 +102,41 @@ class CountDto {
 @ApiTags('E-mail marketing')
 @Controller('email')
 export class EmailController {
-  constructor(private readonly email: EmailService) {}
+  constructor(
+    private readonly email: EmailService,
+    private readonly ai: EmailAiService,
+  ) {}
+
+  // ---------- Assistente de texto (Gemini) ----------
+
+  @Get('ia')
+  aiConfig(@CurrentUser() user: AuthUser) {
+    return this.ai.view(user)
+  }
+
+  @Put('ia')
+  aiSave(@CurrentUser() user: AuthUser, @Body() dto: AiConfigDto, @ReqContext() ctx: RequestCtx) {
+    return this.ai.save(user, dto, ctx)
+  }
+
+  @Post('ia/testar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  aiTest(@CurrentUser() user: AuthUser) {
+    return this.ai.test(user)
+  }
+
+  @Post('ia/gerar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  aiGenerate(@CurrentUser() user: AuthUser, @Body() dto: AiGenerateDto) {
+    return this.ai.generate(user, dto)
+  }
+
+  @Get('cores')
+  colors(@CurrentUser() user: AuthUser) {
+    return this.email.usedColors(user)
+  }
 
   @Get('configuracoes')
   async config(@CurrentUser() user: AuthUser) {

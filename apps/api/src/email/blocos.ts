@@ -8,6 +8,17 @@ import { waDigits } from '../captura/regras'
 import type { SocialNetwork, SocialStyle } from './icones'
 
 export type Align = 'left' | 'center' | 'right'
+/** Texto também pode ser justificado. */
+export type TextAlign = Align | 'justify'
+
+/** Uma coluna do bloco de 2 colunas: imagem (opcional), texto formatado e botão (opcional). */
+export interface ColumnContent {
+  html: string
+  image?: string
+  imageLink?: string
+  buttonText?: string
+  buttonUrl?: string
+}
 
 export interface ProductItem {
   name: string
@@ -20,8 +31,9 @@ export interface ProductItem {
 
 export type Block =
   /** `text` é o formato antigo (**negrito**, [link](url)); ao salvar vira `html`. */
-  | { type: 'titulo'; html: string; text?: string; align?: Align; size?: number; color?: string; bg?: string }
-  | { type: 'texto'; html: string; text?: string; align?: Align; size?: number; color?: string; bg?: string }
+  | { type: 'titulo'; html: string; text?: string; align?: TextAlign; size?: number; color?: string; bg?: string }
+  | { type: 'texto'; html: string; text?: string; align?: TextAlign; size?: number; color?: string; bg?: string }
+  | { type: 'colunas'; columns: [ColumnContent, ColumnContent]; ratio?: 40 | 50 | 60; align?: TextAlign; color?: string; buttonColor?: string }
   | { type: 'imagem'; url: string; alt?: string; link?: string; width?: number }
   | { type: 'botao'; text: string; url: string; color?: string; textColor?: string; align?: Align }
   | { type: 'whatsapp'; text: string; phone: string; message?: string; align?: Align }
@@ -30,7 +42,7 @@ export type Block =
   | { type: 'redes'; links: SocialLinks; style?: SocialStyle; align?: Align }
   | { type: 'espaco'; height?: number }
 
-export const BLOCK_TYPES = ['titulo', 'texto', 'imagem', 'botao', 'whatsapp', 'produtos', 'redes', 'divisor', 'espaco'] as const
+export const BLOCK_TYPES = ['titulo', 'texto', 'colunas', 'imagem', 'botao', 'whatsapp', 'produtos', 'redes', 'divisor', 'espaco'] as const
 
 export type SocialLinks = Partial<Record<SocialNetwork, string>>
 export const SOCIAL_NETWORKS: SocialNetwork[] = ['facebook', 'instagram', 'youtube', 'tiktok']
@@ -121,6 +133,7 @@ const clamp = (v: unknown, min: number, max: number, fallback: number) => {
   return Number.isFinite(n) && n >= min && n <= max ? n : fallback
 }
 const alignOf = (v: unknown, fallback: Align = 'left'): Align => (v === 'center' || v === 'right' || v === 'left' ? v : fallback)
+const textAlignOf = (v: unknown, fallback: TextAlign = 'left'): TextAlign => (v === 'justify' ? 'justify' : alignOf(v, fallback === 'justify' ? 'left' : fallback))
 
 /** {nome}, {primeiro_nome}, {email}. Sem nome, a saudação fica neutra ("Olá!" em vez de "Olá, !"). */
 export function personalize(text: string, p: Person, esc: (v: string) => string = (v) => v) {
@@ -348,6 +361,12 @@ export function collectLinks(blocks: Block[]): string[] {
   }
   for (const b of blocks) {
     if (b.type === 'texto' || b.type === 'titulo') for (const h of hrefs(richOf(b))) add(safeUrl(h, true))
+    if (b.type === 'colunas')
+      for (const c of b.columns) {
+        add(safeUrl(c.imageLink))
+        for (const h of hrefs(c.html)) add(safeUrl(h, true))
+        add(safeUrl(c.buttonUrl, true))
+      }
     if (b.type === 'imagem') add(safeUrl(b.link))
     if (b.type === 'botao') add(safeUrl(b.url, true))
     if (b.type === 'whatsapp') add(whatsappUrl(b.phone, b.message))
@@ -387,10 +406,47 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
         const size = clamp(b.size, isTitle ? 18 : 12, isTitle ? 40 : 24, isTitle ? 24 : 15)
         const fg = hex(b.color, isTitle ? '#111827' : '#374151')
         const bg = optHex(b.bg)
-        const style = `padding:${bg ? '16px 32px' : '8px 32px'};font-size:${size}px;line-height:${Math.round(size * 1.45)}px;${isTitle ? 'font-weight:700;' : ''}color:${fg};text-align:${alignOf(b.align)}${bg ? `;background:${bg}` : ''}`
+        const style = `padding:${bg ? '16px 32px' : '8px 32px'};font-size:${size}px;line-height:${Math.round(size * 1.45)}px;${isTitle ? 'font-weight:700;' : ''}color:${fg};text-align:${textAlignOf(b.align)}${bg ? `;background:${bg}` : ''}`
         rows.push(`<tr><td style="${style}">${html}</td></tr>`)
         const plain = htmlToText(personalize(richOf(b), o.person))
         text.push(isTitle ? plain.toUpperCase() : plain, '')
+        break
+      }
+      case 'colunas': {
+        // Colunas "fluidas": lado a lado na tela larga e uma embaixo da outra no celular, sem depender de CSS
+        // (o Gmail e o Outlook ignoram boa parte do CSS). O Outlook do Windows usa a tabela dos comentários condicionais.
+        const inner = 552
+        const left = b.ratio === 40 || b.ratio === 60 ? b.ratio : 50
+        const widths = [Math.round((inner * left) / 100), inner - Math.round((inner * left) / 100)]
+        const fg = hex(b.color, '#374151')
+        const btnBg = hex(b.buttonColor, color)
+        const ta = textAlignOf(b.align)
+        const col = (c: ColumnContent, w: number) => {
+          const parts: string[] = []
+          const src = safeUrl(c.image)
+          if (src) {
+            const img = `<img src="${escape(src)}" alt="" width="${w - 16}" style="display:block;width:100%;max-width:${w - 16}px;height:auto;border:0;border-radius:6px;margin:0 0 10px">`
+            const link = href(c.imageLink)
+            parts.push(link ? `<a href="${escape(link)}" target="_blank">${img}</a>` : img)
+          }
+          const html = personalize(c.html, o.person, escape).replace(/href="([^"]*)"/g, (_m, h: string) => {
+            const u = safeUrl(decodeEntities(h), true)
+            return `href="${escape(u ? track(u) : '#')}"`
+          })
+          if (html.trim()) parts.push(`<div style="font-size:15px;line-height:22px;color:${fg};text-align:${ta}">${html}</div>`)
+          const blink = href(c.buttonUrl, true)
+          if (blink && c.buttonText) parts.push(`<div style="padding-top:12px;text-align:${ta === 'justify' ? 'left' : ta}"><a href="${escape(blink)}" target="_blank" style="background:${btnBg};color:#ffffff;text-decoration:none;padding:11px 22px;border-radius:6px;display:inline-block;font-weight:700;font-size:14px">${escape(P(c.buttonText))}</a></div>`)
+          return `<div style="display:inline-block;width:100%;max-width:${w}px;vertical-align:top;font-size:15px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:8px">${parts.join('')}</td></tr></table></div>`
+        }
+        rows.push(
+          `<tr><td style="padding:8px 24px;font-size:0;text-align:left"><!--[if mso]><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td width="${widths[0]}" valign="top"><![endif]-->${col(b.columns[0], widths[0]!)}<!--[if mso]></td><td width="${widths[1]}" valign="top"><![endif]-->${col(b.columns[1], widths[1]!)}<!--[if mso]></td></tr></table><![endif]--></td></tr>`,
+        )
+        for (const c of b.columns) {
+          const plain = htmlToText(personalize(c.html, o.person))
+          if (plain) text.push(plain)
+          if (c.buttonText && safeUrl(c.buttonUrl, true)) text.push(`${P(c.buttonText)}: ${safeUrl(c.buttonUrl, true)}`)
+          text.push('')
+        }
         break
       }
       case 'imagem': {
@@ -518,11 +574,31 @@ export function cleanBlocks(raw: unknown): { blocks: Block[] } | { error: string
         out.push({
           type: b.type,
           html,
-          align: alignOf(b.align),
+          align: textAlignOf(b.align),
           size: b.size === undefined ? undefined : clamp(b.size, isTitle ? 18 : 12, isTitle ? 40 : 24, isTitle ? 24 : 15),
           color: optHex(b.color),
           bg: optHex(b.bg),
         })
+        break
+      }
+      case 'colunas': {
+        const cols = Array.isArray(b.columns) ? (b.columns as Record<string, unknown>[]).slice(0, 2) : []
+        while (cols.length < 2) cols.push({})
+        const columns = [] as unknown as [ColumnContent, ColumnContent]
+        for (const [i, c] of cols.entries()) {
+          const side = i === 0 ? 'esquerda' : 'direita'
+          if (c?.image && !safeUrl(String(c.image))) return { error: `Imagem da coluna da ${side} com endereço inválido (use https://).` }
+          if (c?.imageLink && !safeUrl(String(c.imageLink))) return { error: `Link da imagem da coluna da ${side} inválido.` }
+          if (c?.buttonText && String(c.buttonText).trim() && !safeUrl(String(c.buttonUrl ?? ''), true)) return { error: `Botão da coluna da ${side} sem um link válido (https://...).` }
+          columns.push({
+            html: typeof c?.html === 'string' ? sanitizeRich(c.html, 10_000) : '',
+            image: str(c?.image, 500) || undefined,
+            imageLink: str(c?.imageLink, 500) || undefined,
+            buttonText: str(c?.buttonText, 40) || undefined,
+            buttonUrl: str(c?.buttonUrl, 500) || undefined,
+          })
+        }
+        out.push({ type: 'colunas', columns, ratio: b.ratio === 40 || b.ratio === 60 ? b.ratio : 50, align: textAlignOf(b.align), color: optHex(b.color), buttonColor: optHex(b.buttonColor) })
         break
       }
       case 'imagem':
@@ -572,4 +648,32 @@ export function cleanBlocks(raw: unknown): { blocks: Block[] } | { error: string
     }
   }
   return { blocks: out }
+}
+
+/**
+ * Cores mais usadas nos e-mails (para a paleta do editor): cores dos blocos e as do texto formatado.
+ * Recebe a lista de blocos de várias campanhas; devolve as mais frequentes, sem o branco.
+ */
+export function topColors(campaigns: unknown[], limit = 12): string[] {
+  const count = new Map<string, number>()
+  const add = (v: unknown) => {
+    if (typeof v !== 'string') return
+    const h = v.toLowerCase()
+    if (!HEX.test(h) || h === '#ffffff') return
+    count.set(h, (count.get(h) ?? 0) + 1)
+  }
+  const rgb = (r: string, g: string, b: string) => `#${[r, g, b].map((x) => Number(x).toString(16).padStart(2, '0')).join('')}`
+  const walk = (v: unknown) => {
+    if (Array.isArray(v)) return v.forEach(walk)
+    if (!v || typeof v !== 'object') return
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+      if (/color|bg/i.test(k)) add(x)
+      else if (k === 'html' && typeof x === 'string') {
+        for (const m of x.matchAll(/(?:^|[;"\s])(?:background-)?color:\s*(#[0-9a-f]{6})/gi)) add(m[1])
+        for (const m of x.matchAll(/(?:background-)?color:\s*rgb\((\d+),\s*(\d+),\s*(\d+)\)/gi)) add(rgb(m[1]!, m[2]!, m[3]!))
+      } else if (typeof x === 'object') walk(x)
+    }
+  }
+  campaigns.forEach(walk)
+  return [...count].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([c]) => c)
 }

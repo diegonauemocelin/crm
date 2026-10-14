@@ -19,6 +19,15 @@ export const STATUS_TONE: Record<CampaignStatus, string> = {
 }
 
 export type Align = 'left' | 'center' | 'right'
+export type TextAlign = Align | 'justify'
+
+export interface ColumnContent {
+  html: string
+  image?: string
+  imageLink?: string
+  buttonText?: string
+  buttonUrl?: string
+}
 
 export interface ProductItem {
   name: string
@@ -29,8 +38,9 @@ export interface ProductItem {
 }
 
 export type Block =
-  | { type: 'titulo'; html: string; align?: Align; size?: number; color?: string; bg?: string }
-  | { type: 'texto'; html: string; align?: Align; size?: number; color?: string; bg?: string }
+  | { type: 'titulo'; html: string; align?: TextAlign; size?: number; color?: string; bg?: string }
+  | { type: 'texto'; html: string; align?: TextAlign; size?: number; color?: string; bg?: string }
+  | { type: 'colunas'; columns: [ColumnContent, ColumnContent]; ratio?: 40 | 50 | 60; align?: TextAlign; color?: string; buttonColor?: string }
   | { type: 'imagem'; url: string; alt?: string; link?: string; width?: number }
   | { type: 'botao'; text: string; url: string; color?: string; textColor?: string; align?: Align }
   | { type: 'whatsapp'; text: string; phone: string; message?: string; align?: Align }
@@ -57,6 +67,7 @@ export const socialIcon = (n: SocialNetwork, style: 'cor' | 'cinza') => `/api/pu
 export const BLOCK_LABEL: Record<BlockType, string> = {
   titulo: 'Título',
   texto: 'Texto',
+  colunas: '2 colunas',
   imagem: 'Imagem',
   botao: 'Botão',
   whatsapp: 'WhatsApp',
@@ -72,6 +83,16 @@ export function newBlock(type: BlockType, whatsappPhone = '', social: SocialLink
       return { type, html: 'Olá, {primeiro_nome}!', align: 'left' }
     case 'texto':
       return { type, html: 'Escreva aqui. Selecione um trecho para deixar em <strong>negrito</strong>, <em>itálico</em>, mudar a cor ou o tamanho.', align: 'left' }
+    case 'colunas':
+      return {
+        type,
+        ratio: 50,
+        align: 'left',
+        columns: [
+          { html: '<p>Texto da coluna da esquerda. Use para uma foto com descrição ao lado.</p>' },
+          { html: '<p>Texto da coluna da direita. No celular, as colunas ficam uma embaixo da outra.</p>' },
+        ],
+      }
     case 'imagem':
       return { type, url: '', alt: '', width: 100 }
     case 'botao':

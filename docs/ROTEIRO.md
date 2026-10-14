@@ -4,8 +4,8 @@ Ordem definida em 14/10/2026. Cada item vira uma versão (ou mais), publicada e 
 
 | # | Ordem | Entrega | Observações |
 |---|---|---|---|
-| 17 | 1 | **Redes sociais no e-mail marketing** | Bloco com Facebook, Instagram, YouTube e TikTok; os endereços são cadastrados uma vez; cada ícone abre a rede em nova aba. |
-| 18 | 2 | **Editor de e-mail: 2 colunas, texto justificado, IA gratuita e cores mais usadas** | IA gratuita (Gemini, plano gratuito) para sugerir/reescrever textos; paleta com as cores da marca e as últimas usadas. |
+| 17 | 1 | **Redes sociais no e-mail marketing** (feito na v0.22.0) | Bloco com Facebook, Instagram, YouTube e TikTok; os endereços são cadastrados uma vez; cada ícone abre a rede em nova aba. |
+| 18 | 2 | **Editor de e-mail: 2 colunas, texto justificado, IA gratuita e cores mais usadas** (feito na v0.23.0) | IA gratuita (Gemini, plano gratuito) para sugerir/reescrever textos; paleta com as cores da marca e as últimas usadas. |
 | 15 | 3 | **Dashboard de e-mail marketing** | Enviados, entregues, abertos, clicados, descadastros, devolvidos, vendas convertidas e valor; desempenho de cada fluxo de automação. A abertura é aproximada (alguns programas de e-mail abrem as imagens sozinhos). |
 | 16 | 4 | **Produtos visualizados na loja virtual** | Pelo rastreamento do site: produtos mais vistos, por lead, e vistos sem compra. |
 | 1 | 5 | **Sincronizar produtos da Magazord 1 vez por dia** | Automático, de madrugada, com aviso se falhar. |
