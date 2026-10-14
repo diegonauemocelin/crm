@@ -423,7 +423,7 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
       for (const r of batch) {
         // Descadastrou ou teve os dados apagados depois que a campanha começou: não envia.
         if (!r.lead.emailOptIn || r.lead.anonymizedAt || r.lead.deletedAt) {
-          await this.prisma.emailRecipient.update({ where: { id: r.id }, data: { status: 'ERRO', error: 'Sem consentimento no momento do envio.' } })
+          await this.prisma.emailRecipient.update({ where: { id: r.id }, data: { status: 'ERRO', failedAt: new Date(), error: 'Sem consentimento no momento do envio.' } })
           continue
         }
         const token = this.token(r.id)
@@ -460,7 +460,7 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
             this.logger.warn(`Campanha ${c.id.slice(0, 8)}: falha no servidor de e-mail, nova tentativa em instantes (${msg}).`)
             break
           }
-          await this.prisma.emailRecipient.update({ where: { id: r.id }, data: { status: 'ERRO', error: msg } })
+          await this.prisma.emailRecipient.update({ where: { id: r.id }, data: { status: 'ERRO', failedAt: new Date(), error: msg } })
           if (BOUNCE.test(msg)) await this.prisma.lead.update({ where: { id: r.leadId }, data: { emailBouncedAt: new Date() } })
         }
       }
@@ -523,7 +523,7 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
         await this.prisma.emailRecipient.delete({ where: { id: r.id } })
         return { status: 'tentar_depois', message: `Servidor de e-mail indisponível (${msg}).` }
       }
-      await this.prisma.emailRecipient.update({ where: { id: r.id }, data: { status: 'ERRO', error: msg } })
+      await this.prisma.emailRecipient.update({ where: { id: r.id }, data: { status: 'ERRO', failedAt: new Date(), error: msg } })
       await this.prisma.emailCampaign.update({ where: { id: tpl.id }, data: { failed: { increment: 1 } } })
       if (BOUNCE.test(msg)) await this.prisma.lead.update({ where: { id: a.leadId }, data: { emailBouncedAt: new Date() } })
       return { status: 'erro', message: `E-mail recusado: ${msg}` }

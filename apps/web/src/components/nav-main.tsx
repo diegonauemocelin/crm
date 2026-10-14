@@ -10,11 +10,12 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 import { useChatAlerts } from '@/lib/chat-alerts'
-import type { NavGroup, NavItem } from '@/lib/navigation'
+import { findNavItem, type NavGroup, type NavItem } from '@/lib/navigation'
 
 function Items({ items }: { items: NavItem[] }) {
   const { pathname } = useLocation()
-  const isActive = (to: string) => (to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(`${to}/`))
+  const current = findNavItem(pathname)?.item.to
+  const isActive = (to: string) => to === current
   const unread = useChatAlerts().data?.unreadConversations ?? 0
   return (
     <SidebarMenu>

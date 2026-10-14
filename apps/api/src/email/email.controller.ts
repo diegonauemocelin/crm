@@ -1,11 +1,12 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common'
 import { SOCIAL_ICONS, type SocialNetwork, type SocialStyle } from './icones'
 import { EmailAiService } from './ia.service'
+import { EmailDashboardService } from './painel.service'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { SkipThrottle, Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
-import { IsArray, IsDateString, IsEmail, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateIf, ValidateNested, IsBoolean } from 'class-validator'
+import { IsArray, IsDateString, IsEmail, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested, IsBoolean } from 'class-validator'
 import type { Response } from 'express'
 import { CurrentUser, Public, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
@@ -95,6 +96,13 @@ class ProductQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(500) page = 1
 }
 
+class DashQuery {
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) de?: string
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) ate?: string
+  @IsOptional() @IsIn(['todos', 'campanhas', 'automacoes']) origem?: 'todos' | 'campanhas' | 'automacoes'
+  @IsOptional() @Type(() => Number) @IsInt() @IsIn([1, 3, 7, 14, 30]) janela?: number
+}
+
 class CountDto {
   @ApiProperty() @IsObject() @ValidateNested() @Type(() => SegmentFiltersDto) filters!: SegmentFiltersDto
 }
@@ -105,7 +113,14 @@ export class EmailController {
   constructor(
     private readonly email: EmailService,
     private readonly ai: EmailAiService,
+    private readonly dash: EmailDashboardService,
   ) {}
+
+  /** Dashboard: funil, vendas de quem clicou, campanhas, fluxos e saúde da base. */
+  @Get('dashboard')
+  dashboard(@CurrentUser() user: AuthUser, @Query() q: DashQuery) {
+    return this.dash.dashboard(user, { from: q.de, to: q.ate, source: q.origem, window: q.janela })
+  }
 
   // ---------- Assistente de texto (Gemini) ----------
 

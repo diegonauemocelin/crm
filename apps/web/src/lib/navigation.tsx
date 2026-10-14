@@ -74,6 +74,7 @@ export const NAVIGATION: NavGroup[] = [
     items: [
       { title: 'Dashboards e relatórios', to: '/relatorios', icon: BarChart3Icon, module: 'relatorios' },
       { title: 'Google Ads', to: '/google-ads', icon: TargetIcon, module: 'google_ads' },
+      { title: 'Email marketing', to: '/email-marketing/dashboard', icon: MailIcon, module: 'email_marketing' },
       { title: 'WhatsApp', to: '/whatsapp/dashboard', icon: MessageCircleIcon, module: 'chat' },
     ],
   },
@@ -98,11 +99,14 @@ export function visibleNavigation(can: (module: string, action?: Action) => bool
   )
 }
 
+/** Item do menu da tela atual: o de endereço mais específico (/email-marketing/dashboard ganha de /email-marketing). */
 export function findNavItem(pathname: string): { group: NavGroup; item: NavItem } | null {
+  let best: { group: NavGroup; item: NavItem } | null = null
   for (const group of NAVIGATION) {
     for (const item of group.items) {
-      if (item.to === '/' ? pathname === '/' : pathname === item.to || pathname.startsWith(`${item.to}/`)) return { group, item }
+      const hit = item.to === '/' ? pathname === '/' : pathname === item.to || pathname.startsWith(`${item.to}/`)
+      if (hit && (!best || item.to.length > best.item.to.length)) best = { group, item }
     }
   }
-  return null
+  return best
 }

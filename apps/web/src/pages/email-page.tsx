@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CopyIcon, ImageIcon, Loader2Icon, MailIcon, PencilIcon, PlusIcon, SparklesIcon, Trash2Icon, UploadIcon, UsersRoundIcon } from 'lucide-react'
+import { BarChart3Icon, CopyIcon, ImageIcon, Loader2Icon, MailIcon, PencilIcon, PlusIcon, SparklesIcon, Trash2Icon, UploadIcon, UsersRoundIcon } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -29,7 +29,17 @@ export function EmailPage() {
   const tab = params.get('aba') ?? 'campanhas'
   return (
     <RequirePermission module="email_marketing">
-      <PageHeader title="Email marketing" description="Campanhas para os leads que autorizaram receber e-mails, com aberturas, cliques e descadastros." />
+      <PageHeader
+        title="Email marketing"
+        description="Campanhas para os leads que autorizaram receber e-mails, com aberturas, cliques e descadastros."
+        actions={
+          <Button asChild variant="outline" size="sm">
+            <Link to="/email-marketing/dashboard">
+              <BarChart3Icon /> Dashboard
+            </Link>
+          </Button>
+        }
+      />
       <Tabs value={tab} onValueChange={(v) => setParams(v === 'campanhas' ? {} : { aba: v }, { replace: true })}>
         <TabsList className="mb-4">
           <TabsTrigger value="campanhas">Campanhas</TabsTrigger>

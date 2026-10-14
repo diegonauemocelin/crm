@@ -38,6 +38,7 @@ export function ClassicLayout() {
   const groups = visibleNavigation(can)
   const crumbs = useBreadcrumb()
   const activeGroup = findNavItem(pathname)?.group.title
+  const activeItem = findNavItem(pathname)?.item.to
   const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
@@ -64,8 +65,8 @@ export function ClassicLayout() {
                         to={item.to}
                         end={item.to === '/'}
                         onClick={() => setMobileOpen(false)}
-                        className={({ isActive }) =>
-                          cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted', isActive && 'bg-muted font-medium')
+                        className={() =>
+                          cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted', item.to === activeItem && 'bg-muted font-medium')
                         }
                       >
                         <item.icon className="size-4" />

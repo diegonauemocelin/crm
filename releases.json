@@ -2,6 +2,20 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.24.0",
+      "date": "2026-10-14",
+      "title": "Dashboard do e-mail marketing",
+      "changes": [
+        { "type": "novo", "area": "Email marketing", "text": "Dashboard do e-mail marketing (Análise → Email marketing): entregues, devolvidos, taxa de abertura, de cliques e de descadastro, com comparação ao período anterior." },
+        { "type": "novo", "area": "Email marketing", "text": "Vendas de quem clicou: pedidos pagos na loja e pré-vendas fechadas até 1, 3, 7, 14 ou 30 dias após o clique, contadas uma vez só para o último e-mail clicado." },
+        { "type": "novo", "area": "Email marketing", "text": "Resultado de cada campanha e de cada fluxo de automação (quem entrou, terminou e comprou), links mais clicados e funil dos e-mails." },
+        { "type": "novo", "area": "Email marketing", "text": "Mapa de quando os e-mails são abertos (dia da semana e hora), com o melhor horário para agendar, e dicas automáticas (devolução e descadastro altos, abertura baixa)." },
+        { "type": "novo", "area": "Email marketing", "text": "Saúde da base: leads com e-mail, quantos podem receber, sem consentimento e com e-mail inexistente." },
+        { "type": "melhoria", "area": "Email marketing", "text": "O CRM passa a guardar a data dos envios recusados, para contá-los no período certo." },
+        { "type": "correcao", "area": "Sistema", "text": "No menu, só o item da tela aberta fica destacado (antes, telas com endereço parecido acendiam dois itens)." }
+      ]
+    },
+    {
       "version": "0.23.0",
       "date": "2026-10-14",
       "title": "Editor de e-mail com 2 colunas, texto justificado, IA e cores mais usadas",
