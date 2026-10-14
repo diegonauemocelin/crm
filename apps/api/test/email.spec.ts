@@ -212,13 +212,16 @@ describe('2 colunas, texto justificado e cores mais usadas', () => {
     const original = globalThis.fetch
     let sent: { url: string; headers: Record<string, string>; body: { contents: { parts: { text: string }[] }[]; generationConfig: Record<string, unknown> } } | null = null
     globalThis.fetch = (async (url: string, init: RequestInit) => {
+      // Lista de modelos da chave: escolhe o Flash-Lite estável mais novo (a configuração antiga "gemini-2.5-flash" vira "rapido").
+      if (!url.includes(':generateContent')) return new Response(JSON.stringify({ models: [{ name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] }, { name: 'models/gemini-2.5-flash-lite', supportedGenerationMethods: ['generateContent'] }] }))
       sent = { url, headers: init.headers as Record<string, string>, body: JSON.parse(String(init.body)) }
       return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Olá {primeiro_nome}!\n\nConfira os filtros.' }] } }] }))
     }) as typeof fetch
     try {
       const r = await svc.generate(user, { action: 'melhorar', html: '<p>Oi {primeiro_nome}, veja os filtros</p>' })
       expect(r).toEqual({ html: '<p>Olá {primeiro_nome}!</p><p>Confira os filtros.</p>', text: 'Olá {primeiro_nome}!\n\nConfira os filtros.' })
-      expect(sent!.url).toContain('/models/gemini-2.5-flash:generateContent')
+      expect(sent!.url).toContain('/models/gemini-2.5-flash-lite:generateContent')
+      expect(sent!.body.generationConfig).toMatchObject({ thinkingConfig: { thinkingBudget: 0 } })
       expect(sent!.headers['x-goog-api-key']).toBe('AIzaFakeKeyForTests1234567890')
       expect(sent!.body.contents[0]!.parts[0]!.text).toContain('Oi {primeiro_nome}, veja os filtros')
       globalThis.fetch = (async () => new Response(JSON.stringify({ error: { message: 'Quota exceeded' } }), { status: 429 })) as typeof fetch
@@ -241,5 +244,47 @@ describe('chave do Gemini', () => {
     await svc.save(user, { apiKey: 'AIzaFakeKeyForTests1234567890' }, {} as never)
     await expect(svc.save(user, { apiKey: 'AQ.chave com espaço 1234567890' }, {} as never)).rejects.toThrow(/inválida/)
     await expect(svc.save(user, { apiKey: '.AQcomecaComPonto1234567890' }, {} as never)).rejects.toThrow(/inválida/)
+  })
+})
+
+describe('modelo do Gemini', () => {
+  it('escolhe o mais rápido estável e mais novo disponível para a chave', async () => {
+    const { rankModels } = await import('../src/email/ia')
+    const m = (name: string, gen = true) => ({ name: `models/${name}`, supportedGenerationMethods: gen ? ['generateContent'] : ['embedContent'] })
+    const models = [m('gemini-2.5-flash'), m('gemini-2.5-flash-lite'), m('gemini-3.0-flash-lite'), m('gemini-3.1-flash-lite-preview'), m('gemini-2.5-pro'), m('gemini-flash-lite-latest'), m('gemini-2.5-flash-image'), m('text-embedding-004', false)]
+    expect(rankModels(models, 'rapido')).toEqual(['gemini-3.0-flash-lite', 'gemini-2.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-2.5-flash'])
+    expect(rankModels(models, 'caprichado')[0]).toBe('gemini-2.5-flash')
+  })
+
+  it('modelo aposentado (404): consulta a lista de novo e usa outro, sem erro para o usuário', async () => {
+    const { EmailAiService } = await import('../src/email/ia.service')
+    const { encrypt } = await import('../src/common/crypto')
+    const store = new Map<string, object>([['email_ia', { apiKeyEnc: encrypt('AQ.FakeNewFormatKey_for-tests1234567890'), model: 'rapido', about: '' }]])
+    const settings = { get: async (_t: string, k: string, d: object) => store.get(k) ?? d, set: async () => undefined, branding: async () => ({ appName: 'USA Parts' }) }
+    const svc = new EmailAiService(settings as never, { byUser: async () => undefined } as never)
+    const user = { tenantId: 't', role: { isSystem: true }, permissions: {} } as never
+    const original = globalThis.fetch
+    const asked: string[] = []
+    let lists = 0
+    globalThis.fetch = (async (url: string) => {
+      if (!url.includes(':generateContent')) {
+        lists++
+        // Primeira lista ainda tem o modelo velho; a segunda (depois do 404) já não tem.
+        const names = lists === 1 ? ['gemini-2.0-flash-lite', 'gemini-2.5-flash-lite'] : ['gemini-2.5-flash-lite']
+        return new Response(JSON.stringify({ models: names.map((n) => ({ name: `models/${n}`, supportedGenerationMethods: ['generateContent'] })) }))
+      }
+      const model = /models\/([^:]+):/.exec(url)![1]!
+      asked.push(model)
+      if (model === 'gemini-2.5-flash-lite') return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Assunto 1\nAssunto 2' }] } }] }))
+      return new Response(JSON.stringify({ error: { message: 'models/x is not found' } }), { status: 404 })
+    }) as typeof fetch
+    try {
+      const r = await svc.generate(user, { action: 'assunto', text: 'Filtros JCB' })
+      expect(r).toEqual({ options: ['Assunto 1', 'Assunto 2'] })
+      expect(asked).toEqual(['gemini-2.5-flash-lite'])
+      expect((await svc.test(user)).message).toMatch(/gemini-2\.5-flash-lite/)
+    } finally {
+      globalThis.fetch = original
+    }
   })
 })

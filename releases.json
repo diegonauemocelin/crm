@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.27.1",
+      "date": "2026-10-14",
+      "title": "IA do e-mail: escolhe sozinha o Gemini mais rápido",
+      "changes": [
+        { "type": "correcao", "area": "Email marketing", "text": "Corrigido o erro “Modelo do Gemini não encontrado”: o CRM consulta os modelos disponíveis para a chave e usa sozinho o mais rápido e mais novo (Flash-Lite), trocando automaticamente se o Google aposentar algum." },
+        { "type": "melhoria", "area": "Email marketing", "text": "Respostas da IA mais rápidas: sem o modo de “raciocínio” e com espera máxima de 25 segundos. Nas configurações, a escolha passa a ser “Mais rápido” (recomendado) ou “Mais caprichado”." },
+        { "type": "melhoria", "area": "Email marketing", "text": "O botão “Testar conexão” mostra qual modelo do Gemini está em uso." }
+      ]
+    },
+    {
       "version": "0.27.0",
       "date": "2026-10-14",
       "title": "Menus reorganizados",

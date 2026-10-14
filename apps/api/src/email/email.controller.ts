@@ -68,8 +68,8 @@ class StatusDto {
 }
 
 class AiConfigDto {
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) apiKey?: string
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) model?: string
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) apiKey?: string
+  @ApiPropertyOptional({ enum: ['rapido', 'caprichado'] }) @IsOptional() @IsIn(['rapido', 'caprichado']) model?: string
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) about?: string
   @ApiPropertyOptional() @IsOptional() @IsBoolean() removeKey?: boolean
 }

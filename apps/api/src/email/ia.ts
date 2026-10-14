@@ -15,8 +15,45 @@ export const AI_ACTIONS: Record<AiAction, string> = {
   preheader: 'Sugerir pré-cabeçalho',
 }
 
-export const AI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'] as const
-export type AiModel = (typeof AI_MODELS)[number]
+/**
+ * Como escolher o modelo: o Google troca e aposenta modelos com frequência, então o CRM não fixa um nome.
+ * rapido: o Flash-Lite mais novo disponível para a chave (responde em poucos segundos; recomendado).
+ * caprichado: o Flash mais novo (texto um pouco melhor, mais lento).
+ */
+export const AI_MODES = ['rapido', 'caprichado'] as const
+export type AiMode = (typeof AI_MODES)[number]
+
+/** Usados quando a lista de modelos do Google não puder ser consultada. */
+export const FALLBACK_MODELS: Record<AiMode, string[]> = {
+  rapido: ['gemini-flash-lite-latest', 'gemini-2.5-flash-lite', 'gemini-flash-latest', 'gemini-2.5-flash'],
+  caprichado: ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-2.5-flash-lite'],
+}
+
+/** Modelos que não servem para texto rápido (prévias, imagem, voz, embeddings...). */
+const SKIP = /preview|exp|experimental|thinking|image|tts|audio|live|embedding|vision|learnlm|gemma|robotics|computer|native|aqa|nano|customtools/i
+
+export interface GeminiModel {
+  name: string
+  supportedGenerationMethods?: string[]
+}
+
+/**
+ * Ordem de preferência entre os modelos da chave: Flash-Lite (rápido) ou Flash (caprichado) primeiro, versão mais nova
+ * primeiro, estáveis numerados antes dos apelidos "-latest". Pro fica de fora (lento demais para a tela do editor).
+ */
+export function rankModels(models: GeminiModel[], mode: AiMode): string[] {
+  const rows = models
+    .filter((m) => (m.supportedGenerationMethods ?? []).includes('generateContent'))
+    .map((m) => m.name.replace(/^models\//, ''))
+    .filter((n) => /^gemini-/.test(n) && /flash/.test(n) && !SKIP.test(n))
+    .map((n) => {
+      const lite = /flash-lite/.test(n)
+      const v = /^gemini-(\d+(?:\.\d+)?)/.exec(n)
+      return { n, tier: mode === 'rapido' ? (lite ? 0 : 1) : lite ? 1 : 0, version: v ? Number(v[1]) : 0, alias: /latest/.test(n) }
+    })
+  rows.sort((a, b) => a.tier - b.tier || Number(a.alias) - Number(b.alias) || b.version - a.version || a.n.length - b.n.length)
+  return [...new Set(rows.map((r) => r.n))]
+}
 
 export function systemPrompt(company: string, about: string) {
   return [

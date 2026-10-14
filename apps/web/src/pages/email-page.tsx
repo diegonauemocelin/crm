@@ -538,9 +538,8 @@ function SettingsEditor({ initial }: { initial: EmailSettings }) {
 }
 
 const AI_MODEL_LABEL: Record<string, string> = {
-  'gemini-2.5-flash': 'Gemini 2.5 Flash (recomendado)',
-  'gemini-2.5-flash-lite': 'Gemini 2.5 Flash-Lite (mais rápido, limite maior)',
-  'gemini-2.0-flash': 'Gemini 2.0 Flash',
+  rapido: 'Mais rápido (recomendado)',
+  caprichado: 'Mais caprichado (um pouco mais lento)',
 }
 
 function AiCard() {
@@ -596,7 +595,7 @@ function AiCard() {
               <Row label="Chave do Gemini" htmlFor="ia-key" hint={q.data.configured ? 'Já cadastrada (guardada criptografada). Preencha só para trocar.' : 'Começa com AQ. ou AIza. Use o botão “Copiar chave” do AI Studio.'}>
                 <Input id="ia-key" type="password" autoComplete="off" placeholder={q.data.configured ? '••••••••••••' : 'AQ.…'} value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
               </Row>
-              <Row label="Modelo" htmlFor="ia-model">
+              <Row label="Velocidade" htmlFor="ia-model" hint="O CRM escolhe sozinho o modelo do Gemini mais novo disponível para a sua chave e troca se o Google aposentar algum.">
                 <Select value={model ?? q.data.model} onValueChange={setModel}>
                   <SelectTrigger id="ia-model" className="w-full">
                     <SelectValue />
