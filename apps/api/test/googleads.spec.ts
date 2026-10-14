@@ -378,7 +378,7 @@ describe('Saldo pré-pago do Google Ads (estimado)', () => {
 describe('Google Ads: conferência depois do envio', () => {
   it('traduz a resposta final do Google (aceito, parcial, recusado com os motivos)', async () => {
     const { summarizeRequestStatus } = await import('../src/googleads/googleads')
-    expect(summarizeRequestStatus({ requestStatusPerDestination: [{ requestStatus: 'SUCCESS', eventsIngestionStatus: { recordCount: '12' } }] })).toEqual({ status: 'ACEITO', detail: null })
+    expect(summarizeRequestStatus({ requestStatusPerDestination: [{ requestStatus: 'SUCCESS', eventsIngestionStatus: { recordCount: '12' } }] })).toEqual({ status: 'ACEITO', detail: null, retry: false })
     expect(summarizeRequestStatus({ requestStatusPerDestination: [{ requestStatus: 'PROCESSING' }] })?.status).toBe('PROCESSANDO')
     const r = summarizeRequestStatus({
       requestStatusPerDestination: [
@@ -435,5 +435,46 @@ describe('Google Ads: conferência depois do envio', () => {
     } finally {
       globalThis.fetch = original
     }
+  })
+})
+
+describe('Google Ads: ações de conversão criadas de novo', () => {
+  it('trocar o ID da ação devolve para a fila o que foi para a ação antiga (até 90 dias)', async () => {
+    const { GoogleAdsService } = await import('../src/googleads/googleads.service')
+    const { DEFAULT_GOOGLE_ADS } = await import('../src/googleads/googleads')
+    const rows = [
+      { id: 'a', recordId: 'r1', kind: 'contato', actionId: '111' },
+      { id: 'b', recordId: 'r2', kind: 'venda', actionId: '999' },
+      { id: 'c', recordId: 'r3', kind: 'perda', actionId: '333' },
+      { id: 'd', recordId: 'r4', kind: 'negociacao', actionId: '444' },
+    ]
+    let where: { status?: { in: string[] }; eventAt?: { gte: Date } } = {}
+    const requeued: string[] = []
+    const prisma = {
+      googleAdsConversion: {
+        findMany: async (q: { where: typeof where }) => ((where = q.where), rows),
+        updateMany: async (u: { where: { id: { in: string[] } }; data: { status: string; googleStatus: null } }) => {
+          expect(u.data).toMatchObject({ status: 'PENDENTE', googleStatus: null, attempts: 0 })
+          requeued.push(...u.where.id.in)
+        },
+      },
+      serviceRecord: { findMany: async () => [{ id: 'r3', lostReasonId: 'motivo-preco' }] },
+    }
+    const service = new GoogleAdsService(prisma as never, {} as never, {} as never)
+    const s = { ...DEFAULT_GOOGLE_ADS, actions: { contato: '211', negociacao: '', venda: '999', perda: '300', perdaPorMotivo: { 'motivo-preco': '333' } } }
+    const now = Date.parse('2026-10-17T12:00:00Z')
+    expect(await service.requeueForNewActions('t', s, now)).toBe(1)
+    // Contato mudou de ação (111 → 211); venda e perda por motivo continuam; qualificado sem ação não envia.
+    expect(requeued).toEqual(['a'])
+    expect(where.status?.in).toEqual(['ENVIADO', 'ERRO'])
+    expect(where.eventAt?.gte.getTime()).toBe(now - 90 * 86_400_000)
+  })
+
+  it('"ação criada há pouco" volta para a fila; repetidas contam como aceitas', async () => {
+    const { summarizeRequestStatus } = await import('../src/googleads/googleads')
+    const recent = summarizeRequestStatus({ requestStatusPerDestination: [{ requestStatus: 'PARTIAL_SUCCESS', errorInfo: { errorCounts: [{ recordCount: '59', reason: 'PROCESSING_ERROR_REASON_DESTINATION_TOO_RECENTLY_CREATED' }] } }] })
+    expect(recent?.retry).toBe(true)
+    const dup = summarizeRequestStatus({ requestStatusPerDestination: [{ requestStatus: 'PARTIAL_SUCCESS', errorInfo: { errorCounts: [{ recordCount: '40', reason: 'PROCESSING_ERROR_REASON_DUPLICATE_TRANSACTION_ID' }] } }] })
+    expect(dup).toMatchObject({ status: 'ACEITO', retry: false })
   })
 })

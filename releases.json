@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.38.2",
+      "date": "2026-10-16",
+      "title": "Reenvio para ações de conversão novas",
+      "changes": [
+        { "type": "melhoria", "area": "Google Ads", "text": "Ações de conversão criadas de novo: ao trocar o ID de uma ação, os resultados que foram para a ação antiga voltam para a fila e vão para a nova (os que o Google ainda aceita, até 90 dias)." },
+        { "type": "melhoria", "area": "Google Ads", "text": "Envios recusados por “ação criada há pouco” ou “clique recente demais” são reenviados sozinhos; as conversões repetidas desse reenvio contam como aceitas." },
+        { "type": "correcao", "area": "Google Ads", "text": "Corrigido o erro “conversão com data antes do clique” quando o contato era registrado segundos antes da visita do anúncio." }
+      ]
+    },
+    {
       "version": "0.38.1",
       "date": "2026-10-16",
       "title": "Conversões pelo Google Tag Manager",

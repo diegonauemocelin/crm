@@ -96,7 +96,7 @@ function Editor({ initial }: { initial: Config }) {
     setError(null)
     setResult(null)
     try {
-      const saved = await api.put<Config>('/integracoes/google-ads', {
+      const saved = await api.put<Config & { requeued?: number }>('/integracoes/google-ads', {
         enabled: form.enabled,
         customerId: form.customerId,
         loginCustomerId: form.loginCustomerId,
@@ -113,7 +113,10 @@ function Editor({ initial }: { initial: Config }) {
       setCampaigns(Object.entries(saved.campaigns ?? {}).map(([id, name]) => ({ id, name })))
       setKeyFile(null)
       if (fileRef.current) fileRef.current.value = ''
-      toast.success('Google Ads salvo.')
+      if (saved.requeued) {
+        toast.success(`Google Ads salvo. ${int.format(saved.requeued)} resultado(s) que foram para as ações antigas voltaram para a fila e vão para as novas.`, { duration: 10_000 })
+        void qc.invalidateQueries({ queryKey: ['google-ads-envios'] })
+      } else toast.success('Google Ads salvo.')
     } catch (err) {
       setError(errorMessage(err))
     } finally {

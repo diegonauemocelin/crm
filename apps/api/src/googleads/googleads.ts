@@ -420,16 +420,22 @@ export function reasonLabel(reason: string) {
 export type GoogleCheck = 'PROCESSANDO' | 'ACEITO' | 'PARCIAL' | 'RECUSADO'
 
 /** Resumo da resposta do requestStatus:retrieve (uma destinação por envio do CRM). */
-export function summarizeRequestStatus(body: unknown): { status: GoogleCheck; detail: string | null } | null {
+/** Recusas que passam sozinhas (o Google pede para esperar): o CRM reenvia o lote depois. */
+export const RETRY_REASONS = ['DESTINATION_TOO_RECENTLY_CREATED', 'TOO_RECENT_CLICK']
+const reasonKey = (r: string) => r.replace(/^PROCESSING_ERROR_(REASON_)?/, '')
+
+export function summarizeRequestStatus(body: unknown): { status: GoogleCheck; detail: string | null; retry: boolean } | null {
   const list = (body as { requestStatusPerDestination?: unknown[] } | null)?.requestStatusPerDestination
   const d = (Array.isArray(list) ? list[0] : null) as { requestStatus?: string; errorInfo?: { errorCounts?: { recordCount?: string | number; reason?: string }[] }; eventsIngestionStatus?: { recordCount?: string | number } } | null
   if (!d?.requestStatus) return null
   const map: Record<string, GoogleCheck> = { PROCESSING: 'PROCESSANDO', SUCCESS: 'ACEITO', PARTIAL_SUCCESS: 'PARCIAL', FAILED: 'RECUSADO' }
-  const status = map[d.requestStatus]
+  let status = map[d.requestStatus]
   if (!status) return null
   const total = Number(d.eventsIngestionStatus?.recordCount ?? 0) || null
-  const parts = (d.errorInfo?.errorCounts ?? [])
-    .filter((c) => c.reason)
-    .map((c) => `${Number(c.recordCount ?? 0) || '?'}${total ? ` de ${total}` : ''}: ${reasonLabel(String(c.reason))}`)
-  return { status, detail: parts.length ? parts.join(' · ').slice(0, 500) : null }
+  const counts = (d.errorInfo?.errorCounts ?? []).filter((c) => c.reason)
+  const parts = counts.map((c) => `${Number(c.recordCount ?? 0) || '?'}${total ? ` de ${total}` : ''}: ${reasonLabel(String(c.reason))}`)
+  const keys = counts.map((c) => reasonKey(String(c.reason)))
+  // Repetidas (reenvio de um lote) não são problema: já estavam no Google.
+  if (status === 'PARCIAL' && keys.length && keys.every((k) => k === 'DUPLICATE_TRANSACTION_ID')) status = 'ACEITO'
+  return { status, detail: parts.length ? parts.join(' · ').slice(0, 500) : null, retry: keys.some((k) => RETRY_REASONS.includes(k)) }
 }

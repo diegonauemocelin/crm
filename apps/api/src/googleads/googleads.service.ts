@@ -234,6 +234,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
       if (!Object.values(main).some(Boolean) && !Object.values(perdaPorMotivo).some((v) => v && v !== '-')) throw new BadRequestException('Informe ao menos uma conversão (ex.: a de venda).')
     }
     await this.settings.set(user.tenantId, 'google_ads', next)
+    const requeued = await this.requeueForNewActions(user.tenantId, next)
     // Mudaram as origens dos anúncios: refaz a marcação "veio do Google Ads" dos atendimentos.
     const sameOrigins = [...(current.originIds ?? [])].sort().join() === [...next.originIds].sort().join()
     if (!sameOrigins) await this.origemAds?.recheckRecords(user.tenantId)
@@ -247,8 +248,35 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
       soGoogle: next.onlyGoogle,
       origens: next.originIds.length,
       desde: next.startDate,
+      reenviar: requeued,
     })
-    return this.view(next)
+    return { ...this.view(next), requeued }
+  }
+
+  /**
+   * Trocou o ID de uma ação de conversão (ex.: a ação foi apagada e criada de novo no Google Ads): os resultados que
+   * foram para a ação antiga voltam para a fila e vão para a nova (só os que o Google ainda aceita: até 90 dias).
+   */
+  async requeueForNewActions(tenantId: string, s: GoogleAdsSettings, now = Date.now()) {
+    const rows = await this.prisma.googleAdsConversion.findMany({
+      where: { tenantId, status: { in: ['ENVIADO', 'ERRO'] }, eventAt: { gte: new Date(now - CLICK_WINDOW_DAYS * DAY) } },
+      select: { id: true, recordId: true, kind: true, actionId: true },
+    })
+    if (!rows.length) return 0
+    const reasons = new Map(
+      (await this.prisma.serviceRecord.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.recordId))] } }, select: { id: true, lostReasonId: true } })).map((r) => [r.id, r.lostReasonId]),
+    )
+    const ids = rows.filter((r) => {
+      const action = actionFor(s, r.kind as ConversionKind, reasons.get(r.recordId) ?? null)
+      return !!action && action !== r.actionId
+    }).map((r) => r.id)
+    for (let i = 0; i < ids.length; i += 5000) {
+      await this.prisma.googleAdsConversion.updateMany({
+        where: { id: { in: ids.slice(i, i + 5000) } },
+        data: { status: 'PENDENTE', attempts: 0, error: null, googleStatus: null, googleDetail: null, googleCheckedAt: null, requestId: null },
+      })
+    }
+    return ids.length
   }
 
   /** Aprende o nome de uma campanha (quando o link traz o número e o utm_campaign juntos). Nunca troca um nome já cadastrado. */
@@ -430,6 +458,8 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
         if (!actionId || existing.has(transactionId)) continue
         // O Google não aceita conversão mais de 90 dias depois do clique.
         const late = clickAt && k.at.getTime() - clickAt.getTime() > CLICK_WINDOW_DAYS * DAY
+        // Nem conversão antes do clique (o cadastro pode ter ficado registrado segundos antes da visita).
+        const eventAt = clickAt && k.at.getTime() <= clickAt.getTime() ? new Date(clickAt.getTime() + 60_000) : k.at
         rows.push({
           tenantId,
           recordId: r.id,
@@ -437,7 +467,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
           kind: k.kind,
           transactionId,
           actionId,
-          eventAt: k.at,
+          eventAt,
           value: k.value,
           clickIds: (clickIds ?? undefined) as Prisma.InputJsonValue | undefined,
           campaign: google ? campaignLabel(adsInfoOf([google], s.campaigns) ?? { campaign: null, campaignId: null }).slice(0, 160) : null,
@@ -528,7 +558,7 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
     try {
       if (this.gapMs) await sleep(this.gapMs)
       const requestId = await this.ingest(tenantId, s, actionId, items.map((x) => x.ev))
-      await this.prisma.googleAdsConversion.updateMany({ where: { id: { in: ids } }, data: { status: 'ENVIADO', actionId, requestId, error: null, sentAt: new Date(), attempts: { increment: 1 } } })
+      await this.prisma.googleAdsConversion.updateMany({ where: { id: { in: ids } }, data: { status: 'ENVIADO', actionId, requestId, error: null, sentAt: new Date(), attempts: { increment: 1 }, googleStatus: null, googleDetail: null, googleCheckedAt: null } })
       return { sent: ids.length, failed: 0 }
     } catch (err) {
       const msg = (err as Error).message
@@ -586,6 +616,14 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
           ? { googleStatus: sum.status, googleDetail: sum.detail, googleCheckedAt: new Date(now) }
           : { googleStatus: 'PROCESSANDO', googleDetail: res.ok ? null : adsError(res.status, body, s.clientEmail).slice(0, 500), googleCheckedAt: new Date(now) },
       })
+      // "Ação criada há pouco" / "clique recente demais": o Google pede para esperar. Volta o lote para a fila; as que
+      // já tinham entrado voltam como repetidas (o Google ignora pelo transactionId).
+      if (sum?.retry && sum.status !== 'PROCESSANDO') {
+        await this.prisma.googleAdsConversion.updateMany({
+          where: { tenantId, requestId: p.requestId, attempts: { lt: MAX_ATTEMPTS } },
+          data: { status: 'PENDENTE', error: `O Google pediu para esperar (${sum.detail ?? 'aguarde'}). Reenvio automático.`.slice(0, 500) },
+        })
+      }
       checked++
     }
     return checked
