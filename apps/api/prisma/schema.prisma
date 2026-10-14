@@ -1473,3 +1473,65 @@ model Suggestion {
   @@index([userId, createdAt])
   @@map("suggestions")
 }
+
+/// Produto da Tcar (ERP) copiado para a consulta rápida no CRM: códigos, título, estoque e preço (nunca o custo).
+model TcarProduct {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @db.Uuid
+  /// Código do produto na Tcar (SKU).
+  code            String
+  name            String
+  ean             String?
+  factoryCode     String?
+  integrationCode String?
+  /// Códigos de referência (REF1-5 e IMP1-5).
+  refs            String[]
+  brand           String?
+  groupName       String?
+  subgroupName    String?
+  application     String?
+  usedIn          String?
+  unit            String?
+  stock           Decimal? @db.Decimal(14, 3)
+  price           Decimal? @db.Decimal(12, 2)
+  resalePrice     Decimal? @db.Decimal(12, 2)
+  /// Estoque e preço por filial: [{ id, name, available, price, resalePrice }].
+  branches        Json     @default("[]")
+  /// Texto sem acentos para a busca.
+  searchText      String
+  /// Última cópia completa em que o produto apareceu (os que somem ficam fora da busca).
+  seenAt          DateTime
+  stockAt         DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId, factoryCode])
+  @@index([tenantId, integrationCode])
+  @@map("tcar_products")
+}
+
+/// Consulta pedida à Tcar pelo PingAlive: sai na resposta do "ping" e volta no "report".
+model TcarAction {
+  /// Também é o "transaction" enviado à Tcar.
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @db.Uuid
+  /// full (cópia completa, página a página), incremental (alterados) ou live (uma peça, pedido na tela).
+  kind      String
+  cmd       String
+  query     Json      @default("{}")
+  /// PENDENTE, ENVIADA, OK, ERRO
+  status    String    @default("PENDENTE")
+  attempts  Int       @default(0)
+  /// Início da cópia (marca os produtos vistos nela).
+  runAt     DateTime?
+  offset    Int       @default(0)
+  resultCode Int?
+  error     String?
+  sentAt    DateTime?
+  doneAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([tenantId, status, createdAt])
+  @@map("tcar_actions")
+}

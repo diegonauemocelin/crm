@@ -20,10 +20,11 @@ import { FormError } from './auth/auth-layout'
 import { MetaTab } from './settings/meta-tab'
 import { Ga4Tab } from './settings/ga4-tab'
 import { GoogleAdsTab } from './settings/google-ads-tab'
+import { TcarTab } from './settings/tcar-tab'
 import { MagazordTab } from './settings/magazord-tab'
 import { TrackingTab } from './settings/tracking-tab'
 
-const TABS = ['marca', 'aparencia', 'email', 'rastreamento', 'loja', 'meta', 'ga4', 'google-ads']
+const TABS = ['marca', 'aparencia', 'email', 'rastreamento', 'loja', 'meta', 'ga4', 'google-ads', 'tcar']
 
 export function SettingsPage() {
   // Aba inicial pelo endereço (?aba=loja), usada pelos atalhos de outras telas.
@@ -42,6 +43,7 @@ export function SettingsPage() {
           <TabsTrigger value="meta">Meta Lead Ads</TabsTrigger>
           <TabsTrigger value="ga4">Google Analytics</TabsTrigger>
           <TabsTrigger value="google-ads">Google Ads</TabsTrigger>
+          <TabsTrigger value="tcar">Tcar (ERP)</TabsTrigger>
         </TabsList>
         <TabsContent value="loja">
           <MagazordTab />
@@ -54,6 +56,9 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="google-ads">
           <GoogleAdsTab />
+        </TabsContent>
+        <TabsContent value="tcar">
+          <TcarTab />
         </TabsContent>
         <TabsContent value="ga4">
           <Ga4Tab />

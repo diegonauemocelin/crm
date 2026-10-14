@@ -15,6 +15,7 @@ import { RelatoriosModule } from './relatorios/relatorios.module'
 import { CatalogoModule } from './catalogo/catalogo.module'
 import { GoogleAdsModule } from './googleads/googleads.module'
 import { SugestoesModule } from './sugestoes/sugestoes.module'
+import { TcarModule } from './tcar/tcar.module'
 import { WhatsappModule } from './whatsapp/whatsapp.module'
 import { env } from './config/env'
 import { FilesModule } from './files/files.module'
@@ -36,9 +37,10 @@ import { UsersService } from './users/users.service'
         level: env.isProd ? 'info' : 'debug',
         transport: env.isProd ? undefined : { target: 'pino-pretty', options: { singleLine: true } },
         // Cookies e cabeçalhos de autenticação nunca vão para o log.
-        redact: ['req.headers.cookie', 'req.headers.authorization', 'req.headers["x-csrf-token"]', 'res.headers["set-cookie"]'],
+        // Chaves de integração (Tcar, Evolution) também nunca vão para o log.
+        redact: ['req.headers.cookie', 'req.headers.authorization', 'req.headers["x-csrf-token"]', 'req.headers["x-api-key"]', 'req.headers.apikey', 'req.headers["x-tcar-session"]', 'res.headers["set-cookie"]'],
         // Health e as páginas vistas do site (milhares por dia) não poluem o log.
-        autoLogging: { ignore: (req) => req.url === '/api/health' || !!req.url?.startsWith('/api/public/rastreamento/') || !!req.url?.startsWith('/api/public/captura/config') || !!req.url?.startsWith('/api/public/e/') },
+        autoLogging: { ignore: (req) => req.url === '/api/health' || !!req.url?.startsWith('/api/public/rastreamento/') || !!req.url?.startsWith('/api/public/captura/config') || !!req.url?.startsWith('/api/public/e/') || req.url === '/api/webhooks/tcar/ping' },
       },
     }),
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 300 }]),
@@ -58,6 +60,7 @@ import { UsersService } from './users/users.service'
     GoogleAdsModule,
     WhatsappModule,
     SugestoesModule,
+    TcarModule,
   ],
   controllers: [UsersController, RolesController, SystemController],
   providers: [

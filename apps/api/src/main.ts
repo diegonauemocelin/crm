@@ -28,6 +28,8 @@ async function bootstrap() {
   app.use('/api/webhooks/meta', raw({ type: () => true, limit: '1mb' }))
   // Eventos do WhatsApp (rede interna): mensagens com miniaturas de foto/vídeo podem passar de 1 MB.
   app.use('/api/webhooks/whatsapp', json({ limit: '5mb' }))
+  // Resultado das consultas da Tcar (páginas de 200 produtos com referências e filiais).
+  app.use('/api/webhooks/tcar', json({ limit: '5mb' }))
   app.useBodyParser('json', { limit: '1mb' })
   app.useBodyParser('urlencoded', { limit: '1mb', extended: false })
 
