@@ -13,12 +13,27 @@ A melhoria é feita por IA ou à mão, sempre aprovada por uma pessoa, e enviada
   não vendem. Com isso dá para começar pelo que traz mais resultado, não pelo catálogo inteiro.
 - **IA do e-mail** (v0.23/v0.27.1): o Gemini já está ligado, com escolha automática do modelo.
 
+## API da Magazord (levantado em 15/10/2026)
+
+Mesmo endereço e mesmo usuário WebService da integração atual (confirmado pelo usuário). Fonte:
+[docs.api.magazord.com.br](https://docs.api.magazord.com.br/api/patch-produto/).
+
+- **Ler:** `GET /v2/site/produto/:codigoProduto`, pelo código (SKU) do **produto pai**. A documentação não detalha os campos da
+  resposta: conferir com um produto real antes de programar.
+- **Alterar só alguns campos:** `PATCH /v2/site/produto/:codigoProduto`, com:
+  - `nome` (até 100 caracteres);
+  - `palavraChave` (palavras-chave de busca, até 1500 caracteres);
+  - `produtoLoja: [{ loja, titulo, tituloComplemento, descricao, descricaoResumida }]` (por loja; `loja` = id da loja,
+    o mesmo `storeId` da integração).
+- **Título e descrição de SEO** (meta title e meta description): não aparecem como campos próprios na API. Provavelmente a
+  loja usa `titulo` e `descricaoResumida`. Confirmar com a Magazord ou num produto real.
+- Atenção: o código do catálogo copiado hoje (`/v2/site/frontend/produto`) pode ser o da derivação. Confirmar qual código
+  o `PATCH` espera (o do produto pai).
+
 ## O que falta (precisa de você ou da Magazord)
 
-1. **Documentação da API da Magazord para alterar produto**: as rotas de leitura e alteração de título,
-   descrição, meta title, meta description e palavras-chave. Hoje o CRM só lê o catálogo público
-   (`/v2/site/frontend/produto`), que não traz a descrição nem os campos de SEO.
-2. **Permissão de escrita** no usuário WebService da Magazord, só nos produtos e só nesses campos, se ela permitir.
+1. **Confirmar os campos** da leitura (`GET /v2/site/produto/:codigo`) com um produto real, e se há campos de SEO à parte.
+2. **Permissão de escrita** no usuário WebService para alterar produtos (o usuário é o mesmo da integração).
 3. **Google Search Console** da loja (opcional, recomendado): para medir antes e depois (impressões, cliques e
    posição por produto).
 4. **Decisão sobre a IA:** gratuita ou paga (veja "Custos").
