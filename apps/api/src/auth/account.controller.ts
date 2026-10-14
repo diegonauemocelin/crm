@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Res, UploadedFile, UseInterceptors } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
-import { ApiProperty, ApiTags } from '@nestjs/swagger'
-import { IsEnum, IsOptional, IsString, Length } from 'class-validator'
+import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
+import { IsEnum, IsOptional, IsString, Length, MaxLength, ValidateIf } from 'class-validator'
 import type { Response } from 'express'
 import { env } from '../config/env'
 import { AllowPending2fa, CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
@@ -20,6 +20,7 @@ class PreferencesDto {
 
 class ProfileDto {
   @ApiProperty() @IsString() @Length(2, 120) name!: string
+  @ApiPropertyOptional({ description: 'Como o nome aparece nas mensagens do WhatsApp; vazio = primeiro nome' }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(60) chatSignature?: string | null
 }
 
 @ApiTags('Minha conta')
@@ -58,7 +59,7 @@ export class AccountController {
 
   @Patch('profile')
   profile(@CurrentUser() user: AuthUser, @Body() dto: ProfileDto, @ReqContext() ctx: RequestCtx) {
-    return this.account.updateProfile(user, dto.name, ctx)
+    return this.account.updateProfile(user, dto.name, ctx, dto.chatSignature)
   }
 
   @Post('avatar')

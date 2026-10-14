@@ -22,17 +22,70 @@ import { FormError } from './auth/auth-layout'
 import { PasswordRules } from './auth/password-pages'
 
 export function ProfilePage() {
-  const { me } = useAuth()
+  const { me, can } = useAuth()
   if (!me) return null
   return (
     <div className="mx-auto max-w-4xl space-y-4">
       <PageHeader title="Meu perfil" description="Seus dados, aparência e segurança da conta." />
       <ProfileCard me={me} />
+      {can('chat', 'create') && <ChatNameCard me={me} />}
       <AppearanceCard me={me} />
       <PasswordCard />
       <TwoFactorCard me={me} />
       <SessionsCard />
     </div>
+  )
+}
+
+/** Nome nas mensagens enviadas pelo CRM no WhatsApp (quando o número assina as mensagens). */
+function ChatNameCard({ me }: { me: Me }) {
+  const qc = useQueryClient()
+  const [value, setValue] = useState(me.chatSignature ?? '')
+  const [busy, setBusy] = useState(false)
+  const first = me.name.trim().split(/\s+/)[0] ?? ''
+  // Mesma limpeza do servidor (cleanSignature): sem formatação do WhatsApp, uma linha, até 40 letras.
+  const label = value.replace(/[*_~`\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/[:\s]+$/, '').slice(0, 40) || first
+  const save = async (e: FormEvent) => {
+    e.preventDefault()
+    setBusy(true)
+    try {
+      qc.setQueryData(['me'], await api.patch<Me>('/me/profile', { name: me.name, chatSignature: value.trim() || null }))
+      toast.success('Nome nas mensagens salvo.')
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Card>
+      <form onSubmit={save}>
+        <CardHeader>
+          <CardTitle>Seu nome nas mensagens do WhatsApp</CardTitle>
+          <CardDescription>Aparece no começo de cada mensagem que você envia pelo CRM, para o cliente saber com quem fala. Em branco, vai o seu primeiro nome.</CardDescription>
+        </CardHeader>
+        <CardContent className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="p-chat-name">Como aparecer</Label>
+            <Input id="p-chat-name" value={value} onChange={(e) => setValue(e.target.value)} maxLength={40} placeholder={`Ex.: ${first || 'Diego'} - Vendas`} />
+            <p className="text-xs text-muted-foreground">Até 40 letras. Só vale nos números que assinam as mensagens (Números de WhatsApp).</p>
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Como o cliente vê</p>
+            <div className="w-fit max-w-full rounded-lg bg-[#d9fdd3] px-3 py-2 text-sm text-[#111b21] shadow-xs dark:bg-[#005c4b] dark:text-[#e9edef]">
+              <p className="font-bold break-words">{label}:</p>
+              <p>Olá! Temos o filtro em estoque.</p>
+            </div>
+          </div>
+        </CardContent>
+        <CardFooter className="mt-4">
+          <Button type="submit" disabled={busy || value.trim() === (me.chatSignature ?? '')}>
+            {busy && <Loader2Icon className="animate-spin" />}
+            Salvar
+          </Button>
+        </CardFooter>
+      </form>
+    </Card>
   )
 }
 

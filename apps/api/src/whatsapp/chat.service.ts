@@ -460,12 +460,17 @@ export class ChatService {
     throw err
   }
 
+  /** Nome escolhido pelo usuário para as mensagens (Meu perfil). */
+  private async signatureOf(user: AuthUser) {
+    return (await this.prisma.user.findUnique({ where: { id: user.id }, select: { chatSignature: true } }))?.chatSignature ?? null
+  }
+
   async sendText(user: AuthUser, id: string, raw: string) {
     const text = raw.replace(/\r\n/g, '\n').trim()
     if (!text) throw new BadRequestException('Escreva a mensagem.')
     if (text.length > 4000) throw new BadRequestException('Mensagem muito longa (máximo 4.000 caracteres).')
     const c = await this.sendContext(user, id)
-    const body = c.number.signMessages ? signed(text, user.name) : text
+    const body = c.number.signMessages ? signed(text, user.name, await this.signatureOf(user)) : text
     const r = await c.client.sendText(c.number.instanceName, c.target, body).catch((e: unknown) => this.fail(e))
     return this.recordSent(user, c, r, { type: 'texto', text: body })
   }
@@ -478,7 +483,7 @@ export class ChatService {
     const c = await this.sendContext(user, id)
     const fileName = safeFileName(uploadName(file.originalname), kind.ext)
     const cap = caption?.trim().slice(0, 1000) || null
-    const text = cap ? (c.number.signMessages ? signed(cap, user.name) : cap) : null
+    const text = cap ? (c.number.signMessages ? signed(cap, user.name, await this.signatureOf(user)) : cap) : null
     const base64 = file.buffer.toString('base64')
     const r =
       kind.kind === 'audio'

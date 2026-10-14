@@ -73,10 +73,16 @@ export function applyVariables(text: string, v: { nome?: string | null; vendedor
   return text.replace(/\{nome\}/gi, first(v.nome)).replace(/\{vendedor\}/gi, first(v.vendedor)).replace(/[ \t]+([,.!?])/g, '$1')
 }
 
-/** Assinatura no começo da mensagem: *Diego:* (negrito no WhatsApp). */
-export function signed(text: string, name: string) {
-  const first = name.trim().split(/\s+/)[0]
-  return first ? `*${first}:*\n${text}` : text
+/** Nome escolhido pelo usuário para as mensagens: uma linha, sem os sinais de formatação do WhatsApp, até 40 letras. */
+export function cleanSignature(raw: string | null | undefined) {
+  const s = (raw ?? '').replace(/[*_~`\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/[:\s]+$/, '')
+  return s.slice(0, 40).trim() || null
+}
+
+/** Assinatura no começo da mensagem: *Diego:* ou o nome escolhido em Meu perfil (*Diego - Vendas:*), em negrito no WhatsApp. */
+export function signed(text: string, name: string, signature?: string | null) {
+  const label = cleanSignature(signature) ?? name.trim().split(/\s+/)[0]
+  return label ? `*${label}:*\n${text}` : text
 }
 
 /**

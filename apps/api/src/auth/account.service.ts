@@ -6,6 +6,7 @@ import type { AuthUser } from '../common/types'
 import type { LayoutMode, ThemeMode } from '../generated/prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
+import { cleanSignature } from '../whatsapp/envio'
 import { AuthService } from './auth.service'
 import { hashPassword, passwordProblems, verifyPassword } from './password'
 import { SecurityService } from './security.service'
@@ -29,6 +30,7 @@ export class AccountService {
     return {
       id: row.id,
       name: row.name,
+      chatSignature: row.chatSignature,
       email: row.email,
       avatarUrl: row.avatarFileId ? `/api/files/${row.avatarFileId}` : null,
       totpEnabled: row.totpEnabled,
@@ -54,9 +56,11 @@ export class AccountService {
     return this.profile(user)
   }
 
-  async updateProfile(user: AuthUser, name: string, ctx: RequestCtx) {
-    await this.prisma.user.update({ where: { id: user.id }, data: { name: name.trim() } })
-    await this.audit.byUser(user, ctx, 'me.profile_updated', 'user', user.id, { name })
+  async updateProfile(user: AuthUser, name: string, ctx: RequestCtx, chatSignature?: string | null) {
+    // undefined: tela antiga, mantém; null ou vazio: volta para o primeiro nome.
+    const signature = chatSignature === undefined ? undefined : cleanSignature(chatSignature)
+    await this.prisma.user.update({ where: { id: user.id }, data: { name: name.trim(), ...(signature !== undefined ? { chatSignature: signature } : {}) } })
+    await this.audit.byUser(user, ctx, 'me.profile_updated', 'user', user.id, { name, ...(signature !== undefined ? { nomeNoWhatsapp: signature } : {}) })
     return this.profile(user)
   }
 

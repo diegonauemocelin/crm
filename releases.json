@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.31.0",
+      "date": "2026-10-14",
+      "title": "Nome do atendente nas mensagens",
+      "changes": [
+        { "type": "novo", "area": "WhatsApp", "text": "Cada usuário escolhe como o nome aparece nas mensagens do WhatsApp enviadas pelo CRM (Meu perfil → Seu nome nas mensagens do WhatsApp), por exemplo *Diego - Vendas:*, com prévia de como o cliente vê." },
+        { "type": "melhoria", "area": "WhatsApp", "text": "Em branco, continua o primeiro nome. O nome é limpo dos sinais de formatação do WhatsApp e vale nos números que assinam as mensagens." }
+      ]
+    },
+    {
       "version": "0.30.0",
       "date": "2026-10-14",
       "title": "Cada login vê só o seu chat",

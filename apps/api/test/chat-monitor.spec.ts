@@ -64,3 +64,15 @@ describe('cada login vê só o seu chat', () => {
     expect(await s.where(who('u1'))).toEqual({ tenantId: 't', OR: [{ numberId: { in: ['n1', 'n2'] } }, { assignedSellerId: 's2' }] })
   })
 })
+
+describe('nome do atendente nas mensagens', () => {
+  it('usa o nome escolhido, limpo da formatação do WhatsApp; vazio volta ao primeiro nome', async () => {
+    const { signed, cleanSignature } = await import('../src/whatsapp/envio')
+    expect(signed('Olá!', 'Diego Naue Mocelin')).toBe('*Diego:*\nOlá!')
+    expect(signed('Olá!', 'Diego Naue Mocelin', 'Diego - Vendas')).toBe('*Diego - Vendas:*\nOlá!')
+    expect(signed('Olá!', 'Diego Naue', '  *Diego*_Vendas_:\n ')).toBe('*Diego Vendas:*\nOlá!')
+    expect(signed('Olá!', 'Diego Naue', '   ')).toBe('*Diego:*\nOlá!')
+    expect(cleanSignature('x'.repeat(80))).toHaveLength(40)
+    expect(cleanSignature(null)).toBeNull()
+  })
+})

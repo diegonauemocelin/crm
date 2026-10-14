@@ -22,6 +22,8 @@ export interface PermissionEntry {
 export interface Me {
   id: string
   name: string
+  /** Como o nome aparece nas mensagens do WhatsApp (vazio = primeiro nome). */
+  chatSignature?: string | null
   email: string
   avatarUrl: string | null
   totpEnabled: boolean
