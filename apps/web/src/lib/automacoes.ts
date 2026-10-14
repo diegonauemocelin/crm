@@ -5,6 +5,7 @@ export type TriggerType =
   | 'formulario'
   | 'atendimento'
   | 'pos_venda'
+  | 'resultado_atendimento'
   | 'carrinho'
   | 'carrinho_abandonado'
   | 'checkout'
@@ -25,6 +26,10 @@ export interface Trigger {
   days?: number
   kind?: 'site' | 'interacao'
   includeImported?: boolean
+  /** resultado_atendimento */
+  result?: 'venda' | 'perda' | 'qualquer'
+  lostReasonId?: string | null
+  serviceKind?: 'PRE_VENDAS' | 'POS_VENDAS' | null
 }
 
 export type RuleType =
@@ -132,6 +137,7 @@ export const TRIGGERS: { type: TriggerType; label: string; help: string; group: 
   { type: 'formulario', label: 'Enviou formulário, pop-up ou WhatsApp', help: 'Quando o lead se cadastra por uma captura do site ou da LP.', group: 'Cadastro' },
   { type: 'atendimento', label: 'Entrou no Pré-Vendas', help: 'Quando é aberto um atendimento de Pré-Vendas para o lead.', group: 'Atendimento' },
   { type: 'pos_venda', label: 'Foi para o Pós-Vendas', help: 'Quando o atendimento do lead vai para o Pós-Vendas.', group: 'Atendimento' },
+  { type: 'resultado_atendimento', label: 'Resultado do atendimento', help: 'Quando a pré-venda ou o pós-venda é marcado como vendeu ou não vendeu (pode escolher o motivo da perda).', group: 'Atendimento' },
   { type: 'carrinho', label: 'Colocou produto no carrinho', help: 'Quando o lead adiciona um produto ao carrinho no site.', group: 'Loja' },
   { type: 'carrinho_abandonado', label: 'Abandonou o carrinho', help: 'Quando o carrinho fica parado sem compra (Magazord).', group: 'Loja' },
   { type: 'checkout', label: 'Iniciou o checkout', help: 'Quando o lead começa a finalizar a compra no site.', group: 'Loja' },

@@ -410,6 +410,34 @@ function SegmentDialog({ segment, onClose }: { segment: Segment | null; onClose:
               <Input id="sg-from" type="date" value={f.from ?? ''} onChange={(e) => set('from', e.target.value || undefined)} />
             </div>
           </div>
+          <div className="space-y-3 rounded-md border p-3">
+            <p className="text-sm font-medium">Pelo atendimento (Pré-Vendas e Pós-Vendas)</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Pick label="Resultado" id="sg-result" value={f.serviceResult} onChange={(v) => setF((x) => ({ ...x, serviceResult: v as SegmentFilters['serviceResult'], ...(v === 'SIM' ? { lostReasonId: undefined } : {}) }))} items={[{ id: 'NAO', name: 'Não vendeu' }, { id: 'SIM', name: 'Vendeu' }, { id: 'NEGOCIACAO', name: 'Em negociação' }]} />
+              {f.serviceResult !== 'SIM' && <Pick label="Motivo da perda" id="sg-reason" value={f.lostReasonId} onChange={(v) => set('lostReasonId', v)} items={o?.lostReasons ?? []} />}
+              <Pick label="Atendimento" id="sg-skind" value={f.serviceKind} onChange={(v) => set('serviceKind', v as SegmentFilters['serviceKind'])} items={[{ id: 'PRE_VENDAS', name: 'Pré-Vendas' }, { id: 'POS_VENDAS', name: 'Pós-Vendas' }]} />
+              <div className="space-y-1.5">
+                <Label htmlFor="sg-sdays">Atendidos nos últimos</Label>
+                <div className="flex items-center gap-2">
+                  <Input id="sg-sdays" type="number" min={1} max={730} className="w-24" placeholder="dias" value={f.serviceDays ?? ''} onChange={(e) => setF((x) => ({ ...x, serviceDays: e.target.value ? Number(e.target.value) : undefined, ...(e.target.value ? { serviceFrom: undefined, serviceTo: undefined } : {}) }))} />
+                  <span className="text-sm text-muted-foreground">dias</span>
+                </div>
+              </div>
+              {!f.serviceDays && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sg-sfrom">Atendidos de</Label>
+                    <Input id="sg-sfrom" type="date" value={f.serviceFrom ?? ''} onChange={(e) => set('serviceFrom', e.target.value || undefined)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sg-sto">até</Label>
+                    <Input id="sg-sto" type="date" value={f.serviceTo ?? ''} onChange={(e) => set('serviceTo', e.target.value || undefined)} />
+                  </div>
+                </>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">Ex.: não vendeu por preço nos últimos 30 dias. Com “últimos N dias”, o segmento acompanha a data: use em campanhas mensais ou num fluxo “Manual (por segmento)”.</p>
+          </div>
           <p className="rounded-md border bg-muted/40 p-3 text-sm">
             {count ? (
               <>

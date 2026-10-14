@@ -3,25 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
-import {
-  ArrayMaxSize,
-  IsArray,
-  IsBoolean,
-  IsEmail,
-  IsIn,
-  IsInt,
-  IsObject,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Length,
-  Matches,
-  Max,
-  MaxLength,
-  Min,
-  ValidateIf,
-  ValidateNested,
-} from 'class-validator'
+import { ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
 import type { Response } from 'express'
 import { UF_LIST, UFS } from '../atendimento/br'
 import { CurrentUser, Public, ReqContext, type RequestCtx, RequirePermission } from '../common/decorators'
@@ -49,6 +31,12 @@ class FiltersDto implements LeadFilters {
   @IsOptional() @IsIn(['true', 'false']) hasPhone?: 'true' | 'false'
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) from?: string
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) to?: string
+  @IsOptional() @IsIn(['SIM', 'NAO', 'NEGOCIACAO']) serviceResult?: 'SIM' | 'NAO' | 'NEGOCIACAO'
+  @IsOptional() @IsIn(['PRE_VENDAS', 'POS_VENDAS']) serviceKind?: 'PRE_VENDAS' | 'POS_VENDAS'
+  @IsOptional() @IsUUID() lostReasonId?: string
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) serviceFrom?: string
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) serviceTo?: string
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(730) serviceDays?: number
 }
 
 class ListDto extends FiltersDto {

@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.37.0",
+      "date": "2026-10-16",
+      "title": "E-mail marketing pelo resultado do atendimento",
+      "changes": [
+        { "type": "novo", "area": "Automações", "text": "Novo gatilho “Resultado do atendimento”: o fluxo começa quando a pré-venda ou o pós-venda é marcado como vendeu ou não vendeu, podendo filtrar pelo motivo da perda (ex.: preço, frete) e pelo tipo de atendimento." },
+        { "type": "novo", "area": "Email marketing", "text": "Segmentos pelo atendimento: resultado (vendeu, não vendeu, em negociação), motivo da perda, Pré ou Pós-Vendas e período (de/até ou “últimos N dias”, que acompanha a data, para campanhas por período)." },
+        { "type": "melhoria", "area": "Leads", "text": "O histórico do lead registra o resultado de cada atendimento, com o motivo da perda e o valor da venda." }
+      ]
+    },
+    {
       "version": "0.36.0",
       "date": "2026-10-16",
       "title": "Avisos de pré-venda e cores de atraso no chat",

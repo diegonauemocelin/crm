@@ -6,7 +6,7 @@ import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { SkipThrottle, Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
-import { IsArray, IsDateString, IsEmail, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested, IsBoolean } from 'class-validator'
+import { IsArray, IsBoolean, IsDateString, IsEmail, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
 import type { Response } from 'express'
 import { CurrentUser, Public, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
@@ -31,6 +31,12 @@ class SegmentFiltersDto implements LeadFilters {
   @IsOptional() @IsIn(['true', 'false']) hasPhone?: 'true' | 'false'
   @IsOptional() @IsString() @MaxLength(10) from?: string
   @IsOptional() @IsString() @MaxLength(10) to?: string
+  @IsOptional() @IsIn(['SIM', 'NAO', 'NEGOCIACAO']) serviceResult?: 'SIM' | 'NAO' | 'NEGOCIACAO'
+  @IsOptional() @IsIn(['PRE_VENDAS', 'POS_VENDAS']) serviceKind?: 'PRE_VENDAS' | 'POS_VENDAS'
+  @IsOptional() @IsUUID() lostReasonId?: string
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) serviceFrom?: string
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) serviceTo?: string
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(730) serviceDays?: number
 }
 
 class SegmentDto {

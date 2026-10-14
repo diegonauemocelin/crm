@@ -86,3 +86,23 @@ describe('passos', () => {
     expect(fillMessage('', { name: null, email: null, phone: null, link: '', automation: 'Carrinho' })).toContain('"Carrinho"')
   })
 })
+
+describe('gatilho: resultado do atendimento', () => {
+  it('valida a configuração e dispara só para o resultado, o motivo e o tipo escolhidos', async () => {
+    const { cleanTrigger, eventMatches } = await import('../src/automacoes/fluxo')
+    const motivo = '11111111-1111-4111-8111-111111111111'
+    const r = cleanTrigger({ type: 'resultado_atendimento', result: 'perda', lostReasonId: motivo, serviceKind: 'PRE_VENDAS' })
+    expect(r).toEqual({ trigger: { type: 'resultado_atendimento', result: 'perda', lostReasonId: motivo, serviceKind: 'PRE_VENDAS' } })
+    const t = (r as { trigger: Parameters<typeof eventMatches>[0] }).trigger
+    const ev = (data: Record<string, unknown>) => ({ type: 'resultado_atendimento', title: 'x', data })
+    expect(eventMatches(t, ev({ resultado: 'perda', motivoId: motivo, tipo: 'PRE_VENDAS' }))).toBe(true)
+    expect(eventMatches(t, ev({ resultado: 'perda', motivoId: 'outro', tipo: 'PRE_VENDAS' }))).toBe(false)
+    expect(eventMatches(t, ev({ resultado: 'venda', motivoId: null, tipo: 'PRE_VENDAS' }))).toBe(false)
+    expect(eventMatches(t, ev({ resultado: 'perda', motivoId: motivo, tipo: 'POS_VENDAS' }))).toBe(false)
+    // Venda não tem motivo; "qualquer" aceita os dois resultados.
+    expect((cleanTrigger({ type: 'resultado_atendimento', result: 'venda', lostReasonId: motivo }) as { trigger: { lostReasonId: unknown } }).trigger.lostReasonId).toBeNull()
+    const any = (cleanTrigger({ type: 'resultado_atendimento' }) as { trigger: Parameters<typeof eventMatches>[0] }).trigger
+    expect(eventMatches(any, ev({ resultado: 'venda', tipo: 'POS_VENDAS' }))).toBe(true)
+    expect(eventMatches(any, { type: 'atendimento', title: 'x', data: {} })).toBe(false)
+  })
+})

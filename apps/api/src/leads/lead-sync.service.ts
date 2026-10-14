@@ -5,6 +5,8 @@ import { LeadConfigService } from './lead-config.service'
 
 interface RecordShape {
   id: string
+  /** Motivo da perda (sem venda), para o evento de resultado do atendimento. */
+  lostReasonId?: string | null
   tenantId: string
   kind: ServiceKind
   leadAt: Date
@@ -113,6 +115,20 @@ export class LeadSyncService {
         title: `Venda registrada em ${KIND_LABEL[record.kind]}${value ? ` — ${value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : ''}`,
         data: { recordId: record.id, valor: value },
         occurredAt: record.leadAt,
+      })
+    }
+
+    // Resultado do atendimento (vendeu ou não vendeu, com o motivo): só quando uma pessoa muda o resultado
+    // (importação e cadastro não disparam fluxos para o histórico antigo).
+    if (previous && (record.saleStatus === 'SIM' || record.saleStatus === 'NAO') && previous.saleStatus !== record.saleStatus) {
+      const reason = record.saleStatus === 'NAO' && record.lostReasonId ? await this.prisma.lookupItem.findUnique({ where: { id: record.lostReasonId }, select: { name: true } }) : null
+      const value = record.saleValue === null ? null : Number(record.saleValue)
+      events.push({
+        tenantId: record.tenantId,
+        type: 'resultado_atendimento',
+        title: `Resultado em ${KIND_LABEL[record.kind]}: ${record.saleStatus === 'SIM' ? 'vendeu' : 'não vendeu'}${reason ? ` (${reason.name})` : ''}`.slice(0, 300),
+        data: { recordId: record.id, tipo: record.kind, resultado: record.saleStatus === 'SIM' ? 'venda' : 'perda', motivoId: record.lostReasonId ?? null, motivo: reason?.name ?? null, valor: value },
+        occurredAt: new Date(),
       })
     }
 

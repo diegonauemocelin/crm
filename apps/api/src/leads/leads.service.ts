@@ -30,6 +30,14 @@ export interface LeadFilters {
   hasPhone?: 'true' | 'false'
   from?: string
   to?: string
+  /** Atendimento do lead: resultado (venda, sem venda, em negociação), motivo da perda, tipo e período. */
+  serviceResult?: 'SIM' | 'NAO' | 'NEGOCIACAO'
+  serviceKind?: 'PRE_VENDAS' | 'POS_VENDAS'
+  lostReasonId?: string
+  serviceFrom?: string
+  serviceTo?: string
+  /** Atendimentos dos últimos N dias (o segmento acompanha a data: bom para campanhas por período). */
+  serviceDays?: number
 }
 
 export interface LeadInput {
@@ -111,6 +119,22 @@ export class LeadsService {
     if (f.originId) and.push({ originId: f.originId === 'none' ? null : f.originId })
     if (f.emailOptIn) and.push({ emailOptIn: f.emailOptIn === 'true' })
     if (f.hasPhone) and.push(f.hasPhone === 'true' ? { phone: { not: null } } : { phone: null })
+    if (f.serviceResult || f.serviceKind || f.lostReasonId || f.serviceFrom || f.serviceTo || f.serviceDays) {
+      const days = f.serviceDays && f.serviceDays > 0 ? new Date(Date.now() - f.serviceDays * 86_400_000) : null
+      and.push({
+        records: {
+          some: {
+            deletedAt: null,
+            ...(f.serviceKind ? { kind: f.serviceKind } : {}),
+            ...(f.serviceResult ? { saleStatus: f.serviceResult } : {}),
+            ...(f.lostReasonId ? { lostReasonId: f.lostReasonId } : {}),
+            ...(f.serviceFrom || f.serviceTo || days
+              ? { leadAt: { ...(f.serviceFrom ? { gte: new Date(`${f.serviceFrom}T00:00:00-03:00`) } : days ? { gte: days } : {}), ...(f.serviceTo ? { lte: new Date(`${f.serviceTo}T23:59:59.999-03:00`) } : {}) } }
+              : {}),
+          },
+        },
+      })
+    }
     if (f.from || f.to) {
       and.push({
         createdAt: {

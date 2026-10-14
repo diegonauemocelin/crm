@@ -8,6 +8,7 @@ export const TRIGGER_TYPES = [
   'formulario',
   'atendimento',
   'pos_venda',
+  'resultado_atendimento',
   'carrinho',
   'carrinho_abandonado',
   'checkout',
@@ -36,6 +37,10 @@ export interface Trigger {
   kind?: 'site' | 'interacao'
   /** lead_novo: inclui leads vindos de importação de planilha. */
   includeImported?: boolean
+  /** resultado_atendimento: venda, perda ou qualquer; só de um motivo de perda; só Pré ou Pós-Vendas. */
+  result?: 'venda' | 'perda' | 'qualquer'
+  lostReasonId?: string | null
+  serviceKind?: 'PRE_VENDAS' | 'POS_VENDAS' | null
 }
 
 export const RULE_TYPES = [
@@ -92,6 +97,7 @@ export const STAGES = ['LEAD', 'QUALIFICADO', 'OPORTUNIDADE', 'CLIENTE'] as cons
 export const EVENT_TRIGGERS: Record<string, TriggerType[]> = {
   conversao: ['formulario'],
   atendimento: ['atendimento'],
+  resultado_atendimento: ['resultado_atendimento'],
   carrinho: ['carrinho'],
   carrinho_abandonado: ['carrinho_abandonado'],
   checkout: ['checkout'],
@@ -130,6 +136,11 @@ export function cleanTrigger(raw: unknown): { trigger: Trigger } | { error: stri
     out.includeImported = t.includeImported === true
   }
   if (type === 'formulario' || type === 'visita') out.text = str(t.text, 120)
+  if (type === 'resultado_atendimento') {
+    out.result = t.result === 'venda' || t.result === 'perda' ? t.result : 'qualquer'
+    out.lostReasonId = out.result === 'venda' ? null : uuidOrNull(t.lostReasonId)
+    out.serviceKind = t.serviceKind === 'PRE_VENDAS' || t.serviceKind === 'POS_VENDAS' ? t.serviceKind : null
+  }
   if (type === 'email_aberto' || type === 'email_clicado') out.campaignId = uuidOrNull(t.campaignId)
   if (type === 'etapa') {
     if (!STAGES.includes(t.stage as (typeof STAGES)[number])) return { error: 'Escolha a etapa do gatilho.' }
@@ -308,6 +319,11 @@ export function eventMatches(t: Trigger, e: EventInfo): boolean {
   if (t.type === 'formulario') return has(e.title, t.text)
   if (t.type === 'visita') return has(e.data?.pagina, t.text)
   if ((t.type === 'email_aberto' || t.type === 'email_clicado') && t.campaignId) return e.data?.campanha === t.campaignId
+  if (t.type === 'resultado_atendimento') {
+    if (t.result && t.result !== 'qualquer' && e.data?.resultado !== t.result) return false
+    if (t.lostReasonId && e.data?.motivoId !== t.lostReasonId) return false
+    if (t.serviceKind && e.data?.tipo !== t.serviceKind) return false
+  }
   return true
 }
 

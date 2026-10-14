@@ -172,6 +172,13 @@ export interface SegmentFilters {
   hasPhone?: 'true' | 'false'
   from?: string
   to?: string
+  /** Atendimento: resultado, motivo da perda, tipo e período (datas ou últimos N dias). */
+  serviceResult?: 'SIM' | 'NAO' | 'NEGOCIACAO'
+  serviceKind?: 'PRE_VENDAS' | 'POS_VENDAS'
+  lostReasonId?: string
+  serviceFrom?: string
+  serviceTo?: string
+  serviceDays?: number
 }
 
 export interface Campaign {

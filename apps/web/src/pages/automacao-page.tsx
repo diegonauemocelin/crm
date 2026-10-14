@@ -622,7 +622,7 @@ function TriggerEditor({ trigger: t, ctx, disabled, onChange }: { trigger: Trigg
                   key={x.type}
                   type="button"
                   disabled={disabled}
-                  onClick={() => onChange({ type: x.type, ...(x.type === 'inatividade' ? { days: 30, kind: 'site' } : {}), ...(x.type === 'etapa' ? { stage: 'CLIENTE' } : {}) })}
+                  onClick={() => onChange({ type: x.type, ...(x.type === 'inatividade' ? { days: 30, kind: 'site' } : {}), ...(x.type === 'etapa' ? { stage: 'CLIENTE' } : {}), ...(x.type === 'resultado_atendimento' ? { result: 'perda' as const } : {}) })}
                   className={cn('w-full rounded-md border px-3 py-2 text-left hover:bg-muted/60 disabled:cursor-not-allowed', t.type === x.type && 'border-[color:var(--brand)] bg-muted/60')}
                   aria-pressed={t.type === x.type}
                 >
@@ -664,6 +664,42 @@ function TriggerEditor({ trigger: t, ctx, disabled, onChange }: { trigger: Trigg
           <Field label="Qual e-mail" htmlFor="t-mail">
             <SimpleSelect id="t-mail" value={t.campaignId ?? ANY} onChange={(v) => onChange({ ...t, campaignId: v === ANY ? null : v })} items={emails} disabled={disabled} />
           </Field>
+        )}
+        {t.type === 'resultado_atendimento' && (
+          <>
+            <Field label="Resultado" htmlFor="t-result">
+              <SimpleSelect
+                id="t-result"
+                value={t.result ?? 'qualquer'}
+                onChange={(v) => onChange({ ...t, result: v as 'venda' | 'perda' | 'qualquer', ...(v === 'venda' ? { lostReasonId: null } : {}) })}
+                items={[
+                  { id: 'perda', name: 'Não vendeu' },
+                  { id: 'venda', name: 'Vendeu' },
+                  { id: 'qualquer', name: 'Vendeu ou não vendeu' },
+                ]}
+                disabled={disabled}
+              />
+            </Field>
+            {t.result !== 'venda' && (
+              <Field label="Motivo da perda" htmlFor="t-reason">
+                <SimpleSelect id="t-reason" value={t.lostReasonId ?? ANY} onChange={(v) => onChange({ ...t, lostReasonId: v === ANY ? null : v })} items={[{ id: ANY, name: 'Qualquer motivo' }, ...(ctx.lists?.lostReasons ?? []).filter((r) => r.active !== false)]} disabled={disabled} />
+              </Field>
+            )}
+            <Field label="Atendimento" htmlFor="t-skind">
+              <SimpleSelect
+                id="t-skind"
+                value={t.serviceKind ?? ANY}
+                onChange={(v) => onChange({ ...t, serviceKind: v === ANY ? null : (v as 'PRE_VENDAS' | 'POS_VENDAS') })}
+                items={[
+                  { id: ANY, name: 'Pré-Vendas ou Pós-Vendas' },
+                  { id: 'PRE_VENDAS', name: 'Só Pré-Vendas' },
+                  { id: 'POS_VENDAS', name: 'Só Pós-Vendas' },
+                ]}
+                disabled={disabled}
+              />
+            </Field>
+            <p className="text-xs text-muted-foreground">Dispara quando alguém marca “Venda realizada?” no atendimento. Ex.: não vendeu por preço → esperar 7 dias → e-mail com condição especial. Para a base que já tinha esse resultado, use um segmento com os filtros de atendimento e “Colocar leads de um segmento”.</p>
+          </>
         )}
         {t.type === 'etapa' && (
           <Field label="Etapa" htmlFor="t-stage">
