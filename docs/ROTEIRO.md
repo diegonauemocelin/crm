@@ -8,7 +8,7 @@ Ordem definida em 14/10/2026. Cada item vira uma versão (ou mais), publicada e 
 | 18 | 2 | **Editor de e-mail: 2 colunas, texto justificado, IA gratuita e cores mais usadas** (feito na v0.23.0) | IA gratuita (Gemini, plano gratuito) para sugerir/reescrever textos; paleta com as cores da marca e as últimas usadas. |
 | 15 | 3 | **Dashboard de e-mail marketing** (feito na v0.24.0) | Enviados, entregues, abertos, clicados, descadastros, devolvidos, vendas convertidas e valor; desempenho de cada fluxo de automação. A abertura é aproximada (alguns programas de e-mail abrem as imagens sozinhos). |
 | 16 | 4 | **Produtos visualizados na loja virtual** (feito na v0.25.0) | Pelo rastreamento do site: produtos mais vistos, por lead, e vistos sem compra. |
-| 1 | 5 | **Sincronizar produtos da Magazord 1 vez por dia** | Automático, de madrugada, com aviso se falhar. |
+| 1 | 5 | **Sincronizar produtos da Magazord 1 vez por dia** (feito na v0.26.0) | Automático, de madrugada, com aviso se falhar. |
 | 13 | 6 | **Menus reorganizados** | Dashboards · Análise · Atendimento Comercial · CRM · Marketing · Sugestões · Administração · Sistema. |
 | 4 | 7 | **Monitorar conversas** | Administrador lê as conversas; perfil novo **Gestor comercial** acompanha todos os vendedores, incluindo as conversas com clientes. |
 | 5 | 8 | **Nota interna no chat** | Administrador e gestor comercial escrevem na conversa uma mensagem que só aparece no CRM (o cliente não recebe): liberação de desconto, orientação, advertência. |

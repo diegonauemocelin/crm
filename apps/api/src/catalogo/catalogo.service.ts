@@ -149,6 +149,7 @@ export class CatalogoService {
         updating: this.magazord.productsUpdating(user.tenantId),
         syncedAt: state.productsSyncedAt ?? null,
         error: state.productsError ?? null,
+        hour: cfg.productsHour ?? 3,
       },
       interestDays: INTEREST_DAYS,
     }

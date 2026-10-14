@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.26.0",
+      "date": "2026-10-14",
+      "title": "Catálogo da Magazord copiado 1 vez por dia, com aviso de falha",
+      "changes": [
+        { "type": "melhoria", "area": "Catálogo", "text": "O catálogo da Magazord passa a ser copiado 1 vez por dia, de madrugada (03:00, ajustável em Configurações → Loja virtual), longe do movimento da loja." },
+        { "type": "novo", "area": "Catálogo", "text": "Se a cópia falhar, o CRM tenta de novo a cada hora, até 3 vezes no dia, e então avisa os administradores por e-mail (no máximo um aviso por dia)." },
+        { "type": "seguranca", "area": "Catálogo", "text": "Proteção: se a Magazord devolver uma lista vazia ou bem menor que o catálogo atual, nenhum produto é desativado. O botão “Atualizar agora” aceita uma redução real do catálogo." },
+        { "type": "melhoria", "area": "Catálogo", "text": "A tela do catálogo mostra o horário da cópia automática." }
+      ]
+    },
+    {
       "version": "0.25.0",
       "date": "2026-10-14",
       "title": "Produtos vistos na loja virtual",

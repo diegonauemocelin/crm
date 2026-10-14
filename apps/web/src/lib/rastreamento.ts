@@ -131,6 +131,8 @@ export interface MagazordConfig {
   importOrders: boolean
   importCarts: boolean
   importProducts: boolean
+  /** Hora (0 a 23, horário de Brasília) da cópia diária do catálogo. */
+  productsHour?: number
   storeId: number
   siteUrl: string
   imageBaseUrl: string

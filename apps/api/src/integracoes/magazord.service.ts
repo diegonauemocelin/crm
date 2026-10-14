@@ -7,8 +7,10 @@ import { LeadConfigService } from '../leads/lead-config.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { pagePath } from '../rastreamento/origem'
 import { RastreamentoService } from '../rastreamento/rastreamento.service'
+import { env } from '../config/env'
+import { MailService } from '../settings/mail.service'
 import { SettingsService } from '../settings/settings.service'
-import { cartItems, cleanBaseUrl, cleanHttpsBase, type CustomerData, customerFrom, DEFAULT_CART_MESSAGE, type MagazordPessoa, type MzSiteProduct, mzDateTime, orderGroup, parseMzDate, productFrom } from './magazord'
+import { cartItems, cleanBaseUrl, cleanHttpsBase, type CustomerData, customerFrom, DEFAULT_CART_MESSAGE, type MagazordPessoa, type MzSiteProduct, mzDateTime, orderGroup, parseMzDate, PRODUCTS_MAX_ATTEMPTS, productFrom, productsDue, shrinkError, spDay } from './magazord'
 
 export interface MagazordSettings {
   enabled: boolean
@@ -21,6 +23,8 @@ export interface MagazordSettings {
   importCarts: boolean
   /** Catálogo de produtos (nome, preço, imagem e link) para montar e-mails. */
   importProducts: boolean
+  /** Hora do dia (horário de Brasília) em que o catálogo é copiado, uma vez por dia. */
+  productsHour: number
   /** Id da loja na Magazord (quase sempre 1). */
   storeId: number
   /** Endereço do site, para completar links relativos dos produtos (vazio = descobre pelos carrinhos). */
@@ -46,6 +50,7 @@ export const DEFAULT_MAGAZORD: MagazordSettings = {
   importOrders: true,
   importCarts: true,
   importProducts: true,
+  productsHour: 3,
   storeId: 1,
   siteUrl: '',
   imageBaseUrl: '',
@@ -70,6 +75,12 @@ export interface MagazordState {
   cartsCursor: string | null
   productsSyncedAt?: string | null
   productsError?: string | null
+  /** Tentativas do dia (para tentar de novo depois de uma falha e avisar se não der). */
+  productsAttemptAt?: string | null
+  productsAttemptDay?: string | null
+  productsAttempts?: number
+  /** Dia em que o aviso de falha foi enviado (no máximo um por dia). */
+  productsAlertDay?: string | null
   totals: { customers: number; leadsCreated: number; orders: number; carts: number; products?: number }
 }
 
@@ -91,8 +102,6 @@ const ORIGIN = 'Ecommerce'
 /** Histórico de pedidos trazido na primeira sincronização. */
 const ORDERS_BACKFILL_DAYS = 730
 const CARTS_BACKFILL_DAYS = 30
-/** Catálogo completo de novo a cada 12 h (preço e estoque mudam ao longo do dia). */
-const PRODUCTS_EVERY_MS = 12 * 3_600_000
 
 interface Page<T> {
   items: T[]
@@ -149,6 +158,7 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
     private readonly scoring: LeadConfigService,
     private readonly tracking: RastreamentoService,
     private readonly audit: AuditService,
+    private readonly mail: MailService,
   ) {}
 
   async onApplicationBootstrap() {
@@ -525,7 +535,7 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
     return { siteUrl, imageBase }
   }
 
-  /** Catálogo completo (a cada 12 h ou quando pedido). Erro aqui não interrompe clientes, pedidos e carrinhos. */
+  /** Catálogo completo (1 vez por dia, de madrugada, ou quando pedido). Erro aqui não interrompe clientes, pedidos e carrinhos. */
   private async syncProducts(tenantId: string, s: MagazordSettings, force: boolean) {
     // Marca como "atualizando" antes de qualquer espera: a tela consulta logo depois do clique.
     if (this.productsRunning.has(tenantId)) return
@@ -533,7 +543,11 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
     const started = new Date()
     try {
       const st = await this.state(tenantId)
-      if (!force && st.productsSyncedAt && Date.now() - Date.parse(st.productsSyncedAt) < PRODUCTS_EVERY_MS) return
+      if (!force && !productsDue(started, st, s.productsHour ?? 3)) return
+      const today = spDay(started)
+      const attempts = st.productsAttemptDay === today ? (st.productsAttempts ?? 0) + 1 : 1
+      await this.saveState(tenantId, { productsAttemptAt: started.toISOString(), productsAttemptDay: today, productsAttempts: attempts })
+      const activeBefore = await this.prisma.storeProduct.count({ where: { tenantId, active: true } })
       const ctx = await this.productContext(tenantId, s)
       let count = 0
       for (let page = 1; page <= 1000; page++) {
@@ -547,16 +561,50 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
         }
         if (!has_more || !items.length) break
       }
+      const shrink = shrinkError(count, activeBefore, force)
+      if (shrink) throw new Error(shrink)
       // Produto que saiu da loja fica fora da busca (o e-mail que já usou continua com os dados copiados).
       await this.prisma.storeProduct.updateMany({ where: { tenantId, syncedAt: { lt: started } }, data: { active: false } })
       const fresh = await this.state(tenantId)
-      await this.saveState(tenantId, { productsSyncedAt: started.toISOString(), productsError: null, totals: { ...fresh.totals, products: count } })
+      await this.saveState(tenantId, { productsSyncedAt: started.toISOString(), productsError: null, productsAttempts: 0, totals: { ...fresh.totals, products: count } })
     } catch (err) {
       const msg = (err as Error).message.slice(0, 500)
       this.logger.warn(`Magazord: catálogo de produtos falhou: ${msg}`)
       await this.saveState(tenantId, { productsError: msg })
+      // Última tentativa automática do dia: avisa os administradores, no máximo uma vez por dia (no botão, o erro aparece na tela).
+      const st = await this.state(tenantId)
+      const today = spDay(started)
+      if (!force && st.productsAlertDay !== today && (st.productsAttempts ?? 0) >= PRODUCTS_MAX_ATTEMPTS) {
+        await this.saveState(tenantId, { productsAlertDay: today })
+        void this.alertProducts(tenantId, msg).catch((e: unknown) => this.logger.warn(`Aviso de falha do catálogo não enviado: ${(e as Error).message}`))
+      }
     } finally {
       this.productsRunning.delete(tenantId)
+    }
+  }
+
+  /** E-mail para os administradores: o catálogo não foi copiado hoje (preços e estoque podem estar desatualizados). */
+  private async alertProducts(tenantId: string, error: string) {
+    const [admins, branding] = await Promise.all([
+      this.prisma.user.findMany({ where: { tenantId, active: true, role: { isSystem: true } }, select: { email: true, name: true } }),
+      this.settings.branding(tenantId),
+    ])
+    const link = `${env.appUrl}/catalogo`
+    const body = `A cópia diária do catálogo de produtos da Magazord falhou ${PRODUCTS_MAX_ATTEMPTS} vezes hoje. Os preços, o estoque e os produtos dos e-mails continuam como na última cópia. Motivo: ${error}`
+    for (const a of admins) {
+      await this.mail.send(tenantId, {
+        to: a.email,
+        subject: `Catálogo da Magazord não atualizado - ${branding.appName}`,
+        text: `Olá, ${a.name}.\n\n${body}\n\nConfira a integração em Configurações → Integrações → Magazord ou tente de novo em Catálogo → Atualizar agora.\n\n${link}`,
+        html: this.mail.simpleTemplate(branding, {
+          title: 'Catálogo da Magazord não atualizado',
+          greeting: `Olá, ${a.name}.`,
+          body: `${body}. Confira a integração em Configurações → Integrações → Magazord ou tente de novo em Catálogo → Atualizar agora.`,
+          buttonLabel: 'Abrir o catálogo',
+          buttonUrl: link,
+          footnote: 'Aviso automático do CRM, enviado no máximo uma vez por dia.',
+        }),
+      })
     }
   }
 

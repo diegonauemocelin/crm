@@ -236,3 +236,52 @@ export function productFrom(p: MzSiteProduct, o: { siteUrl: string | null; image
     active: p.ativo !== false,
   }
 }
+
+// ---------- Catálogo de produtos: 1 vez por dia, de madrugada ----------
+
+/** Tentativas por dia quando a cópia do catálogo falha (com 1 hora entre elas); depois disso, aviso por e-mail. */
+export const PRODUCTS_MAX_ATTEMPTS = 3
+export const PRODUCTS_RETRY_MS = 3_600_000
+
+/** Dia (AAAA-MM-DD) e hora no horário de Brasília. */
+export function spDay(d: Date) {
+  return new Date(d.getTime() - 3 * 3_600_000).toISOString().slice(0, 10)
+}
+export function spHour(d: Date) {
+  return new Date(d.getTime() - 3 * 3_600_000).getUTCHours()
+}
+
+export interface ProductsSchedule {
+  productsSyncedAt?: string | null
+  productsAttemptAt?: string | null
+  productsAttemptDay?: string | null
+  productsAttempts?: number
+}
+
+/**
+ * Hora de copiar o catálogo? Uma vez por dia a partir da hora escolhida (de madrugada, longe do movimento da loja).
+ * Nunca copiado: copia já. Falhou: tenta de novo depois de 1 hora, até 3 vezes no dia.
+ */
+export function productsDue(now: Date, st: ProductsSchedule, hour: number) {
+  if (!st.productsSyncedAt) return !st.productsAttemptAt || now.getTime() - Date.parse(st.productsAttemptAt) >= PRODUCTS_RETRY_MS
+  const today = spDay(now)
+  if (spDay(new Date(st.productsSyncedAt)) === today) return false
+  if (spHour(now) < hour) return false
+  if (st.productsAttemptDay === today) {
+    if ((st.productsAttempts ?? 0) >= PRODUCTS_MAX_ATTEMPTS) return false
+    if (st.productsAttemptAt && now.getTime() - Date.parse(st.productsAttemptAt) < PRODUCTS_RETRY_MS) return false
+  }
+  return true
+}
+
+/**
+ * Proteção: se a Magazord devolver uma lista vazia ou bem menor que o catálogo atual (falha do lado dela),
+ * não desativa os produtos que "sumiram". O botão "Atualizar agora" aceita uma queda grande (não a lista vazia).
+ */
+export function shrinkError(count: number, activeBefore: number, manual: boolean) {
+  if (count === 0) return activeBefore > 0 ? 'A Magazord não devolveu nenhum produto. O catálogo atual foi mantido.' : null
+  if (!manual && activeBefore >= 50 && count < activeBefore * 0.5) {
+    return `A Magazord devolveu só ${count} produtos (eram ${activeBefore} ativos). Para não tirar produtos do catálogo por engano, nenhum foi desativado. Se a loja realmente diminuiu, use “Atualizar agora” no Catálogo.`
+  }
+  return null
+}

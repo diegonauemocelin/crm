@@ -61,6 +61,7 @@ function MagazordEditor({ initial }: { initial: MagazordConfig }) {
         importOrders: form.importOrders,
         importCarts: form.importCarts,
         importProducts: form.importProducts,
+        productsHour: form.productsHour ?? 3,
         storeId: form.storeId || 1,
         siteUrl: form.siteUrl.trim(),
         imageBaseUrl: form.imageBaseUrl.trim(),
@@ -135,10 +136,25 @@ function MagazordEditor({ initial }: { initial: MagazordConfig }) {
             {toggle('importCustomers', 'Clientes da loja viram leads', 'Na primeira vez traz todos os cadastros; depois, só os novos e alterados.')}
             {toggle('importOrders', 'Pedidos', 'Pedido pago torna o lead Cliente, registra a compra e tira as tags de carrinho. Traz os últimos 2 anos.')}
             {toggle('importCarts', 'Carrinhos e checkout', 'Carrinhos de clientes identificados, com produtos e link para retomar a compra.')}
-            {toggle('importProducts', 'Catálogo de produtos', 'Nome, preço, imagem e link dos produtos para montar e-mails. Atualiza a cada 12 horas.')}
+            {toggle('importProducts', 'Catálogo de produtos', 'Nome, preço, estoque, imagem e link dos produtos. Copiado 1 vez por dia, de madrugada; se falhar, tenta de novo e avisa os administradores por e-mail.')}
             {form.importProducts && (
               <div className="grid gap-3 border-t pt-3 sm:grid-cols-3">
                 <div className="space-y-1.5">
+                  <Label htmlFor="mz-hour">Horário da cópia diária</Label>
+                  <Select value={String(form.productsHour ?? 3)} onValueChange={(v) => set('productsHour', Number(v))} disabled={!canEdit}>
+                    <SelectTrigger id="mz-hour" className="w-28">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <SelectItem key={h} value={String(h)}>
+                          {String(h).padStart(2, '0')}:00
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
                   <Label htmlFor="mz-store">Id da loja</Label>
                   <Input id="mz-store" type="number" min={1} className="w-24" value={form.storeId} onChange={(e) => set('storeId', Number(e.target.value))} disabled={!canEdit} />
                 </div>

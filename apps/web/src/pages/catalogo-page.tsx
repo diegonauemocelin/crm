@@ -46,7 +46,7 @@ interface Summary {
   noStock: number
   promo: number
   brands: { brand: string | null; count: number }[]
-  sync: { enabled: boolean; updating: boolean; syncedAt: string | null; error: string | null }
+  sync: { enabled: boolean; updating: boolean; syncedAt: string | null; error: string | null; hour: number }
   interestDays: number
 }
 
@@ -151,7 +151,7 @@ function Catalog() {
     <>
       <PageHeader
         title="Catálogo de produtos"
-        description={`Produtos da loja virtual, copiados da Magazord a cada 12 horas. Mostra também o interesse dos clientes: quantos carrinhos dos últimos ${s.interestDays} dias tiveram o produto. Os produtos entram nos e-mails pelo editor do Email marketing.`}
+        description={`Produtos da loja virtual, copiados da Magazord uma vez por dia, de madrugada. Mostra também o interesse dos clientes: as visualizações no site e quantos carrinhos dos últimos ${s.interestDays} dias tiveram o produto. Os produtos entram nos e-mails pelo editor do Email marketing.`}
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild>
@@ -175,7 +175,10 @@ function Catalog() {
 
       <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
         {s.sync.enabled ? (
-          <span>{s.sync.syncedAt ? `Última atualização: ${formatDateTime(s.sync.syncedAt)}` : 'Ainda não atualizado.'}</span>
+          <span>
+            {s.sync.syncedAt ? `Última atualização: ${formatDateTime(s.sync.syncedAt)}` : 'Ainda não atualizado.'}
+            {s.sync.enabled ? ` Cópia automática todo dia às ${String(s.sync.hour).padStart(2, '0')}:00.` : ''}
+          </span>
         ) : (
           <span>
             A cópia do catálogo está desligada.{' '}

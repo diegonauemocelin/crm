@@ -23,6 +23,7 @@ class MagazordDto {
   @ApiProperty() @IsBoolean() importOrders!: boolean
   @ApiProperty() @IsBoolean() importCarts!: boolean
   @ApiPropertyOptional() @IsOptional() @IsBoolean() importProducts?: boolean
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(23) productsHour?: number
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1_000_000) storeId?: number
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) siteUrl?: string
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) imageBaseUrl?: string
@@ -83,7 +84,7 @@ export class MagazordController {
     const base = dto.baseUrl.trim() ? cleanBaseUrl(dto.baseUrl) : ''
     if (base === null) throw new BadRequestException('Endereço inválido. Use o do painel da loja, ex.: https://usaparts.painel.magazord.com.br')
     const current = await this.magazord.config(user.tenantId)
-    const { token, password, importProducts, storeId, siteUrl, imageBaseUrl, ...rest } = dto
+    const { token, password, importProducts, productsHour, storeId, siteUrl, imageBaseUrl, ...rest } = dto
     for (const [label, v] of [['site', siteUrl], ['imagens', imageBaseUrl]] as const) {
       if (v?.trim() && !cleanHttpsBase(v)) throw new BadRequestException(`Endereço de ${label} inválido (use https://).`)
     }
@@ -92,6 +93,7 @@ export class MagazordController {
       ...rest,
       baseUrl: base,
       importProducts: importProducts ?? current.importProducts,
+      productsHour: productsHour ?? current.productsHour ?? 3,
       storeId: storeId ?? current.storeId,
       siteUrl: siteUrl === undefined ? current.siteUrl : (cleanHttpsBase(siteUrl) ?? ''),
       imageBaseUrl: imageBaseUrl === undefined ? current.imageBaseUrl : (cleanHttpsBase(imageBaseUrl) ?? ''),
