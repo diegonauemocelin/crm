@@ -6,6 +6,8 @@ import type { AuthUser } from '../common/types'
 import { env } from '../config/env'
 import { PrismaService } from '../prisma/prisma.service'
 import { ChatService } from './chat.service'
+import type { Prisma } from '../generated/prisma/client'
+import { cleanSectors } from './atendentes'
 import { EvolutionClient, EvolutionError, cleanQr, type NumberStatus, statusOf } from './evolution'
 
 export interface NumberInput {
@@ -13,6 +15,8 @@ export interface NumberInput {
   unitId?: string | null
   sellerIds?: string[]
   userIds?: string[]
+  splitAttendance?: boolean
+  sectors?: unknown
   createRecords?: boolean
   signMessages?: boolean
 }
@@ -134,7 +138,7 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
       const count = await tx.whatsappNumber.count({ where: { tenantId: user.tenantId, deletedAt: null } })
       if (count >= env.whatsappMaxNumbers) throw new BadRequestException(`Limite de ${env.whatsappMaxNumbers} números cadastrados. Exclua um para cadastrar outro.`)
       return tx.whatsappNumber.create({
-        data: { tenantId: user.tenantId, name, instanceName: `crm-${randomToken(9).toLowerCase().replace(/[^a-z0-9]/g, 'x')}`, unitId: d.unitId ?? null, sellerIds, userIds, createRecords: d.createRecords ?? true, signMessages: d.signMessages ?? true },
+        data: { tenantId: user.tenantId, name, instanceName: `crm-${randomToken(9).toLowerCase().replace(/[^a-z0-9]/g, 'x')}`, unitId: d.unitId ?? null, sellerIds, userIds, splitAttendance: d.splitAttendance ?? false, sectors: cleanSectors(d.sectors, userIds) as unknown as Prisma.InputJsonValue, createRecords: d.createRecords ?? true, signMessages: d.signMessages ?? true },
       })
     })
     await this.audit.byUser(user, ctx, 'whatsapp.numero_criado', 'whatsapp_number', n.id, { nome: name })
@@ -148,7 +152,9 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
     const sellerIds = await this.assertRefs(user.tenantId, d)
     // Sem a lista na requisição (tela antiga), mantém os usuários atuais.
     const userIds = d.userIds ? await this.assertUsers(user.tenantId, d) : undefined
-    const n = await this.prisma.whatsappNumber.update({ where: { id }, data: { name, unitId: d.unitId ?? null, sellerIds, ...(userIds ? { userIds } : {}), ...(d.createRecords !== undefined ? { createRecords: d.createRecords } : {}), ...(d.signMessages !== undefined ? { signMessages: d.signMessages } : {}) } })
+    const current = await this.prisma.whatsappNumber.findUnique({ where: { id }, select: { userIds: true } })
+    const sectors = d.sectors !== undefined ? cleanSectors(d.sectors, userIds ?? current?.userIds ?? []) : undefined
+    const n = await this.prisma.whatsappNumber.update({ where: { id }, data: { name, unitId: d.unitId ?? null, sellerIds, ...(userIds ? { userIds } : {}), ...(d.splitAttendance !== undefined ? { splitAttendance: d.splitAttendance } : {}), ...(sectors ? { sectors: sectors as unknown as Prisma.InputJsonValue } : {}), ...(d.createRecords !== undefined ? { createRecords: d.createRecords } : {}), ...(d.signMessages !== undefined ? { signMessages: d.signMessages } : {}) } })
     await this.audit.byUser(user, ctx, 'whatsapp.numero_alterado', 'whatsapp_number', id, { nome: name, vendedores: sellerIds.length, usuarios: userIds?.length ?? null })
     return this.view(n)
   }

@@ -12,6 +12,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { normalizePhone } from '../atendimento/br'
 import { type EvolutionClient, EvolutionError } from './evolution'
+import { sectorsOf, splitWhere } from './atendentes'
 import { applyVariables, cleanRules, type CompanyCategory, decide, DEFAULT_RULES, detectOutgoing, parseContactList, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
 import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, type ParsedMessage, phoneFromDigits, phoneVariants, previewOf } from './mensagens'
 
@@ -235,9 +236,20 @@ export class ChatService {
       const nums = await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, unitId: user.unitId }, select: { id: true } })
       return { ...base, numberId: { in: nums.map((x) => x.id) } }
     }
-    const { numberIds, sellerId } = await this.ownNumbers(user)
-    if (!numberIds.length && !sellerId) return { id: { in: [] } }
-    return { ...base, OR: [{ numberId: { in: numberIds } }, ...(sellerId ? [{ assignedSellerId: sellerId }] : [])] }
+    const { numbers, sellerId } = await this.ownNumbers(user)
+    const normal = numbers.filter((n) => !n.splitAttendance).map((n) => n.id)
+    const split = numbers.filter((n) => n.splitAttendance)
+    return {
+      ...base,
+      OR: [
+        ...(normal.length ? [{ numberId: { in: normal } }] : []),
+        // Atendimento dividido: as minhas, a fila do meu setor e os contatos da empresa.
+        ...splitWhere(user.id, split),
+        // Passadas para mim (mesmo de outro número) ou para o vendedor ligado ao meu login.
+        { assignedUserId: user.id },
+        ...(sellerId ? [{ assignedSellerId: sellerId }] : []),
+      ],
+    }
   }
 
   /** Números do usuário: ligados ao login dele ou ao vendedor dele (cadastro do número em Números de WhatsApp). */
@@ -245,12 +257,12 @@ export class ChatService {
     const seller = await this.prisma.seller.findUnique({ where: { userId: user.id }, select: { id: true } })
     const nums = await this.prisma.whatsappNumber.findMany({
       where: { tenantId: user.tenantId, deletedAt: null, OR: [{ userIds: { has: user.id } }, ...(seller ? [{ sellerIds: { has: seller.id } }] : [])] },
-      select: { id: true },
+      select: { id: true, splitAttendance: true, sectors: true },
     })
-    return { numberIds: nums.map((n) => n.id), sellerId: seller?.id ?? null }
+    return { numberIds: nums.map((n) => n.id), numbers: nums, sellerId: seller?.id ?? null }
   }
 
-  async conversations(user: AuthUser, q: { numberId?: string; unread?: boolean; archived?: boolean; search?: string; page?: number; category?: string; leadId?: string; reminders?: boolean; monitor?: boolean; sellerId?: string; awaiting?: boolean }) {
+  async conversations(user: AuthUser, q: { numberId?: string; unread?: boolean; archived?: boolean; search?: string; page?: number; category?: string; leadId?: string; reminders?: boolean; monitor?: boolean; sellerId?: string; awaiting?: boolean; queue?: boolean }) {
     if (q.monitor) this.assertMonitor(user)
     else this.assertCan(user)
     const scope: Prisma.WhatsappConversationWhereInput = q.monitor ? { tenantId: user.tenantId } : await this.where(user)
@@ -263,6 +275,11 @@ export class ChatService {
     if (q.monitor && q.sellerId) and.push(await this.sellerWhere(user.tenantId, q.sellerId))
     // Aguardando resposta: a última mensagem é do contato.
     if (q.awaiting) and.push({ lastFromMe: false })
+    // Fila do atendimento dividido: clientes ainda sem atendente.
+    if (q.queue) {
+      const split = await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, splitAttendance: true }, select: { id: true } })
+      and.push({ assignedUserId: null, category: 'CLIENTE', numberId: { in: split.map((n) => n.id) } })
+    }
     const s = q.search?.trim()
     if (s) {
       const digits = s.replace(/\D/g, '')
@@ -280,11 +297,13 @@ export class ChatService {
     const reminders = new Map(
       (await this.prisma.whatsappReminder.groupBy({ by: ['conversationId'], where: { userId: user.id, doneAt: null, conversationId: { in: rows.map((r) => r.id) } }, _min: { dueAt: true } })).map((r) => [r.conversationId, r._min.dueAt]),
     )
+    const userNames = new Map((await this.prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.assignedUserId).filter((x): x is string => !!x))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
     // No monitoramento, quem atende cada conversa (vendedor da conversa ou os do número).
     const sellerName = q.monitor ? await this.sellerNames(user.tenantId) : null
     const numberSellers = q.monitor ? new Map((await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId }, select: { id: true, sellerIds: true } })).map((n) => [n.id, n.sellerIds])) : null
-    const attendant = (r: { assignedSellerId: string | null; numberId: string }) => {
+    const attendant = (r: { assignedSellerId: string | null; assignedUserId: string | null; numberId: string }) => {
       if (!sellerName) return undefined
+      if (r.assignedUserId) return userNames.get(r.assignedUserId) ?? null
       const ids = r.assignedSellerId ? [r.assignedSellerId] : (numberSellers?.get(r.numberId) ?? [])
       return ids.map((id) => sellerName.get(id)).filter(Boolean).join(', ') || null
     }
@@ -310,12 +329,15 @@ export class ChatService {
         status: r.status,
         reminderAt: reminders.get(r.id) ?? null,
         noteUnread: r.noteUnread,
+        assignedUserId: r.assignedUserId,
+        assignedUserName: r.assignedUserId ? (userNames.get(r.assignedUserId) ?? null) : null,
+        sectorId: r.sectorId,
       })),
     }
   }
 
   private allNumbers(tenantId: string) {
-    return this.prisma.whatsappNumber.findMany({ where: { tenantId, deletedAt: null }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, phone: true, status: true } })
+    return this.prisma.whatsappNumber.findMany({ where: { tenantId, deletedAt: null }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, phone: true, status: true, splitAttendance: true } })
   }
 
   private async sellerNames(tenantId: string) {
@@ -323,7 +345,7 @@ export class ChatService {
   }
 
   private async visibleNumbers(user: AuthUser, scope: Prisma.WhatsappConversationWhereInput) {
-    const all = await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, deletedAt: null }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, phone: true, status: true } })
+    const all = await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, deletedAt: null }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, phone: true, status: true, splitAttendance: true } })
     if (this.scopeOf(user) === 'ALL') return all
     const ids = new Set((await this.prisma.whatsappConversation.findMany({ where: scope, select: { numberId: true }, distinct: ['numberId'] })).map((c) => c.numberId))
     const mine = (await this.ownNumbers(user)).numberIds
@@ -358,17 +380,20 @@ export class ChatService {
     const beforeDate = before && !Number.isNaN(Date.parse(before)) ? new Date(before) : null
     const [rows, number, lead, record] = await Promise.all([
       this.prisma.whatsappMessage.findMany({ where: { conversationId: id, ...(beforeDate ? { sentAt: { lt: beforeDate } } : {}) }, orderBy: [{ sentAt: 'desc' }, { createdAt: 'desc' }], take: PAGE + 1 }),
-      this.prisma.whatsappNumber.findUnique({ where: { id: conv.numberId }, select: { id: true, name: true, phone: true, status: true } }),
+      this.prisma.whatsappNumber.findUnique({ where: { id: conv.numberId }, select: { id: true, name: true, phone: true, status: true, splitAttendance: true, sectors: true, userIds: true } }),
       conv.leadId ? this.prisma.lead.findUnique({ where: { id: conv.leadId }, select: { id: true, name: true, email: true, phone: true, adsLastCampaign: true, adsLastCampaignId: true } }) : null,
       conv.recordId ? this.prisma.serviceRecord.findUnique({ where: { id: conv.recordId }, select: { id: true, kind: true, leadAt: true, saleStatus: true, adsVia: true, adsCampaign: true, adsCampaignId: true, entryChannel: true } }) : null,
     ])
     // Quem atende abriu: mensagens e nota interna vistas (no monitoramento, nada muda).
     if (!monitor && !beforeDate && (conv.unread > 0 || conv.noteUnread)) await this.prisma.whatsappConversation.update({ where: { id }, data: { unread: 0, noteUnread: false } })
     const more = rows.length > PAGE
+    // Atendentes do número (para assumir e transferir) e o nome de quem atende.
+    const attendants = number ? await this.prisma.user.findMany({ where: { id: { in: [...new Set([...number.userIds, ...(conv.assignedUserId ? [conv.assignedUserId] : [])])] }, tenantId: user.tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true, active: true } }) : []
     return {
-      conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, category: conv.category, unread: conv.unread },
+      conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, assignedUserId: conv.assignedUserId, assignedUserName: attendants.find((a) => a.id === conv.assignedUserId)?.name ?? null, sectorId: conv.sectorId, category: conv.category, unread: conv.unread },
+      attendance: number ? { split: number.splitAttendance, sectors: sectorsOf(number.sectors).map((s) => ({ id: s.id, name: s.name })), attendants: attendants.filter((a) => a.active).map((a) => ({ id: a.id, name: a.name })) } : null,
       monitor: !!monitor,
-      number,
+      number: number ? { id: number.id, name: number.name, phone: number.phone, status: number.status } : null,
       lead,
       record,
       hasMore: more,
@@ -432,7 +457,7 @@ export class ChatService {
 
   private async recordSent(
     user: AuthUser,
-    c: { conv: { id: string; jid: string; numberId: string; tenantId: string }; number: WhatsappNumber },
+    c: { conv: { id: string; jid: string; numberId: string; tenantId: string; assignedUserId?: string | null }; number: WhatsappNumber },
     r: { waId: string; remoteJid: string | null; at: Date },
     m: { type: string; text: string | null; fileId?: string; fileName?: string; mime?: string },
   ) {
@@ -445,7 +470,7 @@ export class ChatService {
     })
     await this.prisma.whatsappConversation.update({
       where: { id: c.conv.id },
-      data: { lastMessageAt: r.at, lastPreview: previewOf({ type: m.type as ParsedMessage['type'], text: m.text }), lastFromMe: true, unread: 0, status: 'ABERTA' },
+      data: { lastMessageAt: r.at, lastPreview: previewOf({ type: m.type as ParsedMessage['type'], text: m.text }), lastFromMe: true, unread: 0, status: 'ABERTA', ...(c.number.splitAttendance && !c.conv.assignedUserId ? { assignedUserId: user.id } : {}) },
     })
     // O WhatsApp registrou o contato com outro identificador (ex.: celular sem o 9): a conversa passa a usar o dele.
     if (r.remoteJid?.endsWith('@s.whatsapp.net') && r.remoteJid !== c.conv.jid) {
@@ -523,12 +548,19 @@ export class ChatService {
     const existing =
       (await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: number.id, jid } } })) ??
       (await this.prisma.whatsappConversation.findFirst({ where: { numberId: number.id, phone: { in: phoneVariants(phone) } } }))
+    const split = (await this.prisma.whatsappNumber.findUnique({ where: { id: number.id }, select: { splitAttendance: true } }))?.splitAttendance ?? false
     if (existing) {
-      if (lead && !existing.leadId) await this.prisma.whatsappConversation.update({ where: { id: existing.id }, data: { leadId: lead.id } })
+      // Atendimento dividido: cliente de outro atendente não muda de dono; da fila, passa para quem iniciou.
+      if (split && existing.assignedUserId && existing.assignedUserId !== user.id && existing.category === 'CLIENTE' && this.scopeOf(user) === 'OWN') {
+        const owner = await this.prisma.user.findUnique({ where: { id: existing.assignedUserId }, select: { name: true } })
+        throw new BadRequestException(`Este cliente já é atendido por ${owner?.name ?? 'outro atendente'} neste número. Peça a transferência para você.`)
+      }
+      const patch = { ...(lead && !existing.leadId ? { leadId: lead.id } : {}), ...(split && !existing.assignedUserId ? { assignedUserId: user.id } : {}) }
+      if (Object.keys(patch).length) await this.prisma.whatsappConversation.update({ where: { id: existing.id }, data: patch })
       return { id: existing.id }
     }
     const conv = await this.prisma.whatsappConversation.create({
-      data: { tenantId: user.tenantId, numberId: number.id, jid, phone, name: lead?.name ?? null, leadId: lead?.id ?? null, lastMessageAt: new Date(), lastPreview: 'Conversa iniciada pelo CRM', lastFromMe: true },
+      data: { tenantId: user.tenantId, numberId: number.id, jid, phone, name: lead?.name ?? null, leadId: lead?.id ?? null, lastMessageAt: new Date(), lastPreview: 'Conversa iniciada pelo CRM', lastFromMe: true, ...(split ? { assignedUserId: user.id } : {}) },
     })
     return { id: conv.id }
   }
@@ -543,6 +575,31 @@ export class ChatService {
       data: { ...(d.assignedSellerId !== undefined ? { assignedSellerId: d.assignedSellerId } : {}), ...(d.status ? { status: d.status } : {}) },
     })
     return { id: r.id, assignedSellerId: r.assignedSellerId, status: r.status }
+  }
+
+  /**
+   * Atendimento dividido: assumir da fila ou transferir para outro atendente ou para a fila de um setor.
+   * Quem atende pode passar a própria conversa (ou uma da fila); com a ação Editar do chat, qualquer uma.
+   */
+  async assign(user: AuthUser, id: string, d: { userId?: string | null; sectorId?: string | null }, ctx: RequestCtx) {
+    this.assertAction(user, 'chat', 'create')
+    const conv = await this.load(user, id)
+    const canEdit = can(user.permissions, user.role.isSystem, 'chat', 'edit')
+    if (!canEdit && conv.assignedUserId && conv.assignedUserId !== user.id) throw new ForbiddenException('Esta conversa é de outro atendente.')
+    const number = await this.prisma.whatsappNumber.findUnique({ where: { id: conv.numberId }, select: { userIds: true, sectors: true } })
+    if (!number) throw new NotFoundException('Número não encontrado.')
+    const sectors = sectorsOf(number.sectors)
+    const userId = d.userId === undefined ? conv.assignedUserId : d.userId
+    if (userId && userId !== user.id && !number.userIds.includes(userId)) throw new BadRequestException('Escolha um atendente deste número.')
+    if (userId && !(await this.prisma.user.count({ where: { id: userId, tenantId: user.tenantId, active: true } }))) throw new BadRequestException('Atendente inválido.')
+    const sectorId = d.sectorId === undefined ? conv.sectorId : d.sectorId
+    if (sectorId && !sectors.some((s) => s.id === sectorId)) throw new BadRequestException('Setor inválido.')
+    const r = await this.prisma.whatsappConversation.update({ where: { id }, data: { assignedUserId: userId ?? null, sectorId: sectorId ?? null } })
+    await this.audit.byUser(user, ctx, userId === user.id && conv.assignedUserId !== user.id ? 'chat.assumida' : 'chat.transferida', 'whatsapp_conversation', id, {
+      atendente: userId ?? null,
+      setor: sectors.find((s) => s.id === sectorId)?.name ?? null,
+    })
+    return { id: r.id, assignedUserId: r.assignedUserId, sectorId: r.sectorId }
   }
 
   // ---------- Respostas rápidas ----------

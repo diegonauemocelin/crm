@@ -22,6 +22,7 @@ class ListDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) pagina?: number
   @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() monitorar?: boolean
   @IsOptional() @IsUUID() vendedor?: string
+  @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() fila?: boolean
   @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() aguardando?: boolean
 }
 
@@ -42,6 +43,11 @@ class StartDto {
 class UpdateDto {
   @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() assignedSellerId?: string | null
   @IsOptional() @IsIn(['ABERTA', 'ARQUIVADA']) status?: 'ABERTA' | 'ARQUIVADA'
+}
+
+class AssignDto {
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() userId?: string | null
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(40) sectorId?: string | null
 }
 
 class CategoryDto {
@@ -157,7 +163,7 @@ export class ChatController {
 
   @Get('conversas')
   list(@CurrentUser() user: AuthUser, @Query() q: ListDto) {
-    return this.chat.conversations(user, { numberId: q.numero, unread: q.naoLidas, archived: q.arquivadas, search: q.busca, page: q.pagina, category: q.tipo, leadId: q.lead, reminders: q.lembretes, monitor: q.monitorar, sellerId: q.vendedor, awaiting: q.aguardando })
+    return this.chat.conversations(user, { numberId: q.numero, unread: q.naoLidas, archived: q.arquivadas, search: q.busca, page: q.pagina, category: q.tipo, leadId: q.lead, reminders: q.lembretes, monitor: q.monitorar, sellerId: q.vendedor, awaiting: q.aguardando, queue: q.fila })
   }
 
   /** Números em que o usuário pode iniciar conversa. */
@@ -265,6 +271,13 @@ export class ChatController {
   @Delete('respostas/:id')
   removeQuickReply(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.chat.removeQuickReply(user, id)
+  }
+
+  /** Atendimento dividido: assumir (userId = eu) ou transferir para atendente ou fila de setor. */
+  @Post('conversas/:id/atendente')
+  @HttpCode(200)
+  assign(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AssignDto, @ReqContext() ctx: RequestCtx) {
+    return this.chat.assign(user, id, dto, ctx)
   }
 
   /** Nota interna: só no CRM, o cliente não recebe. */

@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.33.0",
+      "date": "2026-10-15",
+      "title": "Vários atendentes no mesmo número",
+      "changes": [
+        { "type": "novo", "area": "WhatsApp", "text": "Vários atendentes no mesmo número: com o “Atendimento dividido” ligado (Números de WhatsApp → Editar), cada cliente fica com um atendente, e os outros atendentes do número não leem a conversa." },
+        { "type": "novo", "area": "WhatsApp", "text": "Fila: cliente novo fica “Na fila” até alguém clicar em Assumir (ou responder pelo CRM). Filtro “Fila” na lista de conversas." },
+        { "type": "novo", "area": "WhatsApp", "text": "Setores por número (ex.: Vendas, Financeiro): a conversa na fila de um setor só aparece para os atendentes dele. Transferência para outro atendente ou para a fila de um setor, registrada na auditoria." },
+        { "type": "melhoria", "area": "WhatsApp", "text": "Conversas com colegas de trabalho, fornecedores e outros contatos da empresa continuam visíveis para todos os atendentes do número. Administrador, Gestor comercial e quem vê “Todas” continuam vendo tudo." }
+      ]
+    },
+    {
       "version": "0.32.0",
       "date": "2026-10-15",
       "title": "Sugestões de melhoria",

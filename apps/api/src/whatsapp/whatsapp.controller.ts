@@ -11,6 +11,8 @@ class NumberDto {
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() unitId?: string | null
   @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) sellerIds?: string[]
   @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() @ArrayMaxSize(100) @IsUUID('all', { each: true }) userIds?: string[]
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() splitAttendance?: boolean
+  @ApiPropertyOptional({ description: '[{ id?, name, userIds }]' }) @IsOptional() @IsArray() @ArrayMaxSize(20) sectors?: unknown[]
   @ApiPropertyOptional() @IsOptional() @IsBoolean() createRecords?: boolean
   @ApiPropertyOptional() @IsOptional() @IsBoolean() signMessages?: boolean
 }

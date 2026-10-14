@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HeadsetIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HeadsetIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
 import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -27,9 +27,15 @@ interface NumberRef {
   name: string
   phone: string | null
   status: string
+  /** Atendimento dividido entre os atendentes do número. */
+  splitAttendance?: boolean
 }
 interface ConvItem {
   id: string
+  /** Atendimento dividido: atendente da conversa (vazio = na fila). */
+  assignedUserId?: string | null
+  assignedUserName?: string | null
+  sectorId?: string | null
   /** Nota interna nova, ainda não vista por quem atende. */
   noteUnread?: boolean
   /** Só no monitoramento: quem atende a conversa. */
@@ -71,8 +77,9 @@ interface Message {
   status?: string | null
 }
 interface Thread {
-  conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; category: ContactCategory }
+  conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; sectorId?: string | null; category: ContactCategory }
   number: NumberRef | null
+  attendance?: { split: boolean; sectors: { id: string; name: string }[]; attendants: { id: string; name: string }[] } | null
   lead: { id: string; name: string | null; email: string | null; phone: string | null } | null
   record: { id: string; kind: 'PRE_VENDAS' | 'POS_VENDAS'; leadAt: string; saleStatus: string; adsVia: string | null; adsCampaign: string | null; adsCampaignId: string | null; entryChannel: string | null } | null
   hasMore: boolean
@@ -115,6 +122,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
   const monitor = onlyMonitor || params.get('monitorar') === '1'
   const [sellerId, setSellerId] = useState<string | null>(null)
   const [awaiting, setAwaiting] = useState(false)
+  const [queue, setQueue] = useState(false)
   const [numberId, setNumberId] = useState<string | null>(null)
   const [unread, setUnread] = useState(false)
   const [archived, setArchived] = useState(false)
@@ -128,7 +136,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
     const t = setTimeout(() => setQ(search.trim()), 300)
     return () => clearTimeout(t)
   }, [search])
-  const qs = new URLSearchParams({ ...(numberId ? { numero: numberId } : {}), ...(unread ? { naoLidas: 'true' } : {}), ...(archived ? { arquivadas: 'true' } : {}), ...(category ? { tipo: category } : {}), ...(withReminder && !monitor ? { lembretes: 'true' } : {}), ...(q ? { busca: q } : {}), ...(monitor ? { monitorar: 'true' } : {}), ...(monitor && sellerId ? { vendedor: sellerId } : {}), ...(monitor && awaiting ? { aguardando: 'true' } : {}) }).toString()
+  const qs = new URLSearchParams({ ...(numberId ? { numero: numberId } : {}), ...(unread ? { naoLidas: 'true' } : {}), ...(archived ? { arquivadas: 'true' } : {}), ...(category ? { tipo: category } : {}), ...(withReminder && !monitor ? { lembretes: 'true' } : {}), ...(q ? { busca: q } : {}), ...(monitor ? { monitorar: 'true' } : {}), ...(monitor && sellerId ? { vendedor: sellerId } : {}), ...(monitor && awaiting ? { aguardando: 'true' } : {}), ...(queue ? { fila: 'true' } : {}) }).toString()
   const list = useQuery({ queryKey: ['chat-conversas', qs], queryFn: () => api.get<ListData>(`/chat/conversas?${qs}`), refetchInterval: 5000, placeholderData: keepPreviousData })
   const numbers = useMemo(() => new Map((list.data?.numbers ?? []).map((n) => [n.id, n])), [list.data?.numbers])
   const open = (id: string | null) => setParams((p) => {
@@ -232,6 +240,11 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                     <Switch checked={withReminder} onCheckedChange={setWithReminder} aria-label="Só com lembrete" /> Lembretes
                   </label>
                 )}
+                {list.data.numbers.some((n) => n.splitAttendance) && (
+                  <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title="Clientes ainda sem atendente, nos números com atendimento dividido">
+                    <Switch checked={queue} onCheckedChange={setQueue} aria-label="Só a fila" /> Fila
+                  </label>
+                )}
                 <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
                   <Switch checked={archived} onCheckedChange={setArchived} aria-label="Ver arquivadas" /> Arquivadas
                 </label>
@@ -242,7 +255,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
               </div>
             </div>
             <ul className="min-h-0 flex-1 overflow-y-auto">
-              {list.data.items.length === 0 && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa{archived ? ' arquivada' : ''}{q || unread || numberId || category || withReminder || sellerId || awaiting ? ' com esses filtros' : archived ? '' : ' ainda'}.</li>}
+              {list.data.items.length === 0 && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa{archived ? ' arquivada' : ''}{q || unread || numberId || category || withReminder || sellerId || awaiting || queue ? ' com esses filtros' : archived ? '' : ' ainda'}.</li>}
               {list.data.items.map((c) => (
                 <li key={c.id}>
                   <button
@@ -275,9 +288,11 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                         )}
                         {c.unread > 0 && <Badge className="h-5 shrink-0 px-1.5 tabular-nums" aria-label={`${c.unread} não lidas`}>{c.unread}</Badge>}
                       </span>
-                      {(list.data.numbers.length > 1 || (c.category && c.category !== 'CLIENTE') || monitor) && (
+                      {(list.data.numbers.length > 1 || (c.category && c.category !== 'CLIENTE') || monitor || numbers.get(c.numberId)?.splitAttendance) && (
                         <span className="block truncate text-[11px] text-muted-foreground">
-                          {[monitor ? c.attendant || 'sem vendedor' : null, list.data.numbers.length > 1 ? numbers.get(c.numberId)?.name : null, c.category && c.category !== 'CLIENTE' ? categoryLabel(c.category) : null].filter(Boolean).join(' · ')}
+                          {[
+                            numbers.get(c.numberId)?.splitAttendance && (!c.category || c.category === 'CLIENTE') ? (c.assignedUserName ? `com ${c.assignedUserName}` : 'Na fila') : null,
+                            monitor && !numbers.get(c.numberId)?.splitAttendance ? c.attendant || 'sem vendedor' : null, list.data.numbers.length > 1 ? numbers.get(c.numberId)?.name : null, c.category && c.category !== 'CLIENTE' ? categoryLabel(c.category) : null].filter(Boolean).join(' · ')}
                         </span>
                       )}
                     </span>
@@ -363,6 +378,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
             </Button>
           )}
           {can('monitoramento', 'create') && <NoteButton conversationId={d.conversation.id} monitor={monitor} />}
+          {!monitor && d.attendance?.split && d.conversation.category === 'CLIENTE' && <AttendantPicker thread={d} />}
           {!monitor && <ReminderButton conversationId={d.conversation.id} />}
           {!monitor && <ConversationActions thread={d} />}
           {d.lead && (
@@ -436,6 +452,64 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
       )}
     </div>
     </MonitorContext.Provider>
+  )
+}
+
+/** Atendimento dividido: quem atende a conversa, assumir da fila e transferir para outro atendente ou setor. */
+function AttendantPicker({ thread }: { thread: Thread }) {
+  const qc = useQueryClient()
+  const { me, can } = useAuth()
+  const a = thread.attendance!
+  const id = thread.conversation.id
+  const mine = thread.conversation.assignedUserId === me?.id
+  const free = !thread.conversation.assignedUserId
+  const save = useMutation({
+    mutationFn: (d: { userId?: string | null; sectorId?: string | null }) => api.post(`/chat/conversas/${id}/atendente`, d),
+    onSuccess: (_r, d) => {
+      void qc.invalidateQueries({ queryKey: ['chat-conversa', id] })
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+      toast.success(d.userId === me?.id ? 'Conversa assumida: agora ela é sua.' : d.userId ? 'Conversa transferida.' : 'Conversa devolvida para a fila.')
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const canMove = can('chat', 'edit') || mine || free
+  const value = thread.conversation.assignedUserId ? `u:${thread.conversation.assignedUserId}` : thread.conversation.sectorId ? `s:${thread.conversation.sectorId}` : 'fila'
+  return (
+    <>
+      {free && can('chat', 'create') && (
+        <Button size="sm" onClick={() => save.mutate({ userId: me?.id ?? null })} disabled={save.isPending}>
+          <HandIcon /> Assumir
+        </Button>
+      )}
+      {canMove ? (
+        <Select
+          value={value}
+          onValueChange={(v) => save.mutate(v === 'fila' ? { userId: null, sectorId: null } : v.startsWith('s:') ? { userId: null, sectorId: v.slice(2) } : { userId: v.slice(2) })}
+        >
+          <SelectTrigger size="sm" className="w-44" aria-label="Atendente da conversa">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="fila">Na fila (todos)</SelectItem>
+            {a.sectors.map((s) => (
+              <SelectItem key={s.id} value={`s:${s.id}`}>
+                Fila: {s.name}
+              </SelectItem>
+            ))}
+            {a.attendants.map((u) => (
+              <SelectItem key={u.id} value={`u:${u.id}`}>
+                {u.id === me?.id ? `${u.name} (você)` : u.name}
+              </SelectItem>
+            ))}
+            {thread.conversation.assignedUserId && !a.attendants.some((u) => u.id === thread.conversation.assignedUserId) && (
+              <SelectItem value={`u:${thread.conversation.assignedUserId}`}>{thread.conversation.assignedUserName ?? 'Atendente'}</SelectItem>
+            )}
+          </SelectContent>
+        </Select>
+      ) : (
+        <Badge variant="outline">com {thread.conversation.assignedUserName ?? 'outro atendente'}</Badge>
+      )}
+    </>
   )
 }
 

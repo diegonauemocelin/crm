@@ -1303,6 +1303,10 @@ model WhatsappNumber {
   sellerIds      String[]  @default([]) @db.Uuid
   /// Usuários (logins) que usam este número: com o escopo "Próprios" no Chat WhatsApp, só eles veem as conversas dele.
   userIds        String[]  @default([]) @db.Uuid
+  /// Atendimento dividido: cada conversa de cliente tem um atendente; os outros do número não leem (veem a fila e os contatos da empresa).
+  splitAttendance Boolean  @default(false)
+  /// Setores do número: [{ id, name, userIds }]. Conversa na fila de um setor só aparece para os atendentes dele.
+  sectors        Json      @default("[]")
   /// Este número abre pré-venda (desligue em números que não são de venda). O que vira lead segue as regras do WhatsApp.
   createRecords  Boolean   @default(true)
   /// Mensagens enviadas pelo CRM começam com o nome de quem enviou (*Diego:*), para o cliente saber com quem fala.
@@ -1331,6 +1335,10 @@ model WhatsappConversation {
   leadId           String?   @db.Uuid
   recordId         String?   @db.Uuid
   assignedSellerId String?   @db.Uuid
+  /// Atendente (login) da conversa nos números com atendimento dividido; vazio = na fila.
+  assignedUserId   String?   @db.Uuid
+  /// Setor da fila (id do setor do número).
+  sectorId         String?
   /// CLIENTE, COLEGA, FORNECEDOR ou OUTRO (vem do cadastro do contato, para filtrar a lista)
   category         String    @default("CLIENTE")
   /// ABERTA ou ARQUIVADA

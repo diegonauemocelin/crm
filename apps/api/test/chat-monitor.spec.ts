@@ -55,13 +55,14 @@ describe('cada login vê só o seu chat', () => {
 
   it('login sem cadastro de vendedor (ex.: Pré-Vendas) vê só os números ligados a ele', async () => {
     const s = new ChatService(prisma({}) as never, {} as never, {} as never, {} as never, {} as never, {} as never)
-    expect(await s.where(who('u1'))).toEqual({ tenantId: 't', OR: [{ numberId: { in: ['n1'] } }] })
-    expect(await s.where(who('u5'))).toEqual({ id: { in: [] } })
+    expect(await s.where(who('u1'))).toEqual({ tenantId: 't', OR: [{ numberId: { in: ['n1'] } }, { assignedUserId: 'u1' }] })
+    // Sem número: só o que for passado para ele.
+    expect(await s.where(who('u5'))).toEqual({ tenantId: 't', OR: [{ assignedUserId: 'u5' }] })
   })
 
   it('vendedor: números do vendedor e do login, mais as conversas passadas para ele', async () => {
     const s = new ChatService(prisma({ u1: 's2' }) as never, {} as never, {} as never, {} as never, {} as never, {} as never)
-    expect(await s.where(who('u1'))).toEqual({ tenantId: 't', OR: [{ numberId: { in: ['n1', 'n2'] } }, { assignedSellerId: 's2' }] })
+    expect(await s.where(who('u1'))).toEqual({ tenantId: 't', OR: [{ numberId: { in: ['n1', 'n2'] } }, { assignedUserId: 'u1' }, { assignedSellerId: 's2' }] })
   })
 })
 
@@ -74,5 +75,38 @@ describe('nome do atendente nas mensagens', () => {
     expect(signed('Olá!', 'Diego Naue', '   ')).toBe('*Diego:*\nOlá!')
     expect(cleanSignature('x'.repeat(80))).toHaveLength(40)
     expect(cleanSignature(null)).toBeNull()
+  })
+})
+
+describe('vários atendentes no mesmo número', () => {
+  it('setores: limpa nomes repetidos e usuários fora do número', async () => {
+    const { cleanSectors } = await import('../src/whatsapp/atendentes')
+    const s = cleanSectors([{ name: ' Vendas ', userIds: ['u1', 'x'] }, { name: 'vendas', userIds: [] }, { name: '' }, { name: 'Financeiro', userIds: ['u2'] }], ['u1', 'u2'])
+    expect(s.map((x) => [x.name, x.userIds])).toEqual([['Vendas', ['u1']], ['Financeiro', ['u2']]])
+    expect(s[0]!.id).toMatch(/^[0-9a-f-]{36}$/)
+  })
+
+  it('atendente vê as dele, a fila do setor dele e os contatos da empresa; não as de clientes de outro atendente', async () => {
+    const { splitWhere } = await import('../src/whatsapp/atendentes')
+    const where = splitWhere('u1', [{ id: 'n1', sectors: [{ id: 'sv', name: 'Vendas', userIds: ['u1'] }, { id: 'sf', name: 'Financeiro', userIds: ['u2'] }] }])
+    // Avalia o filtro como o banco faria, numa lista de conversas.
+    type C = { numberId: string; assignedUserId: string | null; category: string; sectorId: string | null }
+    const match = (c: C, w: Record<string, unknown>): boolean =>
+      Object.entries(w).every(([k, v]) => {
+        if (k === 'OR') return (v as Record<string, unknown>[]).some((x) => match(c, x))
+        const val = c[k as keyof C]
+        if (v && typeof v === 'object' && 'not' in v) return val !== (v as { not: unknown }).not
+        if (v && typeof v === 'object' && 'in' in v) return (v as { in: unknown[] }).in.includes(val)
+        return val === v
+      })
+    const sees = (c: C) => where.some((w) => match(c, w as Record<string, unknown>))
+    const base = { numberId: 'n1', sectorId: null, category: 'CLIENTE' }
+    expect(sees({ ...base, assignedUserId: 'u1' })).toBe(true)
+    expect(sees({ ...base, assignedUserId: 'u2' })).toBe(false)
+    expect(sees({ ...base, assignedUserId: null })).toBe(true)
+    expect(sees({ ...base, assignedUserId: null, sectorId: 'sv' })).toBe(true)
+    expect(sees({ ...base, assignedUserId: null, sectorId: 'sf' })).toBe(false)
+    expect(sees({ ...base, assignedUserId: 'u2', category: 'COLEGA' })).toBe(true)
+    expect(sees({ ...base, numberId: 'n2', assignedUserId: null })).toBe(false)
   })
 })
