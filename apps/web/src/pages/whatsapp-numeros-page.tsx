@@ -562,6 +562,7 @@ interface WaRules {
   redMinutes?: number
   businessHours?: { enabled: boolean; days: ({ start: string; end: string } | null)[] }
   away?: { enabled: boolean; text: string; cooldownHours: number }
+  retention?: { enabled: boolean; clientMonths: number; otherMonths: number; mediaMonths: number }
 }
 const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 const NEW_CONTACT: Record<WaRules['newContact'], string> = {
@@ -572,6 +573,45 @@ const NEW_CONTACT: Record<WaRules['newContact'], string> = {
 const KNOWN_LEAD: Record<WaRules['knownLead'], string> = {
   HISTORICO_E_PREVENDA: 'Entra no histórico do lead e abre pré-venda nova depois do prazo sem conversa',
   SO_HISTORICO: 'Só entra no histórico do lead',
+}
+
+/** Prazo de guarda das conversas (LGPD): passado o prazo, o CRM apaga sozinho (uma vez por dia). */
+function RetentionSettings({ form, set, editable }: { form: WaRules; set: <K extends keyof WaRules>(k: K, v: WaRules[K]) => void; editable: boolean }) {
+  const r = form.retention ?? { enabled: true, clientMonths: 60, otherMonths: 24, mediaMonths: 12 }
+  const num = (k: 'clientMonths' | 'otherMonths' | 'mediaMonths', v: string) => set('retention', { ...r, [k]: Number(v) })
+  return (
+    <div className="space-y-3 rounded-md border p-3">
+      <label className="flex items-center justify-between gap-3">
+        <span>
+          <span className="block text-sm font-medium">Prazo de guarda das conversas (LGPD)</span>
+          <span className="block text-xs text-muted-foreground">
+            A LGPD (Lei 13.709/2018, arts. 15 e 16) manda apagar os dados quando a finalidade acaba, permitindo guardar o necessário para cumprir a lei e se defender (art. 7º, VI). Passado o prazo, o CRM apaga sozinho, uma vez por dia, e registra na auditoria.
+          </span>
+        </span>
+        <Switch checked={r.enabled} onCheckedChange={(v) => set('retention', { ...r, enabled: v })} disabled={!editable} aria-label="Apagar conversas pelo prazo de guarda" />
+      </label>
+      {r.enabled && (
+        <div className="grid gap-2 text-sm sm:grid-cols-3">
+          <div className="space-y-1">
+            <Label htmlFor="ret-client">Clientes (meses)</Label>
+            <Input id="ret-client" type="number" min={6} max={120} className="h-8 w-24" value={r.clientMonths} onChange={(e) => num('clientMonths', e.target.value)} disabled={!editable} />
+            <p className="text-xs text-muted-foreground">Padrão 60 (5 anos): prazo do Código de Defesa do Consumidor (art. 27) para reclamações.</p>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="ret-other">Colegas, fornecedores e outros (meses)</Label>
+            <Input id="ret-other" type="number" min={3} max={120} className="h-8 w-24" value={r.otherMonths} onChange={(e) => num('otherMonths', e.target.value)} disabled={!editable} />
+            <p className="text-xs text-muted-foreground">Padrão 24 (2 anos).</p>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="ret-media">Fotos, áudios e documentos (meses)</Label>
+            <Input id="ret-media" type="number" min={1} max={120} className="h-8 w-24" value={r.mediaMonths} onChange={(e) => num('mediaMonths', e.target.value)} disabled={!editable} />
+            <p className="text-xs text-muted-foreground">Padrão 12. O arquivo sai antes; o texto da conversa fica até o prazo dela.</p>
+          </div>
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">Pedido do próprio cliente para apagar os dados (art. 18): use “Anonimizar” na ficha do lead. As conversas e os arquivos dele saem na hora.</p>
+    </div>
+  )
 }
 
 /** Horário comercial (pausa os avisos de "sem resposta") e a mensagem automática para quem chama fora dele. */
@@ -707,6 +747,7 @@ function Rules({ editable }: { editable: boolean }) {
           </div>
         </div>
         <HoursAndAway form={form} set={set} editable={editable} />
+        <RetentionSettings form={form} set={set} editable={editable} />
         <p className="text-xs text-muted-foreground">A pré-venda só abre em números marcados com “Este número abre pré-venda” e quando é o cliente que chama (não quando a empresa inicia a conversa).</p>
         {editable && (
           <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>

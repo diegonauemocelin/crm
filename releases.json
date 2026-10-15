@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.45.0",
+      "date": "2026-10-16",
+      "title": "Prazo de guarda das conversas (LGPD)",
+      "changes": [
+        { "type": "seguranca", "area": "WhatsApp", "text": "Prazo de guarda das conversas (LGPD, Lei 13.709/2018, arts. 15 e 16): o CRM apaga sozinho, uma vez por dia, o que passou do prazo e registra na auditoria. Padrão: clientes 5 anos (prazo do Código de Defesa do Consumidor, art. 27), colegas/fornecedores/outros 2 anos, fotos/áudios/documentos 12 meses (o texto fica até o prazo da conversa). Configurável em Números de WhatsApp → Regras." }
+      ]
+    },
+    {
       "version": "0.44.0",
       "date": "2026-10-16",
       "title": "Leitura, horário comercial e ausência no WhatsApp",

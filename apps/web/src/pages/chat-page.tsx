@@ -79,7 +79,7 @@ interface Message {
   mime: string | null
   /** Nota interna: só no CRM, o cliente não recebe. */
   internal?: boolean
-  mediaStatus: 'PENDENTE' | 'OK' | 'GRANDE' | 'ERRO' | null
+  mediaStatus: 'PENDENTE' | 'OK' | 'GRANDE' | 'ERRO' | 'APAGADA' | null
   hasFile: boolean
   sentAt: string
   sentByName?: string | null
@@ -929,8 +929,8 @@ function Bubble({ m }: { m: Message }) {
   const src = `/api/chat/midias/${m.id}${monitor ? '?monitorar=true' : ''}`
   const text = m.text && <p className="break-words whitespace-pre-wrap">{waFormat(m.text)}</p>
   const pending = m.mediaStatus === 'PENDENTE' && <p className="text-xs italic opacity-70">Baixando a mídia…</p>
-  const missing = (m.mediaStatus === 'GRANDE' || m.mediaStatus === 'ERRO') && (
-    <p className="text-xs italic opacity-70">{m.mediaStatus === 'GRANDE' ? 'Arquivo grande (mais de 16 MB): veja no celular.' : 'Não foi possível baixar a mídia: veja no celular.'}</p>
+  const missing = (m.mediaStatus === 'GRANDE' || m.mediaStatus === 'ERRO' || m.mediaStatus === 'APAGADA') && (
+    <p className="text-xs italic opacity-70">{m.mediaStatus === 'GRANDE' ? 'Arquivo grande (mais de 16 MB): veja no celular.' : m.mediaStatus === 'APAGADA' ? 'Arquivo apagado pelo prazo de guarda (LGPD).' : 'Não foi possível baixar a mídia: veja no celular.'}</p>
   )
   if (m.type === 'imagem' || m.type === 'figurinha') {
     return (

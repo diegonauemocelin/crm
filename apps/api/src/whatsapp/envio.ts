@@ -124,6 +124,34 @@ export interface WaRules {
   businessHours: BusinessHours
   /** Mensagem automática para quem chama fora do horário comercial (uma vez a cada cooldownHours por contato). */
   away: { enabled: boolean; text: string; cooldownHours: number }
+  /** Prazo de guarda das conversas (LGPD): em meses, por tipo de contato; as mídias saem antes (só fica o texto). */
+  retention: Retention
+}
+export interface Retention {
+  enabled: boolean
+  clientMonths: number
+  otherMonths: number
+  mediaMonths: number
+}
+/**
+ * Padrão: cliente 5 anos (prazo do CDC, art. 27, para reclamações; a LGPD permite guardar para o exercício de
+ * direitos, art. 7º VI e art. 16 I), demais contatos 2 anos, mídias 12 meses (necessidade, art. 6º III).
+ */
+export const DEFAULT_RETENTION: Retention = { enabled: true, clientMonths: 60, otherMonths: 24, mediaMonths: 12 }
+
+export function cleanRetention(raw: Partial<Retention> | null | undefined): Retention {
+  const int = (v: unknown, min: number, max: number, d: number) => (Number.isInteger(v) && (v as number) >= min && (v as number) <= max ? (v as number) : d)
+  const clientMonths = int(raw?.clientMonths, 6, 120, DEFAULT_RETENTION.clientMonths)
+  const otherMonths = int(raw?.otherMonths, 3, 120, DEFAULT_RETENTION.otherMonths)
+  // A mídia nunca fica mais que as mensagens (assim, mensagem apagada nunca deixa arquivo para trás).
+  const mediaMonths = Math.min(int(raw?.mediaMonths, 1, 120, DEFAULT_RETENTION.mediaMonths), clientMonths, otherMonths)
+  return { enabled: raw?.enabled !== false, clientMonths, otherMonths, mediaMonths }
+}
+
+/** Datas de corte do prazo de guarda (meses de 30 dias). */
+export function retentionCutoffs(r: Retention, now = Date.now()) {
+  const ago = (m: number) => new Date(now - m * 30 * 86_400_000)
+  return { client: ago(r.clientMonths), other: ago(r.otherMonths), media: ago(r.mediaMonths) }
 }
 export interface BusinessHours {
   enabled: boolean
@@ -143,6 +171,7 @@ export const DEFAULT_RULES: WaRules = {
   redMinutes: 60,
   businessHours: DEFAULT_HOURS,
   away: { enabled: false, text: DEFAULT_AWAY_TEXT, cooldownHours: 12 },
+  retention: DEFAULT_RETENTION,
 }
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -220,6 +249,7 @@ export function cleanRules(raw: Partial<WaRules> | null | undefined): WaRules {
       text: typeof r.away?.text === 'string' && r.away.text.trim() ? r.away.text.trim().slice(0, 1000) : DEFAULT_AWAY_TEXT,
       cooldownHours: Number.isInteger(r.away?.cooldownHours) && r.away!.cooldownHours >= 1 && r.away!.cooldownHours <= 168 ? r.away!.cooldownHours : 12,
     },
+    retention: cleanRetention(r.retention),
   }
 }
 

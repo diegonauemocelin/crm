@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import { CapturaService } from '../captura/captura.service'
 import type { RequestCtx } from '../common/decorators'
@@ -13,7 +13,7 @@ import { SettingsService } from '../settings/settings.service'
 import { normalizePhone } from '../atendimento/br'
 import { type EvolutionClient, EvolutionError } from './evolution'
 import { sectorsOf, splitWhere } from './atendentes'
-import { type AgendaCategory, applyVariables, cleanRules, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseReceipts, receiptUpgrades, toCallVia, parseVcf, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
+import { type AgendaCategory, applyVariables, cleanRules, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
 import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, type ParsedMessage, phoneFromDigits, phoneVariants, previewOf } from './mensagens'
 
 const PAGE = 60
@@ -23,7 +23,7 @@ const PAGE = 60
  * respeitando quem pode ver o quê (permissão "Chat WhatsApp": próprios, unidade ou todos).
  */
 @Injectable()
-export class ChatService {
+export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger('WhatsAppChat')
   /** Uma mensagem por vez em cada conversa (duas chegando juntas não criam dois leads). */
   private readonly queues = new Map<string, Promise<unknown>>()
@@ -42,6 +42,60 @@ export class ChatService {
 
   /** Última leitura em monitoramento registrada na auditoria (usuário + conversa), para não registrar a cada atualização da tela. */
   private readonly monitored = new Map<string, number>()
+
+  // ---------- Prazo de guarda das conversas (LGPD) ----------
+
+  private retentionTimer: NodeJS.Timeout | null = null
+
+  onApplicationBootstrap() {
+    this.retentionTimer = setInterval(() => void this.applyRetention(), 24 * 3_600_000)
+    this.retentionTimer.unref()
+    setTimeout(() => void this.applyRetention(), 5 * 60_000).unref()
+  }
+
+  onModuleDestroy() {
+    if (this.retentionTimer) clearInterval(this.retentionTimer)
+  }
+
+  /**
+   * Apaga o que passou do prazo de guarda (uma vez por dia): primeiro os arquivos (fotos, áudios, documentos) e
+   * depois as mensagens (cliente e demais contatos têm prazos próprios); conversa sem mensagem some junto.
+   * Fica registrado na auditoria quanto foi apagado.
+   */
+  async applyRetention(now = Date.now()) {
+    const tenants = await this.prisma.whatsappNumber.findMany({ distinct: ['tenantId'], select: { tenantId: true } })
+    const out: { tenantId: string; files: number; messages: number; conversations: number }[] = []
+    for (const { tenantId } of tenants) {
+      try {
+        const rules = await this.rules(tenantId)
+        if (!rules.retention.enabled) continue
+        const cut = retentionCutoffs(rules.retention, now)
+        let files = 0
+        for (;;) {
+          const old = await this.prisma.whatsappMessage.findMany({ where: { tenantId, fileId: { not: null }, sentAt: { lt: cut.media } }, select: { id: true, fileId: true }, take: 200 })
+          if (!old.length) break
+          for (const m of old) await this.files.remove(m.fileId!).catch(() => undefined)
+          await this.prisma.whatsappMessage.updateMany({ where: { id: { in: old.map((m) => m.id) } }, data: { fileId: null, mediaStatus: 'APAGADA' } })
+          files += old.length
+        }
+        const messages = await this.prisma.$executeRaw`
+          DELETE FROM whatsapp_messages m USING whatsapp_conversations c
+          WHERE m."conversationId" = c.id AND c."tenantId" = ${tenantId}::uuid AND m."fileId" IS NULL
+            AND ((c.category = 'CLIENTE' AND m."sentAt" < ${cut.client}) OR (c.category <> 'CLIENTE' AND m."sentAt" < ${cut.other}))`
+        const conversations = await this.prisma.whatsappConversation.deleteMany({
+          where: { tenantId, messages: { none: {} }, OR: [{ category: 'CLIENTE', lastMessageAt: { lt: cut.client } }, { category: { not: 'CLIENTE' }, lastMessageAt: { lt: cut.other } }] },
+        })
+        if (files || messages || conversations.count) {
+          this.logger.log(`Prazo de guarda (LGPD): ${files} arquivo(s), ${messages} mensagem(ns) e ${conversations.count} conversa(s) apagados.`)
+          await this.audit.log({ tenantId, action: 'whatsapp.prazo_de_guarda', entity: 'whatsapp', data: { arquivos: files, mensagens: messages, conversas: conversations.count, prazos: rules.retention } })
+        }
+        out.push({ tenantId, files, messages, conversations: conversations.count })
+      } catch (err) {
+        this.logger.error(`Prazo de guarda do WhatsApp falhou: ${(err as Error).message}`)
+      }
+    }
+    return out
+  }
 
   // ---------- Recebimento ----------
 
