@@ -141,8 +141,8 @@ export class EvolutionClient {
 
   /** Contatos que o WhatsApp do número conhece (agenda sincronizada e quem já conversou). */
   async contacts(instanceName: string) {
-    const r = await this.call<unknown>('POST', `/chat/findContacts/${encodeURIComponent(instanceName)}`, { where: {} }, 60_000)
-    return Array.isArray(r) ? r : []
+    // A resposta pode ser a lista solta ou um objeto com a lista dentro (varia com a versão): quem lê é contactsFromWhatsapp.
+    return this.call<unknown>('POST', `/chat/findContacts/${encodeURIComponent(instanceName)}`, { where: {} }, 60_000)
   }
 
   async sendText(instanceName: string, number: string, text: string) {

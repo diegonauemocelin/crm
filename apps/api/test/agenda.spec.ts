@@ -45,11 +45,29 @@ describe('Agenda: contatos do WhatsApp conectado', () => {
       { remoteJid: 'status@broadcast' },
       { remoteJid: '5541977665544@s.whatsapp.net' },
     ]
-    expect(contactsFromWhatsapp(list)).toEqual([
+    expect([...contactsFromWhatsapp(list)]).toEqual([
       { name: 'Carlos', phone: '+554999887766', category: null },
       { name: 'Fornecedor X', phone: '+5547988776655', category: null },
       { name: null, phone: '+5541977665544', category: null },
     ])
-    expect(contactsFromWhatsapp({ erro: true })).toEqual([])
+    expect([...contactsFromWhatsapp({ erro: true })]).toEqual([])
+  })
+
+  it('aceita a lista dentro de um objeto, o telefone alternativo do número escondido (@lid) e conta o que ficou de fora', () => {
+    const r = contactsFromWhatsapp({
+      contacts: [
+        { remoteJid: '123456789012345@lid', remoteJidAlt: '5549988776655@s.whatsapp.net', pushName: 'Ana' },
+        { id: 'clx9abc', remoteJid: '998877665544332@lid', pushName: 'Escondido' },
+        { remoteJid: '5547999990000@c.us', name: 'Bruno' },
+        { id: 'clx9def', phoneNumber: '+5541988887777', pushName: 'Carla' },
+        { remoteJid: '120363000000000000@g.us' },
+      ],
+    })
+    expect([...r]).toEqual([
+      { name: 'Ana', phone: '+5549988776655', category: null },
+      { name: 'Bruno', phone: '+5547999990000', category: null },
+      { name: 'Carla', phone: '+5541988887777', category: null },
+    ])
+    expect(r.stats).toEqual({ total: 5, hidden: 1, groups: 1 })
   })
 })

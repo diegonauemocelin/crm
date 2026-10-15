@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.40.1",
+      "date": "2026-10-16",
+      "title": "Importação de contatos do WhatsApp",
+      "changes": [
+        { "type": "correcao", "area": "WhatsApp", "text": "Importar do WhatsApp na agenda: lê o telefone também quando o WhatsApp esconde o número (identificador @lid com telefone alternativo) e a lista em qualquer formato da Evolution. Junta também quem já conversou com o número no CRM. Quando nada vem, a mensagem diz quantos contatos chegaram e por que ficaram de fora." }
+      ]
+    },
+    {
       "version": "0.40.0",
       "date": "2026-10-16",
       "title": "Agenda de contatos",

@@ -277,20 +277,36 @@ export function parseVcf(text: string) {
   return { rows, skipped }
 }
 
+/** Campos em que a Evolution pode trazer o telefone do contato (com o número escondido, vem só no "alternativo"). */
+const PHONE_FIELDS = ['remoteJid', 'id', 'jid', 'remoteJidAlt', 'jidAlt', 'senderPn', 'pn', 'phoneNumber', 'phone', 'number']
+
 /**
- * Contatos do número conectado (Evolution: chat/findContacts). Só pessoas com telefone (jid @s.whatsapp.net);
- * grupos, listas de transmissão e contatos sem telefone visível (@lid) ficam de fora.
+ * Contatos do número conectado (Evolution: chat/findContacts). Aceita a lista solta ou dentro de contacts/data/records.
+ * Só pessoas com telefone (…@s.whatsapp.net, …@c.us ou só os dígitos); grupos, listas de transmissão e contatos com o
+ * número escondido pelo WhatsApp (@lid, sem telefone alternativo) ficam de fora e são contados.
  */
 export function contactsFromWhatsapp(list: unknown) {
+  const o = list as Record<string, unknown> | null
+  const raw = Array.isArray(list) ? list : ([o?.contacts, o?.data, o?.records, o?.response].find(Array.isArray) ?? [])
   const rows: { name: string | null; phone: string; category: null }[] = []
+  const stats = { total: raw.length, hidden: 0, groups: 0 }
   const seen = new Set<string>()
-  for (const c of Array.isArray(list) ? (list as Record<string, unknown>[]) : []) {
-    const jid = String(c.remoteJid ?? c.id ?? '')
-    const m = /^(\d{10,15})@s\.whatsapp\.net$/.exec(jid)
-    if (!m || seen.has(m[1]!)) continue
-    seen.add(m[1]!)
-    const name = [c.name, c.verifiedName, c.pushName].find((x) => typeof x === 'string' && x.trim()) as string | undefined
-    rows.push({ name: name?.trim().slice(0, 120) ?? null, phone: `+${m[1]}`, category: null })
+  for (const c of raw as Record<string, unknown>[]) {
+    if (!c || typeof c !== 'object') continue
+    const values = PHONE_FIELDS.map((k) => c[k]).filter((v): v is string => typeof v === 'string')
+    if (values.some((v) => /@(g\.us|broadcast|newsletter)$/.test(v))) {
+      stats.groups++
+      continue
+    }
+    const digits = values.map((v) => /^\+?(\d{10,15})(?:@s\.whatsapp\.net|@c\.us)?$/.exec(v.trim())?.[1]).find(Boolean)
+    if (!digits) {
+      if (values.some((v) => v.endsWith('@lid'))) stats.hidden++
+      continue
+    }
+    if (seen.has(digits)) continue
+    seen.add(digits)
+    const name = [c.name, c.verifiedName, c.pushName, c.notify].find((x) => typeof x === 'string' && x.trim()) as string | undefined
+    rows.push({ name: name?.trim().slice(0, 120) ?? null, phone: `+${digits}`, category: null })
   }
-  return rows
+  return Object.assign(rows, { stats })
 }

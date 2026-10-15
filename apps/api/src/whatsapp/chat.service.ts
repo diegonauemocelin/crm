@@ -811,10 +811,22 @@ export class ChatService {
     const client = this.clientOf()
     if (!client) throw new BadRequestException('O WhatsApp não está ativo no servidor.')
     const list = await client.contacts(n.instanceName).catch((e: unknown) => this.fail(e))
-    const rows = contactsFromWhatsapp(list)
-    if (!rows.length) throw new BadRequestException('O WhatsApp deste número não devolveu contatos com telefone. Confira se ele está conectado.')
+    const fromWa = contactsFromWhatsapp(list)
+    // Quem já conversou com este número no CRM: o telefone já foi resolvido na conversa (inclusive quando o WhatsApp esconde o número).
+    const convs = await this.prisma.whatsappConversation.findMany({ where: { tenantId: user.tenantId, numberId: n.id, phone: { not: null } }, select: { phone: true, name: true, leadId: true }, take: 5000 })
+    const leadNames = new Map((await this.prisma.lead.findMany({ where: { id: { in: convs.map((c) => c.leadId).filter((x): x is string => !!x) } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]))
+    const fromChat = convs.map((c) => ({ name: (c.leadId && leadNames.get(c.leadId)) || c.name || null, phone: c.phone!, category: null }))
+    const rows = [...fromWa, ...fromChat]
+    if (!rows.length) {
+      const s = fromWa.stats
+      throw new BadRequestException(
+        s.total
+          ? `O WhatsApp devolveu ${s.total} contato(s), mas nenhum com telefone visível (${s.hidden} com o número escondido pelo WhatsApp, ${s.groups} grupo(s)). Use o arquivo .vcf exportado do celular.`
+          : 'O WhatsApp deste número não devolveu contatos e ainda não há conversas dele no CRM. Confira se ele está conectado ou use o arquivo .vcf exportado do celular.',
+      )
+    }
     const r = await this.previewRows(user, rows)
-    return { ...r, skipped: 0 }
+    return { ...r, skipped: 0, hidden: fromWa.stats.hidden, fromWhatsapp: fromWa.length, fromChat: fromChat.length }
   }
 
   /** Grava na agenda os contatos escolhidos na prévia, cada um com o seu tipo. */

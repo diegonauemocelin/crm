@@ -50,6 +50,10 @@ interface Preview {
   items: PreviewRow[]
   invalid: number
   skipped: number
+  /** Só na importação pelo WhatsApp: contatos com o número escondido (@lid) e de onde vieram. */
+  hidden?: number
+  fromWhatsapp?: number
+  fromChat?: number
 }
 
 export function AgendaPage() {
@@ -407,7 +411,9 @@ function ReviewDialog({ source, data, onClose }: { source: string; data: Preview
           <DialogTitle>Escolha o tipo de cada contato ({source})</DialogTitle>
           <DialogDescription>
             {data.items.length} contato(s) com telefone{data.skipped ? ` · ${data.skipped} sem telefone` : ''}
-            {data.invalid ? ` · ${data.invalid} telefone(s) inválido(s)` : ''}. Já vêm marcados: quem está na agenda (o tipo atual) e quem é lead (cliente). Os “sem tipo” não são importados.
+            {data.invalid ? ` · ${data.invalid} telefone(s) inválido(s)` : ''}
+            {data.fromChat !== undefined ? ` (${data.fromWhatsapp ?? 0} da agenda do WhatsApp e ${data.fromChat} de conversas no CRM)` : ''}
+            {data.hidden ? ` · ${data.hidden} com o número escondido pelo WhatsApp ficaram de fora (para esses, use o arquivo .vcf)` : ''}. Já vêm marcados: quem está na agenda (o tipo atual) e quem é lead (cliente). Os “sem tipo” não são importados.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap items-center gap-2">
