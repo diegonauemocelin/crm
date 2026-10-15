@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BarChart3Icon, CopyIcon, ImageIcon, Loader2Icon, MailIcon, PencilIcon, PlusIcon, SparklesIcon, Trash2Icon, UploadIcon, UsersRoundIcon } from 'lucide-react'
+import { BarChart3Icon, CopyIcon, ImageIcon, Loader2Icon, MailIcon, MapIcon, PencilIcon, PlusIcon, SparklesIcon, Trash2Icon, UploadIcon, UsersRoundIcon } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -21,6 +21,7 @@ import { useAuth } from '@/lib/auth'
 import { type Campaign, type EmailSettings, newBlock, pct, type Segment, type SegmentFilters, STATUS_LABEL, STATUS_TONE, SOCIAL_LABEL, SOCIAL_NETWORKS, SOCIAL_PLACEHOLDER } from '@/lib/email'
 import { STAGES, useTags } from '@/lib/leads'
 import { FormError } from './auth/auth-layout'
+import { LEAD_REGIONS } from '@/lib/automacoes'
 
 const ANY = '__any__'
 
@@ -252,6 +253,14 @@ function SegmentsTab() {
   const { can } = useAuth()
   const qc = useQueryClient()
   const [open, setOpen] = useState<Segment | 'new' | null>(null)
+  const regions = useMutation({
+    mutationFn: () => api.post<{ created: string[] }>('/email/segmentos/regioes'),
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: ['email-segments'] })
+      toast.success(r.created.length ? `Criados: ${r.created.join(', ')}.` : 'Os segmentos por região já existem.')
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/email/segmentos/${id}`),
     onSuccess: () => {
@@ -267,9 +276,14 @@ function SegmentsTab() {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">Segmento = quem recebe. Usa os mesmos filtros da base de leads; só contam leads com e-mail e consentimento.</p>
         {can('email_marketing', 'create') && (
-          <Button onClick={() => setOpen('new')}>
-            <PlusIcon /> Novo segmento
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => regions.mutate()} disabled={regions.isPending} title="Cria os segmentos Região Norte, Nordeste, Centro-Oeste, Sudeste, Sul e Internacional (os que ainda não existem)">
+              <MapIcon /> Criar segmentos por região
+            </Button>
+            <Button onClick={() => setOpen('new')}>
+              <PlusIcon /> Novo segmento
+            </Button>
+          </div>
         )}
       </div>
       {q.data.length === 0 ? (
@@ -401,6 +415,7 @@ function SegmentDialog({ segment, onClose }: { segment: Segment | null; onClose:
             <Pick label="Estágio" id="sg-stage" value={f.stage} onChange={(v) => set('stage', v)} items={STAGES.map((s) => ({ id: s.id, name: s.label }))} />
             <Pick label="Nota" id="sg-grade" value={f.grade} onChange={(v) => set('grade', v)} items={['A', 'B', 'C', 'D'].map((g) => ({ id: g, name: g }))} />
             <Pick label="Tag" id="sg-tag" value={f.tag} onChange={(v) => set('tag', v)} items={(tags.data ?? []).map((t) => ({ id: t.tag, name: `${t.tag} (${t.total})` }))} />
+            <Pick label="Região" id="sg-region" value={f.region} onChange={(v) => set('region', v as SegmentFilters['region'])} items={LEAD_REGIONS.map((r) => ({ id: r.id, name: r.name }))} />
             <Pick label="Estado" id="sg-state" value={f.state} onChange={(v) => set('state', v)} items={UF_LIST.map((uf) => ({ id: uf, name: `${UF_NAMES[uf]} (${uf})` }))} />
             <Pick label="Responsável" id="sg-owner" value={f.ownerId} onChange={(v) => set('ownerId', v)} items={(o?.sellers ?? []).filter((s) => s.active)} />
             <Pick label="Unidade" id="sg-unit" value={f.unitId} onChange={(v) => set('unitId', v)} items={o?.units ?? []} />

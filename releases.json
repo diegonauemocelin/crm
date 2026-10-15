@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.46.0",
+      "date": "2026-10-16",
+      "title": "Regiões e espaçamento no e-mail",
+      "changes": [
+        { "type": "novo", "area": "Email marketing", "text": "Segmentação por região: filtro \"Região\" nos segmentos (Norte, Nordeste, Centro-Oeste, Sudeste, Sul e Internacional) e o botão \"Criar segmentos por região\", que cria os 6 de uma vez. Internacional = país fora do Brasil ou telefone de outro país." },
+        { "type": "novo", "area": "Automações", "text": "Condição \"Está na região\" nos fluxos, para mandar caminhos diferentes por região do Brasil ou para clientes de fora." },
+        { "type": "novo", "area": "Email marketing", "text": "Espaçamento no editor de e-mail: espaço acima e abaixo de cada bloco (de nenhum a 48 px), espaço entre linhas do texto e a opção \"Encostar nas bordas\" na imagem, para emendar imagens sem faixa branca entre elas." }
+      ]
+    },
+    {
       "version": "0.45.0",
       "date": "2026-10-16",
       "title": "Prazo de guarda das conversas (LGPD)",

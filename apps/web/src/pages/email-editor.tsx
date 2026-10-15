@@ -89,6 +89,7 @@ import {
   type WhatsappNumber, SOCIAL_LABEL, SOCIAL_NETWORKS, SOCIAL_PLACEHOLDER, socialIcon, type ColumnContent, type TextAlign } from '@/lib/email'
 import { cleanRich, legacyToHtml } from '@/lib/rich-text'
 import { cn } from '@/lib/utils'
+import { Switch } from '@/components/ui/switch'
 
 const NONE = '__none__'
 
@@ -691,9 +692,9 @@ function BlockView({ block: b, brand, editing, onChange }: { block: Block; brand
       return (
         <div
           style={{
-            padding: b.bg ? '16px 32px' : '8px 32px',
+            padding: `${b.space ?? (b.bg ? 16 : 8)}px 32px`,
             fontSize: size,
-            lineHeight: `${Math.round(size * 1.45)}px`,
+            lineHeight: `${Math.round((size * (b.lineHeight ?? 145)) / 100)}px`,
             fontWeight: title ? 700 : 400,
             color: b.color ?? (title ? '#111827' : '#374151'),
             textAlign: b.align ?? 'left',
@@ -734,9 +735,9 @@ function BlockView({ block: b, brand, editing, onChange }: { block: Block; brand
     }
     case 'imagem':
       return (
-        <div className="flex justify-center px-8 py-2">
+        <div className="flex justify-center" style={{ padding: `${b.space ?? 8}px ${b.edge ? 0 : 32}px` }}>
           {b.url ? (
-            <img src={b.url} alt={b.alt ?? ''} draggable={false} className="block h-auto rounded-md" style={{ width: `${b.width ?? 100}%` }} />
+            <img src={b.url} alt={b.alt ?? ''} draggable={false} className={cn('block h-auto', !b.edge && 'rounded-md')} style={{ width: `${b.width ?? 100}%` }} />
           ) : (
             <div className="flex w-full flex-col items-center gap-1 rounded-md border-2 border-dashed border-[#d1d5db] p-8 text-sm text-[#6b7280]">
               <ImageIcon className="size-6" />
@@ -1281,7 +1282,71 @@ function ColorField({ label, value, fallback, onChange, disabled, clearable }: {
   )
 }
 
-function Inspector({ block: b, numbers, disabled, onChange, onPickImage }: { block: Block; numbers: WhatsappNumber[]; disabled: boolean; onChange: (b: Block) => void; onPickImage: () => void }) {
+/** Espaço padrão de cada tipo de bloco (o mesmo do e-mail enviado). */
+const DEFAULT_SPACE: Partial<Record<BlockType, number>> = { titulo: 8, texto: 8, colunas: 8, imagem: 8, botao: 16, whatsapp: 16, redes: 12, divisor: 12 }
+
+function Inspector(props: { block: Block; numbers: WhatsappNumber[]; disabled: boolean; onChange: (b: Block) => void; onPickImage: () => void }) {
+  const { block: b, disabled, onChange } = props
+  const def = DEFAULT_SPACE[b.type]
+  return (
+    <div className="space-y-4">
+      <InspectorFields {...props} />
+      {def !== undefined && (
+        <div className="space-y-3 border-t pt-3">
+          <p className="text-sm font-semibold">Espaçamento</p>
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-sm font-normal" htmlFor="sp-space">
+              Espaço acima e abaixo
+            </Label>
+            <Select value={String(b.space ?? def)} onValueChange={(v) => onChange({ ...b, space: Number(v) === def ? undefined : Number(v) })} disabled={disabled}>
+              <SelectTrigger id="sp-space" size="sm" className="w-28">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[...new Set([0, 2, 4, 8, 12, 16, 24, 32, 48, def])].sort((x, y) => x - y).map((v) => (
+                  <SelectItem key={v} value={String(v)}>
+                    {v === 0 ? 'Nenhum' : `${v} px`}
+                    {v === def ? ' (padrão)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {b.type === 'imagem' && (
+            <label className="flex items-center justify-between gap-2 text-sm">
+              <span>
+                Encostar nas bordas
+                <span className="block text-xs text-muted-foreground">Largura total, sem margem e sem canto arredondado. Com espaço “Nenhum”, emenda com a imagem de cima e de baixo.</span>
+              </span>
+              <Switch checked={!!b.edge} onCheckedChange={(v) => onChange({ ...b, edge: v || undefined })} disabled={disabled} aria-label="Encostar a imagem nas bordas" />
+            </label>
+          )}
+          {(b.type === 'titulo' || b.type === 'texto') && (
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-sm font-normal" htmlFor="sp-lh">
+                Espaço entre linhas
+              </Label>
+              <Select value={String(b.lineHeight ?? 145)} onValueChange={(v) => onChange({ ...b, lineHeight: Number(v) === 145 ? undefined : Number(v) })} disabled={disabled}>
+                <SelectTrigger id="sp-lh" size="sm" className="w-28">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[100, 115, 130, 145, 160, 180, 200].map((v) => (
+                    <SelectItem key={v} value={String(v)}>
+                      {v === 100 ? 'Justo' : v === 145 ? 'Normal' : v === 200 ? 'Duplo' : `${(v / 100).toLocaleString('pt-BR')}x`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function InspectorFields({ block: b, numbers, disabled, onChange, onPickImage }: { block: Block; numbers: WhatsappNumber[]; disabled: boolean; onChange: (b: Block) => void; onPickImage: () => void }) {
   const head = (
     <p className="mb-3 flex items-center gap-2 text-sm font-semibold">
       {(() => {

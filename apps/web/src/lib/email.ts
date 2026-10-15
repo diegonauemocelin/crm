@@ -37,7 +37,7 @@ export interface ProductItem {
   url?: string
 }
 
-export type Block =
+export type Block = (
   | { type: 'titulo'; html: string; align?: TextAlign; size?: number; color?: string; bg?: string }
   | { type: 'texto'; html: string; align?: TextAlign; size?: number; color?: string; bg?: string }
   | { type: 'colunas'; columns: [ColumnContent, ColumnContent]; ratio?: 40 | 50 | 60; align?: TextAlign; color?: string; buttonColor?: string }
@@ -48,6 +48,14 @@ export type Block =
   | { type: 'divisor' }
   | { type: 'redes'; links: SocialLinks; style?: 'cor' | 'cinza'; align?: Align }
   | { type: 'espaco'; height?: number }
+) & {
+  /** Espaço acima e abaixo do bloco (0 a 48 px); vazio = o padrão. */
+  space?: number
+  /** imagem: encostar nas bordas (largura total, sem margem). */
+  edge?: boolean
+  /** titulo/texto: entrelinha em % do tamanho da letra (100 a 200). */
+  lineHeight?: number
+}
 
 export type BlockType = Block['type']
 
@@ -170,6 +178,8 @@ export interface SegmentFilters {
   unitId?: string
   originId?: string
   hasPhone?: 'true' | 'false'
+  /** Região do Brasil (pelo estado) ou Internacional (país fora do Brasil). */
+  region?: 'NORTE' | 'NORDESTE' | 'CENTRO_OESTE' | 'SUDESTE' | 'SUL' | 'INTERNACIONAL'
   from?: string
   to?: string
   /** Atendimento: resultado, motivo da perda, tipo e período (datas ou últimos N dias). */

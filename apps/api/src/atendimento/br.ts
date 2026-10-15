@@ -129,3 +129,22 @@ export function parseBrDate(raw: string | null | undefined): Date | null {
   const date = new Date(Date.UTC(y, mo - 1, d, 15, 0, 0))
   return date.getUTCDate() === d ? date : null
 }
+
+/** Regiões do lead para segmentar e para os fluxos: as 5 do Brasil (pelo estado) e Internacional (país fora do Brasil). */
+export const LEAD_REGIONS = ['NORTE', 'NORDESTE', 'CENTRO_OESTE', 'SUDESTE', 'SUL', 'INTERNACIONAL'] as const
+export type LeadRegion = (typeof LEAD_REGIONS)[number]
+export const LEAD_REGION_LABEL: Record<LeadRegion, string> = { NORTE: 'Norte', NORDESTE: 'Nordeste', CENTRO_OESTE: 'Centro-Oeste', SUDESTE: 'Sudeste', SUL: 'Sul', INTERNACIONAL: 'Internacional' }
+
+/** Estados (UF) de uma região do Brasil. */
+export function regionStates(r: Exclude<LeadRegion, 'INTERNACIONAL'>): UF[] {
+  return UF_LIST.filter((uf) => UFS[uf].region === LEAD_REGION_LABEL[r])
+}
+
+/** Região do lead: país fora do Brasil ou telefone de fora (+ que não é +55) = Internacional; no Brasil, pela UF; sem estado = null. */
+export function leadRegion(country: string | null | undefined, state: string | null | undefined, phone?: string | null): LeadRegion | null {
+  if (country && country.toUpperCase() !== 'BR') return 'INTERNACIONAL'
+  if (phone && phone.startsWith('+') && !phone.startsWith('+55')) return 'INTERNACIONAL'
+  const uf = state?.toUpperCase() as UF | undefined
+  if (!uf || !UFS[uf]) return null
+  return (Object.keys(LEAD_REGION_LABEL) as LeadRegion[]).find((k) => LEAD_REGION_LABEL[k] === UFS[uf].region) ?? null
+}

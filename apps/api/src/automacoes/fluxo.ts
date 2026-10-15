@@ -2,6 +2,7 @@
  * Regras puras das automações (testadas em test/automacoes.spec.ts): gatilhos, condições, passos,
  * validação do que vem do painel e o "mapa" de qual passo vem depois de qual.
  */
+import { LEAD_REGIONS } from '../atendimento/br'
 
 export const TRIGGER_TYPES = [
   'lead_novo',
@@ -58,6 +59,7 @@ export const RULE_TYPES = [
   'vendedor',
   'tem_telefone',
   'aceita_email',
+  'regiao',
 ] as const
 export type RuleType = (typeof RULE_TYPES)[number]
 
@@ -74,6 +76,8 @@ export interface Rule {
   originId?: string | null
   /** vendedor: um vendedor específico ou "nenhum" (sem vendedor). */
   ownerId?: string | null
+  /** regiao: regiões do Brasil (pelo estado) e/ou Internacional. */
+  regions?: string[]
 }
 
 export type Step =
@@ -186,6 +190,11 @@ function cleanRule(raw: unknown): Rule | string {
     if (!out.originId) return 'Escolha a origem da condição.'
   }
   if (type === 'vendedor') out.ownerId = r.ownerId === 'nenhum' ? 'nenhum' : uuidOrNull(r.ownerId)
+  if (type === 'regiao') {
+    const regions = (Array.isArray(r.regions) ? r.regions : []).filter((x): x is string => (LEAD_REGIONS as readonly string[]).includes(x as string))
+    if (!regions.length) return 'Escolha pelo menos uma região.'
+    out.regions = [...new Set(regions)]
+  }
   return out
 }
 

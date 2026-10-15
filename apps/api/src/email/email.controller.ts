@@ -31,6 +31,7 @@ class SegmentFiltersDto implements LeadFilters {
   @IsOptional() @IsIn(['true', 'false']) hasPhone?: 'true' | 'false'
   @IsOptional() @IsString() @MaxLength(10) from?: string
   @IsOptional() @IsString() @MaxLength(10) to?: string
+  @IsOptional() @IsIn(['NORTE', 'NORDESTE', 'CENTRO_OESTE', 'SUDESTE', 'SUL', 'INTERNACIONAL']) region?: 'NORTE' | 'NORDESTE' | 'CENTRO_OESTE' | 'SUDESTE' | 'SUL' | 'INTERNACIONAL'
   @IsOptional() @IsIn(['SIM', 'NAO', 'NEGOCIACAO']) serviceResult?: 'SIM' | 'NAO' | 'NEGOCIACAO'
   @IsOptional() @IsIn(['PRE_VENDAS', 'POS_VENDAS']) serviceKind?: 'PRE_VENDAS' | 'POS_VENDAS'
   @IsOptional() @IsUUID() lostReasonId?: string
@@ -232,6 +233,13 @@ export class EmailController {
   @Post('segmentos')
   createSegment(@CurrentUser() user: AuthUser, @Body() dto: SegmentDto, @ReqContext() ctx: RequestCtx) {
     return this.email.saveSegment(user, null, dto, ctx)
+  }
+
+  /** Cria os segmentos por região do Brasil e Internacional (os que faltarem). */
+  @Post('segmentos/regioes')
+  @HttpCode(200)
+  regionSegments(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
+    return this.email.createRegionSegments(user, ctx)
   }
 
   @Put('segmentos/:id')

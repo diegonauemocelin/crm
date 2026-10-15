@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { createHmac } from 'node:crypto'
 import { AuditService } from '../audit/audit.service'
-import { normalizePhone, ufFromPhone } from '../atendimento/br'
+import { type LeadRegion, normalizePhone, regionStates, ufFromPhone } from '../atendimento/br'
 import { env } from '../config/env'
 import { safeEqual } from '../common/crypto'
 import type { RequestCtx } from '../common/decorators'
@@ -19,6 +19,8 @@ export const STAGE_LABEL: Record<LeadStage, string> = { LEAD: 'Lead', QUALIFICAD
 
 export interface LeadFilters {
   search?: string
+  /** Região do Brasil (pelo estado) ou Internacional (país fora do Brasil). */
+  region?: LeadRegion
   stage?: LeadStage
   grade?: string
   tag?: string
@@ -114,6 +116,13 @@ export class LeadsService {
     if (f.grade) and.push(f.grade === 'none' ? { scoreGrade: null } : { scoreGrade: f.grade })
     if (f.tag) and.push({ tags: { has: f.tag.toLowerCase() } })
     if (f.state) and.push({ state: f.state })
+    // Região: Internacional = país fora do Brasil; as do Brasil pelos estados.
+    if (f.region)
+      and.push(
+        f.region === 'INTERNACIONAL'
+          ? { OR: [{ country: { not: 'BR' } }, { AND: [{ phone: { startsWith: '+' } }, { NOT: { phone: { startsWith: '+55' } } }] }] }
+          : { country: 'BR', state: { in: regionStates(f.region) }, OR: [{ phone: null }, { phone: { startsWith: '+55' } }, { NOT: { phone: { startsWith: '+' } } }] },
+      )
     if (f.ownerId) and.push({ ownerId: f.ownerId === 'none' ? null : f.ownerId })
     if (f.unitId) and.push({ unitId: f.unitId === 'none' ? null : f.unitId })
     if (f.originId) and.push({ originId: f.originId === 'none' ? null : f.originId })

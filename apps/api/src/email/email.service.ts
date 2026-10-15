@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto'
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
+import { LEAD_REGION_LABEL, LEAD_REGIONS } from '../atendimento/br'
 import { AuditService } from '../audit/audit.service'
 import { safeEqual } from '../common/crypto'
 import type { RequestCtx } from '../common/decorators'
@@ -140,6 +141,22 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     await this.audit.byUser(user, ctx, id ? 'email.segment_updated' : 'email.segment_created', 'email_segment', seg.id, { nome: data.name })
     const { tenantId: _t, ...rest } = seg
     return rest
+  }
+
+  /** Segmentos prontos por região (Norte, Nordeste, Centro-Oeste, Sudeste, Sul e Internacional); não duplica os que já existem. */
+  async createRegionSegments(user: AuthUser, ctx: RequestCtx) {
+    this.assertCan(user, 'create')
+    const existing = await this.prisma.emailSegment.findMany({ where: { tenantId: user.tenantId }, select: { name: true, filters: true } })
+    const has = (r: string) => existing.some((s) => (s.filters as { region?: string } | null)?.region === r && Object.keys(s.filters as object).length === 1)
+    const created: string[] = []
+    for (const r of LEAD_REGIONS) {
+      if (has(r)) continue
+      const name = r === 'INTERNACIONAL' ? 'Internacional (fora do Brasil)' : `Região ${LEAD_REGION_LABEL[r]}`
+      await this.prisma.emailSegment.create({ data: { tenantId: user.tenantId, name, filters: { region: r } } })
+      created.push(name)
+    }
+    if (created.length) await this.audit.byUser(user, ctx, 'email.segments_regions', 'email_segment', undefined, { criados: created })
+    return { created }
   }
 
   async removeSegment(user: AuthUser, id: string, ctx: RequestCtx) {

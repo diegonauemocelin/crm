@@ -47,6 +47,7 @@ export type RuleType =
   | 'vendedor'
   | 'tem_telefone'
   | 'aceita_email'
+  | 'regiao'
 
 export interface Rule {
   type: RuleType
@@ -56,6 +57,8 @@ export interface Rule {
   tag?: string
   stage?: string
   grades?: string[]
+  /** regiao: regiões do Brasil e/ou Internacional. */
+  regions?: string[]
   originId?: string | null
   ownerId?: string | null
 }
@@ -167,6 +170,7 @@ export const RULES: { type: RuleType; label: string; negLabel: string; days?: bo
   { type: 'vendedor', label: 'Vendedor é', negLabel: 'Vendedor não é' },
   { type: 'tem_telefone', label: 'Tem telefone', negLabel: 'Não tem telefone' },
   { type: 'aceita_email', label: 'Pode receber e-mail', negLabel: 'Não pode receber e-mail' },
+  { type: 'regiao', label: 'Está na região', negLabel: 'Não está na região' },
 ]
 export const RULE_INFO = Object.fromEntries(RULES.map((r) => [r.type, r])) as Record<RuleType, (typeof RULES)[number]>
 
@@ -271,3 +275,14 @@ export function findStep(steps: Step[], id: string): Step | null {
 export function countSteps(steps: Step[]): number {
   return steps.reduce((n, s) => n + 1 + (s.type === 'condicao' ? countSteps(s.yes) + countSteps(s.no) : 0), 0)
 }
+
+/** Regiões do lead: as 5 do Brasil (pelo estado) e Internacional (país fora do Brasil). */
+export const LEAD_REGIONS = [
+  { id: 'NORTE', name: 'Norte' },
+  { id: 'NORDESTE', name: 'Nordeste' },
+  { id: 'CENTRO_OESTE', name: 'Centro-Oeste' },
+  { id: 'SUDESTE', name: 'Sudeste' },
+  { id: 'SUL', name: 'Sul' },
+  { id: 'INTERNACIONAL', name: 'Internacional' },
+] as const
+export const regionName = (id: string) => LEAD_REGIONS.find((r) => r.id === id)?.name ?? id

@@ -288,3 +288,33 @@ describe('modelo do Gemini', () => {
     }
   })
 })
+
+describe('espaçamento dos blocos', () => {
+  it('imagens encostadas nas bordas e sem espaço emendam sem faixa branca', () => {
+    const blocks = clean([
+      { type: 'imagem', url: 'https://cdn.exemplo.com/a.jpg', edge: true, space: 0 },
+      { type: 'imagem', url: 'https://cdn.exemplo.com/b.jpg', edge: true, space: 0 },
+      { type: 'imagem', url: 'https://cdn.exemplo.com/c.jpg' },
+    ])
+    expect(blocks[0]).toMatchObject({ edge: true, space: 0 })
+    const html = renderEmail(blocks, base).html
+    expect(html.match(/padding:0px 0px;font-size:0;line-height:0/g)).toHaveLength(2)
+    expect(html).toContain('width="600"')
+    // Sem as opções, fica como antes (margem de 32 px e canto arredondado).
+    expect(html).toContain('padding:8px 32px;font-size:0;line-height:0')
+    expect(html).toContain('border-radius:6px')
+  })
+
+  it('espaço por bloco (0 a 48) e entrelinha do texto (100% a 200%)', () => {
+    const blocks = clean([
+      { type: 'texto', html: 'Linha', space: 2, lineHeight: 110 },
+      { type: 'botao', text: 'Comprar', url: 'https://usaparts.com.br', space: 99 },
+      { type: 'divisor', space: -5 },
+      { type: 'espaco', height: 24, space: 0 },
+    ])
+    expect(blocks.map((b) => b.space)).toEqual([2, 48, 0, undefined])
+    const html = renderEmail(blocks, base).html
+    expect(html).toContain('padding:2px 32px;font-size:15px;line-height:17px')
+    expect(html).toContain('padding:48px 32px')
+  })
+})

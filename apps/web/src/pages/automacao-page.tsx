@@ -72,6 +72,8 @@ import {
   UNIT_LABEL,
   updateStep,
   type Where,
+  LEAD_REGIONS,
+  regionName,
 } from '@/lib/automacoes'
 import { STAGES } from '@/lib/leads'
 import { cn } from '@/lib/utils'
@@ -542,6 +544,8 @@ function describeRule(r: Rule, ctx: Ctx): string {
       return `${base} ${stageLabel(r.stage)}`
     case 'nota':
       return `${base} ${(r.grades ?? []).join(', ')}`
+    case 'regiao':
+      return `${base} ${(r.regions ?? []).map(regionName).join(', ')}`
     case 'origem':
       return `${base} ${nameOf(ctx.lists?.origins, r.originId) ?? '—'}`
     case 'vendedor':
@@ -781,7 +785,7 @@ function RuleEditor({ rule: r, ctx, disabled, onChange, onRemove }: { rule: Rule
       <div className="flex items-center gap-1">
         <Select value={`${r.type}|${r.negate ? '1' : '0'}`} onValueChange={(v) => {
           const [type, neg] = v.split('|') as [RuleType, string]
-          onChange({ type, negate: neg === '1', days: RULE_INFO[type].days ? (r.days ?? 7) : undefined, ...(type === 'abriu_email' || type === 'clicou_email' ? { scope: 'ultimo' } : {}), ...(type === 'nota' ? { grades: ['A'] } : {}), ...(type === 'etapa' ? { stage: 'QUALIFICADO' } : {}) })
+          onChange({ type, negate: neg === '1', days: RULE_INFO[type].days ? (r.days ?? 7) : undefined, ...(type === 'abriu_email' || type === 'clicou_email' ? { scope: 'ultimo' } : {}), ...(type === 'nota' ? { grades: ['A'] } : {}), ...(type === 'regiao' ? { regions: ['SUL'] } : {}), ...(type === 'etapa' ? { stage: 'QUALIFICADO' } : {}) })
         }} disabled={disabled}>
           <SelectTrigger size="sm" className="min-w-0 flex-1">
             <SelectValue />
@@ -821,6 +825,16 @@ function RuleEditor({ rule: r, ctx, disabled, onChange, onRemove }: { rule: Rule
             <label key={g} className="flex items-center gap-1.5 text-sm">
               <Checkbox checked={(r.grades ?? []).includes(g)} onCheckedChange={(v) => onChange({ ...r, grades: v === true ? [...(r.grades ?? []), g] : (r.grades ?? []).filter((x) => x !== g) })} disabled={disabled} />
               {g}
+            </label>
+          ))}
+        </div>
+      )}
+      {r.type === 'regiao' && (
+        <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+          {LEAD_REGIONS.map((g) => (
+            <label key={g.id} className="flex items-center gap-1.5 text-sm">
+              <Checkbox checked={(r.regions ?? []).includes(g.id)} onCheckedChange={(v) => onChange({ ...r, regions: v === true ? [...(r.regions ?? []), g.id] : (r.regions ?? []).filter((x) => x !== g.id) })} disabled={disabled} />
+              {g.name}
             </label>
           ))}
         </div>

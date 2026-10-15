@@ -31,6 +31,7 @@ class FiltersDto implements LeadFilters {
   @IsOptional() @IsIn(['true', 'false']) hasPhone?: 'true' | 'false'
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) from?: string
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) to?: string
+  @IsOptional() @IsIn(['NORTE', 'NORDESTE', 'CENTRO_OESTE', 'SUDESTE', 'SUL', 'INTERNACIONAL']) region?: 'NORTE' | 'NORDESTE' | 'CENTRO_OESTE' | 'SUDESTE' | 'SUL' | 'INTERNACIONAL'
   @IsOptional() @IsIn(['SIM', 'NAO', 'NEGOCIACAO']) serviceResult?: 'SIM' | 'NAO' | 'NEGOCIACAO'
   @IsOptional() @IsIn(['PRE_VENDAS', 'POS_VENDAS']) serviceKind?: 'PRE_VENDAS' | 'POS_VENDAS'
   @IsOptional() @IsUUID() lostReasonId?: string

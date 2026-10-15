@@ -29,7 +29,7 @@ export interface ProductItem {
   url?: string
 }
 
-export type Block =
+export type Block = (
   /** `text` é o formato antigo (**negrito**, [link](url)); ao salvar vira `html`. */
   | { type: 'titulo'; html: string; text?: string; align?: TextAlign; size?: number; color?: string; bg?: string }
   | { type: 'texto'; html: string; text?: string; align?: TextAlign; size?: number; color?: string; bg?: string }
@@ -41,6 +41,14 @@ export type Block =
   | { type: 'divisor' }
   | { type: 'redes'; links: SocialLinks; style?: SocialStyle; align?: Align }
   | { type: 'espaco'; height?: number }
+) & {
+  /** Espaço acima e abaixo do bloco, em px (0 a 48); vazio = o padrão de cada tipo. */
+  space?: number
+  /** imagem: encostar nas bordas do e-mail (largura total, sem margem nem canto arredondado). */
+  edge?: boolean
+  /** titulo/texto: espaçamento entre linhas, em % do tamanho da letra (100 a 200). */
+  lineHeight?: number
+}
 
 export const BLOCK_TYPES = ['titulo', 'texto', 'colunas', 'imagem', 'botao', 'whatsapp', 'produtos', 'redes', 'divisor', 'espaco'] as const
 
@@ -391,8 +399,9 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
   const P = (t: string) => personalize(t, o.person)
   const rows: string[] = []
   const text: string[] = []
-  const button = (link: string, label: string, bg: string, fg: string, align: Align) =>
-    `<tr><td align="${align}" style="padding:16px 32px"><a href="${escape(link)}" target="_blank" style="background:${bg};color:${fg};text-decoration:none;padding:13px 28px;border-radius:6px;display:inline-block;font-weight:700;font-size:15px">${escape(label)}</a></td></tr>`
+  const sp = (b: Block, d: number) => (b.space === undefined ? d : b.space)
+  const button = (link: string, label: string, bg: string, fg: string, align: Align, space = 16) =>
+    `<tr><td align="${align}" style="padding:${space}px 32px"><a href="${escape(link)}" target="_blank" style="background:${bg};color:${fg};text-decoration:none;padding:13px 28px;border-radius:6px;display:inline-block;font-weight:700;font-size:15px">${escape(label)}</a></td></tr>`
 
   for (const b of blocks) {
     switch (b.type) {
@@ -406,7 +415,7 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
         const size = clamp(b.size, isTitle ? 18 : 12, isTitle ? 40 : 24, isTitle ? 24 : 15)
         const fg = hex(b.color, isTitle ? '#111827' : '#374151')
         const bg = optHex(b.bg)
-        const style = `padding:${bg ? '16px 32px' : '8px 32px'};font-size:${size}px;line-height:${Math.round(size * 1.45)}px;${isTitle ? 'font-weight:700;' : ''}color:${fg};text-align:${textAlignOf(b.align)}${bg ? `;background:${bg}` : ''}`
+        const style = `padding:${sp(b, bg ? 16 : 8)}px 32px;font-size:${size}px;line-height:${Math.round((size * (b.lineHeight ?? 145)) / 100)}px;${isTitle ? 'font-weight:700;' : ''}color:${fg};text-align:${textAlignOf(b.align)}${bg ? `;background:${bg}` : ''}`
         rows.push(`<tr><td style="${style}">${html}</td></tr>`)
         const plain = htmlToText(personalize(richOf(b), o.person))
         text.push(isTitle ? plain.toUpperCase() : plain, '')
@@ -439,7 +448,7 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
           return `<div style="display:inline-block;width:100%;max-width:${w}px;vertical-align:top;font-size:15px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:8px">${parts.join('')}</td></tr></table></div>`
         }
         rows.push(
-          `<tr><td style="padding:8px 24px;font-size:0;text-align:left"><!--[if mso]><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td width="${widths[0]}" valign="top"><![endif]-->${col(b.columns[0], widths[0]!)}<!--[if mso]></td><td width="${widths[1]}" valign="top"><![endif]-->${col(b.columns[1], widths[1]!)}<!--[if mso]></td></tr></table><![endif]--></td></tr>`,
+          `<tr><td style="padding:${sp(b, 8)}px 24px;font-size:0;text-align:left"><!--[if mso]><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td width="${widths[0]}" valign="top"><![endif]-->${col(b.columns[0], widths[0]!)}<!--[if mso]></td><td width="${widths[1]}" valign="top"><![endif]-->${col(b.columns[1], widths[1]!)}<!--[if mso]></td></tr></table><![endif]--></td></tr>`,
         )
         for (const c of b.columns) {
           const plain = htmlToText(personalize(c.html, o.person))
@@ -452,17 +461,18 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
       case 'imagem': {
         const src = safeUrl(b.url)
         if (!src) break
-        const w = Math.round((536 * clamp(b.width, 20, 100, 100)) / 100)
-        const img = `<img src="${escape(src)}" alt="${escape(b.alt ?? '')}" width="${w}" style="display:block;width:100%;max-width:${w}px;height:auto;border:0;border-radius:6px;margin:0 auto">`
+        // Encostada nas bordas: largura total (600) e sem canto arredondado, para emendar imagens sem faixa branca.
+        const w = Math.round(((b.edge ? 600 : 536) * clamp(b.width, 20, 100, 100)) / 100)
+        const img = `<img src="${escape(src)}" alt="${escape(b.alt ?? '')}" width="${w}" style="display:block;width:100%;max-width:${w}px;height:auto;border:0;${b.edge ? '' : 'border-radius:6px;'}margin:0 auto">`
         const link = href(b.link)
-        rows.push(`<tr><td align="center" style="padding:8px 32px">${link ? `<a href="${escape(link)}" target="_blank">${img}</a>` : img}</td></tr>`)
+        rows.push(`<tr><td align="center" style="padding:${sp(b, 8)}px ${b.edge ? 0 : 32}px;font-size:0;line-height:0">${link ? `<a href="${escape(link)}" target="_blank">${img}</a>` : img}</td></tr>`)
         break
       }
       case 'botao': {
         const link = href(b.url, true)
         if (!link) break
         const label = P(b.text)
-        rows.push(button(link, label, hex(b.color, color), hex(b.textColor, '#ffffff'), alignOf(b.align, 'center')))
+        rows.push(button(link, label, hex(b.color, color), hex(b.textColor, '#ffffff'), alignOf(b.align, 'center'), sp(b, 16)))
         text.push(`${label}: ${safeUrl(b.url, true)}`, '')
         break
       }
@@ -470,7 +480,7 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
         const url = whatsappUrl(b.phone, b.message)
         if (!url) break
         const label = P(b.text || 'Falar no WhatsApp')
-        rows.push(button(track(url), label, '#25D366', '#ffffff', alignOf(b.align, 'center')))
+        rows.push(button(track(url), label, '#25D366', '#ffffff', alignOf(b.align, 'center'), sp(b, 16)))
         text.push(`${label}: ${url}`, '')
         break
       }
@@ -500,7 +510,7 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
       case 'redes': {
         const icons = socialIcons(b.links, b.style ?? 'cor', o.brand.iconBase, track)
         if (!icons) break
-        rows.push(`<tr><td align="${alignOf(b.align, 'center')}" style="padding:12px 32px">${icons}</td></tr>`)
+        rows.push(`<tr><td align="${alignOf(b.align, 'center')}" style="padding:${sp(b, 12)}px 32px">${icons}</td></tr>`)
         for (const n of SOCIAL_NETWORKS) {
           const u = socialUrl(n, b.links[n])
           if (u) text.push(`${SOCIAL_LABEL[n]}: ${u}`)
@@ -509,7 +519,7 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
         break
       }
       case 'divisor':
-        rows.push('<tr><td style="padding:12px 32px"><hr style="border:0;border-top:1px solid #e5e7eb;margin:0"></td></tr>')
+        rows.push(`<tr><td style="padding:${sp(b, 12)}px 32px"><hr style="border:0;border-top:1px solid #e5e7eb;margin:0"></td></tr>`)
         break
       case 'espaco': {
         const h = clamp(b.height, 8, 96, 24)
@@ -566,6 +576,7 @@ export function cleanBlocks(raw: unknown): { blocks: Block[] } | { error: string
   const out: Block[] = []
   const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '')
   for (const b of raw as Record<string, unknown>[]) {
+    const before = out.length
     switch (b?.type) {
       case 'titulo':
       case 'texto': {
@@ -646,6 +657,12 @@ export function cleanBlocks(raw: unknown): { blocks: Block[] } | { error: string
       default:
         return { error: `Tipo de bloco desconhecido: ${String(b?.type)}` }
     }
+    // Espaçamento (todos os blocos, menos o próprio espaço), imagem nas bordas e entrelinha do texto.
+    const added = out.length > before ? out[out.length - 1]! : null
+    const within = (v: unknown, min: number, max: number) => (v === undefined || v === null || v === '' || !Number.isFinite(Number(v)) ? undefined : Math.max(min, Math.min(max, Math.round(Number(v)))))
+    if (added && added.type !== 'espaco') added.space = within(b.space, 0, 48)
+    if (added?.type === 'imagem' && b.edge === true) added.edge = true
+    if (added?.type === 'titulo' || added?.type === 'texto') added.lineHeight = within(b.lineHeight, 100, 200)
   }
   return { blocks: out }
 }

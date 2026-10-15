@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
+import { leadRegion } from '../atendimento/br'
 import { AuditService } from '../audit/audit.service'
 import type { RequestCtx } from '../common/decorators'
 import { type Action, can } from '../common/permissions'
@@ -654,7 +655,7 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
         return !!(await this.lastEvent(leadId, r.type === 'abriu_email' ? ['email_aberto', 'email_clique'] : ['email_clique'], since))
       }
     }
-    const lead = await this.prisma.lead.findUnique({ where: { id: leadId }, select: { tags: true, stage: true, scoreGrade: true, originId: true, ownerId: true, phone: true, email: true, emailOptIn: true, emailBouncedAt: true } })
+    const lead = await this.prisma.lead.findUnique({ where: { id: leadId }, select: { tags: true, stage: true, scoreGrade: true, originId: true, ownerId: true, phone: true, email: true, emailOptIn: true, emailBouncedAt: true, country: true, state: true } })
     if (!lead) return false
     switch (r.type) {
       case 'tem_tag':
@@ -671,6 +672,10 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
         return !!lead.phone
       case 'aceita_email':
         return !!lead.email && lead.emailOptIn && !lead.emailBouncedAt
+      case 'regiao': {
+        const region = leadRegion(lead.country, lead.state, lead.phone)
+        return !!region && (r.regions ?? []).includes(region)
+      }
     }
     return false
   }
