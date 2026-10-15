@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.38.3",
+      "date": "2026-10-16",
+      "title": "Prazo do Google para conversões",
+      "changes": [
+        { "type": "correcao", "area": "Google Ads", "text": "Conversões velhas demais não vão mais ao Google (ele recusava o lote inteiro com “Event did not occur within the acceptable time window”): até 90 dias com código de clique e até 63 dias quando o cliente é reconhecido só pelo e-mail/telefone. As de fora do prazo ficam como “não enviadas”, com o motivo." }
+      ]
+    },
+    {
       "version": "0.38.2",
       "date": "2026-10-16",
       "title": "Reenvio para ações de conversão novas",

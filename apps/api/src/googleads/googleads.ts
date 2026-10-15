@@ -12,6 +12,16 @@ export const DM_STATUS_URL = 'https://datamanager.googleapis.com/v1/requestStatu
 /** O Google só aceita conversões até 90 dias depois do clique (63 dias quando casa só pelo e-mail/telefone). */
 export const CLICK_WINDOW_DAYS = 90
 export const USER_DATA_WINDOW_DAYS = 63
+
+/**
+ * Conversão velha demais para o Google aceitar (ele recusa o lote inteiro): até 90 dias com código de clique,
+ * 63 dias quando casa só pelo e-mail/telefone. Com 1 dia de folga, pelo tempo até o envio sair.
+ */
+export function tooOldForGoogle(eventAt: Date, clickIds: ClickIds | null | undefined, now = Date.now()) {
+  const hasClick = !!(clickIds && (clickIds.gclid || clickIds.gbraid || clickIds.wbraid))
+  const days = (hasClick ? CLICK_WINDOW_DAYS : USER_DATA_WINDOW_DAYS) - 1
+  return now - eventAt.getTime() > days * 86_400_000 ? (hasClick ? 'Mais de 90 dias: o Google não aceita mais.' : 'Mais de 63 dias e sem código de clique: o Google só aceita até 63 dias quando reconhece o cliente pelo e-mail/telefone.') : null
+}
 /** Eventos por envio (o limite do Google é maior; lotes menores deixam os erros mais fáceis de achar). */
 export const BATCH_SIZE = 500
 

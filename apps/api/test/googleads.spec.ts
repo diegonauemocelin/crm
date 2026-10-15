@@ -478,3 +478,15 @@ describe('Google Ads: ações de conversão criadas de novo', () => {
     expect(dup).toMatchObject({ status: 'ACEITO', retry: false })
   })
 })
+
+describe('Google Ads: prazo do Google', () => {
+  it('não manda conversão velha demais (90 dias com clique, 63 só com e-mail/telefone)', async () => {
+    const { tooOldForGoogle } = await import('../src/googleads/googleads')
+    const now = Date.parse('2026-10-15T12:00:00Z')
+    const ago = (d: number) => new Date(now - d * 86_400_000)
+    expect(tooOldForGoogle(ago(70), null, now)).toMatch(/63 dias/)
+    expect(tooOldForGoogle(ago(60), null, now)).toBeNull()
+    expect(tooOldForGoogle(ago(70), { gclid: 'Cj0KCQjw_ABC123' }, now)).toBeNull()
+    expect(tooOldForGoogle(ago(89.5), { gbraid: '0AAAAAo-abcdef12' }, now)).toMatch(/90 dias/)
+  })
+})

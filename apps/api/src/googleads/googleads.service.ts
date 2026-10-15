@@ -35,6 +35,7 @@ import {
   isGoogleAdsTouch,
   shouldSend,
   summarizeRequestStatus,
+  tooOldForGoogle,
 } from './googleads'
 
 const DAY = 86_400_000
@@ -518,6 +519,13 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
         const included: string[] = []
         for (const p of chunk) {
           const lead = p.leadId ? leads.get(p.leadId) : undefined
+          // Velha demais: o Google recusaria o lote inteiro por causa dela.
+          const old = tooOldForGoogle(p.eventAt, p.clickIds as ClickIds | null)
+          if (old) {
+            await this.prisma.googleAdsConversion.update({ where: { id: p.id }, data: { status: 'IGNORADO', error: old } })
+            ignored++
+            continue
+          }
           // Lead com dados apagados a pedido (LGPD): não envia nada dele.
           const anon = !!lead?.anonymizedAt
           const ev = anon
