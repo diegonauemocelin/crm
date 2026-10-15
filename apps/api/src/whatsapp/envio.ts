@@ -310,3 +310,7 @@ export function contactsFromWhatsapp(list: unknown) {
   }
   return Object.assign(rows, { stats })
 }
+
+/** Cores das etiquetas do chat (a tela mapeia cada uma para a sua cor). */
+export const LABEL_COLORS = ['cinza', 'vermelho', 'laranja', 'amarelo', 'verde', 'azul', 'roxo', 'rosa'] as const
+export type LabelColor = (typeof LABEL_COLORS)[number]

@@ -3,6 +3,7 @@ import { AlarmClockIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIco
 import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
+import { type ChatLabel, LabelChip, LabelPicker, ManageRepliesDialog, useLabels } from '@/components/chat/organizar'
 import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -52,6 +53,8 @@ interface ConvItem {
   category?: ContactCategory
   status?: string
   reminderAt?: string | null
+  /** Etiquetas que este usuário vê (padrão da empresa e as pessoais dele). */
+  labels?: ChatLabel[]
 }
 interface ListData {
   /** Prazos das cores de atraso de resposta (minutos desde a última mensagem do cliente). */
@@ -79,7 +82,7 @@ interface Message {
   status?: string | null
 }
 interface Thread {
-  conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; sectorId?: string | null; category: ContactCategory }
+  conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; sectorId?: string | null; category: ContactCategory; labels?: ChatLabel[] }
   number: NumberRef | null
   attendance?: { split: boolean; sectors: { id: string; name: string }[]; attendants: { id: string; name: string }[] } | null
   lead: { id: string; name: string | null; email: string | null; phone: string | null } | null
@@ -144,6 +147,8 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
   const [archived, setArchived] = useState(false)
   const [withReminder, setWithReminder] = useState(false)
   const [category, setCategory] = useState<ContactCategory | null>(null)
+  const [labelId, setLabelId] = useState<string | null>(null)
+  const labels = useLabels()
   const [starting, setStarting] = useState(false)
   const { can } = useAuth()
   const [search, setSearch] = useState('')
@@ -152,7 +157,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
     const t = setTimeout(() => setQ(search.trim()), 300)
     return () => clearTimeout(t)
   }, [search])
-  const qs = new URLSearchParams({ ...(numberId ? { numero: numberId } : {}), ...(unread ? { naoLidas: 'true' } : {}), ...(archived ? { arquivadas: 'true' } : {}), ...(category ? { tipo: category } : {}), ...(withReminder && !monitor ? { lembretes: 'true' } : {}), ...(q ? { busca: q } : {}), ...(monitor ? { monitorar: 'true' } : {}), ...(monitor && sellerId ? { vendedor: sellerId } : {}), ...(monitor && awaiting ? { aguardando: 'true' } : {}), ...(queue ? { fila: 'true' } : {}) }).toString()
+  const qs = new URLSearchParams({ ...(numberId ? { numero: numberId } : {}), ...(unread ? { naoLidas: 'true' } : {}), ...(archived ? { arquivadas: 'true' } : {}), ...(category ? { tipo: category } : {}), ...(withReminder && !monitor ? { lembretes: 'true' } : {}), ...(q ? { busca: q } : {}), ...(monitor ? { monitorar: 'true' } : {}), ...(monitor && sellerId ? { vendedor: sellerId } : {}), ...(monitor && awaiting ? { aguardando: 'true' } : {}), ...(queue ? { fila: 'true' } : {}), ...(labelId ? { etiqueta: labelId } : {}) }).toString()
   const list = useQuery({ queryKey: ['chat-conversas', qs], queryFn: () => api.get<ListData>(`/chat/conversas?${qs}`), refetchInterval: 5000, placeholderData: keepPreviousData })
   const numbers = useMemo(() => new Map((list.data?.numbers ?? []).map((n) => [n.id, n])), [list.data?.numbers])
   const open = (id: string | null) => setParams((p) => {
@@ -232,6 +237,21 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                     ))}
                   </SelectContent>
                 </Select>
+                {(labels.data ?? []).length > 0 && (
+                  <Select value={labelId ?? ALL} onValueChange={(v) => setLabelId(v === ALL ? null : v)}>
+                    <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label="Filtrar por etiqueta">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>Todas as etiquetas</SelectItem>
+                      {labels.data!.map((l) => (
+                        <SelectItem key={l.id} value={l.id}>
+                          {l.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 {monitor && (
                   <Select value={sellerId ?? ALL} onValueChange={(v) => setSellerId(v === ALL ? null : v)}>
                     <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label="Vendedor">
@@ -271,7 +291,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
               </div>
             </div>
             <ul className="min-h-0 flex-1 overflow-y-auto">
-              {list.data.items.length === 0 && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa{archived ? ' arquivada' : ''}{q || unread || numberId || category || withReminder || sellerId || awaiting || queue ? ' com esses filtros' : archived ? '' : ' ainda'}.</li>}
+              {list.data.items.length === 0 && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa{archived ? ' arquivada' : ''}{q || unread || numberId || category || labelId || withReminder || sellerId || awaiting || queue ? ' com esses filtros' : archived ? '' : ' ainda'}.</li>}
               {list.data.items.map((c) => {
                 const wc = c.category === 'CLIENTE' || !c.category ? waitColor(c, list.data.responseColors) : null
                 return (
@@ -309,6 +329,13 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                         )}
                         {c.unread > 0 && <Badge className="h-5 shrink-0 px-1.5 tabular-nums" aria-label={`${c.unread} não lidas`}>{c.unread}</Badge>}
                       </span>
+                      {(c.labels ?? []).length > 0 && (
+                        <span className="mt-1 flex flex-wrap gap-1">
+                          {c.labels!.map((l) => (
+                            <LabelChip key={l.id} label={l} />
+                          ))}
+                        </span>
+                      )}
                       {(list.data.numbers.length > 1 || (c.category && c.category !== 'CLIENTE') || monitor || numbers.get(c.numberId)?.splitAttendance) && (
                         <span className="block truncate text-[11px] text-muted-foreground">
                           {[
@@ -401,6 +428,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
           )}
           {can('monitoramento', 'create') && <NoteButton conversationId={d.conversation.id} monitor={monitor} />}
           {!monitor && d.attendance?.split && d.conversation.category === 'CLIENTE' && <AttendantPicker thread={d} />}
+          {!monitor && <LabelPicker conversationId={d.conversation.id} value={d.conversation.labels ?? []} />}
           {!monitor && <ReminderButton conversationId={d.conversation.id} />}
           {!monitor && <ConversationActions thread={d} />}
           {d.lead && (
@@ -595,7 +623,8 @@ function Composer({ thread }: { thread: Thread }) {
       toast.error(errorMessage(err))
     }
   })
-  const replies = useQuery({ queryKey: ['chat-respostas', id], queryFn: () => api.get<{ id: string; title: string; preview: string }[]>(`/chat/respostas?conversa=${id}`), enabled: can('chat', 'create'), staleTime: 60_000 })
+  const replies = useQuery({ queryKey: ['chat-respostas', id], queryFn: () => api.get<{ id: string; title: string; preview: string; standard: boolean }[]>(`/chat/respostas?conversa=${id}`), enabled: can('chat', 'create'), staleTime: 60_000 })
+  const [managing, setManaging] = useState(false)
   const send = useMutation({
     mutationFn: () => {
       if (file) {
@@ -630,6 +659,7 @@ function Composer({ thread }: { thread: Thread }) {
     }
   }
   return (
+    <>
     <form onSubmit={submit} className="space-y-2 border-t p-2">
       {file && (
         <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-2 py-1 text-xs">
@@ -666,13 +696,15 @@ function Composer({ thread }: { thread: Thread }) {
           <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
             <DropdownMenuLabel>Respostas rápidas</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {(replies.data ?? []).length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">Nenhuma cadastrada (Números de WhatsApp → Respostas rápidas).</p>}
+            {(replies.data ?? []).length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">Nenhuma ainda. Crie as suas em “Gerenciar respostas”.</p>}
             {replies.data?.map((r) => (
               <DropdownMenuItem key={r.id} onSelect={() => setText((t) => (t ? `${t}\n${r.preview}` : r.preview))} className="flex-col items-start gap-0.5">
                 <span className="font-medium">{r.title}</span>
                 <span className="line-clamp-2 text-xs text-muted-foreground">{r.preview}</span>
               </DropdownMenuItem>
             ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => setManaging(true)}>Gerenciar respostas</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <Textarea
@@ -708,6 +740,8 @@ function Composer({ thread }: { thread: Thread }) {
         )}
       </div>
     </form>
+    {managing && <ManageRepliesDialog onClose={() => setManaging(false)} />}
+    </>
   )
 }
 

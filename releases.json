@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.41.0",
+      "date": "2026-10-16",
+      "title": "Etiquetas e respostas rápidas pessoais",
+      "changes": [
+        { "type": "novo", "area": "WhatsApp", "text": "Etiquetas no chat: cada usuário cria as suas, com nome e cor, e marca as conversas; elas aparecem abaixo do nome na lista e têm filtro próprio. Quem administra o WhatsApp também cria etiquetas padrão, que aparecem para todos." },
+        { "type": "novo", "area": "WhatsApp", "text": "Respostas rápidas pessoais: cada usuário cria as suas no próprio chat (botão do raio → Gerenciar respostas). As padrão da empresa continuam em Números de WhatsApp." }
+      ]
+    },
+    {
       "version": "0.40.1",
       "date": "2026-10-16",
       "title": "Importação de contatos do WhatsApp",

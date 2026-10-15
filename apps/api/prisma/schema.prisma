@@ -1361,6 +1361,7 @@ model WhatsappConversation {
 
   messages  WhatsappMessage[]
   reminders WhatsappReminder[]
+  labels    WhatsappConversationLabel[]
 
   @@unique([numberId, jid])
   @@index([tenantId, lastMessageAt])
@@ -1405,13 +1406,47 @@ model WhatsappMessage {
 model WhatsappQuickReply {
   id        String   @id @default(uuid()) @db.Uuid
   tenantId  String   @db.Uuid
+  /// Dono da resposta pessoal; vazio = padrão da empresa (todos veem).
+  userId    String?  @db.Uuid
   title     String
   text      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([tenantId])
+  @@index([tenantId, userId])
   @@map("whatsapp_quick_replies")
+}
+
+/// Etiqueta do chat (nome + cor) para organizar as conversas: padrão da empresa ou pessoal de um usuário.
+model WhatsappLabel {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  /// Dono da etiqueta pessoal (só ele vê); vazio = padrão da empresa (todos veem).
+  userId    String?  @db.Uuid
+  name      String
+  /// Cor da paleta (cinza, vermelho, laranja, amarelo, verde, azul, roxo, rosa)
+  color     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  conversations WhatsappConversationLabel[]
+
+  @@index([tenantId, userId])
+  @@map("whatsapp_labels")
+}
+
+/// Etiqueta colocada numa conversa.
+model WhatsappConversationLabel {
+  conversationId String   @db.Uuid
+  labelId        String   @db.Uuid
+  createdAt      DateTime @default(now())
+
+  conversation WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  label        WhatsappLabel        @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, labelId])
+  @@index([labelId])
+  @@map("whatsapp_conversation_labels")
 }
 
 /// Tipo do contato no WhatsApp (vale para todos os números): colega, fornecedor ou outro não viram lead nem pré-venda.

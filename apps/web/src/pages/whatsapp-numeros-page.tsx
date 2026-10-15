@@ -446,7 +446,8 @@ interface QuickReply {
 /** Respostas rápidas do chat. {nome} vira o primeiro nome do cliente e {vendedor} o de quem envia. */
 function QuickReplies({ editable }: { editable: boolean }) {
   const qc = useQueryClient()
-  const list = useQuery({ queryKey: ['chat-respostas-admin'], queryFn: () => api.get<QuickReply[]>('/chat/respostas') })
+  // Aqui ficam só as padrão da empresa; as pessoais cada usuário cria no próprio chat.
+  const list = useQuery({ queryKey: ['chat-respostas-admin'], queryFn: () => api.get<(QuickReply & { standard?: boolean })[]>('/chat/respostas').then((r) => r.filter((x) => x.standard !== false)) })
   const [editing, setEditing] = useState<QuickReply | 'nova' | null>(null)
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/chat/respostas/${id}`),
@@ -461,7 +462,7 @@ function QuickReplies({ editable }: { editable: boolean }) {
       <CardHeader className="flex flex-row items-start justify-between gap-3">
         <div>
           <CardTitle className="text-base">Respostas rápidas</CardTitle>
-          <CardDescription>Textos prontos no chat (botão do raio). Use {'{nome}'} para o primeiro nome do cliente e {'{vendedor}'} para o de quem envia.</CardDescription>
+          <CardDescription>Textos prontos para todos no chat (botão do raio). Cada usuário também pode criar as suas no próprio chat. Use {'{nome}'} para o primeiro nome do cliente e {'{vendedor}'} para o de quem envia.</CardDescription>
         </div>
         {editable && (
           <Button size="sm" variant="outline" onClick={() => setEditing('nova')}>
@@ -506,7 +507,7 @@ function QuickReplyDialog({ reply, onClose }: { reply: QuickReply | null; onClos
   const [text, setText] = useState(reply?.text ?? '')
   const [error, setError] = useState<string | null>(null)
   const save = useMutation({
-    mutationFn: () => (reply ? api.put(`/chat/respostas/${reply.id}`, { title, text }) : api.post('/chat/respostas', { title, text })),
+    mutationFn: () => (reply ? api.put(`/chat/respostas/${reply.id}`, { title, text }) : api.post('/chat/respostas', { title, text, standard: true })),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['chat-respostas-admin'] })
       void qc.invalidateQueries({ queryKey: ['chat-respostas'] })

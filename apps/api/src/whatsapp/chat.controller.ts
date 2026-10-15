@@ -9,6 +9,7 @@ import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { ChatService } from './chat.service'
 import { WhatsappDashboardService } from './dashboard.service'
+import { LABEL_COLORS } from './envio'
 import { INLINE_MIME, MEDIA_MAX_BYTES } from './mensagens'
 
 class ListDto {
@@ -23,6 +24,7 @@ class ListDto {
   @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() monitorar?: boolean
   @IsOptional() @IsUUID() vendedor?: string
   @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() fila?: boolean
+  @IsOptional() @IsUUID() etiqueta?: string
   @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() aguardando?: boolean
 }
 
@@ -67,6 +69,18 @@ class SnoozeDto {
 class QuickReplyDto {
   @IsString() @Length(1, 60) title!: string
   @IsString() @Length(1, 2000) text!: string
+  /** Padrão da empresa (todos veem); sem marcar, é pessoal. */
+  @IsOptional() @IsBoolean() standard?: boolean
+}
+
+class LabelDto {
+  @IsString() @Length(1, 30) name!: string
+  @IsIn([...LABEL_COLORS]) color!: string
+  @IsOptional() @IsBoolean() standard?: boolean
+}
+
+class ConversationLabelsDto {
+  @IsUUID(undefined, { each: true }) @ArrayMaxSize(50) labelIds!: string[]
 }
 
 class ThreadDto {
@@ -214,7 +228,7 @@ export class ChatController {
 
   @Get('conversas')
   list(@CurrentUser() user: AuthUser, @Query() q: ListDto) {
-    return this.chat.conversations(user, { numberId: q.numero, unread: q.naoLidas, archived: q.arquivadas, search: q.busca, page: q.pagina, category: q.tipo, leadId: q.lead, reminders: q.lembretes, monitor: q.monitorar, sellerId: q.vendedor, awaiting: q.aguardando, queue: q.fila })
+    return this.chat.conversations(user, { numberId: q.numero, unread: q.naoLidas, archived: q.arquivadas, search: q.busca, page: q.pagina, category: q.tipo, leadId: q.lead, reminders: q.lembretes, monitor: q.monitorar, sellerId: q.vendedor, awaiting: q.aguardando, queue: q.fila, labelId: q.etiqueta })
   }
 
   /** Números em que o usuário pode iniciar conversa. */
@@ -322,6 +336,32 @@ export class ChatController {
   @Delete('respostas/:id')
   removeQuickReply(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.chat.removeQuickReply(user, id)
+  }
+
+  @Get('etiquetas')
+  labels(@CurrentUser() user: AuthUser) {
+    return this.chat.labels(user)
+  }
+
+  @Post('etiquetas')
+  createLabel(@CurrentUser() user: AuthUser, @Body() dto: LabelDto) {
+    return this.chat.saveLabel(user, null, dto)
+  }
+
+  @Put('etiquetas/:id')
+  updateLabel(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LabelDto) {
+    return this.chat.saveLabel(user, id, dto)
+  }
+
+  @Delete('etiquetas/:id')
+  removeLabel(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.chat.removeLabel(user, id)
+  }
+
+  /** Etiquetas da conversa (as que este usuário vê). */
+  @Put('conversas/:id/etiquetas')
+  setLabels(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ConversationLabelsDto) {
+    return this.chat.setConversationLabels(user, id, dto.labelIds)
   }
 
   /** Atendimento dividido: assumir (userId = eu) ou transferir para atendente ou fila de setor. */

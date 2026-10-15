@@ -13,7 +13,7 @@ import { SettingsService } from '../settings/settings.service'
 import { normalizePhone } from '../atendimento/br'
 import { type EvolutionClient, EvolutionError } from './evolution'
 import { sectorsOf, splitWhere } from './atendentes'
-import { type AgendaCategory, applyVariables, cleanRules, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, parseContactList, parseVcf, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
+import { type AgendaCategory, applyVariables, cleanRules, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, LABEL_COLORS, type LabelColor, parseContactList, parseVcf, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
 import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, type ParsedMessage, phoneFromDigits, phoneVariants, previewOf } from './mensagens'
 
 const PAGE = 60
@@ -262,7 +262,7 @@ export class ChatService {
     return { numberIds: nums.map((n) => n.id), numbers: nums, sellerId: seller?.id ?? null }
   }
 
-  async conversations(user: AuthUser, q: { numberId?: string; unread?: boolean; archived?: boolean; search?: string; page?: number; category?: string; leadId?: string; reminders?: boolean; monitor?: boolean; sellerId?: string; awaiting?: boolean; queue?: boolean }) {
+  async conversations(user: AuthUser, q: { numberId?: string; unread?: boolean; archived?: boolean; search?: string; page?: number; category?: string; leadId?: string; reminders?: boolean; monitor?: boolean; sellerId?: string; awaiting?: boolean; queue?: boolean; labelId?: string }) {
     if (q.monitor) this.assertMonitor(user)
     else this.assertCan(user)
     const scope: Prisma.WhatsappConversationWhereInput = q.monitor ? { tenantId: user.tenantId } : await this.where(user)
@@ -272,6 +272,7 @@ export class ChatService {
     if (q.unread) and.push({ unread: { gt: 0 } })
     if (q.category) and.push({ category: q.category })
     if (q.reminders) and.push({ reminders: { some: { userId: user.id, doneAt: null } } })
+    if (q.labelId) and.push({ labels: { some: { labelId: q.labelId, label: this.ownedWhere(user) } } })
     if (q.monitor && q.sellerId) and.push(await this.sellerWhere(user.tenantId, q.sellerId))
     // Aguardando resposta: a última mensagem é do contato.
     if (q.awaiting) and.push({ lastFromMe: false })
@@ -297,6 +298,7 @@ export class ChatService {
     const reminders = new Map(
       (await this.prisma.whatsappReminder.groupBy({ by: ['conversationId'], where: { userId: user.id, doneAt: null, conversationId: { in: rows.map((r) => r.id) } }, _min: { dueAt: true } })).map((r) => [r.conversationId, r._min.dueAt]),
     )
+    const labels = await this.labelsOf(user, rows.map((r) => r.id))
     const userNames = new Map((await this.prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.assignedUserId).filter((x): x is string => !!x))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
     // No monitoramento, quem atende cada conversa (vendedor da conversa ou os do número).
     const sellerName = q.monitor ? await this.sellerNames(user.tenantId) : null
@@ -334,6 +336,7 @@ export class ChatService {
         assignedUserId: r.assignedUserId,
         assignedUserName: r.assignedUserId ? (userNames.get(r.assignedUserId) ?? null) : null,
         sectorId: r.sectorId,
+        labels: labels.get(r.id) ?? [],
       })),
     }
   }
@@ -392,7 +395,7 @@ export class ChatService {
     // Atendentes do número (para assumir e transferir) e o nome de quem atende.
     const attendants = number ? await this.prisma.user.findMany({ where: { id: { in: [...new Set([...number.userIds, ...(conv.assignedUserId ? [conv.assignedUserId] : [])])] }, tenantId: user.tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true, active: true } }) : []
     return {
-      conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, assignedUserId: conv.assignedUserId, assignedUserName: attendants.find((a) => a.id === conv.assignedUserId)?.name ?? null, sectorId: conv.sectorId, category: conv.category, unread: conv.unread },
+      conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, assignedUserId: conv.assignedUserId, assignedUserName: attendants.find((a) => a.id === conv.assignedUserId)?.name ?? null, sectorId: conv.sectorId, category: conv.category, unread: conv.unread, labels: (await this.labelsOf(user, [conv.id])).get(conv.id) ?? [] },
       attendance: number ? { split: number.splitAttendance, sectors: sectorsOf(number.sectors).map((s) => ({ id: s.id, name: s.name })), attendants: attendants.filter((a) => a.active).map((a) => ({ id: a.id, name: a.name })) } : null,
       monitor: !!monitor,
       number: number ? { id: number.id, name: number.name, phone: number.phone, status: number.status } : null,
@@ -609,36 +612,109 @@ export class ChatService {
 
   // ---------- Respostas rápidas ----------
 
+  /** Padrão da empresa (todos veem) ou pessoal (só o dono). Padrão: só quem administra o WhatsApp cria e altera. */
+  private ownedWhere(user: AuthUser) {
+    return { tenantId: user.tenantId, OR: [{ userId: null }, { userId: user.id }] }
+  }
+
+  private assertOwn(user: AuthUser, row: { userId: string | null }, what: string) {
+    if (row.userId === null) this.assertAction(user, 'whatsapp', 'edit')
+    else if (row.userId !== user.id) throw new ForbiddenException(`Só quem criou pode alterar esta ${what}.`)
+  }
+
   async quickReplies(user: AuthUser, convId?: string) {
     this.assertCan(user)
-    const rows = await this.prisma.whatsappQuickReply.findMany({ where: { tenantId: user.tenantId }, orderBy: { title: 'asc' } })
+    const rows = await this.prisma.whatsappQuickReply.findMany({ where: this.ownedWhere(user), orderBy: [{ userId: { sort: 'asc', nulls: 'last' } }, { title: 'asc' }] })
     // Com a conversa, já devolve o texto com {nome} e {vendedor} trocados.
     let nome: string | null = null
     if (convId) {
       const c = await this.load(user, convId)
       nome = (c.leadId ? (await this.prisma.lead.findUnique({ where: { id: c.leadId }, select: { name: true } }))?.name : null) ?? c.name
     }
-    return rows.map((r) => ({ id: r.id, title: r.title, text: r.text, preview: applyVariables(r.text, { nome, vendedor: user.name }) }))
+    return rows.map((r) => ({ id: r.id, title: r.title, text: r.text, standard: r.userId === null, mine: r.userId === user.id, preview: applyVariables(r.text, { nome, vendedor: user.name }) }))
   }
 
-  async saveQuickReply(user: AuthUser, id: string | null, d: { title: string; text: string }) {
-    this.assertAction(user, 'whatsapp', 'edit')
+  async saveQuickReply(user: AuthUser, id: string | null, d: { title: string; text: string; standard?: boolean }) {
+    this.assertCan(user)
     const title = d.title.trim().slice(0, 60)
     const text = d.text.trim().slice(0, 2000)
     if (!title || !text) throw new BadRequestException('Preencha o título e o texto.')
     if (id) {
-      const found = await this.prisma.whatsappQuickReply.findFirst({ where: { id, tenantId: user.tenantId } })
+      const found = await this.prisma.whatsappQuickReply.findFirst({ where: { id, ...this.ownedWhere(user) } })
       if (!found) throw new NotFoundException('Resposta não encontrada.')
+      this.assertOwn(user, found, 'resposta')
       return this.prisma.whatsappQuickReply.update({ where: { id }, data: { title, text } })
     }
-    if ((await this.prisma.whatsappQuickReply.count({ where: { tenantId: user.tenantId } })) >= 100) throw new BadRequestException('Limite de 100 respostas rápidas.')
-    return this.prisma.whatsappQuickReply.create({ data: { tenantId: user.tenantId, title, text } })
+    if (d.standard) this.assertAction(user, 'whatsapp', 'edit')
+    const owner = d.standard ? null : user.id
+    if ((await this.prisma.whatsappQuickReply.count({ where: { tenantId: user.tenantId, userId: owner } })) >= 100) throw new BadRequestException('Limite de 100 respostas rápidas.')
+    return this.prisma.whatsappQuickReply.create({ data: { tenantId: user.tenantId, userId: owner, title, text } })
   }
 
   async removeQuickReply(user: AuthUser, id: string) {
-    this.assertAction(user, 'whatsapp', 'edit')
-    await this.prisma.whatsappQuickReply.deleteMany({ where: { id, tenantId: user.tenantId } })
+    this.assertCan(user)
+    const found = await this.prisma.whatsappQuickReply.findFirst({ where: { id, ...this.ownedWhere(user) } })
+    if (!found) throw new NotFoundException('Resposta não encontrada.')
+    this.assertOwn(user, found, 'resposta')
+    await this.prisma.whatsappQuickReply.delete({ where: { id } })
     return { ok: true }
+  }
+
+  // ---------- Etiquetas das conversas ----------
+
+  async labels(user: AuthUser) {
+    this.assertCan(user)
+    const rows = await this.prisma.whatsappLabel.findMany({ where: this.ownedWhere(user), orderBy: [{ userId: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }] })
+    return rows.map((r) => ({ id: r.id, name: r.name, color: r.color, standard: r.userId === null, mine: r.userId === user.id }))
+  }
+
+  async saveLabel(user: AuthUser, id: string | null, d: { name: string; color: string; standard?: boolean }) {
+    this.assertCan(user)
+    const name = d.name.trim().slice(0, 30)
+    if (!name) throw new BadRequestException('Dê um nome para a etiqueta.')
+    if (!LABEL_COLORS.includes(d.color as LabelColor)) throw new BadRequestException('Cor inválida.')
+    if (id) {
+      const found = await this.prisma.whatsappLabel.findFirst({ where: { id, ...this.ownedWhere(user) } })
+      if (!found) throw new NotFoundException('Etiqueta não encontrada.')
+      this.assertOwn(user, found, 'etiqueta')
+      return this.prisma.whatsappLabel.update({ where: { id }, data: { name, color: d.color } })
+    }
+    if (d.standard) this.assertAction(user, 'whatsapp', 'edit')
+    const owner = d.standard ? null : user.id
+    if ((await this.prisma.whatsappLabel.count({ where: { tenantId: user.tenantId, userId: owner } })) >= 50) throw new BadRequestException('Limite de 50 etiquetas.')
+    return this.prisma.whatsappLabel.create({ data: { tenantId: user.tenantId, userId: owner, name, color: d.color } })
+  }
+
+  async removeLabel(user: AuthUser, id: string) {
+    this.assertCan(user)
+    const found = await this.prisma.whatsappLabel.findFirst({ where: { id, ...this.ownedWhere(user) } })
+    if (!found) throw new NotFoundException('Etiqueta não encontrada.')
+    this.assertOwn(user, found, 'etiqueta')
+    await this.prisma.whatsappLabel.delete({ where: { id } })
+    return { ok: true }
+  }
+
+  /** Etiquetas de uma conversa: troca só as que este usuário vê (as pessoais dos outros ficam como estão). */
+  async setConversationLabels(user: AuthUser, convId: string, labelIds: string[]) {
+    this.assertAction(user, 'chat', 'edit')
+    await this.load(user, convId)
+    const visible = (await this.prisma.whatsappLabel.findMany({ where: this.ownedWhere(user), select: { id: true } })).map((l) => l.id)
+    const wanted = [...new Set(labelIds)].filter((id) => visible.includes(id))
+    await this.prisma.$transaction([
+      this.prisma.whatsappConversationLabel.deleteMany({ where: { conversationId: convId, labelId: { in: visible.filter((id) => !wanted.includes(id)) } } }),
+      this.prisma.whatsappConversationLabel.createMany({ data: wanted.map((labelId) => ({ conversationId: convId, labelId })), skipDuplicates: true }),
+    ])
+    return { labels: await this.labelsOf(user, [convId]).then((m) => m.get(convId) ?? []) }
+  }
+
+  /** Etiquetas visíveis para o usuário em cada conversa. */
+  private async labelsOf(user: AuthUser, convIds: string[]) {
+    const rows = convIds.length
+      ? await this.prisma.whatsappConversationLabel.findMany({ where: { conversationId: { in: convIds }, label: this.ownedWhere(user) }, include: { label: true }, orderBy: { label: { name: 'asc' } } })
+      : []
+    const out = new Map<string, { id: string; name: string; color: string }[]>()
+    for (const r of rows) out.set(r.conversationId, [...(out.get(r.conversationId) ?? []), { id: r.label.id, name: r.label.name, color: r.label.color }])
+    return out
   }
 
   // ---------- Tipo de contato ----------
