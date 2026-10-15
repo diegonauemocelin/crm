@@ -23,6 +23,8 @@ Ordem definida em 14/10/2026. Cada item vira uma versão (ou mais), publicada e 
 
 ## Pendências fora desta lista
 
+- Histórico antigo do WhatsApp (conversas anteriores ao CRM): analisado em 15/10/2026 e o usuário decidiu não fazer. O CRM continua sem importar o histórico na conexão do número.
+
 - Backup fora da VPS (Google Drive), login SSH por chave, atualizações e reinício da VPS: comandos já passados.
 - Aumentar a VPS para 4 GB e liberar 5 números conectados no WhatsApp.
 - WhatsApp: confirmação de entrega/leitura, mensagem de ausência, horário comercial configurável, prazo de guarda das conversas (LGPD).
