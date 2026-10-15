@@ -77,6 +77,8 @@ export type Block = (
   | ({ type: 'botao'; text: string; url: string; color?: string; textColor?: string; align?: Align } & ButtonStyle)
   | ({ type: 'whatsapp'; text: string; phone: string; message?: string; align?: Align; color?: string; textColor?: string } & ButtonStyle)
   | { type: 'video'; url: string; title?: string; label?: string; color?: string }
+  /** Linha com 2 a 4 colunas; cada coluna tem os seus blocos. */
+  | { type: 'linha'; cols: Block[][]; valign?: 'top' | 'middle' }
   | { type: 'produtos'; items: ProductItem[]; columns?: 2 | 3 }
   | { type: 'divisor' }
   | { type: 'redes'; links: SocialLinks; style?: 'cor' | 'cinza'; align?: Align }
@@ -108,7 +110,8 @@ export const socialIcon = (n: SocialNetwork, style: 'cor' | 'cinza') => `/api/pu
 export const BLOCK_LABEL: Record<BlockType, string> = {
   titulo: 'Título',
   texto: 'Texto',
-  colunas: '2 colunas',
+  linha: 'Colunas (2 a 4)',
+  colunas: '2 colunas (antigo)',
   imagem: 'Imagem',
   video: 'Vídeo (YouTube)',
   botao: 'Botão',
@@ -118,6 +121,9 @@ export const BLOCK_LABEL: Record<BlockType, string> = {
   divisor: 'Linha divisória',
   espaco: 'Espaço',
 }
+
+/** Blocos que cabem dentro de uma coluna. */
+export const COLUMN_BLOCKS = ['titulo', 'texto', 'imagem', 'video', 'botao', 'whatsapp', 'espaco', 'divisor'] as const
 
 export function newBlock(type: BlockType, whatsappPhone = '', social: SocialLinks = {}): Block {
   switch (type) {
@@ -137,6 +143,8 @@ export function newBlock(type: BlockType, whatsappPhone = '', social: SocialLink
       }
     case 'imagem':
       return { type, url: '', alt: '', width: 100 }
+    case 'linha':
+      return { type, cols: [[{ type: 'texto', html: 'Coluna 1. Arraste botões, imagens ou vídeos para cá.', align: 'left' }], [{ type: 'texto', html: 'Coluna 2. Solte um bloco na beira de uma coluna para criar outra (até 4).', align: 'left' }]] }
     case 'video':
       return { type, url: '', label: '▶️ Assistir ao vídeo' }
     case 'botao':

@@ -68,6 +68,8 @@ export type Block = (
   | ({ type: 'botao'; text: string; url: string; color?: string; textColor?: string; align?: Align } & ButtonStyle)
   | ({ type: 'whatsapp'; text: string; phone: string; message?: string; align?: Align; color?: string; textColor?: string } & ButtonStyle)
   | { type: 'video'; url: string; title?: string; label?: string; color?: string }
+  /** Linha com 2 a 4 colunas; cada coluna tem os seus blocos (texto, título, botão, WhatsApp, imagem, vídeo, espaço, linha). */
+  | { type: 'linha'; cols: Block[][]; valign?: 'top' | 'middle' }
   | { type: 'produtos'; items: ProductItem[]; columns?: 2 | 3 }
   | { type: 'divisor' }
   | { type: 'redes'; links: SocialLinks; style?: SocialStyle; align?: Align }
@@ -81,7 +83,9 @@ export type Block = (
   lineHeight?: number
 }
 
-export const BLOCK_TYPES = ['titulo', 'texto', 'colunas', 'imagem', 'video', 'botao', 'whatsapp', 'produtos', 'redes', 'divisor', 'espaco'] as const
+export const BLOCK_TYPES = ['titulo', 'texto', 'colunas', 'imagem', 'video', 'botao', 'whatsapp', 'produtos', 'redes', 'divisor', 'espaco', 'linha'] as const
+/** Blocos que cabem dentro de uma coluna. */
+export const COLUMN_BLOCKS = ['titulo', 'texto', 'imagem', 'video', 'botao', 'whatsapp', 'espaco', 'divisor'] as const
 
 export type SocialLinks = Partial<Record<SocialNetwork, string>>
 export const SOCIAL_NETWORKS: SocialNetwork[] = ['facebook', 'instagram', 'youtube', 'tiktok']
@@ -408,6 +412,7 @@ export function collectLinks(blocks: Block[]): string[] {
       }
     if (b.type === 'imagem') add(safeUrl(b.link))
     if (b.type === 'botao') add(safeUrl(b.url, true))
+    if (b.type === 'linha') for (const col of b.cols) for (const u of collectLinks(col)) add(u)
     if (b.type === 'video') {
       const id = youtubeId(b.url)
       if (id) add(`https://www.youtube.com/watch?v=${id}`)
@@ -435,16 +440,17 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
   const rows: string[] = []
   const text: string[] = []
   const sp = (b: Block, d: number) => (b.space === undefined ? d : b.space)
-  const button = (link: string, label: string, bg: string, fg: string, align: Align, space = 16, s: ButtonStyle = {}) => {
+  const button = (link: string, label: string, bg: string, fg: string, align: Align, space = 16, s: ButtonStyle = {}, px = 32) => {
     const size = BUTTON_SIZE[s.size ?? 'M']
     const font = EMAIL_FONTS[s.font ?? ''] ?? 'Arial,Helvetica,sans-serif'
     const radius = s.radius ?? 6
     const icon = s.icon && (EMAIL_ICONS as readonly string[]).includes(s.icon) ? `${s.icon} ` : ''
     const width = s.full ? 'display:block;text-align:center' : 'display:inline-block'
-    return `<tr><td align="${align}" style="padding:${space}px 32px"><a href="${escape(link)}" target="_blank" style="background:${bg};color:${fg};text-decoration:none;padding:${size.pad};border-radius:${radius}px;${width};font-weight:700;font-size:${size.font}px;font-family:${font}">${icon}${escape(label)}</a></td></tr>`
+    return `<tr><td align="${align}" style="padding:${space}px ${px}px"><a href="${escape(link)}" target="_blank" style="background:${bg};color:${fg};text-decoration:none;padding:${size.pad};border-radius:${radius}px;${width};font-weight:700;font-size:${size.font}px;font-family:${font}">${icon}${escape(label)}</a></td></tr>`
   }
 
-  for (const b of blocks) {
+  /** Desenha um bloco; L = margem lateral (px) e largura útil (px) de onde ele está (o e-mail inteiro ou uma coluna). */
+  const renderBlock = (b: Block, rows: string[], L: { px: number; w: number }): void => {
     switch (b.type) {
       case 'titulo':
       case 'texto': {
@@ -456,7 +462,7 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
         const size = clamp(b.size, isTitle ? 18 : 12, isTitle ? 40 : 24, isTitle ? 24 : 15)
         const fg = hex(b.color, isTitle ? '#111827' : '#374151')
         const bg = optHex(b.bg)
-        const style = `padding:${sp(b, bg ? 16 : 8)}px 32px;font-size:${size}px;line-height:${Math.round((size * (b.lineHeight ?? 145)) / 100)}px;${isTitle ? 'font-weight:700;' : ''}color:${fg};text-align:${textAlignOf(b.align)}${bg ? `;background:${bg}` : ''}`
+        const style = `padding:${sp(b, bg ? 16 : 8)}px ${L.px}px;font-size:${size}px;line-height:${Math.round((size * (b.lineHeight ?? 145)) / 100)}px;${isTitle ? 'font-weight:700;' : ''}color:${fg};text-align:${textAlignOf(b.align)}${bg ? `;background:${bg}` : ''}`
         rows.push(`<tr><td style="${style}">${html}</td></tr>`)
         const plain = htmlToText(personalize(richOf(b), o.person))
         text.push(isTitle ? plain.toUpperCase() : plain, '')
@@ -503,17 +509,17 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
         const src = safeUrl(b.url)
         if (!src) break
         // Encostada nas bordas: largura total (600) e sem canto arredondado, para emendar imagens sem faixa branca.
-        const w = Math.round(((b.edge ? 600 : 536) * clamp(b.width, 20, 100, 100)) / 100)
+        const w = Math.round(((b.edge ? L.w + 2 * L.px : L.w) * clamp(b.width, 20, 100, 100)) / 100)
         const img = `<img src="${escape(src)}" alt="${escape(b.alt ?? '')}" width="${w}" style="display:block;width:100%;max-width:${w}px;height:auto;border:0;${b.edge ? '' : 'border-radius:6px;'}margin:0 auto">`
         const link = href(b.link)
-        rows.push(`<tr><td align="center" style="padding:${sp(b, 8)}px ${b.edge ? 0 : 32}px;font-size:0;line-height:0">${link ? `<a href="${escape(link)}" target="_blank">${img}</a>` : img}</td></tr>`)
+        rows.push(`<tr><td align="center" style="padding:${sp(b, 8)}px ${b.edge ? 0 : L.px}px;font-size:0;line-height:0">${link ? `<a href="${escape(link)}" target="_blank">${img}</a>` : img}</td></tr>`)
         break
       }
       case 'botao': {
         const link = href(b.url, true)
         if (!link) break
         const label = P(b.text)
-        rows.push(button(link, label, hex(b.color, color), hex(b.textColor, '#ffffff'), alignOf(b.align, 'center'), sp(b, 16), b))
+        rows.push(button(link, label, hex(b.color, color), hex(b.textColor, '#ffffff'), alignOf(b.align, 'center'), sp(b, 16), b, L.px))
         text.push(`${label}: ${safeUrl(b.url, true)}`, '')
         break
       }
@@ -521,7 +527,7 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
         const url = whatsappUrl(b.phone, b.message)
         if (!url) break
         const label = P(b.text || 'Falar no WhatsApp')
-        rows.push(button(track(url), label, hex(b.color, '#25D366'), hex(b.textColor, '#ffffff'), alignOf(b.align, 'center'), sp(b, 16), b))
+        rows.push(button(track(url), label, hex(b.color, '#25D366'), hex(b.textColor, '#ffffff'), alignOf(b.align, 'center'), sp(b, 16), b, L.px))
         text.push(`${label}: ${url}`, '')
         break
       }
@@ -535,9 +541,9 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
         const alt = escape(b.title || 'Vídeo no YouTube')
         const label = P(b.label || '▶️ Assistir ao vídeo')
         const c = hex(b.color, '#dc2626')
-        rows.push(`<tr><td align="center" style="padding:${sp(b, 8)}px 32px 4px"><a href="${escape(link)}" target="_blank"><img src="${escape(thumb)}" alt="${alt}" width="536" style="display:block;width:100%;max-width:536px;height:auto;border:0;border-radius:6px"></a></td></tr>`)
-        if (b.title) rows.push(`<tr><td align="center" style="padding:4px 32px 0;font-size:15px;line-height:21px;font-weight:700;color:#111827">${escape(P(b.title))}</td></tr>`)
-        rows.push(`<tr><td align="center" style="padding:6px 32px ${sp(b, 8)}px"><a href="${escape(link)}" target="_blank" style="color:${c};font-weight:700;font-size:15px;text-decoration:none">${escape(label)}</a></td></tr>`)
+        rows.push(`<tr><td align="center" style="padding:${sp(b, 8)}px ${L.px}px 4px"><a href="${escape(link)}" target="_blank"><img src="${escape(thumb)}" alt="${alt}" width="${L.w}" style="display:block;width:100%;max-width:${L.w}px;height:auto;border:0;border-radius:6px"></a></td></tr>`)
+        if (b.title) rows.push(`<tr><td align="center" style="padding:4px ${L.px}px 0;font-size:15px;line-height:21px;font-weight:700;color:#111827">${escape(P(b.title))}</td></tr>`)
+        rows.push(`<tr><td align="center" style="padding:6px ${L.px}px ${sp(b, 8)}px"><a href="${escape(link)}" target="_blank" style="color:${c};font-weight:700;font-size:15px;text-decoration:none">${escape(label)}</a></td></tr>`)
         text.push(`${b.title ? `${P(b.title)} ` : ''}Vídeo: ${watch}`, '')
         break
       }
@@ -567,7 +573,7 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
       case 'redes': {
         const icons = socialIcons(b.links, b.style ?? 'cor', o.brand.iconBase, track)
         if (!icons) break
-        rows.push(`<tr><td align="${alignOf(b.align, 'center')}" style="padding:${sp(b, 12)}px 32px">${icons}</td></tr>`)
+        rows.push(`<tr><td align="${alignOf(b.align, 'center')}" style="padding:${sp(b, 12)}px ${L.px}px">${icons}</td></tr>`)
         for (const n of SOCIAL_NETWORKS) {
           const u = socialUrl(n, b.links[n])
           if (u) text.push(`${SOCIAL_LABEL[n]}: ${u}`)
@@ -576,8 +582,22 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
         break
       }
       case 'divisor':
-        rows.push(`<tr><td style="padding:${sp(b, 12)}px 32px"><hr style="border:0;border-top:1px solid #e5e7eb;margin:0"></td></tr>`)
+        rows.push(`<tr><td style="padding:${sp(b, 12)}px ${L.px}px"><hr style="border:0;border-top:1px solid #e5e7eb;margin:0"></td></tr>`)
         break
+      case 'linha': {
+        const n = Math.min(4, Math.max(1, b.cols.length))
+        const inner = L.w + 2 * L.px - 16
+        const cw = Math.floor(inner / n)
+        const va = b.valign === 'middle' ? 'middle' : 'top'
+        const cols = b.cols.slice(0, 4).map((col, i) => {
+          const r: string[] = []
+          for (const c of col) renderBlock(c, r, { px: 6, w: cw - 12 })
+          const open = i === 0 ? `<!--[if mso]><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td width="${cw}" valign="${va}"><![endif]-->` : `<!--[if mso]></td><td width="${cw}" valign="${va}"><![endif]-->`
+          return `${open}<div style="display:inline-block;width:100%;max-width:${cw}px;vertical-align:${va};font-size:15px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${r.join('') || '<tr><td>&nbsp;</td></tr>'}</table></div>`
+        })
+        rows.push(`<tr><td style="padding:${sp(b, 4)}px 8px;font-size:0;text-align:center">${cols.join('')}<!--[if mso]></td></tr></table><![endif]--></td></tr>`)
+        break
+      }
       case 'espaco': {
         const h = clamp(b.height, 8, 96, 24)
         rows.push(`<tr><td style="height:${h}px;line-height:${h}px;font-size:1px">&nbsp;</td></tr>`)
@@ -585,6 +605,7 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
       }
     }
   }
+  for (const b of blocks) renderBlock(b, rows, { px: 32, w: 536 })
 
   const logo = safeUrl(o.brand.logoUrl)
   const header = logo
@@ -721,6 +742,20 @@ export function cleanBlocks(raw: unknown): { blocks: Block[] } | { error: string
         const id = youtubeId(str(b.url, 300))
         if (str(b.url, 300).trim() && !id) return { error: 'Link do YouTube inválido (ex.: https://www.youtube.com/watch?v=...).' }
         out.push({ type: 'video', url: id ? `https://www.youtube.com/watch?v=${id}` : '', title: str(b.title, 120) || undefined, label: str(b.label, 60) || undefined, color: optHex(b.color) })
+        break
+      }
+      case 'linha': {
+        const raw = Array.isArray(b.cols) ? (b.cols as unknown[]).slice(0, 4) : []
+        if (raw.length < 2) return { error: 'Colunas: use de 2 a 4 colunas.' }
+        const cols: Block[][] = []
+        for (const col of raw) {
+          const list = Array.isArray(col) ? col.slice(0, 12) : []
+          const inner = cleanBlocks(list)
+          if ('error' in inner) return inner
+          if (inner.blocks.some((x) => !(COLUMN_BLOCKS as readonly string[]).includes(x.type))) return { error: 'Dentro das colunas cabem texto, título, imagem, vídeo, botão, WhatsApp, espaço e linha divisória.' }
+          cols.push(inner.blocks)
+        }
+        out.push({ type: 'linha', cols, valign: b.valign === 'middle' ? 'middle' : undefined })
         break
       }
       case 'divisor':

@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.49.0",
+      "date": "2026-10-16",
+      "title": "Colunas e layout arrastando no e-mail",
+      "changes": [
+        { "type": "novo", "area": "Email marketing", "text": "Colunas no e-mail: bloco \"Colunas (2 a 4)\", em que cada coluna recebe texto, título, imagem, vídeo, botão, WhatsApp, espaço ou linha. No celular, as colunas ficam uma embaixo da outra." },
+        { "type": "novo", "area": "Email marketing", "text": "Montar o layout arrastando: soltar um bloco na beira esquerda ou direita de outro cria as colunas; na beira de uma coluna, cria mais uma (até 4); dentro da coluna, coloca acima ou abaixo. Tirar o último bloco de uma coluna desfaz as colunas sozinho." },
+        { "type": "novo", "area": "Email marketing", "text": "Botões um ao lado do outro (cada um numa coluna) ou um embaixo do outro na mesma coluna, com todas as opções de tamanho e estilo. Cada bloco dentro da coluna pode ser editado, movido para a coluna vizinha, duplicado ou removido." }
+      ]
+    },
+    {
       "version": "0.48.0",
       "date": "2026-10-16",
       "title": "Chat reorganizado e fotos sem sair da conversa",

@@ -351,3 +351,35 @@ describe('vídeo do YouTube e botões personalizados', () => {
     expect(html).toContain('💬 Chamar')
   })
 })
+
+describe('colunas (2 a 4) com blocos dentro', () => {
+  it('desenha as colunas lado a lado, com botão, imagem, vídeo e texto, e junta os links', () => {
+    const blocks = clean([
+      {
+        type: 'linha',
+        cols: [
+          [{ type: 'imagem', url: 'https://cdn.exemplo.com/a.jpg' }, { type: 'texto', html: 'Filtro JCB' }, { type: 'botao', text: 'Comprar', url: 'https://usaparts.com.br/a' }],
+          [{ type: 'video', url: 'https://youtu.be/dQw4w9WgXcQ' }],
+          [{ type: 'botao', text: 'Ver mais', url: 'https://usaparts.com.br/b', size: 'P' }],
+        ],
+      },
+    ])
+    expect(blocks[0]).toMatchObject({ type: 'linha' })
+    const r = renderEmail(blocks, base)
+    // 3 colunas de 194 px ((600 - 16 de margem) ÷ 3) com margem interna de 6 px (largura útil 182).
+    expect(r.html.match(/display:inline-block;width:100%;max-width:194px/g)).toHaveLength(3)
+    expect(r.html).toContain('width="182"')
+    expect(r.html).toContain('padding:16px 6px"><a href')
+    expect(r.html).toContain('img.youtube.com/vi/dQw4w9WgXcQ')
+    expect(r.text).toContain('Comprar: https://usaparts.com.br/a')
+    expect(collectLinks(blocks)).toEqual(['https://cdn.exemplo.com/a.jpg', 'https://usaparts.com.br/a', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'https://usaparts.com.br/b'].filter((u) => u !== 'https://cdn.exemplo.com/a.jpg'))
+  })
+
+  it('exige de 2 a 4 colunas e só blocos simples dentro (nada de colunas dentro de colunas)', () => {
+    expect(cleanBlocks([{ type: 'linha', cols: [[{ type: 'texto', html: 'a' }]] }])).toMatchObject({ error: expect.stringMatching(/2 a 4/) })
+    expect(cleanBlocks([{ type: 'linha', cols: [[{ type: 'produtos', items: [] }], []] }])).toMatchObject({ error: expect.stringMatching(/Dentro das colunas/) })
+    expect(cleanBlocks([{ type: 'linha', cols: [[{ type: 'linha', cols: [[], []] }], []] }])).toMatchObject({ error: expect.stringMatching(/Dentro das colunas/) })
+    const five = clean([{ type: 'linha', cols: [[], [], [], [], []] }])
+    expect((five[0] as { cols: unknown[] }).cols).toHaveLength(4)
+  })
+})

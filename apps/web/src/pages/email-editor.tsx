@@ -8,10 +8,12 @@ import {
   AlignRightIcon,
   ArrowDownIcon,
   ArrowLeftIcon,
+  ArrowRightIcon,
   ArrowUpIcon,
   BoldIcon,
   CalendarClockIcon,
   Columns2Icon,
+  Columns3Icon,
   CopyIcon,
   EyeIcon,
   GripVerticalIcon,
@@ -88,8 +90,9 @@ import {
   productItem,
   type ProductSearch,
   type Segment,
-  type WhatsappNumber, type ButtonStyle, BUTTON_SIZES, EMAIL_FONTS, EMAIL_ICONS, youtubeId, SOCIAL_LABEL, SOCIAL_NETWORKS, SOCIAL_PLACEHOLDER, socialIcon, type ColumnContent, type TextAlign } from '@/lib/email'
+  type WhatsappNumber, COLUMN_BLOCKS, type ButtonStyle, BUTTON_SIZES, EMAIL_FONTS, EMAIL_ICONS, youtubeId, SOCIAL_LABEL, SOCIAL_NETWORKS, SOCIAL_PLACEHOLDER, socialIcon, type ColumnContent, type TextAlign } from '@/lib/email'
 import { cleanRich, legacyToHtml } from '@/lib/rich-text'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { Switch } from '@/components/ui/switch'
 
@@ -97,7 +100,7 @@ const NONE = '__none__'
 
 // ---------- Arrastar e soltar ----------
 
-type Payload = { kind: 'move'; id: string } | { kind: 'new'; type: BlockType } | { kind: 'image'; url: string } | { kind: 'product'; item: ProductItem }
+type Payload = { kind: 'move'; id: string } | { kind: 'moveChild'; id: string; col: number; idx: number } | { kind: 'new'; type: BlockType } | { kind: 'image'; url: string } | { kind: 'product'; item: ProductItem }
 
 /** O que está sendo arrastado agora (o navegador só deixa ler os dados no "soltar"). */
 let dragging: Payload | null = null
@@ -108,7 +111,17 @@ function startDrag(e: DragEvent, p: Payload) {
   e.dataTransfer.setData('text/plain', 'crm-email')
 }
 
-type Target = { at: number } | { on: number } | null
+/**
+ * Onde soltar: entre os blocos do e-mail (at), sobre um bloco (on: troca a imagem / junta produto), ao lado de um bloco
+ * (side: cria as colunas), dentro de uma coluna (cell) ou na beira de uma coluna (colSide: cria mais uma coluna).
+ */
+type Target =
+  | { at: number }
+  | { on: number }
+  | { side: string; dir: 'left' | 'right' }
+  | { cell: string; col: number; pos: number }
+  | { colSide: string; col: number; dir: 'left' | 'right' }
+  | null
 
 interface Item {
   id: string
@@ -127,6 +140,7 @@ function normalize(b: Block): Block {
 const BLOCK_ICON: Record<BlockType, typeof TypeIcon> = {
   titulo: HeadingIcon,
   texto: TypeIcon,
+  linha: Columns3Icon,
   colunas: Columns2Icon,
   imagem: ImageIcon,
   video: PlayIcon,
@@ -164,7 +178,16 @@ export function Editor({ campaign }: { campaign: Campaign }) {
   const segment = segments.data?.find((s) => s.id === c.segmentId)
   const isModel = campaign.kind === 'MODELO'
   const blocks = items.map((i) => i.b)
-  const selected = items.find((i) => i.id === sel) ?? null
+  // Seleção: um bloco do e-mail (id) ou um bloco dentro de uma coluna (id da linha / coluna / posição).
+  const path = parseSel(sel)
+  const selectedTop = path ? (items.find((i) => i.id === path.id) ?? null) : null
+  const selected = path && !('col' in path) ? selectedTop : null
+  const selectedBlock: Block | null = !path || !selectedTop ? null : 'col' in path ? (selectedTop.b.type === 'linha' ? (selectedTop.b.cols[path.col]?.[path.idx] ?? null) : null) : selectedTop.b
+  // Última versão dos blocos para as ações de arrastar (várias mudanças seguidas no mesmo clique).
+  const itemsRef = useRef(items)
+  useLayoutEffect(() => {
+    itemsRef.current = items
+  }, [items])
 
   useEffect(() => {
     if (!dirty) return
@@ -184,7 +207,63 @@ export function Editor({ campaign }: { campaign: Campaign }) {
     setSel(id)
     setTab('editar')
   }
-  const insertAfterSelected = (b: Block) => insert(selected ? items.indexOf(selected) + 1 : items.length, b)
+  const insertAfterSelected = (b: Block) => insert(selectedTop ? items.indexOf(selectedTop) + 1 : items.length, b)
+  /** Atualiza o bloco selecionado (no e-mail ou dentro da coluna). */
+  const updateAt = (p: Path, b: Block) =>
+    change((x) => x.map((i) => (i.id !== p.id ? i : 'col' in p && i.b.type === 'linha' ? { ...i, b: { ...i.b, cols: i.b.cols.map((c, ci) => (ci === p.col ? c.map((k, ki) => (ki === p.idx ? b : k)) : c)) } } : { ...i, b })))
+  const commit = (next: Item[], selKey: string | null) => {
+    itemsRef.current = next
+    change(() => next)
+    if (selKey) {
+      setSel(selKey)
+      setTab('editar')
+    }
+  }
+  /** Coloca um bloco num alvo (cria colunas, coluna nova ou entra na coluna); avisa quando não dá. */
+  const placeBlock = (target: NonNullable<Target>, b: Block, base = itemsRef.current, after?: (x: Item[]) => Item[]) => {
+    const r = place(base, target, b)
+    if (r === 'skip') return false
+    if (typeof r === 'string') {
+      toast.error(r)
+      return false
+    }
+    commit(after ? after(r.items) : r.items, r.sel)
+    return true
+  }
+  /** Ações nos blocos de dentro da coluna. */
+  const childAction = (p: { id: string; col: number; idx: number }, a: 'remove' | 'duplicate' | 'up' | 'down' | 'left' | 'right') => {
+    const row = rowOf(itemsRef.current, p.id)
+    const b = row?.cols[p.col]?.[p.idx]
+    if (!row || !b) return
+    if (a === 'remove') {
+      const [base] = takeChild(itemsRef.current, p)
+      commit(tidyRow(base, p.id), null)
+      setSel(null)
+      return
+    }
+    if (a === 'duplicate') return void placeBlock({ cell: p.id, col: p.col, pos: p.idx + 1 }, structuredClone(b))
+    if (a === 'up' || a === 'down') {
+      const to = a === 'up' ? p.idx - 1 : p.idx + 1
+      const col = row.cols[p.col]!
+      if (to < 0 || to >= col.length) return
+      const n = [...col]
+      ;[n[p.idx], n[to]] = [n[to]!, n[p.idx]!]
+      return commit(setCols(itemsRef.current, p.id, row.cols.map((c, ci) => (ci === p.col ? n : c))), childKey(p.id, p.col, to))
+    }
+    const to = a === 'left' ? p.col - 1 : p.col + 1
+    if (to < 0 || to >= row.cols.length) return
+    const [base] = takeChild(itemsRef.current, p)
+    placeBlock({ cell: p.id, col: to, pos: row.cols[to]!.length }, b, base, (x) => tidyRow(x, p.id))
+  }
+  /** Linha selecionada: desfaz as colunas (os blocos voltam para o e-mail, um embaixo do outro). */
+  const unwrapRow = (id: string) => {
+    const x = itemsRef.current
+    const i = x.findIndex((it) => it.id === id)
+    const row = rowOf(x, id)
+    if (i < 0 || !row) return
+    commit([...x.slice(0, i), ...row.cols.flat().map((b) => ({ id: nextId(), b })), ...x.slice(i + 1)], null)
+    setSel(null)
+  }
   const move = (id: string, to: number) =>
     change((x) => {
       const from = x.findIndex((i) => i.id === id)
@@ -208,7 +287,7 @@ export function Editor({ campaign }: { campaign: Campaign }) {
   }
 
   const addImage = (url: string) => {
-    if (selected?.b.type === 'imagem') updateBlock(selected.id, { ...selected.b, url })
+    if (path && selectedBlock?.type === 'imagem') updateAt(path, { ...selectedBlock, url })
     else insertAfterSelected({ type: 'imagem', url, alt: '', width: 100 })
   }
   const addProduct = (item: ProductItem) => {
@@ -226,12 +305,37 @@ export function Editor({ campaign }: { campaign: Campaign }) {
     if (!target) return
     if (!p) {
       // Arquivo arrastado do computador: envia e coloca no e-mail.
-      const at = 'at' in target ? target.at : target.on
+      const at = 'at' in target ? target.at : 'on' in target ? target.on : items.length
       for (const f of files.filter((x) => x.type.startsWith('image/')).reverse()) {
         const img = await upload.mutateAsync(f).catch(() => null)
-        if (img) insert(at, { type: 'imagem', url: img.url, alt: '', width: 100 })
+        if (!img) continue
+        if ('at' in target || 'on' in target) insert(at, { type: 'imagem', url: img.url, alt: '', width: 100 })
+        else placeBlock(target, { type: 'imagem', url: img.url, alt: '', width: 100 })
       }
       return
+    }
+    if (!('at' in target) && !('on' in target)) {
+      // Soltar ao lado (cria as colunas) ou dentro de uma coluna.
+      if (p.kind === 'move') {
+        const it = itemsRef.current.find((x) => x.id === p.id)
+        if (!it || ('side' in target && target.side === p.id) || ('cell' in target && target.cell === p.id) || ('colSide' in target && target.colSide === p.id)) return
+        return void placeBlock(target, it.b, itemsRef.current.filter((x) => x.id !== p.id))
+      }
+      if (p.kind === 'moveChild') {
+        const [base, b] = takeChild(itemsRef.current, p)
+        if (!b) return
+        const t2 = 'cell' in target && target.cell === p.id && target.col === p.col && target.pos > p.idx ? { ...target, pos: target.pos - 1 } : target
+        return void placeBlock(t2, b, base, (x) => tidyRow(x, p.id))
+      }
+      const b = p.kind === 'new' ? newBlock(p.type, numbers.data?.[0]?.phone ?? '', settings.data?.social) : p.kind === 'image' ? ({ type: 'imagem', url: p.url, alt: '', width: 100 } as Block) : ({ type: 'produtos', columns: 3, items: [p.item] } as Block)
+      return void placeBlock(target, b)
+    }
+    if (p.kind === 'moveChild') {
+      // De dentro da coluna para o e-mail (entre os blocos).
+      if (!('at' in target)) return
+      const [base, b] = takeChild(itemsRef.current, p)
+      if (!b) return
+      return void placeBlock(target, b, base, (x) => tidyRow(x, p.id))
     }
     if ('on' in target) {
       const it = items[target.on]
@@ -249,7 +353,8 @@ export function Editor({ campaign }: { campaign: Campaign }) {
   }
 
   // Texto do e-mail (para a IA sugerir assunto e pré-cabeçalho).
-  const contentHtml = blocks.map((x) => (x.type === 'texto' || x.type === 'titulo' ? x.html : x.type === 'colunas' ? x.columns.map((k) => k.html).join(' ') : '')).join(' ').slice(0, 20_000)
+  const textOf = (x: Block): string => (x.type === 'texto' || x.type === 'titulo' ? x.html : x.type === 'colunas' ? x.columns.map((k) => k.html).join(' ') : x.type === 'linha' ? x.cols.flat().map(textOf).join(' ') : '')
+  const contentHtml = blocks.map(textOf).join(' ').slice(0, 20_000)
   const body = () => ({ name: c.name, subject: c.subject, preheader: c.preheader || null, fromName: c.fromName || null, replyTo: c.replyTo || null, segmentId: c.segmentId, blocks })
   const persist = async () => {
     await api.put<Campaign>(`/email/campanhas/${campaign.id}`, body())
@@ -367,7 +472,7 @@ export function Editor({ campaign }: { campaign: Campaign }) {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="min-w-0 space-y-2">
-          {canEdit && <FormatBar active={selected?.b.type === 'titulo' || selected?.b.type === 'texto'} />}
+          {canEdit && <FormatBar active={selectedBlock?.type === 'titulo' || selectedBlock?.type === 'texto'} />}
           <Canvas
             items={items}
             sel={sel}
@@ -382,6 +487,10 @@ export function Editor({ campaign }: { campaign: Campaign }) {
             onDuplicate={duplicate}
             onRemove={remove}
             onDrop={drop}
+            onSelectKey={select}
+            onChangeChild={(p, b) => updateAt(p, b)}
+            onChildAction={childAction}
+            onAddChild={(rowId, col, type) => void placeBlock({ cell: rowId, col, pos: 0 }, newBlock(type, numbers.data?.[0]?.phone ?? '', settings.data?.social))}
           />
         </div>
 
@@ -391,7 +500,7 @@ export function Editor({ campaign }: { campaign: Campaign }) {
               <TabsTrigger value="blocos">Blocos</TabsTrigger>
               <TabsTrigger value="imagens">Imagens</TabsTrigger>
               <TabsTrigger value="produtos">Produtos</TabsTrigger>
-              <TabsTrigger value="editar" disabled={!selected}>
+              <TabsTrigger value="editar" disabled={!selectedBlock}>
                 Editar
               </TabsTrigger>
             </TabsList>
@@ -400,14 +509,14 @@ export function Editor({ campaign }: { campaign: Campaign }) {
                 <BlocksPanel canEdit={canEdit} onAdd={(t) => insertAfterSelected(newBlock(t, numbers.data?.[0]?.phone ?? '', settings.data?.social))} />
               </TabsContent>
               <TabsContent value="imagens">
-                <ImagesPanel canEdit={canEdit} onPick={addImage} replacing={selected?.b.type === 'imagem'} />
+                <ImagesPanel canEdit={canEdit} onPick={addImage} replacing={selectedBlock?.type === 'imagem'} />
               </TabsContent>
               <TabsContent value="produtos">
                 <ProductsPanel canEdit={canEdit} onPick={addProduct} intoSelected={selected?.b.type === 'produtos'} />
               </TabsContent>
               <TabsContent value="editar">
-                {selected ? (
-                  <Inspector key={selected.id} block={selected.b} numbers={numbers.data ?? []} disabled={!canEdit} onChange={(b) => updateBlock(selected.id, b)} onPickImage={() => setTab('imagens')} />
+                {selectedBlock && path ? (
+                  <Inspector key={sel} block={selectedBlock} numbers={numbers.data ?? []} disabled={!canEdit} onChange={(b) => updateAt(path, b)} onPickImage={() => setTab('imagens')} onUnwrap={selectedBlock.type === 'linha' ? () => unwrapRow(path.id) : undefined} />
                 ) : (
                   <p className="py-6 text-center text-sm text-muted-foreground">Clique em um bloco do e-mail para editar.</p>
                 )}
@@ -498,6 +607,10 @@ function Canvas(props: {
   onDuplicate: (id: string) => void
   onRemove: (id: string) => void
   onDrop: (t: Target, files: File[]) => void
+  onSelectKey: (key: string) => void
+  onChangeChild: (p: { id: string; col: number; idx: number }, b: Block) => void
+  onChildAction: (p: { id: string; col: number; idx: number }, a: 'remove' | 'duplicate' | 'up' | 'down' | 'left' | 'right') => void
+  onAddChild: (rowId: string, col: number, type: BlockType) => void
 }) {
   const { items, sel, canEdit, settings } = props
   const branding = useBranding()
@@ -568,6 +681,12 @@ function Canvas(props: {
                 highlighted={!!target && 'on' in target && target.on === i}
                 canEdit={canEdit}
                 brand={brand}
+                sideTarget={target && 'side' in target && target.side === it.id ? target.dir : null}
+                row={
+                  it.b.type === 'linha'
+                    ? { sel, target, setTarget, accepts, onSelect: props.onSelectKey, onChange: (p, b) => props.onChangeChild(p, b), onAction: props.onChildAction, onAdd: props.onAddChild }
+                    : null
+                }
                 onSelect={() => props.onSelect(it.id)}
                 onChange={(b) => props.onChange(it.id, b)}
                 onMove={(d) => props.onMove(it.id, d)}
@@ -579,7 +698,10 @@ function Canvas(props: {
                   e.stopPropagation()
                   const r = e.currentTarget.getBoundingClientRect()
                   const y = (e.clientY - r.top) / r.height
+                  const x = (e.clientX - r.left) / r.width
                   const p = dragging
+                  // Beira esquerda ou direita: o bloco vai para o lado (cria as colunas ou mais uma coluna).
+                  if (canGoSide(p, it) && (x < 0.18 || x > 0.82) && y > 0.1 && y < 0.9) return setTarget({ side: it.id, dir: x < 0.5 ? 'left' : 'right' })
                   const onto = p && ((p.kind === 'image' && it.b.type === 'imagem') || (p.kind === 'product' && it.b.type === 'produtos'))
                   if (onto && y > 0.2 && y < 0.8) setTarget({ on: i })
                   else setTarget({ at: y < 0.5 ? i : i + 1 })
@@ -634,6 +756,8 @@ function CanvasBlock(props: {
   onDuplicate: () => void
   onRemove: () => void
   onDragOver: (e: DragEvent<HTMLDivElement>) => void
+  sideTarget: 'left' | 'right' | null
+  row: RowCtx | null
 }) {
   const { item, selected, canEdit } = props
   const b = item.b
@@ -670,7 +794,226 @@ function CanvasBlock(props: {
           </ToolButton>
         </div>
       )}
-      <BlockView block={b} brand={props.brand} editing={selected && canEdit} onChange={props.onChange} />
+      {props.sideTarget && <SideLine dir={props.sideTarget} />}
+      {b.type === 'linha' && props.row ? <RowView rowId={item.id} row={b} brand={props.brand} canEdit={canEdit} ctx={props.row} /> : <BlockView block={b} brand={props.brand} editing={selected && canEdit} onChange={props.onChange} />}
+    </div>
+  )
+}
+
+// ---------- Colunas (linha com 2 a 4 colunas) ----------
+
+type Path = { id: string } | { id: string; col: number; idx: number }
+type ChildPath = { id: string; col: number; idx: number }
+type Row = Extract<Block, { type: 'linha' }>
+const MAX_COLS = 4
+const inColumn = (b: Block) => (COLUMN_BLOCKS as readonly string[]).includes(b.type)
+const childKey = (id: string, col: number, idx: number) => `${id}/${col}/${idx}`
+function parseSel(s: string | null): Path | null {
+  if (!s) return null
+  const [id, col, idx] = s.split('/')
+  return col === undefined ? { id: id! } : { id: id!, col: Number(col), idx: Number(idx) }
+}
+const rowOf = (items: Item[], id: string): Row | null => {
+  const it = items.find((x) => x.id === id)
+  return it && it.b.type === 'linha' ? it.b : null
+}
+const setCols = (items: Item[], id: string, cols: Block[][]) => items.map((x) => (x.id === id && x.b.type === 'linha' ? { ...x, b: { ...x.b, cols } } : x))
+
+/** O que está sendo arrastado pode ir para o lado deste bloco (vira coluna)? */
+function canGoSide(p: Payload | null, it: Item) {
+  if (!p || p.kind === 'product') return false
+  if (p.kind === 'move' && p.id === it.id) return false
+  if (p.kind === 'new' && !(COLUMN_BLOCKS as readonly string[]).includes(p.type)) return false
+  return it.b.type === 'linha' ? it.b.cols.length < MAX_COLS : inColumn(it.b)
+}
+
+/** Tira um bloco de dentro da coluna (a coluna vazia fica até o fim, para os índices não mudarem). */
+function takeChild(items: Item[], p: ChildPath): [Item[], Block | null] {
+  const row = rowOf(items, p.id)
+  const b = row?.cols[p.col]?.[p.idx]
+  if (!row || !b) return [items, null]
+  return [setCols(items, p.id, row.cols.map((c, i) => (i === p.col ? c.filter((_, j) => j !== p.idx) : c))), b]
+}
+
+/** Depois de tirar um bloco: coluna vazia sai; com uma coluna só, as colunas se desfazem (os blocos voltam ao e-mail). */
+function tidyRow(items: Item[], id: string): Item[] {
+  const row = rowOf(items, id)
+  if (!row) return items
+  const cols = row.cols.filter((c) => c.length > 0)
+  if (cols.length >= 2) return setCols(items, id, cols)
+  const i = items.findIndex((x) => x.id === id)
+  return [...items.slice(0, i), ...(cols[0] ?? []).map((b) => ({ id: nextId(), b })), ...items.slice(i + 1)]
+}
+
+const NOT_IN_COLUMN = 'Este bloco não cabe dentro de uma coluna (só texto, título, imagem, vídeo, botão, WhatsApp, espaço e linha divisória).'
+
+/** Coloca o bloco no alvo e diz o que fica selecionado; texto = aviso (não dá); 'skip' = nada a fazer. */
+function place(items: Item[], target: NonNullable<Target>, b: Block): { items: Item[]; sel: string | null } | string {
+  if ('at' in target) {
+    const id = nextId()
+    return { items: [...items.slice(0, target.at), { id, b }, ...items.slice(target.at)], sel: id }
+  }
+  if ('on' in target) return 'skip'
+  if (!inColumn(b)) return NOT_IN_COLUMN
+  if ('side' in target) {
+    const i = items.findIndex((x) => x.id === target.side)
+    const it = items[i]
+    if (!it) return 'skip'
+    if (it.b.type === 'linha') {
+      if (it.b.cols.length >= MAX_COLS) return 'No máximo 4 colunas.'
+      const cols = target.dir === 'left' ? [[b], ...it.b.cols] : [...it.b.cols, [b]]
+      return { items: setCols(items, it.id, cols), sel: childKey(it.id, target.dir === 'left' ? 0 : cols.length - 1, 0) }
+    }
+    if (!inColumn(it.b)) return 'Este bloco não pode ficar em coluna. Solte acima ou abaixo dele.'
+    const n = [...items]
+    n[i] = { id: it.id, b: { type: 'linha', cols: target.dir === 'left' ? [[b], [it.b]] : [[it.b], [b]] } }
+    return { items: n, sel: childKey(it.id, target.dir === 'left' ? 0 : 1, 0) }
+  }
+  if ('cell' in target) {
+    const row = rowOf(items, target.cell)
+    if (!row || !row.cols[target.col]) return 'skip'
+    const at = Math.min(target.pos, row.cols[target.col]!.length)
+    const cols = row.cols.map((c, i) => (i === target.col ? [...c.slice(0, at), b, ...c.slice(at)] : c))
+    return { items: setCols(items, target.cell, cols), sel: childKey(target.cell, target.col, at) }
+  }
+  const row = rowOf(items, target.colSide)
+  if (!row) return 'skip'
+  if (row.cols.length >= MAX_COLS) return 'No máximo 4 colunas.'
+  const at = target.dir === 'left' ? target.col : target.col + 1
+  return { items: setCols(items, target.colSide, [...row.cols.slice(0, at), [b], ...row.cols.slice(at)]), sel: childKey(target.colSide, at, 0) }
+}
+
+interface RowCtx {
+  sel: string | null
+  target: Target
+  setTarget: (t: Target) => void
+  accepts: (e: DragEvent) => boolean
+  onSelect: (key: string) => void
+  onChange: (p: ChildPath, b: Block) => void
+  onAction: (p: ChildPath, a: 'remove' | 'duplicate' | 'up' | 'down' | 'left' | 'right') => void
+  onAdd: (rowId: string, col: number, type: BlockType) => void
+}
+
+/** Pode entrar numa coluna o que está sendo arrastado? */
+const fitsColumn = (p: Payload | null) => !!p && p.kind !== 'product' && (p.kind !== 'new' || (COLUMN_BLOCKS as readonly string[]).includes(p.type))
+
+function SideLine({ dir }: { dir: 'left' | 'right' }) {
+  return <div className={cn('pointer-events-none absolute top-1 bottom-1 z-10 w-1 rounded-full bg-[color:var(--brand)]', dir === 'left' ? 'left-1' : 'right-1')} aria-hidden />
+}
+
+/** Linha de colunas no editor: cada coluna aceita blocos, e a beira de cada coluna cria mais uma coluna. */
+function RowView({ rowId, row, brand, canEdit, ctx }: { rowId: string; row: Row; brand: string; canEdit: boolean; ctx: RowCtx }) {
+  const n = row.cols.length
+  const t = ctx.target
+  return (
+    <div className="grid gap-1 px-2" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, alignItems: row.valign === 'middle' ? 'center' : 'start', paddingTop: row.space ?? 4, paddingBottom: row.space ?? 4 }}>
+      {row.cols.map((col, ci) => (
+        <div
+          key={ci}
+          className="relative min-h-16 rounded-md border border-dashed border-transparent py-1 group-hover:border-[#cbd5e1]"
+          onClick={(e) => e.stopPropagation()}
+          onDragOver={(e) => {
+            if (!ctx.accepts(e) || !fitsColumn(dragging)) return
+            e.preventDefault()
+            e.stopPropagation()
+            const r = e.currentTarget.getBoundingClientRect()
+            const x = (e.clientX - r.left) / r.width
+            if (n < MAX_COLS && (x < 0.12 || x > 0.88)) return ctx.setTarget({ colSide: rowId, col: ci, dir: x < 0.5 ? 'left' : 'right' })
+            if (e.target === e.currentTarget) ctx.setTarget({ cell: rowId, col: ci, pos: col.length })
+          }}
+        >
+          {t && 'colSide' in t && t.colSide === rowId && t.col === ci && <SideLine dir={t.dir} />}
+          {col.map((cb, idx) => {
+            const key = childKey(rowId, ci, idx)
+            const selected = ctx.sel === key
+            const rich = cb.type === 'titulo' || cb.type === 'texto'
+            const p = { id: rowId, col: ci, idx }
+            return (
+              <div key={idx}>
+                {t && 'cell' in t && t.cell === rowId && t.col === ci && t.pos === idx && <DropLine />}
+                <div
+                  className={cn('relative cursor-pointer rounded outline-2 -outline-offset-2 outline-transparent', selected ? 'outline-[color:var(--brand)]' : 'hover:outline-[#93c5fd]')}
+                  draggable={canEdit && !(selected && rich)}
+                  onDragStart={(e) => {
+                    e.stopPropagation()
+                    startDrag(e, { kind: 'moveChild', id: rowId, col: ci, idx })
+                  }}
+                  onDragOver={(e) => {
+                    if (!ctx.accepts(e) || !fitsColumn(dragging)) return
+                    e.preventDefault()
+                    e.stopPropagation()
+                    const r = e.currentTarget.getBoundingClientRect()
+                    const cr = e.currentTarget.parentElement!.parentElement!.getBoundingClientRect()
+                    const x = (e.clientX - cr.left) / cr.width
+                    if (n < MAX_COLS && (x < 0.12 || x > 0.88)) return ctx.setTarget({ colSide: rowId, col: ci, dir: x < 0.5 ? 'left' : 'right' })
+                    ctx.setTarget({ cell: rowId, col: ci, pos: (e.clientY - r.top) / r.height < 0.5 ? idx : idx + 1 })
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    ctx.onSelect(key)
+                  }}
+                >
+                  {selected && canEdit && (
+                    <div className="absolute -top-3.5 right-0 z-20 flex items-center rounded-md border bg-background text-foreground shadow-sm" onClick={(e) => e.stopPropagation()}>
+                      <span className="cursor-grab px-1 text-muted-foreground active:cursor-grabbing" draggable onDragStart={(e) => (e.stopPropagation(), startDrag(e, { kind: 'moveChild', id: rowId, col: ci, idx }))} title="Arraste para mover">
+                        <GripVerticalIcon className="size-4" />
+                      </span>
+                      <ToolButton label="Para a coluna da esquerda" disabled={ci === 0} onClick={() => ctx.onAction(p, 'left')}>
+                        <ArrowLeftIcon />
+                      </ToolButton>
+                      <ToolButton label="Para a coluna da direita" disabled={ci === n - 1} onClick={() => ctx.onAction(p, 'right')}>
+                        <ArrowRightIcon />
+                      </ToolButton>
+                      <ToolButton label="Subir" disabled={idx === 0} onClick={() => ctx.onAction(p, 'up')}>
+                        <ArrowUpIcon />
+                      </ToolButton>
+                      <ToolButton label="Descer" disabled={idx === col.length - 1} onClick={() => ctx.onAction(p, 'down')}>
+                        <ArrowDownIcon />
+                      </ToolButton>
+                      <ToolButton label="Duplicar" onClick={() => ctx.onAction(p, 'duplicate')}>
+                        <CopyIcon />
+                      </ToolButton>
+                      <ToolButton label="Remover" onClick={() => ctx.onAction(p, 'remove')}>
+                        <Trash2Icon />
+                      </ToolButton>
+                    </div>
+                  )}
+                  <div className="[&>*]:!px-1.5">
+                    <BlockView block={cb} brand={brand} editing={selected && canEdit} onChange={(b) => ctx.onChange(p, b)} />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+          {t && 'cell' in t && t.cell === rowId && t.col === ci && t.pos === col.length && col.length > 0 && <DropLine />}
+          {col.length === 0 && <EmptyColumn canEdit={canEdit} highlighted={!!t && 'cell' in t && t.cell === rowId && t.col === ci} onAdd={(type) => ctx.onAdd(rowId, ci, type)} />}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** Coluna vazia: arraste um bloco para cá ou escolha qual colocar. */
+function EmptyColumn({ canEdit, highlighted, onAdd }: { canEdit: boolean; highlighted: boolean; onAdd: (t: BlockType) => void }) {
+  return (
+    <div className={cn('flex min-h-16 flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed p-2 text-center text-[11px] text-[#6b7280]', highlighted ? 'border-[color:var(--brand)]' : 'border-[#d1d5db]')}>
+      Arraste um bloco para cá
+      {canEdit && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={(e) => e.stopPropagation()}>
+              <PlusIcon /> Adicionar
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            {(COLUMN_BLOCKS as readonly BlockType[]).map((k) => (
+              <DropdownMenuItem key={k} onSelect={() => onAdd(k)}>
+                {BLOCK_LABEL[k]}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   )
 }
@@ -1063,7 +1406,7 @@ function BlocksPanel({ canEdit, onAdd }: { canEdit: boolean; onAdd: (t: BlockTyp
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">Arraste para o e-mail ou clique para colocar abaixo do bloco selecionado.</p>
       <div className="grid grid-cols-2 gap-2">
-        {(Object.keys(BLOCK_LABEL) as BlockType[]).map((t) => {
+        {(Object.keys(BLOCK_LABEL) as BlockType[]).filter((t) => t !== 'colunas').map((t) => {
           const Icon = BLOCK_ICON[t]
           return (
             <button
@@ -1412,9 +1755,9 @@ function IconGrid({ value, onPick, disabled, withNone }: { value?: string; onPic
 }
 
 /** Espaço padrão de cada tipo de bloco (o mesmo do e-mail enviado). */
-const DEFAULT_SPACE: Partial<Record<BlockType, number>> = { titulo: 8, texto: 8, colunas: 8, imagem: 8, video: 8, botao: 16, whatsapp: 16, redes: 12, divisor: 12 }
+const DEFAULT_SPACE: Partial<Record<BlockType, number>> = { linha: 4, titulo: 8, texto: 8, colunas: 8, imagem: 8, video: 8, botao: 16, whatsapp: 16, redes: 12, divisor: 12 }
 
-function Inspector(props: { block: Block; numbers: WhatsappNumber[]; disabled: boolean; onChange: (b: Block) => void; onPickImage: () => void }) {
+function Inspector(props: { block: Block; numbers: WhatsappNumber[]; disabled: boolean; onChange: (b: Block) => void; onPickImage: () => void; onUnwrap?: () => void }) {
   const { block: b, disabled, onChange } = props
   const def = DEFAULT_SPACE[b.type]
   return (
@@ -1475,7 +1818,7 @@ function Inspector(props: { block: Block; numbers: WhatsappNumber[]; disabled: b
   )
 }
 
-function InspectorFields({ block: b, numbers, disabled, onChange, onPickImage }: { block: Block; numbers: WhatsappNumber[]; disabled: boolean; onChange: (b: Block) => void; onPickImage: () => void }) {
+function InspectorFields({ block: b, numbers, disabled, onChange, onPickImage, onUnwrap }: { block: Block; numbers: WhatsappNumber[]; disabled: boolean; onChange: (b: Block) => void; onPickImage: () => void; onUnwrap?: () => void }) {
   const head = (
     <p className="mb-3 flex items-center gap-2 text-sm font-semibold">
       {(() => {
@@ -1516,6 +1859,51 @@ function InspectorFields({ block: b, numbers, disabled, onChange, onPickImage }:
           <ColorField label="Cor do texto" value={b.color} fallback={title ? '#111827' : '#374151'} onChange={(color) => onChange({ ...b, color })} disabled={disabled} />
           <ColorField label="Fundo da faixa" value={b.bg} fallback="#f3f4f6" onChange={(bg) => onChange({ ...b, bg })} disabled={disabled} clearable />
           <AiAssist html={b.html} onApply={(html) => onChange({ ...b, html })} disabled={disabled} />
+        </div>
+      )
+    }
+    case 'linha': {
+      const n = b.cols.length
+      const setCount = (k: number) => {
+        // Menos colunas: os blocos das que saem vão para a última que fica (nada se perde).
+        if (k >= n) return onChange({ ...b, cols: [...b.cols, ...Array.from({ length: k - n }, () => [] as Block[])] })
+        const keep = b.cols.slice(0, k)
+        keep[k - 1] = [...keep[k - 1]!, ...b.cols.slice(k).flat()]
+        onChange({ ...b, cols: keep })
+      }
+      return (
+        <div className="space-y-3">
+          {head}
+          <p className="text-xs text-muted-foreground">Cada coluna recebe texto, título, imagem, vídeo, botão, WhatsApp, espaço ou linha. Arraste um bloco para a beira de uma coluna para criar outra; no celular, as colunas ficam uma embaixo da outra.</p>
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-sm font-normal">Colunas</Label>
+            <div className="flex gap-1">
+              {[2, 3, 4].map((k) => (
+                <Button key={k} type="button" size="sm" variant={k === n ? 'default' : 'outline'} className="h-8 w-9" onClick={() => setCount(k)} disabled={disabled}>
+                  {k}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-sm font-normal" htmlFor="l-valign">
+              Alinhamento vertical
+            </Label>
+            <Select value={b.valign ?? 'top'} onValueChange={(v) => onChange({ ...b, valign: v === 'middle' ? 'middle' : undefined })} disabled={disabled}>
+              <SelectTrigger id="l-valign" size="sm" className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="top">Em cima</SelectItem>
+                <SelectItem value="middle">No meio</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {onUnwrap && (
+            <Button type="button" size="sm" variant="outline" className="w-full" onClick={onUnwrap} disabled={disabled}>
+              Desfazer colunas (um bloco embaixo do outro)
+            </Button>
+          )}
         </div>
       )
     }
