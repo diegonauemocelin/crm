@@ -21,6 +21,8 @@ async function bootstrap() {
   app.disable('x-powered-by')
   // A importação de planilha recebe o CSV no corpo: limite maior só nessa rota (o Nginx também limita a 2 MB).
   app.use('/api/atendimentos/importar', json({ limit: '2mb' }))
+  // Agenda: arquivo de contatos do celular (sem as fotos) e a lista escolhida na prévia.
+  app.use(['/api/whatsapp/contatos/previa', '/api/whatsapp/contatos/salvar'], json({ limit: '2mb' }))
   // Páginas vistas chegam como texto (sendBeacon não faz pré-verificação de CORS) e são pequenas.
   app.use('/api/public/rastreamento/coleta', text({ type: () => true, limit: '8kb' }))
   app.use('/api/public/captura/enviar', text({ type: () => true, limit: '16kb' }))

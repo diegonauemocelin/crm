@@ -139,6 +139,12 @@ export class EvolutionClient {
     return { waId: id, remoteJid: typeof r?.key?.remoteJid === 'string' ? r.key.remoteJid : null, at: Number.isFinite(ts) && ts > 0 ? new Date(ts * 1000) : new Date() }
   }
 
+  /** Contatos que o WhatsApp do número conhece (agenda sincronizada e quem já conversou). */
+  async contacts(instanceName: string) {
+    const r = await this.call<unknown>('POST', `/chat/findContacts/${encodeURIComponent(instanceName)}`, { where: {} }, 60_000)
+    return Array.isArray(r) ? r : []
+  }
+
   async sendText(instanceName: string, number: string, text: string) {
     return this.sent(await this.call('POST', `/message/sendText/${encodeURIComponent(instanceName)}`, { number, text }, 30_000))
   }

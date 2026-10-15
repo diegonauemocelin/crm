@@ -1,0 +1,506 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { BookUserIcon, FileUpIcon, Loader2Icon, PlusIcon, SmartphoneIcon, Trash2Icon } from 'lucide-react'
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
+import { EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { api, errorMessage } from '@/lib/api'
+import { formatPhone } from '@/lib/atendimento'
+import { useAuth } from '@/lib/auth'
+import { cn } from '@/lib/utils'
+
+type Cat = 'CLIENTE' | 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
+const CATS: Cat[] = ['CLIENTE', 'COLEGA', 'FORNECEDOR', 'OUTRO']
+const CAT_LABEL: Record<Cat, string> = { CLIENTE: 'Cliente', COLEGA: 'Colega', FORNECEDOR: 'Fornecedor', OUTRO: 'Outro' }
+const CAT_PLURAL: Record<Cat, string> = { CLIENTE: 'Clientes', COLEGA: 'Colegas', FORNECEDOR: 'Fornecedores', OUTRO: 'Outros' }
+const CAT_HELP: Record<Cat, string> = {
+  CLIENTE: 'Conversa de venda: vira lead e pré-venda conforme as regras do WhatsApp.',
+  COLEGA: 'Colega de trabalho: fica só no chat, sem lead nem pré-venda.',
+  FORNECEDOR: 'Fornecedor: fica só no chat, sem lead nem pré-venda.',
+  OUTRO: 'Não é venda: fica só no chat, sem lead nem pré-venda.',
+}
+
+interface Contact {
+  id: string
+  name: string | null
+  phone: string | null
+  category: Cat
+}
+interface ListData {
+  total: number
+  page: number
+  counts: Partial<Record<Cat, number>>
+  items: Contact[]
+}
+interface PreviewRow {
+  name: string | null
+  phone: string
+  current: Cat | null
+  lead: string | null
+  suggested: Cat | null
+}
+interface Preview {
+  items: PreviewRow[]
+  invalid: number
+  skipped: number
+}
+
+export function AgendaPage() {
+  return (
+    <RequirePermission module="whatsapp">
+      <Agenda />
+    </RequirePermission>
+  )
+}
+
+function Agenda() {
+  const { can } = useAuth()
+  const editable = can('whatsapp', 'edit')
+  const qc = useQueryClient()
+  const [search, setSearch] = useState('')
+  const [q, setQ] = useState('')
+  const [cat, setCat] = useState<Cat | null>(null)
+  const [page, setPage] = useState(1)
+  const [adding, setAdding] = useState(false)
+  const [preview, setPreview] = useState<{ source: string; data: Preview } | null>(null)
+  const [fromWhatsapp, setFromWhatsapp] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setQ(search.trim())
+      setPage(1)
+    }, 300)
+    return () => clearTimeout(t)
+  }, [search])
+  const qs = new URLSearchParams({ pagina: String(page), ...(q ? { busca: q } : {}), ...(cat ? { tipo: cat } : {}) }).toString()
+  const list = useQuery({ queryKey: ['whatsapp-contatos', qs], queryFn: () => api.get<ListData>(`/whatsapp/contatos?${qs}`) })
+  const refresh = () => void qc.invalidateQueries({ queryKey: ['whatsapp-contatos'] })
+  const update = useMutation({
+    mutationFn: (d: { id: string; category: Cat }) => api.patch(`/whatsapp/contatos/${d.id}`, { category: d.category }),
+    onSuccess: () => {
+      refresh()
+      toast.success('Tipo do contato alterado. As conversas dele seguem o tipo novo.')
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const del = useMutation({
+    mutationFn: (id: string) => api.delete(`/whatsapp/contatos/${id}`),
+    onSuccess: refresh,
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const fileRun = useMutation({
+    mutationFn: (text: string) => api.post<Preview>('/whatsapp/contatos/previa', { text }),
+    onSuccess: (data) => setPreview({ source: 'arquivo', data }),
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const counts = list.data?.counts ?? {}
+  const all = CATS.reduce((s, c) => s + (counts[c] ?? 0), 0)
+
+  async function pickFile(f: File | undefined) {
+    if (!f) return
+    if (f.size > 30_000_000) return void toast.error('Arquivo grande demais.')
+    const text = stripPhotos(await f.text())
+    if (text.length > 1_900_000) return void toast.error('Arquivo grande demais mesmo sem as fotos (máximo ~1,9 MB). Exporte em partes.')
+    fileRun.mutate(text)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Agenda de contatos"
+        description="Quem é cliente, colega, fornecedor ou outro. Vale para todos os números de WhatsApp: só cliente vira lead e pré-venda."
+        actions={
+          editable && (
+            <div className="flex flex-wrap gap-2">
+              <input ref={fileRef} type="file" accept=".vcf,.csv,.txt,text/vcard,text/x-vcard,text/csv,text/plain" className="hidden" onChange={(e) => void pickFile(e.target.files?.[0])} />
+              <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={fileRun.isPending}>
+                {fileRun.isPending ? <Loader2Icon className="animate-spin" /> : <FileUpIcon />} Importar arquivo do celular
+              </Button>
+              <Button variant="outline" onClick={() => setFromWhatsapp(true)}>
+                <SmartphoneIcon /> Importar do WhatsApp
+              </Button>
+              <Button onClick={() => setAdding(true)}>
+                <PlusIcon /> Novo contato
+              </Button>
+            </div>
+          )
+        }
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <FilterChip active={cat === null} onClick={() => (setCat(null), setPage(1))} label="Todos" count={all} />
+        {CATS.map((c) => (
+          <FilterChip key={c} active={cat === c} onClick={() => (setCat(c), setPage(1))} label={CAT_PLURAL[c]} count={counts[c] ?? 0} />
+        ))}
+        <Input placeholder="Buscar por nome ou telefone" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Buscar contato" className="ml-auto w-full sm:w-72" />
+      </div>
+      {list.isLoading ? (
+        <TableSkeleton />
+      ) : list.isError ? (
+        <ErrorState error={list.error} onRetry={() => void list.refetch()} />
+      ) : list.data!.items.length === 0 ? (
+        <EmptyState
+          icon={BookUserIcon}
+          title={q || cat ? 'Nenhum contato com esses filtros' : 'Agenda vazia'}
+          description={q || cat ? undefined : 'Importe os contatos do celular (arquivo .vcf) ou do WhatsApp conectado e escolha o tipo de cada um.'}
+        />
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <ul className="divide-y">
+              {list.data!.items.map((c) => (
+                <li key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm">
+                  <span className="min-w-0 flex-1 truncate font-medium">{c.name ?? <span className="font-normal text-muted-foreground">Sem nome</span>}</span>
+                  <span className="text-muted-foreground tabular-nums">{c.phone ? formatPhone(c.phone) : '—'}</span>
+                  {editable ? (
+                    <CatSelect id={`cat-${c.id}`} value={c.category} onChange={(v) => update.mutate({ id: c.id, category: v })} className="w-36" />
+                  ) : (
+                    <Badge variant="outline" className="font-normal">
+                      {CAT_LABEL[c.category] ?? c.category}
+                    </Badge>
+                  )}
+                  {editable && (
+                    <Button size="sm" variant="ghost" onClick={() => del.mutate(c.id)} aria-label={`Remover ${c.name ?? c.phone}`} title="Remover da agenda (volta a valer a regra de contato comum)">
+                      <Trash2Icon />
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+      {list.data && list.data.total > 50 && (
+        <div className="flex items-center justify-end gap-2 text-sm text-muted-foreground">
+          {(page - 1) * 50 + 1}–{Math.min(page * 50, list.data.total)} de {list.data.total}
+          <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+            Anterior
+          </Button>
+          <Button size="sm" variant="outline" disabled={page * 50 >= list.data.total} onClick={() => setPage(page + 1)}>
+            Próxima
+          </Button>
+        </div>
+      )}
+      {adding && <AddDialog onClose={() => setAdding(false)} />}
+      {fromWhatsapp && <WhatsappSourceDialog onClose={() => setFromWhatsapp(false)} onPreview={(data) => (setFromWhatsapp(false), setPreview({ source: 'WhatsApp', data }))} />}
+      {preview && <ReviewDialog source={preview.source} data={preview.data} onClose={() => setPreview(null)} />}
+    </div>
+  )
+}
+
+/** Fotos do vCard (base64) deixam o arquivo enorme e não servem para a agenda: saem antes de enviar. */
+function stripPhotos(text: string) {
+  const out: string[] = []
+  let inPhoto = false
+  for (const line of text.split(/\r?\n/)) {
+    if (/^(item\d+\.)?PHOTO[;:]/i.test(line)) {
+      inPhoto = true
+      continue
+    }
+    if (inPhoto && (/^[ \t]/.test(line) || line === '')) continue
+    inPhoto = false
+    out.push(line)
+  }
+  return out.join('\n')
+}
+
+function FilterChip({ active, onClick, label, count }: { active: boolean; onClick: () => void; label: string; count: number }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn('rounded-full border px-3 py-1 text-sm transition-colors', active ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted')}
+    >
+      {label} <span className={cn('tabular-nums', active ? 'opacity-80' : 'text-muted-foreground')}>{count}</span>
+    </button>
+  )
+}
+
+function CatSelect({ id, value, onChange, className, allowNone }: { id: string; value: Cat | null; onChange: (v: Cat) => void; className?: string; allowNone?: boolean }) {
+  return (
+    <Select value={value ?? '__none__'} onValueChange={(v) => v !== '__none__' && onChange(v as Cat)}>
+      <SelectTrigger id={id} className={cn('h-8', className)} aria-label="Tipo do contato">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {allowNone && (
+          <SelectItem value="__none__" disabled>
+            Não importar
+          </SelectItem>
+        )}
+        {CATS.map((k) => (
+          <SelectItem key={k} value={k}>
+            {CAT_LABEL[k]}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+function AddDialog({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient()
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [category, setCategory] = useState<Cat>('COLEGA')
+  const [error, setError] = useState<string | null>(null)
+  const save = useMutation({
+    mutationFn: () => api.post('/whatsapp/contatos/salvar', { rows: [{ name, phone, category }] }),
+    onSuccess: (r) => {
+      if (!(r as { saved: number }).saved) return void setError('Telefone inválido. Use DDD + número (ou + e o código do país).')
+      void qc.invalidateQueries({ queryKey: ['whatsapp-contatos'] })
+      toast.success('Contato salvo na agenda.')
+      onClose()
+    },
+    onError: (err) => setError(errorMessage(err)),
+  })
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <form
+          className="space-y-4"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault()
+            setError(null)
+            save.mutate()
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Novo contato</DialogTitle>
+            <DialogDescription>{CAT_HELP[category]}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="ag-name">Nome</Label>
+            <Input id="ag-name" maxLength={120} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ag-phone">Telefone</Label>
+            <Input id="ag-phone" required inputMode="tel" placeholder="(49) 99999-9999" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ag-cat">Tipo</Label>
+            <CatSelect id="ag-cat" value={category} onChange={setCategory} className="h-9 w-full" />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={save.isPending || !phone.trim()}>
+              Salvar
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function WhatsappSourceDialog({ onClose, onPreview }: { onClose: () => void; onPreview: (d: Preview) => void }) {
+  const numbers = useQuery({ queryKey: ['whatsapp-numeros'], queryFn: () => api.get<{ numbers: { id: string; name: string; phone: string | null; status: string }[] }>('/whatsapp/numeros') })
+  const connected = (numbers.data?.numbers ?? []).filter((n) => n.status === 'CONECTADO')
+  const [numberId, setNumberId] = useState<string | null>(null)
+  const run = useMutation({
+    mutationFn: (id: string) => api.post<Preview>(`/whatsapp/contatos/previa-whatsapp/${id}`),
+    onSuccess: onPreview,
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const selected = numberId ?? connected[0]?.id ?? null
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Importar do WhatsApp conectado</DialogTitle>
+          <DialogDescription>O CRM busca os contatos que o WhatsApp do número conhece (agenda sincronizada e quem já conversou). Nada é gravado antes de você escolher o tipo de cada um.</DialogDescription>
+        </DialogHeader>
+        {numbers.isLoading ? (
+          <TableSkeleton rows={2} />
+        ) : connected.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum número conectado. Conecte em Administração → Números de WhatsApp.</p>
+        ) : (
+          <div className="space-y-1.5">
+            <Label htmlFor="ag-num">Número</Label>
+            <Select value={selected ?? undefined} onValueChange={setNumberId}>
+              <SelectTrigger id="ag-num" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {connected.map((n) => (
+                  <SelectItem key={n.id} value={n.id}>
+                    {n.name}
+                    {n.phone ? ` · ${formatPhone(n.phone)}` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button onClick={() => selected && run.mutate(selected)} disabled={!selected || run.isPending}>
+            {run.isPending && <Loader2Icon className="animate-spin" />}
+            Buscar contatos
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+type ReviewFilter = 'todos' | 'sem' | 'agenda' | 'leads'
+const PAGE = 100
+
+/** Prévia: cada contato com o tipo sugerido (já na agenda, é lead = cliente, ou sem classificação = não importa). */
+function ReviewDialog({ source, data, onClose }: { source: string; data: Preview; onClose: () => void }) {
+  const qc = useQueryClient()
+  const [cats, setCats] = useState<Map<string, Cat | null>>(() => new Map(data.items.map((r) => [r.phone, r.suggested])))
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [filter, setFilter] = useState<ReviewFilter>('todos')
+  const [search, setSearch] = useState('')
+  const [limit, setLimit] = useState(PAGE)
+  const visible = useMemo(() => {
+    const s = search.trim().toLowerCase()
+    const digits = s.replace(/\D/g, '')
+    return data.items.filter((r) => {
+      if (filter === 'sem' && cats.get(r.phone)) return false
+      if (filter === 'agenda' && !r.current) return false
+      if (filter === 'leads' && !r.lead) return false
+      if (s && !(r.name ?? '').toLowerCase().includes(s) && !(digits.length >= 3 && r.phone.replace(/\D/g, '').includes(digits))) return false
+      return true
+    })
+  }, [data.items, filter, search, cats])
+  const toSave = data.items.filter((r) => cats.get(r.phone))
+  const unclassified = data.items.length - toSave.length
+  const allVisibleChecked = visible.length > 0 && visible.every((r) => checked.has(r.phone))
+  const setCat = (phone: string, c: Cat | null) => setCats((m) => new Map(m).set(phone, c))
+  const bulk = (c: Cat | null) => {
+    setCats((m) => {
+      const next = new Map(m)
+      for (const p of checked) next.set(p, c)
+      return next
+    })
+    setChecked(new Set())
+  }
+  const save = useMutation({
+    mutationFn: () => api.post<{ saved: number; invalid: number }>('/whatsapp/contatos/salvar', { rows: toSave.map((r) => ({ name: r.name, phone: r.phone, category: cats.get(r.phone)! })) }),
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: ['whatsapp-contatos'] })
+      toast.success(`${r.saved} contato(s) salvo(s) na agenda.${r.invalid ? ` ${r.invalid} telefone(s) inválido(s).` : ''}`, { duration: 8000 })
+      onClose()
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Escolha o tipo de cada contato ({source})</DialogTitle>
+          <DialogDescription>
+            {data.items.length} contato(s) com telefone{data.skipped ? ` · ${data.skipped} sem telefone` : ''}
+            {data.invalid ? ` · ${data.invalid} telefone(s) inválido(s)` : ''}. Já vêm marcados: quem está na agenda (o tipo atual) e quem é lead (cliente). Os “sem tipo” não são importados.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-wrap items-center gap-2">
+          {(
+            [
+              ['todos', 'Todos'],
+              ['sem', 'Sem tipo'],
+              ['agenda', 'Já na agenda'],
+              ['leads', 'São leads'],
+            ] as [ReviewFilter, string][]
+          ).map(([k, l]) => (
+            <FilterChip key={k} active={filter === k} onClick={() => (setFilter(k), setLimit(PAGE))} label={l} count={k === 'todos' ? data.items.length : k === 'sem' ? unclassified : k === 'agenda' ? data.items.filter((r) => r.current).length : data.items.filter((r) => r.lead).length} />
+          ))}
+          <Input placeholder="Buscar" value={search} onChange={(e) => (setSearch(e.target.value), setLimit(PAGE))} aria-label="Buscar na lista" className="ml-auto h-8 w-full sm:w-48" />
+        </div>
+        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">
+          <Checkbox
+            checked={allVisibleChecked}
+            onCheckedChange={(v) => setChecked(v ? new Set([...checked, ...visible.map((r) => r.phone)]) : new Set([...checked].filter((p) => !visible.some((r) => r.phone === p))))}
+            aria-label="Selecionar todos os da lista"
+          />
+          <span className="text-muted-foreground">{checked.size ? `${checked.size} selecionado(s): marcar como` : 'Selecione para marcar vários de uma vez'}</span>
+          {checked.size > 0 && (
+            <>
+              {CATS.map((c) => (
+                <Button key={c} size="sm" variant="outline" className="h-7" onClick={() => bulk(c)}>
+                  {CAT_LABEL[c]}
+                </Button>
+              ))}
+              <Button size="sm" variant="ghost" className="h-7" onClick={() => bulk(null)}>
+                Não importar
+              </Button>
+            </>
+          )}
+        </div>
+        <ul className="min-h-0 flex-1 divide-y overflow-y-auto rounded-md border">
+          {visible.slice(0, limit).map((r) => {
+            const c = cats.get(r.phone) ?? null
+            return (
+              <li key={r.phone} className={cn('flex flex-wrap items-center gap-3 px-3 py-2 text-sm', !c && 'bg-muted/30')}>
+                <Checkbox
+                  checked={checked.has(r.phone)}
+                  onCheckedChange={(v) =>
+                    setChecked((s) => {
+                      const n = new Set(s)
+                      if (v) n.add(r.phone)
+                      else n.delete(r.phone)
+                      return n
+                    })
+                  }
+                  aria-label={`Selecionar ${r.name ?? r.phone}`}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{r.name ?? <span className="font-normal text-muted-foreground">Sem nome</span>}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatPhone(r.phone)}
+                    {r.current ? ` · na agenda como ${CAT_LABEL[r.current].toLowerCase()}` : ''}
+                    {r.lead ? ` · é lead: ${r.lead}` : ''}
+                  </p>
+                </div>
+                <CatSelect id={`rv-${r.phone}`} value={c} onChange={(v) => setCat(r.phone, v)} className="w-36" allowNone />
+                {c && (
+                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setCat(r.phone, null)} title="Não importar este contato">
+                    Tirar
+                  </Button>
+                )}
+              </li>
+            )
+          })}
+          {visible.length === 0 && <li className="p-6 text-center text-sm text-muted-foreground">Nenhum contato com esses filtros.</li>}
+          {visible.length > limit && (
+            <li className="p-2 text-center">
+              <Button size="sm" variant="ghost" onClick={() => setLimit(limit + PAGE)}>
+                Mostrar mais ({visible.length - limit})
+              </Button>
+            </li>
+          )}
+        </ul>
+        <DialogFooter className="items-center gap-2 sm:justify-between">
+          <p className="text-sm text-muted-foreground">
+            {toSave.length} para salvar · {unclassified} sem tipo (não entram)
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button onClick={() => save.mutate()} disabled={!toSave.length || save.isPending}>
+              {save.isPending && <Loader2Icon className="animate-spin" />}
+              Salvar {toSave.length} na agenda
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}

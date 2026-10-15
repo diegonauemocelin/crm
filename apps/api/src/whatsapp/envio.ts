@@ -168,7 +168,10 @@ export function decide(
 // ---------- Contatos da empresa (colegas, fornecedores...) ----------
 
 export type CompanyCategory = 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
-const CATEGORY_WORDS: Record<string, CompanyCategory> = { colega: 'COLEGA', funcionario: 'COLEGA', funcionário: 'COLEGA', equipe: 'COLEGA', fornecedor: 'FORNECEDOR', outro: 'OUTRO', outros: 'OUTRO' }
+/** Tipos da agenda de contatos: cliente (venda) ou contato da empresa. */
+export type AgendaCategory = 'CLIENTE' | CompanyCategory
+export const AGENDA_CATEGORIES: AgendaCategory[] = ['CLIENTE', 'COLEGA', 'FORNECEDOR', 'OUTRO']
+const CATEGORY_WORDS: Record<string, AgendaCategory> = { cliente: 'CLIENTE', colega: 'COLEGA', funcionario: 'COLEGA', funcionário: 'COLEGA', equipe: 'COLEGA', fornecedor: 'FORNECEDOR', outro: 'OUTRO', outros: 'OUTRO' }
 
 /** Divide uma linha de CSV respeitando aspas. */
 function splitLine(line: string, sep: string) {
@@ -196,10 +199,10 @@ function splitLine(line: string, sep: string) {
  * Em cada linha: o telefone é a célula com 10 a 13 dígitos; o nome, a primeira célula de texto; o tipo, se houver
  * (colega, fornecedor, outro). A normalização do telefone fica com quem chama.
  */
-export function parseContactList(text: string, fallback: CompanyCategory) {
+export function parseContactList(text: string, fallback: AgendaCategory | null) {
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.trim())
   const sep = [';', '\t', ','].map((s) => [s, (lines[0] ?? '').split(s).length] as const).sort((a, b) => b[1] - a[1])[0]![0]
-  const rows: { name: string | null; phone: string; category: CompanyCategory }[] = []
+  const rows: { name: string | null; phone: string; category: AgendaCategory | null }[] = []
   let skipped = 0
   for (const line of lines.slice(0, 5000)) {
     const cells = splitLine(line, sep)
@@ -213,4 +216,81 @@ export function parseContactList(text: string, fallback: CompanyCategory) {
     for (const p of phones) rows.push({ name: name?.slice(0, 120) ?? null, phone: p, category })
   }
   return { rows, skipped }
+}
+
+/** Quoted-printable (vCard 2.1 do Android): "=C3=A9" vira "é". */
+function decodeQuotedPrintable(v: string) {
+  const bytes: number[] = []
+  const s = v.replace(/=\r?\n/g, '')
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '=' && /^[0-9A-F]{2}$/i.test(s.slice(i + 1, i + 3))) {
+      bytes.push(parseInt(s.slice(i + 1, i + 3), 16))
+      i += 2
+    } else bytes.push(...Buffer.from(s[i]!, 'utf8'))
+  }
+  return Buffer.from(bytes).toString('utf8')
+}
+
+/** Valor de uma linha do vCard ("FN;CHARSET=UTF-8;ENCODING=QUOTED-PRINTABLE:Jo=C3=A3o"), sem os escapes. */
+function vcardValue(line: string) {
+  const i = line.indexOf(':')
+  if (i < 0) return ''
+  const params = line.slice(0, i)
+  let v = line.slice(i + 1)
+  if (/ENCODING=QUOTED-PRINTABLE/i.test(params)) v = decodeQuotedPrintable(v)
+  return v.replace(/\\n/gi, ' ').replace(/\\([,;\\])/g, '$1').trim()
+}
+
+/**
+ * Contatos exportados do celular em vCard (.vcf: Android "Exportar contatos", iPhone "Exportar vCard", Google
+ * Contatos): nome (FN, ou o N montado, ou a empresa) e todos os telefones de cada contato.
+ */
+export function parseVcf(text: string) {
+  // Linhas dobradas (continuação começa com espaço) e, no quoted-printable, linha terminada em "=" continua na seguinte.
+  const raw = text.replace(/^\uFEFF/, '').replace(/\r?\n[ \t]/g, '').split(/\r?\n/)
+  const joined: string[] = []
+  for (let i = 0; i < raw.length; i++) {
+    let line = raw[i]!
+    if (/ENCODING=QUOTED-PRINTABLE/i.test(line.slice(0, line.indexOf(':') + 1))) while (line.endsWith('=') && i + 1 < raw.length) line = line.slice(0, -1) + raw[++i]
+    joined.push(line)
+  }
+  const rows: { name: string | null; phone: string; category: null }[] = []
+  let skipped = 0
+  for (const card of joined.join('\n').split(/BEGIN:VCARD/i).slice(1, 5001)) {
+    const lines = card.split('\n').map((l) => l.replace(/^item\d+\./i, ''))
+    const fn = lines.find((l) => /^FN[;:]/i.test(l))
+    const n = lines.find((l) => /^N[;:]/i.test(l))
+    const org = lines.find((l) => /^ORG[;:]/i.test(l))
+    let name = fn ? vcardValue(fn) : ''
+    if (!name && n) {
+      const [family = '', given = '', middle = ''] = vcardValue(n).split(';')
+      name = [given, middle, family].filter(Boolean).join(' ')
+    }
+    if (!name && org) name = vcardValue(org).split(';')[0] ?? ''
+    const phones = lines.filter((l) => /^TEL[;:]/i.test(l)).map((l) => vcardValue(l).replace(/^tel:/i, '').trim()).filter((p) => p.replace(/\D/g, '').length >= 8)
+    if (!phones.length) {
+      skipped++
+      continue
+    }
+    for (const p of [...new Set(phones)]) rows.push({ name: name.slice(0, 120) || null, phone: p, category: null })
+  }
+  return { rows, skipped }
+}
+
+/**
+ * Contatos do número conectado (Evolution: chat/findContacts). Só pessoas com telefone (jid @s.whatsapp.net);
+ * grupos, listas de transmissão e contatos sem telefone visível (@lid) ficam de fora.
+ */
+export function contactsFromWhatsapp(list: unknown) {
+  const rows: { name: string | null; phone: string; category: null }[] = []
+  const seen = new Set<string>()
+  for (const c of Array.isArray(list) ? (list as Record<string, unknown>[]) : []) {
+    const jid = String(c.remoteJid ?? c.id ?? '')
+    const m = /^(\d{10,15})@s\.whatsapp\.net$/.exec(jid)
+    if (!m || seen.has(m[1]!)) continue
+    seen.add(m[1]!)
+    const name = [c.name, c.verifiedName, c.pushName].find((x) => typeof x === 'string' && x.trim()) as string | undefined
+    rows.push({ name: name?.trim().slice(0, 120) ?? null, phone: `+${m[1]}`, category: null })
+  }
+  return rows
 }

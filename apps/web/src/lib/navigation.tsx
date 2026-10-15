@@ -24,6 +24,7 @@ import {
   UsersIcon,
   UsersRoundIcon,
   type LucideIcon,
+  BookUserIcon,
 } from 'lucide-react'
 import type { Action } from './types'
 
@@ -66,6 +67,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Pré-Vendas', to: '/pre-vendas', icon: HeadsetIcon, module: 'pre_vendas' },
       { title: 'Pós-Vendas', to: '/pos-vendas', icon: ClipboardListIcon, module: 'pos_vendas' },
       { title: 'Chat WhatsApp', to: '/chat', icon: MessageCircleIcon, module: 'chat' },
+      { title: 'Agenda de contatos', to: '/agenda', icon: BookUserIcon, module: 'whatsapp' },
       { title: 'Monitorar conversas', to: '/chat?monitorar=1', icon: EyeIcon, module: 'monitoramento' },
       { title: 'Consulta de produtos', to: '/consulta-produtos', icon: PackageSearchIcon, module: 'consulta_produtos' },
       { title: 'Cadastros', to: '/cadastros-atendimento', icon: ListChecksIcon, module: 'cadastros' },

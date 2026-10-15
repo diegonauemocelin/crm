@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangleIcon, Loader2Icon, PencilIcon, PlugIcon, PlusIcon, SmartphoneIcon, Trash2Icon, UnplugIcon, UsersIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
+import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { MultiSelect } from '@/components/multi-select'
 import { ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -177,7 +178,7 @@ function Numbers() {
             Use os números só para conversas com clientes (responder quem chamou). Envio em massa por aqui pode fazer o WhatsApp bloquear o número.
           </p>
           <Rules editable={can('whatsapp', 'edit')} />
-          <CompanyContacts editable={can('whatsapp', 'edit')} />
+          <AgendaLink />
           <QuickReplies editable={can('whatsapp', 'edit')} />
         </div>
       )}
@@ -654,215 +655,19 @@ function Rules({ editable }: { editable: boolean }) {
   )
 }
 
-type CompanyCat = 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
-const COMPANY_CAT: Record<CompanyCat, string> = { COLEGA: 'Colega de trabalho', FORNECEDOR: 'Fornecedor', OUTRO: 'Outro (não é venda)' }
-interface CompanyContact {
-  id: string
-  name: string | null
-  phone: string | null
-  category: CompanyCat
-}
-
-/** Colegas, fornecedores e outros contatos que não são de venda: não viram lead nem pré-venda. */
-function CompanyContacts({ editable }: { editable: boolean }) {
-  const qc = useQueryClient()
-  const [search, setSearch] = useState('')
-  const [q, setQ] = useState('')
-  useEffect(() => {
-    const t = setTimeout(() => setQ(search.trim()), 300)
-    return () => clearTimeout(t)
-  }, [search])
-  const list = useQuery({ queryKey: ['whatsapp-contatos', q], queryFn: () => api.get<{ total: number; items: CompanyContact[] }>(`/whatsapp/contatos?busca=${encodeURIComponent(q)}`) })
-  const [adding, setAdding] = useState(false)
-  const [importing, setImporting] = useState(false)
-  const del = useMutation({
-    mutationFn: (id: string) => api.delete(`/whatsapp/contatos/${id}`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['whatsapp-contatos'] }),
-    onError: (err) => toast.error(errorMessage(err)),
-  })
+/** Colegas, fornecedores e outros contatos: ficam na Agenda de contatos (Atendimento Comercial). */
+function AgendaLink() {
   return (
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <CardTitle className="text-base">Contatos da empresa</CardTitle>
-          <CardDescription>Colegas, fornecedores e outros que não são de venda: as conversas ficam só no chat, sem lead e sem pré-venda, em todos os números.</CardDescription>
+          <CardDescription>Colegas, fornecedores e outros que não são de venda (sem lead e sem pré-venda), e clientes marcados à mão. Ficam na Agenda de contatos, com importação do celular e do WhatsApp conectado.</CardDescription>
         </div>
-        {editable && (
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => setImporting(true)}>
-              Importar lista
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
-              <PlusIcon /> Adicionar
-            </Button>
-          </div>
-        )}
+        <Button size="sm" variant="outline" asChild>
+          <Link to="/agenda">Abrir a agenda</Link>
+        </Button>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <Input placeholder="Buscar por nome ou telefone" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Buscar contato da empresa" className="max-w-sm" />
-        {(list.data?.items ?? []).length === 0 ? (
-          <p className="text-sm text-muted-foreground">{q ? 'Nenhum contato com essa busca.' : 'Nenhum contato da empresa cadastrado. Importe a lista de contatos (CSV do Google Contatos ou do Excel).'}</p>
-        ) : (
-          <ul className="divide-y rounded-md border">
-            {list.data!.items.map((c) => (
-              <li key={c.id} className="flex items-center gap-3 px-3 py-2 text-sm">
-                <span className="min-w-0 flex-1 truncate">{c.name ?? '—'}</span>
-                <span className="text-muted-foreground tabular-nums">{c.phone ? formatPhone(c.phone) : '—'}</span>
-                <Badge variant="outline" className="hidden font-normal sm:inline-flex">
-                  {COMPANY_CAT[c.category] ?? c.category}
-                </Badge>
-                {editable && (
-                  <Button size="sm" variant="ghost" onClick={() => del.mutate(c.id)} aria-label={`Remover ${c.name ?? c.phone}`}>
-                    <Trash2Icon />
-                  </Button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-        {list.data && list.data.total > list.data.items.length && <p className="text-xs text-muted-foreground">Mostrando {list.data.items.length} de {list.data.total}. Use a busca.</p>}
-      </CardContent>
-      {adding && <AddContactDialog onClose={() => setAdding(false)} />}
-      {importing && <ImportContactsDialog onClose={() => setImporting(false)} />}
     </Card>
-  )
-}
-
-function CategorySelect({ id, value, onChange }: { id: string; value: CompanyCat; onChange: (v: CompanyCat) => void }) {
-  return (
-    <Select value={value} onValueChange={(v) => onChange(v as CompanyCat)}>
-      <SelectTrigger id={id} className="w-full">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {(Object.keys(COMPANY_CAT) as CompanyCat[]).map((k) => (
-          <SelectItem key={k} value={k}>
-            {COMPANY_CAT[k]}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
-
-function AddContactDialog({ onClose }: { onClose: () => void }) {
-  const qc = useQueryClient()
-  const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [category, setCategory] = useState<CompanyCat>('COLEGA')
-  const [error, setError] = useState<string | null>(null)
-  const save = useMutation({
-    mutationFn: () => api.post('/whatsapp/contatos', { name, phone, category }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['whatsapp-contatos'] })
-      toast.success('Contato adicionado.')
-      onClose()
-    },
-    onError: (err) => setError(errorMessage(err)),
-  })
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <form
-          className="space-y-4"
-          onSubmit={(e: FormEvent) => {
-            e.preventDefault()
-            setError(null)
-            save.mutate()
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle>Adicionar contato da empresa</DialogTitle>
-            <DialogDescription>As conversas com este telefone não viram lead nem pré-venda.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-1.5">
-            <Label htmlFor="cc-name">Nome</Label>
-            <Input id="cc-name" maxLength={120} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="cc-phone">Telefone</Label>
-            <Input id="cc-phone" required inputMode="tel" placeholder="(49) 99999-9999" value={phone} onChange={(e) => setPhone(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="cc-cat">Tipo</Label>
-            <CategorySelect id="cc-cat" value={category} onChange={setCategory} />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={save.isPending}>
-              Adicionar
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-function ImportContactsDialog({ onClose }: { onClose: () => void }) {
-  const qc = useQueryClient()
-  const [csv, setCsv] = useState('')
-  const [category, setCategory] = useState<CompanyCat>('COLEGA')
-  const [error, setError] = useState<string | null>(null)
-  const run = useMutation({
-    mutationFn: () => api.post<{ saved: number; invalid: number; skipped: number }>('/whatsapp/contatos/importar', { csv, category }),
-    onSuccess: (r) => {
-      void qc.invalidateQueries({ queryKey: ['whatsapp-contatos'] })
-      toast.success(`${r.saved} contato(s) importado(s).${r.invalid ? ` ${r.invalid} telefone(s) inválido(s).` : ''}${r.skipped ? ` ${r.skipped} linha(s) sem telefone.` : ''}`, { duration: 8000 })
-      onClose()
-    },
-    onError: (err) => setError(errorMessage(err)),
-  })
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-xl">
-        <form
-          className="space-y-4"
-          onSubmit={(e: FormEvent) => {
-            e.preventDefault()
-            setError(null)
-            run.mutate()
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle>Importar contatos da empresa</DialogTitle>
-            <DialogDescription>
-              Escolha o arquivo CSV (Google Contatos → Exportar, ou Excel salvo como CSV) ou cole a lista. Cada linha: nome e telefone; se tiver uma coluna com “colega”, “fornecedor” ou “outro”, ela vale para a linha.
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            type="file"
-            accept=".csv,.txt,text/csv,text/plain"
-            aria-label="Arquivo CSV"
-            onChange={async (e) => {
-              const f = e.target.files?.[0]
-              if (!f) return
-              if (f.size > 800_000) return void setError('Arquivo grande demais (máximo 800 KB). Divida em partes.')
-              setCsv(await f.text())
-            }}
-          />
-          <div className="space-y-1.5">
-            <Label htmlFor="ci-text">Lista</Label>
-            <Textarea id="ci-text" rows={7} placeholder={'Carlos Souza;(49) 98877-6655;colega\nPeças Brasil;(47) 3222-1100;fornecedor'} value={csv} onChange={(e) => setCsv(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="ci-cat">Tipo das linhas sem tipo</Label>
-            <CategorySelect id="ci-cat" value={category} onChange={setCategory} />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={!csv.trim() || run.isPending}>
-              Importar
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   )
 }

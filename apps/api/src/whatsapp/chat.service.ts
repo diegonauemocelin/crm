@@ -13,7 +13,7 @@ import { SettingsService } from '../settings/settings.service'
 import { normalizePhone } from '../atendimento/br'
 import { type EvolutionClient, EvolutionError } from './evolution'
 import { sectorsOf, splitWhere } from './atendentes'
-import { applyVariables, cleanRules, type CompanyCategory, decide, DEFAULT_RULES, detectOutgoing, parseContactList, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
+import { type AgendaCategory, applyVariables, cleanRules, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, parseContactList, parseVcf, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
 import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, type ParsedMessage, phoneFromDigits, phoneVariants, previewOf } from './mensagens'
 
 const PAGE = 60
@@ -716,13 +716,14 @@ export class ChatService {
     return r
   }
 
-  async companyContacts(user: AuthUser, q: { search?: string; page?: number }) {
+  /** Agenda de contatos: todos os tipos (ou um), com a contagem de cada tipo. */
+  async companyContacts(user: AuthUser, q: { search?: string; page?: number; category?: AgendaCategory }) {
     this.assertAdmin(user, 'view')
     const s = q.search?.trim()
     const digits = s?.replace(/\D/g, '') ?? ''
     const where: Prisma.WhatsappContactWhereInput = {
       tenantId: user.tenantId,
-      category: { not: 'CLIENTE' },
+      ...(q.category ? { category: q.category } : {}),
       ...(s ? { OR: [{ name: { contains: s, mode: 'insensitive' } }, ...(digits.length >= 4 ? [{ contactKey: { contains: digits } }] : [])] } : {}),
     }
     const page = Math.max(1, q.page ?? 1)
@@ -730,7 +731,96 @@ export class ChatService {
       this.prisma.whatsappContact.count({ where }),
       this.prisma.whatsappContact.findMany({ where, orderBy: [{ name: 'asc' }, { contactKey: 'asc' }], skip: (page - 1) * 50, take: 50 }),
     ])
-    return { total, page, items: rows.map((r) => ({ id: r.id, name: r.name, phone: r.contactKey.startsWith('+') ? r.contactKey : null, category: r.category, updatedAt: r.updatedAt })) }
+    const counts = await this.prisma.whatsappContact.groupBy({ by: ['category'], where: { tenantId: user.tenantId }, _count: { _all: true } })
+    return {
+      total,
+      page,
+      counts: Object.fromEntries(counts.map((c) => [c.category, c._count._all])),
+      items: rows.map((r) => ({ id: r.id, name: r.name, phone: r.contactKey.startsWith('+') ? r.contactKey : null, category: r.category, updatedAt: r.updatedAt })),
+    }
+  }
+
+  /** Muda o tipo ou o nome de um contato da agenda (as conversas dele passam para o tipo novo). */
+  async updateCompanyContact(user: AuthUser, id: string, d: { name?: string | null; category?: AgendaCategory }) {
+    this.assertAdmin(user, 'edit')
+    const c = await this.prisma.whatsappContact.findFirst({ where: { id, tenantId: user.tenantId } })
+    if (!c) throw new NotFoundException('Contato não encontrado.')
+    await this.prisma.whatsappContact.update({
+      where: { id },
+      data: { ...(d.category ? { category: d.category } : {}), ...(d.name !== undefined ? { name: d.name?.trim().slice(0, 120) || null } : {}), updatedById: user.id },
+    })
+    if (d.category && d.category !== c.category) {
+      await this.prisma.whatsappConversation.updateMany({ where: { tenantId: user.tenantId, OR: [{ phone: { in: phoneVariants(c.contactKey) } }, { jid: c.contactKey }] }, data: { category: d.category } })
+    }
+    return { ok: true }
+  }
+
+  /**
+   * Prévia da importação: telefones normalizados (sem repetidos), o tipo que já está na agenda, se é lead (cliente)
+   * e a sugestão de tipo. Nada é gravado aqui.
+   */
+  private async previewRows(user: AuthUser, rows: { name: string | null; phone: string; category: AgendaCategory | null }[]) {
+    const byPhone = new Map<string, { name: string | null; fileCategory: AgendaCategory | null }>()
+    let invalid = 0
+    for (const r of rows.slice(0, 5000)) {
+      const phone = this.contactPhone(r.phone)
+      if (!phone) {
+        invalid++
+        continue
+      }
+      const prev = byPhone.get(phone)
+      if (!prev) byPhone.set(phone, { name: r.name, fileCategory: r.category })
+      else if (!prev.name && r.name) prev.name = r.name
+    }
+    const phones = [...byPhone.keys()]
+    // Leads antigos (importados) podem ter o telefone gravado sem o "+".
+    const variantsOf = (p: string) => phoneVariants(p).flatMap((v) => [v, v.replace(/^\+/, '')])
+    const variants = phones.flatMap(variantsOf)
+    const [contacts, leads] = await Promise.all([
+      this.prisma.whatsappContact.findMany({ where: { tenantId: user.tenantId, contactKey: { in: variants } }, select: { contactKey: true, category: true } }),
+      this.prisma.lead.findMany({ where: { tenantId: user.tenantId, deletedAt: null, anonymizedAt: null, phone: { in: variants } }, select: { phone: true, name: true } }),
+    ])
+    const catOf = new Map(contacts.map((c) => [c.contactKey, c.category as AgendaCategory]))
+    const leadOf = new Map(leads.filter((l) => l.phone).map((l) => [l.phone!, l.name]))
+    const items = phones.map((phone) => {
+      const r = byPhone.get(phone)!
+      const vs = variantsOf(phone)
+      const current = vs.map((v) => catOf.get(v)).find(Boolean) ?? null
+      const leadKey = vs.find((v) => leadOf.has(v))
+      const leadName = leadKey ? leadOf.get(leadKey) || 'Lead sem nome' : null
+      return { name: r.name ?? leadName, phone, current, lead: leadName, suggested: current ?? r.fileCategory ?? (leadKey ? ('CLIENTE' as const) : null) }
+    })
+    items.sort((a, b) => (a.name ?? '~').localeCompare(b.name ?? '~', 'pt-BR'))
+    return { items, invalid }
+  }
+
+  /** Prévia de um arquivo do celular (.vcf) ou de uma lista (CSV ou colada). */
+  async previewContactsFile(user: AuthUser, text: string) {
+    this.assertAdmin(user, 'edit')
+    const parsed = /BEGIN:VCARD/i.test(text) ? parseVcf(text) : parseContactList(text, null)
+    if (!parsed.rows.length) throw new BadRequestException('Nenhum telefone encontrado no arquivo. Use o .vcf exportado dos contatos do celular ou um CSV com nome e telefone.')
+    const r = await this.previewRows(user, parsed.rows)
+    return { ...r, skipped: parsed.skipped }
+  }
+
+  /** Prévia dos contatos do WhatsApp conectado (um clique, sem arquivo). */
+  async previewContactsWhatsapp(user: AuthUser, numberId: string) {
+    this.assertAdmin(user, 'edit')
+    const n = await this.prisma.whatsappNumber.findFirst({ where: { id: numberId, tenantId: user.tenantId } })
+    if (!n) throw new NotFoundException('Número não encontrado.')
+    const client = this.clientOf()
+    if (!client) throw new BadRequestException('O WhatsApp não está ativo no servidor.')
+    const list = await client.contacts(n.instanceName).catch((e: unknown) => this.fail(e))
+    const rows = contactsFromWhatsapp(list)
+    if (!rows.length) throw new BadRequestException('O WhatsApp deste número não devolveu contatos com telefone. Confira se ele está conectado.')
+    const r = await this.previewRows(user, rows)
+    return { ...r, skipped: 0 }
+  }
+
+  /** Grava na agenda os contatos escolhidos na prévia, cada um com o seu tipo. */
+  async saveContacts(user: AuthUser, rows: { name?: string | null; phone: string; category: AgendaCategory }[]) {
+    this.assertAdmin(user, 'edit')
+    return this.upsertCompany(user, rows.slice(0, 5000).map((x) => ({ name: x.name?.trim().slice(0, 120) || null, phone: x.phone, category: x.category })))
   }
 
   /** Telefone da lista: celular/fixo do Brasil (com ou sem 55) ou internacional com +. */
@@ -740,7 +830,7 @@ export class ChatService {
   }
 
   /** Grava (ou atualiza) contatos da empresa e passa as conversas deles para o tipo novo. */
-  private async upsertCompany(user: AuthUser, rows: { name: string | null; phone: string; category: CompanyCategory }[]) {
+  private async upsertCompany(user: AuthUser, rows: { name: string | null; phone: string; category: AgendaCategory }[]) {
     let saved = 0
     let invalid = 0
     for (const r of rows) {
@@ -772,7 +862,7 @@ export class ChatService {
     this.assertAdmin(user, 'edit')
     const parsed = parseContactList(csv, fallback)
     if (!parsed.rows.length) throw new BadRequestException('Nenhum telefone encontrado. Cada linha precisa ter nome e telefone (ex.: João;(47) 99999-9999;colega).')
-    const r = await this.upsertCompany(user, parsed.rows)
+    const r = await this.upsertCompany(user, parsed.rows.map((x) => ({ ...x, category: x.category ?? fallback })))
     return { saved: r.saved, invalid: r.invalid, skipped: parsed.skipped }
   }
 

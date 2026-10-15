@@ -3,7 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express'
 import { Throttle } from '@nestjs/throttler'
 import { ApiTags } from '@nestjs/swagger'
 import { Transform, Type } from 'class-transformer'
-import { IsBoolean, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator'
+import { ArrayMaxSize, IsBoolean, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
 import type { Response } from 'express'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
@@ -107,6 +107,26 @@ class DashQuery {
 class ContactsQuery {
   @IsOptional() @IsString() @MaxLength(100) busca?: string
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) pagina?: number
+  @IsOptional() @IsIn(['CLIENTE', 'COLEGA', 'FORNECEDOR', 'OUTRO']) tipo?: 'CLIENTE' | 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
+}
+
+class ContactUpdateDto {
+  @IsOptional() @IsString() @MaxLength(120) name?: string
+  @IsOptional() @IsIn(['CLIENTE', 'COLEGA', 'FORNECEDOR', 'OUTRO']) category?: 'CLIENTE' | 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
+}
+
+class ContactsFileDto {
+  @IsString() @Length(1, 1_900_000) text!: string
+}
+
+class ContactRowDto {
+  @IsOptional() @IsString() @MaxLength(120) name?: string | null
+  @IsString() @Length(8, 30) phone!: string
+  @IsIn(['CLIENTE', 'COLEGA', 'FORNECEDOR', 'OUTRO']) category!: 'CLIENTE' | 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
+}
+
+class ContactsSaveDto {
+  @ValidateNested({ each: true }) @Type(() => ContactRowDto) @ArrayMaxSize(5000) rows!: ContactRowDto[]
 }
 
 /** Regras do WhatsApp e contatos da empresa (administrador: permissão "Números de WhatsApp"). */
@@ -136,7 +156,36 @@ export class WhatsappRulesController {
 
   @Get('contatos')
   contacts(@CurrentUser() user: AuthUser, @Query() q: ContactsQuery) {
-    return this.chat.companyContacts(user, { search: q.busca, page: q.pagina })
+    return this.chat.companyContacts(user, { search: q.busca, page: q.pagina, category: q.tipo })
+  }
+
+  @Patch('contatos/:id')
+  updateContact(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ContactUpdateDto) {
+    return this.chat.updateCompanyContact(user, id, dto)
+  }
+
+  /** Prévia da importação de um arquivo do celular (.vcf) ou CSV: nada é gravado. */
+  @Post('contatos/previa')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  previewFile(@CurrentUser() user: AuthUser, @Body() dto: ContactsFileDto) {
+    return this.chat.previewContactsFile(user, dto.text)
+  }
+
+  /** Prévia dos contatos do WhatsApp conectado no número. */
+  @Post('contatos/previa-whatsapp/:numero')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  previewWhatsapp(@CurrentUser() user: AuthUser, @Param('numero', ParseUUIDPipe) numero: string) {
+    return this.chat.previewContactsWhatsapp(user, numero)
+  }
+
+  /** Grava os contatos escolhidos na prévia, cada um com o tipo escolhido. */
+  @Post('contatos/salvar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  saveContacts(@CurrentUser() user: AuthUser, @Body() dto: ContactsSaveDto) {
+    return this.chat.saveContacts(user, dto.rows)
   }
 
   @Post('contatos')

@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.40.0",
+      "date": "2026-10-16",
+      "title": "Agenda de contatos",
+      "changes": [
+        { "type": "novo", "area": "WhatsApp", "text": "Agenda de contatos (Atendimento Comercial): cada contato marcado como cliente, colega, fornecedor ou outro, com filtro por tipo, busca e troca do tipo na própria lista. Vale para todos os números: só cliente vira lead e pré-venda." },
+        { "type": "novo", "area": "WhatsApp", "text": "Importar os contatos do celular pelo arquivo .vcf (Android, iPhone ou Google Contatos) ou CSV, e com um clique pelo WhatsApp conectado. Antes de salvar, a prévia mostra cada contato com o tipo sugerido (quem já está na agenda e quem é lead vem marcado) e permite marcar vários de uma vez." },
+        { "type": "melhoria", "area": "WhatsApp", "text": "Os contatos da empresa saíram de Números de WhatsApp e foram para a Agenda de contatos." }
+      ]
+    },
+    {
       "version": "0.39.0",
       "date": "2026-10-16",
       "title": "Aviso de cliente sem resposta",
