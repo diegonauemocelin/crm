@@ -299,6 +299,14 @@ export class ChatService {
       (await this.prisma.whatsappReminder.groupBy({ by: ['conversationId'], where: { userId: user.id, doneAt: null, conversationId: { in: rows.map((r) => r.id) } }, _min: { dueAt: true } })).map((r) => [r.conversationId, r._min.dueAt]),
     )
     const labels = await this.labelsOf(user, rows.map((r) => r.id))
+    // Fase do atendimento de cada contato: o atendimento mais recente do lead (pré ou pós-venda).
+    const stageRows = await this.prisma.serviceRecord.findMany({
+      where: { tenantId: user.tenantId, deletedAt: null, leadId: { in: [...new Set(rows.map((r) => r.leadId).filter((x): x is string => !!x))] } },
+      orderBy: { leadAt: 'desc' },
+      select: { leadId: true, kind: true, saleStatus: true, followStatus: true, firstActionAt: true },
+    })
+    const stage = new Map<string, { kind: string; saleStatus: string; followStatus: string | null; waiting: boolean }>()
+    for (const s of stageRows) if (s.leadId && !stage.has(s.leadId)) stage.set(s.leadId, { kind: s.kind, saleStatus: s.saleStatus, followStatus: s.followStatus, waiting: !s.firstActionAt })
     const userNames = new Map((await this.prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.assignedUserId).filter((x): x is string => !!x))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
     // No monitoramento, quem atende cada conversa (vendedor da conversa ou os do número).
     const sellerName = q.monitor ? await this.sellerNames(user.tenantId) : null
@@ -337,6 +345,7 @@ export class ChatService {
         assignedUserName: r.assignedUserId ? (userNames.get(r.assignedUserId) ?? null) : null,
         sectorId: r.sectorId,
         labels: labels.get(r.id) ?? [],
+        stage: r.leadId ? (stage.get(r.leadId) ?? null) : null,
       })),
     }
   }
@@ -401,11 +410,39 @@ export class ChatService {
       number: number ? { id: number.id, name: number.name, phone: number.phone, status: number.status } : null,
       lead,
       record,
+      service: await this.serviceOf(user.tenantId, conv.leadId, conv.phone),
       hasMore: more,
       messages: rows
         .slice(0, PAGE)
         .reverse()
         .map((m) => ({ id: m.id, fromMe: m.fromMe, type: m.type, text: m.text, fileName: m.fileName, mime: m.mime, mediaStatus: m.mediaStatus, hasFile: !!m.fileId, sentAt: m.sentAt, sentByName: m.sentByName, status: m.status, internal: m.internal })),
+    }
+  }
+
+  /**
+   * Atendimento do contato para o chat: a pré-venda e o pós-venda mais recentes (com a fase) e o último vendedor
+   * que atendeu (do histórico de atendimentos ou do vendedor da conversa).
+   */
+  private async serviceOf(tenantId: string, leadId: string | null, phone: string | null) {
+    const or: Prisma.ServiceRecordWhereInput[] = [...(leadId ? [{ leadId }] : []), ...(phone ? [{ phone: { in: phoneVariants(phone) } }] : [])]
+    if (!or.length) return { pre: null, pos: null, lastSeller: null }
+    const rows = await this.prisma.serviceRecord.findMany({
+      where: { tenantId, deletedAt: null, OR: or },
+      orderBy: { leadAt: 'desc' },
+      take: 30,
+      select: { id: true, kind: true, leadAt: true, saleStatus: true, forwarded: true, returnStatus: true, firstActionAt: true, followStatus: true, dueAt: true, sellerId: true },
+    })
+    const sellerIds = [...new Set(rows.map((r) => r.sellerId).filter((x): x is string => !!x))]
+    const names = new Map((await this.prisma.seller.findMany({ where: { id: { in: sellerIds } }, select: { id: true, name: true } })).map((s) => [s.id, s.name]))
+    const pick = (kind: string) => {
+      const r = rows.find((x) => x.kind === kind)
+      return r ? { id: r.id, leadAt: r.leadAt, saleStatus: r.saleStatus, forwarded: r.forwarded, returnStatus: r.returnStatus, waiting: !r.firstActionAt, followStatus: r.followStatus, dueAt: r.dueAt, sellerName: r.sellerId ? (names.get(r.sellerId) ?? null) : null } : null
+    }
+    const withSeller = rows.find((r) => r.sellerId && names.has(r.sellerId))
+    return {
+      pre: pick('PRE_VENDAS'),
+      pos: pick('POS_VENDAS'),
+      lastSeller: withSeller ? { name: names.get(withSeller.sellerId!)!, at: withSeller.leadAt, kind: withSeller.kind } : null,
     }
   }
 

@@ -87,14 +87,14 @@ function fromLocalInput(v: string) {
   return new Date(`${v}:00-03:00`).toISOString()
 }
 
-function initial(kind: Kind, r: ServiceRecord | null): FormState {
+function initial(kind: Kind, r: ServiceRecord | null, prefill?: RecordPrefill): FormState {
   return {
     kind: r?.kind ?? kind,
     leadAt: toLocalInput(r?.leadAt ?? new Date().toISOString()),
-    name: r?.name ?? '',
+    name: r?.name ?? prefill?.name ?? '',
     customerCode: r?.customerCode ?? '',
-    phone: r?.phone ? formatPhone(r.phone) : '',
-    email: r?.email ?? '',
+    phone: r?.phone ? formatPhone(r.phone) : prefill?.phone ? formatPhone(prefill.phone) : '',
+    email: r?.email ?? prefill?.email ?? '',
     sellerId: r?.sellerId ?? null,
     unitId: r?.unitId ?? null,
     originId: r?.originId ?? null,
@@ -191,11 +191,18 @@ function OptionSelect({ id, value, onChange, items, placeholder = 'Selecione', d
   )
 }
 
-export function RecordSheet({ kind, record, onClose }: { kind: Kind; record: ServiceRecord | null; onClose: () => void }) {
+/** Dados para começar um atendimento novo (ex.: aberto pelo chat, com o nome e o telefone do contato). */
+export interface RecordPrefill {
+  name?: string | null
+  phone?: string | null
+  email?: string | null
+}
+
+export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; record: ServiceRecord | null; onClose: () => void; prefill?: RecordPrefill }) {
   const qc = useQueryClient()
   const { can } = useAuth()
   const options = useOptions()
-  const [form, setForm] = useState<FormState>(() => initial(kind, record))
+  const [form, setForm] = useState<FormState>(() => initial(kind, record, prefill))
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const module = KIND_INFO[record?.kind ?? kind].module

@@ -1,8 +1,9 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HeadsetIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
 import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
+import { type ChatService, LastSeller, ServiceButtons, StageBadge, type StageInfo } from '@/components/chat/atendimento-chat'
 import { type ChatLabel, LabelChip, LabelPicker, ManageRepliesDialog, useLabels } from '@/components/chat/organizar'
 import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
@@ -55,6 +56,8 @@ interface ConvItem {
   reminderAt?: string | null
   /** Etiquetas que este usuário vê (padrão da empresa e as pessoais dele). */
   labels?: ChatLabel[]
+  /** Fase do atendimento mais recente do contato (pré ou pós-venda). */
+  stage?: StageInfo | null
 }
 interface ListData {
   /** Prazos das cores de atraso de resposta (minutos desde a última mensagem do cliente). */
@@ -86,6 +89,8 @@ interface Thread {
   number: NumberRef | null
   attendance?: { split: boolean; sectors: { id: string; name: string }[]; attendants: { id: string; name: string }[] } | null
   lead: { id: string; name: string | null; email: string | null; phone: string | null } | null
+  /** Pré-venda e pós-venda mais recentes do contato e o último vendedor que atendeu. */
+  service?: ChatService
   record: { id: string; kind: 'PRE_VENDAS' | 'POS_VENDAS'; leadAt: string; saleStatus: string; adsVia: string | null; adsCampaign: string | null; adsCampaignId: string | null; entryChannel: string | null } | null
   hasMore: boolean
   messages: Message[]
@@ -329,8 +334,9 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                         )}
                         {c.unread > 0 && <Badge className="h-5 shrink-0 px-1.5 tabular-nums" aria-label={`${c.unread} não lidas`}>{c.unread}</Badge>}
                       </span>
-                      {(c.labels ?? []).length > 0 && (
+                      {((c.labels ?? []).length > 0 || c.stage) && (
                         <span className="mt-1 flex flex-wrap gap-1">
+                          {c.stage && (!c.category || c.category === 'CLIENTE') && <StageBadge stage={c.stage} />}
                           {c.labels!.map((l) => (
                             <LabelChip key={l.id} label={l} />
                           ))}
@@ -416,6 +422,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
                 <SmartphoneIcon className="size-3" /> {d.number.name}
               </span>
             )}
+            <LastSeller service={d.service} />
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -438,13 +445,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
               </Link>
             </Button>
           )}
-          {d.record && (
-            <Button asChild size="sm" variant="outline">
-              <Link to={`/${d.record.kind === 'PRE_VENDAS' ? 'pre-vendas' : 'pos-vendas'}?abrir=${d.record.id}`}>
-                <HeadsetIcon /> {d.record.kind === 'PRE_VENDAS' ? 'Pré-venda' : 'Pós-venda'}
-              </Link>
-            </Button>
-          )}
+          {d.conversation.category === 'CLIENTE' && <ServiceButtons service={d.service} contact={{ name: d.lead?.name ?? d.conversation.name, phone: d.conversation.phone, email: d.lead?.email }} />}
         </div>
         {d.record?.adsVia && (
           <p className="flex w-full items-center gap-1.5 text-xs text-sky-700 dark:text-sky-300">

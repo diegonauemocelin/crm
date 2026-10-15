@@ -359,7 +359,9 @@ export class CapturaService {
     })
     if (recent) return recent.id
     const lead = await this.prisma.lead.findUnique({ where: { id: leadId }, select: { name: true, email: true, phone: true, state: true, city: true, ownerId: true, unitId: true } })
-    const sellerId = ownerId ?? lead?.ownerId ?? null
+    // Sem vendedor definido: volta para quem atendeu este cliente da última vez (histórico de atendimentos).
+    const last = ownerId || lead?.ownerId ? null : await this.prisma.serviceRecord.findFirst({ where: { tenantId, leadId, deletedAt: null, sellerId: { not: null } }, orderBy: { leadAt: 'desc' }, select: { sellerId: true } })
+    const sellerId = ownerId ?? lead?.ownerId ?? last?.sellerId ?? null
     const seller = sellerId ? await this.prisma.seller.findFirst({ where: { id: sellerId, tenantId }, select: { id: true, unitId: true } }) : null
     const origin =
       (await this.prisma.lookupItem.findFirst({ where: { tenantId, type: 'ORIGEM', name: { equals: originName, mode: 'insensitive' } }, select: { id: true } })) ??

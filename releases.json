@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.42.0",
+      "date": "2026-10-16",
+      "title": "Pré e Pós-Vendas dentro do chat",
+      "changes": [
+        { "type": "novo", "area": "WhatsApp", "text": "Pré-Vendas e Pós-Vendas dentro do chat: botões no topo de cada conversa com a fase atual (aguardando atendimento, com o vendedor, vendeu, perdida, aguardando contato…). Abrem o atendimento num painel ao lado, sem sair do chat; sem atendimento, o botão abre uma pré-venda já com o nome e o telefone do contato." },
+        { "type": "novo", "area": "WhatsApp", "text": "A fase do atendimento aparece também na lista de conversas, abaixo do nome." },
+        { "type": "novo", "area": "WhatsApp", "text": "Último vendedor: a conversa mostra quem atendeu o cliente da última vez. A pré-venda criada sozinha pelo WhatsApp vai para esse vendedor quando o número não tem um vendedor fixo." }
+      ]
+    },
+    {
       "version": "0.41.0",
       "date": "2026-10-16",
       "title": "Etiquetas e respostas rápidas pessoais",
