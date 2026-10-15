@@ -1,5 +1,7 @@
 export type LayoutMode = 'MODERN' | 'CLASSIC'
 export type ThemeMode = 'LIGHT' | 'DARK' | 'SYSTEM'
+/** Modelo das telas: ATUAL (de sempre) ou NOVO (Minha fila, quadro de pré-vendas, chat com painel do cliente). */
+export type ScreenModel = 'ATUAL' | 'NOVO'
 export type Action = 'view' | 'create' | 'edit' | 'delete' | 'export'
 
 export interface ModuleDef {
@@ -30,6 +32,8 @@ export interface Me {
   mustChangePassword: boolean
   pending2faSetup: boolean
   layout: LayoutMode
+  /** Antes da versão 0.50 o servidor não mandava: vale ATUAL. */
+  screens?: ScreenModel
   theme: ThemeMode
   allowLayoutChoice: boolean
   lastLoginAt: string | null
@@ -49,6 +53,7 @@ export interface Branding {
   loginSubtitle: string
   defaultLayout: LayoutMode
   allowLayoutChoice: boolean
+  defaultScreens?: ScreenModel
   supportEmail: string
   logoUrl: string | null
   logoDarkUrl: string | null

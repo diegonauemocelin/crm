@@ -3,7 +3,8 @@ import { AlarmClockIcon, AlertCircleIcon, CheckCheckIcon, DownloadIcon, ArchiveI
 import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
-import { type ChatService, LastSeller, ServiceButtons, StageBadge, type StageInfo } from '@/components/chat/atendimento-chat'
+import { type ChatService, LastSeller, quickPrefill, ServiceButtons, StageBadge, type StageInfo } from '@/components/chat/atendimento-chat'
+import { ClientPanel } from '@/components/chat/painel-cliente'
 import { ToCallPanel } from '@/components/chat/para-chamar'
 import { type ChatLabel, LabelChip, LabelPicker, ManageRepliesDialog, useLabels } from '@/components/chat/organizar'
 import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -22,7 +23,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { api, errorMessage } from '@/lib/api'
 import { formatPhone, maskPhone, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
-import { setSoundOn, soundOn } from '@/lib/chat-alerts'
+import { setSoundOn, soundOn, useChatAlerts } from '@/lib/chat-alerts'
 import { cn } from '@/lib/utils'
 
 interface NumberRef {
@@ -136,6 +137,13 @@ function when(iso: string | null) {
   return dayKey(iso) === day.format(new Date()) ? time.format(new Date(iso)) : day.format(new Date(iso)).slice(0, 5)
 }
 
+/** Telas novas: painel do cliente, pré-venda rápida e "/" nas respostas; no layout Moderno, também as cores de espera. */
+function useScreens() {
+  const { me } = useAuth()
+  const novo = me?.screens === 'NOVO'
+  return { novo, colors: novo && me?.layout !== 'CLASSIC' }
+}
+
 /** Monitoramento (ler as conversas da equipe sem responder e sem marcar como lidas): a mídia usa a mesma regra. */
 const MonitorContext = createContext(false)
 
@@ -159,7 +167,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
   const [awaiting, setAwaiting] = useState(false)
   const [queue, setQueue] = useState(false)
   const [numberId, setNumberId] = useState<string | null>(null)
-  const [unread, setUnread] = useState(false)
+  const [unread, setUnread] = useState(() => params.get('naoLidas') === '1')
   const [archived, setArchived] = useState(false)
   const [withReminder, setWithReminder] = useState(false)
   const [category, setCategory] = useState<ContactCategory | null>(null)
@@ -167,6 +175,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
   const labels = useLabels()
   const [starting, setStarting] = useState(false)
   const { can } = useAuth()
+  const { novo, colors } = useScreens()
   const [search, setSearch] = useState('')
   const [q, setQ] = useState('')
   useEffect(() => {
@@ -238,7 +247,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
       {!toCall && list.isLoading && <TableSkeleton rows={6} />}
       {!toCall && list.error && <ErrorState error={list.error} onRetry={() => list.refetch()} />}
       {!toCall && list.data && (
-        <Card className="grid h-[calc(100dvh-13rem)] min-h-[28rem] grid-cols-1 gap-0 overflow-hidden p-0 md:grid-cols-[20rem_minmax(0,1fr)]">
+        <Card className={cn('grid h-[calc(100dvh-13rem)] min-h-[28rem] grid-cols-1 gap-0 overflow-hidden p-0 md:grid-cols-[20rem_minmax(0,1fr)]', novo && openId && 'xl:grid-cols-[20rem_minmax(0,1fr)_19rem]')}>
           <div className={cn('flex min-h-0 flex-col border-r', openId && 'hidden md:flex')}>
             <div className="space-y-2 border-b p-3">
               <div className="relative">
@@ -336,7 +345,12 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                   <button
                     type="button"
                     onClick={() => open(c.id)}
-                    className={cn('flex w-full items-start gap-3 border-b px-3 py-2.5 text-left hover:bg-muted/50', openId === c.id && 'bg-muted')}
+                    className={cn(
+                      'flex w-full items-start gap-3 border-b px-3 py-2.5 text-left hover:bg-muted/50',
+                      openId === c.id && (colors ? 'bg-[color:var(--brand)]/10 shadow-[inset_3px_0_0_var(--brand)]' : 'bg-muted'),
+                      colors && openId !== c.id && wc?.label === 'atrasada' && 'bg-orange-50 dark:bg-orange-500/10',
+                      colors && openId !== c.id && wc?.label === 'atenção' && 'bg-amber-50/70 dark:bg-amber-500/5',
+                    )}
                   >
                     <span className="relative mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
                       <UserIcon className="size-4" />
@@ -396,6 +410,11 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
               </div>
             )}
           </div>
+          {novo && openId && (
+            <div className="hidden min-h-0 xl:block">
+              <ClientPanel id={openId} monitor={monitor} />
+            </div>
+          )}
         </Card>
       )}
       <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -409,6 +428,9 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
   const { can } = useAuth()
   const mq = monitor ? 'monitorar=true' : ''
   const q = useQuery({ queryKey: ['chat-conversa', id, monitor], queryFn: () => api.get<Thread>(`/chat/conversas/${id}${mq ? `?${mq}` : ''}`), refetchInterval: 4000 })
+  const { novo, colors } = useScreens()
+  const options = useOptions()
+  const alerts = useChatAlerts().data
   const [older, setOlder] = useState<Message[]>([])
   const [loadingOlder, setLoadingOlder] = useState(false)
   const end = useRef<HTMLDivElement>(null)
@@ -465,7 +487,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          {d.conversation.category === 'CLIENTE' && <ServiceButtons service={d.service} contact={{ name: d.lead?.name ?? d.conversation.name, phone: d.conversation.phone, email: d.lead?.email }} />}
+          {d.conversation.category === 'CLIENTE' && <ServiceButtons service={d.service} contact={{ name: d.lead?.name ?? d.conversation.name, phone: d.conversation.phone, email: d.lead?.email }} prefill={novo ? () => quickPrefill({ name: d.lead?.name ?? d.conversation.name, phone: d.conversation.phone, email: d.lead?.email }, messages, options.data) : undefined} />}
           {!monitor && <LabelPicker conversationId={d.conversation.id} value={d.conversation.labels ?? []} />}
           {!monitor && <ReminderButton conversationId={d.conversation.id} />}
           {can('monitoramento', 'create') && <NoteButton conversationId={d.conversation.id} monitor={monitor} />}
@@ -515,7 +537,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
                 </div>
               ) : (
               <div className={cn('flex', m.fromMe ? 'justify-end' : 'justify-start')}>
-                <div className={cn('max-w-[85%] rounded-lg px-3 py-1.5 text-sm shadow-xs sm:max-w-[70%]', m.fromMe ? 'bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]' : 'bg-card')}>
+                <div className={cn('max-w-[85%] rounded-lg px-3 py-1.5 text-sm shadow-xs sm:max-w-[70%]', m.fromMe ? (colors ? 'bg-blue-100 text-slate-900 dark:bg-blue-900/60 dark:text-blue-50' : 'bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]') : cn('bg-card', colors && 'border'))}>
                   <Bubble m={m} />
                   <p className={cn('mt-0.5 text-right text-[11px] tabular-nums', m.fromMe ? 'opacity-70' : 'text-muted-foreground')}>
                     {m.fromMe && (m.sentByName ? `${m.sentByName} · ` : 'pelo celular · ')}
@@ -530,6 +552,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
         })}
         <div ref={end} />
       </div>
+      {colors && !monitor && d.conversation.category === 'CLIENTE' && <WaitingBar messages={messages} yellowMinutes={alerts?.waiting?.yellowMinutes} />}
       {monitor ? (
         <p className="flex items-center gap-2 border-t bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
           <EyeIcon className="size-4 shrink-0" /> Monitoramento: só leitura. O vendedor e o cliente não são avisados, e a conversa continua como não lida para quem atende.
@@ -539,6 +562,19 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
       )}
     </div>
     </MonitorContext.Provider>
+  )
+}
+
+/** Telas novas (Moderno): faixa laranja quando a última mensagem é do cliente e já passou do prazo amarelo. */
+function WaitingBar({ messages, yellowMinutes = 10 }: { messages: Message[]; yellowMinutes?: number }) {
+  const last = [...messages].reverse().find((m) => !m.internal)
+  if (!last || last.fromMe) return null
+  const min = Math.floor((Date.now() - Date.parse(last.sentAt)) / 60_000)
+  if (min < yellowMinutes || min > 7 * 1440) return null
+  return (
+    <p className="flex items-center gap-2 border-t border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-800 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300" role="status">
+      <AlarmClockIcon className="size-3.5" /> Cliente esperando resposta há {waitText(min)}
+    </p>
   )
 }
 
@@ -662,6 +698,10 @@ function Composer({ thread }: { thread: Thread }) {
   })
   const replies = useQuery({ queryKey: ['chat-respostas', id], queryFn: () => api.get<{ id: string; title: string; preview: string; standard: boolean }[]>(`/chat/respostas?conversa=${id}`), enabled: can('chat', 'create'), staleTime: 60_000 })
   const [managing, setManaging] = useState(false)
+  const { novo } = useScreens()
+  const [pick, setPick] = useState(0)
+  const slash = novo && !file && text.startsWith('/') && !text.includes('\n') ? text.slice(1).trim().toLowerCase() : null
+  const slashList = slash === null ? [] : (replies.data ?? []).filter((r) => !slash || r.title.toLowerCase().includes(slash) || r.preview.toLowerCase().includes(slash)).slice(0, 8)
   const send = useMutation({
     mutationFn: () => {
       if (file) {
@@ -690,6 +730,24 @@ function Composer({ thread }: { thread: Thread }) {
     send.mutate()
   }
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (slashList.length > 0) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        setPick((p) => (p + (e.key === 'ArrowDown' ? 1 : slashList.length - 1)) % slashList.length)
+        return
+      }
+      if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) {
+        e.preventDefault()
+        setText(slashList[Math.min(pick, slashList.length - 1)]!.preview)
+        setPick(0)
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setText('')
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault()
       submit()
@@ -697,7 +755,27 @@ function Composer({ thread }: { thread: Thread }) {
   }
   return (
     <>
-    <form onSubmit={submit} className="space-y-2 border-t p-2">
+    <form onSubmit={submit} className="relative space-y-2 border-t p-2">
+      {slash !== null && (
+        <div className="absolute bottom-full left-2 z-10 mb-1 w-[min(28rem,calc(100%-1rem))] rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg" role="listbox" aria-label="Respostas rápidas">
+          <p className="px-2 py-1 text-xs text-muted-foreground">Respostas rápidas · digite para filtrar, ↑↓ escolhe, Enter usa</p>
+          {slashList.length === 0 && <p className="px-2 py-1.5 text-sm text-muted-foreground">Nenhuma resposta com esse nome.</p>}
+          {slashList.map((r, i) => (
+            <button
+              key={r.id}
+              type="button"
+              role="option"
+              aria-selected={i === Math.min(pick, slashList.length - 1)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => (setText(r.preview), setPick(0))}
+              className={cn('flex w-full flex-col items-start rounded-md px-2 py-1.5 text-left text-sm', i === Math.min(pick, slashList.length - 1) ? 'bg-accent' : 'hover:bg-muted')}
+            >
+              <span className="font-medium">{r.title}</span>
+              <span className="line-clamp-1 text-xs text-muted-foreground">{r.preview}</span>
+            </button>
+          ))}
+        </div>
+      )}
       {file && (
         <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-2 py-1 text-xs">
           <PaperclipIcon className="size-3.5" />
@@ -746,11 +824,11 @@ function Composer({ thread }: { thread: Thread }) {
         </DropdownMenu>
         <Textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => (setText(e.target.value), setPick(0))}
           onKeyDown={onKey}
           rows={1}
           maxLength={file ? 1000 : 4000}
-          placeholder={file ? 'Legenda (opcional)' : 'Escreva a mensagem (Enter envia, Shift+Enter pula linha)'}
+          placeholder={file ? 'Legenda (opcional)' : novo ? 'Escreva a mensagem (Enter envia, / abre as respostas rápidas)' : 'Escreva a mensagem (Enter envia, Shift+Enter pula linha)'}
           className="max-h-40 min-h-9 flex-1 resize-none"
           aria-label="Mensagem"
         />

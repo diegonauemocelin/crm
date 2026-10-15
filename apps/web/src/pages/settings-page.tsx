@@ -3,7 +3,7 @@ import { CheckCircle2Icon, ImageIcon, Loader2Icon, PlugZapIcon, SendIcon, Trash2
 import { type FormEvent, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
-import { LayoutPicker } from '@/components/layout-picker'
+import { LayoutPicker, type ModelChoice } from '@/components/layout-picker'
 import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { applyBranding } from '@/lib/branding'
-import type { Branding, LayoutMode } from '@/lib/types'
+import type { Branding } from '@/lib/types'
 import { FormError } from './auth/auth-layout'
 import { MetaTab } from './settings/meta-tab'
 import { Ga4Tab } from './settings/ga4-tab'
@@ -276,11 +276,11 @@ function BrandingEditor({ data }: { data: Branding }) {
 function AppearanceTab() {
   const query = useBrandingSettings()
   const { canEdit, onSaved } = useSaveBranding()
-  const [layout, setLayout] = useState<LayoutMode | null>(null)
+  const [model, setModel] = useState<ModelChoice | null>(null)
   const [allow, setAllow] = useState<boolean | null>(null)
 
   const save = useMutation({
-    mutationFn: (b: Branding) => api.put<Branding>('/settings/branding', { ...pickForm(b), defaultLayout: layout ?? b.defaultLayout, allowLayoutChoice: allow ?? b.allowLayoutChoice }),
+    mutationFn: (b: Branding) => api.put<Branding>('/settings/branding', { ...pickForm(b), defaultLayout: model?.layout ?? b.defaultLayout, defaultScreens: model?.screens ?? b.defaultScreens ?? 'ATUAL', allowLayoutChoice: allow ?? b.allowLayoutChoice }),
     onSuccess: (b) => {
       onSaved(b)
       toast.success('Aparência salva.')
@@ -295,15 +295,15 @@ function AppearanceTab() {
   return (
     <Card className="max-w-3xl">
       <CardHeader>
-        <CardTitle>Layout padrão</CardTitle>
-        <CardDescription>Como o sistema aparece para quem ainda não escolheu um layout em Meu perfil.</CardDescription>
+        <CardTitle>Modelo padrão</CardTitle>
+        <CardDescription>Como o sistema aparece para quem ainda não escolheu um modelo em Meu perfil: layout Moderno ou Clássico, com as telas de sempre ou as telas novas.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <LayoutPicker value={layout ?? b.defaultLayout} onChange={setLayout} disabled={!canEdit} />
+        <LayoutPicker value={model ?? { layout: b.defaultLayout, screens: b.defaultScreens ?? 'ATUAL' }} onChange={setModel} disabled={!canEdit} />
         <label className="flex items-start justify-between gap-4 rounded-md border p-3 text-sm">
           <span>
-            <span className="font-medium">Permitir que cada usuário escolha o próprio layout</span>
-            <span className="block text-muted-foreground">Desligado: todos usam o layout padrão acima.</span>
+            <span className="font-medium">Permitir que cada usuário escolha o próprio modelo</span>
+            <span className="block text-muted-foreground">Desligado: todos usam o modelo padrão acima.</span>
           </span>
           <Switch checked={allow ?? b.allowLayoutChoice} onCheckedChange={setAllow} disabled={!canEdit} />
         </label>

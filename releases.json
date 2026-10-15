@@ -2,6 +2,21 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.50.0",
+      "date": "2026-10-16",
+      "title": "4 modelos de tela: Minha fila, quadro de pré-vendas e chat com painel do cliente",
+      "changes": [
+        { "type": "novo", "area": "Aparência", "text": "4 modelos para escolher em Meu perfil: Moderno, Clássico, Moderno com telas novas e Clássico com telas novas. O administrador define o modelo padrão em Configurações › Aparência e pode liberar ou não a escolha de cada um." },
+        { "type": "novo", "area": "Início", "text": "Telas novas: o início vira a \"Minha fila\", com o que precisa de você agora (clientes esperando resposta, pré-vendas novas, vendedor sem retorno e lembretes vencidos), na ordem de quem espera há mais tempo, com o botão de cada ação ao lado." },
+        { "type": "novo", "area": "Pré-Vendas", "text": "Telas novas: Pré-Vendas abre em quadro, com uma coluna por etapa (Nova, Com o vendedor, Vendedor retornou, Vendida e Perdida). Arrastar o cartão muda a etapa; Vendida e Perdida abrem a ficha para a nota fiscal, o valor ou o motivo. A lista continua na aba Lista." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Telas novas: painel do cliente fixo ao lado da conversa (em telas largas), com de onde ele veio, a pré-venda, a pós-venda, o último vendedor e as etiquetas." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Pré-venda rápida: abre já com nome, telefone, a marca e o tipo de peça citados pelo cliente e as últimas mensagens dele como observação. É só conferir e salvar." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Respostas rápidas pela barra: digite \"/\" no campo da mensagem, filtre pelo nome e escolha com as setas e o Enter." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Moderno com telas novas: cores de espera na lista de conversas, balão azul nas mensagens enviadas e a faixa laranja \"Cliente esperando resposta\" na conversa." },
+        { "type": "novo", "area": "Base de leads", "text": "Telas novas: visões salvas em Leads e na lista de Pré-Vendas. Aplique os filtros, clique em \"Salvar esta visão\" e dê um nome; a visão aparece como aba, só para você, em qualquer computador." }
+      ]
+    },
+    {
       "version": "0.49.0",
       "date": "2026-10-16",
       "title": "Colunas e layout arrastando no e-mail",

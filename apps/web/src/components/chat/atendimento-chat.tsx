@@ -2,10 +2,10 @@ import { useQueryClient } from '@tanstack/react-query'
 import { ClipboardListIcon, HeadsetIcon, Loader2Icon, UserCheckIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { RecordSheet } from '@/components/atendimento/record-sheet'
+import { type RecordPrefill, RecordSheet } from '@/components/atendimento/record-sheet'
 import { Button } from '@/components/ui/button'
 import { api, errorMessage } from '@/lib/api'
-import { FOLLOW_LABEL, type FollowStatus, type Kind, SALE_LABEL, type SaleStatus, type ServiceRecord } from '@/lib/atendimento'
+import { FOLLOW_LABEL, type FollowStatus, type Kind, type Options, SALE_LABEL, type SaleStatus, type ServiceRecord } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 
@@ -31,6 +31,28 @@ export interface ChatService {
   pre: ServiceItem | null
   pos: ServiceItem | null
   lastSeller: { name: string; at: string; kind: string } | null
+}
+
+const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+/**
+ * Pré-venda rápida (telas novas): nome e telefone do contato, mais as marcas e os tipos de peça citados nas mensagens
+ * do cliente (pelos nomes cadastrados em Cadastros) e as últimas mensagens dele como observação. Quem atende confere.
+ */
+export function quickPrefill(
+  contact: { name: string | null; phone: string | null; email?: string | null },
+  messages: { fromMe: boolean; internal?: boolean; text: string | null }[],
+  options: Options | undefined,
+): RecordPrefill & { found: number } {
+  const said = messages.filter((m) => !m.fromMe && !m.internal && m.text?.trim()).slice(-10)
+  const text = ` ${norm(said.map((m) => m.text).join(' '))} `
+  const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = (list: { id: string; name: string; active: boolean }[] = []) =>
+    list.filter((o) => o.active && o.name.trim().length >= 2 && new RegExp(`[^a-z0-9]${escape(norm(o.name.trim()))}[^a-z0-9]`).test(text)).map((o) => o.id)
+  const brandIds = match(options?.brands)
+  const partTypeIds = match(options?.partTypes)
+  const notes = said.slice(-3).map((m) => m.text!.trim()).join(' / ').slice(0, 1000)
+  return { name: contact.name, phone: contact.phone, email: contact.email ?? null, brandIds, partTypeIds, notes, found: brandIds.length + partTypeIds.length }
 }
 
 const dateFmt = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: '2-digit' })
@@ -61,7 +83,7 @@ export function StageBadge({ stage }: { stage: StageInfo }) {
 }
 
 /** Botões Pré-Vendas e Pós-Vendas no topo da conversa, com a fase; abrem o atendimento num painel ao lado. */
-export function ServiceButtons({ service, contact }: { service: ChatService | undefined; contact: { name: string | null; phone: string | null; email?: string | null } }) {
+export function ServiceButtons({ service, contact, prefill }: { service: ChatService | undefined; contact: { name: string | null; phone: string | null; email?: string | null }; prefill?: () => RecordPrefill }) {
   const { can } = useAuth()
   const qc = useQueryClient()
   const [open, setOpen] = useState<{ kind: Kind; record: ServiceRecord | null } | null>(null)
@@ -102,7 +124,7 @@ export function ServiceButtons({ service, contact }: { service: ChatService | un
           <span className={cn('rounded px-1 text-[11px] font-medium', stageTone({ kind: 'POS_VENDAS', ...pos }))}>{stageText({ kind: 'POS_VENDAS', ...pos })}</span>
         </Button>
       )}
-      {open && <RecordSheet kind={open.kind} record={open.record} onClose={close} prefill={open.record ? undefined : { name: contact.name, phone: contact.phone, email: contact.email ?? null }} />}
+      {open && <RecordSheet kind={open.kind} record={open.record} onClose={close} prefill={open.record ? undefined : (prefill?.() ?? { name: contact.name, phone: contact.phone, email: contact.email ?? null })} />}
     </>
   )
 }

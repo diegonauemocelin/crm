@@ -14,6 +14,8 @@ export interface BrandingSettings {
   loginSubtitle: string
   defaultLayout: 'MODERN' | 'CLASSIC'
   allowLayoutChoice: boolean
+  /** Modelo das telas padrão: ATUAL ou NOVO (Minha fila, quadro de pré-vendas, chat com painel). */
+  defaultScreens: 'ATUAL' | 'NOVO'
   supportEmail: string
 }
 
@@ -44,6 +46,7 @@ export const DEFAULT_BRANDING: BrandingSettings = {
   loginSubtitle: 'Acesse sua conta para continuar.',
   defaultLayout: 'MODERN',
   allowLayoutChoice: true,
+  defaultScreens: 'ATUAL',
   supportEmail: '',
 }
 

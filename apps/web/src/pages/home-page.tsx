@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
+import { MinhaFila } from './minha-fila'
 
 const PHASES = [
   { n: 1, title: 'Fundação', text: 'Acesso seguro, 2FA, perfis, whitelabel, auditoria, layouts e atualizações.' },
@@ -33,6 +34,8 @@ export function HomePage() {
   const { me, can } = useAuth()
   const { data: version } = useVersion()
   if (!me) return null
+  // Telas novas: o início é a Minha fila.
+  if (me.screens === 'NOVO') return <MinhaFila />
 
   return (
     <div>

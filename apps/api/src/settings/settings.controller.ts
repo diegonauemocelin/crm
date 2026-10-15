@@ -11,7 +11,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
-import { ApiProperty, ApiTags } from '@nestjs/swagger'
+import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
 import { IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator'
@@ -35,6 +35,7 @@ class BrandingDto {
   @ApiProperty() @IsString() @MaxLength(160) loginSubtitle!: string
   @ApiProperty({ enum: ['MODERN', 'CLASSIC'] }) @IsIn(['MODERN', 'CLASSIC']) defaultLayout!: 'MODERN' | 'CLASSIC'
   @ApiProperty() @IsBoolean() allowLayoutChoice!: boolean
+  @ApiPropertyOptional({ enum: ['ATUAL', 'NOVO'] }) @IsOptional() @IsIn(['ATUAL', 'NOVO']) defaultScreens?: 'ATUAL' | 'NOVO'
   @ApiProperty() @ValidateIf((o: BrandingDto) => o.supportEmail !== '') @IsEmail() supportEmail!: string
 }
 

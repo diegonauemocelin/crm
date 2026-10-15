@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { Can, EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { SavedViews } from '@/components/saved-views'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -71,7 +72,7 @@ export function LeadsPage() {
 function LeadsContent() {
   const qc = useQueryClient()
   const navigate = useNavigate()
-  const { can } = useAuth()
+  const { can, me } = useAuth()
   const options = useOptions()
   const tags = useTags()
   const names = useMemo(() => namesOf(options.data), [options.data])
@@ -167,6 +168,10 @@ function LeadsContent() {
           </>
         }
       />
+
+      {me?.screens === 'NOVO' && (
+        <SavedViews screen="leads" builtIn={[...(me.seller ? [{ name: 'Meus', query: `ownerId=${me.seller.id}` }] : []), { name: 'Com telefone', query: 'hasPhone=true' }]} />
+      )}
 
       {/* Resumo do funil: cada estágio é um atalho de filtro. */}
       <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4" role="group" aria-label="Leads por estágio do funil">

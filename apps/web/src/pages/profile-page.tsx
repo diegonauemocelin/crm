@@ -17,7 +17,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useTheme } from '@/lib/theme'
-import type { LayoutMode, Me, ThemeMode } from '@/lib/types'
+import type { LayoutMode, Me, ScreenModel, ThemeMode } from '@/lib/types'
 import { FormError } from './auth/auth-layout'
 import { PasswordRules } from './auth/password-pages'
 
@@ -160,7 +160,7 @@ function AppearanceCard({ me }: { me: Me }) {
   const qc = useQueryClient()
   const { theme, setTheme } = useTheme()
 
-  const savePref = async (body: { layout?: LayoutMode; theme?: ThemeMode }) => {
+  const savePref = async (body: { layout?: LayoutMode; theme?: ThemeMode; screens?: ScreenModel }) => {
     try {
       qc.setQueryData(['me'], await api.patch<Me>('/me/preferences', body))
     } catch (err) {
@@ -173,11 +173,11 @@ function AppearanceCard({ me }: { me: Me }) {
       <CardHeader>
         <CardTitle>Aparência</CardTitle>
         <CardDescription>
-          {me.allowLayoutChoice ? 'Escolha o layout e o tema. A preferência vale em qualquer computador.' : 'O administrador definiu um layout único para todos. Você ainda pode escolher o tema.'}
+          {me.allowLayoutChoice ? 'Escolha um dos 4 modelos (layout e telas) e o tema. A preferência vale em qualquer computador.' : 'O administrador definiu um layout único para todos. Você ainda pode escolher o tema.'}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <LayoutPicker value={me.layout} onChange={(layout) => savePref({ layout })} disabled={!me.allowLayoutChoice} />
+        <LayoutPicker value={{ layout: me.layout, screens: me.screens ?? 'ATUAL' }} onChange={(m) => savePref(m)} disabled={!me.allowLayoutChoice} />
         <div>
           <p className="mb-2 text-sm font-medium">Tema</p>
           <RadioGroup

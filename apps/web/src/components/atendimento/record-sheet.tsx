@@ -102,15 +102,15 @@ function initial(kind: Kind, r: ServiceRecord | null, prefill?: RecordPrefill): 
     country: r?.country ?? 'BR',
     state: r?.state ?? null,
     city: r?.city ?? '',
-    brandIds: r?.brandIds ?? [],
-    partTypeIds: r?.partTypeIds ?? [],
+    brandIds: r?.brandIds ?? prefill?.brandIds ?? [],
+    partTypeIds: r?.partTypeIds ?? prefill?.partTypeIds ?? [],
     forwarded: r?.forwarded ?? false,
     returnStatus: r?.returnStatus ?? null,
     saleStatus: r?.saleStatus ?? 'NEGOCIACAO',
     lostReasonId: r?.lostReasonId ?? null,
     invoiceNumber: r?.invoiceNumber ?? '',
     saleValue: r?.saleValue ?? null,
-    notes: r?.notes ?? '',
+    notes: r?.notes ?? prefill?.notes ?? '',
     followStatus: r?.followStatus ?? null,
     followNote: r?.followNote ?? '',
   }
@@ -196,6 +196,10 @@ export interface RecordPrefill {
   name?: string | null
   phone?: string | null
   email?: string | null
+  /** Pré-venda rápida do chat: marca, tipo de peça e observação tirados das mensagens do cliente. */
+  brandIds?: string[]
+  partTypeIds?: string[]
+  notes?: string
 }
 
 export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; record: ServiceRecord | null; onClose: () => void; prefill?: RecordPrefill }) {

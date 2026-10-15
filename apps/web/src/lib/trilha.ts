@@ -43,10 +43,10 @@ export const TRAIL: TrailModule[] = [
       },
       {
         id: 'perfil.preferencias',
-        title: 'Seu nome, foto, tema e layout',
+        title: 'Seu nome, foto, tema e modelo das telas',
         steps: [
           'Em Meu perfil, ajuste seu nome e a foto.',
-          'Escolha o tema (claro, escuro ou do sistema) e, se liberado, o layout: Moderno (menu ao lado) ou Clássico (menu no topo).',
+          'Escolha o tema (claro, escuro ou do sistema) e, se liberado, um dos 4 modelos: Moderno (menu ao lado) ou Clássico (menu no topo), com as telas de sempre ou com as telas novas (Minha fila, quadro de pré-vendas e chat com painel do cliente).',
           'Se você usa o chat, defina como seu nome aparece nas mensagens do WhatsApp (ex.: Diego - Vendas).',
         ],
       },

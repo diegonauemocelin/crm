@@ -54,6 +54,7 @@ import { cn } from '@/lib/utils'
 import { useAttendanceAlerts } from '@/components/layout/alerts-bell'
 import { ClearDialog } from './clear-dialog'
 import { ImportDialog } from './import-dialog'
+import { SavedViews } from '@/components/saved-views'
 import { RecordSheet } from './record-sheet'
 
 const ALL = '__all__'
@@ -213,6 +214,12 @@ export function RecordsList({ kind }: { kind: Kind }) {
 
   return (
     <>
+      {me?.screens === 'NOVO' && kind === 'PRE_VENDAS' && (
+        <SavedViews
+          screen="pre-vendas"
+          builtIn={[...(me.seller ? [{ name: 'Meus', query: `sellerId=${me.seller.id}` }] : []), { name: 'Esperando atendimento', query: 'waiting=true' }, { name: 'Vendedor sem retorno', query: 'overdue=true' }]}
+        />
+      )}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="relative min-w-56 flex-1">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />

@@ -10,6 +10,7 @@ import { cleanSignature } from '../whatsapp/envio'
 import { AuthService } from './auth.service'
 import { hashPassword, passwordProblems, verifyPassword } from './password'
 import { SecurityService } from './security.service'
+import { cleanViews, readViews, type ViewScreen } from './visoes'
 
 @Injectable()
 export class AccountService {
@@ -27,6 +28,8 @@ export class AccountService {
     // Vendedor ligado ao login: define a base de quem tem perfil "somente os próprios".
     const seller = await this.prisma.seller.findUnique({ where: { userId: user.id }, select: { id: true, name: true } })
     const layout = branding.allowLayoutChoice ? (row.layout ?? branding.defaultLayout) : branding.defaultLayout
+    const defaultScreens = branding.defaultScreens === 'NOVO' ? 'NOVO' : 'ATUAL'
+    const screens = branding.allowLayoutChoice && (row.screens === 'NOVO' || row.screens === 'ATUAL') ? row.screens : defaultScreens
     return {
       id: row.id,
       name: row.name,
@@ -37,6 +40,7 @@ export class AccountService {
       mustChangePassword: row.mustChangePassword,
       pending2faSetup: user.pending2faSetup,
       layout,
+      screens,
       theme: row.theme,
       allowLayoutChoice: branding.allowLayoutChoice,
       lastLoginAt: row.lastLoginAt,
@@ -47,8 +51,8 @@ export class AccountService {
     }
   }
 
-  async updatePreferences(user: AuthUser, prefs: { layout?: LayoutMode; theme?: ThemeMode }) {
-    if (prefs.layout) {
+  async updatePreferences(user: AuthUser, prefs: { layout?: LayoutMode; theme?: ThemeMode; screens?: 'ATUAL' | 'NOVO' }) {
+    if (prefs.layout || prefs.screens) {
       const branding = await this.settings.branding(user.tenantId)
       if (!branding.allowLayoutChoice) throw new ForbiddenException('O administrador definiu um layout fixo para todos.')
     }
@@ -62,6 +66,21 @@ export class AccountService {
     await this.prisma.user.update({ where: { id: user.id }, data: { name: name.trim(), ...(signature !== undefined ? { chatSignature: signature } : {}) } })
     await this.audit.byUser(user, ctx, 'me.profile_updated', 'user', user.id, { name, ...(signature !== undefined ? { nomeNoWhatsapp: signature } : {}) })
     return this.profile(user)
+  }
+
+  /** Visões salvas de uma tela (só deste usuário). */
+  async views(user: AuthUser, screen: ViewScreen) {
+    const row = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { savedViews: true } })
+    return readViews(row.savedViews, screen)
+  }
+
+  async saveViews(user: AuthUser, screen: ViewScreen, input: unknown) {
+    const r = cleanViews(input)
+    if ('error' in r) throw new BadRequestException(r.error)
+    const row = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { savedViews: true } })
+    const all = row.savedViews && typeof row.savedViews === 'object' && !Array.isArray(row.savedViews) ? (row.savedViews as Record<string, unknown>) : {}
+    await this.prisma.user.update({ where: { id: user.id }, data: { savedViews: { ...all, [screen]: r.views } as object } })
+    return r.views
   }
 
   async trail(user: AuthUser) {

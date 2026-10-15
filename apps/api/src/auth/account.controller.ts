@@ -1,7 +1,7 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Res, UploadedFile, UseInterceptors } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseEnumPipe, ParseUUIDPipe, Patch, Post, Put, Res, UploadedFile, UseInterceptors } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
-import { IsBoolean, IsEnum, IsOptional, IsString, Length, MaxLength, ValidateIf } from 'class-validator'
+import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsIn, IsOptional, IsString, Length, MaxLength, ValidateIf } from 'class-validator'
 import type { Response } from 'express'
 import { env } from '../config/env'
 import { AllowPending2fa, CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
@@ -12,10 +12,18 @@ import { AccountService } from './account.service'
 import { ChangePasswordDto } from './auth.dto'
 import { ACCESS_COOKIE } from './cookies'
 import { SecurityService } from './security.service'
+import { VIEW_SCREENS, type ViewScreen } from './visoes'
+
+const VIEW_SCREENS_ENUM = Object.fromEntries(VIEW_SCREENS.map((s) => [s, s]))
 
 class PreferencesDto {
   @ApiProperty({ enum: LayoutMode, required: false }) @IsOptional() @IsEnum(LayoutMode) layout?: LayoutMode
   @ApiProperty({ enum: ThemeMode, required: false }) @IsOptional() @IsEnum(ThemeMode) theme?: ThemeMode
+  @ApiProperty({ enum: ['ATUAL', 'NOVO'], required: false }) @IsOptional() @IsIn(['ATUAL', 'NOVO']) screens?: 'ATUAL' | 'NOVO'
+}
+
+class ViewsDto {
+  @ApiProperty({ description: 'Lista completa das visões da tela: [{ id?, name, query }]' }) @IsArray() @ArrayMaxSize(20) views!: unknown[]
 }
 
 class LessonDto {
@@ -59,6 +67,17 @@ export class AccountController {
   @Patch('preferences')
   preferences(@CurrentUser() user: AuthUser, @Body() dto: PreferencesDto) {
     return this.account.updatePreferences(user, dto)
+  }
+
+  /** Visões salvas (telas novas): filtros guardados com um nome, só para mim. */
+  @Get('visoes/:tela')
+  views(@CurrentUser() user: AuthUser, @Param('tela', new ParseEnumPipe(VIEW_SCREENS_ENUM)) screen: ViewScreen) {
+    return this.account.views(user, screen)
+  }
+
+  @Put('visoes/:tela')
+  saveViews(@CurrentUser() user: AuthUser, @Param('tela', new ParseEnumPipe(VIEW_SCREENS_ENUM)) screen: ViewScreen, @Body() dto: ViewsDto) {
+    return this.account.saveViews(user, screen, dto.views)
   }
 
   /** Trilha de conhecimento: lições concluídas por mim. */
