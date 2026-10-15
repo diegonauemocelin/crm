@@ -11,7 +11,11 @@ export interface ChatAlerts {
   latest: { conversationId: string; name: string; preview: string | null; at: string | null } | null
   dueReminders: { id: string; conversationId: string; name: string; note: string | null; dueAt: string; notified: boolean }[]
   upcomingReminders: number
+  /** Clientes esperando resposta além do prazo amarelo (últimas 24 h), os mais antigos primeiro. */
+  waiting?: { yellowMinutes: number; redMinutes: number; count: number; red: number; items: { conversationId: string; name: string; preview: string | null; since: string }[] }
 }
+
+const waitText = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60 ? `${m % 60} min` : ''}`.trim())
 
 const SOUND_KEY = 'crm-chat-som'
 
@@ -96,6 +100,8 @@ export function ChatNotifier() {
   const lastAt = useRef<string | null | undefined>(undefined)
   const lastCount = useRef(0)
   const shown = useRef(new Set<string>())
+  /** Último aviso de "sem resposta" de cada conversa (mensagem + nível), para não repetir a cada consulta. */
+  const waitShown = useRef(new Map<string, string>())
   const d = alerts.data
 
   // Contador no título da aba.
@@ -140,6 +146,37 @@ export function ChatNotifier() {
       void api.post(`/chat/lembretes/${r.id}/avisado`).catch(() => undefined)
     }
   }, [d, navigate, qc])
+
+  // Cliente sem resposta: avisa ao passar do prazo amarelo, de novo ao ficar vermelho e, enquanto continuar
+  // vermelho, a cada 30 minutos. Vários de uma vez viram um aviso só.
+  useEffect(() => {
+    const w = d?.waiting
+    if (!w) return
+    const now = Date.now()
+    const fresh: { conversationId: string; name: string; preview: string | null; min: number; red: boolean }[] = []
+    const seen = new Set<string>()
+    for (const c of w.items) {
+      seen.add(c.conversationId)
+      const min = Math.max(0, Math.floor((now - Date.parse(c.since)) / 60_000))
+      const red = min >= w.redMinutes
+      const key = `${c.since}|${red ? `r${Math.floor((min - w.redMinutes) / 30)}` : 'y'}`
+      if (waitShown.current.get(c.conversationId) === key) continue
+      waitShown.current.set(c.conversationId, key)
+      fresh.push({ ...c, min, red })
+    }
+    for (const id of [...waitShown.current.keys()]) if (!seen.has(id)) waitShown.current.delete(id)
+    if (!fresh.length) return
+    beep()
+    const red = fresh.some((x) => x.red)
+    const first = fresh[0]!
+    const open = () => navigate(`/chat?conversa=${first.conversationId}`)
+    const title = fresh.length === 1 ? `${first.name} está sem resposta há ${waitText(first.min)}` : `${fresh.length} clientes sem resposta no WhatsApp`
+    const description = fresh.length === 1 ? (first.preview ?? undefined) : `O mais antigo: ${first.name}, há ${waitText(first.min)}.`
+    systemNotify(title, description ?? 'Cliente esperando resposta.', open, `espera-${first.conversationId}`)
+    const opts = { id: `espera-${fresh.map((x) => x.conversationId).join('-')}`, description, action: { label: 'Responder', onClick: open }, duration: red ? 60_000 : 15_000 }
+    if (red) toast.error(title, opts)
+    else toast.warning(title, opts)
+  }, [d, navigate])
 
   return null
 }

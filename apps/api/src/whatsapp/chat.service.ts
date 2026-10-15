@@ -850,7 +850,19 @@ export class ChatService {
       this.prisma.whatsappReminder.findMany({ where: { userId: user.id, doneAt: null, dueAt: { lte: new Date() } }, orderBy: { dueAt: 'asc' }, take: 20, include: { conversation: { select: { id: true, name: true, phone: true, leadId: true } } } }),
       this.prisma.whatsappReminder.count({ where: { userId: user.id, doneAt: null, dueAt: { gt: new Date() } } }),
     ])
-    const leadIds = [latest?.leadId, ...due.map((r) => r.conversation.leadId)].filter((x): x is string => !!x)
+    // Clientes esperando resposta além do prazo amarelo (mesmas cores da lista do chat). Só as últimas 24 horas:
+    // conversa parada há dias não vira alarme a cada consulta.
+    const rules = await this.rules(user.tenantId)
+    const now = Date.now()
+    const waitWhere = {
+      AND: [scope, { status: 'ABERTA', lastFromMe: false, category: 'CLIENTE' }, { lastMessageAt: { lte: new Date(now - rules.yellowMinutes * 60_000), gte: new Date(now - 24 * 3_600_000) } }],
+    }
+    const [waitCount, redCount, waitList] = await Promise.all([
+      this.prisma.whatsappConversation.count({ where: waitWhere }),
+      this.prisma.whatsappConversation.count({ where: { AND: [waitWhere, { lastMessageAt: { lte: new Date(now - rules.redMinutes * 60_000) } }] } }),
+      this.prisma.whatsappConversation.findMany({ where: waitWhere, orderBy: { lastMessageAt: 'asc' }, take: 10, select: { id: true, name: true, phone: true, lastPreview: true, lastMessageAt: true, leadId: true } }),
+    ])
+    const leadIds = [latest?.leadId, ...due.map((r) => r.conversation.leadId), ...waitList.map((c) => c.leadId)].filter((x): x is string => !!x)
     const names = new Map((await this.prisma.lead.findMany({ where: { id: { in: leadIds } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]))
     const nameOf = (c: { name: string | null; phone: string | null; leadId: string | null }) => (c.leadId && names.get(c.leadId)) || c.name || c.phone || 'Contato'
     return {
@@ -859,6 +871,13 @@ export class ChatService {
       latest: latest ? { conversationId: latest.id, name: nameOf(latest), preview: latest.lastPreview, at: latest.lastMessageAt } : null,
       dueReminders: due.map((r) => ({ id: r.id, conversationId: r.conversationId, name: nameOf(r.conversation), note: r.note, dueAt: r.dueAt, notified: !!r.notifiedAt })),
       upcomingReminders: upcoming,
+      waiting: {
+        yellowMinutes: rules.yellowMinutes,
+        redMinutes: rules.redMinutes,
+        count: waitCount,
+        red: redCount,
+        items: waitList.map((c) => ({ conversationId: c.id, name: nameOf(c), preview: c.lastPreview, since: c.lastMessageAt })),
+      },
     }
   }
 

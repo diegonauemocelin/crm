@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.39.0",
+      "date": "2026-10-16",
+      "title": "Aviso de cliente sem resposta",
+      "changes": [
+        { "type": "novo", "area": "WhatsApp", "text": "Aviso de cliente sem resposta: em qualquer tela, com som e notificação do navegador, quando a última mensagem do cliente passa do prazo amarelo; de novo ao ficar vermelha e, enquanto continuar vermelha, a cada 30 minutos. Usa os mesmos prazos das cores do chat (regras do WhatsApp)." }
+      ]
+    },
+    {
       "version": "0.38.4",
       "date": "2026-10-16",
       "title": "Lote aceito sem os eventos recusados",
