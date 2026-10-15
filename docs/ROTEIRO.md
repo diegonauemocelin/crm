@@ -26,4 +26,4 @@ Ordem definida em 14/10/2026. Cada item vira uma versão (ou mais), publicada e 
 - Backup fora da VPS (Google Drive), login SSH por chave, atualizações e reinício da VPS: comandos já passados.
 - Aumentar a VPS para 4 GB e liberar 5 números conectados no WhatsApp.
 - WhatsApp: confirmação de entrega/leitura, mensagem de ausência, horário comercial configurável, prazo de guarda das conversas (LGPD).
-- LPs do Paraná e da Hyundai ainda com formulário do RD Station.
+- LPs do Paraná e da Hyundai ainda com formulário do RD Station: o usuário vai alterar depois (aguardar ele pedir).
