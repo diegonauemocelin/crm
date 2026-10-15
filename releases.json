@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.47.1",
+      "date": "2026-10-16",
+      "title": "Botão de WhatsApp personalizável no e-mail",
+      "changes": [
+        { "type": "correcao", "area": "Email marketing", "text": "Botão de WhatsApp do e-mail personalizável: cor do botão e do texto, tamanho, fonte, canto, ícone e largura total (as opções já existiam no botão comum, faltavam no do WhatsApp)." }
+      ]
+    },
+    {
       "version": "0.47.0",
       "date": "2026-10-16",
       "title": "Duplicar, vídeo e botões no e-mail",

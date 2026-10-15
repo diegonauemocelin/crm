@@ -1672,10 +1672,13 @@ function InspectorFields({ block: b, numbers, disabled, onChange, onPickImage }:
           <Field label="Mensagem que já vem escrita" htmlFor="w-msg" hint="O cliente só precisa tocar em enviar no WhatsApp.">
             <Textarea id="w-msg" rows={3} maxLength={500} value={b.message ?? ''} onChange={(e) => onChange({ ...b, message: e.target.value })} disabled={disabled} />
           </Field>
+          <ColorField label="Cor do botão" value={b.color} fallback="#25D366" onChange={(color) => onChange({ ...b, color })} disabled={disabled} />
+          <ColorField label="Cor do texto" value={b.textColor} fallback="#ffffff" onChange={(textColor) => onChange({ ...b, textColor })} disabled={disabled} />
           <div className="flex items-center justify-between">
             <Label className="text-sm font-normal">Posição</Label>
             <AlignPick value={b.align ?? 'center'} onChange={(align) => onChange({ ...b, align })} disabled={disabled} />
           </div>
+          <ButtonStyleFields value={b} onChange={(s) => onChange({ ...b, ...s })} disabled={disabled} />
         </div>
       )
     }
