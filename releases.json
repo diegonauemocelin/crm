@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.47.0",
+      "date": "2026-10-16",
+      "title": "Duplicar, vídeo e botões no e-mail",
+      "changes": [
+        { "type": "novo", "area": "Email marketing", "text": "Duplicar escolhendo o destino: campanha (envio para um segmento) ou e-mail de fluxo (automações). Serve para passar um e-mail criado no lugar errado para o certo, sem refazer." },
+        { "type": "novo", "area": "Email marketing", "text": "Bloco de vídeo do YouTube: cole o link e o e-mail mostra a capa do vídeo com \"Assistir ao vídeo\"; ao clicar, abre no YouTube (nenhum programa de e-mail toca vídeo dentro do e-mail)." },
+        { "type": "novo", "area": "Email marketing", "text": "Botões personalizáveis: cor, cor do texto, tamanho (pequeno, médio, grande), fonte, canto (reto a pílula), ícone e largura total. O botão de WhatsApp também ganhou cores e estilo." },
+        { "type": "novo", "area": "Email marketing", "text": "Ícones (emojis) para usar nos botões e no meio dos textos, pelo botão de ícone na barra de formatação." }
+      ]
+    },
+    {
       "version": "0.46.0",
       "date": "2026-10-16",
       "title": "Regiões e espaçamento no e-mail",

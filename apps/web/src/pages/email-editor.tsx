@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  PlayIcon,
+  SmileIcon,
   AlignCenterIcon,
   AlignJustifyIcon,
   AlignLeftIcon,
@@ -86,7 +88,7 @@ import {
   productItem,
   type ProductSearch,
   type Segment,
-  type WhatsappNumber, SOCIAL_LABEL, SOCIAL_NETWORKS, SOCIAL_PLACEHOLDER, socialIcon, type ColumnContent, type TextAlign } from '@/lib/email'
+  type WhatsappNumber, type ButtonStyle, BUTTON_SIZES, EMAIL_FONTS, EMAIL_ICONS, youtubeId, SOCIAL_LABEL, SOCIAL_NETWORKS, SOCIAL_PLACEHOLDER, socialIcon, type ColumnContent, type TextAlign } from '@/lib/email'
 import { cleanRich, legacyToHtml } from '@/lib/rich-text'
 import { cn } from '@/lib/utils'
 import { Switch } from '@/components/ui/switch'
@@ -127,6 +129,7 @@ const BLOCK_ICON: Record<BlockType, typeof TypeIcon> = {
   texto: TypeIcon,
   colunas: Columns2Icon,
   imagem: ImageIcon,
+  video: PlayIcon,
   botao: MousePointerClickIcon,
   whatsapp: MessageCircleIcon,
   produtos: ShoppingBagIcon,
@@ -749,15 +752,44 @@ function BlockView({ block: b, brand, editing, onChange }: { block: Block; brand
     case 'botao':
     case 'whatsapp': {
       const wa = b.type === 'whatsapp'
+      const size = BUTTON_SIZES[b.size ?? 'M']
       return (
-        <div className="flex px-8 py-4" style={{ justifyContent: justify(b.align, 'center') }}>
+        <div className="flex px-8" style={{ justifyContent: justify(b.align, 'center'), paddingTop: b.space ?? 16, paddingBottom: b.space ?? 16 }}>
           <span
-            className="inline-flex items-center gap-2 rounded-md px-7 py-3 text-[15px] font-bold"
-            style={{ background: wa ? '#25D366' : (b.color ?? brand), color: wa ? '#ffffff' : (b.textColor ?? '#ffffff') }}
+            className={cn('items-center justify-center gap-2 font-bold', b.full ? 'flex w-full' : 'inline-flex')}
+            style={{
+              background: b.color ?? (wa ? '#25D366' : brand),
+              color: b.textColor ?? '#ffffff',
+              padding: size.pad,
+              fontSize: size.font,
+              borderRadius: b.radius ?? 6,
+              fontFamily: EMAIL_FONTS.find((x) => x.id === b.font)?.css ?? 'Arial,Helvetica,sans-serif',
+            }}
           >
-            {wa && <MessageCircleIcon className="size-4" />}
+            {b.icon ? <span>{b.icon}</span> : wa && <MessageCircleIcon className="size-4" />}
             {b.text || (wa ? 'Falar no WhatsApp' : 'Botão')}
           </span>
+        </div>
+      )
+    }
+    case 'video': {
+      const id = youtubeId(b.url)
+      return (
+        <div className="px-8" style={{ paddingTop: b.space ?? 8, paddingBottom: b.space ?? 8 }}>
+          {id ? (
+            <div className="space-y-1.5 text-center">
+              <img src={`https://img.youtube.com/vi/${id}/hqdefault.jpg`} alt={b.title ?? 'Vídeo'} draggable={false} className="block h-auto w-full rounded-md" />
+              {b.title && <p className="text-[15px] font-bold text-[#111827]">{b.title}</p>}
+              <p className="text-[15px] font-bold" style={{ color: b.color ?? '#dc2626' }}>
+                {b.label || '▶️ Assistir ao vídeo'}
+              </p>
+            </div>
+          ) : (
+            <div className="flex w-full flex-col items-center gap-1 rounded-md border-2 border-dashed border-[#d1d5db] p-8 text-sm text-[#6b7280]">
+              <PlayIcon className="size-6" />
+              Cole o link do vídeo do YouTube ao lado.
+            </div>
+          )}
         </div>
       )
     }
@@ -976,6 +1008,17 @@ function FormatBar({ active }: { active: boolean }) {
       <ToolButton label="Inserir primeiro nome do lead" onClick={() => exec('insertText', '{primeiro_nome}')}>
         <UserIcon />
       </ToolButton>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button type="button" size="icon" variant="ghost" className="size-7 [&_svg]:size-3.5" aria-label="Inserir ícone" title="Inserir ícone">
+            <SmileIcon />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-72" onOpenAutoFocus={(e) => e.preventDefault()}>
+          <p className="mb-2 text-xs text-muted-foreground">Clique para inserir no texto, onde está o cursor.</p>
+          <IconGrid onPick={(i) => i && exec('insertText', i)} />
+        </PopoverContent>
+      </Popover>
       <ToolButton label="Limpar formatação" onClick={() => (exec('removeFormat'), exec('unlink'))}>
         <RemoveFormattingIcon />
       </ToolButton>
@@ -1282,8 +1325,94 @@ function ColorField({ label, value, fallback, onChange, disabled, clearable }: {
   )
 }
 
+/** Tamanho, fonte, canto, ícone e largura do botão (botão comum e de WhatsApp). */
+function ButtonStyleFields({ value: b, onChange, disabled }: { value: ButtonStyle; onChange: (s: ButtonStyle) => void; disabled: boolean }) {
+  return (
+    <div className="space-y-3 border-t pt-3">
+      <p className="text-sm font-semibold">Estilo do botão</p>
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-sm font-normal" htmlFor="bs-size">
+          Tamanho
+        </Label>
+        <Select value={b.size ?? 'M'} onValueChange={(v) => onChange({ size: v === 'M' ? undefined : (v as 'P' | 'G') })} disabled={disabled}>
+          <SelectTrigger id="bs-size" size="sm" className="w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(['P', 'M', 'G'] as const).map((k) => (
+              <SelectItem key={k} value={k}>
+                {BUTTON_SIZES[k].name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-sm font-normal" htmlFor="bs-font">
+          Fonte
+        </Label>
+        <Select value={b.font ?? 'arial'} onValueChange={(v) => onChange({ font: v === 'arial' ? undefined : v })} disabled={disabled}>
+          <SelectTrigger id="bs-font" size="sm" className="w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {EMAIL_FONTS.map((x) => (
+              <SelectItem key={x.id} value={x.id}>
+                <span style={{ fontFamily: x.css }}>{x.name}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-sm font-normal" htmlFor="bs-radius">
+          Canto
+        </Label>
+        <Select value={String(b.radius ?? 6)} onValueChange={(v) => onChange({ radius: Number(v) === 6 ? undefined : Number(v) })} disabled={disabled}>
+          <SelectTrigger id="bs-radius" size="sm" className="w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="0">Reto</SelectItem>
+            <SelectItem value="3">Pouco arredondado</SelectItem>
+            <SelectItem value="6">Arredondado</SelectItem>
+            <SelectItem value="12">Bem arredondado</SelectItem>
+            <SelectItem value="30">Redondo (pílula)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-sm font-normal">Ícone</Label>
+        <IconGrid value={b.icon} onPick={(icon) => onChange({ icon })} disabled={disabled} withNone />
+      </div>
+      <label className="flex items-center justify-between gap-2 text-sm">
+        Largura total
+        <Switch checked={!!b.full} onCheckedChange={(v) => onChange({ full: v || undefined })} disabled={disabled} aria-label="Botão na largura total" />
+      </label>
+    </div>
+  )
+}
+
+/** Grade de ícones (emojis) para botões e textos. */
+function IconGrid({ value, onPick, disabled, withNone }: { value?: string; onPick: (icon: string | undefined) => void; disabled?: boolean; withNone?: boolean }) {
+  return (
+    <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Ícone">
+      {withNone && (
+        <button type="button" role="radio" aria-checked={!value} disabled={disabled} onClick={() => onPick(undefined)} className={cn('h-8 rounded border px-2 text-xs', !value && 'border-primary bg-primary/10')}>
+          Nenhum
+        </button>
+      )}
+      {EMAIL_ICONS.map((i) => (
+        <button key={i} type="button" role="radio" aria-checked={value === i} aria-label={`Ícone ${i}`} disabled={disabled} onClick={() => onPick(i)} className={cn('size-8 rounded border text-base', value === i && 'border-primary bg-primary/10')}>
+          {i}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 /** Espaço padrão de cada tipo de bloco (o mesmo do e-mail enviado). */
-const DEFAULT_SPACE: Partial<Record<BlockType, number>> = { titulo: 8, texto: 8, colunas: 8, imagem: 8, botao: 16, whatsapp: 16, redes: 12, divisor: 12 }
+const DEFAULT_SPACE: Partial<Record<BlockType, number>> = { titulo: 8, texto: 8, colunas: 8, imagem: 8, video: 8, botao: 16, whatsapp: 16, redes: 12, divisor: 12 }
 
 function Inspector(props: { block: Block; numbers: WhatsappNumber[]; disabled: boolean; onChange: (b: Block) => void; onPickImage: () => void }) {
   const { block: b, disabled, onChange } = props
@@ -1491,6 +1620,23 @@ function InspectorFields({ block: b, numbers, disabled, onChange, onPickImage }:
             <Label className="text-sm font-normal">Posição</Label>
             <AlignPick value={b.align ?? 'center'} onChange={(align) => onChange({ ...b, align })} disabled={disabled} />
           </div>
+          <ButtonStyleFields value={b} onChange={(s) => onChange({ ...b, ...s })} disabled={disabled} />
+        </div>
+      )
+    case 'video':
+      return (
+        <div className="space-y-3">
+          {head}
+          <Field label="Link do vídeo no YouTube" htmlFor="v-url" hint={b.url && !youtubeId(b.url) ? 'Use um link do YouTube (youtube.com/watch?v=… ou youtu.be/…).' : 'O e-mail mostra a capa do vídeo; ao clicar, abre no YouTube (nenhum programa de e-mail toca vídeo).'}>
+            <Input id="v-url" placeholder="https://www.youtube.com/watch?v=..." value={b.url} onChange={(e) => onChange({ ...b, url: e.target.value })} disabled={disabled} />
+          </Field>
+          <Field label="Título (opcional)" htmlFor="v-title">
+            <Input id="v-title" maxLength={120} value={b.title ?? ''} onChange={(e) => onChange({ ...b, title: e.target.value || undefined })} disabled={disabled} />
+          </Field>
+          <Field label="Texto do link" htmlFor="v-label">
+            <Input id="v-label" maxLength={60} value={b.label ?? ''} placeholder="▶️ Assistir ao vídeo" onChange={(e) => onChange({ ...b, label: e.target.value || undefined })} disabled={disabled} />
+          </Field>
+          <ColorField label="Cor do link" value={b.color} fallback="#dc2626" onChange={(color) => onChange({ ...b, color })} disabled={disabled} />
         </div>
       )
     case 'whatsapp': {

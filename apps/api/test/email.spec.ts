@@ -318,3 +318,36 @@ describe('espaçamento dos blocos', () => {
     expect(html).toContain('padding:48px 32px')
   })
 })
+
+describe('vídeo do YouTube e botões personalizados', () => {
+  it('reconhece os links do YouTube e desenha a capa com o link para assistir', async () => {
+    const { youtubeId } = await import('../src/email/blocos')
+    expect(youtubeId('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=10s')).toBe('dQw4w9WgXcQ')
+    expect(youtubeId('https://youtu.be/dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ')
+    expect(youtubeId('https://www.youtube.com/shorts/dQw4w9WgXcQ')).toBe('dQw4w9WgXcQ')
+    expect(youtubeId('https://vimeo.com/123')).toBeNull()
+    expect(cleanBlocks([{ type: 'video', url: 'https://vimeo.com/123' }])).toMatchObject({ error: expect.stringMatching(/YouTube/) })
+    const blocks = clean([{ type: 'video', url: 'https://youtu.be/dQw4w9WgXcQ', title: 'Como trocar o filtro' }])
+    expect(blocks[0]).toMatchObject({ url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' })
+    const r = renderEmail(blocks, base)
+    expect(r.html).toContain('https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg')
+    expect(r.html).toContain('Assistir ao vídeo')
+    expect(r.text).toContain('Vídeo: https://www.youtube.com/watch?v=dQw4w9WgXcQ')
+    expect(collectLinks(blocks)).toEqual(['https://www.youtube.com/watch?v=dQw4w9WgXcQ'])
+  })
+
+  it('botão com tamanho, fonte, canto, ícone e largura total; valores desconhecidos são ignorados', () => {
+    const blocks = clean([
+      { type: 'botao', text: 'Comprar', url: 'https://usaparts.com.br', size: 'G', font: 'georgia', radius: 99, icon: '🛒', full: true },
+      { type: 'botao', text: 'Ver', url: 'https://usaparts.com.br', size: 'X', font: 'comic', icon: '<b>' },
+      { type: 'whatsapp', text: 'Chamar', phone: '49999990000', color: '#111111', icon: '💬' },
+    ])
+    expect(blocks[0]).toMatchObject({ size: 'G', font: 'georgia', radius: 30, icon: '🛒', full: true })
+    expect(blocks[1]).not.toHaveProperty('size')
+    expect(blocks[1]).not.toHaveProperty('icon')
+    const html = renderEmail(blocks, base).html
+    expect(html).toContain('padding:17px 38px;border-radius:30px;display:block;text-align:center;font-weight:700;font-size:18px;font-family:Georgia,serif">🛒 Comprar')
+    expect(html).toContain('background:#111111')
+    expect(html).toContain('💬 Chamar')
+  })
+})

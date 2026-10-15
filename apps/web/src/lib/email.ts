@@ -37,13 +37,46 @@ export interface ProductItem {
   url?: string
 }
 
+/** Botão personalizável: tamanho, fonte, canto (px), ícone (emoji) e largura total. */
+export interface ButtonStyle {
+  size?: 'P' | 'M' | 'G'
+  font?: string
+  radius?: number
+  icon?: string
+  full?: boolean
+}
+/** Fontes que funcionam em todos os programas de e-mail. */
+export const EMAIL_FONTS: { id: string; name: string; css: string }[] = [
+  { id: 'arial', name: 'Arial', css: 'Arial,Helvetica,sans-serif' },
+  { id: 'verdana', name: 'Verdana', css: 'Verdana,Geneva,sans-serif' },
+  { id: 'tahoma', name: 'Tahoma', css: 'Tahoma,Geneva,sans-serif' },
+  { id: 'trebuchet', name: 'Trebuchet', css: "'Trebuchet MS',Helvetica,sans-serif" },
+  { id: 'georgia', name: 'Georgia', css: 'Georgia,serif' },
+  { id: 'times', name: 'Times New Roman', css: "'Times New Roman',Times,serif" },
+  { id: 'courier', name: 'Courier', css: "'Courier New',Courier,monospace" },
+]
+/** Ícones para textos e botões (emojis: aparecem em todos os programas de e-mail). */
+export const EMAIL_ICONS = ['➡️', '✅', '⭐', '🔥', '🛒', '📦', '🚚', '🔧', '⚙️', '📞', '💬', '📲', '📧', '📍', '🕒', '💰', '🏷️', '🎁', '👉', '▶️', '❗', '💡', '🤝', '🏆', '🚜', '🏗️'] as const
+export const BUTTON_SIZES: Record<'P' | 'M' | 'G', { name: string; pad: string; font: number }> = {
+  P: { name: 'Pequeno', pad: '9px 18px', font: 13 },
+  M: { name: 'Médio', pad: '13px 28px', font: 15 },
+  G: { name: 'Grande', pad: '17px 38px', font: 18 },
+}
+/** Id do vídeo do YouTube (watch?v=, youtu.be/, shorts/, embed/, live/). */
+export function youtubeId(raw: string | null | undefined): string | null {
+  const s = String(raw ?? '').trim()
+  const m = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/.exec(s)
+  return m ? m[1]! : /^[A-Za-z0-9_-]{11}$/.test(s) ? s : null
+}
+
 export type Block = (
   | { type: 'titulo'; html: string; align?: TextAlign; size?: number; color?: string; bg?: string }
   | { type: 'texto'; html: string; align?: TextAlign; size?: number; color?: string; bg?: string }
   | { type: 'colunas'; columns: [ColumnContent, ColumnContent]; ratio?: 40 | 50 | 60; align?: TextAlign; color?: string; buttonColor?: string }
   | { type: 'imagem'; url: string; alt?: string; link?: string; width?: number }
-  | { type: 'botao'; text: string; url: string; color?: string; textColor?: string; align?: Align }
-  | { type: 'whatsapp'; text: string; phone: string; message?: string; align?: Align }
+  | ({ type: 'botao'; text: string; url: string; color?: string; textColor?: string; align?: Align } & ButtonStyle)
+  | ({ type: 'whatsapp'; text: string; phone: string; message?: string; align?: Align; color?: string; textColor?: string } & ButtonStyle)
+  | { type: 'video'; url: string; title?: string; label?: string; color?: string }
   | { type: 'produtos'; items: ProductItem[]; columns?: 2 | 3 }
   | { type: 'divisor' }
   | { type: 'redes'; links: SocialLinks; style?: 'cor' | 'cinza'; align?: Align }
@@ -77,6 +110,7 @@ export const BLOCK_LABEL: Record<BlockType, string> = {
   texto: 'Texto',
   colunas: '2 colunas',
   imagem: 'Imagem',
+  video: 'Vídeo (YouTube)',
   botao: 'Botão',
   whatsapp: 'WhatsApp',
   produtos: 'Produtos',
@@ -103,6 +137,8 @@ export function newBlock(type: BlockType, whatsappPhone = '', social: SocialLink
       }
     case 'imagem':
       return { type, url: '', alt: '', width: 100 }
+    case 'video':
+      return { type, url: '', label: '▶️ Assistir ao vídeo' }
     case 'botao':
       return { type, text: 'Ver ofertas', url: 'https://www.usaparts.com.br', align: 'center' }
     case 'whatsapp':

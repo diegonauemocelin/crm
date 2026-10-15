@@ -45,6 +45,11 @@ class SegmentDto {
   @ApiProperty() @ValidateNested() @Type(() => SegmentFiltersDto) filters!: SegmentFiltersDto
 }
 
+class DuplicateDto {
+  /** Destino da cópia: campanha ou modelo de fluxo; vazio = o mesmo do original. */
+  @ApiPropertyOptional() @IsOptional() @IsIn(['CAMPANHA', 'MODELO']) kind?: 'CAMPANHA' | 'MODELO'
+}
+
 class CampaignDto {
   @ApiProperty() @IsString() @Length(2, 120) name!: string
   @ApiProperty() @IsString() @MaxLength(200) subject!: string
@@ -288,8 +293,8 @@ export class EmailController {
   }
 
   @Post('campanhas/:id/duplicar')
-  duplicate(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
-    return this.email.duplicate(user, id, ctx)
+  duplicate(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DuplicateDto, @ReqContext() ctx: RequestCtx) {
+    return this.email.duplicate(user, id, ctx, dto.kind)
   }
 
   @Post('campanhas/:id/teste')

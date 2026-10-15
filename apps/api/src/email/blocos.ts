@@ -29,14 +29,45 @@ export interface ProductItem {
   url?: string
 }
 
+/** Botões personalizáveis: tamanho, fonte, canto, ícone (emoji) e largura total. */
+export type ButtonSize = 'P' | 'M' | 'G'
+export interface ButtonStyle {
+  size?: ButtonSize
+  font?: string
+  radius?: number
+  icon?: string
+  full?: boolean
+}
+/** Fontes que funcionam em todos os programas de e-mail (as do próprio computador de quem lê). */
+export const EMAIL_FONTS: Record<string, string> = {
+  arial: 'Arial,Helvetica,sans-serif',
+  verdana: 'Verdana,Geneva,sans-serif',
+  tahoma: 'Tahoma,Geneva,sans-serif',
+  trebuchet: "'Trebuchet MS',Helvetica,sans-serif",
+  georgia: 'Georgia,serif',
+  times: "'Times New Roman',Times,serif",
+  courier: "'Courier New',Courier,monospace",
+}
+/** Ícones para textos e botões: emojis (aparecem em todos os programas de e-mail, sem imagem para baixar). */
+export const EMAIL_ICONS = ['➡️', '✅', '⭐', '🔥', '🛒', '📦', '🚚', '🔧', '⚙️', '📞', '💬', '📲', '📧', '📍', '🕒', '💰', '🏷️', '🎁', '👉', '▶️', '❗', '💡', '🤝', '🏆', '🚜', '🏗️'] as const
+const BUTTON_SIZE: Record<ButtonSize, { pad: string; font: number }> = { P: { pad: '9px 18px', font: 13 }, M: { pad: '13px 28px', font: 15 }, G: { pad: '17px 38px', font: 18 } }
+
+/** Id do vídeo do YouTube (watch?v=, youtu.be/, shorts/, embed/, live/). */
+export function youtubeId(raw: string | null | undefined): string | null {
+  const s = String(raw ?? '').trim()
+  const m = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/.exec(s)
+  return m ? m[1]! : /^[A-Za-z0-9_-]{11}$/.test(s) ? s : null
+}
+
 export type Block = (
   /** `text` é o formato antigo (**negrito**, [link](url)); ao salvar vira `html`. */
   | { type: 'titulo'; html: string; text?: string; align?: TextAlign; size?: number; color?: string; bg?: string }
   | { type: 'texto'; html: string; text?: string; align?: TextAlign; size?: number; color?: string; bg?: string }
   | { type: 'colunas'; columns: [ColumnContent, ColumnContent]; ratio?: 40 | 50 | 60; align?: TextAlign; color?: string; buttonColor?: string }
   | { type: 'imagem'; url: string; alt?: string; link?: string; width?: number }
-  | { type: 'botao'; text: string; url: string; color?: string; textColor?: string; align?: Align }
-  | { type: 'whatsapp'; text: string; phone: string; message?: string; align?: Align }
+  | ({ type: 'botao'; text: string; url: string; color?: string; textColor?: string; align?: Align } & ButtonStyle)
+  | ({ type: 'whatsapp'; text: string; phone: string; message?: string; align?: Align; color?: string; textColor?: string } & ButtonStyle)
+  | { type: 'video'; url: string; title?: string; label?: string; color?: string }
   | { type: 'produtos'; items: ProductItem[]; columns?: 2 | 3 }
   | { type: 'divisor' }
   | { type: 'redes'; links: SocialLinks; style?: SocialStyle; align?: Align }
@@ -50,7 +81,7 @@ export type Block = (
   lineHeight?: number
 }
 
-export const BLOCK_TYPES = ['titulo', 'texto', 'colunas', 'imagem', 'botao', 'whatsapp', 'produtos', 'redes', 'divisor', 'espaco'] as const
+export const BLOCK_TYPES = ['titulo', 'texto', 'colunas', 'imagem', 'video', 'botao', 'whatsapp', 'produtos', 'redes', 'divisor', 'espaco'] as const
 
 export type SocialLinks = Partial<Record<SocialNetwork, string>>
 export const SOCIAL_NETWORKS: SocialNetwork[] = ['facebook', 'instagram', 'youtube', 'tiktok']
@@ -377,6 +408,10 @@ export function collectLinks(blocks: Block[]): string[] {
       }
     if (b.type === 'imagem') add(safeUrl(b.link))
     if (b.type === 'botao') add(safeUrl(b.url, true))
+    if (b.type === 'video') {
+      const id = youtubeId(b.url)
+      if (id) add(`https://www.youtube.com/watch?v=${id}`)
+    }
     if (b.type === 'whatsapp') add(whatsappUrl(b.phone, b.message))
     if (b.type === 'produtos') for (const i of b.items) add(safeUrl(i.url))
     if (b.type === 'redes') for (const n of SOCIAL_NETWORKS) add(socialUrl(n, b.links[n]))
@@ -400,8 +435,14 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
   const rows: string[] = []
   const text: string[] = []
   const sp = (b: Block, d: number) => (b.space === undefined ? d : b.space)
-  const button = (link: string, label: string, bg: string, fg: string, align: Align, space = 16) =>
-    `<tr><td align="${align}" style="padding:${space}px 32px"><a href="${escape(link)}" target="_blank" style="background:${bg};color:${fg};text-decoration:none;padding:13px 28px;border-radius:6px;display:inline-block;font-weight:700;font-size:15px">${escape(label)}</a></td></tr>`
+  const button = (link: string, label: string, bg: string, fg: string, align: Align, space = 16, s: ButtonStyle = {}) => {
+    const size = BUTTON_SIZE[s.size ?? 'M']
+    const font = EMAIL_FONTS[s.font ?? ''] ?? 'Arial,Helvetica,sans-serif'
+    const radius = s.radius ?? 6
+    const icon = s.icon && (EMAIL_ICONS as readonly string[]).includes(s.icon) ? `${s.icon} ` : ''
+    const width = s.full ? 'display:block;text-align:center' : 'display:inline-block'
+    return `<tr><td align="${align}" style="padding:${space}px 32px"><a href="${escape(link)}" target="_blank" style="background:${bg};color:${fg};text-decoration:none;padding:${size.pad};border-radius:${radius}px;${width};font-weight:700;font-size:${size.font}px;font-family:${font}">${icon}${escape(label)}</a></td></tr>`
+  }
 
   for (const b of blocks) {
     switch (b.type) {
@@ -472,7 +513,7 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
         const link = href(b.url, true)
         if (!link) break
         const label = P(b.text)
-        rows.push(button(link, label, hex(b.color, color), hex(b.textColor, '#ffffff'), alignOf(b.align, 'center'), sp(b, 16)))
+        rows.push(button(link, label, hex(b.color, color), hex(b.textColor, '#ffffff'), alignOf(b.align, 'center'), sp(b, 16), b))
         text.push(`${label}: ${safeUrl(b.url, true)}`, '')
         break
       }
@@ -480,8 +521,24 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
         const url = whatsappUrl(b.phone, b.message)
         if (!url) break
         const label = P(b.text || 'Falar no WhatsApp')
-        rows.push(button(track(url), label, '#25D366', '#ffffff', alignOf(b.align, 'center'), sp(b, 16)))
+        rows.push(button(track(url), label, hex(b.color, '#25D366'), hex(b.textColor, '#ffffff'), alignOf(b.align, 'center'), sp(b, 16), b))
         text.push(`${label}: ${url}`, '')
+        break
+      }
+      case 'video': {
+        // E-mail não toca vídeo: vai a capa do YouTube com o link e um "Assistir" embaixo (abre no YouTube).
+        const id = youtubeId(b.url)
+        if (!id) break
+        const watch = `https://www.youtube.com/watch?v=${id}`
+        const link = track(watch)
+        const thumb = `https://img.youtube.com/vi/${id}/hqdefault.jpg`
+        const alt = escape(b.title || 'Vídeo no YouTube')
+        const label = P(b.label || '▶️ Assistir ao vídeo')
+        const c = hex(b.color, '#dc2626')
+        rows.push(`<tr><td align="center" style="padding:${sp(b, 8)}px 32px 4px"><a href="${escape(link)}" target="_blank"><img src="${escape(thumb)}" alt="${alt}" width="536" style="display:block;width:100%;max-width:536px;height:auto;border:0;border-radius:6px"></a></td></tr>`)
+        if (b.title) rows.push(`<tr><td align="center" style="padding:4px 32px 0;font-size:15px;line-height:21px;font-weight:700;color:#111827">${escape(P(b.title))}</td></tr>`)
+        rows.push(`<tr><td align="center" style="padding:6px 32px ${sp(b, 8)}px"><a href="${escape(link)}" target="_blank" style="color:${c};font-weight:700;font-size:15px;text-decoration:none">${escape(label)}</a></td></tr>`)
+        text.push(`${b.title ? `${P(b.title)} ` : ''}Vídeo: ${watch}`, '')
         break
       }
       case 'produtos': {
@@ -570,6 +627,18 @@ function socialIcons(links: SocialLinks, style: SocialStyle, base: string | unde
 }
 
 /** Confere os blocos vindos do painel (tipos conhecidos, tamanhos, endereços, texto formatado). */
+/** Estilo do botão vindo do editor: só valores conhecidos. */
+function cleanButtonStyle(b: Record<string, unknown>): ButtonStyle {
+  const out: ButtonStyle = {}
+  if (b.size === 'P' || b.size === 'G') out.size = b.size
+  if (typeof b.font === 'string' && b.font in EMAIL_FONTS && b.font !== 'arial') out.font = b.font
+  const r = Number(b.radius)
+  if (b.radius !== undefined && b.radius !== null && Number.isFinite(r)) out.radius = Math.max(0, Math.min(30, Math.round(r)))
+  if (typeof b.icon === 'string' && (EMAIL_ICONS as readonly string[]).includes(b.icon)) out.icon = b.icon
+  if (b.full === true) out.full = true
+  return out
+}
+
 export function cleanBlocks(raw: unknown): { blocks: Block[] } | { error: string } {
   if (!Array.isArray(raw)) return { error: 'Conteúdo inválido.' }
   if (raw.length > 60) return { error: 'No máximo 60 blocos por e-mail.' }
@@ -619,11 +688,11 @@ export function cleanBlocks(raw: unknown): { blocks: Block[] } | { error: string
         break
       case 'botao':
         if (!safeUrl(String(b.url ?? ''), true)) return { error: `Botão "${str(b.text, 40)}" sem um link válido (https://...).` }
-        out.push({ type: 'botao', text: str(b.text, 60) || 'Saiba mais', url: str(b.url, 500), color: optHex(b.color), textColor: optHex(b.textColor), align: alignOf(b.align, 'center') })
+        out.push({ type: 'botao', text: str(b.text, 60) || 'Saiba mais', url: str(b.url, 500), color: optHex(b.color), textColor: optHex(b.textColor), align: alignOf(b.align, 'center'), ...cleanButtonStyle(b) })
         break
       case 'whatsapp':
         if (!whatsappUrl(str(b.phone, 30), undefined)) return { error: 'Botão de WhatsApp sem um número válido (DDD + número).' }
-        out.push({ type: 'whatsapp', text: str(b.text, 60) || 'Falar no WhatsApp', phone: str(b.phone, 30), message: str(b.message, 500) || undefined, align: alignOf(b.align, 'center') })
+        out.push({ type: 'whatsapp', text: str(b.text, 60) || 'Falar no WhatsApp', phone: str(b.phone, 30), message: str(b.message, 500) || undefined, align: alignOf(b.align, 'center'), color: optHex(b.color), textColor: optHex(b.textColor), ...cleanButtonStyle(b) })
         break
       case 'produtos': {
         const items = Array.isArray(b.items) ? (b.items as Record<string, unknown>[]).slice(0, 12) : []
@@ -646,6 +715,12 @@ export function cleanBlocks(raw: unknown): { blocks: Block[] } | { error: string
           if (typeof links[n] === 'string' && (links[n] as string).trim() && !socialUrl(n, links[n] as string)) return { error: `Endereço do ${SOCIAL_LABEL[n]} inválido (ex.: https://www.${n}.com/usaparts).` }
         }
         out.push({ type: 'redes', links: cleanSocial(links), style: b.style === 'cinza' ? 'cinza' : 'cor', align: alignOf(b.align, 'center') })
+        break
+      }
+      case 'video': {
+        const id = youtubeId(str(b.url, 300))
+        if (str(b.url, 300).trim() && !id) return { error: 'Link do YouTube inválido (ex.: https://www.youtube.com/watch?v=...).' }
+        out.push({ type: 'video', url: id ? `https://www.youtube.com/watch?v=${id}` : '', title: str(b.title, 120) || undefined, label: str(b.label, 60) || undefined, color: optHex(b.color) })
         break
       }
       case 'divisor':

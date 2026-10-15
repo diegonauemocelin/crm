@@ -212,14 +212,21 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     return rest
   }
 
-  async duplicate(user: AuthUser, id: string, ctx: RequestCtx) {
+  /**
+   * Duplica o e-mail, escolhendo o destino: campanha (envio para um segmento) ou modelo de fluxo (automações).
+   * Serve também para corrigir um e-mail criado no lugar errado, sem refazer.
+   */
+  async duplicate(user: AuthUser, id: string, ctx: RequestCtx, as?: 'CAMPANHA' | 'MODELO') {
     this.assertCan(user, 'create')
     const c = await this.load(user, id)
+    const kind = as ?? c.kind
+    // Modelo guarda os links (para contar os cliques de cada envio); campanha não usa segmento de modelo.
+    const links = kind === 'MODELO' ? [...new Set([...(c.kind === 'MODELO' ? c.links : []), ...collectLinks(c.blocks as unknown as Block[])])] : []
     const copy = await this.prisma.emailCampaign.create({
-      data: { tenantId: user.tenantId, name: `${c.name} (cópia)`.slice(0, 120), subject: c.subject, preheader: c.preheader, fromName: c.fromName, replyTo: c.replyTo, blocks: c.blocks as Prisma.InputJsonValue, segmentId: c.segmentId, kind: c.kind, links: c.kind === 'MODELO' ? c.links : [], createdById: user.id },
+      data: { tenantId: user.tenantId, name: `${c.name} (cópia)`.slice(0, 120), subject: c.subject, preheader: c.preheader, fromName: c.fromName, replyTo: c.replyTo, blocks: c.blocks as Prisma.InputJsonValue, segmentId: kind === 'MODELO' ? null : c.segmentId, kind, links, createdById: user.id },
     })
-    await this.audit.byUser(user, ctx, 'email.campaign_duplicated', 'email_campaign', copy.id, { origem: id })
-    return { id: copy.id }
+    await this.audit.byUser(user, ctx, 'email.campaign_duplicated', 'email_campaign', copy.id, { origem: id, como: kind === 'MODELO' ? 'modelo de fluxo' : 'campanha' })
+    return { id: copy.id, kind }
   }
 
   async remove(user: AuthUser, id: string, ctx: RequestCtx) {

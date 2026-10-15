@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -77,11 +78,6 @@ function ModelsTab() {
     onSuccess: (c) => navigate(`/email-marketing/${c.id}`),
     onError: (err) => toast.error(errorMessage(err)),
   })
-  const duplicate = useMutation({
-    mutationFn: (id: string) => api.post<{ id: string }>(`/email/campanhas/${id}/duplicar`),
-    onSuccess: (r) => navigate(`/email-marketing/${r.id}`),
-    onError: (err) => toast.error(errorMessage(err)),
-  })
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/email/campanhas/${id}`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['email-models'] }),
@@ -129,9 +125,7 @@ function ModelsTab() {
                   <TableCell className="text-right tabular-nums">{pct(c.clicks, c.sent)}</TableCell>
                   <TableCell className="pr-4 text-right whitespace-nowrap">
                     {can('email_marketing', 'create') && (
-                      <Button size="icon" variant="ghost" aria-label="Duplicar modelo" onClick={() => duplicate.mutate(c.id)}>
-                        <CopyIcon />
-                      </Button>
+                      <DuplicateMenu id={c.id} name={c.name} />
                     )}
                     {can('email_marketing', 'delete') && (
                       <Button size="icon" variant="ghost" aria-label="Excluir modelo" onClick={() => confirm(`Excluir o modelo "${c.name}"?`) && remove.mutate(c.id)}>
@@ -159,11 +153,6 @@ function CampaignsTab() {
   const create = useMutation({
     mutationFn: () => api.post<Campaign>('/email/campanhas', { name: 'Nova campanha', subject: '', blocks: [newBlock('titulo'), newBlock('texto')] }),
     onSuccess: (c) => navigate(`/email-marketing/${c.id}`),
-    onError: (err) => toast.error(errorMessage(err)),
-  })
-  const duplicate = useMutation({
-    mutationFn: (id: string) => api.post<{ id: string }>(`/email/campanhas/${id}/duplicar`),
-    onSuccess: (r) => navigate(`/email-marketing/${r.id}`),
     onError: (err) => toast.error(errorMessage(err)),
   })
   const remove = useMutation({
@@ -226,9 +215,7 @@ function CampaignsTab() {
                       </Link>
                     </Button>
                     {can('email_marketing', 'create') && (
-                      <Button size="sm" variant="ghost" onClick={() => duplicate.mutate(c.id)} aria-label={`Duplicar ${c.name}`}>
-                        <CopyIcon />
-                      </Button>
+                      <DuplicateMenu id={c.id} name={c.name} />
                     )}
                     {c.status === 'RASCUNHO' && can('email_marketing', 'delete') && (
                       <Button size="sm" variant="ghost" onClick={() => confirm(`Excluir o rascunho "${c.name}"?`) && remove.mutate(c.id)} aria-label={`Excluir ${c.name}`}>
@@ -730,5 +717,36 @@ function LogoCard({ settings }: { settings: EmailSettings }) {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * Duplicar escolhendo o destino: campanha (envio para um segmento) ou e-mail de fluxo (modelo das automações).
+ * Serve também para passar um e-mail criado no lugar errado para o certo, sem refazer.
+ */
+function DuplicateMenu({ id, name }: { id: string; name: string }) {
+  const navigate = useNavigate()
+  const run = useMutation({
+    mutationFn: (kind: 'CAMPANHA' | 'MODELO') => api.post<{ id: string; kind: string }>(`/email/campanhas/${id}/duplicar`, { kind }),
+    onSuccess: (r) => {
+      toast.success(r.kind === 'MODELO' ? 'Cópia criada como e-mail de fluxo (Modelos).' : 'Cópia criada como campanha.')
+      navigate(`/email-marketing/${r.id}`)
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="icon" variant="ghost" aria-label={`Duplicar ${name}`} title="Duplicar" disabled={run.isPending}>
+          {run.isPending ? <Loader2Icon className="animate-spin" /> : <CopyIcon />}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Duplicar como</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => run.mutate('CAMPANHA')}>Campanha (envio para um segmento)</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => run.mutate('MODELO')}>E-mail de fluxo (automações)</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
