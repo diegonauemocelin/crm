@@ -271,6 +271,11 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
       for (const item of list.slice(0, 50)) void this.chat.ingest(n, item, this.client)
       return true
     }
+    // Confirmação de entrega e leitura (os tracinhos do WhatsApp).
+    if (event === 'messages.update') {
+      void this.chat.applyReceipts(n, b.data).catch((err: unknown) => this.logger.warn(`Confirmação de leitura não gravada: ${(err as Error).message}`))
+      return true
+    }
     if (event === 'call') {
       void this.chat.ingestCalls(n, b.data).catch((err: unknown) => this.logger.warn(`Ligação não registrada: ${(err as Error).message}`))
       return true

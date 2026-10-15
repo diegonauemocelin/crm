@@ -1356,6 +1356,8 @@ model WhatsappConversation {
   lastFromMe       Boolean   @default(false)
   /// Nota interna nova, ainda não vista por quem atende.
   noteUnread       Boolean   @default(false)
+  /// Última mensagem de ausência enviada (fora do horário comercial), para não repetir a cada mensagem.
+  awaySentAt       DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

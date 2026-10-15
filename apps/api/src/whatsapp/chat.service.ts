@@ -13,7 +13,7 @@ import { SettingsService } from '../settings/settings.service'
 import { normalizePhone } from '../atendimento/br'
 import { type EvolutionClient, EvolutionError } from './evolution'
 import { sectorsOf, splitWhere } from './atendentes'
-import { type AgendaCategory, applyVariables, cleanRules, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, LABEL_COLORS, type LabelColor, parseContactList, toCallVia, parseVcf, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
+import { type AgendaCategory, applyVariables, cleanRules, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseReceipts, receiptUpgrades, toCallVia, parseVcf, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
 import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, type ParsedMessage, phoneFromDigits, phoneVariants, previewOf } from './mensagens'
 
 const PAGE = 60
@@ -93,6 +93,11 @@ export class ChatService {
     })
     // A Evolution pode mandar o mesmo evento de novo: grava uma vez só.
     if (!saved.length) return
+    // A própria mensagem de ausência voltando como evento: não conta como resposta (o cliente continua esperando).
+    if (p.fromMe && conv.awaySentAt && Math.abs(p.at.getTime() - conv.awaySentAt.getTime()) < 5 * 60_000 && (p.text ?? '').trim() === rules.away.text.trim()) {
+      await this.prisma.whatsappMessage.update({ where: { id: saved[0]!.id }, data: { sentByName: 'Mensagem automática (fora do horário)', status: 'ENVIADA' } })
+      return
+    }
 
     // Lead pelo telefone (com e sem o 9); o resto segue as regras do administrador, sem o operador fazer nada.
     let leadId: string | null = conv.leadId
@@ -136,6 +141,35 @@ export class ChatService {
       },
     })
     if (p.media && !tooBig && client) void this.downloadMedia(n, saved[0]!.id, p, client)
+    if (!p.fromMe && category === 'CLIENTE' && client) void this.sendAway(n, conv, p, rules, client).catch((err: unknown) => this.logger.warn(`Mensagem de ausência não enviada (${n.name}): ${(err as Error).message}`))
+  }
+
+  /**
+   * Fora do horário comercial: responde sozinho com a mensagem de ausência, uma vez a cada X horas por contato.
+   * Só para mensagem nova (não o histórico que o WhatsApp sincroniza) e com o número conectado.
+   */
+  private async sendAway(n: WhatsappNumber, conv: { id: string; jid: string }, p: ParsedMessage, rules: WaRules, client: EvolutionClient) {
+    if (!rules.away.enabled || !rules.businessHours.enabled || isOpen(rules.businessHours, p.at)) return
+    if (Date.now() - p.at.getTime() > 10 * 60_000 || n.status !== 'CONECTADO') return
+    const since = new Date(Date.now() - rules.away.cooldownHours * 3_600_000)
+    // Marca antes de enviar: duas mensagens seguidas do cliente não geram duas respostas.
+    const claimed = await this.prisma.whatsappConversation.updateMany({ where: { id: conv.id, OR: [{ awaySentAt: null }, { awaySentAt: { lt: since } }] }, data: { awaySentAt: new Date() } })
+    if (!claimed.count || this.rate.check(n.id)) return
+    const target = conv.jid.endsWith('@s.whatsapp.net') ? conv.jid.split('@')[0]! : conv.jid
+    await client.sendText(n.instanceName, target, rules.away.text)
+  }
+
+  /** Confirmações de entrega e leitura das mensagens enviadas (evento messages.update). */
+  async applyReceipts(n: WhatsappNumber, data: unknown) {
+    const list = parseReceipts(data)
+    if (!list.length) return
+    const rows = await this.prisma.whatsappMessage.findMany({ where: { tenantId: n.tenantId, waId: { in: list.map((r) => r.waId) }, fromMe: true, conversation: { numberId: n.id } }, select: { id: true, waId: true, status: true } })
+    for (const r of list) {
+      const m = rows.find((x) => x.waId === r.waId)
+      if (!m || !receiptUpgrades(m.status, r.status)) continue
+      await this.prisma.whatsappMessage.update({ where: { id: m.id }, data: { status: r.status } })
+      m.status = r.status
+    }
   }
 
   /** Ligação recebida: vira um aviso na conversa (atender pelo celular). Não cria lead nem pré-venda. */
@@ -887,10 +921,11 @@ export class ChatService {
     return this.rules(user.tenantId)
   }
 
-  async saveRules(user: AuthUser, d: Partial<WaRules>) {
+  /** Os campos vêm do formulário do administrador; cleanRules confere cada um (inclusive horário e ausência). */
+  async saveRules(user: AuthUser, d: { [K in keyof WaRules]?: unknown }) {
     this.assertAdmin(user, 'edit')
     // Campos ausentes mantêm o valor salvo (ex.: os prazos das cores).
-    const r = cleanRules({ ...(await this.rules(user.tenantId)), ...Object.fromEntries(Object.entries(d).filter(([, v]) => v !== undefined)) })
+    const r = cleanRules({ ...(await this.rules(user.tenantId)), ...(Object.fromEntries(Object.entries(d).filter(([, v]) => v !== undefined)) as Partial<WaRules>) })
     await this.settings.set(user.tenantId, 'whatsapp_regras', r)
     return r
   }
@@ -1138,7 +1173,9 @@ export class ChatService {
     const waitWhere = {
       AND: [scope, { status: 'ABERTA', lastFromMe: false, category: 'CLIENTE' }, { lastMessageAt: { lte: new Date(now - rules.yellowMinutes * 60_000), gte: new Date(now - 24 * 3_600_000) } }],
     }
-    const [waitCount, redCount, waitList] = await Promise.all([
+    // Fora do horário comercial ninguém é cobrado: o aviso de "sem resposta" volta quando abrir.
+    const open = isOpen(rules.businessHours)
+    const [waitCount, redCount, waitList] = !open ? [0, 0, []] : await Promise.all([
       this.prisma.whatsappConversation.count({ where: waitWhere }),
       this.prisma.whatsappConversation.count({ where: { AND: [waitWhere, { lastMessageAt: { lte: new Date(now - rules.redMinutes * 60_000) } }] } }),
       this.prisma.whatsappConversation.findMany({ where: waitWhere, orderBy: { lastMessageAt: 'asc' }, take: 10, select: { id: true, name: true, phone: true, lastPreview: true, lastMessageAt: true, leadId: true } }),
@@ -1155,6 +1192,7 @@ export class ChatService {
       waiting: {
         yellowMinutes: rules.yellowMinutes,
         redMinutes: rules.redMinutes,
+        closed: !open,
         count: waitCount,
         red: redCount,
         items: waitList.map((c) => ({ conversationId: c.id, name: nameOf(c), preview: c.lastPreview, since: c.lastMessageAt })),

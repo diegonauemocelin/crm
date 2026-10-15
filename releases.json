@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.44.0",
+      "date": "2026-10-16",
+      "title": "Leitura, horário comercial e ausência no WhatsApp",
+      "changes": [
+        { "type": "novo", "area": "WhatsApp", "text": "Confirmação de entrega e leitura no chat: as mensagens enviadas mostram os tracinhos do WhatsApp (enviada, entregue, lida em azul) e um aviso quando não foram enviadas." },
+        { "type": "novo", "area": "WhatsApp", "text": "Horário comercial configurável por dia da semana (horário de Brasília), em Números de WhatsApp → Regras. Fora do horário, os avisos de cliente sem resposta ficam em pausa." },
+        { "type": "novo", "area": "WhatsApp", "text": "Mensagem de ausência: resposta automática para o cliente que chama fora do horário comercial, uma vez a cada X horas por contato. Não conta como atendimento: a conversa continua aguardando resposta." }
+      ]
+    },
+    {
       "version": "0.43.0",
       "date": "2026-10-16",
       "title": "Leads para chamar no WhatsApp",

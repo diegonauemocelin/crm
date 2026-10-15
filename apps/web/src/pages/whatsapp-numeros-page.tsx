@@ -560,7 +560,10 @@ interface WaRules {
   reopenDays: number
   yellowMinutes?: number
   redMinutes?: number
+  businessHours?: { enabled: boolean; days: ({ start: string; end: string } | null)[] }
+  away?: { enabled: boolean; text: string; cooldownHours: number }
 }
+const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 const NEW_CONTACT: Record<WaRules['newContact'], string> = {
   LEAD_E_PREVENDA: 'Vira lead (com o histórico da conversa) e abre pré-venda',
   SO_LEAD: 'Vira lead com o histórico da conversa, sem pré-venda',
@@ -569,6 +572,64 @@ const NEW_CONTACT: Record<WaRules['newContact'], string> = {
 const KNOWN_LEAD: Record<WaRules['knownLead'], string> = {
   HISTORICO_E_PREVENDA: 'Entra no histórico do lead e abre pré-venda nova depois do prazo sem conversa',
   SO_HISTORICO: 'Só entra no histórico do lead',
+}
+
+/** Horário comercial (pausa os avisos de "sem resposta") e a mensagem automática para quem chama fora dele. */
+function HoursAndAway({ form, set, editable }: { form: WaRules; set: <K extends keyof WaRules>(k: K, v: WaRules[K]) => void; editable: boolean }) {
+  const hours = form.businessHours ?? { enabled: false, days: [null, null, null, null, null, null, null] }
+  const away = form.away ?? { enabled: false, text: '', cooldownHours: 12 }
+  const setDay = (i: number, v: { start: string; end: string } | null) => set('businessHours', { ...hours, days: hours.days.map((d, k) => (k === i ? v : d)) })
+  return (
+    <div className="space-y-3 rounded-md border p-3">
+      <label className="flex items-center justify-between gap-3">
+        <span>
+          <span className="block text-sm font-medium">Horário comercial</span>
+          <span className="block text-xs text-muted-foreground">Horário de Brasília. Fora dele, os avisos de cliente sem resposta ficam em pausa e pode sair a mensagem de ausência.</span>
+        </span>
+        <Switch checked={hours.enabled} onCheckedChange={(v) => set('businessHours', { ...hours, enabled: v })} disabled={!editable} aria-label="Usar horário comercial" />
+      </label>
+      {hours.enabled && (
+        <div className="grid gap-1.5 sm:grid-cols-2">
+          {WEEKDAYS.map((name, i) => {
+            const d = hours.days[i] ?? null
+            return (
+              <div key={name} className="flex items-center gap-2 text-sm">
+                <Switch checked={!!d} onCheckedChange={(v) => setDay(i, v ? { start: '08:00', end: '18:00' } : null)} disabled={!editable} aria-label={name + " aberto"} />
+                <span className="w-16">{name}</span>
+                {d ? (
+                  <>
+                    <Input type="time" className="h-8 w-24" value={d.start} onChange={(e) => setDay(i, { ...d, start: e.target.value })} disabled={!editable} aria-label={name + ": abre"} />
+                    <span className="text-muted-foreground">às</span>
+                    <Input type="time" className="h-8 w-24" value={d.end} onChange={(e) => setDay(i, { ...d, end: e.target.value })} disabled={!editable} aria-label={name + ": fecha"} />
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">fechado</span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+      <label className="flex items-center justify-between gap-3 border-t pt-3">
+        <span>
+          <span className="block text-sm font-medium">Mensagem de ausência</span>
+          <span className="block text-xs text-muted-foreground">Resposta automática para cliente que chama fora do horário comercial. Não conta como atendimento: a conversa continua aguardando resposta.</span>
+        </span>
+        <Switch checked={away.enabled} onCheckedChange={(v) => set('away', { ...away, enabled: v })} disabled={!editable || !hours.enabled} aria-label="Enviar mensagem de ausência" />
+      </label>
+      {!hours.enabled && <p className="text-xs text-muted-foreground">Ligue o horário comercial para usar a mensagem de ausência.</p>}
+      {hours.enabled && away.enabled && (
+        <div className="space-y-2">
+          <Textarea rows={3} maxLength={1000} value={away.text} onChange={(e) => set('away', { ...away, text: e.target.value })} disabled={!editable} aria-label="Texto da mensagem de ausência" />
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span>Enviar de novo para o mesmo contato só depois de</span>
+            <Input type="number" min={1} max={168} className="h-8 w-20" value={away.cooldownHours} onChange={(e) => set('away', { ...away, cooldownHours: Number(e.target.value) })} disabled={!editable} aria-label="Horas entre mensagens de ausência" />
+            <span>horas</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 /** O que cada conversa gera, sem o operador precisar fazer nada. */
@@ -645,6 +706,7 @@ function Rules({ editable }: { editable: boolean }) {
             <span className="inline-flex items-center gap-1.5">min · <span className="size-2.5 rounded-full bg-[#dc2626]" /> vermelho depois</span>
           </div>
         </div>
+        <HoursAndAway form={form} set={set} editable={editable} />
         <p className="text-xs text-muted-foreground">A pré-venda só abre em números marcados com “Este número abre pré-venda” e quando é o cliente que chama (não quando a empresa inicia a conversa).</p>
         {editable && (
           <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>

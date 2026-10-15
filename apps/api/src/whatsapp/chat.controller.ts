@@ -3,7 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express'
 import { Throttle } from '@nestjs/throttler'
 import { ApiTags } from '@nestjs/swagger'
 import { Transform, Type } from 'class-transformer'
-import { ArrayMaxSize, IsBoolean, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
+import { ArrayMaxSize, IsBoolean, IsObject, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
 import type { Response } from 'express'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
@@ -104,6 +104,9 @@ class RulesDto {
   @Type(() => Number) @IsInt() @Min(1) @Max(90) reopenDays!: number
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1440) yellowMinutes?: number
   @IsOptional() @Type(() => Number) @IsInt() @Min(2) @Max(2880) redMinutes?: number
+  /** Horário comercial e mensagem de ausência: conferidos campo a campo em cleanRules. */
+  @IsOptional() @IsObject() businessHours?: { enabled?: boolean; days?: ({ start: string; end: string } | null)[] }
+  @IsOptional() @IsObject() away?: { enabled?: boolean; text?: string; cooldownHours?: number }
 }
 
 class CompanyContactDto {

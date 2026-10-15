@@ -7,7 +7,7 @@ export type EvolutionState = 'open' | 'connecting' | 'close'
 export type NumberStatus = 'CONECTADO' | 'CONECTANDO' | 'DESCONECTADO'
 
 /** Eventos que a Evolution manda para o CRM em cada instância. */
-export const WEBHOOK_EVENTS = ['CONNECTION_UPDATE', 'QRCODE_UPDATED', 'MESSAGES_UPSERT', 'SEND_MESSAGE', 'CALL']
+export const WEBHOOK_EVENTS = ['CONNECTION_UPDATE', 'QRCODE_UPDATED', 'MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'SEND_MESSAGE', 'CALL']
 
 export class EvolutionError extends Error {
   constructor(

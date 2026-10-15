@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, AlertCircleIcon, CheckCheckIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
 import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -121,6 +121,15 @@ function waitColor(c: { lastFromMe: boolean; lastMessageAt: string | null; statu
   return { ...WAIT_COLOR[k], min }
 }
 const waitText = (m: number) => (m < 60 ? `${m} min` : m < 1440 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${Math.floor(m / 1440)} dia(s)`)
+
+/** Tracinhos do WhatsApp nas mensagens enviadas: enviada, entregue, lida (azul) ou com erro. */
+function Receipt({ status }: { status?: string | null }) {
+  if (status === 'LIDA') return <CheckCheckIcon className="ml-1 inline size-3.5 text-sky-600 dark:text-sky-400" aria-label="Lida" />
+  if (status === 'ENTREGUE') return <CheckCheckIcon className="ml-1 inline size-3.5" aria-label="Entregue" />
+  if (status === 'ERRO') return <AlertCircleIcon className="ml-1 inline size-3.5 text-destructive" aria-label="Não enviada" />
+  if (status === 'ENVIADA') return <CheckIcon className="ml-1 inline size-3.5" aria-label="Enviada" />
+  return null
+}
 
 function when(iso: string | null) {
   if (!iso) return ''
@@ -506,6 +515,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
                   <p className={cn('mt-0.5 text-right text-[11px] tabular-nums', m.fromMe ? 'opacity-70' : 'text-muted-foreground')}>
                     {m.fromMe && (m.sentByName ? `${m.sentByName} · ` : 'pelo celular · ')}
                     {time.format(new Date(m.sentAt))}
+                    {m.fromMe && <Receipt status={m.status} />}
                   </p>
                 </div>
               </div>

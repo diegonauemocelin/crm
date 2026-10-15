@@ -120,8 +120,81 @@ export interface WaRules {
   /** Cores do tempo sem resposta (desde a última mensagem do cliente): verde até yellowMinutes, amarelo até redMinutes, depois vermelho. */
   yellowMinutes: number
   redMinutes: number
+  /** Horário comercial (horário de Brasília): um intervalo por dia da semana (0 = domingo); null = fechado. */
+  businessHours: BusinessHours
+  /** Mensagem automática para quem chama fora do horário comercial (uma vez a cada cooldownHours por contato). */
+  away: { enabled: boolean; text: string; cooldownHours: number }
 }
-export const DEFAULT_RULES: WaRules = { newContact: 'LEAD_E_PREVENDA', knownLead: 'HISTORICO_E_PREVENDA', reopenDays: 7, yellowMinutes: 15, redMinutes: 60 }
+export interface BusinessHours {
+  enabled: boolean
+  days: ({ start: string; end: string } | null)[]
+}
+export const DEFAULT_HOURS: BusinessHours = {
+  enabled: false,
+  days: [null, { start: '08:00', end: '18:00' }, { start: '08:00', end: '18:00' }, { start: '08:00', end: '18:00' }, { start: '08:00', end: '18:00' }, { start: '08:00', end: '18:00' }, { start: '08:00', end: '12:00' }],
+}
+export const DEFAULT_AWAY_TEXT =
+  'Olá! Recebemos sua mensagem fora do nosso horário de atendimento (segunda a sexta, das 8h às 18h, e sábado, das 8h às 12h). Responderemos assim que voltarmos. Obrigado!'
+export const DEFAULT_RULES: WaRules = {
+  newContact: 'LEAD_E_PREVENDA',
+  knownLead: 'HISTORICO_E_PREVENDA',
+  reopenDays: 7,
+  yellowMinutes: 15,
+  redMinutes: 60,
+  businessHours: DEFAULT_HOURS,
+  away: { enabled: false, text: DEFAULT_AWAY_TEXT, cooldownHours: 12 },
+}
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+const minutesOf = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5))
+
+export function cleanHours(raw: Partial<BusinessHours> | null | undefined): BusinessHours {
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = Array.isArray(raw?.days) ? raw!.days[i] : DEFAULT_HOURS.days[i]
+    if (!d || typeof d !== 'object' || !HHMM.test(String(d.start)) || !HHMM.test(String(d.end)) || minutesOf(d.end) <= minutesOf(d.start)) return null
+    return { start: d.start, end: d.end }
+  })
+  return { enabled: raw?.enabled === true, days }
+}
+
+/** Aberto agora pelo horário comercial (horário de Brasília, sem horário de verão). Desligado = sempre aberto. */
+export function isOpen(h: BusinessHours, now = new Date()) {
+  if (!h.enabled) return true
+  const sp = new Date(now.getTime() - 3 * 3_600_000)
+  const d = h.days[sp.getUTCDay()]
+  if (!d) return false
+  const m = sp.getUTCHours() * 60 + sp.getUTCMinutes()
+  return m >= minutesOf(d.start) && m < minutesOf(d.end)
+}
+
+export type ReceiptStatus = 'ENVIADA' | 'ENTREGUE' | 'LIDA' | 'ERRO'
+const RECEIPT_RANK: Record<string, number> = { ERRO: 0, ENVIADA: 1, ENTREGUE: 2, LIDA: 3 }
+const RECEIPT_MAP: Record<string, ReceiptStatus> = { SERVER_ACK: 'ENVIADA', DELIVERY_ACK: 'ENTREGUE', READ: 'LIDA', PLAYED: 'LIDA', ERROR: 'ERRO', '2': 'ENVIADA', '3': 'ENTREGUE', '4': 'LIDA', '5': 'LIDA', '0': 'ERRO' }
+
+/**
+ * Confirmações de entrega e leitura (evento messages.update da Evolution): id da mensagem no WhatsApp + situação.
+ * Só as mensagens enviadas pela empresa (fromMe) importam.
+ */
+export function parseReceipts(data: unknown): { waId: string; status: ReceiptStatus }[] {
+  const out: { waId: string; status: ReceiptStatus }[] = []
+  for (const raw of (Array.isArray(data) ? data : [data]).slice(0, 200)) {
+    const d = (raw ?? {}) as Record<string, unknown>
+    const key = (d.key ?? {}) as Record<string, unknown>
+    if (d.fromMe === false || key.fromMe === false) continue
+    const waId = [d.keyId, key.id].find((x) => typeof x === 'string' && x.length >= 6 && x.length <= 120) as string | undefined
+    const update = (d.update ?? {}) as Record<string, unknown>
+    const status = RECEIPT_MAP[String(d.status ?? update.status ?? '').toUpperCase()]
+    if (waId && status) out.push({ waId, status })
+  }
+  return out
+}
+
+/** A situação só avança (enviada → entregue → lida); erro só antes de entregar. */
+export function receiptUpgrades(current: string | null, next: ReceiptStatus) {
+  if (current === 'NOTA') return false
+  if (next === 'ERRO') return !current || current === 'ENVIADA'
+  return (RECEIPT_RANK[next] ?? 0) > (RECEIPT_RANK[current ?? ''] ?? 0) || current === 'ERRO'
+}
 
 /** Cor do atraso de resposta: só quando a última mensagem é do cliente. */
 export function responseColor(lastFromMe: boolean, lastMessageAt: Date | null, r: Pick<WaRules, 'yellowMinutes' | 'redMinutes'>, now = Date.now()): 'verde' | 'amarelo' | 'vermelho' | null {
@@ -141,6 +214,12 @@ export function cleanRules(raw: Partial<WaRules> | null | undefined): WaRules {
       const red = Number.isInteger(r.redMinutes) && r.redMinutes! > y && r.redMinutes! <= 2880 ? r.redMinutes! : Math.max(y + 1, 60)
       return { yellowMinutes: y, redMinutes: red }
     })(),
+    businessHours: cleanHours(r.businessHours),
+    away: {
+      enabled: r.away?.enabled === true,
+      text: typeof r.away?.text === 'string' && r.away.text.trim() ? r.away.text.trim().slice(0, 1000) : DEFAULT_AWAY_TEXT,
+      cooldownHours: Number.isInteger(r.away?.cooldownHours) && r.away!.cooldownHours >= 1 && r.away!.cooldownHours <= 168 ? r.away!.cooldownHours : 12,
+    },
   }
 }
 
