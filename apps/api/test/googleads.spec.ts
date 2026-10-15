@@ -490,3 +490,53 @@ describe('Google Ads: prazo do Google', () => {
     expect(tooOldForGoogle(ago(89.5), { gbraid: '0AAAAAo-abcdef12' }, now)).toMatch(/90 dias/)
   })
 })
+
+describe('Google Ads: eventos recusados pelo índice', () => {
+  it('tira só os eventos apontados pelo Google e manda o resto na hora', async () => {
+    const { generateKeyPairSync } = await import('node:crypto')
+    const { GoogleAdsService } = await import('../src/googleads/googleads.service')
+    const { encrypt } = await import('../src/common/crypto')
+    const { DEFAULT_GOOGLE_ADS, badEvents } = await import('../src/googleads/googleads')
+    const violation = (i: number) => ({ field: `events.events[${i}].event_timestamp`, description: 'Event did not occur within the acceptable time window.' })
+    expect([...badEvents({ error: { details: [{ fieldViolations: [violation(0), violation(2)] }] } }).keys()]).toEqual([0, 2])
+    expect(badEvents({ error: { message: 'x' } }).size).toBe(0)
+
+    const pem = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' }).toString()
+    const rows = Array.from({ length: 6 }, (_, i) => ({ id: `c${i}`, recordId: `rec${i}`, leadId: null, kind: 'contato', transactionId: `r${i}:contato`, actionId: '300', eventAt: new Date(Date.now() - (i === 1 || i === 4 ? 50 : 2) * 86_400_000), value: null, clickIds: { gclid: `Cj0KCQjwBom${i}xx` } }))
+    const status = new Map<string, string>()
+    const prisma = {
+      googleAdsConversion: {
+        findMany: async () => rows,
+        update: async () => undefined,
+        updateMany: async ({ where, data }: { where: { id: string | { in: string[] } }; data: { status: string } }) => (typeof where.id === 'string' ? [where.id] : where.id.in).forEach((id) => status.set(id, data.status)),
+      },
+      lead: { findMany: async () => [] },
+      serviceRecord: { findMany: async () => [] },
+    }
+    const s = { ...DEFAULT_GOOGLE_ADS, enabled: true, customerId: '1234567890', clientEmail: 'crm@p.iam.gserviceaccount.com', privateKeyEnc: encrypt(pem), actions: { ...DEFAULT_GOOGLE_ADS.actions, contato: '300' } }
+    const settings = { get: async (_t: string, _k: string, d: object) => d, set: async (_t: string, _k: string, v: object) => v }
+    const service = new GoogleAdsService(prisma as never, settings as never, {} as never)
+    service.gapMs = 0
+    const original = globalThis.fetch
+    let calls = 0
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      if (String(url).includes('oauth2')) return new Response(JSON.stringify({ access_token: 't', expires_in: 3600 }))
+      calls++
+      const body = JSON.parse(String(init.body)) as { events: { eventTimestamp: string }[] }
+      const old = body.events.map((e, i) => (Date.now() - Date.parse(e.eventTimestamp) > 30 * 86_400_000 ? i : -1)).filter((i) => i >= 0)
+      if (old.length) return new Response(JSON.stringify({ error: { status: 'INVALID_ARGUMENT', message: 'There was a problem with the request.', details: [{ fieldViolations: old.map(violation) }] } }), { status: 400 })
+      return new Response(JSON.stringify({ requestId: 'ok' }))
+    }) as typeof fetch
+    try {
+      const r = await service.send('t', s)
+      expect(calls).toBe(2)
+      expect(r.sent).toBe(4)
+      expect(status.get('c1')).toBe('IGNORADO')
+      expect(status.get('c4')).toBe('IGNORADO')
+      expect(status.get('c0')).toBe('ENVIADO')
+      expect(status.get('c5')).toBe('ENVIADO')
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+})

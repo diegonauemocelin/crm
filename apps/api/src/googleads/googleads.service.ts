@@ -34,6 +34,7 @@ import {
   ingestBody,
   isGoogleAdsTouch,
   shouldSend,
+  badEvents,
   summarizeRequestStatus,
   tooOldForGoogle,
 } from './googleads'
@@ -72,6 +73,12 @@ const CHECKS_PER_RUN = 30
 
 /** Limite do Google, Google fora do ar ou falha de rede: para de enviar agora e tenta na próxima janela. */
 export class AdsRetryLater extends Error {}
+/** O Google recusou o lote por causa de alguns eventos (pelo índice): os outros podem ir sem eles. */
+export class AdsBadEvents extends Error {
+  constructor(message: string, readonly bad: Map<number, { field: string; description: string }>) {
+    super(message)
+  }
+}
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 interface TouchJson {
@@ -328,6 +335,8 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
     if (!res.ok) {
       const msg = adsError(res.status, body, s.clientEmail)
       if (res.status === 429 || res.status >= 500) throw new AdsRetryLater(msg)
+      const bad = res.status === 400 ? badEvents(body) : new Map<number, { field: string; description: string }>()
+      if (bad.size) throw new AdsBadEvents(msg, bad)
       throw new Error(msg)
     }
     return body?.requestId ?? null
@@ -574,6 +583,27 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
         // Não conta como tentativa: o problema é do lado do Google ou da rede, não do dado.
         await this.prisma.googleAdsConversion.updateMany({ where: { id: { in: ids }, status: 'ERRO' }, data: { error: msg.slice(0, 500) } })
         throw err
+      }
+      // O Google disse quais eventos estão errados: tira só esses e manda o resto de novo na hora.
+      if (err instanceof AdsBadEvents && depth < 6) {
+        const badIds = items.filter((_, i) => err.bad.has(i))
+        const rest = items.filter((_, i) => !err.bad.has(i))
+        for (const [i, b] of err.bad) {
+          const it = items[i]
+          if (!it) continue
+          const when = (it.ev as { eventTimestamp?: string }).eventTimestamp?.slice(0, 10).split('-').reverse().join('/') ?? ''
+          const outOfWindow = /timestamp/i.test(b.field)
+          await this.prisma.googleAdsConversion.updateMany({
+            where: { id: it.id },
+            data: outOfWindow
+              ? { status: 'IGNORADO', error: `Fora do prazo que o Google aceita (conversão de ${when}).`, attempts: { increment: 1 } }
+              : { status: 'ERRO', actionId, error: `O Google recusou este evento: ${b.field} ${b.description}`.slice(0, 500), attempts: { increment: 1 } },
+          })
+        }
+        this.logger.warn(`Google Ads: ${badIds.length} evento(s) recusado(s) no lote (ação ${actionId}); reenviando os outros ${rest.length}.`)
+        if (!rest.length || badIds.length === 0) return { sent: 0, failed: badIds.length }
+        const r = await this.sendChunk(tenantId, s, actionId, rest, depth + 1)
+        return { sent: r.sent, failed: r.failed + badIds.length }
       }
       if (items.length > 1 && depth < 4 && msg.startsWith('O Google recusou o envio')) {
         const half = Math.ceil(items.length / 2)

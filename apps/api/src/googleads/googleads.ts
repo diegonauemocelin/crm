@@ -449,3 +449,20 @@ export function summarizeRequestStatus(body: unknown): { status: GoogleCheck; de
   if (status === 'PARCIAL' && keys.length && keys.every((k) => k === 'DUPLICATE_TRANSACTION_ID')) status = 'ACEITO'
   return { status, detail: parts.length ? parts.join(' · ').slice(0, 500) : null, retry: keys.some((k) => RETRY_REASONS.includes(k)) }
 }
+
+/**
+ * Eventos recusados pelo índice no lote, a partir dos detalhes do erro do Google
+ * (fieldViolations com "events.events[3].event_timestamp"). Devolve índice → { campo, descrição }.
+ */
+export function badEvents(body: unknown): Map<number, { field: string; description: string }> {
+  const out = new Map<number, { field: string; description: string }>()
+  const details = (body as { error?: { details?: unknown[] } } | null)?.error?.details
+  if (!Array.isArray(details)) return out
+  for (const d of details as { fieldViolations?: { field?: string; description?: string }[] }[]) {
+    for (const v of d.fieldViolations ?? []) {
+      const m = /events\.events\[(\d+)\]\.?([a-z_.]*)/i.exec(v.field ?? '')
+      if (m && !out.has(Number(m[1]))) out.set(Number(m[1]), { field: m[2] ?? '', description: String(v.description ?? '').slice(0, 200) })
+    }
+  }
+  return out
+}

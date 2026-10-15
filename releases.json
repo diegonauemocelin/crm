@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.38.4",
+      "date": "2026-10-16",
+      "title": "Lote aceito sem os eventos recusados",
+      "changes": [
+        { "type": "correcao", "area": "Google Ads", "text": "Quando o Google recusa alguns eventos de um lote (ex.: “Event did not occur within the acceptable time window”), o CRM tira só esses, marca o motivo e a data da conversão, e manda o resto do lote na hora." }
+      ]
+    },
+    {
       "version": "0.38.3",
       "date": "2026-10-16",
       "title": "Prazo do Google para conversões",
