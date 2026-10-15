@@ -71,3 +71,17 @@ describe('Agenda: contatos do WhatsApp conectado', () => {
     expect(r.stats).toEqual({ total: 5, hidden: 1, groups: 1 })
   })
 })
+
+describe('Leads para chamar: por onde chegou', () => {
+  it('formulário (com o nome), pop-up, botão de WhatsApp sem mensagem, loja virtual e origem', async () => {
+    const { toCallVia } = await import('../src/whatsapp/envio')
+    expect(toCallVia({ channel: 'formulario', formName: 'Orçamento de peças' }, null, false, null)).toEqual({ kind: 'formulario', label: 'Formulário: Orçamento de peças' })
+    expect(toCallVia({ channel: 'landing', formName: null }, null, false, null).label).toBe('Formulário do site')
+    expect(toCallVia({ channel: 'popup', formName: 'Cupom' }, null, false, null).label).toBe('Pop-up: Cupom')
+    expect(toCallVia({ channel: 'whatsapp', formName: null }, null, false, null).kind).toBe('whatsapp')
+    expect(toCallVia(null, { conversao: 'botão de WhatsApp "LP JCB"' }, false, null)).toEqual({ kind: 'whatsapp', label: 'Botão de WhatsApp "LP JCB"' })
+    expect(toCallVia(null, { source: 'ecommerce' }, false, null)).toEqual({ kind: 'ecommerce', label: 'Loja virtual' })
+    expect(toCallVia(null, null, true, null).label).toBe('Loja virtual')
+    expect(toCallVia(null, null, false, 'RD Station')).toEqual({ kind: 'outro', label: 'RD Station' })
+  })
+})

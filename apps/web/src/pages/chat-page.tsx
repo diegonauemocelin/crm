@@ -1,9 +1,10 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
 import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { type ChatService, LastSeller, ServiceButtons, StageBadge, type StageInfo } from '@/components/chat/atendimento-chat'
+import { ToCallPanel } from '@/components/chat/para-chamar'
 import { type ChatLabel, LabelChip, LabelPicker, ManageRepliesDialog, useLabels } from '@/components/chat/organizar'
 import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
@@ -144,6 +145,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
   const [params, setParams] = useSearchParams()
   const openId = params.get('conversa')
   const monitor = onlyMonitor || params.get('monitorar') === '1'
+  const toCall = !monitor && params.get('aba') === 'chamar'
   const [sellerId, setSellerId] = useState<string | null>(null)
   const [awaiting, setAwaiting] = useState(false)
   const [queue, setQueue] = useState(false)
@@ -171,6 +173,14 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
     else n.delete('conversa')
     return n
   })
+  const setTab = (tab: 'conversas' | 'chamar', conversa?: string) => setParams((p) => {
+    const n = new URLSearchParams(p)
+    n.delete('conversa')
+    if (tab === 'chamar') n.set('aba', 'chamar')
+    else n.delete('aba')
+    if (conversa) n.set('conversa', conversa)
+    return n
+  })
   const setMonitor = (on: boolean) => setParams((p) => {
     const n = new URLSearchParams(p)
     n.delete('conversa')
@@ -195,6 +205,16 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                 </ToggleGroupItem>
               </ToggleGroup>
             )}
+            {!monitor && can('leads') && can('chat', 'create') && (
+              <ToggleGroup type="single" variant="outline" size="sm" value={toCall ? 'chamar' : 'conversas'} onValueChange={(v) => v && setTab(v as 'conversas' | 'chamar')} aria-label="Aba">
+                <ToggleGroupItem value="conversas" className="px-3">
+                  Conversas
+                </ToggleGroupItem>
+                <ToggleGroupItem value="chamar" className="px-3" title="Leads com telefone que preencheram formulário ou compraram e ainda não conversaram no WhatsApp">
+                  <PhoneOutgoingIcon /> Leads para chamar
+                </ToggleGroupItem>
+              </ToggleGroup>
+            )}
             {!monitor && <AlertSettings />}
             {!monitor && can('chat', 'create') && (
               <Button onClick={() => setStarting(true)}>
@@ -205,9 +225,10 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
         }
       />
       {starting && <StartDialog onClose={() => setStarting(false)} onStarted={(cid) => (setStarting(false), open(cid))} />}
-      {list.isLoading && <TableSkeleton rows={6} />}
-      {list.error && <ErrorState error={list.error} onRetry={() => list.refetch()} />}
-      {list.data && (
+      {toCall && <ToCallPanel onStarted={(cid) => setTab('conversas', cid)} />}
+      {!toCall && list.isLoading && <TableSkeleton rows={6} />}
+      {!toCall && list.error && <ErrorState error={list.error} onRetry={() => list.refetch()} />}
+      {!toCall && list.data && (
         <Card className="grid h-[calc(100dvh-13rem)] min-h-[28rem] grid-cols-1 gap-0 overflow-hidden p-0 md:grid-cols-[20rem_minmax(0,1fr)]">
           <div className={cn('flex min-h-0 flex-col border-r', openId && 'hidden md:flex')}>
             <div className="space-y-2 border-b p-3">

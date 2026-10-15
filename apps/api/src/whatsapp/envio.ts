@@ -314,3 +314,15 @@ export function contactsFromWhatsapp(list: unknown) {
 /** Cores das etiquetas do chat (a tela mapeia cada uma para a sua cor). */
 export const LABEL_COLORS = ['cinza', 'vermelho', 'laranja', 'amarelo', 'verde', 'azul', 'roxo', 'rosa'] as const
 export type LabelColor = (typeof LABEL_COLORS)[number]
+
+/** Por onde o lead "para chamar" chegou: formulário (qual), pop-up, botão de WhatsApp sem mensagem, loja virtual. */
+export function toCallVia(sub: { channel: string; formName: string | null } | null, conv: { conversao?: string; source?: string } | null, ecommerce: boolean, origin: string | null) {
+  if (sub) {
+    if (sub.channel === 'whatsapp') return { kind: 'whatsapp', label: 'Botão de WhatsApp: preencheu e não mandou mensagem' }
+    if (sub.channel === 'popup') return { kind: 'formulario', label: sub.formName ? `Pop-up: ${sub.formName}` : 'Pop-up do site' }
+    return { kind: 'formulario', label: sub.formName ? `Formulário: ${sub.formName}` : 'Formulário do site' }
+  }
+  if (conv?.conversao) return { kind: /whatsapp/i.test(conv.conversao) ? 'whatsapp' : 'formulario', label: conv.conversao.charAt(0).toUpperCase() + conv.conversao.slice(1) }
+  if (ecommerce || conv?.source === 'ecommerce') return { kind: 'ecommerce', label: 'Loja virtual' }
+  return { kind: 'outro', label: origin ?? 'Cadastro no CRM' }
+}

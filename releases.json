@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.43.0",
+      "date": "2026-10-16",
+      "title": "Leads para chamar no WhatsApp",
+      "changes": [
+        { "type": "novo", "area": "WhatsApp", "text": "Aba \"Leads para chamar\" no Chat WhatsApp: leads com telefone que preencheram formulário, pop-up ou botão de WhatsApp (sem mandar a mensagem) ou vieram da loja virtual, e ainda não conversaram no WhatsApp. Mostra por onde cada um chegou, o vendedor e a data, com o botão \"Chamar no WhatsApp\". Colegas, fornecedores e outros da agenda ficam de fora." }
+      ]
+    },
+    {
       "version": "0.42.0",
       "date": "2026-10-16",
       "title": "Pré e Pós-Vendas dentro do chat",

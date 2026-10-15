@@ -6,14 +6,14 @@ import type { RequestCtx } from '../common/decorators'
 import { can, type Scope } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import { FilesService } from '../files/files.service'
-import type { Prisma, WhatsappNumber } from '../generated/prisma/client'
+import { Prisma, type WhatsappNumber } from '../generated/prisma/client'
 import { LeadCaptureService } from '../leads/lead-capture.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { normalizePhone } from '../atendimento/br'
 import { type EvolutionClient, EvolutionError } from './evolution'
 import { sectorsOf, splitWhere } from './atendentes'
-import { type AgendaCategory, applyVariables, cleanRules, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, LABEL_COLORS, type LabelColor, parseContactList, parseVcf, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
+import { type AgendaCategory, applyVariables, cleanRules, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, LABEL_COLORS, type LabelColor, parseContactList, toCallVia, parseVcf, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
 import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, type ParsedMessage, phoneFromDigits, phoneVariants, previewOf } from './mensagens'
 
 const PAGE = 60
@@ -416,6 +416,72 @@ export class ChatService {
         .slice(0, PAGE)
         .reverse()
         .map((m) => ({ id: m.id, fromMe: m.fromMe, type: m.type, text: m.text, fileName: m.fileName, mime: m.mime, mediaStatus: m.mediaStatus, hasFile: !!m.fileId, sentAt: m.sentAt, sentByName: m.sentByName, status: m.status, internal: m.internal })),
+    }
+  }
+
+  /**
+   * Leads para chamar: têm telefone, converteram no período (formulário, pop-up, botão de WhatsApp, loja virtual) e
+   * nunca tiveram conversa no WhatsApp (nem pelo lead nem pelo telefone). Colegas, fornecedores e outros da agenda ficam de fora.
+   */
+  async toCall(user: AuthUser, q: { search?: string; page?: number; days?: number }) {
+    this.assertAction(user, 'chat', 'create')
+    if (!can(user.permissions, user.role.isSystem, 'leads', 'view')) throw new ForbiddenException('Você não tem permissão para ver os leads.')
+    const days = q.days && q.days > 0 ? Math.min(q.days, 365) : 30
+    const since = new Date(Date.now() - days * 86_400_000)
+    const page = Math.max(1, q.page ?? 1)
+    const s = q.search?.trim() ?? ''
+    const digits = s.replace(/\D/g, '')
+    const searchSql = s
+      ? Prisma.sql`AND (l.name ILIKE ${`%${s}%`} ${digits.length >= 4 ? Prisma.sql`OR l.phone LIKE ${`%${digits}%`}` : Prisma.empty})`
+      : Prisma.empty
+    const base = Prisma.sql`
+      FROM leads l
+      WHERE l."tenantId" = ${user.tenantId}::uuid AND l."deletedAt" IS NULL AND l."anonymizedAt" IS NULL AND l.phone IS NOT NULL
+        AND l."lastConversionAt" >= ${since}
+        AND NOT EXISTS (
+          SELECT 1 FROM whatsapp_conversations c
+          WHERE c."tenantId" = l."tenantId"
+            AND (c."leadId" = l.id OR c.phone = l.phone OR c.phone = regexp_replace(l.phone, '^\\+55(\\d{2})9(\\d{8})$', '+55\\1\\2'))
+        )
+        AND NOT EXISTS (SELECT 1 FROM whatsapp_contacts k WHERE k."tenantId" = l."tenantId" AND k."contactKey" = l.phone AND k.category <> 'CLIENTE')
+        ${searchSql}`
+    const [countRow, idRows] = await Promise.all([
+      this.prisma.$queryRaw<{ n: bigint }[]>`SELECT count(*)::bigint AS n ${base}`,
+      this.prisma.$queryRaw<{ id: string }[]>`SELECT l.id ${base} ORDER BY l."lastConversionAt" DESC LIMIT 50 OFFSET ${(page - 1) * 50}`,
+    ])
+    const ids = idRows.map((r) => r.id)
+    const [leads, subs] = await Promise.all([
+      this.prisma.lead.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, phone: true, email: true, city: true, state: true, ownerId: true, originId: true, ecommerceId: true, lastConversion: true, lastConversionAt: true } }),
+      this.prisma.captureSubmission.findMany({ where: { leadId: { in: ids } }, orderBy: { createdAt: 'desc' }, select: { leadId: true, channel: true, createdAt: true, form: { select: { name: true } } } }),
+    ])
+    const [sellers, origins] = await Promise.all([
+      this.prisma.seller.findMany({ where: { id: { in: [...new Set(leads.map((l) => l.ownerId).filter((x): x is string => !!x))] } }, select: { id: true, name: true } }),
+      this.prisma.lookupItem.findMany({ where: { id: { in: [...new Set(leads.map((l) => l.originId).filter((x): x is string => !!x))] } }, select: { id: true, name: true } }),
+    ])
+    const sellerName = new Map(sellers.map((x) => [x.id, x.name]))
+    const originName = new Map(origins.map((x) => [x.id, x.name]))
+    const lastSub = new Map<string, (typeof subs)[number]>()
+    for (const sub of subs) if (sub.leadId && !lastSub.has(sub.leadId)) lastSub.set(sub.leadId, sub)
+    const byId = new Map(leads.map((l) => [l.id, l]))
+    return {
+      total: Number(countRow[0]?.n ?? 0),
+      page,
+      days,
+      items: ids.map((id) => {
+        const l = byId.get(id)!
+        const sub = lastSub.get(id)
+        const conv = (l.lastConversion as { conversao?: string; source?: string } | null) ?? null
+        return {
+          id: l.id,
+          name: l.name,
+          phone: l.phone,
+          email: l.email,
+          place: [l.city, l.state].filter(Boolean).join('/') || null,
+          seller: l.ownerId ? (sellerName.get(l.ownerId) ?? null) : null,
+          at: l.lastConversionAt,
+          via: toCallVia(sub ? { channel: sub.channel, formName: sub.form?.name ?? null } : null, conv, !!l.ecommerceId, l.originId ? (originName.get(l.originId) ?? null) : null),
+        }
+      }),
     }
   }
 

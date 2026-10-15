@@ -73,6 +73,12 @@ class QuickReplyDto {
   @IsOptional() @IsBoolean() standard?: boolean
 }
 
+class ToCallQuery {
+  @IsOptional() @IsString() @MaxLength(100) busca?: string
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) pagina?: number
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(365) dias?: number
+}
+
 class LabelDto {
   @IsString() @Length(1, 30) name!: string
   @IsIn([...LABEL_COLORS]) color!: string
@@ -336,6 +342,12 @@ export class ChatController {
   @Delete('respostas/:id')
   removeQuickReply(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.chat.removeQuickReply(user, id)
+  }
+
+  /** Leads com telefone que converteram e ainda não tiveram conversa no WhatsApp. */
+  @Get('para-chamar')
+  toCall(@CurrentUser() user: AuthUser, @Query() q: ToCallQuery) {
+    return this.chat.toCall(user, { search: q.busca, page: q.pagina, days: q.dias })
   }
 
   @Get('etiquetas')
