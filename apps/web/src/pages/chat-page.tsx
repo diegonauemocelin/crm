@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, AlertCircleIcon, CheckCheckIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, AlertCircleIcon, CheckCheckIcon, DownloadIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
 import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -245,9 +245,9 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                 <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input className="pl-8" placeholder="Nome, telefone ou mensagem" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Buscar conversa" />
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <Select value={numberId ?? ALL} onValueChange={(v) => setNumberId(v === ALL ? null : v)}>
-                  <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label="Número">
+                  <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Número">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -260,7 +260,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                   </SelectContent>
                 </Select>
                 <Select value={category ?? ALL} onValueChange={(v) => setCategory(v === ALL ? null : (v as ContactCategory))}>
-                  <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label="Filtrar por tipo de contato">
+                  <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Filtrar por tipo de contato">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -274,7 +274,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                 </Select>
                 {(labels.data ?? []).length > 0 && (
                   <Select value={labelId ?? ALL} onValueChange={(v) => setLabelId(v === ALL ? null : v)}>
-                    <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label="Filtrar por etiqueta">
+                    <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Filtrar por etiqueta">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -289,7 +289,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                 )}
                 {monitor && (
                   <Select value={sellerId ?? ALL} onValueChange={(v) => setSellerId(v === ALL ? null : v)}>
-                    <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label="Vendedor">
+                    <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Vendedor">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -302,6 +302,8 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                     </SelectContent>
                   </Select>
                 )}
+              </div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                 {monitor ? (
                   <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title="A última mensagem é do contato">
                     <Switch checked={awaiting} onCheckedChange={setAwaiting} aria-label="Só aguardando resposta" /> Aguardando resposta
@@ -437,51 +439,54 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
   return (
     <MonitorContext.Provider value={monitor}>
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-3 py-2">
-        {onBack && (
-          <Button size="icon" variant="ghost" className="size-8 md:hidden" onClick={onBack} aria-label="Voltar para a lista">
-            <ArrowLeftIcon />
-          </Button>
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-medium">{title}</p>
-          <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-            {d.conversation.phone && <span>{formatPhone(d.conversation.phone)}</span>}
-            {d.number && (
-              <span className="inline-flex items-center gap-1">
-                <SmartphoneIcon className="size-3" /> {d.number.name}
-              </span>
-            )}
-            <LastSeller service={d.service} />
-          </p>
+      <div className="@container/head space-y-2 border-b px-3 py-2">
+        <div className="flex items-start gap-2">
+          {onBack && (
+            <Button size="icon" variant="ghost" className="size-8 shrink-0 md:hidden" onClick={onBack} aria-label="Voltar para a lista">
+              <ArrowLeftIcon />
+            </Button>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-medium">{title}</p>
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+              {d.conversation.phone && <span className="whitespace-nowrap">{formatPhone(d.conversation.phone)}</span>}
+              {d.number && (
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                  <SmartphoneIcon className="size-3" /> {d.number.name}
+                </span>
+              )}
+              <LastSeller service={d.service} />
+              {d.record?.adsVia && (
+                <span className="inline-flex items-center gap-1 whitespace-nowrap text-sky-700 dark:text-sky-300">
+                  <MegaphoneIcon className="size-3" /> Google Ads{d.record.adsCampaign ? ` · ${d.record.adsCampaign}` : d.record.adsCampaignId ? ` · campanha nº ${d.record.adsCampaignId}` : ''}
+                </span>
+              )}
+            </p>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {d.conversation.category === 'CLIENTE' && <ServiceButtons service={d.service} contact={{ name: d.lead?.name ?? d.conversation.name, phone: d.conversation.phone, email: d.lead?.email }} />}
+          {!monitor && <LabelPicker conversationId={d.conversation.id} value={d.conversation.labels ?? []} />}
+          {!monitor && <ReminderButton conversationId={d.conversation.id} />}
+          {can('monitoramento', 'create') && <NoteButton conversationId={d.conversation.id} monitor={monitor} />}
           {d.conversation.phone && (
-            <Button asChild size="sm" variant="outline" title="Ligação pelo telefone (a ligação pelo WhatsApp é atendida no celular)">
+            <Button asChild size="sm" variant="outline" title="Ligar (pelo telefone; a ligação pelo WhatsApp é atendida no celular)" aria-label="Ligar">
               <a href={`tel:${d.conversation.phone}`}>
-                <PhoneIcon /> Ligar
+                <PhoneIcon /> <span className="hidden @4xl/head:inline">Ligar</span>
               </a>
             </Button>
           )}
-          {can('monitoramento', 'create') && <NoteButton conversationId={d.conversation.id} monitor={monitor} />}
-          {!monitor && d.attendance?.split && d.conversation.category === 'CLIENTE' && <AttendantPicker thread={d} />}
-          {!monitor && <LabelPicker conversationId={d.conversation.id} value={d.conversation.labels ?? []} />}
-          {!monitor && <ReminderButton conversationId={d.conversation.id} />}
-          {!monitor && <ConversationActions thread={d} />}
           {d.lead && (
-            <Button asChild size="sm" variant="outline">
+            <Button asChild size="sm" variant="outline" title="Abrir a ficha do lead" aria-label="Lead">
               <Link to={`/leads/${d.lead.id}`}>
-                <UserIcon /> Lead
+                <UserIcon /> <span className="hidden @4xl/head:inline">Lead</span>
               </Link>
             </Button>
           )}
-          {d.conversation.category === 'CLIENTE' && <ServiceButtons service={d.service} contact={{ name: d.lead?.name ?? d.conversation.name, phone: d.conversation.phone, email: d.lead?.email }} />}
+          <span className="hidden h-5 w-px bg-border @2xl/head:block" />
+          {!monitor && d.attendance?.split && d.conversation.category === 'CLIENTE' && <AttendantPicker thread={d} />}
+          {!monitor && <ConversationActions thread={d} />}
         </div>
-        {d.record?.adsVia && (
-          <p className="flex w-full items-center gap-1.5 text-xs text-sky-700 dark:text-sky-300">
-            <MegaphoneIcon className="size-3.5" /> Google Ads{d.record.adsCampaign ? ` · ${d.record.adsCampaign}` : d.record.adsCampaignId ? ` · campanha nº ${d.record.adsCampaignId}` : ''}
-          </p>
-        )}
       </div>
       {!monitor && <ReminderBar conversationId={d.conversation.id} />}
       <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto bg-muted/30 px-3 py-3">
@@ -568,7 +573,7 @@ function AttendantPicker({ thread }: { thread: Thread }) {
           value={value}
           onValueChange={(v) => save.mutate(v === 'fila' ? { userId: null, sectorId: null } : v.startsWith('s:') ? { userId: null, sectorId: v.slice(2) } : { userId: v.slice(2) })}
         >
-          <SelectTrigger size="sm" className="w-44" aria-label="Atendente da conversa">
+          <SelectTrigger size="sm" className="w-auto max-w-48" aria-label="Atendente da conversa">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -613,8 +618,8 @@ function NoteButton({ conversationId, monitor }: { conversationId: string; monit
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button size="sm" variant="outline" title="Nota interna: só aparece no CRM">
-          <StickyNoteIcon /> Nota interna
+        <Button size="sm" variant="outline" title="Nota interna: só aparece no CRM" aria-label="Nota interna">
+          <StickyNoteIcon /> <span className="hidden @4xl/head:inline">Nota interna</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 space-y-2">
@@ -798,7 +803,7 @@ function ConversationActions({ thread }: { thread: Thread }) {
     <>
       <CategoryPicker thread={thread} />
       <Select value={thread.conversation.assignedSellerId ?? ALL} onValueChange={(v) => save.mutate({ assignedSellerId: v === ALL ? null : v })}>
-        <SelectTrigger size="sm" className="w-40" aria-label="Responsável pela conversa">
+        <SelectTrigger size="sm" className="w-auto max-w-48" aria-label="Responsável pela conversa">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -810,8 +815,8 @@ function ConversationActions({ thread }: { thread: Thread }) {
           ))}
         </SelectContent>
       </Select>
-      <Button size="sm" variant="outline" disabled={save.isPending} onClick={() => save.mutate({ status: archived ? 'ABERTA' : 'ARQUIVADA' })}>
-        {archived ? <ArchiveRestoreIcon /> : <ArchiveIcon />} {archived ? 'Reabrir' : 'Arquivar'}
+      <Button size="sm" variant="outline" disabled={save.isPending} onClick={() => save.mutate({ status: archived ? 'ABERTA' : 'ARQUIVADA' })} title={archived ? 'Reabrir a conversa' : 'Arquivar a conversa'} aria-label={archived ? 'Reabrir' : 'Arquivar'}>
+        {archived ? <ArchiveRestoreIcon /> : <ArchiveIcon />} <span className="hidden @4xl/head:inline">{archived ? 'Reabrir' : 'Arquivar'}</span>
       </Button>
     </>
   )
@@ -924,6 +929,43 @@ function waFormat(text: string) {
   return out
 }
 
+/** Foto da conversa: abre grande por cima do chat (sem sair do CRM), com zoom e botão para baixar. */
+function ImageViewer({ src, alt, sticker }: { src: string; alt: string; sticker?: boolean }) {
+  const [open, setOpen] = useState(false)
+  const [zoom, setZoom] = useState(false)
+  return (
+    <>
+      <button type="button" onClick={() => (setZoom(false), setOpen(true))} className="block cursor-zoom-in rounded focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" aria-label="Ver a foto maior">
+        <img src={src} alt={alt} className={cn('rounded', sticker ? 'size-32 object-contain' : 'max-h-72 w-auto')} loading="lazy" />
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="flex max-h-[95vh] w-auto max-w-[95vw] flex-col gap-2 p-3 sm:max-w-[95vw]">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Foto da conversa</DialogTitle>
+            <DialogDescription>{alt}</DialogDescription>
+          </DialogHeader>
+          <div className={cn('min-h-0 flex-1 overflow-auto rounded bg-muted/40', zoom ? 'cursor-zoom-out' : 'cursor-zoom-in')} onClick={() => setZoom((z) => !z)}>
+            <img src={src} alt={alt} className={cn('mx-auto', zoom ? 'max-w-none' : 'max-h-[80vh] max-w-full object-contain')} />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">{zoom ? 'Tamanho real: clique para ajustar à tela.' : 'Clique na foto para ver no tamanho real.'}</p>
+            <div className="flex gap-2">
+              <Button asChild size="sm" variant="outline">
+                <a href={src} download>
+                  <DownloadIcon /> Baixar
+                </a>
+              </Button>
+              <Button size="sm" onClick={() => setOpen(false)}>
+                Fechar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 function Bubble({ m }: { m: Message }) {
   const monitor = useContext(MonitorContext)
   const src = `/api/chat/midias/${m.id}${monitor ? '?monitorar=true' : ''}`
@@ -936,9 +978,7 @@ function Bubble({ m }: { m: Message }) {
     return (
       <div className="space-y-1">
         {m.hasFile ? (
-          <a href={src} target="_blank" rel="noopener noreferrer">
-            <img src={src} alt={m.text ?? (m.type === 'figurinha' ? 'Figurinha' : 'Foto')} className={cn('rounded', m.type === 'figurinha' ? 'size-32 object-contain' : 'max-h-72 w-auto')} loading="lazy" />
-          </a>
+          <ImageViewer src={src} alt={m.text ?? (m.type === 'figurinha' ? 'Figurinha' : 'Foto')} sticker={m.type === 'figurinha'} />
         ) : (
           pending || missing || <p className="text-xs italic opacity-70">Foto</p>
         )}
@@ -1018,7 +1058,7 @@ function CategoryPicker({ thread }: { thread: Thread }) {
           else save.mutate({ category: c })
         }}
       >
-        <SelectTrigger size="sm" className="w-44" aria-label="Tipo de contato">
+        <SelectTrigger size="sm" className="w-auto max-w-48" aria-label="Tipo de contato">
           <SelectValue placeholder="A classificar" />
         </SelectTrigger>
         <SelectContent>
@@ -1228,8 +1268,8 @@ function ReminderButton({ conversationId }: { conversationId: string }) {
   })
   return (
     <>
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)} title="Lembrete de retorno">
-        <AlarmClockIcon /> Lembrete
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)} title="Lembrete de retorno" aria-label="Lembrete">
+        <AlarmClockIcon /> <span className="hidden @4xl/head:inline">Lembrete</span>
       </Button>
       {open && (
         <Dialog open onOpenChange={(o) => !o && setOpen(false)}>

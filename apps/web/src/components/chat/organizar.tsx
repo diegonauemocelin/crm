@@ -73,8 +73,9 @@ export function LabelPicker({ conversationId, value }: { conversationId: string;
     <>
       <Popover>
         <PopoverTrigger asChild>
-          <Button size="sm" variant="outline" title="Etiquetas da conversa">
-            <TagIcon /> Etiquetas{value.length ? ` (${value.length})` : ''}
+          <Button size="sm" variant="outline" title="Etiquetas da conversa" aria-label="Etiquetas">
+            <TagIcon /> <span className="hidden @4xl/head:inline">Etiquetas</span>
+            {value.length > 0 && <span className="rounded bg-muted px-1 text-[11px] tabular-nums">{value.length}</span>}
           </Button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-64 p-1">

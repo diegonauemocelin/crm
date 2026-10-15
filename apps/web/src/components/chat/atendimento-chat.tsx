@@ -112,7 +112,7 @@ export function LastSeller({ service }: { service: ChatService | undefined }) {
   const s = service?.lastSeller
   if (!s) return null
   return (
-    <span className="inline-flex items-center gap-1 font-medium text-foreground" title="Responsável pelo último atendimento deste cliente">
+    <span className="inline-flex items-center gap-1 font-medium whitespace-nowrap text-foreground" title="Responsável pelo último atendimento deste cliente">
       <UserCheckIcon className="size-3" /> Último vendedor: {s.name} <span className="font-normal text-muted-foreground">({s.kind === 'POS_VENDAS' ? 'pós-venda' : 'pré-venda'} de {dateFmt.format(new Date(s.at))})</span>
     </span>
   )

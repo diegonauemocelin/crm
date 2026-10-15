@@ -8,12 +8,13 @@ import type { Action } from '@/lib/types'
 
 export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }) {
   return (
-    <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div className="min-w-0">
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+      {/* O título não é espremido pelos botões: quando não cabe tudo, os botões descem para a linha de baixo. */}
+      <div className="min-w-0 flex-[1_1_20rem]">
         <h1 className="text-xl font-semibold tracking-tight md:text-2xl">{title}</h1>
         {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
   )
 }

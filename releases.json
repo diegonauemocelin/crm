@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.48.0",
+      "date": "2026-10-16",
+      "title": "Chat reorganizado e fotos sem sair da conversa",
+      "changes": [
+        { "type": "melhoria", "area": "WhatsApp", "text": "Tela do chat reorganizada: o topo da conversa tem o contato numa linha (nome, telefone, número e último vendedor) e as ações embaixo, que se ajustam ao tamanho da tela (em tela estreita ficam só os ícones, com o nome ao passar o mouse)." },
+        { "type": "melhoria", "area": "WhatsApp", "text": "Filtros da lista de conversas organizados: os campos mostram o texto e os botões liga/desliga ficam numa linha própria." },
+        { "type": "melhoria", "area": "WhatsApp", "text": "Fotos da conversa abrem por cima do chat, sem sair do CRM nem abrir outra aba, com zoom no tamanho real e botão para baixar." },
+        { "type": "melhoria", "area": "Geral", "text": "Cabeçalho das telas: o título não fica mais espremido pelos botões; quando não cabe tudo, os botões descem para a linha de baixo." }
+      ]
+    },
+    {
       "version": "0.47.1",
       "date": "2026-10-16",
       "title": "Botão de WhatsApp personalizável no e-mail",
