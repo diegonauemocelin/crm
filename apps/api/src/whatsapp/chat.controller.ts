@@ -62,6 +62,8 @@ class ContactDto {
 
 class ShareSearchDto {
   @IsOptional() @IsString() @MaxLength(80) busca?: string
+  /** Agenda do número de WhatsApp (nova conversa). */
+  @IsOptional() @IsUUID() numero?: string
 }
 
 class CaptionDto {
@@ -333,7 +335,7 @@ export class ChatController {
   /** Sugestões de contatos para compartilhar (vendedores, agenda e leads). */
   @Get('contatos-para-compartilhar')
   shareOptions(@CurrentUser() user: AuthUser, @Query() q: ShareSearchDto) {
-    return this.chat.shareOptions(user, q.busca ?? '')
+    return this.chat.shareOptions(user, q.busca ?? '', q.numero)
   }
 
   @Post('conversas/:id/mensagens')

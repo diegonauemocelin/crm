@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.57.0",
+      "date": "2026-10-16",
+      "title": "Nova conversa pelo nome e Conversar pela agenda",
+      "changes": [
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Nova conversa pelo nome: o campo aceita o nome ou o WhatsApp. Digitando o nome, aparecem os contatos da agenda do número escolhido (e da geral), os vendedores e, para quem vê a base, os leads; ao escolher, o telefone é preenchido." },
+        { "type": "novo", "area": "Agenda de contatos", "text": "Botão \"Conversar\" em cada contato: abre a conversa no chat pelo número de WhatsApp da agenda (se já existir, continua de onde parou)." }
+      ]
+    },
+    {
       "version": "0.56.0",
       "date": "2026-10-16",
       "title": "Encaminhar várias mensagens e avisos do áudio",

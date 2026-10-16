@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeftIcon, BookUserIcon, ChevronDownIcon, ContactIcon, FileUpIcon, Loader2Icon, PlusIcon, SmartphoneIcon, Trash2Icon, UsersIcon } from 'lucide-react'
+import { ArrowRightLeftIcon, BookUserIcon, MessageCircleIcon, ChevronDownIcon, ContactIcon, FileUpIcon, Loader2Icon, PlusIcon, SmartphoneIcon, Trash2Icon, UsersIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -16,6 +16,8 @@ import { api, errorMessage } from '@/lib/api'
 import { formatPhone } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
+import { useNavigate } from 'react-router'
+import { StartDialog } from './chat-page'
 
 type Cat = 'CLIENTE' | 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
 const CATS: Cat[] = ['CLIENTE', 'COLEGA', 'FORNECEDOR', 'OUTRO']
@@ -80,6 +82,9 @@ function Agenda() {
   const { can } = useAuth()
   const editable = can('whatsapp', 'edit')
   const qc = useQueryClient()
+  const navigate = useNavigate()
+  /** Conversar: abre (ou continua) a conversa com o contato, pelo número da agenda aberta. */
+  const [talking, setTalking] = useState<{ phone: string; name: string | null } | null>(null)
   const [search, setSearch] = useState('')
   const [q, setQ] = useState('')
   const [cat, setCat] = useState<Cat | null>(null)
@@ -237,6 +242,11 @@ function Agenda() {
                       {CAT_LABEL[c.category] ?? c.category}
                     </Badge>
                   )}
+                  {can('chat', 'create') && c.phone && (
+                    <Button size="sm" variant="outline" onClick={() => setTalking({ phone: c.phone!, name: c.name })} aria-label={`Conversar com ${c.name ?? c.phone}`} title="Abrir conversa no chat">
+                      <MessageCircleIcon /> <span className="hidden sm:inline">Conversar</span>
+                    </Button>
+                  )}
                   {editable && agendas.length > 1 && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -278,6 +288,18 @@ function Agenda() {
             Próxima
           </Button>
         </div>
+      )}
+      {talking && (
+        <StartDialog
+          phone={talking.phone}
+          name={talking.name}
+          numberId={current || null}
+          onClose={() => setTalking(null)}
+          onStarted={(cid) => {
+            setTalking(null)
+            navigate(`/chat?conversa=${cid}`)
+          }}
+        />
       )}
       {adding && <AddDialog scope={current} agendaName={currentName} onClose={() => setAdding(false)} />}
       {fromWhatsapp && <WhatsappSourceDialog initial={current || null} onClose={() => setFromWhatsapp(false)} onPreview={(data) => (setFromWhatsapp(false), setPreview({ source: 'WhatsApp', data }))} />}

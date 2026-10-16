@@ -842,14 +842,15 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
    * Contatos para compartilhar: vendedores e colegas da agenda (com telefone) e, para quem vê a base, os leads.
    * Só nome e telefone, no máximo 20 por busca.
    */
-  async shareOptions(user: AuthUser, search: string) {
+  async shareOptions(user: AuthUser, search: string, numberId?: string) {
     this.assertAction(user, 'chat', 'create')
     const s = search.trim().slice(0, 80)
     const digits = s.replace(/\D/g, '')
     const text = (field: string) => (s ? { [field]: { contains: s, mode: 'insensitive' as const } } : {})
     const [sellers, agenda, leads] = await Promise.all([
       this.prisma.seller.findMany({ where: { tenantId: user.tenantId, active: true, phone: { not: null }, ...(s ? { OR: [text('name'), ...(digits.length >= 3 ? [{ phone: { contains: digits } }] : [])] } : {}) }, orderBy: { name: 'asc' }, take: 10, select: { id: true, name: true, phone: true } }),
-      this.prisma.whatsappContact.findMany({ where: { tenantId: user.tenantId, contactKey: { startsWith: '+' }, ...(s ? { OR: [text('name'), ...(digits.length >= 3 ? [{ contactKey: { contains: digits } }] : [])] } : {}) }, orderBy: { name: 'asc' }, take: 10, select: { id: true, name: true, contactKey: true, category: true } }),
+      // Com o número escolhido (nova conversa): a agenda dele e a geral; sem número, todas as agendas.
+      this.prisma.whatsappContact.findMany({ where: { tenantId: user.tenantId, contactKey: { startsWith: '+' }, ...(numberId ? { scope: { in: [numberId, ''] } } : {}), ...(s ? { OR: [text('name'), ...(digits.length >= 3 ? [{ contactKey: { contains: digits } }] : [])] } : {}) }, orderBy: { name: 'asc' }, take: 10, select: { id: true, name: true, contactKey: true, category: true } }),
       can(user.permissions, user.role.isSystem, 'leads', 'view') && s.length >= 2
         ? this.prisma.lead.findMany({ where: { tenantId: user.tenantId, deletedAt: null, anonymizedAt: null, phone: { not: null }, OR: [text('name'), ...(digits.length >= 3 ? [{ phone: { contains: digits } }] : [])] }, orderBy: { updatedAt: 'desc' }, take: 10, select: { id: true, name: true, phone: true } })
         : [],

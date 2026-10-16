@@ -1134,28 +1134,61 @@ function ConversationActions({ thread }: { thread: Thread }) {
 }
 
 /** Começar conversa com um telefone (o lead, se existir, é ligado pela conversa). */
-export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, external }: { onClose: () => void; onStarted: (id: string) => void; leadId?: string | null; phone?: string | null; external?: string | null }) {
+export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, external, numberId: initialNumber, name: initialName }: { onClose: () => void; onStarted: (id: string) => void; leadId?: string | null; phone?: string | null; external?: string | null; numberId?: string | null; name?: string | null }) {
   // Do lead/atendimento (telefone já conhecido) com um número só conectado: abre direto, sem perguntar.
   const autoStart = !!initialPhone
   const numbers = useQuery({ queryKey: ['chat-numeros-envio'], queryFn: () => api.get<NumberRef[]>('/chat/numeros') })
   const connected = (numbers.data ?? []).filter((n) => n.status === 'CONECTADO')
   const [numberId, setNumberId] = useState<string | null>(null)
-  const [phone, setPhone] = useState(initialPhone ? formatPhone(initialPhone) : '')
+  const [phone, setPhone] = useState(initialPhone ? (initialPhone.startsWith('+55') ? formatPhone(initialPhone) : initialPhone) : '')
   const [error, setError] = useState<string | null>(null)
-  const chosen = numberId ?? connected[0]?.id ?? null
+  // Agenda: o número da agenda do contato vem escolhido (se estiver conectado).
+  const chosen = numberId ?? (initialNumber && connected.some((n) => n.id === initialNumber) ? initialNumber : null) ?? connected[0]?.id ?? null
+  // Busca pelo nome: na agenda do número escolhido (e na geral), nos vendedores e nos leads.
+  const [query, setQuery] = useState('')
+  const [pickedName, setPickedName] = useState<string | null>(initialName ?? null)
+  const [q, setQ] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setQ(query.trim()), 250)
+    return () => clearTimeout(t)
+  }, [query])
+  const found = useQuery({
+    queryKey: ['chat-nova-conversa-busca', chosen, q],
+    queryFn: () => api.get<{ key: string; name: string; phone: string; source: string }[]>(`/chat/contatos-para-compartilhar?busca=${encodeURIComponent(q)}${chosen ? `&numero=${chosen}` : ''}`),
+    enabled: q.length >= 2,
+    placeholderData: keepPreviousData,
+  })
+  const typing = (v: string) => {
+    setPickedName(null)
+    // Com letras é busca pelo nome; só números (e símbolos de telefone) é o WhatsApp digitado.
+    if (/[a-zA-ZÀ-ÿ]/.test(v)) {
+      setQuery(v)
+      setPhone('')
+    } else {
+      setQuery('')
+      setPhone(v.trim().startsWith('+') ? v : maskPhone(v))
+    }
+  }
+  const pick = (o: { name: string; phone: string }) => {
+    setPickedName(o.name)
+    setQuery('')
+    setPhone(o.phone.startsWith('+55') ? formatPhone(o.phone) : o.phone)
+  }
   const start = useMutation({
     mutationFn: () => api.post<{ id: string }>('/chat/conversas', { numberId: chosen, phone: phone || undefined, leadId: leadId ?? undefined }),
     onSuccess: (r) => onStarted(r.id),
     onError: (err) => setError(errorMessage(err)),
   })
   const tried = useRef(false)
+  // Abre direto só com um número conectado e, vindo da agenda de um número, se for esse mesmo número.
+  const direct = autoStart && connected.length === 1 && (!initialNumber || connected[0]!.id === initialNumber)
   useEffect(() => {
-    if (autoStart && !tried.current && connected.length === 1 && chosen) {
+    if (direct && !tried.current && chosen) {
       tried.current = true
       start.mutate()
     }
-  }, [autoStart, connected.length, chosen, start])
-  if (autoStart && connected.length === 1 && !error) return null
+  }, [direct, chosen, start])
+  if (direct && !error) return null
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
@@ -1204,8 +1237,39 @@ export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, e
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="chat-start-phone">WhatsApp do cliente</Label>
-                <Input id="chat-start-phone" inputMode="tel" required placeholder="(47) 99999-9999" value={phone} onChange={(e) => setPhone(maskPhone(e.target.value))} autoFocus={!initialPhone} />
+                <Label htmlFor="chat-start-phone">Nome ou WhatsApp do cliente</Label>
+                <Input
+                  id="chat-start-phone"
+                  required={!query}
+                  placeholder="Digite o nome (busca na agenda) ou (47) 99999-9999"
+                  value={query || phone}
+                  onChange={(e) => typing(e.target.value)}
+                  autoFocus={!initialPhone}
+                  autoComplete="off"
+                />
+                {pickedName && phone && (
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">{pickedName}</span> · {phone}
+                  </p>
+                )}
+                {query && (
+                  <ul className="max-h-52 overflow-y-auto rounded-md border" aria-label="Contatos encontrados">
+                    {q.length < 2 && <li className="p-2.5 text-sm text-muted-foreground">Digite pelo menos 2 letras.</li>}
+                    {q.length >= 2 && found.isLoading && <li className="p-2.5 text-sm text-muted-foreground">Buscando…</li>}
+                    {q.length >= 2 && found.data?.length === 0 && <li className="p-2.5 text-sm text-muted-foreground">Ninguém com esse nome na agenda deste número, nos vendedores ou nos leads. Digite o WhatsApp.</li>}
+                    {found.data?.map((o) => (
+                      <li key={o.key}>
+                        <button type="button" onClick={() => pick(o)} className="flex w-full items-center gap-2 border-b px-3 py-2 text-left text-sm last:border-b-0 hover:bg-muted">
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-medium">{o.name}</span>
+                            <span className="block text-xs text-muted-foreground">{o.phone.startsWith('+55') ? formatPhone(o.phone) : o.phone}</span>
+                          </span>
+                          <span className="shrink-0 rounded bg-muted px-1.5 text-[11px] text-muted-foreground">{o.source}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </>
           )}
@@ -1214,7 +1278,7 @@ export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, e
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={!chosen || start.isPending}>
+            <Button type="submit" disabled={!chosen || start.isPending || (!phone && !leadId)}>
               Abrir conversa
             </Button>
           </DialogFooter>
