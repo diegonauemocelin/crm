@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.50.1",
+      "date": "2026-10-16",
+      "title": "Planilha: atendimento preenchido entra como finalizado",
+      "changes": [
+        { "type": "novo", "area": "Pré e Pós-Vendas", "text": "Importação da planilha: a linha com Retornou, Venda Realizada, Venda Perdida, Motivo de Perda ou Contatos preenchidos (qualquer um deles) entra como atendimento finalizado, porque já passou pelo pré e pelo pós-venda. Na Pré-Vendas não aparece como \"aguardando atendimento\"; na Pós-Vendas entra como resolvida, sem prazo nem alerta." },
+        { "type": "novo", "area": "Pré e Pós-Vendas", "text": "Reimportar a planilha também finaliza os atendimentos que já tinham sido importados antes e que agora estão preenchidos, sem mexer no resultado, no vendedor ou nos valores. A tela da importação mostra quantos entram finalizados e quantos antigos serão finalizados." },
+        { "type": "melhoria", "area": "Pré e Pós-Vendas", "text": "A coluna \"Contatos\" da planilha vai para as observações do atendimento (ex.: \"Contatos com o cliente (planilha): 3\")." }
+      ]
+    },
+    {
       "version": "0.50.0",
       "date": "2026-10-16",
       "title": "4 modelos de tela: Minha fila, quadro de pré-vendas e chat com painel do cliente",

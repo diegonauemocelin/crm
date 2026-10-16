@@ -116,12 +116,20 @@ export class ImportService {
 
     const keys = [...new Set(records.map((r) => r.externalKey))]
     const existing = new Set<string>()
+    /** Já importados que a planilha mostra como finalizados, mas que no sistema ainda estão em aberto. */
+    const toFinish: { id: string; kind: ServiceKind; leadAt: Date }[] = []
+    const finishedKeys = new Set(records.filter((r) => r.finished).map((r) => r.externalKey))
     for (let i = 0; i < keys.length; i += 1000) {
       const found = await this.prisma.serviceRecord.findMany({
         where: { tenantId: user.tenantId, externalKey: { in: keys.slice(i, i + 1000) } },
-        select: { externalKey: true },
+        select: { id: true, kind: true, leadAt: true, externalKey: true, firstActionAt: true, followStatus: true, deletedAt: true },
       })
-      for (const f of found) existing.add(f.externalKey!)
+      for (const f of found) {
+        existing.add(f.externalKey!)
+        if (f.deletedAt || !finishedKeys.has(f.externalKey!)) continue
+        const open = f.kind === 'POS_VENDAS' ? f.followStatus !== 'RESOLVIDO' : !f.firstActionAt
+        if (open) toFinish.push({ id: f.id, kind: f.kind, leadAt: f.leadAt })
+      }
     }
     const seen = new Set<string>()
     const fresh = records.filter((r) => !existing.has(r.externalKey) && !seen.has(r.externalKey) && seen.add(r.externalKey))
@@ -131,6 +139,10 @@ export class ImportService {
       rowsRead: records.length,
       alreadyImported: records.length - fresh.length,
       toImport: fresh.length,
+      /** Das novas, quantas já entram como atendimento finalizado. */
+      finished: fresh.filter((r) => r.finished).length,
+      /** Já importadas antes que serão marcadas como finalizadas agora. */
+      toFinish: toFinish.length,
       sales: fresh.filter((r) => r.saleStatus === 'SIM').length,
       revenue: Math.round(fresh.reduce((s, r) => s + (r.saleValue ?? 0), 0) * 100) / 100,
       sellers: count(fresh.map((r) => r.seller)),
@@ -141,7 +153,12 @@ export class ImportService {
       issues: issues.slice(0, 200),
       issuesTotal: issues.length,
     }
-    if (dryRun || fresh.length === 0) return { dryRun: true, ...summary }
+    if (dryRun) return { dryRun: true, ...summary }
+    const finishedNow = await this.finishExisting(user, toFinish)
+    if (fresh.length === 0) {
+      if (finishedNow) await this.audit.byUser(user, ctx, 'atendimento.import_finished', 'service_record', undefined, { kind, finalizados: finishedNow })
+      return { dryRun: false, batch: null, imported: 0, finishedNow, leadsCreated: 0, ...summary }
+    }
 
     const batch = `planilha-${new Date().toISOString().slice(0, 10)}-${randomUUID().slice(0, 8)}`
     const cache = new Map<string, string>()
@@ -170,8 +187,23 @@ export class ImportService {
 
     // Cada atendimento importado encontra (ou cria) o lead correspondente na base.
     const link = await this.leadSync.linkAll(user.tenantId)
-    await this.audit.byUser(user, ctx, 'atendimento.imported', 'service_record', batch, { kind, quantidade: inserted, lote: batch })
-    return { dryRun: false, batch, imported: inserted, leadsCreated: link.leadsCreated, ...summary }
+    await this.audit.byUser(user, ctx, 'atendimento.imported', 'service_record', batch, { kind, quantidade: inserted, lote: batch, finalizados: summary.finished, jaImportadosFinalizados: finishedNow })
+    return { dryRun: false, batch, imported: inserted, finishedNow, leadsCreated: link.leadsCreated, ...summary }
+  }
+
+  /** Marca como finalizados os atendimentos já importados (sem mexer em resultado, vendedor ou valores). */
+  private async finishExisting(user: AuthUser, list: { id: string; kind: ServiceKind; leadAt: Date }[]) {
+    let n = 0
+    for (const r of list) {
+      const data: Prisma.ServiceRecordUpdateInput =
+        r.kind === 'POS_VENDAS' ? { followStatus: 'RESOLVIDO', firstActionAt: r.leadAt, dueAt: null } : { firstActionAt: r.leadAt }
+      await this.prisma.serviceRecord.update({
+        where: { id: r.id },
+        data: { ...data, updatedById: user.id, history: { create: { userId: user.id, userName: user.name, action: 'finalizado pela importação', changes: {} } } },
+      })
+      n++
+    }
+    return n
   }
 
   private async toRow(
@@ -205,6 +237,7 @@ export class ImportService {
       invoiceNumber: r.invoiceNumber,
       saleValue: r.saleValue,
       notes: r.notes,
+      ...(r.finished ? (kind === 'POS_VENDAS' ? { followStatus: 'RESOLVIDO' as const, firstActionAt: r.leadAt } : { firstActionAt: r.leadAt }) : {}),
       externalKey: r.externalKey,
       importBatch: batch,
       createdById: user.id,

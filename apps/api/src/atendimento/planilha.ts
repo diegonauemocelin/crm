@@ -54,6 +54,7 @@ const COLUMNS = {
   vendeu: ['venda realizada', 'venda realizada?'],
   perdeu: ['venda perdida'],
   motivo: ['motivos de perda', 'motivo de perda', 'motivo da venda perdida'],
+  contatos: ['contatos', 'contato', 'qtd. contatos', 'qtd contatos', 'número de contatos', 'numero de contatos'],
   nf: ['n° nf', 'nº nf', 'nf', 'numero da nota fiscal', 'número da nota fiscal'],
   valor: ['valor', 'valor da venda'],
   obs: ['observacao pre e pos vendas', 'observação pré e pós vendas', 'observacoes', 'observações', 'observação'],
@@ -112,6 +113,11 @@ export interface MappedRecord {
   invoiceNumber: string | null
   saleValue: number | null
   notes: string | null
+  /**
+   * Atendimento finalizado: a planilha já traz Retornou, Venda Realizada, Venda Perdida, Motivo de Perda ou Contatos
+   * preenchidos, ou seja, passou pelo pré e pelo pós-venda. Entra sem "aguardando atendimento" e, no Pós-Vendas, resolvido.
+   */
+  finished: boolean
   externalKey: string
 }
 
@@ -193,6 +199,12 @@ export function mapRow(cells: string[], map: Partial<Record<ColumnKey, number>>,
     lostReason = 'Outro'
   }
 
+  const contatos = get('contatos')
+  const contacts = /^\d+$/.test(contatos) ? Number(contatos) : 0
+  if (contacts > 0) notes.push(`Contatos com o cliente (planilha): ${contacts}`)
+  // "Aguardando vendedor" no motivo diz o contrário: o atendimento ainda está em aberto.
+  const finished = norm(motivo) !== MOTIVO_AGUARDANDO && (bool(get('retornou')) || bool(get('vendeu')) || bool(get('perdeu')) || !!motivo || contacts > 0)
+
   const invoiceNumber = get('nf') || null
   const saleValue = parseMoney(get('valor'))
   if (saleStatus === 'SIM' && (!invoiceNumber || saleValue === null)) {
@@ -227,6 +239,7 @@ export function mapRow(cells: string[], map: Partial<Record<ColumnKey, number>>,
     invoiceNumber: saleStatus === 'SIM' ? invoiceNumber : null,
     saleValue: saleStatus === 'SIM' ? saleValue : null,
     notes: notes.join('\n') || null,
+    finished,
     externalKey,
   }
 }

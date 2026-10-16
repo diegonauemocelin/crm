@@ -14,6 +14,11 @@ interface Summary {
   rowsRead: number
   alreadyImported: number
   toImport: number
+  /** Das novas, quantas entram como atendimento finalizado (Retornou, Venda, Perdida, Motivo ou Contatos preenchidos). */
+  finished?: number
+  /** Já importadas antes que passam a finalizadas nesta importação. */
+  toFinish?: number
+  finishedNow?: number
   sales: number
   revenue: number
   sellers: { name: string; total: number }[]
@@ -133,19 +138,25 @@ export function ImportDialog({ kind, onClose }: { kind: Kind; onClose: () => voi
             {done ? (
               <p className="flex items-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm">
                 <CheckCircle2Icon className="size-4 text-emerald-600" />
-                {int.format(summary.imported ?? 0)} atendimento(s) importado(s) para {KIND_INFO[kind].title}.
+                {int.format(summary.imported ?? 0)} atendimento(s) importado(s) para {KIND_INFO[kind].title}
+                {summary.finished || summary.finishedNow
+                  ? `, ${int.format((summary.finished ?? 0) + (summary.finishedNow ?? 0))} como finalizado(s) (já passaram pelo pré e pelo pós-venda)`
+                  : ''}
+                .
               </p>
             ) : (
               <p className="rounded-md border bg-muted/50 p-3 text-sm">
                 Análise concluída. Confira abaixo e confirme para importar.
               </p>
             )}
-            <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {[
                 ['Linhas com dados', int.format(summary.rowsRead)],
                 ['Já importadas antes', int.format(summary.alreadyImported)],
                 [done ? 'Importadas agora' : 'Serão importadas', int.format(done ? (summary.imported ?? 0) : summary.toImport)],
                 ['Vendas / valor', `${int.format(summary.sales)} · ${brl.format(summary.revenue)}`],
+                ['Entram finalizadas', int.format(summary.finished ?? 0)],
+                [done ? 'Antigas finalizadas agora' : 'Antigas a finalizar', int.format(done ? (summary.finishedNow ?? 0) : (summary.toFinish ?? 0))],
               ].map(([k, v]) => (
                 <div key={k} className="rounded-md border p-3">
                   <dt className="text-xs text-muted-foreground">{k}</dt>
@@ -193,9 +204,9 @@ export function ImportDialog({ kind, onClose }: { kind: Kind; onClose: () => voi
                 {summary ? 'Voltar' : 'Cancelar'}
               </Button>
               {summary ? (
-                <Button onClick={() => run(false)} disabled={busy || summary.toImport === 0}>
+                <Button onClick={() => run(false)} disabled={busy || (summary.toImport === 0 && !summary.toFinish)}>
                   {busy && <Loader2Icon className="animate-spin" />}
-                  {summary.toImport === 0 ? 'Nada novo para importar' : `Importar ${int.format(summary.toImport)} atendimento(s)`}
+                  {summary.toImport === 0 ? (summary.toFinish ? `Finalizar ${int.format(summary.toFinish)} atendimento(s)` : 'Nada novo para importar') : `Importar ${int.format(summary.toImport)} atendimento(s)`}
                 </Button>
               ) : (
                 <Button onClick={() => run(true)} disabled={busy || (!url.trim() && !csv)}>

@@ -99,6 +99,27 @@ describe('importação da planilha', () => {
     expect(new Set(a).size).toBe(a.length)
   })
 
+  it('marca como finalizado quando Retornou, Venda Realizada, Venda Perdida, Motivo ou Contatos vêm preenchidos', () => {
+    const [lost, sold, waiting] = mapSheet(csv).records
+    expect(lost!.finished).toBe(true)
+    expect(sold!.finished).toBe(true)
+    // "Aguardando vendedor" no motivo: continua em aberto.
+    expect(waiting!.finished).toBe(false)
+
+    const withContacts = [
+      'Data,Nome,Número,Repassou,Retornou,Venda Realizada,Venda Perdida,Motivos de Perda,Contatos',
+      '10/07/2026,Só contatos,55 47 9647-0159,FALSE,FALSE,FALSE,FALSE,,2',
+      '11/07/2026,Só retornou,55 47 9647-0158,TRUE,TRUE,FALSE,FALSE,,',
+      '12/07/2026,Em aberto,55 47 9647-0157,TRUE,FALSE,FALSE,FALSE,,',
+    ].join('\n')
+    const [contacts, returned, open] = mapSheet(withContacts).records
+    expect(contacts!.finished).toBe(true)
+    expect(contacts!.notes).toContain('Contatos com o cliente (planilha): 2')
+    expect(returned!.finished).toBe(true)
+    expect(returned!.returnStatus).toBe('SIM')
+    expect(open!.finished).toBe(false)
+  })
+
   it('guarda o telefone inválido nas observações em vez de perder a informação', () => {
     const issues: RowIssue[] = []
     const h = findHeader(parseCsv(csv))!
