@@ -268,6 +268,10 @@ export interface CampaignReport {
   clicks: number
   unsubscribes: number
   pending: number
+  /** Não entregues por recusa temporária do servidor (4xx: "slow down", fila cheia): dá para tentar de novo. */
+  temporaryFailed?: number
+  /** O servidor pediu para esperar: minutos até a próxima tentativa (0 = enviando normal). */
+  waitingMinutes?: number
   links: { url: string; clicks: number }[]
   recipients: { id: string; email: string; leadId: string; status: string; error: string | null; openedAt: string | null; clickedAt: string | null; clicks: number; unsubscribedAt: string | null }[]
 }

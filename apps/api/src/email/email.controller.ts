@@ -316,6 +316,13 @@ export class EmailController {
     return this.email.setStatus(user, id, dto.action, ctx)
   }
 
+  /** Volta para a fila os não entregues por recusa temporária do servidor (4xx). */
+  @Post('campanhas/:id/reenviar-temporarios')
+  @HttpCode(200)
+  retryTemporary(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    return this.email.retryTemporary(user, id, ctx)
+  }
+
   @Get('campanhas/:id/relatorio')
   report(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.email.report(user, id)

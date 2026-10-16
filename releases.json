@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.52.1",
+      "date": "2026-10-16",
+      "title": "E-mail: recusa temporária do servidor tenta de novo",
+      "changes": [
+        { "type": "correcao", "area": "Email marketing", "text": "Recusa temporária do servidor de e-mail (códigos 4xx, como \"you are sending too many mails, slow down\" ou \"queue file write error\") não marca mais o contato como \"não entregue\". A campanha espera (1, 2, 5, 10 ou 15 min), envia mais devagar e tenta de novo; só vira \"não entregue\" depois de 6 recusas seguidas." },
+        { "type": "novo", "area": "Email marketing", "text": "Botão \"Tentar de novo\" no relatório da campanha: volta para a fila os não entregues por recusa temporária (os endereços inexistentes continuam fora). O envio recomeça na metade do ritmo." },
+        { "type": "melhoria", "area": "Email marketing", "text": "O relatório avisa quando o servidor pediu para esperar e em quantos minutos o envio continua. O limite de e-mails por minuto do servidor (Configurações › E-mail) passa a valer também para as campanhas." },
+        { "type": "melhoria", "area": "Automações", "text": "No passo \"Enviar e-mail\", a recusa temporária do servidor faz o fluxo tentar de novo no próximo ciclo, em vez de marcar erro." }
+      ]
+    },
+    {
       "version": "0.52.0",
       "date": "2026-10-16",
       "title": "Compartilhar contato no chat",

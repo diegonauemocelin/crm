@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeftIcon, CopyIcon, PauseIcon, PlayIcon } from 'lucide-react'
+import { ArrowLeftIcon, ClockIcon, CopyIcon, PauseIcon, PlayIcon, RotateCcwIcon } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -56,6 +56,15 @@ function Report({ campaign: c }: { campaign: Campaign }) {
   const status = useMutation({
     mutationFn: (action: 'pausar' | 'retomar' | 'cancelar') => api.post(`/email/campanhas/${c.id}/situacao`, { action }),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['email-campaign', c.id] })
+      void qc.invalidateQueries({ queryKey: ['email-report', c.id] })
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const retry = useMutation({
+    mutationFn: () => api.post<{ requeued: number }>(`/email/campanhas/${c.id}/reenviar-temporarios`),
+    onSuccess: (x) => {
+      toast.success(x.requeued ? `${int.format(x.requeued)} e-mail(s) voltaram para a fila. O envio recomeça devagar.` : 'Nada para reenviar.')
       void qc.invalidateQueries({ queryKey: ['email-campaign', c.id] })
       void qc.invalidateQueries({ queryKey: ['email-report', c.id] })
     },
@@ -123,6 +132,22 @@ function Report({ campaign: c }: { campaign: Campaign }) {
         <Stat label="Descadastros" value={int.format(c.unsubscribes)} />
         <Stat label="Não entregues" value={int.format(c.failed)} />
       </div>
+      {!!d?.waitingMinutes && c.status === 'ENVIANDO' && (
+        <p className="mb-4 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100" role="status">
+          <ClockIcon className="mt-0.5 size-4 shrink-0" />
+          O servidor de e-mail pediu para enviar mais devagar. O envio continua sozinho em {d.waitingMinutes} min, num ritmo menor. Ninguém é marcado como não entregue por isso.
+        </p>
+      )}
+      {!!d?.temporaryFailed && can('email_marketing', 'edit') && c.status !== 'CANCELADA' && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-md border p-3 text-sm">
+          <span className="min-w-0 flex-[1_1_20rem]">
+            {int.format(d.temporaryFailed)} e-mail(s) não foram entregues porque o servidor recusou na hora (enviando rápido demais ou fila cheia). Não é problema do endereço: dá para tentar de novo.
+          </span>
+          <Button size="sm" onClick={() => retry.mutate()} disabled={retry.isPending}>
+            <RotateCcwIcon /> Tentar de novo ({int.format(d.temporaryFailed)})
+          </Button>
+        </div>
+      )}
       <p className="mb-4 text-xs text-muted-foreground">Aberturas são estimadas: alguns programas de e-mail bloqueiam imagens (não contam) e outros abrem automaticamente (contam a mais). Cliques são exatos.</p>
       {r.error ? (
         <ErrorState error={r.error} onRetry={() => r.refetch()} />

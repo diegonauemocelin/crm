@@ -383,3 +383,26 @@ describe('colunas (2 a 4) com blocos dentro', () => {
     expect((five[0] as { cols: unknown[] }).cols).toHaveLength(4)
   })
 })
+
+describe('Recusa temporária do servidor de e-mail (4xx)', () => {
+  it('separa o temporário (tenta de novo) do definitivo (não entregue)', async () => {
+    const { isTemporary, isTemporaryText } = await import('../src/email/limite')
+    expect([452, 451, 421, 450].map(isTemporary)).toEqual([true, true, true, true])
+    expect([550, 554, undefined, null].map(isTemporary)).toEqual([false, false, false, false])
+    expect(isTemporaryText('452 452 4.7.1 <x@y.com>: Recipient address rejected: you are sending too many mails, slow down')).toBe(true)
+    expect(isTemporaryText('451 451 4.3.0 Error: queue file write error')).toBe(true)
+    expect(isTemporaryText('550 5.1.1 user unknown')).toBe(false)
+    expect(isTemporaryText('Sem consentimento no momento do envio.')).toBe(false)
+  })
+
+  it('espera cada vez mais e envia mais devagar, respeitando o limite do SMTP', async () => {
+    const { backoffMinutes, batchSize } = await import('../src/email/limite')
+    expect([1, 2, 3, 4, 5, 9].map(backoffMinutes)).toEqual([1, 2, 5, 10, 15, 15])
+    expect(batchSize(60, 0, 0)).toBe(15)
+    expect(batchSize(60, 0, 1)).toBe(7)
+    expect(batchSize(60, 0, 3)).toBe(1)
+    // O limite do servidor (Configurações › E-mail) vale quando é menor que o da campanha.
+    expect(batchSize(600, 20, 0)).toBe(5)
+    expect(batchSize(0, 0, 0)).toBe(15)
+  })
+})

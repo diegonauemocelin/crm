@@ -18,6 +18,7 @@ import { MagazordService } from '../integracoes/magazord.service'
 import { MailService } from '../settings/mail.service'
 import { publicBranding, SettingsService } from '../settings/settings.service'
 import { type Block, type Brand, cleanBlocks, collectLinks, renderEmail, cleanSocial, SOCIAL_LABEL, SOCIAL_NETWORKS, type SocialLinks, socialUrl, topColors } from './blocos'
+import { backoffMinutes, batchSize, isTemporary, isTemporaryText, MAX_TEMP_TRIES } from './limite'
 
 export interface EmailSettings {
   /** Nome do remetente das campanhas (vazio = o do SMTP). */
@@ -62,6 +63,10 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(EmailService.name)
   private timer: NodeJS.Timeout | null = null
   private busy = false
+  /** Campanha recusada temporariamente pelo servidor (4xx): espera até "until" e envia mais devagar (nível). */
+  private readonly backoff = new Map<string, { until: number; level: number }>()
+  /** Recusas temporárias de cada destinatário (depois de MAX_TEMP_TRIES vira "não entregue"). */
+  private readonly tempTries = new Map<string, number>()
 
   constructor(
     private readonly prisma: PrismaService,
@@ -422,7 +427,11 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     this.busy = true
     try {
       await this.prisma.emailCampaign.updateMany({ where: { status: 'AGENDADA', scheduledAt: { lte: new Date() } }, data: { status: 'ENVIANDO', startedAt: new Date() } })
-      for (const c of await this.prisma.emailCampaign.findMany({ where: { status: 'ENVIANDO' }, orderBy: { startedAt: 'asc' } })) await this.sendBatch(c)
+      for (const c of await this.prisma.emailCampaign.findMany({ where: { status: 'ENVIANDO' }, orderBy: { startedAt: 'asc' } })) {
+        // Servidor pediu para ir devagar: espera o tempo combinado antes do próximo lote.
+        if ((this.backoff.get(c.id)?.until ?? 0) > Date.now()) continue
+        await this.sendBatch(c)
+      }
     } catch (err) {
       this.logger.error(`E-mail marketing: ${(err as Error).message}`)
     } finally {
@@ -431,8 +440,10 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   private async sendBatch(c: Prisma.EmailCampaignGetPayload<object>) {
-    const cfg = await this.config(c.tenantId)
-    const size = Math.max(1, Math.ceil((cfg.ratePerMinute || 60) / (60_000 / TICK_MS)))
+    const [cfg, smtpCfg] = await Promise.all([this.config(c.tenantId), this.settings.smtp(c.tenantId)])
+    const slow = this.backoff.get(c.id)
+    const size = batchSize(cfg.ratePerMinute, smtpCfg.maxPerMinute, slow?.level ?? 0, 60_000 / TICK_MS)
+    let refused = false
     const batch = await this.prisma.emailRecipient.findMany({ where: { campaignId: c.id, status: 'PENDENTE' }, take: size, include: { lead: { select: { name: true, emailOptIn: true, anonymizedAt: true, deletedAt: true } } } })
     if (!batch.length) {
       await this.prisma.emailCampaign.update({ where: { id: c.id }, data: { status: 'ENVIADA', finishedAt: new Date() } })
@@ -475,7 +486,8 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
               'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
             },
           })
-          await this.prisma.emailRecipient.update({ where: { id: r.id }, data: { status: 'ENVIADO', sentAt: new Date() } })
+          await this.prisma.emailRecipient.update({ where: { id: r.id }, data: { status: 'ENVIADO', sentAt: new Date(), error: null } })
+          this.tempTries.delete(r.id)
         } catch (err) {
           const e = err as { message?: string; response?: string; responseCode?: number }
           const msg = `${e.responseCode ?? ''} ${e.response ?? e.message ?? 'erro'}`.trim().slice(0, 300)
@@ -484,9 +496,30 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
             this.logger.warn(`Campanha ${c.id.slice(0, 8)}: falha no servidor de e-mail, nova tentativa em instantes (${msg}).`)
             break
           }
+          // Recusa temporária (4xx: "slow down", fila cheia): o destinatário continua na fila, a campanha espera e vai mais devagar.
+          if (isTemporary(e.responseCode)) {
+            const tries = (this.tempTries.get(r.id) ?? 0) + 1
+            this.tempTries.set(r.id, tries)
+            if (tries < MAX_TEMP_TRIES) {
+              const level = (slow?.level ?? 0) + 1
+              this.backoff.set(c.id, { until: Date.now() + backoffMinutes(level) * 60_000, level })
+              await this.prisma.emailRecipient.update({ where: { id: r.id }, data: { error: `Tentando de novo: ${msg}`.slice(0, 300) } })
+              this.logger.warn(`Campanha ${c.id.slice(0, 8)}: servidor de e-mail pediu para esperar (${msg}). Nova tentativa em ${backoffMinutes(level)} min, mais devagar.`)
+              refused = true
+              break
+            }
+            this.tempTries.delete(r.id)
+            await this.prisma.emailRecipient.update({ where: { id: r.id }, data: { status: 'ERRO', failedAt: new Date(), error: `${msg} (recusado ${MAX_TEMP_TRIES} vezes)`.slice(0, 300) } })
+            continue
+          }
           await this.prisma.emailRecipient.update({ where: { id: r.id }, data: { status: 'ERRO', failedAt: new Date(), error: msg } })
           if (BOUNCE.test(msg)) await this.prisma.lead.update({ where: { id: r.leadId }, data: { emailBouncedAt: new Date() } })
         }
+      }
+      // Lote inteiro aceito: volta um passo para o ritmo normal.
+      if (!refused && slow) {
+        if (slow.level <= 1) this.backoff.delete(c.id)
+        else this.backoff.set(c.id, { until: 0, level: slow.level - 1 })
       }
     } finally {
       transport.close()
@@ -543,9 +576,9 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     } catch (err) {
       const e = err as { message?: string; response?: string; responseCode?: number }
       const msg = `${e.responseCode ?? ''} ${e.response ?? e.message ?? 'erro'}`.trim().slice(0, 300)
-      if (!e.responseCode) {
+      if (!e.responseCode || isTemporary(e.responseCode)) {
         await this.prisma.emailRecipient.delete({ where: { id: r.id } })
-        return { status: 'tentar_depois', message: `Servidor de e-mail indisponível (${msg}).` }
+        return { status: 'tentar_depois', message: e.responseCode ? `Servidor de e-mail pediu para tentar depois (${msg}).` : `Servidor de e-mail indisponível (${msg}).` }
       }
       await this.prisma.emailRecipient.update({ where: { id: r.id }, data: { status: 'ERRO', failedAt: new Date(), error: msg } })
       await this.prisma.emailCampaign.update({ where: { id: tpl.id }, data: { failed: { increment: 1 } } })
@@ -624,6 +657,28 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
 
   // ---------- Relatório ----------
 
+  /**
+   * Volta para a fila os destinatários marcados como "não entregue" por recusa temporária (4xx), como
+   * "you are sending too many mails, slow down" ou "queue file write error". A campanha volta a enviar, devagar.
+   */
+  async retryTemporary(user: AuthUser, id: string, ctx: RequestCtx) {
+    this.assertCan(user, 'edit')
+    const c = await this.load(user, id)
+    if (c.kind !== 'CAMPANHA') throw new BadRequestException('Só campanhas podem ser reenviadas.')
+    if (c.status === 'CANCELADA') throw new BadRequestException('A campanha foi cancelada.')
+    const where = { campaignId: id, status: 'ERRO' as const, error: { startsWith: '4' } }
+    const ids = (await this.prisma.emailRecipient.findMany({ where, select: { id: true, error: true } })).filter((r) => isTemporaryText(r.error)).map((r) => r.id)
+    if (!ids.length) return { requeued: 0 }
+    await this.prisma.emailRecipient.updateMany({ where: { id: { in: ids } }, data: { status: 'PENDENTE', failedAt: null, error: null } })
+    const failed = await this.prisma.emailRecipient.count({ where: { campaignId: id, status: 'ERRO' } })
+    // Recomeça devagar: metade do ritmo até o servidor aceitar um lote inteiro.
+    this.backoff.set(id, { until: 0, level: 1 })
+    await this.prisma.emailCampaign.update({ where: { id }, data: { failed, ...(c.status === 'ENVIADA' ? { status: 'ENVIANDO', finishedAt: null } : {}) } })
+    await this.audit.byUser(user, ctx, 'email.campaign_retry_temporary', 'email_campaign', id, { reenviados: ids.length })
+    if (c.status !== 'PAUSADA') void this.tick()
+    return { requeued: ids.length }
+  }
+
   async report(user: AuthUser, id: string) {
     this.assertCan(user, 'view')
     const c = await this.load(user, id)
@@ -644,6 +699,13 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
       clicks: c.clicks,
       unsubscribes: c.unsubscribes,
       pending: await this.prisma.emailRecipient.count({ where: { campaignId: id, status: 'PENDENTE' } }),
+      /** "Não entregues" por recusa temporária do servidor (4xx): dá para tentar de novo. */
+      temporaryFailed: (await this.prisma.emailRecipient.findMany({ where: { campaignId: id, status: 'ERRO', error: { startsWith: '4' } }, select: { error: true } })).filter((x) => isTemporaryText(x.error)).length,
+      /** Esperando o servidor de e-mail liberar (recusa temporária): minutos até a próxima tentativa. */
+      waitingMinutes: (() => {
+        const b = this.backoff.get(id)
+        return b && b.until > Date.now() ? Math.ceil((b.until - Date.now()) / 60_000) : 0
+      })(),
       links: c.links.map((url, i) => ({ url, clicks: byLink.find((b) => b.linkIndex === i)?._count._all ?? 0 })).sort((a, b) => b.clicks - a.clicks),
       recipients: recent,
     }
