@@ -118,15 +118,20 @@ class RulesDto {
   @IsOptional() @IsObject() away?: { enabled?: boolean; text?: string; cooldownHours?: number }
 }
 
+/** Agenda de contatos: id de um número (uuid) ou vazio (geral). */
+const AGENDA = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$/
+
 class CompanyContactDto {
   @IsOptional() @IsString() @MaxLength(120) name?: string
   @IsString() @Length(8, 30) phone!: string
   @IsIn(['COLEGA', 'FORNECEDOR', 'OUTRO']) category!: 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
+  @IsOptional() @Matches(AGENDA) agenda?: string
 }
 
 class ImportDto {
   @IsString() @Length(1, 900_000) csv!: string
   @IsIn(['COLEGA', 'FORNECEDOR', 'OUTRO']) category!: 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
+  @IsOptional() @Matches(AGENDA) agenda?: string
 }
 
 class DashQuery {
@@ -140,15 +145,20 @@ class ContactsQuery {
   @IsOptional() @IsString() @MaxLength(100) busca?: string
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) pagina?: number
   @IsOptional() @IsIn(['CLIENTE', 'COLEGA', 'FORNECEDOR', 'OUTRO']) tipo?: 'CLIENTE' | 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
+  /** Agenda: id do número; vazio = geral (vale para todos os números). */
+  @IsOptional() @Matches(AGENDA) agenda?: string
 }
 
 class ContactUpdateDto {
   @IsOptional() @IsString() @MaxLength(120) name?: string
   @IsOptional() @IsIn(['CLIENTE', 'COLEGA', 'FORNECEDOR', 'OUTRO']) category?: 'CLIENTE' | 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
+  /** Mudar para a agenda de outro número (ou para a geral, com vazio). */
+  @IsOptional() @Matches(AGENDA) agenda?: string
 }
 
 class ContactsFileDto {
   @IsString() @Length(1, 1_900_000) text!: string
+  @IsOptional() @Matches(AGENDA) agenda?: string
 }
 
 class ContactRowDto {
@@ -159,6 +169,7 @@ class ContactRowDto {
 
 class ContactsSaveDto {
   @ValidateNested({ each: true }) @Type(() => ContactRowDto) @ArrayMaxSize(5000) rows!: ContactRowDto[]
+  @IsOptional() @Matches(AGENDA) agenda?: string
 }
 
 /** Regras do WhatsApp e contatos da empresa (administrador: permissão "Números de WhatsApp"). */
@@ -188,12 +199,12 @@ export class WhatsappRulesController {
 
   @Get('contatos')
   contacts(@CurrentUser() user: AuthUser, @Query() q: ContactsQuery) {
-    return this.chat.companyContacts(user, { search: q.busca, page: q.pagina, category: q.tipo })
+    return this.chat.companyContacts(user, { search: q.busca, page: q.pagina, category: q.tipo, scope: q.agenda })
   }
 
   @Patch('contatos/:id')
   updateContact(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ContactUpdateDto) {
-    return this.chat.updateCompanyContact(user, id, dto)
+    return this.chat.updateCompanyContact(user, id, { name: dto.name, category: dto.category, scope: dto.agenda })
   }
 
   /** Prévia da importação de um arquivo do celular (.vcf) ou CSV: nada é gravado. */
@@ -201,7 +212,7 @@ export class WhatsappRulesController {
   @HttpCode(200)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   previewFile(@CurrentUser() user: AuthUser, @Body() dto: ContactsFileDto) {
-    return this.chat.previewContactsFile(user, dto.text)
+    return this.chat.previewContactsFile(user, dto.text, dto.agenda)
   }
 
   /** Prévia dos contatos do WhatsApp conectado no número. */
@@ -217,19 +228,19 @@ export class WhatsappRulesController {
   @HttpCode(200)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   saveContacts(@CurrentUser() user: AuthUser, @Body() dto: ContactsSaveDto) {
-    return this.chat.saveContacts(user, dto.rows)
+    return this.chat.saveContacts(user, dto.rows, dto.agenda)
   }
 
   @Post('contatos')
   addContact(@CurrentUser() user: AuthUser, @Body() dto: CompanyContactDto) {
-    return this.chat.addCompanyContact(user, dto)
+    return this.chat.addCompanyContact(user, { name: dto.name, phone: dto.phone, category: dto.category, scope: dto.agenda })
   }
 
   @Post('contatos/importar')
   @HttpCode(200)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   importContacts(@CurrentUser() user: AuthUser, @Body() dto: ImportDto) {
-    return this.chat.importCompanyContacts(user, dto.csv, dto.category)
+    return this.chat.importCompanyContacts(user, dto.csv, dto.category, dto.agenda)
   }
 
   @Delete('contatos/:id')

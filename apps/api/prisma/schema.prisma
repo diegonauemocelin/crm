@@ -1465,11 +1465,14 @@ model WhatsappContact {
   name        String?
   /// CLIENTE, COLEGA, FORNECEDOR ou OUTRO
   category    String
+  /// Agenda de qual número de WhatsApp (id do número); vazio = vale para todos os números (agenda geral).
+  scope       String   @default("")
   updatedById String?  @db.Uuid
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@unique([tenantId, contactKey])
+  /// Um telefone aparece uma vez só em cada agenda.
+  @@unique([tenantId, scope, contactKey])
   @@map("whatsapp_contacts")
 }
 

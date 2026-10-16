@@ -171,7 +171,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const rules = await this.rules(n.tenantId)
     const idle = !conv?.lastMessageAt || p.at.getTime() - conv.lastMessageAt.getTime() > rules.reopenDays * 86_400_000
     // Contato da empresa (lista do administrador) ou marcado no chat: vale para todos os números.
-    const contact = await this.prisma.whatsappContact.findUnique({ where: { tenantId_contactKey: { tenantId: n.tenantId, contactKey: phone ?? p.jid } } })
+    const contact = await this.agendaContact(n.tenantId, n.id, phone ?? p.jid)
     conv ??= await this.prisma.whatsappConversation.create({ data: { tenantId: n.tenantId, numberId: n.id, jid: p.jid, phone, name: p.pushName, category: contact?.category ?? 'CLIENTE' } })
 
     const tooBig = !!p.media?.size && p.media.size > MEDIA_MAX_BYTES
@@ -281,7 +281,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         (await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: n.id, jid: c.jid } } })) ??
         (phone ? await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, phone } }) : null)
       if (!conv) {
-        const contact = await this.prisma.whatsappContact.findUnique({ where: { tenantId_contactKey: { tenantId: n.tenantId, contactKey: phone ?? c.jid } } })
+        const contact = await this.agendaContact(n.tenantId, n.id, phone ?? c.jid)
         const lead = phone && (!contact || contact.category === 'CLIENTE') ? await this.prisma.lead.findFirst({ where: { tenantId: n.tenantId, deletedAt: null, anonymizedAt: null, phone: { in: phoneVariants(phone) } }, select: { id: true } }) : null
         conv = await this.prisma.whatsappConversation.create({ data: { tenantId: n.tenantId, numberId: n.id, jid: c.jid, phone, category: contact?.category ?? 'CLIENTE', leadId: lead?.id ?? null } })
       }
@@ -1007,12 +1007,9 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (conv.category === 'GRUPO') throw new BadRequestException('Grupo não muda de tipo: ele fica sempre na aba Grupos, fora das pré-vendas.')
     let created: { leadId: string; recordId: string | null } | null = null
     const key = conv.phone ?? conv.jid
-    await this.prisma.whatsappContact.upsert({
-      where: { tenantId_contactKey: { tenantId: user.tenantId, contactKey: key } },
-      create: { tenantId: user.tenantId, contactKey: key, category: d.category, updatedById: user.id },
-      update: { category: d.category, updatedById: user.id },
-    })
-    await this.prisma.whatsappConversation.updateMany({ where: { tenantId: user.tenantId, OR: [{ phone: key }, { jid: key }, { id }] }, data: { category: d.category } })
+    // Vale para a agenda do número desta conversa (cada número tem a sua).
+    await this.saveAgenda(user, conv.numberId, key, { category: d.category })
+    await this.prisma.whatsappConversation.update({ where: { id }, data: { category: d.category } })
     let removedRecord = false
     let removedLead = false
     if (d.category !== 'CLIENTE' && d.removeAuto) {
@@ -1073,12 +1070,14 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /** Agenda de contatos: todos os tipos (ou um), com a contagem de cada tipo. */
-  async companyContacts(user: AuthUser, q: { search?: string; page?: number; category?: AgendaCategory }) {
+  async companyContacts(user: AuthUser, q: { search?: string; page?: number; category?: AgendaCategory; scope?: string }) {
     this.assertAdmin(user, 'view')
+    const scope = await this.agendaScope(user, q.scope)
     const s = q.search?.trim()
     const digits = s?.replace(/\D/g, '') ?? ''
     const where: Prisma.WhatsappContactWhereInput = {
       tenantId: user.tenantId,
+      scope,
       ...(q.category ? { category: q.category } : {}),
       ...(s ? { OR: [{ name: { contains: s, mode: 'insensitive' } }, ...(digits.length >= 4 ? [{ contactKey: { contains: digits } }] : [])] } : {}),
     }
@@ -1087,27 +1086,38 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       this.prisma.whatsappContact.count({ where }),
       this.prisma.whatsappContact.findMany({ where, orderBy: [{ name: 'asc' }, { contactKey: 'asc' }], skip: (page - 1) * 50, take: 50 }),
     ])
-    const counts = await this.prisma.whatsappContact.groupBy({ by: ['category'], where: { tenantId: user.tenantId }, _count: { _all: true } })
+    const [counts, perScope, numbers] = await Promise.all([
+      this.prisma.whatsappContact.groupBy({ by: ['category'], where: { tenantId: user.tenantId, scope }, _count: { _all: true } }),
+      this.prisma.whatsappContact.groupBy({ by: ['scope'], where: { tenantId: user.tenantId }, _count: { _all: true } }),
+      this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, deletedAt: null }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, phone: true } }),
+    ])
+    const totalOf = (sc: string) => perScope.find((p) => p.scope === sc)?._count._all ?? 0
     return {
       total,
       page,
+      scope,
+      /** Agendas: uma por número e a geral (vale para todos os números). */
+      agendas: [...numbers.map((n) => ({ scope: n.id, name: n.name, phone: n.phone, total: totalOf(n.id) })), { scope: '', name: 'Todos os números', phone: null, total: totalOf('') }],
       counts: Object.fromEntries(counts.map((c) => [c.category, c._count._all])),
       items: rows.map((r) => ({ id: r.id, name: r.name, phone: r.contactKey.startsWith('+') ? r.contactKey : null, category: r.category, updatedAt: r.updatedAt })),
     }
   }
 
   /** Muda o tipo ou o nome de um contato da agenda (as conversas dele passam para o tipo novo). */
-  async updateCompanyContact(user: AuthUser, id: string, d: { name?: string | null; category?: AgendaCategory }) {
+  async updateCompanyContact(user: AuthUser, id: string, d: { name?: string | null; category?: AgendaCategory; scope?: string }) {
     this.assertAdmin(user, 'edit')
     const c = await this.prisma.whatsappContact.findFirst({ where: { id, tenantId: user.tenantId } })
     if (!c) throw new NotFoundException('Contato não encontrado.')
+    const scope = d.scope === undefined ? c.scope : await this.agendaScope(user, d.scope)
+    if (scope !== c.scope && (await this.prisma.whatsappContact.count({ where: { tenantId: user.tenantId, scope, contactKey: { in: this.keysOf(c.contactKey) } } }))) {
+      throw new BadRequestException('Este telefone já está na agenda de destino.')
+    }
     await this.prisma.whatsappContact.update({
       where: { id },
-      data: { ...(d.category ? { category: d.category } : {}), ...(d.name !== undefined ? { name: d.name?.trim().slice(0, 120) || null } : {}), updatedById: user.id },
+      data: { scope, ...(d.category ? { category: d.category } : {}), ...(d.name !== undefined ? { name: d.name?.trim().slice(0, 120) || null } : {}), updatedById: user.id },
     })
-    if (d.category && d.category !== c.category) {
-      await this.prisma.whatsappConversation.updateMany({ where: { tenantId: user.tenantId, OR: [{ phone: { in: phoneVariants(c.contactKey) } }, { jid: c.contactKey }] }, data: { category: d.category } })
-    }
+    if (scope !== c.scope) await this.applyAgendaCategory(user.tenantId, c.scope, c.contactKey, await this.fallbackCategory(user.tenantId, c.scope, c.contactKey))
+    if (scope !== c.scope || (d.category && d.category !== c.category)) await this.applyAgendaCategory(user.tenantId, scope, c.contactKey, d.category ?? c.category)
     return { ok: true }
   }
 
@@ -1115,7 +1125,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
    * Prévia da importação: telefones normalizados (sem repetidos), o tipo que já está na agenda, se é lead (cliente)
    * e a sugestão de tipo. Nada é gravado aqui.
    */
-  private async previewRows(user: AuthUser, rows: { name: string | null; phone: string; category: AgendaCategory | null }[]) {
+  private async previewRows(user: AuthUser, rows: { name: string | null; phone: string; category: AgendaCategory | null }[], scope: string) {
     const byPhone = new Map<string, { name: string | null; fileCategory: AgendaCategory | null }>()
     let invalid = 0
     for (const r of rows.slice(0, 5000)) {
@@ -1133,7 +1143,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const variantsOf = (p: string) => phoneVariants(p).flatMap((v) => [v, v.replace(/^\+/, '')])
     const variants = phones.flatMap(variantsOf)
     const [contacts, leads] = await Promise.all([
-      this.prisma.whatsappContact.findMany({ where: { tenantId: user.tenantId, contactKey: { in: variants } }, select: { contactKey: true, category: true } }),
+      this.prisma.whatsappContact.findMany({ where: { tenantId: user.tenantId, scope, contactKey: { in: variants } }, select: { contactKey: true, category: true } }),
       this.prisma.lead.findMany({ where: { tenantId: user.tenantId, deletedAt: null, anonymizedAt: null, phone: { in: variants } }, select: { phone: true, name: true } }),
     ])
     const catOf = new Map(contacts.map((c) => [c.contactKey, c.category as AgendaCategory]))
@@ -1151,13 +1161,14 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /** Prévia de um arquivo do celular (.vcf) ou de uma lista (CSV ou colada). */
-  async previewContactsFile(user: AuthUser, text: string) {
+  async previewContactsFile(user: AuthUser, text: string, scopeRaw?: string) {
     this.assertAdmin(user, 'edit')
+    const scope = await this.agendaScope(user, scopeRaw)
     // vCard do celular, CSV do Google Contatos ou uma lista simples (nome e telefone, colada do Excel).
     const parsed = /BEGIN:VCARD/i.test(text) ? parseVcf(text) : (parseGoogleContacts(parseCsv(text.replace(/^\uFEFF/, ''))) ?? parseContactList(text, null))
     if (!parsed.rows.length) throw new BadRequestException('Nenhum telefone encontrado no arquivo. Use o .vcf dos contatos do celular, o CSV exportado do Google Contatos ou um CSV com nome e telefone.')
-    const r = await this.previewRows(user, parsed.rows)
-    return { ...r, skipped: parsed.skipped }
+    const r = await this.previewRows(user, parsed.rows, scope)
+    return { ...r, skipped: parsed.skipped, scope }
   }
 
   /** Prévia dos contatos do WhatsApp conectado (um clique, sem arquivo). */
@@ -1182,24 +1193,79 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
           : 'O WhatsApp deste número não devolveu contatos e ainda não há conversas dele no CRM. Confira se ele está conectado ou use o arquivo .vcf exportado do celular.',
       )
     }
-    const r = await this.previewRows(user, rows)
-    return { ...r, skipped: 0, hidden: fromWa.stats.hidden, fromWhatsapp: fromWa.length, fromChat: fromChat.length }
+    // Contatos do WhatsApp de um número vão para a agenda desse número.
+    const r = await this.previewRows(user, rows, n.id)
+    return { ...r, skipped: 0, hidden: fromWa.stats.hidden, fromWhatsapp: fromWa.length, fromChat: fromChat.length, scope: n.id }
   }
 
   /** Grava na agenda os contatos escolhidos na prévia, cada um com o seu tipo. */
-  async saveContacts(user: AuthUser, rows: { name?: string | null; phone: string; category: AgendaCategory }[]) {
+  async saveContacts(user: AuthUser, rows: { name?: string | null; phone: string; category: AgendaCategory }[], scopeRaw?: string) {
     this.assertAdmin(user, 'edit')
-    return this.upsertCompany(user, rows.slice(0, 5000).map((x) => ({ name: x.name?.trim().slice(0, 120) || null, phone: x.phone, category: x.category })))
+    const scope = await this.agendaScope(user, scopeRaw)
+    return this.upsertCompany(user, rows.slice(0, 5000).map((x) => ({ name: x.name?.trim().slice(0, 120) || null, phone: x.phone, category: x.category })), scope)
   }
 
   /** Telefone da lista: celular/fixo do Brasil (com ou sem 55) ou internacional com +. */
   private contactPhone(raw: string) {
     const intl = raw.replace(/[^\d+]/g, '')
-    return normalizePhone(raw) ?? (/^\+\d{10,15}$/.test(intl) ? intl : null)
+    const br = normalizePhone(raw)
+    if (br) return phoneFromDigits(br.slice(1)) ?? br
+    return /^\+\d{10,15}$/.test(intl) ? intl : null
+  }
+
+  /** As formas do mesmo contato na agenda (celular com e sem o 9; identificador do WhatsApp como está). */
+  private keysOf(key: string) {
+    return key.startsWith('+') ? phoneVariants(key) : [key]
+  }
+
+  /** Agenda pedida pela tela: id de um número da empresa, ou vazio (geral, vale para todos). */
+  private async agendaScope(user: AuthUser, scope: string | undefined) {
+    if (!scope) return ''
+    const n = await this.prisma.whatsappNumber.findFirst({ where: { id: scope, tenantId: user.tenantId }, select: { id: true } })
+    if (!n) throw new NotFoundException('Número não encontrado.')
+    return n.id
+  }
+
+  /** Contato que vale para uma conversa: o da agenda do número; se não tiver, o da agenda geral. */
+  private async agendaContact(tenantId: string, numberId: string, key: string) {
+    const rows = await this.prisma.whatsappContact.findMany({ where: { tenantId, contactKey: { in: this.keysOf(key) }, scope: { in: [numberId, ''] } } })
+    return rows.find((r) => r.scope === numberId) ?? rows.find((r) => r.scope === '') ?? null
+  }
+
+  /** Grava na agenda (um telefone só por agenda: a outra forma do celular, se já existir, é atualizada). */
+  private async saveAgenda(user: AuthUser, scope: string, key: string, d: { name?: string | null; category: string }) {
+    const existing = await this.prisma.whatsappContact.findFirst({ where: { tenantId: user.tenantId, scope, contactKey: { in: this.keysOf(key) } } })
+    if (existing) {
+      await this.prisma.whatsappContact.update({ where: { id: existing.id }, data: { category: d.category, updatedById: user.id, ...(d.name ? { name: d.name } : {}) } })
+    } else {
+      await this.prisma.whatsappContact.create({ data: { tenantId: user.tenantId, scope, contactKey: key, name: d.name ?? null, category: d.category, updatedById: user.id } })
+    }
+    await this.applyAgendaCategory(user.tenantId, scope, key, d.category)
+  }
+
+  /**
+   * Passa as conversas do contato para o tipo da agenda: na agenda de um número, só as desse número; na geral,
+   * as dos números que não têm o contato na agenda própria. Grupos não mudam.
+   */
+  private async applyAgendaCategory(tenantId: string, scope: string, key: string, category: string) {
+    const keys = this.keysOf(key)
+    let numbers: Prisma.WhatsappConversationWhereInput = { numberId: scope }
+    if (!scope) {
+      const own = await this.prisma.whatsappContact.findMany({ where: { tenantId, contactKey: { in: keys }, scope: { not: '' } }, select: { scope: true } })
+      numbers = own.length ? { numberId: { notIn: own.map((o) => o.scope) } } : {}
+    }
+    await this.prisma.whatsappConversation.updateMany({ where: { tenantId, ...numbers, category: { not: 'GRUPO' }, OR: [{ phone: { in: keys } }, { jid: { in: keys } }] }, data: { category } })
+  }
+
+  /** Tipo que volta a valer quando o contato sai de uma agenda: o da agenda geral (para um número) ou cliente. */
+  private async fallbackCategory(tenantId: string, scope: string, key: string) {
+    if (!scope) return 'CLIENTE'
+    const general = await this.prisma.whatsappContact.findFirst({ where: { tenantId, scope: '', contactKey: { in: this.keysOf(key) } }, select: { category: true } })
+    return general?.category ?? 'CLIENTE'
   }
 
   /** Grava (ou atualiza) contatos da empresa e passa as conversas deles para o tipo novo. */
-  private async upsertCompany(user: AuthUser, rows: { name: string | null; phone: string; category: AgendaCategory }[]) {
+  private async upsertCompany(user: AuthUser, rows: { name: string | null; phone: string; category: AgendaCategory }[], scope: string) {
     let saved = 0
     let invalid = 0
     for (const r of rows) {
@@ -1208,30 +1274,30 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         invalid++
         continue
       }
-      // As duas formas do celular (com e sem o 9) apontam para o mesmo cadastro.
-      await this.prisma.whatsappContact.upsert({
-        where: { tenantId_contactKey: { tenantId: user.tenantId, contactKey: phone } },
-        create: { tenantId: user.tenantId, contactKey: phone, name: r.name, category: r.category, updatedById: user.id },
-        update: { category: r.category, updatedById: user.id, ...(r.name ? { name: r.name } : {}) },
-      })
-      await this.prisma.whatsappConversation.updateMany({ where: { tenantId: user.tenantId, phone: { in: phoneVariants(phone) } }, data: { category: r.category } })
+      // As duas formas do celular (com e sem o 9) apontam para o mesmo cadastro, dentro da agenda escolhida.
+      await this.saveAgenda(user, scope, phone, { name: r.name, category: r.category })
       saved++
     }
     return { saved, invalid }
   }
 
-  async addCompanyContact(user: AuthUser, d: { name?: string | null; phone: string; category: CompanyCategory }) {
+  async addCompanyContact(user: AuthUser, d: { name?: string | null; phone: string; category: CompanyCategory; scope?: string }) {
     this.assertAdmin(user, 'edit')
-    const r = await this.upsertCompany(user, [{ name: d.name?.trim().slice(0, 120) || null, phone: d.phone, category: d.category }])
+    const scope = await this.agendaScope(user, d.scope)
+    if (await this.prisma.whatsappContact.count({ where: { tenantId: user.tenantId, scope, contactKey: { in: this.keysOf(this.contactPhone(d.phone) ?? d.phone) } } })) {
+      throw new BadRequestException('Este telefone já está nesta agenda. Edite o contato que já existe.')
+    }
+    const r = await this.upsertCompany(user, [{ name: d.name?.trim().slice(0, 120) || null, phone: d.phone, category: d.category }], scope)
     if (!r.saved) throw new BadRequestException('Telefone inválido. Use DDD + número (ou + e o código do país).')
     return r
   }
 
-  async importCompanyContacts(user: AuthUser, csv: string, fallback: CompanyCategory) {
+  async importCompanyContacts(user: AuthUser, csv: string, fallback: CompanyCategory, scopeRaw?: string) {
     this.assertAdmin(user, 'edit')
+    const scope = await this.agendaScope(user, scopeRaw)
     const parsed = parseContactList(csv, fallback)
     if (!parsed.rows.length) throw new BadRequestException('Nenhum telefone encontrado. Cada linha precisa ter nome e telefone (ex.: João;(47) 99999-9999;colega).')
-    const r = await this.upsertCompany(user, parsed.rows.map((x) => ({ ...x, category: x.category ?? fallback })))
+    const r = await this.upsertCompany(user, parsed.rows.map((x) => ({ ...x, category: x.category ?? fallback })), scope)
     return { saved: r.saved, invalid: r.invalid, skipped: parsed.skipped }
   }
 
@@ -1240,8 +1306,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const c = await this.prisma.whatsappContact.findFirst({ where: { id, tenantId: user.tenantId } })
     if (!c) throw new NotFoundException('Contato não encontrado.')
     await this.prisma.whatsappContact.delete({ where: { id } })
-    // Volta a valer a regra de contato comum.
-    await this.prisma.whatsappConversation.updateMany({ where: { tenantId: user.tenantId, OR: [{ phone: { in: phoneVariants(c.contactKey) } }, { jid: c.contactKey }] }, data: { category: 'CLIENTE' } })
+    // Volta a valer a agenda geral (para um número) ou a regra de contato comum.
+    await this.applyAgendaCategory(user.tenantId, c.scope, c.contactKey, await this.fallbackCategory(user.tenantId, c.scope, c.contactKey))
     return { ok: true }
   }
 

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookUserIcon, ChevronDownIcon, ContactIcon, FileUpIcon, Loader2Icon, PlusIcon, SmartphoneIcon, Trash2Icon } from 'lucide-react'
+import { ArrowRightLeftIcon, BookUserIcon, ChevronDownIcon, ContactIcon, FileUpIcon, Loader2Icon, PlusIcon, SmartphoneIcon, Trash2Icon, UsersIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -34,9 +34,18 @@ interface Contact {
   phone: string | null
   category: Cat
 }
+/** Uma agenda por número de WhatsApp, mais a geral (scope vazio: vale para todos os números). */
+interface AgendaRef {
+  scope: string
+  name: string
+  phone: string | null
+  total: number
+}
 interface ListData {
   total: number
   page: number
+  scope: string
+  agendas: AgendaRef[]
   counts: Partial<Record<Cat, number>>
   items: Contact[]
 }
@@ -55,6 +64,8 @@ interface Preview {
   hidden?: number
   fromWhatsapp?: number
   fromChat?: number
+  /** Agenda em que os contatos serão gravados (a do número, na importação pelo WhatsApp). */
+  scope?: string
 }
 
 export function AgendaPage() {
@@ -76,6 +87,8 @@ function Agenda() {
   const [adding, setAdding] = useState(false)
   const [preview, setPreview] = useState<{ source: string; data: Preview } | null>(null)
   const [fromWhatsapp, setFromWhatsapp] = useState(false)
+  /** Agenda aberta: id do número ou vazio (geral). Começa na do primeiro número. */
+  const [agenda, setAgenda] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     const t = setTimeout(() => {
@@ -84,14 +97,25 @@ function Agenda() {
     }, 300)
     return () => clearTimeout(t)
   }, [search])
-  const qs = new URLSearchParams({ pagina: String(page), ...(q ? { busca: q } : {}), ...(cat ? { tipo: cat } : {}) }).toString()
+  const qs = new URLSearchParams({ pagina: String(page), ...(q ? { busca: q } : {}), ...(cat ? { tipo: cat } : {}), ...(agenda ? { agenda } : {}) }).toString()
   const list = useQuery({ queryKey: ['whatsapp-contatos', qs], queryFn: () => api.get<ListData>(`/whatsapp/contatos?${qs}`) })
+  const agendas = list.data?.agendas ?? []
+  const current = agenda ?? ''
+  useEffect(() => {
+    // Primeira abertura: a agenda do primeiro número (a geral só se não houver número).
+    if (agenda === null && list.data) setAgenda(list.data.agendas[0]?.scope ?? '')
+  }, [agenda, list.data])
+  const currentName = agendas.find((a) => a.scope === current)?.name ?? 'Todos os números'
+  const openAgenda = (scope: string) => {
+    setAgenda(scope)
+    setPage(1)
+  }
   const refresh = () => void qc.invalidateQueries({ queryKey: ['whatsapp-contatos'] })
   const update = useMutation({
-    mutationFn: (d: { id: string; category: Cat }) => api.patch(`/whatsapp/contatos/${d.id}`, { category: d.category }),
-    onSuccess: () => {
+    mutationFn: (d: { id: string; category?: Cat; agenda?: string }) => api.patch(`/whatsapp/contatos/${d.id}`, { category: d.category, agenda: d.agenda }),
+    onSuccess: (_r, d) => {
       refresh()
-      toast.success('Tipo do contato alterado. As conversas dele seguem o tipo novo.')
+      toast.success(d.agenda !== undefined ? `Contato movido para a agenda ${agendas.find((a) => a.scope === d.agenda)?.name ?? ''}.` : 'Tipo do contato alterado. As conversas dele seguem o tipo novo.')
     },
     onError: (err) => toast.error(errorMessage(err)),
   })
@@ -101,7 +125,7 @@ function Agenda() {
     onError: (err) => toast.error(errorMessage(err)),
   })
   const fileRun = useMutation({
-    mutationFn: (text: string) => api.post<Preview>('/whatsapp/contatos/previa', { text }),
+    mutationFn: (text: string) => api.post<Preview>('/whatsapp/contatos/previa', { text, agenda: current }),
     onSuccess: (data) => setPreview({ source: 'arquivo', data }),
     onError: (err) => toast.error(errorMessage(err)),
   })
@@ -121,7 +145,7 @@ function Agenda() {
     <div className="space-y-6">
       <PageHeader
         title="Agenda de contatos"
-        description="Quem é cliente, colega, fornecedor ou outro. Vale para todos os números de WhatsApp: só cliente vira lead e pré-venda."
+        description="Quem é cliente, colega, fornecedor ou outro. Cada número de WhatsApp tem a sua agenda (um telefone aparece uma vez só em cada uma); a agenda “Todos os números” vale para os números que não têm o contato na própria. Só cliente vira lead e pré-venda."
         actions={
           editable && (
             <div className="flex flex-wrap gap-2">
@@ -162,6 +186,25 @@ function Agenda() {
           )
         }
       />
+      {agendas.length > 0 && (
+        <div className="flex gap-1 overflow-x-auto border-b" role="tablist" aria-label="Agenda de qual número">
+          {agendas.map((a) => (
+            <button
+              key={a.scope || 'geral'}
+              type="button"
+              role="tab"
+              aria-selected={a.scope === current}
+              onClick={() => openAgenda(a.scope)}
+              className={cn('flex shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm whitespace-nowrap', a.scope === current ? 'border-[color:var(--brand)] font-semibold text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}
+            >
+              {a.scope ? <SmartphoneIcon className="size-4" /> : <UsersIcon className="size-4" />}
+              <span>{a.name}</span>
+              {a.phone && <span className="font-normal text-muted-foreground">{formatPhone(a.phone)}</span>}
+              <span className="rounded-full bg-muted px-1.5 text-xs font-normal tabular-nums">{a.total}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <FilterChip active={cat === null} onClick={() => (setCat(null), setPage(1))} label="Todos" count={all} />
         {CATS.map((c) => (
@@ -176,7 +219,7 @@ function Agenda() {
       ) : list.data!.items.length === 0 ? (
         <EmptyState
           icon={BookUserIcon}
-          title={q || cat ? 'Nenhum contato com esses filtros' : 'Agenda vazia'}
+          title={q || cat ? 'Nenhum contato com esses filtros' : `Agenda vazia (${currentName})`}
           description={q || cat ? undefined : 'Importe os contatos do Google Contatos (CSV), do celular (arquivo .vcf) ou do WhatsApp conectado e escolha o tipo de cada um.'}
         />
       ) : (
@@ -193,6 +236,26 @@ function Agenda() {
                     <Badge variant="outline" className="font-normal">
                       {CAT_LABEL[c.category] ?? c.category}
                     </Badge>
+                  )}
+                  {editable && agendas.length > 1 && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="sm" variant="ghost" aria-label={`Mover ${c.name ?? c.phone} para outra agenda`} title="Mover para a agenda de outro número">
+                          <ArrowRightLeftIcon />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Mover para a agenda</DropdownMenuLabel>
+                        {agendas
+                          .filter((a) => a.scope !== current)
+                          .map((a) => (
+                            <DropdownMenuItem key={a.scope || 'geral'} onSelect={() => update.mutate({ id: c.id, agenda: a.scope })}>
+                              {a.name}
+                              {a.phone ? ` · ${formatPhone(a.phone)}` : ''}
+                            </DropdownMenuItem>
+                          ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                   {editable && (
                     <Button size="sm" variant="ghost" onClick={() => del.mutate(c.id)} aria-label={`Remover ${c.name ?? c.phone}`} title="Remover da agenda (volta a valer a regra de contato comum)">
@@ -216,9 +279,18 @@ function Agenda() {
           </Button>
         </div>
       )}
-      {adding && <AddDialog onClose={() => setAdding(false)} />}
-      {fromWhatsapp && <WhatsappSourceDialog onClose={() => setFromWhatsapp(false)} onPreview={(data) => (setFromWhatsapp(false), setPreview({ source: 'WhatsApp', data }))} />}
-      {preview && <ReviewDialog source={preview.source} data={preview.data} onClose={() => setPreview(null)} />}
+      {adding && <AddDialog scope={current} agendaName={currentName} onClose={() => setAdding(false)} />}
+      {fromWhatsapp && <WhatsappSourceDialog initial={current || null} onClose={() => setFromWhatsapp(false)} onPreview={(data) => (setFromWhatsapp(false), setPreview({ source: 'WhatsApp', data }))} />}
+      {preview && (
+        <ReviewDialog
+          source={preview.source}
+          data={preview.data}
+          scope={preview.data.scope ?? current}
+          agendaName={agendas.find((a) => a.scope === (preview.data.scope ?? current))?.name ?? currentName}
+          onSaved={(scope) => openAgenda(scope)}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </div>
   )
 }
@@ -274,14 +346,14 @@ function CatSelect({ id, value, onChange, className, allowNone }: { id: string; 
   )
 }
 
-function AddDialog({ onClose }: { onClose: () => void }) {
+function AddDialog({ scope, agendaName, onClose }: { scope: string; agendaName: string; onClose: () => void }) {
   const qc = useQueryClient()
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [category, setCategory] = useState<Cat>('COLEGA')
   const [error, setError] = useState<string | null>(null)
   const save = useMutation({
-    mutationFn: () => api.post('/whatsapp/contatos/salvar', { rows: [{ name, phone, category }] }),
+    mutationFn: () => api.post('/whatsapp/contatos/salvar', { rows: [{ name, phone, category }], agenda: scope }),
     onSuccess: (r) => {
       if (!(r as { saved: number }).saved) return void setError('Telefone inválido. Use DDD + número (ou + e o código do país).')
       void qc.invalidateQueries({ queryKey: ['whatsapp-contatos'] })
@@ -302,8 +374,8 @@ function AddDialog({ onClose }: { onClose: () => void }) {
           }}
         >
           <DialogHeader>
-            <DialogTitle>Novo contato</DialogTitle>
-            <DialogDescription>{CAT_HELP[category]}</DialogDescription>
+            <DialogTitle>Novo contato · {agendaName}</DialogTitle>
+            <DialogDescription>{CAT_HELP[category]} Se o telefone já estiver nesta agenda, o contato que existe é atualizado (não duplica).</DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
             <Label htmlFor="ag-name">Nome</Label>
@@ -332,22 +404,22 @@ function AddDialog({ onClose }: { onClose: () => void }) {
   )
 }
 
-function WhatsappSourceDialog({ onClose, onPreview }: { onClose: () => void; onPreview: (d: Preview) => void }) {
+function WhatsappSourceDialog({ initial, onClose, onPreview }: { initial: string | null; onClose: () => void; onPreview: (d: Preview) => void }) {
   const numbers = useQuery({ queryKey: ['whatsapp-numeros'], queryFn: () => api.get<{ numbers: { id: string; name: string; phone: string | null; status: string }[] }>('/whatsapp/numeros') })
   const connected = (numbers.data?.numbers ?? []).filter((n) => n.status === 'CONECTADO')
-  const [numberId, setNumberId] = useState<string | null>(null)
+  const [numberId, setNumberId] = useState<string | null>(initial)
   const run = useMutation({
     mutationFn: (id: string) => api.post<Preview>(`/whatsapp/contatos/previa-whatsapp/${id}`),
     onSuccess: onPreview,
     onError: (err) => toast.error(errorMessage(err)),
   })
-  const selected = numberId ?? connected[0]?.id ?? null
+  const selected = (numberId && connected.some((n) => n.id === numberId) ? numberId : null) ?? connected[0]?.id ?? null
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Importar do WhatsApp conectado</DialogTitle>
-          <DialogDescription>O CRM busca os contatos que o WhatsApp do número conhece (agenda sincronizada e quem já conversou). Nada é gravado antes de você escolher o tipo de cada um.</DialogDescription>
+          <DialogDescription>O CRM busca os contatos que o WhatsApp do número conhece (agenda sincronizada e quem já conversou). Eles vão para a agenda desse número. Nada é gravado antes de você escolher o tipo de cada um.</DialogDescription>
         </DialogHeader>
         {numbers.isLoading ? (
           <TableSkeleton rows={2} />
@@ -389,7 +461,7 @@ type ReviewFilter = 'todos' | 'sem' | 'agenda' | 'leads'
 const PAGE = 100
 
 /** Prévia: cada contato com o tipo sugerido (já na agenda, é lead = cliente, ou sem classificação = não importa). */
-function ReviewDialog({ source, data, onClose }: { source: string; data: Preview; onClose: () => void }) {
+function ReviewDialog({ source, data, scope, agendaName, onSaved, onClose }: { source: string; data: Preview; scope: string; agendaName: string; onSaved: (scope: string) => void; onClose: () => void }) {
   const qc = useQueryClient()
   const [cats, setCats] = useState<Map<string, Cat | null>>(() => new Map(data.items.map((r) => [r.phone, r.suggested])))
   const [checked, setChecked] = useState<Set<string>>(new Set())
@@ -420,10 +492,11 @@ function ReviewDialog({ source, data, onClose }: { source: string; data: Preview
     setChecked(new Set())
   }
   const save = useMutation({
-    mutationFn: () => api.post<{ saved: number; invalid: number }>('/whatsapp/contatos/salvar', { rows: toSave.map((r) => ({ name: r.name, phone: r.phone, category: cats.get(r.phone)! })) }),
+    mutationFn: () => api.post<{ saved: number; invalid: number }>('/whatsapp/contatos/salvar', { rows: toSave.map((r) => ({ name: r.name, phone: r.phone, category: cats.get(r.phone)! })), agenda: scope }),
     onSuccess: (r) => {
       void qc.invalidateQueries({ queryKey: ['whatsapp-contatos'] })
-      toast.success(`${r.saved} contato(s) salvo(s) na agenda.${r.invalid ? ` ${r.invalid} telefone(s) inválido(s).` : ''}`, { duration: 8000 })
+      onSaved(scope)
+      toast.success(`${r.saved} contato(s) salvo(s) na agenda ${agendaName}.${r.invalid ? ` ${r.invalid} telefone(s) inválido(s).` : ''}`, { duration: 8000 })
       onClose()
     },
     onError: (err) => toast.error(errorMessage(err)),
@@ -432,12 +505,14 @@ function ReviewDialog({ source, data, onClose }: { source: string; data: Preview
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Escolha o tipo de cada contato ({source})</DialogTitle>
+          <DialogTitle>
+            Escolha o tipo de cada contato ({source} → agenda {agendaName})
+          </DialogTitle>
           <DialogDescription>
             {data.items.length} contato(s) com telefone{data.skipped ? ` · ${data.skipped} sem telefone` : ''}
             {data.invalid ? ` · ${data.invalid} telefone(s) inválido(s)` : ''}
             {data.fromChat !== undefined ? ` (${data.fromWhatsapp ?? 0} da agenda do WhatsApp e ${data.fromChat} de conversas no CRM)` : ''}
-            {data.hidden ? ` · ${data.hidden} com o número escondido pelo WhatsApp ficaram de fora (para esses, use o arquivo .vcf)` : ''}. Já vêm marcados: quem está na agenda (o tipo atual) e quem é lead (cliente). Os “sem tipo” não são importados.
+            {data.hidden ? ` · ${data.hidden} com o número escondido pelo WhatsApp ficaram de fora (para esses, use o arquivo .vcf)` : ''}. Já vêm marcados: quem está nesta agenda (o tipo atual) e quem é lead (cliente). Os “sem tipo” não são importados. Telefone repetido não duplica: o contato que já existe na agenda é atualizado.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap items-center gap-2">

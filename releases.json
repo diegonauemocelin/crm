@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.53.0",
+      "date": "2026-10-16",
+      "title": "Agenda de contatos por número de WhatsApp",
+      "changes": [
+        { "type": "novo", "area": "Agenda de contatos", "text": "Agenda separada por número de WhatsApp: uma aba para cada número (com o telefone e quantos contatos tem) e a agenda \"Todos os números\", que vale para os números que não têm o contato na própria. Os contatos de um número não se misturam com os de outro." },
+        { "type": "melhoria", "area": "Agenda de contatos", "text": "Telefone não duplica dentro de uma agenda: o mesmo celular com ou sem o 9 é um contato só; salvar ou importar de novo atualiza o que já existe, e o cadastro manual avisa que o telefone já está lá." },
+        { "type": "novo", "area": "Agenda de contatos", "text": "Mover um contato para a agenda de outro número (ou para a geral). Importar do WhatsApp conectado grava na agenda daquele número; importar arquivo, ou cadastrar, grava na agenda aberta." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Marcar o tipo do contato no chat (cliente, colega, fornecedor, outro) vale para a agenda do número daquela conversa." },
+        { "type": "infra", "area": "Agenda de contatos", "text": "Empresa com um número só: a agenda que já existia passa a ser a desse número. Com mais de um número, os contatos que já existiam ficam em \"Todos os números\" e podem ser movidos." }
+      ]
+    },
+    {
       "version": "0.52.1",
       "date": "2026-10-16",
       "title": "E-mail: recusa temporária do servidor tenta de novo",
