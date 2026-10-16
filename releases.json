@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.56.0",
+      "date": "2026-10-16",
+      "title": "Encaminhar várias mensagens e avisos do áudio",
+      "changes": [
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Encaminhar várias mensagens de uma vez: o botão Encaminhar abre a seleção; toque nas outras mensagens para juntar (até 20) e escolha os destinos. Elas vão na ordem da conversa; as que o CRM não consegue encaminhar (arquivo que não está no CRM) são avisadas." },
+        { "type": "correcao", "area": "Chat WhatsApp", "text": "Áudio: gravação vazia (microfone mudo, microfone errado escolhido no navegador ou gravação muito curta) sumia sem aviso; agora mostra o motivo. Também avisa quando não há microfone, quando outro programa está usando o microfone ou quando o navegador bloqueou o acesso." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Áudio recusado pelo serviço de WhatsApp aparece como \"Áudio não enviado: motivo\" e fica registrado no servidor (formato gravado, tamanho e perfil), para achar a causa." }
+      ]
+    },
+    {
       "version": "0.55.0",
       "date": "2026-10-16",
       "title": "Atendente padrão, participantes na conversa e salvar contato",

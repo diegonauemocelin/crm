@@ -460,11 +460,14 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
   const alerts = useChatAlerts().data
   const [older, setOlder] = useState<Message[]>([])
   const [loadingOlder, setLoadingOlder] = useState(false)
-  const [forwarding, setForwarding] = useState<Message | null>(null)
+  /** Encaminhar: as mensagens escolhidas (modo de seleção) e a janela de destinos. */
+  const [selecting, setSelecting] = useState<string[] | null>(null)
+  const [forwarding, setForwarding] = useState(false)
   const end = useRef<HTMLDivElement>(null)
   const lastId = q.data?.messages.at(-1)?.id
   useEffect(() => {
     setOlder([])
+    setSelecting(null)
   }, [id])
   // Desce para a última mensagem quando chega uma nova.
   // Bloco com chaves: em navegadores novos scrollIntoView devolve uma Promise, e o efeito não pode devolver nada.
@@ -488,6 +491,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
   const title = d.conversation.name || formatPhone(d.conversation.phone) || 'Contato'
   // Encaminhar: texto, localização, contato e arquivos que estão guardados no CRM.
   const canForward = (m: Message) => !monitor && can('chat', 'create') && (['texto', 'localizacao', 'contato'].includes(m.type) ? !!m.text : ['imagem', 'video', 'audio', 'documento', 'figurinha'].includes(m.type) && m.hasFile)
+  const toggleSelect = (mid: string) => setSelecting((s) => (!s ? [mid] : s.includes(mid) ? s.filter((x) => x !== mid) : s.length >= 20 ? (toast.error('No máximo 20 mensagens por vez.'), s) : [...s, mid]))
   return (
     <MonitorContext.Provider value={monitor}>
     <div className="flex h-full min-h-0 flex-col">
@@ -568,8 +572,14 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
                   </p>
                 </div>
               ) : (
-              <div className={cn('group/msg flex items-center gap-1', m.fromMe ? 'justify-end' : 'justify-start')}>
-                {m.fromMe && canForward(m) && <ForwardButton onClick={() => setForwarding(m)} />}
+              <div
+                className={cn('group/msg flex items-center gap-1', m.fromMe ? 'justify-end' : 'justify-start', selecting && canForward(m) && 'cursor-pointer rounded-md', selecting?.includes(m.id) && 'bg-[color:var(--brand)]/10')}
+                onClick={selecting && canForward(m) ? () => toggleSelect(m.id) : undefined}
+              >
+                {selecting && canForward(m) && (
+                  <input type="checkbox" className="mr-1 size-4 shrink-0 accent-[color:var(--brand)]" checked={selecting.includes(m.id)} onChange={() => toggleSelect(m.id)} onClick={(e) => e.stopPropagation()} aria-label="Selecionar mensagem para encaminhar" />
+                )}
+                {!selecting && m.fromMe && canForward(m) && <ForwardButton onClick={() => setSelecting([m.id])} />}
                 <div className={cn('max-w-[85%] rounded-lg px-3 py-1.5 text-sm shadow-xs sm:max-w-[70%]', m.fromMe ? (colors ? 'bg-blue-100 text-slate-900 dark:bg-blue-900/60 dark:text-blue-50' : 'bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]') : cn('bg-card', colors && 'border'))}>
                   {d.conversation.category === 'GRUPO' && !m.fromMe && m.sentByName && <p className="mb-0.5 text-xs font-semibold text-[color:var(--brand)]">{m.sentByName}</p>}
                   <Bubble m={m} />
@@ -579,7 +589,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
                     {m.fromMe && <Receipt status={m.status} />}
                   </p>
                 </div>
-                {!m.fromMe && canForward(m) && <ForwardButton onClick={() => setForwarding(m)} />}
+                {!selecting && !m.fromMe && canForward(m) && <ForwardButton onClick={() => setSelecting([m.id])} />}
               </div>
               )}
             </div>
@@ -592,15 +602,28 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
         <p className="flex items-center gap-2 border-t bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
           <EyeIcon className="size-4 shrink-0" /> Monitoramento: só leitura. O vendedor e o cliente não são avisados, e a conversa continua como não lida para quem atende.
         </p>
+      ) : selecting ? (
+        <div className="flex flex-wrap items-center gap-2 border-t bg-muted/40 px-3 py-2" role="toolbar" aria-label="Encaminhar mensagens">
+          <span className="mr-auto text-sm">
+            <b>{selecting.length}</b> {selecting.length === 1 ? 'mensagem selecionada' : 'mensagens selecionadas'} · toque nas outras para juntar
+          </span>
+          <Button size="sm" variant="ghost" onClick={() => setSelecting(null)}>
+            Cancelar
+          </Button>
+          <Button size="sm" onClick={() => setForwarding(true)} disabled={!selecting.length}>
+            <ForwardIcon /> Encaminhar
+          </Button>
+        </div>
       ) : (
         <Composer thread={d} />
       )}
-      {forwarding && (
+      {forwarding && selecting && (
         <ForwardDialog
-          messageId={forwarding.id}
+          messageIds={selecting}
           sourceConversationId={d.conversation.id}
-          preview={forwarding.text || { imagem: 'Foto', video: 'Vídeo', audio: 'Áudio', documento: forwarding.fileName ?? 'Documento', figurinha: 'Figurinha' }[forwarding.type as string] || 'Mensagem'}
-          onClose={() => setForwarding(null)}
+          preview={forwardPreview(messages.filter((x) => selecting.includes(x.id)))}
+          onSent={() => setSelecting(null)}
+          onClose={() => setForwarding(false)}
         />
       )}
     </div>
@@ -619,6 +642,18 @@ function WaitingBar({ messages, yellowMinutes = 10 }: { messages: Message[]; yel
       <AlarmClockIcon className="size-3.5" /> Cliente esperando resposta há {waitText(min)}
     </p>
   )
+}
+
+/** Resumo do que vai ser encaminhado: o texto da mensagem, ou quantas são de cada tipo. */
+function forwardPreview(list: Message[]) {
+  const label = (m: Message) => ({ imagem: 'Foto', video: 'Vídeo', audio: 'Áudio', documento: m.fileName ?? 'Documento', figurinha: 'Figurinha', contato: 'Contato', localizacao: 'Localização' })[m.type as string] ?? 'Mensagem'
+  if (list.length === 1) return `“${list[0]!.text || label(list[0]!)}”`
+  const counts = new Map<string, number>()
+  for (const m of list) {
+    const k = m.type === 'texto' ? 'texto' : label(m).toLowerCase()
+    counts.set(k, (counts.get(k) ?? 0) + 1)
+  }
+  return `${list.length} mensagens, na ordem da conversa: ${[...counts.entries()].map(([k, n]) => `${n} ${k === 'texto' && n > 1 ? 'textos' : k}`).join(', ')}.`
 }
 
 /** Botão de encaminhar ao lado da mensagem: aparece ao passar o mouse (no celular fica sempre à vista, mais claro). */
@@ -890,7 +925,7 @@ function Composer({ thread }: { thread: Thread }) {
       void qc.invalidateQueries({ queryKey: ['chat-conversa', id] })
       void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
     } catch (err) {
-      toast.error(errorMessage(err))
+      toast.error(`Áudio não enviado: ${errorMessage(err)}`, { duration: 10_000 })
     }
   })
   const replies = useQuery({ queryKey: ['chat-respostas', id], queryFn: () => api.get<{ id: string; title: string; preview: string; standard: boolean }[]>(`/chat/respostas?conversa=${id}`), enabled: can('chat', 'create'), staleTime: 60_000 })
@@ -1433,19 +1468,34 @@ function useVoiceRecorder(onDone: (file: File) => Promise<void>) {
     let stream: MediaStream
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    } catch {
-      return void toast.error('Sem acesso ao microfone. Libere o microfone para este site no navegador.')
+    } catch (err) {
+      const name = (err as { name?: string })?.name
+      return void toast.error(
+        name === 'NotFoundError'
+          ? 'Nenhum microfone encontrado neste computador. Ligue um microfone (ou fone com microfone) e tente de novo.'
+          : name === 'NotReadableError'
+            ? 'O microfone está sendo usado por outro programa (ex.: Teams, Meet, WhatsApp Desktop). Feche o outro programa e tente de novo.'
+            : 'Sem acesso ao microfone. Clique no cadeado ao lado do endereço do site, permita o microfone e recarregue a página.',
+        { duration: 10_000 },
+      )
     }
     const type = ['audio/ogg;codecs=opus', 'audio/webm;codecs=opus', 'audio/mp4'].find((m) => MediaRecorder.isTypeSupported(m))
     const r = new MediaRecorder(stream, type ? { mimeType: type } : undefined)
     chunks.current = []
     discard.current = false
     r.ondataavailable = (e) => e.data.size && chunks.current.push(e.data)
+    r.onerror = () => {
+      discard.current = true
+      toast.error('A gravação parou com erro no navegador. Tente de novo; se repetir, confira o microfone escolhido nas configurações do navegador.')
+      cleanup()
+    }
     r.onstop = () => {
       const mime = r.mimeType || type || 'audio/webm'
       const blob = new Blob(chunks.current, { type: mime })
       cleanup()
-      if (discard.current || blob.size < 1000) return
+      if (discard.current) return
+      // Antes sumia sem aviso: gravação vazia (microfone mudo, microfone errado escolhido ou muito curta).
+      if (blob.size < 1000) return void toast.error('O áudio ficou vazio: o microfone não captou som. Segure para gravar um pouco mais e confira se o microfone certo está escolhido no navegador.', { duration: 10_000 })
       const ext = mime.includes('ogg') ? 'ogg' : mime.includes('mp4') ? 'm4a' : 'webm'
       setSending(true)
       void onDone(new File([blob], `audio.${ext}`, { type: mime })).finally(() => setSending(false))

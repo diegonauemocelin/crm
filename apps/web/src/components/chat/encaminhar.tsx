@@ -30,7 +30,7 @@ interface ConvRow {
 
 const MAX = 10
 
-export function ForwardDialog({ messageId, sourceConversationId, preview, onClose }: { messageId: string; sourceConversationId: string; preview: string; onClose: () => void }) {
+export function ForwardDialog({ messageIds, sourceConversationId, preview, onClose, onSent }: { messageIds: string[]; sourceConversationId: string; preview: string; onClose: () => void; onSent?: () => void }) {
   const qc = useQueryClient()
   const [tab, setTab] = useState<'conversas' | 'agenda'>('conversas')
   const [search, setSearch] = useState('')
@@ -60,16 +60,22 @@ export function ForwardDialog({ messageId, sourceConversationId, preview, onClos
   })
   const send = useMutation({
     mutationFn: () =>
-      api.post<{ sent: number; results: { label: string; ok: boolean; error?: string }[] }>(`/chat/mensagens/${messageId}/encaminhar`, {
+      api.post<{ sent: number; messages: number; skipped: string[]; results: { label: string; ok: boolean; sent: number; error?: string }[] }>('/chat/mensagens/encaminhar', {
+        messageIds,
         targets: picked.map((t) => ({ conversationId: t.conversationId, phone: t.phone, label: t.label })),
       }),
     onSuccess: (r) => {
       void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
       void qc.invalidateQueries({ queryKey: ['chat-conversa'] })
       const fails = r.results.filter((x) => !x.ok)
-      if (r.sent) toast.success(`Mensagem encaminhada para ${r.sent} ${r.sent === 1 ? 'conversa' : 'conversas'}.`)
-      for (const f of fails) toast.error(`Não foi para ${f.label}: ${f.error ?? 'erro'}`, { duration: 10_000 })
-      if (!fails.length) onClose()
+      const what = r.messages === 1 ? 'Mensagem encaminhada' : `${r.messages} mensagens encaminhadas`
+      if (r.sent) toast.success(`${what} para ${r.sent} ${r.sent === 1 ? 'conversa' : 'conversas'}.`)
+      if (r.skipped.length) toast.info(`${r.skipped.length} mensagem(ns) ficaram de fora (${[...new Set(r.skipped)].join('; ')}). Encaminhe essas pelo celular.`, { duration: 10_000 })
+      for (const f of fails) toast.error(`Não foi para ${f.label}${f.sent ? ` (foram ${f.sent} antes do erro)` : ''}: ${f.error ?? 'erro'}`, { duration: 10_000 })
+      if (!fails.length) {
+        onSent?.()
+        onClose()
+      }
       else setPicked((p) => p.filter((t) => fails.some((f) => f.label === t.label)))
     },
     onError: (err) => toast.error(errorMessage(err)),
@@ -90,8 +96,8 @@ export function ForwardDialog({ messageId, sourceConversationId, preview, onClos
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Encaminhar mensagem</DialogTitle>
-          <DialogDescription className="line-clamp-2">“{preview}”</DialogDescription>
+          <DialogTitle>{messageIds.length > 1 ? `Encaminhar ${messageIds.length} mensagens` : 'Encaminhar mensagem'}</DialogTitle>
+          <DialogDescription className="line-clamp-2">{preview}</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label="Para onde">
           {(

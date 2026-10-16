@@ -757,56 +757,76 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /**
-   * Encaminha uma mensagem (texto, foto, vídeo, áudio, documento, figurinha, localização ou contato) para outras
-   * conversas ou para telefones da agenda. Telefone sem conversa: abre a conversa pelo mesmo número da mensagem.
-   * O arquivo é o mesmo guardado no CRM (não baixa de novo). Até 10 destinos; cada um responde se deu certo.
+   * Encaminha mensagens (texto, foto, vídeo, áudio, documento, figurinha, localização ou contato) para outras
+   * conversas ou para telefones da agenda, na ordem em que foram escritas. Telefone sem conversa: abre a conversa
+   * pelo mesmo número das mensagens. O arquivo é o mesmo guardado no CRM (não baixa de novo).
+   * Até 20 mensagens e 10 destinos; cada destino responde quantas foram e o que falhou.
    */
-  async forward(user: AuthUser, messageId: string, targets: { conversationId?: string; phone?: string; label?: string }[]) {
+  async forward(user: AuthUser, messageIds: string[], targets: { conversationId?: string; phone?: string; label?: string }[]) {
     this.assertAction(user, 'chat', 'create')
-    const m = await this.prisma.whatsappMessage.findFirst({ where: { id: messageId, tenantId: user.tenantId } })
-    if (!m || m.internal) throw new NotFoundException('Mensagem não encontrada.')
-    const src = await this.load(user, m.conversationId)
-    const media = ['imagem', 'video', 'audio', 'documento', 'figurinha'].includes(m.type)
-    if (!media && !['texto', 'localizacao', 'contato'].includes(m.type)) throw new BadRequestException('Este tipo de mensagem não pode ser encaminhado pelo CRM.')
-    if (media && !m.fileId) throw new BadRequestException(m.mediaStatus === 'GRANDE' ? 'Arquivo grande demais (mais de 16 MB): encaminhe pelo celular.' : 'O arquivo desta mensagem não está no CRM (ainda baixando ou apagado). Encaminhe pelo celular.')
-    if (!media && !m.text?.trim()) throw new BadRequestException('Mensagem vazia.')
-    const file = m.fileId ? await this.files.read(m.fileId) : null
-    const results: { label: string; conversationId: string | null; ok: boolean; error?: string }[] = []
+    const ids = [...new Set(messageIds)].slice(0, 20)
+    if (!ids.length) throw new BadRequestException('Escolha as mensagens para encaminhar.')
+    const rows = await this.prisma.whatsappMessage.findMany({ where: { id: { in: ids }, tenantId: user.tenantId, internal: false }, orderBy: { sentAt: 'asc' } })
+    if (!rows.length) throw new NotFoundException('Mensagem não encontrada.')
+    // Todas precisam estar em conversas que a pessoa vê; o número de saída é o da primeira.
+    const sources = new Map<string, Awaited<ReturnType<ChatService['load']>>>()
+    for (const cid of new Set(rows.map((r) => r.conversationId))) sources.set(cid, await this.load(user, cid))
+    const src = sources.get(rows[0]!.conversationId)!
+    const MEDIA = ['imagem', 'video', 'audio', 'documento', 'figurinha']
+    const problem = (m: (typeof rows)[number]) => {
+      const media = MEDIA.includes(m.type)
+      if (!media && !['texto', 'localizacao', 'contato'].includes(m.type)) return 'tipo de mensagem que o CRM não encaminha'
+      if (media && !m.fileId) return m.mediaStatus === 'GRANDE' ? 'arquivo grande demais (mais de 16 MB)' : 'arquivo não está no CRM'
+      if (!media && !m.text?.trim()) return 'mensagem vazia'
+      return null
+    }
+    const skipped = rows.filter((m) => problem(m)).map((m) => problem(m)!)
+    const list = rows.filter((m) => !problem(m))
+    if (!list.length) throw new BadRequestException(`Nada para encaminhar: ${[...new Set(skipped)].join('; ')}. Encaminhe pelo celular.`)
+    const files = new Map<string, Awaited<ReturnType<FilesService['read']>>>()
+    for (const m of list) if (m.fileId && !files.has(m.fileId)) files.set(m.fileId, await this.files.read(m.fileId))
+
+    const results: { label: string; conversationId: string | null; ok: boolean; sent: number; error?: string }[] = []
     for (const t of targets.slice(0, 10)) {
       const label = (t.label ?? t.phone ?? 'Conversa').slice(0, 120)
+      let sent = 0
       try {
         const convId = t.conversationId ?? (await this.start(user, { numberId: src.numberId, phone: t.phone })).id
-        if (convId === src.id) throw new BadRequestException('É a própria conversa.')
+        if (sources.has(convId)) throw new BadRequestException('É a própria conversa das mensagens.')
         const c = await this.sendContext(user, convId)
-        if (m.type === 'contato') {
-          for (const line of m.text!.split('\n').slice(0, 10)) {
-            const [name = '', tel = ''] = line.split(' · ')
-            const card = contactCard(name, tel)
-            if ('error' in card) throw new BadRequestException('O contato desta mensagem não tem telefone para encaminhar.')
-            const r = await c.client.sendContact(c.number.instanceName, c.target, card).catch((e: unknown) => this.fail(e))
-            await this.recordSent(user, c, r, { type: 'contato', text: card.text })
+        for (const m of list) {
+          if (m.type === 'contato') {
+            for (const line of m.text!.split('\n').slice(0, 10)) {
+              const [name = '', tel = ''] = line.split(' · ')
+              const card = contactCard(name, tel)
+              if ('error' in card) throw new BadRequestException('Um contato das mensagens não tem telefone para encaminhar.')
+              const r = await c.client.sendContact(c.number.instanceName, c.target, card).catch((e: unknown) => this.fail(e))
+              await this.recordSent(user, c, r, { type: 'contato', text: card.text })
+            }
+          } else if (!MEDIA.includes(m.type)) {
+            const r = await c.client.sendText(c.number.instanceName, c.target, m.text!).catch((e: unknown) => this.fail(e))
+            await this.recordSent(user, c, r, { type: 'texto', text: m.text })
+          } else {
+            const file = files.get(m.fileId!)!
+            const base64 = file.content.toString('base64')
+            const mime = m.mime ?? file.asset.mime
+            const fileName = m.fileName ?? `arquivo.${extOf(mime)}`
+            const r =
+              m.type === 'audio'
+                ? await c.client.sendAudio(c.number.instanceName, c.target, base64).catch((e: unknown) => this.fail(e))
+                : await c.client
+                    .sendMedia(c.number.instanceName, c.target, { mediatype: m.type === 'video' ? 'video' : m.type === 'documento' ? 'document' : 'image', mimetype: mime, base64, fileName, caption: m.text ?? undefined })
+                    .catch((e: unknown) => this.fail(e))
+            await this.recordSent(user, c, r, { type: m.type, text: m.type === 'audio' ? null : m.text, fileId: m.fileId!, fileName, mime })
           }
-        } else if (!media) {
-          const r = await c.client.sendText(c.number.instanceName, c.target, m.text!).catch((e: unknown) => this.fail(e))
-          await this.recordSent(user, c, r, { type: 'texto', text: m.text })
-        } else {
-          const base64 = file!.content.toString('base64')
-          const mime = m.mime ?? file!.asset.mime
-          const fileName = m.fileName ?? `arquivo.${extOf(mime)}`
-          const r =
-            m.type === 'audio'
-              ? await c.client.sendAudio(c.number.instanceName, c.target, base64).catch((e: unknown) => this.fail(e))
-              : await c.client
-                  .sendMedia(c.number.instanceName, c.target, { mediatype: m.type === 'video' ? 'video' : m.type === 'documento' ? 'document' : 'image', mimetype: mime, base64, fileName, caption: m.text ?? undefined })
-                  .catch((e: unknown) => this.fail(e))
-          await this.recordSent(user, c, r, { type: m.type, text: m.type === 'audio' ? null : m.text, fileId: m.fileId!, fileName, mime })
+          sent++
         }
-        results.push({ label, conversationId: convId, ok: true })
+        results.push({ label, conversationId: convId, ok: true, sent })
       } catch (err) {
-        results.push({ label, conversationId: t.conversationId ?? null, ok: false, error: (err as Error).message })
+        results.push({ label, conversationId: t.conversationId ?? null, ok: false, sent, error: (err as Error).message })
       }
     }
-    return { sent: results.filter((r) => r.ok).length, results }
+    return { sent: results.filter((r) => r.ok).length, messages: list.length, skipped, results }
   }
 
   /** Compartilha um contato (cartão) na conversa. */
@@ -856,7 +876,11 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const base64 = file.buffer.toString('base64')
     const r =
       kind.kind === 'audio'
-        ? await c.client.sendAudio(c.number.instanceName, c.target, base64).catch((e: unknown) => this.fail(e))
+        ? await c.client.sendAudio(c.number.instanceName, c.target, base64).catch((e: unknown) => {
+            // Registro para o suporte: formato gravado pelo navegador e a resposta do serviço de WhatsApp.
+            this.logger.warn(`Áudio não enviado (${c.number.name}, ${kind.mime}, ${Math.round(file.size / 1024)} KB, ${user.role.name}): ${(e as Error).message}`)
+            return this.fail(e)
+          })
         : await c.client.sendMedia(c.number.instanceName, c.target, { mediatype: kind.kind, mimetype: kind.mime, base64, fileName, caption: text ?? undefined }).catch((e: unknown) => this.fail(e))
     const asset = await this.files.saveBuffer(c.conv.tenantId, 'whatsapp', file.buffer, kind.mime, kind.ext)
     const type = ({ image: 'imagem', video: 'video', audio: 'audio', document: 'documento' } as const)[kind.kind]

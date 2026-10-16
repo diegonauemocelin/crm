@@ -51,6 +51,10 @@ class ForwardDto {
   @ValidateNested({ each: true }) @Type(() => ForwardTargetDto) @ArrayMaxSize(10) targets!: ForwardTargetDto[]
 }
 
+class ForwardManyDto extends ForwardDto {
+  @IsArray() @ArrayMaxSize(20) @IsUUID('all', { each: true }) messageIds!: string[]
+}
+
 class ContactDto {
   @IsString() @Length(1, 80) name!: string
   @IsString() @Length(8, 30) phone!: string
@@ -307,7 +311,15 @@ export class ChatController {
   @HttpCode(200)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   forward(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ForwardDto) {
-    return this.chat.forward(user, id, dto.targets.filter((t) => t.conversationId || t.phone))
+    return this.chat.forward(user, [id], dto.targets.filter((t) => t.conversationId || t.phone))
+  }
+
+  /** Encaminhar várias mensagens de uma vez (até 20), na ordem em que foram escritas. */
+  @Post('mensagens/encaminhar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  forwardMany(@CurrentUser() user: AuthUser, @Body() dto: ForwardManyDto) {
+    return this.chat.forward(user, dto.messageIds, dto.targets.filter((t) => t.conversationId || t.phone))
   }
 
   /** Compartilhar um contato (cartão) na conversa. */
