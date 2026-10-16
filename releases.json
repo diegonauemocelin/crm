@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.54.0",
+      "date": "2026-10-16",
+      "title": "Encaminhar mensagens no chat",
+      "changes": [
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Encaminhar mensagem: botão ao lado de cada mensagem (aparece ao passar o mouse). Vale para texto, foto, vídeo, áudio, arquivo, figurinha, localização e contato." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Na janela de encaminhar, escolha conversas e grupos ou contatos da agenda, vendedores e leads, até 10 de uma vez. Contato sem conversa: a conversa é aberta pelo mesmo número de WhatsApp da mensagem. Cada destino avisa se deu certo." }
+      ]
+    },
+    {
       "version": "0.53.0",
       "date": "2026-10-16",
       "title": "Agenda de contatos por número de WhatsApp",

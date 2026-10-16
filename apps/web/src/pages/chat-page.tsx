@@ -1,11 +1,12 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, AlertCircleIcon, CheckCheckIcon, DownloadIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, AlertCircleIcon, CheckCheckIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
 import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { type ChatService, LastSeller, quickPrefill, ServiceButtons, StageBadge, type StageInfo } from '@/components/chat/atendimento-chat'
 import { ClientPanel } from '@/components/chat/painel-cliente'
 import { ContactBubble, ShareContactButton } from '@/components/chat/compartilhar-contato'
+import { ForwardDialog } from '@/components/chat/encaminhar'
 import { ToCallPanel } from '@/components/chat/para-chamar'
 import { type ChatLabel, LabelChip, LabelPicker, ManageRepliesDialog, useLabels } from '@/components/chat/organizar'
 import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -457,6 +458,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
   const alerts = useChatAlerts().data
   const [older, setOlder] = useState<Message[]>([])
   const [loadingOlder, setLoadingOlder] = useState(false)
+  const [forwarding, setForwarding] = useState<Message | null>(null)
   const end = useRef<HTMLDivElement>(null)
   const lastId = q.data?.messages.at(-1)?.id
   useEffect(() => {
@@ -482,6 +484,8 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
     }
   }
   const title = d.conversation.name || formatPhone(d.conversation.phone) || 'Contato'
+  // Encaminhar: texto, localização, contato e arquivos que estão guardados no CRM.
+  const canForward = (m: Message) => !monitor && can('chat', 'create') && (['texto', 'localizacao', 'contato'].includes(m.type) ? !!m.text : ['imagem', 'video', 'audio', 'documento', 'figurinha'].includes(m.type) && m.hasFile)
   return (
     <MonitorContext.Provider value={monitor}>
     <div className="flex h-full min-h-0 flex-col">
@@ -560,7 +564,8 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
                   </p>
                 </div>
               ) : (
-              <div className={cn('flex', m.fromMe ? 'justify-end' : 'justify-start')}>
+              <div className={cn('group/msg flex items-center gap-1', m.fromMe ? 'justify-end' : 'justify-start')}>
+                {m.fromMe && canForward(m) && <ForwardButton onClick={() => setForwarding(m)} />}
                 <div className={cn('max-w-[85%] rounded-lg px-3 py-1.5 text-sm shadow-xs sm:max-w-[70%]', m.fromMe ? (colors ? 'bg-blue-100 text-slate-900 dark:bg-blue-900/60 dark:text-blue-50' : 'bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]') : cn('bg-card', colors && 'border'))}>
                   {d.conversation.category === 'GRUPO' && !m.fromMe && m.sentByName && <p className="mb-0.5 text-xs font-semibold text-[color:var(--brand)]">{m.sentByName}</p>}
                   <Bubble m={m} />
@@ -570,6 +575,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
                     {m.fromMe && <Receipt status={m.status} />}
                   </p>
                 </div>
+                {!m.fromMe && canForward(m) && <ForwardButton onClick={() => setForwarding(m)} />}
               </div>
               )}
             </div>
@@ -584,6 +590,14 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
         </p>
       ) : (
         <Composer thread={d} />
+      )}
+      {forwarding && (
+        <ForwardDialog
+          messageId={forwarding.id}
+          sourceConversationId={d.conversation.id}
+          preview={forwarding.text || { imagem: 'Foto', video: 'Vídeo', audio: 'Áudio', documento: forwarding.fileName ?? 'Documento', figurinha: 'Figurinha' }[forwarding.type as string] || 'Mensagem'}
+          onClose={() => setForwarding(null)}
+        />
       )}
     </div>
     </MonitorContext.Provider>
@@ -600,6 +614,15 @@ function WaitingBar({ messages, yellowMinutes = 10 }: { messages: Message[]; yel
     <p className="flex items-center gap-2 border-t border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-800 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300" role="status">
       <AlarmClockIcon className="size-3.5" /> Cliente esperando resposta há {waitText(min)}
     </p>
+  )
+}
+
+/** Botão de encaminhar ao lado da mensagem: aparece ao passar o mouse (no celular fica sempre à vista, mais claro). */
+function ForwardButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Button type="button" size="icon" variant="ghost" className="size-7 shrink-0 opacity-50 group-hover/msg:opacity-100 focus-visible:opacity-100 md:opacity-0" onClick={onClick} aria-label="Encaminhar mensagem" title="Encaminhar">
+      <ForwardIcon className="size-4" />
+    </Button>
   )
 }
 

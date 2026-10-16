@@ -32,6 +32,16 @@ class TextDto {
   @IsString() @Length(1, 4000) text!: string
 }
 
+class ForwardTargetDto {
+  @IsOptional() @IsUUID() conversationId?: string
+  @IsOptional() @IsString() @Length(8, 30) phone?: string
+  @IsOptional() @IsString() @MaxLength(120) label?: string
+}
+
+class ForwardDto {
+  @ValidateNested({ each: true }) @Type(() => ForwardTargetDto) @ArrayMaxSize(10) targets!: ForwardTargetDto[]
+}
+
 class ContactDto {
   @IsString() @Length(1, 80) name!: string
   @IsString() @Length(8, 30) phone!: string
@@ -281,6 +291,14 @@ export class ChatController {
   @Put('conversas/:id/tipo')
   setCategory(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CategoryDto) {
     return this.chat.setCategory(user, id, dto)
+  }
+
+  /** Encaminhar uma mensagem para outras conversas ou telefones da agenda (até 10). */
+  @Post('mensagens/:id/encaminhar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  forward(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ForwardDto) {
+    return this.chat.forward(user, id, dto.targets.filter((t) => t.conversationId || t.phone))
   }
 
   /** Compartilhar um contato (cartão) na conversa. */

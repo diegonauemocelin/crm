@@ -751,6 +751,59 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     return this.recordSent(user, c, r, { type: 'texto', text: body })
   }
 
+  /**
+   * Encaminha uma mensagem (texto, foto, vídeo, áudio, documento, figurinha, localização ou contato) para outras
+   * conversas ou para telefones da agenda. Telefone sem conversa: abre a conversa pelo mesmo número da mensagem.
+   * O arquivo é o mesmo guardado no CRM (não baixa de novo). Até 10 destinos; cada um responde se deu certo.
+   */
+  async forward(user: AuthUser, messageId: string, targets: { conversationId?: string; phone?: string; label?: string }[]) {
+    this.assertAction(user, 'chat', 'create')
+    const m = await this.prisma.whatsappMessage.findFirst({ where: { id: messageId, tenantId: user.tenantId } })
+    if (!m || m.internal) throw new NotFoundException('Mensagem não encontrada.')
+    const src = await this.load(user, m.conversationId)
+    const media = ['imagem', 'video', 'audio', 'documento', 'figurinha'].includes(m.type)
+    if (!media && !['texto', 'localizacao', 'contato'].includes(m.type)) throw new BadRequestException('Este tipo de mensagem não pode ser encaminhado pelo CRM.')
+    if (media && !m.fileId) throw new BadRequestException(m.mediaStatus === 'GRANDE' ? 'Arquivo grande demais (mais de 16 MB): encaminhe pelo celular.' : 'O arquivo desta mensagem não está no CRM (ainda baixando ou apagado). Encaminhe pelo celular.')
+    if (!media && !m.text?.trim()) throw new BadRequestException('Mensagem vazia.')
+    const file = m.fileId ? await this.files.read(m.fileId) : null
+    const results: { label: string; conversationId: string | null; ok: boolean; error?: string }[] = []
+    for (const t of targets.slice(0, 10)) {
+      const label = (t.label ?? t.phone ?? 'Conversa').slice(0, 120)
+      try {
+        const convId = t.conversationId ?? (await this.start(user, { numberId: src.numberId, phone: t.phone })).id
+        if (convId === src.id) throw new BadRequestException('É a própria conversa.')
+        const c = await this.sendContext(user, convId)
+        if (m.type === 'contato') {
+          for (const line of m.text!.split('\n').slice(0, 10)) {
+            const [name = '', tel = ''] = line.split(' · ')
+            const card = contactCard(name, tel)
+            if ('error' in card) throw new BadRequestException('O contato desta mensagem não tem telefone para encaminhar.')
+            const r = await c.client.sendContact(c.number.instanceName, c.target, card).catch((e: unknown) => this.fail(e))
+            await this.recordSent(user, c, r, { type: 'contato', text: card.text })
+          }
+        } else if (!media) {
+          const r = await c.client.sendText(c.number.instanceName, c.target, m.text!).catch((e: unknown) => this.fail(e))
+          await this.recordSent(user, c, r, { type: 'texto', text: m.text })
+        } else {
+          const base64 = file!.content.toString('base64')
+          const mime = m.mime ?? file!.asset.mime
+          const fileName = m.fileName ?? `arquivo.${extOf(mime)}`
+          const r =
+            m.type === 'audio'
+              ? await c.client.sendAudio(c.number.instanceName, c.target, base64).catch((e: unknown) => this.fail(e))
+              : await c.client
+                  .sendMedia(c.number.instanceName, c.target, { mediatype: m.type === 'video' ? 'video' : m.type === 'documento' ? 'document' : 'image', mimetype: mime, base64, fileName, caption: m.text ?? undefined })
+                  .catch((e: unknown) => this.fail(e))
+          await this.recordSent(user, c, r, { type: m.type, text: m.type === 'audio' ? null : m.text, fileId: m.fileId!, fileName, mime })
+        }
+        results.push({ label, conversationId: convId, ok: true })
+      } catch (err) {
+        results.push({ label, conversationId: t.conversationId ?? null, ok: false, error: (err as Error).message })
+      }
+    }
+    return { sent: results.filter((r) => r.ok).length, results }
+  }
+
   /** Compartilha um contato (cartão) na conversa. */
   async sendContact(user: AuthUser, id: string, d: { name: string; phone: string }) {
     const card = contactCard(d.name, d.phone)
