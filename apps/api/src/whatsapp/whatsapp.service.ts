@@ -63,6 +63,7 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
     const numbers = await this.prisma.whatsappNumber.findMany({ where: { deletedAt: null, status: { not: 'DESCONECTADO' } }, select: { instanceName: true, name: true } })
     for (const n of numbers) {
       await this.client.setWebhook(n.instanceName, this.webhookUrl()).catch((err: unknown) => this.logger.warn(`Eventos do número ${n.name} não atualizados: ${(err as Error).message}`))
+      await this.client.setSettings(n.instanceName).catch((err: unknown) => this.logger.warn(`Ajustes do número ${n.name} não atualizados: ${(err as Error).message}`))
     }
   }
 

@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.51.0",
+      "date": "2026-10-16",
+      "title": "Grupos separados no chat e contatos do Google",
+      "changes": [
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Grupos do WhatsApp no chat, numa aba própria (\"Grupos\"), separados das conversas com clientes. Em cada mensagem aparece o nome de quem escreveu, e dá para responder no grupo pelo CRM." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Cada grupo fica com o seu número: na aba Grupos, a lista vem separada por número (com o nome e o telefone do número no topo). O mesmo grupo em dois números são duas conversas diferentes." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Grupo não entra no controle de pré-vendas: não vira lead nem pré-venda, não recebe mensagem de ausência e fica fora dos avisos de \"sem resposta\", do sino, do som e do painel do WhatsApp." },
+        { "type": "novo", "area": "Agenda de contatos", "text": "Importar contatos pelo arquivo do Google Contatos (Exportar › Google CSV, em português ou inglês): nome completo, todos os telefones e o tipo pelos marcadores (Cliente, Fornecedor, Colega). O botão \"Importar contatos\" junta as três opções: Google, arquivo do celular (.vcf) e WhatsApp conectado." },
+        { "type": "infra", "area": "WhatsApp", "text": "Os números já conectados passam a receber as mensagens de grupo depois da atualização (o CRM ajusta a configuração de cada número sozinho)." }
+      ]
+    },
+    {
       "version": "0.50.1",
       "date": "2026-10-16",
       "title": "Planilha: atendimento preenchido entra como finalizado",

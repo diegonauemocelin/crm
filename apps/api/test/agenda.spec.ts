@@ -85,3 +85,34 @@ describe('Leads para chamar: por onde chegou', () => {
     expect(toCallVia(null, null, false, 'RD Station')).toEqual({ kind: 'outro', label: 'RD Station' })
   })
 })
+
+describe('Contatos do Google (CSV exportado)', () => {
+  it('lê o formato novo em português: nome montado, todos os telefones e o tipo pelo marcador', async () => {
+    const { parseGoogleContacts } = await import('../src/whatsapp/envio')
+    const { parseCsv } = await import('../src/atendimento/planilha')
+    const csv = [
+      'Nome,Nome do meio,Sobrenome,Organização - Nome,Marcadores,Telefone 1 - Rótulo,Telefone 1 - Valor,Telefone 2 - Rótulo,Telefone 2 - Valor',
+      'Carlos,,Souza,,* myContacts ::: Fornecedor,Celular,+55 49 98877-6655,Trabalho,(49) 3333-2222 ::: (49) 3333-2223',
+      ',,,Peças Brasil,* myContacts,Trabalho,(47) 3222-1100,,',
+      'Sem,,Telefone,,,,,,',
+      '"Ana ""Aninha""",,Lima,,Cliente,Celular,47 99999-0000,,',
+    ].join('\n')
+    const r = parseGoogleContacts(parseCsv(csv))!
+    expect(r.rows).toEqual([
+      { name: 'Carlos Souza', phone: '+55 49 98877-6655', category: 'FORNECEDOR' },
+      { name: 'Carlos Souza', phone: '(49) 3333-2222', category: 'FORNECEDOR' },
+      { name: 'Carlos Souza', phone: '(49) 3333-2223', category: 'FORNECEDOR' },
+      { name: 'Peças Brasil', phone: '(47) 3222-1100', category: null },
+      { name: 'Ana "Aninha" Lima', phone: '47 99999-0000', category: 'CLIENTE' },
+    ])
+    expect(r.skipped).toBe(1)
+  })
+
+  it('lê o formato em inglês e recusa o que não é do Google', async () => {
+    const { parseGoogleContacts } = await import('../src/whatsapp/envio')
+    const { parseCsv } = await import('../src/atendimento/planilha')
+    const en = parseGoogleContacts(parseCsv('First Name,Middle Name,Last Name,Phone 1 - Label,Phone 1 - Value\nMaria,,Silva,Mobile,+1 555 123 4567'))!
+    expect(en.rows).toEqual([{ name: 'Maria Silva', phone: '+1 555 123 4567', category: null }])
+    expect(parseGoogleContacts(parseCsv('Nome;Telefone\nAna;49999990000'))).toBeNull()
+  })
+})

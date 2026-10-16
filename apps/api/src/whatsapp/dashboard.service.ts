@@ -30,7 +30,7 @@ export class WhatsappDashboardService {
     const span = end.getTime() - start.getTime()
     const prevStart = new Date(start.getTime() - span)
     const scope = await this.chat.where(user)
-    const convWhere: Prisma.WhatsappConversationWhereInput = { AND: [scope, q.all ? {} : { category: 'CLIENTE' }, q.numberId ? { numberId: q.numberId } : {}] }
+    const convWhere: Prisma.WhatsappConversationWhereInput = { AND: [scope, q.all ? { category: { not: 'GRUPO' } } : { category: 'CLIENTE' }, q.numberId ? { numberId: q.numberId } : {}] }
     const [convs, numbers] = await Promise.all([
       this.prisma.whatsappConversation.findMany({ where: convWhere, select: { id: true, numberId: true, name: true, phone: true, leadId: true, status: true, lastFromMe: true, lastMessageAt: true } }),
       this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, deletedAt: null }, select: { id: true, name: true } }),

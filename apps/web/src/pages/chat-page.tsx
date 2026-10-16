@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, AlertCircleIcon, CheckCheckIcon, DownloadIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, AlertCircleIcon, CheckCheckIcon, DownloadIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
 import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -53,7 +53,7 @@ interface ConvItem {
   lastMessageAt: string | null
   lastPreview: string | null
   lastFromMe: boolean
-  category?: ContactCategory
+  category?: ContactCategory | 'GRUPO'
   status?: string
   reminderAt?: string | null
   /** Etiquetas que este usuário vê (padrão da empresa e as pessoais dele). */
@@ -68,6 +68,8 @@ interface ListData {
   sellers?: { id: string; name: string }[]
   total: number
   unreadConversations: number
+  /** Grupos com mensagem não lida (selo da aba Grupos). */
+  unreadGroups?: number
   numbers: NumberRef[]
   items: ConvItem[]
 }
@@ -87,7 +89,7 @@ interface Message {
   status?: string | null
 }
 interface Thread {
-  conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; sectorId?: string | null; category: ContactCategory; labels?: ChatLabel[] }
+  conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; sectorId?: string | null; category: ContactCategory | 'GRUPO'; labels?: ChatLabel[] }
   number: NumberRef | null
   attendance?: { split: boolean; sectors: { id: string; name: string }[]; attendants: { id: string; name: string }[] } | null
   lead: { id: string; name: string | null; email: string | null; phone: string | null } | null
@@ -103,7 +105,7 @@ const ALL = '__all__'
 export type ContactCategory = 'CLIENTE' | 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
 export const CATEGORY_LABEL: Record<ContactCategory, string> = { CLIENTE: 'Cliente / lead', COLEGA: 'Colega de trabalho', FORNECEDOR: 'Fornecedor', OUTRO: 'Outro (não é venda)' }
 /** Com a regra "A classificar", o contato novo fica assim até alguém marcar. */
-const categoryLabel = (c: string | undefined) => (c === 'NOVO' ? 'A classificar' : (CATEGORY_LABEL[c as ContactCategory] ?? c ?? ''))
+const categoryLabel = (c: string | undefined) => (c === 'NOVO' ? 'A classificar' : c === 'GRUPO' ? 'Grupo' : (CATEGORY_LABEL[c as ContactCategory] ?? c ?? ''))
 const time = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })
 const day = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' })
 const dayKey = (iso: string) => day.format(new Date(iso))
@@ -130,6 +132,12 @@ function Receipt({ status }: { status?: string | null }) {
   if (status === 'ERRO') return <AlertCircleIcon className="ml-1 inline size-3.5 text-destructive" aria-label="Não enviada" />
   if (status === 'ENVIADA') return <CheckIcon className="ml-1 inline size-3.5" aria-label="Enviada" />
   return null
+}
+
+/** Aba Grupos: os grupos de cada número juntos, na ordem dos números; dentro do número, o mais recente primeiro. */
+function byNumber(items: ConvItem[], numbers: NumberRef[]) {
+  const order = new Map(numbers.map((n, i) => [n.id, i]))
+  return [...items].sort((a, b) => (order.get(a.numberId) ?? 99) - (order.get(b.numberId) ?? 99))
 }
 
 function when(iso: string | null) {
@@ -163,6 +171,8 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
   const openId = params.get('conversa')
   const monitor = onlyMonitor || params.get('monitorar') === '1'
   const toCall = !monitor && params.get('aba') === 'chamar'
+  // Grupos ficam numa aba própria: não entram em pré-venda, avisos nem cores de espera.
+  const groups = params.get('aba') === 'grupos'
   const [sellerId, setSellerId] = useState<string | null>(null)
   const [awaiting, setAwaiting] = useState(false)
   const [queue, setQueue] = useState(false)
@@ -182,7 +192,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
     const t = setTimeout(() => setQ(search.trim()), 300)
     return () => clearTimeout(t)
   }, [search])
-  const qs = new URLSearchParams({ ...(numberId ? { numero: numberId } : {}), ...(unread ? { naoLidas: 'true' } : {}), ...(archived ? { arquivadas: 'true' } : {}), ...(category ? { tipo: category } : {}), ...(withReminder && !monitor ? { lembretes: 'true' } : {}), ...(q ? { busca: q } : {}), ...(monitor ? { monitorar: 'true' } : {}), ...(monitor && sellerId ? { vendedor: sellerId } : {}), ...(monitor && awaiting ? { aguardando: 'true' } : {}), ...(queue ? { fila: 'true' } : {}), ...(labelId ? { etiqueta: labelId } : {}) }).toString()
+  const qs = new URLSearchParams({ ...(numberId ? { numero: numberId } : {}), ...(unread ? { naoLidas: 'true' } : {}), ...(archived ? { arquivadas: 'true' } : {}), ...(groups ? { tipo: 'GRUPO' } : category ? { tipo: category } : {}), ...(withReminder && !monitor ? { lembretes: 'true' } : {}), ...(q ? { busca: q } : {}), ...(monitor ? { monitorar: 'true' } : {}), ...(monitor && sellerId ? { vendedor: sellerId } : {}), ...(monitor && awaiting ? { aguardando: 'true' } : {}), ...(queue ? { fila: 'true' } : {}), ...(labelId ? { etiqueta: labelId } : {}) }).toString()
   const list = useQuery({ queryKey: ['chat-conversas', qs], queryFn: () => api.get<ListData>(`/chat/conversas?${qs}`), refetchInterval: 5000, placeholderData: keepPreviousData })
   const numbers = useMemo(() => new Map((list.data?.numbers ?? []).map((n) => [n.id, n])), [list.data?.numbers])
   const open = (id: string | null) => setParams((p) => {
@@ -191,10 +201,10 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
     else n.delete('conversa')
     return n
   })
-  const setTab = (tab: 'conversas' | 'chamar', conversa?: string) => setParams((p) => {
+  const setTab = (tab: 'conversas' | 'chamar' | 'grupos', conversa?: string) => setParams((p) => {
     const n = new URLSearchParams(p)
     n.delete('conversa')
-    if (tab === 'chamar') n.set('aba', 'chamar')
+    if (tab !== 'conversas') n.set('aba', tab)
     else n.delete('aba')
     if (conversa) n.set('conversa', conversa)
     return n
@@ -223,16 +233,20 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                 </ToggleGroupItem>
               </ToggleGroup>
             )}
-            {!monitor && can('leads') && can('chat', 'create') && (
-              <ToggleGroup type="single" variant="outline" size="sm" value={toCall ? 'chamar' : 'conversas'} onValueChange={(v) => v && setTab(v as 'conversas' | 'chamar')} aria-label="Aba">
-                <ToggleGroupItem value="conversas" className="px-3">
-                  Conversas
-                </ToggleGroupItem>
+            <ToggleGroup type="single" variant="outline" size="sm" value={toCall ? 'chamar' : groups ? 'grupos' : 'conversas'} onValueChange={(v) => v && setTab(v as 'conversas' | 'chamar' | 'grupos')} aria-label="Aba">
+              <ToggleGroupItem value="conversas" className="px-3">
+                Conversas
+              </ToggleGroupItem>
+              <ToggleGroupItem value="grupos" className="px-3" title="Grupos do WhatsApp: ficam separados e não entram no controle de pré-vendas">
+                <UsersIcon /> Grupos
+                {!!list.data?.unreadGroups && !groups && <Badge className="h-5 px-1.5 tabular-nums">{list.data.unreadGroups}</Badge>}
+              </ToggleGroupItem>
+              {!monitor && can('leads') && can('chat', 'create') && (
                 <ToggleGroupItem value="chamar" className="px-3" title="Leads com telefone que preencheram formulário ou compraram e ainda não conversaram no WhatsApp">
                   <PhoneOutgoingIcon /> Leads para chamar
                 </ToggleGroupItem>
-              </ToggleGroup>
-            )}
+              )}
+            </ToggleGroup>
             {!monitor && <AlertSettings />}
             {!monitor && can('chat', 'create') && (
               <Button onClick={() => setStarting(true)}>
@@ -268,7 +282,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={category ?? ALL} onValueChange={(v) => setCategory(v === ALL ? null : (v as ContactCategory))}>
+                {!groups && <Select value={category ?? ALL} onValueChange={(v) => setCategory(v === ALL ? null : (v as ContactCategory))}>
                   <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Filtrar por tipo de contato">
                     <SelectValue />
                   </SelectTrigger>
@@ -280,7 +294,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                       </SelectItem>
                     ))}
                   </SelectContent>
-                </Select>
+                </Select>}
                 {(labels.data ?? []).length > 0 && (
                   <Select value={labelId ?? ALL} onValueChange={(v) => setLabelId(v === ALL ? null : v)}>
                     <SelectTrigger size="sm" className="w-full min-w-0" aria-label="Filtrar por etiqueta">
@@ -337,11 +351,20 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
               </div>
             </div>
             <ul className="min-h-0 flex-1 overflow-y-auto">
-              {list.data.items.length === 0 && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa{archived ? ' arquivada' : ''}{q || unread || numberId || category || labelId || withReminder || sellerId || awaiting || queue ? ' com esses filtros' : archived ? '' : ' ainda'}.</li>}
-              {list.data.items.map((c) => {
+              {list.data.items.length === 0 && groups && !q && <li className="p-6 text-center text-sm text-muted-foreground">Nenhum grupo ainda. As mensagens dos grupos do WhatsApp aparecem aqui, separadas das conversas com clientes.</li>}
+              {list.data.items.length === 0 && !(groups && !q) && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa{archived ? ' arquivada' : ''}{q || unread || numberId || category || labelId || withReminder || sellerId || awaiting || queue ? ' com esses filtros' : archived ? '' : ' ainda'}.</li>}
+              {(groups ? byNumber(list.data.items, list.data.numbers) : list.data.items).map((c, i, arr) => {
                 const wc = c.category === 'CLIENTE' || !c.category ? waitColor(c, list.data.responseColors) : null
+                // Aba Grupos: cada grupo aparece debaixo do número que o recebeu (o mesmo grupo em dois números são duas conversas).
+                const numberHead = groups && (i === 0 || arr[i - 1]!.numberId !== c.numberId)
                 return (
                 <li key={c.id}>
+                  {numberHead && (
+                    <p className="flex items-center gap-1.5 border-b bg-muted/60 px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+                      <SmartphoneIcon className="size-3.5" /> {numbers.get(c.numberId)?.name ?? 'Número'}
+                      {numbers.get(c.numberId)?.phone && <span className="font-normal">· {formatPhone(numbers.get(c.numberId)!.phone)}</span>}
+                    </p>
+                  )}
                   <button
                     type="button"
                     onClick={() => open(c.id)}
@@ -353,7 +376,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                     )}
                   >
                     <span className="relative mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                      <UserIcon className="size-4" />
+                      {c.category === 'GRUPO' ? <UsersIcon className="size-4" /> : <UserIcon className="size-4" />}
                       {wc && <span className={cn('absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-background', wc.dot)} aria-label={`Sem resposta há ${waitText(wc.min)} (${wc.label})`} />}
                     </span>
                     <span className="min-w-0 flex-1">
@@ -538,6 +561,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
               ) : (
               <div className={cn('flex', m.fromMe ? 'justify-end' : 'justify-start')}>
                 <div className={cn('max-w-[85%] rounded-lg px-3 py-1.5 text-sm shadow-xs sm:max-w-[70%]', m.fromMe ? (colors ? 'bg-blue-100 text-slate-900 dark:bg-blue-900/60 dark:text-blue-50' : 'bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]') : cn('bg-card', colors && 'border'))}>
+                  {d.conversation.category === 'GRUPO' && !m.fromMe && m.sentByName && <p className="mb-0.5 text-xs font-semibold text-[color:var(--brand)]">{m.sentByName}</p>}
                   <Bubble m={m} />
                   <p className={cn('mt-0.5 text-right text-[11px] tabular-nums', m.fromMe ? 'opacity-70' : 'text-muted-foreground')}>
                     {m.fromMe && (m.sentByName ? `${m.sentByName} · ` : 'pelo celular · ')}
@@ -879,7 +903,7 @@ function ConversationActions({ thread }: { thread: Thread }) {
   const archived = thread.conversation.status === 'ARQUIVADA'
   return (
     <>
-      <CategoryPicker thread={thread} />
+      {thread.conversation.category !== 'GRUPO' && <CategoryPicker thread={thread} />}
       <Select value={thread.conversation.assignedSellerId ?? ALL} onValueChange={(v) => save.mutate({ assignedSellerId: v === ALL ? null : v })}>
         <SelectTrigger size="sm" className="w-auto max-w-48" aria-label="Responsável pela conversa">
           <SelectValue />

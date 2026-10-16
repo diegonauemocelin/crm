@@ -9,7 +9,10 @@ export interface ParsedMessage {
   jid: string
   /** Dígitos do telefone (com DDI), quando se sabe. */
   phoneDigits: string | null
+  /** Nome de quem mandou (num grupo, o participante). */
   pushName: string | null
+  /** Mensagem de grupo: fica na aba Grupos, sem lead, pré-venda nem mensagem de ausência. */
+  group: boolean
   at: Date
   type: MessageType
   text: string | null
@@ -44,19 +47,21 @@ function unwrap(m: Obj | null | undefined): Obj | null {
 }
 
 /**
- * Lê uma mensagem do evento da Evolution. Devolve null para o que não é conversa com cliente:
- * grupos, status, canais, reações e avisos do sistema (mensagem apagada, chaves de criptografia).
+ * Lê uma mensagem do evento da Evolution. Devolve null para o que não é conversa:
+ * status, canais, reações e avisos do sistema (mensagem apagada, chaves de criptografia). Grupos vêm com group = true.
  */
 export function parseMessage(data: unknown): ParsedMessage | null {
   const d = data as { key?: Obj; message?: Obj; pushName?: unknown; messageTimestamp?: unknown } | null
   const key = d?.key
   if (!key || typeof key.id !== 'string') return null
   const remote = str(key.remoteJid, 120)
-  if (!remote || remote.endsWith('@g.us') || remote.endsWith('@broadcast') || remote.endsWith('@newsletter')) return null
+  if (!remote || remote.endsWith('@broadcast') || remote.endsWith('@newsletter')) return null
+  const group = remote.endsWith('@g.us')
   // Número escondido (LID): a Evolution manda o telefone em remoteJidAlt / senderPn, quando o WhatsApp informa.
-  const alt = [key.remoteJidAlt, key.senderPn, key.participantAlt].map((v) => str(v, 120)).find((v) => !!v && v.endsWith('@s.whatsapp.net')) ?? null
+  const alt = group ? null : ([key.remoteJidAlt, key.senderPn, key.participantAlt].map((v) => str(v, 120)).find((v) => !!v && v.endsWith('@s.whatsapp.net')) ?? null)
   const jid = remote.endsWith('@lid') && alt ? alt : remote
-  const phoneDigits = /^(\d{8,15})(?::\d+)?@s\.whatsapp\.net$/.exec(jid)?.[1] ?? null
+  // Num grupo o telefone é o de cada participante, não da conversa: a conversa é o grupo.
+  const phoneDigits = group ? null : (/^(\d{8,15})(?::\d+)?@s\.whatsapp\.net$/.exec(jid)?.[1] ?? null)
   const m = unwrap(d.message)
   if (!m) return null
   const ts = num(d.messageTimestamp)
@@ -67,6 +72,7 @@ export function parseMessage(data: unknown): ParsedMessage | null {
     jid: phoneDigits ? `${phoneDigits}@s.whatsapp.net` : jid,
     phoneDigits,
     pushName: fromMe ? null : str(d.pushName, 120),
+    group,
     at: ts ? new Date(ts * 1000) : new Date(),
     raw: { key, message: d.message },
   }

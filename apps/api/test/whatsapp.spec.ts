@@ -23,7 +23,7 @@ describe('Evolution API (cliente)', () => {
     await c.createInstance('crm-abc123', 'http://api:3000/api/webhooks/whatsapp/s')
     expect((calls[0]!.init.headers as Record<string, string>).apikey).toBe('chave')
     const body = JSON.parse(String(calls[0]!.init.body))
-    expect(body).toMatchObject({ instanceName: 'crm-abc123', integration: 'WHATSAPP-BAILEYS', groupsIgnore: true, syncFullHistory: false, webhook: { url: 'http://api:3000/api/webhooks/whatsapp/s', events: ['CONNECTION_UPDATE', 'QRCODE_UPDATED', 'MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'SEND_MESSAGE', 'CALL'] } })
+    expect(body).toMatchObject({ instanceName: 'crm-abc123', integration: 'WHATSAPP-BAILEYS', groupsIgnore: false, syncFullHistory: false, webhook: { url: 'http://api:3000/api/webhooks/whatsapp/s', events: ['CONNECTION_UPDATE', 'QRCODE_UPDATED', 'MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'SEND_MESSAGE', 'CALL'] } })
     const err = await c.connect('crm-abc123').catch((e: unknown) => e)
     expect(err).toBeInstanceOf(EvolutionError)
     expect((err as EvolutionError).status).toBe(404)
@@ -55,7 +55,9 @@ describe('Mensagens recebidas (Evolution)', () => {
     // Enviada pelo celular da empresa.
     expect(parseMessage({ key: key({ fromMe: true }), pushName: 'Empresa', message: { conversation: 'Bom dia' } })).toMatchObject({ fromMe: true, pushName: null })
     // Não é conversa com cliente.
-    expect(parseMessage({ key: key({ remoteJid: '120363@g.us' }), message: { conversation: 'grupo' } })).toBeNull()
+    // Grupo: entra marcado, com o nome de quem escreveu e sem telefone (a conversa é o grupo).
+    expect(parseMessage({ key: key({ remoteJid: '120363@g.us', participant: '554988831936@s.whatsapp.net' }), pushName: 'Fulano', message: { conversation: 'grupo' } })).toMatchObject({ group: true, jid: '120363@g.us', phoneDigits: null, pushName: 'Fulano', text: 'grupo' })
+    expect(parseMessage({ key: key(), message: { conversation: 'oi' } })).toMatchObject({ group: false })
     expect(parseMessage({ key: key({ remoteJid: 'status@broadcast' }), message: { conversation: 'status' } })).toBeNull()
     expect(parseMessage({ key: key(), message: { reactionMessage: { text: '👍' } } })).toBeNull()
     expect(parseMessage({ key: key(), message: { protocolMessage: { type: 0 } } })).toBeNull()

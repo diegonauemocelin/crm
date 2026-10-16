@@ -82,7 +82,8 @@ export class EvolutionClient {
       qrcode: false,
       // Não guarda conversas na Evolution: o CRM é quem guarda (e aplica as regras de LGPD).
       rejectCall: false,
-      groupsIgnore: true,
+      // Grupos chegam e ficam na aba Grupos do chat (sem lead nem pré-venda).
+      groupsIgnore: false,
       alwaysOnline: false,
       readMessages: false,
       readStatus: false,
@@ -123,6 +124,24 @@ export class EvolutionClient {
     return this.call('POST', `/webhook/set/${encodeURIComponent(instanceName)}`, {
       webhook: { enabled: true, url: webhookUrl, byEvents: false, base64: false, events: WEBHOOK_EVENTS },
     })
+  }
+
+  /** Ajustes da instância (as já criadas recebem de novo depois de uma atualização do CRM: ex. passar a receber grupos). */
+  setSettings(instanceName: string) {
+    return this.call('POST', `/settings/set/${encodeURIComponent(instanceName)}`, {
+      rejectCall: false,
+      groupsIgnore: false,
+      alwaysOnline: false,
+      readMessages: false,
+      readStatus: false,
+      syncFullHistory: false,
+    })
+  }
+
+  /** Nome (assunto) de um grupo. */
+  async groupSubject(instanceName: string, groupJid: string) {
+    const r = await this.call<{ subject?: unknown }>('GET', `/group/findGroupInfos/${encodeURIComponent(instanceName)}?groupJid=${encodeURIComponent(groupJid)}`, undefined, 8_000)
+    return typeof r?.subject === 'string' && r.subject.trim() ? r.subject.trim().slice(0, 120) : null
   }
 
   /** Baixa a mídia de uma mensagem (a Evolution não guarda as mensagens: vai a mensagem inteira). */

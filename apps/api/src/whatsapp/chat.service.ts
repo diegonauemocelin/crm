@@ -13,7 +13,8 @@ import { SettingsService } from '../settings/settings.service'
 import { normalizePhone } from '../atendimento/br'
 import { type EvolutionClient, EvolutionError } from './evolution'
 import { sectorsOf, splitWhere } from './atendentes'
-import { type AgendaCategory, applyVariables, cleanRules, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
+import { type AgendaCategory, applyVariables, cleanRules, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
+import { parseCsv } from '../atendimento/planilha'
 import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, type ParsedMessage, phoneFromDigits, phoneVariants, previewOf } from './mensagens'
 
 const PAGE = 60
@@ -115,7 +116,53 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     return run
   }
 
+  /**
+   * Mensagem de grupo: a conversa é o grupo (categoria GRUPO), com o nome de quem escreveu em cada mensagem.
+   * Não liga lead, não abre pré-venda, não manda mensagem de ausência e não entra nos avisos de "sem resposta".
+   */
+  private async storeGroup(n: WhatsappNumber, p: ParsedMessage, client: EvolutionClient | null) {
+    let conv = await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: n.id, jid: p.jid } } })
+    if (!conv || !conv.name) {
+      const subject = client ? await client.groupSubject(n.instanceName, p.jid).catch(() => null) : null
+      conv ??= await this.prisma.whatsappConversation.create({ data: { tenantId: n.tenantId, numberId: n.id, jid: p.jid, name: subject, category: 'GRUPO' } })
+      if (subject && !conv.name) conv = await this.prisma.whatsappConversation.update({ where: { id: conv.id }, data: { name: subject } })
+    }
+    const tooBig = !!p.media?.size && p.media.size > MEDIA_MAX_BYTES
+    const saved = await this.prisma.whatsappMessage.createManyAndReturn({
+      data: [
+        {
+          tenantId: n.tenantId,
+          conversationId: conv.id,
+          waId: p.waId,
+          fromMe: p.fromMe,
+          type: p.type,
+          text: p.text,
+          fileName: p.media?.fileName ?? null,
+          mime: p.media?.mime ?? null,
+          mediaStatus: p.media ? (tooBig ? 'GRANDE' : 'PENDENTE') : null,
+          // Quem escreveu no grupo (o celular da empresa, quando é ela).
+          sentByName: p.fromMe ? null : (p.pushName ?? 'Participante'),
+          sentAt: p.at,
+        },
+      ],
+      skipDuplicates: true,
+    })
+    if (!saved.length) return
+    const later = !conv.lastMessageAt || p.at >= conv.lastMessageAt
+    const preview = previewOf(p)
+    await this.prisma.whatsappConversation.update({
+      where: { id: conv.id },
+      data: {
+        category: 'GRUPO',
+        ...(later ? { lastMessageAt: p.at, lastPreview: (p.fromMe || !p.pushName ? preview : `${p.pushName}: ${preview}`).slice(0, 140), lastFromMe: p.fromMe } : {}),
+        ...(p.fromMe ? { unread: 0 } : { unread: { increment: 1 }, status: 'ABERTA' }),
+      },
+    })
+    if (p.media && !tooBig && client) void this.downloadMedia(n, saved[0]!.id, p, client)
+  }
+
   private async store(n: WhatsappNumber, p: ParsedMessage, client: EvolutionClient | null) {
+    if (p.group) return this.storeGroup(n, p, client)
     const phone = phoneFromDigits(p.phoneDigits)
     // O WhatsApp pode registrar o celular sem o 9: a conversa é a mesma se o telefone (já com o 9) bate.
     let conv =
@@ -359,6 +406,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (q.numberId) and.push({ numberId: q.numberId })
     if (q.unread) and.push({ unread: { gt: 0 } })
     if (q.category) and.push({ category: q.category })
+    else if (!q.leadId) and.push({ category: { not: 'GRUPO' } })
     if (q.reminders) and.push({ reminders: { some: { userId: user.id, doneAt: null } } })
     if (q.labelId) and.push({ labels: { some: { labelId: q.labelId, label: this.ownedWhere(user) } } })
     if (q.monitor && q.sellerId) and.push(await this.sellerWhere(user.tenantId, q.sellerId))
@@ -376,11 +424,13 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     }
     const page = Math.max(1, q.page ?? 1)
     const where = { AND: and }
-    const [total, rows, unread, numbers] = await Promise.all([
+    const groupsTab = q.category === 'GRUPO'
+    const [total, rows, unread, numbers, unreadGroups] = await Promise.all([
       this.prisma.whatsappConversation.count({ where }),
       this.prisma.whatsappConversation.findMany({ where, orderBy: { lastMessageAt: 'desc' }, skip: (page - 1) * 50, take: 50 }),
-      this.prisma.whatsappConversation.aggregate({ where: { AND: [scope, { unread: { gt: 0 } }] }, _count: { _all: true } }),
+      this.prisma.whatsappConversation.aggregate({ where: { AND: [scope, { unread: { gt: 0 } }, groupsTab ? { category: 'GRUPO' } : { category: { not: 'GRUPO' } }] }, _count: { _all: true } }),
       q.monitor ? this.allNumbers(user.tenantId) : this.visibleNumbers(user, scope),
+      this.prisma.whatsappConversation.count({ where: { AND: [scope, { unread: { gt: 0 }, status: 'ABERTA', category: 'GRUPO' }] } }),
     ])
     const leads = new Map((await this.prisma.lead.findMany({ where: { id: { in: rows.map((r) => r.leadId).filter((x): x is string => !!x) } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]))
     const reminders = new Map(
@@ -409,6 +459,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       total,
       page,
       unreadConversations: unread._count._all,
+      /** Grupos com mensagem não lida (selo da aba Grupos). */
+      unreadGroups,
       // Prazos das cores de atraso de resposta (verde, amarelo, vermelho).
       responseColors: await this.rules(user.tenantId).then((r) => ({ yellowMinutes: r.yellowMinutes, redMinutes: r.redMinutes })),
       numbers,
@@ -917,6 +969,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   async setCategory(user: AuthUser, id: string, d: { category: 'CLIENTE' | 'COLEGA' | 'FORNECEDOR' | 'OUTRO'; removeAuto?: boolean }) {
     this.assertAction(user, 'chat', 'edit')
     const conv = await this.load(user, id)
+    if (conv.category === 'GRUPO') throw new BadRequestException('Grupo não muda de tipo: ele fica sempre na aba Grupos, fora das pré-vendas.')
     let created: { leadId: string; recordId: string | null } | null = null
     const key = conv.phone ?? conv.jid
     await this.prisma.whatsappContact.upsert({
@@ -1065,8 +1118,9 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   /** Prévia de um arquivo do celular (.vcf) ou de uma lista (CSV ou colada). */
   async previewContactsFile(user: AuthUser, text: string) {
     this.assertAdmin(user, 'edit')
-    const parsed = /BEGIN:VCARD/i.test(text) ? parseVcf(text) : parseContactList(text, null)
-    if (!parsed.rows.length) throw new BadRequestException('Nenhum telefone encontrado no arquivo. Use o .vcf exportado dos contatos do celular ou um CSV com nome e telefone.')
+    // vCard do celular, CSV do Google Contatos ou uma lista simples (nome e telefone, colada do Excel).
+    const parsed = /BEGIN:VCARD/i.test(text) ? parseVcf(text) : (parseGoogleContacts(parseCsv(text.replace(/^\uFEFF/, ''))) ?? parseContactList(text, null))
+    if (!parsed.rows.length) throw new BadRequestException('Nenhum telefone encontrado no arquivo. Use o .vcf dos contatos do celular, o CSV exportado do Google Contatos ou um CSV com nome e telefone.')
     const r = await this.previewRows(user, parsed.rows)
     return { ...r, skipped: parsed.skipped }
   }
@@ -1212,7 +1266,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   async alerts(user: AuthUser) {
     this.assertCan(user)
     const scope = await this.where(user)
-    const unreadWhere = { AND: [scope, { unread: { gt: 0 } }, { status: 'ABERTA' }] }
+    const unreadWhere = { AND: [scope, { unread: { gt: 0 } }, { status: 'ABERTA' }, { category: { not: 'GRUPO' } }] }
     const [count, sum, latest, due, upcoming] = await Promise.all([
       this.prisma.whatsappConversation.count({ where: unreadWhere }),
       this.prisma.whatsappConversation.aggregate({ where: unreadWhere, _sum: { unread: true } }),

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookUserIcon, FileUpIcon, Loader2Icon, PlusIcon, SmartphoneIcon, Trash2Icon } from 'lucide-react'
+import { BookUserIcon, ChevronDownIcon, ContactIcon, FileUpIcon, Loader2Icon, PlusIcon, SmartphoneIcon, Trash2Icon } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -125,12 +126,35 @@ function Agenda() {
           editable && (
             <div className="flex flex-wrap gap-2">
               <input ref={fileRef} type="file" accept=".vcf,.csv,.txt,text/vcard,text/x-vcard,text/csv,text/plain" className="hidden" onChange={(e) => void pickFile(e.target.files?.[0])} />
-              <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={fileRun.isPending}>
-                {fileRun.isPending ? <Loader2Icon className="animate-spin" /> : <FileUpIcon />} Importar arquivo do celular
-              </Button>
-              <Button variant="outline" onClick={() => setFromWhatsapp(true)}>
-                <SmartphoneIcon /> Importar do WhatsApp
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" disabled={fileRun.isPending}>
+                    {fileRun.isPending ? <Loader2Icon className="animate-spin" /> : <FileUpIcon />} Importar contatos <ChevronDownIcon />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-80">
+                  <DropdownMenuLabel>De onde vêm os contatos?</DropdownMenuLabel>
+                  <DropdownMenuItem onSelect={() => fileRef.current?.click()} className="flex-col items-start gap-0.5">
+                    <span className="flex items-center gap-2 font-medium">
+                      <ContactIcon className="size-4" /> Arquivo do Google Contatos (.csv)
+                    </span>
+                    <span className="text-xs text-muted-foreground">Em contacts.google.com: Exportar › Google CSV. Os marcadores Cliente, Fornecedor ou Colega já definem o tipo.</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => fileRef.current?.click()} className="flex-col items-start gap-0.5">
+                    <span className="flex items-center gap-2 font-medium">
+                      <FileUpIcon className="size-4" /> Arquivo de contatos do celular (.vcf)
+                    </span>
+                    <span className="text-xs text-muted-foreground">Android: Contatos › Exportar. iPhone: selecione os contatos › Exportar vCard.</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setFromWhatsapp(true)} className="flex-col items-start gap-0.5">
+                    <span className="flex items-center gap-2 font-medium">
+                      <SmartphoneIcon className="size-4" /> Do WhatsApp conectado
+                    </span>
+                    <span className="text-xs text-muted-foreground">Um clique, sem arquivo: os contatos do número escolhido.</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button onClick={() => setAdding(true)}>
                 <PlusIcon /> Novo contato
               </Button>
@@ -153,7 +177,7 @@ function Agenda() {
         <EmptyState
           icon={BookUserIcon}
           title={q || cat ? 'Nenhum contato com esses filtros' : 'Agenda vazia'}
-          description={q || cat ? undefined : 'Importe os contatos do celular (arquivo .vcf) ou do WhatsApp conectado e escolha o tipo de cada um.'}
+          description={q || cat ? undefined : 'Importe os contatos do Google Contatos (CSV), do celular (arquivo .vcf) ou do WhatsApp conectado e escolha o tipo de cada um.'}
         />
       ) : (
         <Card>

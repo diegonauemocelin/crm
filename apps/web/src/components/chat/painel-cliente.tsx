@@ -26,7 +26,7 @@ interface PanelThread {
 }
 
 const dateFmt = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: '2-digit' })
-const CATEGORY: Record<string, string> = { CLIENTE: 'Cliente / lead', COLEGA: 'Colega de trabalho', FORNECEDOR: 'Fornecedor', OUTRO: 'Outro', NOVO: 'A classificar' }
+const CATEGORY: Record<string, string> = { CLIENTE: 'Cliente / lead', COLEGA: 'Colega de trabalho', FORNECEDOR: 'Fornecedor', OUTRO: 'Outro', NOVO: 'A classificar', GRUPO: 'Grupo do WhatsApp (fora das pré-vendas)' }
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter((p) => /[a-zA-ZÀ-ÿ]/.test(p))

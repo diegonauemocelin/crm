@@ -327,6 +327,47 @@ export function parseContactList(text: string, fallback: AgendaCategory | null) 
   return { rows, skipped }
 }
 
+const GOOGLE_PHONE = /^(phone|telefone) \d+ - (value|valor)$/i
+const GOOGLE_COL = {
+  full: /^(name|nome completo|display name|nome de exibição)$/i,
+  first: /^(first name|given name|primeiro nome|nome)$/i,
+  middle: /^(middle name|additional name|nome do meio)$/i,
+  last: /^(last name|family name|sobrenome)$/i,
+  org: /^(organization name|organization 1 - name|organização - nome|organização 1 - nome|empresa)$/i,
+  labels: /^(labels|group membership|marcadores|associação a grupos)$/i,
+}
+
+/**
+ * CSV exportado do Google Contatos (contacts.google.com › Exportar › "Google CSV"), no formato novo
+ * (Nome, Sobrenome, "Telefone 1 - Valor") ou no antigo (Name, Given Name, "Phone 1 - Value"), em português ou inglês.
+ * Nome montado das partes (ou a empresa), todos os telefones de cada contato e o tipo pelos marcadores
+ * (um marcador "Cliente", "Fornecedor" ou "Colega" já define o tipo). Devolve null se o arquivo não for desse formato.
+ */
+export function parseGoogleContacts(table: string[][]) {
+  const head = (table[0] ?? []).map((h) => h.replace(/^﻿/, '').trim())
+  const phoneCols = head.map((h, i) => (GOOGLE_PHONE.test(h) ? i : -1)).filter((i) => i >= 0)
+  if (!phoneCols.length) return null
+  const col = (re: RegExp) => head.findIndex((h) => re.test(h))
+  const idx = { full: col(GOOGLE_COL.full), first: col(GOOGLE_COL.first), middle: col(GOOGLE_COL.middle), last: col(GOOGLE_COL.last), org: col(GOOGLE_COL.org), labels: col(GOOGLE_COL.labels) }
+  const cell = (r: string[], i: number) => (i >= 0 ? (r[i] ?? '').trim() : '')
+  const rows: { name: string | null; phone: string; category: AgendaCategory | null }[] = []
+  let skipped = 0
+  for (const r of table.slice(1, 5001)) {
+    if (!r.some((c) => c.trim())) continue
+    const parts = [cell(r, idx.first), cell(r, idx.middle), cell(r, idx.last)].filter(Boolean).join(' ')
+    const name = (cell(r, idx.full) || parts || cell(r, idx.org)).replace(/\s+/g, ' ').slice(0, 120) || null
+    const phones = phoneCols.flatMap((i) => cell(r, i).split(/\s*:::\s*/)).map((p) => p.trim()).filter((p) => p.replace(/\D/g, '').length >= 8)
+    if (!phones.length) {
+      skipped++
+      continue
+    }
+    // Marcadores: "* myContacts ::: Fornecedor" — o primeiro que for um tipo da agenda vale.
+    const category = cell(r, idx.labels).split(/\s*:::\s*/).map((l) => CATEGORY_WORDS[l.replace(/^\*\s*/, '').trim().toLowerCase()]).find(Boolean) ?? null
+    for (const p of [...new Set(phones)]) rows.push({ name, phone: p, category })
+  }
+  return { rows, skipped }
+}
+
 /** Quoted-printable (vCard 2.1 do Android): "=C3=A9" vira "é". */
 function decodeQuotedPrintable(v: string) {
   const bytes: number[] = []

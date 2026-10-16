@@ -17,7 +17,7 @@ class ListDto {
   @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() naoLidas?: boolean
   @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() arquivadas?: boolean
   @IsOptional() @IsString() @MaxLength(100) busca?: string
-  @IsOptional() @IsIn(['CLIENTE', 'COLEGA', 'FORNECEDOR', 'OUTRO']) tipo?: string
+  @IsOptional() @IsIn(['CLIENTE', 'COLEGA', 'FORNECEDOR', 'OUTRO', 'GRUPO']) tipo?: string
   @IsOptional() @IsUUID() lead?: string
   @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() lembretes?: boolean
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) pagina?: number
