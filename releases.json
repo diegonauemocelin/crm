@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.58.0",
+      "date": "2026-10-16",
+      "title": "Responder e reagir no chat e aba Aguardando vendedor",
+      "changes": [
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Responder mensagem: botão ao lado de cada mensagem (aparece ao passar o mouse). A resposta vai com a citação no WhatsApp do cliente, e as respostas que o cliente faz também aparecem com o trecho citado." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Reagir a mensagem com emoji (👍 ❤️ 😂 😮 😢 🙏); tocar de novo tira a reação. As reações do cliente aparecem embaixo da mensagem, com quem reagiu." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Aba \"Aguardando vendedor\": quando a pré-venda é marcada como repassada ao vendedor, a conversa sai de Conversas e vai para esta aba, com contador. Volta sozinha para Conversas quando o vendedor retorna ou a venda fecha." }
+      ]
+    },
+    {
       "version": "0.57.0",
       "date": "2026-10-16",
       "title": "Nova conversa pelo nome e Conversar pela agenda",

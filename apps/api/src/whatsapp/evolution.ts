@@ -164,8 +164,15 @@ export class EvolutionClient {
     return this.call<unknown>('POST', `/chat/findContacts/${encodeURIComponent(instanceName)}`, { where: {} }, 60_000)
   }
 
-  async sendText(instanceName: string, number: string, text: string) {
-    return this.sent(await this.call('POST', `/message/sendText/${encodeURIComponent(instanceName)}`, { number, text }, 30_000))
+  /** Texto; com quoted, sai como resposta (citação) a uma mensagem da conversa. */
+  async sendText(instanceName: string, number: string, text: string, quoted?: { waId: string; fromMe: boolean; remoteJid: string; text: string }) {
+    const q = quoted ? { quoted: { key: { id: quoted.waId, fromMe: quoted.fromMe, remoteJid: quoted.remoteJid }, message: { conversation: quoted.text } } } : {}
+    return this.sent(await this.call('POST', `/message/sendText/${encodeURIComponent(instanceName)}`, { number, text, ...q }, 30_000))
+  }
+
+  /** Reação (emoji) a uma mensagem; emoji vazio tira a reação. */
+  async sendReaction(instanceName: string, key: { id: string; fromMe: boolean; remoteJid: string }, reaction: string) {
+    await this.call('POST', `/message/sendReaction/${encodeURIComponent(instanceName)}`, { key, reaction }, 20_000)
   }
 
   /** Cartão de contato (vCard): no WhatsApp aparece com os botões "Conversar" e "Adicionar". */

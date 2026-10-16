@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, AlertCircleIcon, CheckCheckIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, AlertCircleIcon, CheckCheckIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ReplyIcon, SmilePlusIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
 import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -72,6 +72,8 @@ interface ListData {
   unreadConversations: number
   /** Grupos com mensagem não lida (selo da aba Grupos). */
   unreadGroups?: number
+  /** Conversas aguardando o vendedor retornar. */
+  waitingSeller?: number
   numbers: NumberRef[]
   items: ConvItem[]
 }
@@ -89,6 +91,11 @@ interface Message {
   sentAt: string
   sentByName?: string | null
   status?: string | null
+  /** Resposta (citação): o trecho da mensagem respondida e se ela era da empresa. */
+  quotedText?: string | null
+  quotedFromMe?: boolean | null
+  /** Reações (emoji), uma por pessoa. */
+  reactions?: { emoji: string; by: 'me' | 'them'; name: string | null }[]
 }
 interface Thread {
   conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; helpers?: { id: string; name: string }[]; sectorId?: string | null; category: ContactCategory | 'GRUPO'; labels?: ChatLabel[] }
@@ -177,6 +184,8 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
   const toCall = !monitor && params.get('aba') === 'chamar'
   // Grupos ficam numa aba própria: não entram em pré-venda, avisos nem cores de espera.
   const groups = params.get('aba') === 'grupos'
+  // Pré-venda repassada ao vendedor e ainda sem retorno: aba própria, separada das conversas.
+  const waitingSeller = !monitor && params.get('aba') === 'vendedor'
   const [sellerId, setSellerId] = useState<string | null>(null)
   const [awaiting, setAwaiting] = useState(false)
   const [queue, setQueue] = useState(false)
@@ -196,7 +205,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
     const t = setTimeout(() => setQ(search.trim()), 300)
     return () => clearTimeout(t)
   }, [search])
-  const qs = new URLSearchParams({ ...(numberId ? { numero: numberId } : {}), ...(unread ? { naoLidas: 'true' } : {}), ...(archived ? { arquivadas: 'true' } : {}), ...(groups ? { tipo: 'GRUPO' } : category ? { tipo: category } : {}), ...(withReminder && !monitor ? { lembretes: 'true' } : {}), ...(q ? { busca: q } : {}), ...(monitor ? { monitorar: 'true' } : {}), ...(monitor && sellerId ? { vendedor: sellerId } : {}), ...(monitor && awaiting ? { aguardando: 'true' } : {}), ...(queue ? { fila: 'true' } : {}), ...(labelId ? { etiqueta: labelId } : {}) }).toString()
+  const qs = new URLSearchParams({ ...(numberId ? { numero: numberId } : {}), ...(unread ? { naoLidas: 'true' } : {}), ...(archived ? { arquivadas: 'true' } : {}), ...(groups ? { tipo: 'GRUPO' } : category ? { tipo: category } : {}), ...(waitingSeller ? { aguardandoVendedor: 'true' } : {}), ...(withReminder && !monitor ? { lembretes: 'true' } : {}), ...(q ? { busca: q } : {}), ...(monitor ? { monitorar: 'true' } : {}), ...(monitor && sellerId ? { vendedor: sellerId } : {}), ...(monitor && awaiting ? { aguardando: 'true' } : {}), ...(queue ? { fila: 'true' } : {}), ...(labelId ? { etiqueta: labelId } : {}) }).toString()
   const list = useQuery({ queryKey: ['chat-conversas', qs], queryFn: () => api.get<ListData>(`/chat/conversas?${qs}`), refetchInterval: 5000, placeholderData: keepPreviousData })
   const numbers = useMemo(() => new Map((list.data?.numbers ?? []).map((n) => [n.id, n])), [list.data?.numbers])
   const open = (id: string | null) => setParams((p) => {
@@ -205,7 +214,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
     else n.delete('conversa')
     return n
   })
-  const setTab = (tab: 'conversas' | 'chamar' | 'grupos', conversa?: string) => setParams((p) => {
+  const setTab = (tab: 'conversas' | 'chamar' | 'grupos' | 'vendedor', conversa?: string) => setParams((p) => {
     const n = new URLSearchParams(p)
     n.delete('conversa')
     if (tab !== 'conversas') n.set('aba', tab)
@@ -237,10 +246,16 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                 </ToggleGroupItem>
               </ToggleGroup>
             )}
-            <ToggleGroup type="single" variant="outline" size="sm" value={toCall ? 'chamar' : groups ? 'grupos' : 'conversas'} onValueChange={(v) => v && setTab(v as 'conversas' | 'chamar' | 'grupos')} aria-label="Aba">
+            <ToggleGroup type="single" variant="outline" size="sm" value={toCall ? 'chamar' : groups ? 'grupos' : waitingSeller ? 'vendedor' : 'conversas'} onValueChange={(v) => v && setTab(v as 'conversas' | 'chamar' | 'grupos' | 'vendedor')} aria-label="Aba">
               <ToggleGroupItem value="conversas" className="px-3">
                 Conversas
               </ToggleGroupItem>
+              {!monitor && (
+                <ToggleGroupItem value="vendedor" className="px-3" title="Pré-venda repassada ao vendedor, esperando ele retornar. Sai daqui quando o vendedor retorna ou a venda fecha.">
+                  <HourglassIcon /> Aguardando vendedor
+                  {!!list.data?.waitingSeller && !waitingSeller && <Badge variant="secondary" className="h-5 px-1.5 tabular-nums">{list.data.waitingSeller}</Badge>}
+                </ToggleGroupItem>
+              )}
               <ToggleGroupItem value="grupos" className="px-3" title="Grupos do WhatsApp: ficam separados e não entram no controle de pré-vendas">
                 <UsersIcon /> Grupos
                 {!!list.data?.unreadGroups && !groups && <Badge className="h-5 px-1.5 tabular-nums">{list.data.unreadGroups}</Badge>}
@@ -355,8 +370,9 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
               </div>
             </div>
             <ul className="min-h-0 flex-1 overflow-y-auto">
+              {list.data.items.length === 0 && waitingSeller && !q && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa aguardando vendedor. Quando a pré-venda for marcada como repassada ao vendedor, a conversa vem para cá até ele retornar.</li>}
               {list.data.items.length === 0 && groups && !q && <li className="p-6 text-center text-sm text-muted-foreground">Nenhum grupo ainda. As mensagens dos grupos do WhatsApp aparecem aqui, separadas das conversas com clientes.</li>}
-              {list.data.items.length === 0 && !(groups && !q) && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa{archived ? ' arquivada' : ''}{q || unread || numberId || category || labelId || withReminder || sellerId || awaiting || queue ? ' com esses filtros' : archived ? '' : ' ainda'}.</li>}
+              {list.data.items.length === 0 && !(groups && !q) && !(waitingSeller && !q) && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa{archived ? ' arquivada' : ''}{q || unread || numberId || category || labelId || withReminder || sellerId || awaiting || queue ? ' com esses filtros' : archived ? '' : ' ainda'}.</li>}
               {(groups ? byNumber(list.data.items, list.data.numbers) : list.data.items).map((c, i, arr) => {
                 const wc = c.category === 'CLIENTE' || !c.category ? waitColor(c, list.data.responseColors) : null
                 // Aba Grupos: cada grupo aparece debaixo do número que o recebeu (o mesmo grupo em dois números são duas conversas).
@@ -463,11 +479,14 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
   /** Encaminhar: as mensagens escolhidas (modo de seleção) e a janela de destinos. */
   const [selecting, setSelecting] = useState<string[] | null>(null)
   const [forwarding, setForwarding] = useState(false)
+  /** Responder: a mensagem citada na próxima mensagem enviada. */
+  const [replyTo, setReplyTo] = useState<Message | null>(null)
   const end = useRef<HTMLDivElement>(null)
   const lastId = q.data?.messages.at(-1)?.id
   useEffect(() => {
     setOlder([])
     setSelecting(null)
+    setReplyTo(null)
   }, [id])
   // Desce para a última mensagem quando chega uma nova.
   // Bloco com chaves: em navegadores novos scrollIntoView devolve uma Promise, e o efeito não pode devolver nada.
@@ -491,6 +510,8 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
   const title = d.conversation.name || formatPhone(d.conversation.phone) || 'Contato'
   // Encaminhar: texto, localização, contato e arquivos que estão guardados no CRM.
   const canForward = (m: Message) => !monitor && can('chat', 'create') && (['texto', 'localizacao', 'contato'].includes(m.type) ? !!m.text : ['imagem', 'video', 'audio', 'documento', 'figurinha'].includes(m.type) && m.hasFile)
+  // Reagir e responder: qualquer mensagem da conversa, menos aviso de ligação.
+  const canAct = (m: Message) => !monitor && can('chat', 'create') && m.type !== 'chamada'
   const toggleSelect = (mid: string) => setSelecting((s) => (!s ? [mid] : s.includes(mid) ? s.filter((x) => x !== mid) : s.length >= 20 ? (toast.error('No máximo 20 mensagens por vez.'), s) : [...s, mid]))
   return (
     <MonitorContext.Provider value={monitor}>
@@ -579,17 +600,19 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
                 {selecting && canForward(m) && (
                   <input type="checkbox" className="mr-1 size-4 shrink-0 accent-[color:var(--brand)]" checked={selecting.includes(m.id)} onChange={() => toggleSelect(m.id)} onClick={(e) => e.stopPropagation()} aria-label="Selecionar mensagem para encaminhar" />
                 )}
-                {!selecting && m.fromMe && canForward(m) && <ForwardButton onClick={() => setSelecting([m.id])} />}
+                {!selecting && m.fromMe && canAct(m) && <MessageActions m={m} canForward={canForward(m)} onReply={() => setReplyTo(m)} onForward={() => setSelecting([m.id])} />}
                 <div className={cn('max-w-[85%] rounded-lg px-3 py-1.5 text-sm shadow-xs sm:max-w-[70%]', m.fromMe ? (colors ? 'bg-blue-100 text-slate-900 dark:bg-blue-900/60 dark:text-blue-50' : 'bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]') : cn('bg-card', colors && 'border'))}>
                   {d.conversation.category === 'GRUPO' && !m.fromMe && m.sentByName && <p className="mb-0.5 text-xs font-semibold text-[color:var(--brand)]">{m.sentByName}</p>}
+                  {m.quotedText && <QuotedBlock text={m.quotedText} who={m.quotedFromMe === true ? 'Você' : m.quotedFromMe === false ? title : null} />}
                   <Bubble m={m} />
+                  {!!m.reactions?.length && <Reactions list={m.reactions} />}
                   <p className={cn('mt-0.5 text-right text-[11px] tabular-nums', m.fromMe ? 'opacity-70' : 'text-muted-foreground')}>
                     {m.fromMe && (m.sentByName ? `${m.sentByName} · ` : 'pelo celular · ')}
                     {time.format(new Date(m.sentAt))}
                     {m.fromMe && <Receipt status={m.status} />}
                   </p>
                 </div>
-                {!selecting && !m.fromMe && canForward(m) && <ForwardButton onClick={() => setSelecting([m.id])} />}
+                {!selecting && !m.fromMe && canAct(m) && <MessageActions m={m} canForward={canForward(m)} onReply={() => setReplyTo(m)} onForward={() => setSelecting([m.id])} />}
               </div>
               )}
             </div>
@@ -615,7 +638,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
           </Button>
         </div>
       ) : (
-        <Composer thread={d} />
+        <Composer thread={d} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
       )}
       {forwarding && selecting && (
         <ForwardDialog
@@ -656,14 +679,82 @@ function forwardPreview(list: Message[]) {
   return `${list.length} mensagens, na ordem da conversa: ${[...counts.entries()].map(([k, n]) => `${n} ${k === 'texto' && n > 1 ? 'textos' : k}`).join(', ')}.`
 }
 
-/** Botão de encaminhar ao lado da mensagem: aparece ao passar o mouse (no celular fica sempre à vista, mais claro). */
-function ForwardButton({ onClick }: { onClick: () => void }) {
+const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏']
+
+/** Ações ao lado da mensagem (aparecem ao passar o mouse; no celular ficam à vista, mais claras): responder, reagir e encaminhar. */
+function MessageActions({ m, canForward, onReply, onForward }: { m: Message; canForward: boolean; onReply: () => void; onForward: () => void }) {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const mine = m.reactions?.find((r) => r.by === 'me')?.emoji ?? ''
+  const react = useMutation({
+    mutationFn: (emoji: string) => api.post(`/chat/mensagens/${m.id}/reacao`, { emoji }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['chat-conversa'] }),
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const cls = 'size-7 shrink-0 opacity-50 group-hover/msg:opacity-100 focus-visible:opacity-100 md:opacity-0'
   return (
-    <Button type="button" size="icon" variant="ghost" className="size-7 shrink-0 opacity-50 group-hover/msg:opacity-100 focus-visible:opacity-100 md:opacity-0" onClick={onClick} aria-label="Encaminhar mensagem" title="Encaminhar">
-      <ForwardIcon className="size-4" />
-    </Button>
+    <span className={cn('flex shrink-0 items-center', m.fromMe ? 'flex-row' : 'flex-row-reverse')}>
+      {canForward && (
+        <Button type="button" size="icon" variant="ghost" className={cls} onClick={onForward} aria-label="Encaminhar mensagem" title="Encaminhar">
+          <ForwardIcon className="size-4" />
+        </Button>
+      )}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button type="button" size="icon" variant="ghost" className={cn(cls, open && 'opacity-100')} aria-label="Reagir à mensagem" title="Reagir">
+            <SmilePlusIcon className="size-4" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent side="top" className="flex w-auto gap-1 p-1.5">
+          {REACTIONS.map((e) => (
+            <button
+              key={e}
+              type="button"
+              className={cn('rounded-full px-1.5 py-0.5 text-xl transition-transform hover:scale-125', mine === e && 'bg-[color:var(--brand)]/15')}
+              onClick={() => {
+                setOpen(false)
+                react.mutate(mine === e ? '' : e)
+              }}
+              aria-label={mine === e ? `Tirar a reação ${e}` : `Reagir com ${e}`}
+            >
+              {e}
+            </button>
+          ))}
+        </PopoverContent>
+      </Popover>
+      <Button type="button" size="icon" variant="ghost" className={cls} onClick={onReply} aria-label="Responder mensagem" title="Responder">
+        <ReplyIcon className="size-4" />
+      </Button>
+    </span>
   )
 }
+
+/** Mensagem citada (resposta) no topo do balão. */
+function QuotedBlock({ text, who }: { text: string; who: string | null }) {
+  return (
+    <div className="mb-1 rounded border-l-4 border-l-[color:var(--brand)] bg-black/5 px-2 py-1 text-xs dark:bg-white/10">
+      {who && <p className="font-semibold text-[color:var(--brand)]">{who}</p>}
+      <p className="line-clamp-3 opacity-80">{text}</p>
+    </div>
+  )
+}
+
+/** Reações embaixo do balão, agrupadas por emoji, com quem reagiu no título. */
+function Reactions({ list }: { list: { emoji: string; by: 'me' | 'them'; name: string | null }[] }) {
+  const groups = new Map<string, string[]>()
+  for (const r of list) groups.set(r.emoji, [...(groups.get(r.emoji) ?? []), r.by === 'me' ? (r.name ? `${r.name} (empresa)` : 'Empresa') : r.name || 'Contato'])
+  return (
+    <div className="-mb-1 mt-0.5 flex flex-wrap gap-1">
+      {[...groups.entries()].map(([emoji, who]) => (
+        <span key={emoji} className="rounded-full border bg-background px-1.5 text-sm leading-6" title={who.join(', ')}>
+          {emoji}
+          {who.length > 1 && <span className="ml-0.5 text-xs text-muted-foreground tabular-nums">{who.length}</span>}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 
 /** Atendimento dividido: quem atende a conversa, assumir da fila e transferir para outro atendente ou setor. */
 function AttendantPicker({ thread }: { thread: Thread }) {
@@ -910,7 +1001,7 @@ function NoteButton({ conversationId, monitor }: { conversationId: string; monit
 }
 
 /** Caixa de envio: texto (Enter envia, Shift+Enter quebra linha), arquivo com legenda e respostas rápidas. */
-function Composer({ thread }: { thread: Thread }) {
+function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?: Message | null; onClearReply?: () => void }) {
   const { can } = useAuth()
   const qc = useQueryClient()
   const [text, setText] = useState('')
@@ -942,11 +1033,12 @@ function Composer({ thread }: { thread: Thread }) {
         if (text.trim()) fd.append('legenda', text.trim())
         return api.post(`/chat/conversas/${id}/arquivos`, fd)
       }
-      return api.post(`/chat/conversas/${id}/mensagens`, { text })
+      return api.post(`/chat/conversas/${id}/mensagens`, { text, ...(replyTo ? { quotedId: replyTo.id } : {}) })
     },
     onSuccess: () => {
       setText('')
       setFile(null)
+      onClearReply?.()
       void qc.invalidateQueries({ queryKey: ['chat-conversa', id] })
       void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
     },
@@ -988,6 +1080,19 @@ function Composer({ thread }: { thread: Thread }) {
   return (
     <>
     <form onSubmit={submit} className="relative space-y-2 border-t p-2">
+      {replyTo && (
+        <div className="flex items-start gap-2 rounded-md border-l-4 border-l-[color:var(--brand)] bg-muted/60 px-2.5 py-1.5 text-xs">
+          <ReplyIcon className="mt-0.5 size-3.5 shrink-0 text-[color:var(--brand)]" />
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium">Respondendo {replyTo.fromMe ? 'a você' : thread.conversation.category === 'GRUPO' && replyTo.sentByName ? `a ${replyTo.sentByName}` : 'ao cliente'}</span>
+            <span className="line-clamp-2 text-muted-foreground">{replyTo.text || ({ imagem: 'Foto', video: 'Vídeo', audio: 'Áudio', documento: replyTo.fileName ?? 'Documento', figurinha: 'Figurinha' } as Record<string, string>)[replyTo.type] || 'Mensagem'}</span>
+            {file && <span className="block text-amber-700 dark:text-amber-400">Com arquivo, a resposta vai sem a citação.</span>}
+          </span>
+          <button type="button" className="rounded p-0.5 hover:bg-background" onClick={onClearReply} aria-label="Cancelar resposta">
+            <XIcon className="size-3.5" />
+          </button>
+        </div>
+      )}
       {slash !== null && (
         <div className="absolute bottom-full left-2 z-10 mb-1 w-[min(28rem,calc(100%-1rem))] rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg" role="listbox" aria-label="Respostas rápidas">
           <p className="px-2 py-1 text-xs text-muted-foreground">Respostas rápidas · digite para filtrar, ↑↓ escolhe, Enter usa</p>

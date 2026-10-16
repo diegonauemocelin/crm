@@ -17,6 +17,8 @@ export interface ParsedMessage {
   type: MessageType
   text: string | null
   media: { mime: string | null; fileName: string | null; size: number | null } | null
+  /** Resposta (citação) a outra mensagem: id dela no WhatsApp e o trecho citado. */
+  quoted?: { waId: string; text: string } | null
   /** Mensagem crua (chave + conteúdo) para pedir a mídia à Evolution. */
   raw: { key: unknown; message: unknown }
 }
@@ -75,6 +77,7 @@ export function parseMessage(data: unknown): ParsedMessage | null {
     group,
     at: ts ? new Date(ts * 1000) : new Date(),
     raw: { key, message: d.message },
+    quoted: quotedOf(m),
   }
   const media = (o: Obj, fileName?: unknown) => ({ mime: str(o.mimetype, 120)?.split(';')[0]?.trim() || null, fileName: str(fileName, 200), size: num(o.fileLength) })
   const o = (k: string) => (m[k] && typeof m[k] === 'object' ? (m[k] as Obj) : null)
@@ -122,6 +125,68 @@ function contactLine(c: Obj) {
   const waid = /waid=(\d{8,15})/i.exec(vcard)?.[1]
   const tel = waid ? `+${waid}` : (/\nTEL[^:\n]*:([^\n]+)/i.exec(vcard)?.[1]?.trim() ?? null)
   return [name ?? 'Contato', tel].filter(Boolean).join(' · ').slice(0, 200)
+}
+
+/** Trecho curto de uma mensagem citada (resposta), pelo tipo. */
+function quotedPreview(q: Obj | null): string {
+  if (!q) return 'Mensagem'
+  const inner = unwrap(q) ?? q
+  const o = (k: string) => (inner[k] && typeof inner[k] === 'object' ? (inner[k] as Obj) : null)
+  const t = str(inner.conversation, 300) ?? str(o('extendedTextMessage')?.text, 300)
+  if (t) return t
+  if (o('imageMessage')) return `Foto${str(o('imageMessage')!.caption, 200) ? `: ${str(o('imageMessage')!.caption, 200)}` : ''}`
+  if (o('videoMessage')) return 'Vídeo'
+  if (o('audioMessage')) return 'Áudio'
+  if (o('documentMessage')) return `Documento${str(o('documentMessage')!.fileName, 120) ? `: ${str(o('documentMessage')!.fileName, 120)}` : ''}`
+  if (o('stickerMessage')) return 'Figurinha'
+  if (o('contactMessage')) return `Contato: ${str(o('contactMessage')!.displayName, 120) ?? ''}`
+  if (o('locationMessage')) return 'Localização'
+  return 'Mensagem'
+}
+
+/** A mensagem é resposta a outra? (contextInfo.stanzaId e o trecho de quotedMessage). */
+function quotedOf(m: Obj): { waId: string; text: string } | null {
+  for (const v of Object.values(m)) {
+    const ctx = v && typeof v === 'object' ? ((v as Obj).contextInfo as Obj | undefined) : undefined
+    const id = str(ctx?.stanzaId, 120)
+    if (id) return { waId: id, text: quotedPreview((ctx!.quotedMessage as Obj | undefined) ?? null).slice(0, 300) }
+  }
+  return null
+}
+
+export interface ParsedReaction {
+  /** Mensagem que recebeu a reação (id no WhatsApp). */
+  targetWaId: string
+  /** Emoji; vazio = a pessoa tirou a reação. */
+  emoji: string
+  fromMe: boolean
+  /** Quem reagiu (participante, no grupo; o contato, na conversa). */
+  reactor: string
+  name: string | null
+}
+
+/** Reação de uma mensagem (evento MESSAGES_UPSERT com reactionMessage). */
+export function parseReaction(data: unknown): ParsedReaction | null {
+  const d = data as { key?: Obj; message?: Obj; pushName?: unknown } | null
+  const r = d?.message?.reactionMessage as { key?: Obj; text?: unknown } | undefined
+  const target = str(r?.key?.id, 120)
+  if (!d?.key || !r || !target) return null
+  const fromMe = d.key.fromMe === true
+  return { targetWaId: target, emoji: typeof r.text === 'string' ? r.text.slice(0, 16) : '', fromMe, reactor: fromMe ? 'me' : (str(d.key.participant, 120) ?? str(d.key.remoteJid, 120) ?? 'contato'), name: fromMe ? null : str(d.pushName, 120) }
+}
+
+export interface Reaction {
+  emoji: string
+  by: 'me' | 'them'
+  key: string
+  name: string | null
+}
+
+/** Lista de reações depois de uma nova: uma por pessoa (troca a anterior); emoji vazio tira. */
+export function withReaction(list: unknown, r: { emoji: string; by: 'me' | 'them'; key: string; name: string | null }): Reaction[] {
+  const cur = (Array.isArray(list) ? list : []).filter((x): x is Reaction => !!x && typeof (x as Reaction).emoji === 'string' && typeof (x as Reaction).key === 'string')
+  const rest = cur.filter((x) => x.key !== r.key)
+  return (r.emoji ? [...rest, { emoji: r.emoji, by: r.by, key: r.key, name: r.name }] : rest).slice(-20)
 }
 
 /** Telefone do contato no formato da base (+55...). No Brasil, celular sem o 9 (contas antigas) ganha o 9. */

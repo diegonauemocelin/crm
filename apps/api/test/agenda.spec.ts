@@ -136,3 +136,29 @@ describe('Compartilhar contato no chat', () => {
     expect(parseMessage({ key, message: { contactsArrayMessage: { contacts: [{ displayName: 'Loja', vcard: semWaid }, { displayName: 'Sem tel' }] } } })?.text).toBe('Loja · (47) 3222-1100\nSem tel')
   })
 })
+
+describe('Reagir e responder no chat', () => {
+  it('lê a citação (resposta) e a reação que chegam do WhatsApp', async () => {
+    const { parseMessage, parseReaction } = await import('../src/whatsapp/mensagens')
+    const key = { id: 'R1', remoteJid: '5547999990000@s.whatsapp.net', fromMe: false }
+    const reply = parseMessage({ key, message: { extendedTextMessage: { text: 'Esse mesmo', contextInfo: { stanzaId: 'ORIG1', quotedMessage: { imageMessage: { caption: 'farol' } } } } } })
+    expect(reply).toMatchObject({ text: 'Esse mesmo', quoted: { waId: 'ORIG1', text: 'Foto: farol' } })
+    expect(parseMessage({ key, message: { conversation: 'oi' } })?.quoted).toBeNull()
+    // Reação não vira mensagem: vem pelo parseReaction.
+    const data = { key, pushName: 'Ana', message: { reactionMessage: { key: { id: 'ORIG1' }, text: '👍' } } }
+    expect(parseMessage(data)).toBeNull()
+    expect(parseReaction(data)).toEqual({ targetWaId: 'ORIG1', emoji: '👍', fromMe: false, reactor: '5547999990000@s.whatsapp.net', name: 'Ana' })
+    expect(parseReaction({ key, message: { conversation: 'oi' } })).toBeNull()
+  })
+
+  it('guarda uma reação por pessoa: troca a anterior e tira com emoji vazio', async () => {
+    const { withReaction } = await import('../src/whatsapp/mensagens')
+    const a = withReaction(null, { emoji: '👍', by: 'them', key: 'c1', name: 'Ana' })
+    const b = withReaction(a, { emoji: '❤️', by: 'them', key: 'c1', name: 'Ana' })
+    expect(b).toEqual([{ emoji: '❤️', by: 'them', key: 'c1', name: 'Ana' }])
+    const c = withReaction(b, { emoji: '😂', by: 'me', key: 'me', name: 'Diego' })
+    expect(c).toHaveLength(2)
+    expect(withReaction(c, { emoji: '', by: 'them', key: 'c1', name: null })).toEqual([{ emoji: '😂', by: 'me', key: 'me', name: 'Diego' }])
+    expect(withReaction('lixo', { emoji: '👍', by: 'me', key: 'me', name: null })).toHaveLength(1)
+  })
+})

@@ -26,10 +26,19 @@ class ListDto {
   @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() fila?: boolean
   @IsOptional() @IsUUID() etiqueta?: string
   @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() aguardando?: boolean
+  /** Aba "Aguardando vendedor": pré-venda repassada, sem retorno do vendedor. */
+  @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() aguardandoVendedor?: boolean
 }
 
 class TextDto {
   @IsString() @Length(1, 4000) text!: string
+  /** Responder (citar) uma mensagem da conversa. */
+  @IsOptional() @IsUUID() quotedId?: string
+}
+
+class ReactionDto {
+  /** Emoji; vazio tira a reação. */
+  @IsString() @MaxLength(16) emoji!: string
 }
 
 class SaveAsContactDto {
@@ -282,7 +291,7 @@ export class ChatController {
 
   @Get('conversas')
   list(@CurrentUser() user: AuthUser, @Query() q: ListDto) {
-    return this.chat.conversations(user, { numberId: q.numero, unread: q.naoLidas, archived: q.arquivadas, search: q.busca, page: q.pagina, category: q.tipo, leadId: q.lead, reminders: q.lembretes, monitor: q.monitorar, sellerId: q.vendedor, awaiting: q.aguardando, queue: q.fila, labelId: q.etiqueta })
+    return this.chat.conversations(user, { numberId: q.numero, unread: q.naoLidas, archived: q.arquivadas, search: q.busca, page: q.pagina, category: q.tipo, leadId: q.lead, reminders: q.lembretes, monitor: q.monitorar, sellerId: q.vendedor, awaiting: q.aguardando, queue: q.fila, labelId: q.etiqueta, waitingSeller: q.aguardandoVendedor })
   }
 
   /** Números em que o usuário pode iniciar conversa. */
@@ -338,11 +347,19 @@ export class ChatController {
     return this.chat.shareOptions(user, q.busca ?? '', q.numero)
   }
 
+  /** Reagir a uma mensagem (emoji; vazio tira). */
+  @Post('mensagens/:id/reacao')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  react(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReactionDto) {
+    return this.chat.react(user, id, dto.emoji)
+  }
+
   @Post('conversas/:id/mensagens')
   @HttpCode(200)
   @Throttle({ default: { limit: 40, ttl: 60_000 } })
   sendText(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TextDto) {
-    return this.chat.sendText(user, id, dto.text)
+    return this.chat.sendText(user, id, dto.text, dto.quotedId)
   }
 
   @Post('conversas/:id/arquivos')

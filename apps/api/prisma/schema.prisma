@@ -1403,6 +1403,11 @@ model WhatsappMessage {
   sentAt         DateTime
   /// Nota interna (administrador ou gestor): só aparece no CRM, nunca vai para o WhatsApp do cliente.
   internal       Boolean  @default(false)
+  /// Resposta a outra mensagem (citação): id no WhatsApp e o trecho citado.
+  quotedWaId     String?
+  quotedText     String?
+  /// Reações: [{ emoji, by: "me" | "them", key, name }] (uma por pessoa).
+  reactions      Json?
   createdAt      DateTime @default(now())
 
   conversation WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

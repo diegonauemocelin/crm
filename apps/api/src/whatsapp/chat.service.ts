@@ -15,7 +15,7 @@ import { type EvolutionClient, EvolutionError } from './evolution'
 import { sectorsOf, splitWhere } from './atendentes'
 import { type AgendaCategory, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
 import { parseCsv } from '../atendimento/planilha'
-import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, type ParsedMessage, phoneFromDigits, phoneVariants, previewOf } from './mensagens'
+import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, parseReaction, type ParsedMessage, phoneFromDigits, phoneVariants, previewOf, withReaction } from './mensagens'
 
 const PAGE = 60
 
@@ -102,7 +102,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
 
   ingest(n: WhatsappNumber, data: unknown, client: EvolutionClient | null) {
     const p = parseMessage(data)
-    if (!p) return Promise.resolve()
+    if (!p) {
+      const r = parseReaction(data)
+      return r ? this.applyReaction(n, r).catch((err: unknown) => this.logger.warn(`Reação não gravada (${n.name}): ${(err as Error).message}`)) : Promise.resolve()
+    }
     // Mesma fila para as duas formas do celular (com e sem o 9).
     const key = `${n.id}:${phoneFromDigits(p.phoneDigits) ?? p.jid}`
     const run = (this.queues.get(key) ?? Promise.resolve())
@@ -120,6 +123,14 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
    * Mensagem de grupo: a conversa é o grupo (categoria GRUPO), com o nome de quem escreveu em cada mensagem.
    * Não liga lead, não abre pré-venda, não manda mensagem de ausência e não entra nos avisos de "sem resposta".
    */
+  /** Reação recebida (ou feita pelo celular da empresa): fica na mensagem, uma por pessoa. */
+  private async applyReaction(n: WhatsappNumber, r: { targetWaId: string; emoji: string; fromMe: boolean; reactor: string; name: string | null }) {
+    const m = await this.prisma.whatsappMessage.findFirst({ where: { tenantId: n.tenantId, waId: r.targetWaId, conversation: { numberId: n.id } }, select: { id: true, reactions: true } })
+    if (!m) return
+    const reactions = withReaction(m.reactions, { emoji: r.emoji, by: r.fromMe ? 'me' : 'them', key: r.reactor, name: r.name })
+    await this.prisma.whatsappMessage.update({ where: { id: m.id }, data: { reactions: reactions as unknown as Prisma.InputJsonValue } })
+  }
+
   private async storeGroup(n: WhatsappNumber, p: ParsedMessage, client: EvolutionClient | null) {
     let conv = await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: n.id, jid: p.jid } } })
     if (!conv || !conv.name) {
@@ -140,6 +151,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
           fileName: p.media?.fileName ?? null,
           mime: p.media?.mime ?? null,
           mediaStatus: p.media ? (tooBig ? 'GRANDE' : 'PENDENTE') : null,
+          quotedWaId: p.quoted?.waId ?? null,
+          quotedText: p.quoted?.text ?? null,
           // Quem escreveu no grupo (o celular da empresa, quando é ela).
           sentByName: p.fromMe ? null : (p.pushName ?? 'Participante'),
           sentAt: p.at,
@@ -187,6 +200,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
           fileName: p.media?.fileName ?? null,
           mime: p.media?.mime ?? null,
           mediaStatus: p.media ? (tooBig ? 'GRANDE' : 'PENDENTE') : null,
+          quotedWaId: p.quoted?.waId ?? null,
+          quotedText: p.quoted?.text ?? null,
           sentAt: p.at,
         },
       ],
@@ -400,7 +415,26 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     return { numberIds: nums.map((n) => n.id), numbers: nums, sellerId: seller?.id ?? null }
   }
 
-  async conversations(user: AuthUser, q: { numberId?: string; unread?: boolean; archived?: boolean; search?: string; page?: number; category?: string; leadId?: string; reminders?: boolean; monitor?: boolean; sellerId?: string; awaiting?: boolean; queue?: boolean; labelId?: string }) {
+  /**
+   * Conversas aguardando o vendedor: a pré-venda do contato foi repassada ao vendedor e ele ainda não retornou
+   * (retorno "Pendente", venda em negociação). Saem da aba quando o vendedor retorna ou a venda fecha.
+   */
+  private async waitingSellerIds(tenantId: string): Promise<string[]> {
+    const recs = await this.prisma.serviceRecord.findMany({
+      where: { tenantId, kind: 'PRE_VENDAS', deletedAt: null, forwarded: true, returnStatus: 'PENDENTE', saleStatus: 'NEGOCIACAO' },
+      select: { id: true, leadId: true },
+      take: 10_000,
+    })
+    const leadIds = [...new Set(recs.map((r) => r.leadId).filter((x): x is string => !!x))]
+    // Pelos ids das conversas: "NOT (recordId IN … OR leadId IN …)" com campo vazio daria NULL no banco e
+    // esconderia as conversas sem pré-venda ligada.
+    const convs = recs.length
+      ? await this.prisma.whatsappConversation.findMany({ where: { tenantId, category: 'CLIENTE', OR: [{ recordId: { in: recs.map((r) => r.id) } }, ...(leadIds.length ? [{ leadId: { in: leadIds } }] : [])] }, select: { id: true }, take: 10_000 })
+      : []
+    return convs.map((c) => c.id)
+  }
+
+  async conversations(user: AuthUser, q: { numberId?: string; unread?: boolean; archived?: boolean; search?: string; page?: number; category?: string; leadId?: string; reminders?: boolean; monitor?: boolean; sellerId?: string; awaiting?: boolean; queue?: boolean; labelId?: string; waitingSeller?: boolean }) {
     if (q.monitor) this.assertMonitor(user)
     else this.assertCan(user)
     const scope: Prisma.WhatsappConversationWhereInput = q.monitor ? { tenantId: user.tenantId } : await this.where(user)
@@ -410,6 +444,11 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (q.unread) and.push({ unread: { gt: 0 } })
     if (q.category) and.push({ category: q.category })
     else if (!q.leadId) and.push({ category: { not: 'GRUPO' } })
+    // Aba "Aguardando vendedor": separada das conversas (fora do monitoramento e da ficha do lead).
+    const separate = !q.monitor && !q.leadId
+    const waitingIds = separate ? await this.waitingSellerIds(user.tenantId) : null
+    if (waitingIds && q.waitingSeller) and.push({ id: { in: waitingIds } })
+    else if (waitingIds?.length && !q.category) and.push({ id: { notIn: waitingIds } })
     if (q.reminders) and.push({ reminders: { some: { userId: user.id, doneAt: null } } })
     if (q.labelId) and.push({ labels: { some: { labelId: q.labelId, label: this.ownedWhere(user) } } })
     if (q.monitor && q.sellerId) and.push(await this.sellerWhere(user.tenantId, q.sellerId))
@@ -435,6 +474,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       q.monitor ? this.allNumbers(user.tenantId) : this.visibleNumbers(user, scope),
       this.prisma.whatsappConversation.count({ where: { AND: [scope, { unread: { gt: 0 }, status: 'ABERTA', category: 'GRUPO' }] } }),
     ])
+    const waitingSellerCount = waitingIds?.length ? await this.prisma.whatsappConversation.count({ where: { AND: [scope, { id: { in: waitingIds } }, { status: 'ABERTA', lastMessageAt: { not: null } }] } }) : 0
     const leads = new Map((await this.prisma.lead.findMany({ where: { id: { in: rows.map((r) => r.leadId).filter((x): x is string => !!x) } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]))
     const reminders = new Map(
       (await this.prisma.whatsappReminder.groupBy({ by: ['conversationId'], where: { userId: user.id, doneAt: null, conversationId: { in: rows.map((r) => r.id) } }, _min: { dueAt: true } })).map((r) => [r.conversationId, r._min.dueAt]),
@@ -464,6 +504,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       unreadConversations: unread._count._all,
       /** Grupos com mensagem não lida (selo da aba Grupos). */
       unreadGroups,
+      /** Conversas aguardando o vendedor retornar (selo da aba). */
+      waitingSeller: waitingSellerCount,
       // Prazos das cores de atraso de resposta (verde, amarelo, vermelho).
       responseColors: await this.rules(user.tenantId).then((r) => ({ yellowMinutes: r.yellowMinutes, redMinutes: r.redMinutes })),
       numbers,
@@ -546,6 +588,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const more = rows.length > PAGE
     // Atendentes do número (para assumir e transferir) e o nome de quem atende.
     const attendants = number ? await this.prisma.user.findMany({ where: { id: { in: [...new Set([...number.userIds, ...(conv.assignedUserId ? [conv.assignedUserId] : []), ...conv.helperUserIds])] }, tenantId: user.tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true, active: true } }) : []
+    const quotedIds = [...new Set(rows.map((r) => r.quotedWaId).filter((x): x is string => !!x))]
+    const quotedMine = new Map((quotedIds.length ? await this.prisma.whatsappMessage.findMany({ where: { conversationId: conv.id, waId: { in: quotedIds } }, select: { waId: true, fromMe: true } }) : []).map((q) => [q.waId, q.fromMe]))
     return {
       conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, assignedUserId: conv.assignedUserId, assignedUserName: attendants.find((a) => a.id === conv.assignedUserId)?.name ?? null, helpers: attendants.filter((a) => conv.helperUserIds.includes(a.id)).map((a) => ({ id: a.id, name: a.name })), sectorId: conv.sectorId, category: conv.category, unread: conv.unread, labels: (await this.labelsOf(user, [conv.id])).get(conv.id) ?? [] },
       /** Contato na agenda do número (ou na geral): nome e tipo salvos. */
@@ -560,7 +604,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       messages: rows
         .slice(0, PAGE)
         .reverse()
-        .map((m) => ({ id: m.id, fromMe: m.fromMe, type: m.type, text: m.text, fileName: m.fileName, mime: m.mime, mediaStatus: m.mediaStatus, hasFile: !!m.fileId, sentAt: m.sentAt, sentByName: m.sentByName, status: m.status, internal: m.internal })),
+        .map((m) => ({ id: m.id, fromMe: m.fromMe, type: m.type, text: m.text, fileName: m.fileName, mime: m.mime, mediaStatus: m.mediaStatus, hasFile: !!m.fileId, sentAt: m.sentAt, sentByName: m.sentByName, status: m.status, internal: m.internal, quotedText: m.quotedText, quotedFromMe: m.quotedWaId ? (quotedMine.get(m.quotedWaId) ?? null) : null, reactions: Array.isArray(m.reactions) ? m.reactions : [] })),
     }
   }
 
@@ -712,9 +756,9 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     user: AuthUser,
     c: { conv: { id: string; jid: string; numberId: string; tenantId: string; assignedUserId?: string | null }; number: WhatsappNumber },
     r: { waId: string; remoteJid: string | null; at: Date },
-    m: { type: string; text: string | null; fileId?: string; fileName?: string; mime?: string },
+    m: { type: string; text: string | null; fileId?: string; fileName?: string; mime?: string; quotedWaId?: string; quotedText?: string | null },
   ) {
-    const data = { sentById: user.id, sentByName: user.name.slice(0, 120), status: 'ENVIADA', ...(m.fileId ? { fileId: m.fileId, fileName: m.fileName ?? null, mime: m.mime ?? null, mediaStatus: 'OK' } : {}) }
+    const data = { sentById: user.id, sentByName: user.name.slice(0, 120), status: 'ENVIADA', ...(m.fileId ? { fileId: m.fileId, fileName: m.fileName ?? null, mime: m.mime ?? null, mediaStatus: 'OK' } : {}), ...(m.quotedWaId ? { quotedWaId: m.quotedWaId, quotedText: m.quotedText ?? null } : {}) }
     // O evento da Evolution pode chegar antes desta resposta: aí a mensagem já existe e só ganha quem enviou.
     const msg = await this.prisma.whatsappMessage.upsert({
       where: { conversationId_waId: { conversationId: c.conv.id, waId: r.waId } },
@@ -733,7 +777,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       const taken = await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: c.conv.numberId, jid: r.remoteJid } } })
       if (!taken) await this.prisma.whatsappConversation.update({ where: { id: c.conv.id }, data: { jid: r.remoteJid } })
     }
-    return { id: msg.id, fromMe: true, type: msg.type, text: msg.text, fileName: msg.fileName, mime: msg.mime, mediaStatus: msg.mediaStatus, hasFile: !!msg.fileId, sentAt: msg.sentAt, sentByName: msg.sentByName, status: msg.status }
+    return { id: msg.id, fromMe: true, type: msg.type, text: msg.text, fileName: msg.fileName, mime: msg.mime, mediaStatus: msg.mediaStatus, hasFile: !!msg.fileId, sentAt: msg.sentAt, sentByName: msg.sentByName, status: msg.status, quotedText: msg.quotedText }
   }
 
   private fail(err: unknown): never {
@@ -746,14 +790,29 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     return (await this.prisma.user.findUnique({ where: { id: user.id }, select: { chatSignature: true } }))?.chatSignature ?? null
   }
 
-  async sendText(user: AuthUser, id: string, raw: string) {
+  async sendText(user: AuthUser, id: string, raw: string, quotedId?: string) {
     const text = raw.replace(/\r\n/g, '\n').trim()
     if (!text) throw new BadRequestException('Escreva a mensagem.')
     if (text.length > 4000) throw new BadRequestException('Mensagem muito longa (máximo 4.000 caracteres).')
     const c = await this.sendContext(user, id)
+    // Responder uma mensagem desta conversa (citação no WhatsApp).
+    const q = quotedId ? await this.prisma.whatsappMessage.findFirst({ where: { id: quotedId, conversationId: id, internal: false } }) : null
+    if (quotedId && !q) throw new BadRequestException('A mensagem que você está respondendo não está nesta conversa.')
+    const quotedText = q ? (q.text?.trim() || previewOf({ type: q.type as ParsedMessage['type'], text: q.text })).slice(0, 300) : null
     const body = c.number.signMessages ? signed(text, user.name, await this.signatureOf(user)) : text
-    const r = await c.client.sendText(c.number.instanceName, c.target, body).catch((e: unknown) => this.fail(e))
-    return this.recordSent(user, c, r, { type: 'texto', text: body })
+    const r = await c.client.sendText(c.number.instanceName, c.target, body, q ? { waId: q.waId, fromMe: q.fromMe, remoteJid: c.conv.jid, text: quotedText! } : undefined).catch((e: unknown) => this.fail(e))
+    return this.recordSent(user, c, r, { type: 'texto', text: body, ...(q ? { quotedWaId: q.waId, quotedText } : {}) })
+  }
+
+  /** Reagir a uma mensagem da conversa (emoji vazio tira a reação). */
+  async react(user: AuthUser, messageId: string, emoji: string) {
+    const m = await this.prisma.whatsappMessage.findFirst({ where: { id: messageId, tenantId: user.tenantId, internal: false } })
+    if (!m) throw new NotFoundException('Mensagem não encontrada.')
+    const c = await this.sendContext(user, m.conversationId)
+    await c.client.sendReaction(c.number.instanceName, { id: m.waId, fromMe: m.fromMe, remoteJid: c.conv.jid }, emoji).catch((e: unknown) => this.fail(e))
+    const reactions = withReaction(m.reactions, { emoji, by: 'me', key: 'me', name: user.name })
+    await this.prisma.whatsappMessage.update({ where: { id: m.id }, data: { reactions: reactions as unknown as Prisma.InputJsonValue } })
+    return { reactions }
   }
 
   /**
