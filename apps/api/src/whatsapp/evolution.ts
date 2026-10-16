@@ -168,6 +168,11 @@ export class EvolutionClient {
     return this.sent(await this.call('POST', `/message/sendText/${encodeURIComponent(instanceName)}`, { number, text }, 30_000))
   }
 
+  /** Cartão de contato (vCard): no WhatsApp aparece com os botões "Conversar" e "Adicionar". */
+  async sendContact(instanceName: string, number: string, c: { fullName: string; wuid: string; phoneNumber: string }) {
+    return this.sent(await this.call('POST', `/message/sendContact/${encodeURIComponent(instanceName)}`, { number, contact: [{ fullName: c.fullName, wuid: c.wuid, phoneNumber: c.phoneNumber }] }, 30_000))
+  }
+
   async sendMedia(instanceName: string, number: string, m: { mediatype: 'image' | 'video' | 'document'; mimetype: string; base64: string; fileName: string; caption?: string }) {
     return this.sent(
       await this.call('POST', `/message/sendMedia/${encodeURIComponent(instanceName)}`, { number, mediatype: m.mediatype, mimetype: m.mimetype, media: m.base64, fileName: m.fileName, caption: m.caption ?? '' }, 90_000),

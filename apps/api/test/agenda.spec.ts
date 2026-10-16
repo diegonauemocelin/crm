@@ -116,3 +116,23 @@ describe('Contatos do Google (CSV exportado)', () => {
     expect(parseGoogleContacts(parseCsv('Nome;Telefone\nAna;49999990000'))).toBeNull()
   })
 })
+
+describe('Compartilhar contato no chat', () => {
+  it('monta o cartão com o 55 e recusa nome ou telefone inválidos', async () => {
+    const { contactCard } = await import('../src/whatsapp/envio')
+    expect(contactCard('  Roberto   Vendas ', '(47) 99999-0000')).toEqual({ fullName: 'Roberto Vendas', wuid: '5547999990000', phoneNumber: '+55 47 99999-0000', text: 'Roberto Vendas · +55 47 99999-0000' })
+    expect(contactCard('Loja', '+55 47 3222-1100')).toMatchObject({ wuid: '554732221100', phoneNumber: '+55 47 3222-1100' })
+    expect(contactCard('Fornecedor EUA', '+1 555 123 4567')).toMatchObject({ wuid: '15551234567', phoneNumber: '+15551234567' })
+    expect(contactCard('', '47999990000')).toEqual({ error: 'Informe o nome do contato.' })
+    expect(contactCard('Ana', '123')).toHaveProperty('error')
+  })
+
+  it('mostra nome e telefone do contato que o cliente mandou', async () => {
+    const { parseMessage } = await import('../src/whatsapp/mensagens')
+    const key = { id: 'C1', remoteJid: '5547999990000@s.whatsapp.net', fromMe: false }
+    const vcard = 'BEGIN:VCARD\nVERSION:3.0\nFN:Mecânico João\nTEL;type=CELL;waid=5547988887777:+55 47 98888-7777\nEND:VCARD'
+    expect(parseMessage({ key, message: { contactMessage: { displayName: 'Mecânico João', vcard } } })?.text).toBe('Mecânico João · +5547988887777')
+    const semWaid = 'BEGIN:VCARD\r\nFN:Loja\r\nTEL;TYPE=WORK:(47) 3222-1100\r\nEND:VCARD'
+    expect(parseMessage({ key, message: { contactsArrayMessage: { contacts: [{ displayName: 'Loja', vcard: semWaid }, { displayName: 'Sem tel' }] } } })?.text).toBe('Loja · (47) 3222-1100\nSem tel')
+  })
+})

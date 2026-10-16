@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { type ChatService, LastSeller, quickPrefill, ServiceButtons, StageBadge, type StageInfo } from '@/components/chat/atendimento-chat'
 import { ClientPanel } from '@/components/chat/painel-cliente'
+import { ContactBubble, ShareContactButton } from '@/components/chat/compartilhar-contato'
 import { ToCallPanel } from '@/components/chat/para-chamar'
 import { type ChatLabel, LabelChip, LabelPicker, ManageRepliesDialog, useLabels } from '@/components/chat/organizar'
 import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -846,6 +847,7 @@ function Composer({ thread }: { thread: Thread }) {
             <DropdownMenuItem onSelect={() => setManaging(true)}>Gerenciar respostas</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <ShareContactButton conversationId={id} disabled={!!file} />
         <Textarea
           value={text}
           onChange={(e) => (setText(e.target.value), setPick(0))}
@@ -1090,6 +1092,7 @@ function Bubble({ m }: { m: Message }) {
   }
   if (m.type === 'audio') return m.hasFile ? <audio controls preload="none" src={src} className="max-w-full" /> : pending || missing || <p className="text-xs italic">Áudio</p>
   if (m.type === 'video') return <div className="space-y-1">{m.hasFile ? <video controls preload="none" src={src} className="max-h-72 max-w-full rounded" /> : pending || missing}{text}</div>
+  if (m.type === 'contato') return <ContactBubble text={m.text} />
   if (m.type === 'documento') {
     return (
       <div className="space-y-1">

@@ -13,7 +13,7 @@ import { SettingsService } from '../settings/settings.service'
 import { normalizePhone } from '../atendimento/br'
 import { type EvolutionClient, EvolutionError } from './evolution'
 import { sectorsOf, splitWhere } from './atendentes'
-import { type AgendaCategory, applyVariables, cleanRules, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
+import { type AgendaCategory, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
 import { parseCsv } from '../atendimento/planilha'
 import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, type ParsedMessage, phoneFromDigits, phoneVariants, previewOf } from './mensagens'
 
@@ -749,6 +749,41 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const body = c.number.signMessages ? signed(text, user.name, await this.signatureOf(user)) : text
     const r = await c.client.sendText(c.number.instanceName, c.target, body).catch((e: unknown) => this.fail(e))
     return this.recordSent(user, c, r, { type: 'texto', text: body })
+  }
+
+  /** Compartilha um contato (cartão) na conversa. */
+  async sendContact(user: AuthUser, id: string, d: { name: string; phone: string }) {
+    const card = contactCard(d.name, d.phone)
+    if ('error' in card) throw new BadRequestException(card.error)
+    const c = await this.sendContext(user, id)
+    const r = await c.client.sendContact(c.number.instanceName, c.target, card).catch((e: unknown) => this.fail(e))
+    return this.recordSent(user, c, r, { type: 'contato', text: card.text })
+  }
+
+  /**
+   * Contatos para compartilhar: vendedores e colegas da agenda (com telefone) e, para quem vê a base, os leads.
+   * Só nome e telefone, no máximo 20 por busca.
+   */
+  async shareOptions(user: AuthUser, search: string) {
+    this.assertAction(user, 'chat', 'create')
+    const s = search.trim().slice(0, 80)
+    const digits = s.replace(/\D/g, '')
+    const text = (field: string) => (s ? { [field]: { contains: s, mode: 'insensitive' as const } } : {})
+    const [sellers, agenda, leads] = await Promise.all([
+      this.prisma.seller.findMany({ where: { tenantId: user.tenantId, active: true, phone: { not: null }, ...(s ? { OR: [text('name'), ...(digits.length >= 3 ? [{ phone: { contains: digits } }] : [])] } : {}) }, orderBy: { name: 'asc' }, take: 10, select: { id: true, name: true, phone: true } }),
+      this.prisma.whatsappContact.findMany({ where: { tenantId: user.tenantId, contactKey: { startsWith: '+' }, ...(s ? { OR: [text('name'), ...(digits.length >= 3 ? [{ contactKey: { contains: digits } }] : [])] } : {}) }, orderBy: { name: 'asc' }, take: 10, select: { id: true, name: true, contactKey: true, category: true } }),
+      can(user.permissions, user.role.isSystem, 'leads', 'view') && s.length >= 2
+        ? this.prisma.lead.findMany({ where: { tenantId: user.tenantId, deletedAt: null, anonymizedAt: null, phone: { not: null }, OR: [text('name'), ...(digits.length >= 3 ? [{ phone: { contains: digits } }] : [])] }, orderBy: { updatedAt: 'desc' }, take: 10, select: { id: true, name: true, phone: true } })
+        : [],
+    ])
+    const CAT: Record<string, string> = { CLIENTE: 'Cliente', COLEGA: 'Colega', FORNECEDOR: 'Fornecedor', OUTRO: 'Agenda' }
+    const out = [
+      ...sellers.map((x) => ({ key: `s-${x.id}`, name: x.name, phone: x.phone!, source: 'Vendedor' })),
+      ...agenda.map((x) => ({ key: `a-${x.id}`, name: x.name ?? x.contactKey, phone: x.contactKey, source: CAT[x.category] ?? 'Agenda' })),
+      ...leads.map((x) => ({ key: `l-${x.id}`, name: x.name ?? x.phone!, phone: x.phone!, source: 'Lead' })),
+    ]
+    const seen = new Set<string>()
+    return out.filter((x) => !seen.has(x.phone) && seen.add(x.phone)).slice(0, 20)
   }
 
   async sendFile(user: AuthUser, id: string, file: Express.Multer.File | undefined, caption?: string, voice = false) {

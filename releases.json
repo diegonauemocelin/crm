@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.52.0",
+      "date": "2026-10-16",
+      "title": "Compartilhar contato no chat",
+      "changes": [
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Compartilhar contato na conversa: botão ao lado das respostas rápidas. Busque um vendedor, alguém da agenda ou um lead (ou digite nome e telefone) e envie o cartão; o cliente pode conversar ou salvar o contato direto no WhatsApp." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Contato recebido (cartão que o cliente manda) aparece com o nome e o telefone, com o telefone clicável para ligar. Antes vinha só o nome." }
+      ]
+    },
+    {
       "version": "0.51.0",
       "date": "2026-10-16",
       "title": "Grupos separados no chat e contatos do Google",

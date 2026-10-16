@@ -368,6 +368,26 @@ export function parseGoogleContacts(table: string[][]) {
   return { rows, skipped }
 }
 
+/**
+ * Cartão de contato para enviar no chat: nome (1 a 80 letras) e telefone. Celular do Brasil sem DDI ganha o 55;
+ * o WhatsApp usa os dígitos (wuid) para mostrar o botão "Conversar". Devolve o erro em português quando não dá.
+ */
+export function contactCard(nameRaw: string, phoneRaw: string): { fullName: string; wuid: string; phoneNumber: string; text: string } | { error: string } {
+  const fullName = nameRaw.replace(/\s+/g, ' ').trim().slice(0, 80)
+  if (!fullName) return { error: 'Informe o nome do contato.' }
+  let d = phoneRaw.replace(/\D/g, '')
+  if (phoneRaw.trim().startsWith('+')) {
+    if (d.length < 10 || d.length > 15) return { error: 'Telefone inválido.' }
+  } else {
+    if (d.startsWith('0')) d = d.replace(/^0+/, '')
+    if (d.length === 10 || d.length === 11) d = `55${d}`
+    if (d.length < 12 || d.length > 15) return { error: 'Telefone inválido. Use DDD e número, ex.: (47) 99999-0000.' }
+  }
+  const br = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(d)
+  const phoneNumber = br ? `+55 ${br[1]} ${br[2]}-${br[3]}` : `+${d}`
+  return { fullName, wuid: d, phoneNumber, text: `${fullName} · ${phoneNumber}` }
+}
+
 /** Quoted-printable (vCard 2.1 do Android): "=C3=A9" vira "é". */
 function decodeQuotedPrintable(v: string) {
   const bytes: number[] = []

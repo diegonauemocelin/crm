@@ -32,6 +32,15 @@ class TextDto {
   @IsString() @Length(1, 4000) text!: string
 }
 
+class ContactDto {
+  @IsString() @Length(1, 80) name!: string
+  @IsString() @Length(8, 30) phone!: string
+}
+
+class ShareSearchDto {
+  @IsOptional() @IsString() @MaxLength(80) busca?: string
+}
+
 class CaptionDto {
   @IsOptional() @IsString() @MaxLength(1000) legenda?: string
 }
@@ -261,6 +270,20 @@ export class ChatController {
   @Put('conversas/:id/tipo')
   setCategory(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CategoryDto) {
     return this.chat.setCategory(user, id, dto)
+  }
+
+  /** Compartilhar um contato (cartão) na conversa. */
+  @Post('conversas/:id/contato')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  sendContact(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ContactDto) {
+    return this.chat.sendContact(user, id, dto)
+  }
+
+  /** Sugestões de contatos para compartilhar (vendedores, agenda e leads). */
+  @Get('contatos-para-compartilhar')
+  shareOptions(@CurrentUser() user: AuthUser, @Query() q: ShareSearchDto) {
+    return this.chat.shareOptions(user, q.busca ?? '')
   }
 
   @Post('conversas/:id/mensagens')

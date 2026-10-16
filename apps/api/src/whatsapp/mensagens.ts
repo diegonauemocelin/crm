@@ -100,14 +100,28 @@ export function parseMessage(data: unknown): ParsedMessage | null {
     const coords = Number.isFinite(lat) && Number.isFinite(lng) ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : ''
     return { ...base, type: 'localizacao', text: [where, coords].filter(Boolean).join(' · ') || 'Localização', media: null }
   }
-  const ctt = o('contactMessage') ?? o('contactsArrayMessage')
-  if (ctt) return { ...base, type: 'contato', text: str(ctt.displayName, 200) ?? 'Contato', media: null }
+  const ctt = o('contactMessage')
+  if (ctt) return { ...base, type: 'contato', text: contactLine(ctt), media: null }
+  const many = o('contactsArrayMessage')
+  if (many) {
+    const list = (Array.isArray(many.contacts) ? (many.contacts as Obj[]) : []).slice(0, 10).map(contactLine)
+    return { ...base, type: 'contato', text: list.join('\n') || str(many.displayName, 200) || 'Contato', media: null }
+  }
   const poll = o('pollCreationMessage') ?? o('pollCreationMessageV3')
   if (poll) return { ...base, type: 'outro', text: `Enquete: ${str(poll.name, 300) ?? ''}`, media: null }
   // Reações, avisos do sistema e chaves de criptografia não viram mensagem na conversa.
   const keys = Object.keys(m).filter((k) => k !== 'messageContextInfo')
   if (!keys.length || keys.some((k) => ['reactionMessage', 'protocolMessage', 'senderKeyDistributionMessage', 'pollUpdateMessage', 'keepInChatMessage'].includes(k))) return null
   return { ...base, type: 'outro', text: 'Mensagem de um tipo que o CRM ainda não mostra (veja no celular).', media: null }
+}
+
+/** "Nome · +55 47 99999-0000" a partir do cartão (vCard) que veio na mensagem. */
+function contactLine(c: Obj) {
+  const name = str(c.displayName, 120)
+  const vcard = str(c.vcard, 8000) ?? ''
+  const waid = /waid=(\d{8,15})/i.exec(vcard)?.[1]
+  const tel = waid ? `+${waid}` : (/\nTEL[^:\n]*:([^\n]+)/i.exec(vcard)?.[1]?.trim() ?? null)
+  return [name ?? 'Contato', tel].filter(Boolean).join(' · ').slice(0, 200)
 }
 
 /** Telefone do contato no formato da base (+55...). No Brasil, celular sem o 9 (contas antigas) ganha o 9. */
