@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.55.0",
+      "date": "2026-10-16",
+      "title": "Atendente padrão, participantes na conversa e salvar contato",
+      "changes": [
+        { "type": "novo", "area": "Números de WhatsApp", "text": "Atendimento dividido: \"Atendente que recebe os clientes novos\". Todo cliente que chamar sem atendente vai direto para essa pessoa, sem passar pela fila. Sem ninguém escolhido, continua como antes (fila até alguém assumir)." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Participantes na conversa: quem atende pode adicionar outros atendentes do mesmo número de WhatsApp. Eles passam a ver e responder a conversa; o cliente continua de quem atende. Transferir a conversa para um participante tira ele da lista de participantes." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Salvar contato: botão no topo da conversa grava o número na agenda do número de WhatsApp, com nome e tipo. Telefone já salvo é atualizado (não duplica) e o nome passa a aparecer na conversa. Mudar o tipo é para quem pode editar o chat." }
+      ]
+    },
+    {
       "version": "0.54.0",
       "date": "2026-10-16",
       "title": "Encaminhar mensagens no chat",

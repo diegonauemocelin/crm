@@ -32,6 +32,8 @@ interface WaNumber {
   /** Logins que usam o número (com o escopo "Próprios", só eles veem as conversas). */
   userIds: string[]
   splitAttendance?: boolean
+  /** Atendente que recebe todos os clientes novos (atendimento dividido). */
+  defaultUserId?: string | null
   sectors?: { id: string; name: string; userIds: string[] }[]
   createRecords: boolean
   signMessages: boolean
@@ -134,7 +136,7 @@ function Numbers() {
                     <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
                       <UsersIcon className="mt-0.5 size-3.5 shrink-0" />
                       {n.userIds?.length ? `Usam: ${n.userIds.map((id) => d?.users.find((u) => u.id === id)?.name ?? 'usuário removido').join(', ')}` : 'Nenhum usuário ligado (só quem vê todas as conversas)'}
-                      {n.splitAttendance ? ` · atendimento dividido${n.sectors?.length ? ` (${n.sectors.map((s) => s.name).join(', ')})` : ''}` : ''}
+                      {n.splitAttendance ? ` · atendimento dividido${n.sectors?.length ? ` (${n.sectors.map((s) => s.name).join(', ')})` : ''}${n.defaultUserId ? ` · clientes novos para ${d?.users.find((u) => u.id === n.defaultUserId)?.name ?? 'usuário removido'}` : ''}` : ''}
                     </p>
                     {n.status === 'CONECTADO' && n.connectedAt && <p className="text-xs text-muted-foreground">Conectado desde {formatDateTime(n.connectedAt)}</p>}
                     {n.status === 'DESCONECTADO' && n.statusReason && (
@@ -218,13 +220,14 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
   const [sellerIds, setSellerIds] = useState<string[]>(number?.sellerIds ?? [])
   const [userIds, setUserIds] = useState<string[]>(number?.userIds ?? [])
   const [split, setSplit] = useState(number?.splitAttendance ?? false)
+  const [defaultUserId, setDefaultUserId] = useState<string | null>(number?.defaultUserId ?? null)
   const [sectors, setSectors] = useState<{ id?: string; name: string; userIds: string[] }[]>(number?.sectors ?? [])
   const [createRecords, setCreateRecords] = useState(number?.createRecords ?? true)
   const [signMessages, setSignMessages] = useState(number?.signMessages ?? true)
   const [error, setError] = useState<string | null>(null)
   const save = useMutation({
     mutationFn: () => {
-      const body = { name, unitId, sellerIds, userIds, splitAttendance: split, sectors: split ? sectors.filter((s) => s.name.trim()) : [], createRecords, signMessages }
+      const body = { name, unitId, sellerIds, userIds, splitAttendance: split, defaultUserId: split && defaultUserId && userIds.includes(defaultUserId) ? defaultUserId : null, sectors: split ? sectors.filter((s) => s.name.trim()) : [], createRecords, signMessages }
       return number ? api.put(`/whatsapp/numeros/${number.id}`, body) : api.post('/whatsapp/numeros', body)
     },
     onSuccess: () => {
@@ -283,10 +286,33 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
             <label className="flex items-start justify-between gap-3">
               <span>
                 Atendimento dividido entre os usuários
-                <span className="block text-xs text-muted-foreground">Cada cliente fica com um atendente: os outros do número não leem a conversa. Clientes novos entram na fila até alguém assumir (ou responder). Conversas com colegas, fornecedores e outros ficam visíveis para todos.</span>
+                <span className="block text-xs text-muted-foreground">Cada cliente fica com um atendente: os outros do número não leem a conversa, a não ser que sejam adicionados como participantes. Clientes novos vão para o atendente padrão (abaixo) ou entram na fila até alguém assumir (ou responder). Conversas com colegas, fornecedores e outros ficam visíveis para todos.</span>
               </span>
               <Switch checked={split} onCheckedChange={setSplit} />
             </label>
+            {split && (
+              <div className="space-y-1.5 border-t pt-3">
+                <Label htmlFor="wa-n-default" className="text-xs font-medium">
+                  Atendente que recebe os clientes novos
+                </Label>
+                <Select value={defaultUserId && userIds.includes(defaultUserId) ? defaultUserId : NONE} onValueChange={(v) => setDefaultUserId(v === NONE ? null : v)}>
+                  <SelectTrigger id="wa-n-default" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>Ninguém: os clientes novos entram na fila</SelectItem>
+                    {users
+                      .filter((u) => userIds.includes(u.id))
+                      .map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">Todo cliente que chamar sem atendente vai direto para esta pessoa. Ela pode transferir ou adicionar outros atendentes do número como participantes.</p>
+              </div>
+            )}
             {split && (
               <div className="space-y-2 border-t pt-3">
                 <p className="text-xs font-medium">Setores (opcional)</p>

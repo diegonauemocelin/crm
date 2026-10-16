@@ -3,7 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express'
 import { Throttle } from '@nestjs/throttler'
 import { ApiTags } from '@nestjs/swagger'
 import { Transform, Type } from 'class-transformer'
-import { ArrayMaxSize, IsBoolean, IsObject, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
+import { ArrayMaxSize, IsArray, IsBoolean, IsObject, IsIn, IsInt, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
 import type { Response } from 'express'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
@@ -30,6 +30,15 @@ class ListDto {
 
 class TextDto {
   @IsString() @Length(1, 4000) text!: string
+}
+
+class SaveAsContactDto {
+  @IsString() @Length(1, 120) name!: string
+  @IsIn(['CLIENTE', 'COLEGA', 'FORNECEDOR', 'OUTRO']) category!: 'CLIENTE' | 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
+}
+
+class HelpersDto {
+  @IsArray() @ArrayMaxSize(20) @IsUUID('all', { each: true }) userIds!: string[]
 }
 
 class ForwardTargetDto {
@@ -436,6 +445,20 @@ export class ChatController {
   @HttpCode(200)
   assign(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AssignDto, @ReqContext() ctx: RequestCtx) {
     return this.chat.assign(user, id, dto, ctx)
+  }
+
+  /** Salvar o número da conversa como contato na agenda do número de WhatsApp. */
+  @Post('conversas/:id/salvar-contato')
+  @HttpCode(200)
+  saveAsContact(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SaveAsContactDto) {
+    return this.chat.saveAsContact(user, id, dto)
+  }
+
+  /** Participantes: outros atendentes do mesmo número que também atendem a conversa (lista completa). */
+  @Post('conversas/:id/participantes')
+  @HttpCode(200)
+  setHelpers(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: HelpersDto, @ReqContext() ctx: RequestCtx) {
+    return this.chat.setHelpers(user, id, dto.userIds, ctx)
   }
 
   /** Nota interna: só no CRM, o cliente não recebe. */

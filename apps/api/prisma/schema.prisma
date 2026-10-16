@@ -1316,6 +1316,8 @@ model WhatsappNumber {
   userIds        String[]  @default([]) @db.Uuid
   /// Atendimento dividido: cada conversa de cliente tem um atendente; os outros do número não leem (veem a fila e os contatos da empresa).
   splitAttendance Boolean  @default(false)
+  /// Atendimento dividido: atendente que recebe todos os clientes novos que chamarem neste número (vazio = ficam na fila).
+  defaultUserId  String?   @db.Uuid
   /// Setores do número: [{ id, name, userIds }]. Conversa na fila de um setor só aparece para os atendentes dele.
   sectors        Json      @default("[]")
   /// Este número abre pré-venda (desligue em números que não são de venda). O que vira lead segue as regras do WhatsApp.
@@ -1348,6 +1350,8 @@ model WhatsappConversation {
   assignedSellerId String?   @db.Uuid
   /// Atendente (login) da conversa nos números com atendimento dividido; vazio = na fila.
   assignedUserId   String?   @db.Uuid
+  /// Participantes: outros atendentes do mesmo número que também veem e respondem esta conversa.
+  helperUserIds    String[]  @default([]) @db.Uuid
   /// Setor da fila (id do setor do número).
   sectorId         String?
   /// CLIENTE, COLEGA, FORNECEDOR ou OUTRO (vem do cadastro do contato, para filtrar a lista)

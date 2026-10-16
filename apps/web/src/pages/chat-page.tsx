@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, AlertCircleIcon, CheckCheckIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, AlertCircleIcon, CheckCheckIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, InfoIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, ZapIcon } from 'lucide-react'
 import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -91,7 +91,9 @@ interface Message {
   status?: string | null
 }
 interface Thread {
-  conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; sectorId?: string | null; category: ContactCategory | 'GRUPO'; labels?: ChatLabel[] }
+  conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; helpers?: { id: string; name: string }[]; sectorId?: string | null; category: ContactCategory | 'GRUPO'; labels?: ChatLabel[] }
+  /** Contato salvo na agenda do número (ou na geral). */
+  agenda?: { name: string | null; category: string; general: boolean } | null
   number: NumberRef | null
   attendance?: { split: boolean; sectors: { id: string; name: string }[]; attendants: { id: string; name: string }[] } | null
   lead: { id: string; name: string | null; email: string | null; phone: string | null } | null
@@ -535,6 +537,8 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
           )}
           <span className="hidden h-5 w-px bg-border @2xl/head:block" />
           {!monitor && d.attendance?.split && d.conversation.category === 'CLIENTE' && <AttendantPicker thread={d} />}
+          {!monitor && d.attendance?.split && d.conversation.category === 'CLIENTE' && <HelpersPicker thread={d} />}
+          {!monitor && d.conversation.category !== 'GRUPO' && d.conversation.phone && <SaveContactButton thread={d} />}
           {!monitor && <ConversationActions thread={d} />}
         </div>
       </div>
@@ -681,6 +685,151 @@ function AttendantPicker({ thread }: { thread: Thread }) {
         <Badge variant="outline">com {thread.conversation.assignedUserName ?? 'outro atendente'}</Badge>
       )}
     </>
+  )
+}
+
+/**
+ * Participantes: outros atendentes do mesmo número que também veem e respondem a conversa. O cliente continua
+ * de quem atende; quem atende (ou quem pode editar o chat) escolhe.
+ */
+function HelpersPicker({ thread }: { thread: Thread }) {
+  const qc = useQueryClient()
+  const { me, can } = useAuth()
+  const id = thread.conversation.id
+  const current = thread.conversation.helpers ?? []
+  const [open, setOpen] = useState(false)
+  const [picked, setPicked] = useState<string[]>([])
+  const mine = thread.conversation.assignedUserId === me?.id
+  const allowed = mine || can('chat', 'edit')
+  const options = (thread.attendance?.attendants ?? []).filter((a) => a.id !== thread.conversation.assignedUserId)
+  const save = useMutation({
+    mutationFn: (userIds: string[]) => api.post(`/chat/conversas/${id}/participantes`, { userIds }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['chat-conversa', id] })
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+      setOpen(false)
+      toast.success('Participantes atualizados.')
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  if (!allowed && !current.length) return null
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o)
+        if (o) setPicked(current.map((h) => h.id))
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button size="sm" variant="outline" title={current.length ? `Participantes: ${current.map((h) => h.name).join(', ')}` : 'Adicionar outro atendente deste número na conversa'} aria-label="Participantes">
+          <UsersIcon /> <span className="hidden @4xl/head:inline">{current.length ? `+${current.length}` : 'Participantes'}</span>
+          {current.length > 0 && <span className="@4xl/head:hidden">+{current.length}</span>}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 space-y-2">
+        <p className="text-sm font-medium">Participantes da conversa</p>
+        <p className="text-xs text-muted-foreground">Atendentes deste número que também veem e respondem. O cliente continua com {thread.conversation.assignedUserName ?? 'quem atende'}.</p>
+        {options.length === 0 && <p className="text-sm text-muted-foreground">Não há outros atendentes neste número.</p>}
+        <ul className="max-h-56 space-y-1 overflow-y-auto">
+          {options.map((a) => (
+            <li key={a.id}>
+              <label className={cn('flex items-center gap-2 rounded px-1.5 py-1 text-sm', allowed ? 'cursor-pointer hover:bg-muted' : 'opacity-70')}>
+                <input
+                  type="checkbox"
+                  className="size-4 accent-[color:var(--brand)]"
+                  checked={picked.includes(a.id)}
+                  disabled={!allowed}
+                  onChange={(e) => setPicked((p) => (e.target.checked ? [...p, a.id] : p.filter((x) => x !== a.id)))}
+                />
+                {a.id === me?.id ? `${a.name} (você)` : a.name}
+              </label>
+            </li>
+          ))}
+        </ul>
+        {allowed && (
+          <Button size="sm" className="w-full" onClick={() => save.mutate(picked)} disabled={save.isPending}>
+            {save.isPending && <Loader2Icon className="animate-spin" />} Salvar participantes
+          </Button>
+        )}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+/** Salvar o número da conversa como contato na agenda do número (nome e tipo). Já na agenda: edita. */
+function SaveContactButton({ thread }: { thread: Thread }) {
+  const qc = useQueryClient()
+  const { can } = useAuth()
+  const id = thread.conversation.id
+  const saved = thread.agenda
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [category, setCategory] = useState<ContactCategory>('CLIENTE')
+  const save = useMutation({
+    mutationFn: () => api.post(`/chat/conversas/${id}/salvar-contato`, { name: name.trim(), category }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['chat-conversa', id] })
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+      setOpen(false)
+      toast.success(`Contato salvo na agenda do número ${thread.number?.name ?? ''}.`)
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o)
+        if (o) {
+          setName(saved?.name ?? thread.lead?.name ?? thread.conversation.name ?? '')
+          setCategory(((saved?.category ?? thread.conversation.category) as ContactCategory) || 'CLIENTE')
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button size="sm" variant="outline" title={saved && !saved.general ? `Na agenda: ${saved.name ?? 'sem nome'}` : 'Salvar este número como contato na agenda'} aria-label={saved && !saved.general ? 'Editar contato da agenda' : 'Salvar contato'}>
+          <BookUserIcon /> <span className="hidden @4xl/head:inline">{saved && !saved.general ? 'Na agenda' : 'Salvar contato'}</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72">
+        <form
+          className="space-y-2"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault()
+            if (name.trim()) save.mutate()
+          }}
+        >
+          <p className="text-sm font-medium">{saved && !saved.general ? 'Contato da agenda' : 'Salvar na agenda'}</p>
+          <p className="text-xs text-muted-foreground">
+            {formatPhone(thread.conversation.phone)} · agenda do número {thread.number?.name}. Telefone já salvo é atualizado, não duplica.
+          </p>
+          <div className="space-y-1">
+            <Label htmlFor="sc-name">Nome</Label>
+            <Input id="sc-name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} autoFocus />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="sc-cat">Tipo</Label>
+            <Select value={category} onValueChange={(v) => setCategory(v as ContactCategory)} disabled={!can('chat', 'edit')}>
+              <SelectTrigger id="sc-cat" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(CATEGORY_LABEL) as ContactCategory[]).map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {CATEGORY_LABEL[c]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!can('chat', 'edit') && <p className="text-xs text-muted-foreground">Mudar o tipo é com quem pode editar o chat.</p>}
+          </div>
+          <Button type="submit" size="sm" className="w-full" disabled={!name.trim() || save.isPending}>
+            {save.isPending && <Loader2Icon className="animate-spin" />} Salvar
+          </Button>
+        </form>
+      </PopoverContent>
+    </Popover>
   )
 }
 

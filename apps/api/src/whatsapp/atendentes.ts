@@ -46,6 +46,8 @@ export function splitWhere(userId: string, numbers: { id: string; sectors: unkno
       numberId: n.id,
       OR: [
         { assignedUserId: userId },
+        // Participante: outro atendente me colocou na conversa.
+        { helperUserIds: { has: userId } },
         { category: { not: 'CLIENTE' } },
         { assignedUserId: null, OR: [{ sectorId: null }, ...(mine.length ? [{ sectorId: { in: mine } }] : [])] },
       ],

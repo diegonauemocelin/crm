@@ -12,6 +12,7 @@ class NumberDto {
   @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) sellerIds?: string[]
   @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() @ArrayMaxSize(100) @IsUUID('all', { each: true }) userIds?: string[]
   @ApiPropertyOptional() @IsOptional() @IsBoolean() splitAttendance?: boolean
+  @ApiPropertyOptional({ description: 'Atendente que recebe os clientes novos (um dos usuários do número)' }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() defaultUserId?: string | null
   @ApiPropertyOptional({ description: '[{ id?, name, userIds }]' }) @IsOptional() @IsArray() @ArrayMaxSize(20) sectors?: unknown[]
   @ApiPropertyOptional() @IsOptional() @IsBoolean() createRecords?: boolean
   @ApiPropertyOptional() @IsOptional() @IsBoolean() signMessages?: boolean
