@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.59.2",
+      "date": "2026-10-19",
+      "title": "Deploy apaga imagens antigas e confere o espaço em disco",
+      "changes": [
+        { "type": "correcao", "area": "Sistema", "text": "Disco cheio na VPS derrubava o banco (e com ele o CRM e o WhatsApp): cada atualização baixava imagens novas e as das versões antigas nunca eram apagadas. Agora o deploy apaga as antigas sozinho, mantendo a versão atual e a anterior (para o rollback)." },
+        { "type": "infra", "area": "Sistema", "text": "Novo comando deploy/limpar-imagens.sh para liberar espaço na hora; e o deploy não começa com menos de 1,5 GB livres, avisando o que fazer." }
+      ]
+    },
+    {
       "version": "0.59.1",
       "date": "2026-10-19",
       "title": "API espera o banco voltar depois de uma queda",

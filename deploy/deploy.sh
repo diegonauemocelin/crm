@@ -20,6 +20,12 @@ ALVO="${1:-}"
 [ -n "$ALVO" ] || fatal "Nenhuma versão (tag vX.Y.Z) publicada no repositório."
 git rev-parse -q --verify "refs/tags/$ALVO" >/dev/null || fatal "Versão $ALVO não existe."
 
+# Disco cheio derruba o banco (ele entra em pane ao gravar). Sem folga, nem começa: libere espaço antes.
+LIVRE_MB="$(df -Pm "$RAIZ" | awk 'NR==2 {print $4}')"
+if [ "${LIVRE_MB:-0}" -lt 1500 ]; then
+  fatal "Pouco espaço em disco: ${LIVRE_MB:-0} MB livres (mínimo 1.500 MB). Veja o que ocupa com: sudo docker system df  e  sudo du -sh $RAIZ/backups /var/log. Imagens antigas do CRM saem com: sudo bash deploy/limpar-imagens.sh"
+fi
+
 ATUAL_TAG="$(env_get CRM_VERSION)"
 ATUAL_REF="$(git rev-parse HEAD)"
 VERSAO="${ALVO#v}"
@@ -67,4 +73,6 @@ trap - ERR
 
 registrar "deploy" "$VERSAO"
 docker image prune -f --filter "label=com.docker.compose.project=usaparts-crm" >/dev/null 2>&1 || true
+# Imagens das versões antigas do CRM: ficam só a atual e a anterior (o rollback volta para ela sem baixar de novo).
+bash "$RAIZ/deploy/limpar-imagens.sh" "$VERSAO" "${ATUAL_TAG:-}" || true
 ok "Versão $VERSAO no ar."
