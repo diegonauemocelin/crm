@@ -229,3 +229,14 @@ describe('avisos de segurança por e-mail (Fase 8)', () => {
     expect(sent[0]!.text).toMatch(/troque a senha/)
   })
 })
+
+describe('API espera o banco voltar', () => {
+  it('reconhece banco subindo ou em recuperação (e não confunde com outros erros)', async () => {
+    const { isDatabaseStarting } = await import('../src/prisma/prisma.service')
+    expect(isDatabaseStarting({ message: 'Database error. Code: `57P03`. Message: `the database system is in recovery mode`' })).toBe(true)
+    expect(isDatabaseStarting({ message: 'x', meta: { driverAdapterError: 'the database system is not yet accepting connections' } })).toBe(true)
+    expect(isDatabaseStarting(new Error('connect ECONNREFUSED 172.18.0.2:5432'))).toBe(true)
+    expect(isDatabaseStarting(new Error('relation "users" does not exist'))).toBe(false)
+    expect(isDatabaseStarting(new Error('password authentication failed for user "crm"'))).toBe(false)
+  })
+})

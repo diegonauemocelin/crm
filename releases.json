@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.59.1",
+      "date": "2026-10-19",
+      "title": "API espera o banco voltar depois de uma queda",
+      "changes": [
+        { "type": "correcao", "area": "Sistema", "text": "Banco de dados em recuperação depois de uma queda: a API espera ele voltar (até 2 minutos) em vez de cair na inicialização e ficar reiniciando sem parar, o que deixava todas as telas com \"Internal server error\"." }
+      ]
+    },
+    {
       "version": "0.59.0",
       "date": "2026-10-19",
       "title": "Campo Tipo de cliente nos formulários e pop-ups",
