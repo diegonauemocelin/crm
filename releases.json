@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.61.0",
+      "date": "2026-10-19",
+      "title": "Corrigir e apagar mensagens enviadas no chat",
+      "changes": [
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Corrigir mensagem enviada: no menu ⋮ da mensagem, \"Corrigir mensagem\" troca o texto no WhatsApp do cliente (aparece \"Editada\"). O WhatsApp só deixa corrigir até 15 minutos depois do envio; a assinatura com o nome continua." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Apagar para todos: a mensagem (texto, foto, áudio, vídeo, arquivo) some do WhatsApp do cliente e, no CRM, fica \"Você apagou esta mensagem\". Vale até 2 dias depois do envio." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Mensagem que o cliente apagou ou editou no WhatsApp também aparece assim no CRM (\"O contato apagou esta mensagem\" / \"Editada\")." },
+        { "type": "seguranca", "area": "Chat WhatsApp", "text": "Cada um corrige e apaga as próprias mensagens; as de outras pessoas (ou enviadas pelo celular) só quem tem \"Editar\" no Chat WhatsApp. O texto antes da correção ou da exclusão fica registrado na auditoria." }
+      ]
+    },
+    {
       "version": "0.60.0",
       "date": "2026-10-19",
       "title": "Prazo para chamar o cliente e mensagem automática no dia seguinte",

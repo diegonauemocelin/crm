@@ -85,6 +85,20 @@ export function signed(text: string, name: string, signature?: string | null) {
   return label ? `*${label}:*\n${text}` : text
 }
 
+/** Limites do WhatsApp para mexer numa mensagem já enviada: editar até 15 minutos; apagar para todos até 2 dias. */
+export const EDIT_WINDOW_MS = 15 * 60_000
+export const DELETE_WINDOW_MS = 2 * 86_400_000
+
+/**
+ * O que ainda dá para fazer com uma mensagem: só as enviadas pela empresa (não as do cliente nem as notas internas),
+ * dentro do prazo do WhatsApp. Editar só texto; apagar qualquer tipo.
+ */
+export function sentActions(m: { fromMe: boolean; internal: boolean; type: string; sentAt: Date; deletedAt: Date | null; status?: string | null }, now = Date.now()) {
+  if (!m.fromMe || m.internal || m.deletedAt || m.status === 'ERRO') return { edit: false, delete: false }
+  const age = now - m.sentAt.getTime()
+  return { edit: m.type === 'texto' && age <= EDIT_WINDOW_MS, delete: age <= DELETE_WINDOW_MS }
+}
+
 /**
  * Ritmo de envio por número (proteção contra bloqueio do WhatsApp): no máximo 20 mensagens por minuto e 300 por hora.
  * Atendimento normal fica bem abaixo disso; o limite pega cópia e cola em massa.

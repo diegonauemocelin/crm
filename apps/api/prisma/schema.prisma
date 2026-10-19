@@ -1416,6 +1416,9 @@ model WhatsappMessage {
   quotedText     String?
   /// Reações: [{ emoji, by: "me" | "them", key, name }] (uma por pessoa).
   reactions      Json?
+  /// Editada (pelo CRM, pelo celular da empresa ou pelo cliente) e apagada para todos (o texto deixa de aparecer).
+  editedAt       DateTime?
+  deletedAt      DateTime?
   createdAt      DateTime @default(now())
 
   conversation WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

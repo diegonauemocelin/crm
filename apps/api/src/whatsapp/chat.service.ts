@@ -14,9 +14,9 @@ import { normalizePhone } from '../atendimento/br'
 import { callHoursOf, DEFAULT_ATENDIMENTO } from '../atendimento/service-records.service'
 import { type EvolutionClient, EvolutionError } from './evolution'
 import { sectorsOf, splitWhere } from './atendentes'
-import { type AgendaCategory, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
+import { type AgendaCategory, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
 import { parseCsv } from '../atendimento/planilha'
-import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, parseReaction, type ParsedMessage, phoneFromDigits, phoneVariants, previewOf, withReaction } from './mensagens'
+import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, parseReaction, parseRevision, type ParsedMessage, type ParsedRevision, phoneFromDigits, phoneVariants, previewOf, withReaction } from './mensagens'
 
 const PAGE = 60
 
@@ -105,7 +105,9 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const p = parseMessage(data)
     if (!p) {
       const r = parseReaction(data)
-      return r ? this.applyReaction(n, r).catch((err: unknown) => this.logger.warn(`Reação não gravada (${n.name}): ${(err as Error).message}`)) : Promise.resolve()
+      if (r) return this.applyReaction(n, r).catch((err: unknown) => this.logger.warn(`Reação não gravada (${n.name}): ${(err as Error).message}`))
+      const v = parseRevision(data)
+      return v ? this.applyRevision(n, v).catch((err: unknown) => this.logger.warn(`Edição de mensagem não gravada (${n.name}): ${(err as Error).message}`)) : Promise.resolve()
     }
     // Mesma fila para as duas formas do celular (com e sem o 9).
     const key = `${n.id}:${phoneFromDigits(p.phoneDigits) ?? p.jid}`
@@ -130,6 +132,20 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (!m) return
     const reactions = withReaction(m.reactions, { emoji: r.emoji, by: r.fromMe ? 'me' : 'them', key: r.reactor, name: r.name })
     await this.prisma.whatsappMessage.update({ where: { id: m.id }, data: { reactions: reactions as unknown as Prisma.InputJsonValue } })
+  }
+
+  /** Mensagem apagada para todos ou editada no WhatsApp (pelo cliente, pelo celular da empresa ou a volta do envio do CRM). */
+  private async applyRevision(n: WhatsappNumber, v: ParsedRevision) {
+    const m = await this.prisma.whatsappMessage.findFirst({ where: { tenantId: n.tenantId, waId: v.targetWaId, conversation: { numberId: n.id } }, select: { id: true, conversationId: true, sentAt: true, type: true, deletedAt: true } })
+    if (!m || m.deletedAt) return
+    const at = new Date()
+    if (v.kind === 'apagada') {
+      await this.prisma.whatsappMessage.update({ where: { id: m.id }, data: { deletedAt: at, text: null } })
+      await this.prisma.whatsappConversation.updateMany({ where: { id: m.conversationId, lastMessageAt: m.sentAt }, data: { lastPreview: 'Mensagem apagada' } })
+      return
+    }
+    await this.prisma.whatsappMessage.update({ where: { id: m.id }, data: { editedAt: at, text: v.text } })
+    await this.prisma.whatsappConversation.updateMany({ where: { id: m.conversationId, lastMessageAt: m.sentAt }, data: { lastPreview: previewOf({ type: m.type as ParsedMessage['type'], text: v.text }) } })
   }
 
   private async storeGroup(n: WhatsappNumber, p: ParsedMessage, client: EvolutionClient | null) {
@@ -605,7 +621,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       messages: rows
         .slice(0, PAGE)
         .reverse()
-        .map((m) => ({ id: m.id, fromMe: m.fromMe, type: m.type, text: m.text, fileName: m.fileName, mime: m.mime, mediaStatus: m.mediaStatus, hasFile: !!m.fileId, sentAt: m.sentAt, sentByName: m.sentByName, status: m.status, internal: m.internal, quotedText: m.quotedText, quotedFromMe: m.quotedWaId ? (quotedMine.get(m.quotedWaId) ?? null) : null, reactions: Array.isArray(m.reactions) ? m.reactions : [] })),
+        .map((m) => (monitor ? { ...this.messageView(m, user, m.quotedWaId ? (quotedMine.get(m.quotedWaId) ?? null) : null), canEdit: false, canDelete: false } : this.messageView(m, user, m.quotedWaId ? (quotedMine.get(m.quotedWaId) ?? null) : null))),
     }
   }
 
@@ -786,7 +802,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       const taken = await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: c.conv.numberId, jid: r.remoteJid } } })
       if (!taken) await this.prisma.whatsappConversation.update({ where: { id: c.conv.id }, data: { jid: r.remoteJid } })
     }
-    return { id: msg.id, fromMe: true, type: msg.type, text: msg.text, fileName: msg.fileName, mime: msg.mime, mediaStatus: msg.mediaStatus, hasFile: !!msg.fileId, sentAt: msg.sentAt, sentByName: msg.sentByName, status: msg.status, quotedText: msg.quotedText }
+    return this.messageView(msg, user)
   }
 
   /**
@@ -820,8 +836,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     return { conversationId: conv.id }
   }
 
-  private fail(err: unknown): never {
-    if (err instanceof EvolutionError) throw new BadRequestException(`Não foi enviada: ${err.message}`)
+  private fail(err: unknown, prefix = 'Não foi enviada'): never {
+    if (err instanceof EvolutionError) throw new BadRequestException(`${prefix}: ${err.message}`)
     throw err
   }
 
@@ -842,6 +858,65 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const body = c.number.signMessages ? signed(text, user.name, await this.signatureOf(user)) : text
     const r = await c.client.sendText(c.number.instanceName, c.target, body, q ? { waId: q.waId, fromMe: q.fromMe, remoteJid: c.conv.jid, text: quotedText! } : undefined).catch((e: unknown) => this.fail(e))
     return this.recordSent(user, c, r, { type: 'texto', text: body, ...(q ? { quotedWaId: q.waId, quotedText } : {}) })
+  }
+
+  /**
+   * Mensagem enviada pela empresa que a pessoa pode corrigir ou apagar: a dela com "Criar" no chat; a de outra pessoa
+   * (ou enviada pelo celular) só com "Editar". E dentro do prazo do WhatsApp.
+   */
+  private async changeable(user: AuthUser, messageId: string, action: 'edit' | 'delete') {
+    const m = await this.prisma.whatsappMessage.findFirst({ where: { id: messageId, tenantId: user.tenantId } })
+    if (!m) throw new NotFoundException('Mensagem não encontrada.')
+    if (!m.fromMe || m.internal) throw new BadRequestException('Só dá para corrigir ou apagar mensagens enviadas pela empresa.')
+    if (m.sentById !== user.id) this.assertAction(user, 'chat', 'edit')
+    const allowed = sentActions(m)
+    if (action === 'edit' && m.type !== 'texto') throw new BadRequestException('Só mensagens de texto podem ser corrigidas.')
+    if (action === 'edit' && !allowed.edit) throw new BadRequestException('O WhatsApp só deixa corrigir a mensagem até 15 minutos depois do envio.')
+    if (action === 'delete' && !allowed.delete) throw new BadRequestException('O WhatsApp só deixa apagar para todos até 2 dias depois do envio.')
+    const c = await this.sendContext(user, m.conversationId)
+    return { m, c }
+  }
+
+  /** Corrige o texto de uma mensagem enviada (aparece como "Editada" no WhatsApp do cliente e no CRM). */
+  async editMessage(user: AuthUser, messageId: string, raw: string, ctx: RequestCtx) {
+    const text = raw.replace(/\r\n/g, '\n').trim()
+    if (!text) throw new BadRequestException('Escreva a mensagem.')
+    if (text.length > 4000) throw new BadRequestException('Mensagem muito longa (máximo 4.000 caracteres).')
+    const { m, c } = await this.changeable(user, messageId, 'edit')
+    // A assinatura ("*Nome:*") que o número coloca nas mensagens continua na mensagem corrigida.
+    const sign = /^\*[^*\n]{1,40}:\*\n/.exec(m.text ?? '')?.[0] ?? ''
+    const body = sign && !text.startsWith(sign) ? `${sign}${text}` : text
+    if (body === m.text) return this.messageView(m, user)
+    await c.client.editText(c.number.instanceName, { id: m.waId, remoteJid: c.conv.jid }, body).catch((e: unknown) => this.fail(e, 'Não foi corrigida'))
+    const saved = await this.prisma.whatsappMessage.update({ where: { id: m.id }, data: { text: body, editedAt: new Date() } })
+    await this.prisma.whatsappConversation.updateMany({ where: { id: m.conversationId, lastMessageAt: m.sentAt }, data: { lastPreview: previewOf({ type: 'texto', text: body }) } })
+    await this.audit.byUser(user, ctx, 'chat.message_edited', 'whatsapp_message', m.id, { conversa: m.conversationId, antes: m.text, depois: body })
+    return this.messageView(saved, user)
+  }
+
+  /** Apaga para todos uma mensagem enviada: some do WhatsApp do cliente e, no CRM, fica "Mensagem apagada". */
+  async deleteMessage(user: AuthUser, messageId: string, ctx: RequestCtx) {
+    const { m, c } = await this.changeable(user, messageId, 'delete')
+    await c.client.deleteForEveryone(c.number.instanceName, { id: m.waId, remoteJid: c.conv.jid }).catch((e: unknown) => this.fail(e, 'Não foi apagada'))
+    const saved = await this.prisma.whatsappMessage.update({ where: { id: m.id }, data: { deletedAt: new Date(), text: null } })
+    await this.prisma.whatsappConversation.updateMany({ where: { id: m.conversationId, lastMessageAt: m.sentAt }, data: { lastPreview: 'Mensagem apagada' } })
+    // O que foi apagado fica só na auditoria (para o administrador), não na conversa.
+    await this.audit.byUser(user, ctx, 'chat.message_deleted', 'whatsapp_message', m.id, { conversa: m.conversationId, tipo: m.type, texto: m.text, arquivo: m.fileName })
+    return this.messageView(saved, user)
+  }
+
+  /** Mensagem como a tela recebe (a apagada perde o texto e o arquivo). */
+  private messageView(m: Prisma.WhatsappMessageGetPayload<object>, user: AuthUser, quotedFromMe: boolean | null = null) {
+    const gone = !!m.deletedAt
+    const actions = sentActions(m)
+    return {
+      id: m.id, fromMe: m.fromMe, type: m.type, text: gone ? null : m.text, fileName: gone ? null : m.fileName, mime: gone ? null : m.mime, mediaStatus: gone ? null : m.mediaStatus, hasFile: !gone && !!m.fileId,
+      sentAt: m.sentAt, sentByName: m.sentByName, status: m.status, internal: m.internal, quotedText: m.quotedText, quotedFromMe, reactions: Array.isArray(m.reactions) ? m.reactions : [],
+      editedAt: m.editedAt, deleted: gone,
+      // Só a própria mensagem com "Criar"; a dos outros com "Editar" no chat.
+      canEdit: actions.edit && (m.sentById === user.id || can(user.permissions, user.role.isSystem, 'chat', 'edit')),
+      canDelete: actions.delete && (m.sentById === user.id || can(user.permissions, user.role.isSystem, 'chat', 'edit')),
+    }
   }
 
   /** Reagir a uma mensagem da conversa (emoji vazio tira a reação). */

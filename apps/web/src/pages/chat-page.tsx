@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, AlertCircleIcon, CheckCheckIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ReplyIcon, SmilePlusIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, AlertCircleIcon, BanIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ReplyIcon, SmilePlusIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
 import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -96,6 +96,12 @@ interface Message {
   quotedFromMe?: boolean | null
   /** Reações (emoji), uma por pessoa. */
   reactions?: { emoji: string; by: 'me' | 'them'; name: string | null }[]
+  /** Corrigida depois do envio e apagada para todos (o texto deixa de aparecer). */
+  editedAt?: string | null
+  deleted?: boolean
+  /** Enviada pela empresa e ainda no prazo do WhatsApp: corrigir (15 min) e apagar para todos (2 dias). */
+  canEdit?: boolean
+  canDelete?: boolean
 }
 interface Thread {
   conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; helpers?: { id: string; name: string }[]; sectorId?: string | null; category: ContactCategory | 'GRUPO'; labels?: ChatLabel[] }
@@ -509,9 +515,9 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
   }
   const title = d.conversation.name || formatPhone(d.conversation.phone) || 'Contato'
   // Encaminhar: texto, localização, contato e arquivos que estão guardados no CRM.
-  const canForward = (m: Message) => !monitor && can('chat', 'create') && (['texto', 'localizacao', 'contato'].includes(m.type) ? !!m.text : ['imagem', 'video', 'audio', 'documento', 'figurinha'].includes(m.type) && m.hasFile)
+  const canForward = (m: Message) => !monitor && can('chat', 'create') && !m.deleted && (['texto', 'localizacao', 'contato'].includes(m.type) ? !!m.text : ['imagem', 'video', 'audio', 'documento', 'figurinha'].includes(m.type) && m.hasFile)
   // Reagir e responder: qualquer mensagem da conversa, menos aviso de ligação.
-  const canAct = (m: Message) => !monitor && can('chat', 'create') && m.type !== 'chamada'
+  const canAct = (m: Message) => !monitor && can('chat', 'create') && m.type !== 'chamada' && !m.deleted
   const toggleSelect = (mid: string) => setSelecting((s) => (!s ? [mid] : s.includes(mid) ? s.filter((x) => x !== mid) : s.length >= 20 ? (toast.error('No máximo 20 mensagens por vez.'), s) : [...s, mid]))
   return (
     <MonitorContext.Provider value={monitor}>
@@ -608,6 +614,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
                   {!!m.reactions?.length && <Reactions list={m.reactions} />}
                   <p className={cn('mt-0.5 text-right text-[11px] tabular-nums', m.fromMe ? 'opacity-70' : 'text-muted-foreground')}>
                     {m.fromMe && (m.sentByName ? `${m.sentByName} · ` : 'pelo celular · ')}
+                    {m.editedAt && !m.deleted && <span title={`Corrigida em ${new Date(m.editedAt).toLocaleString('pt-BR')}`}>Editada · </span>}
                     {time.format(new Date(m.sentAt))}
                     {m.fromMe && <Receipt status={m.status} />}
                   </p>
@@ -681,10 +688,85 @@ function forwardPreview(list: Message[]) {
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏']
 
-/** Ações ao lado da mensagem (aparecem ao passar o mouse; no celular ficam à vista, mais claras): responder, reagir e encaminhar. */
+/** Assinatura que o número coloca nas mensagens ("*Nome:*" na primeira linha): o servidor mantém ao corrigir. */
+const SIGNATURE = /^\*[^*\n]{1,40}:\*\n/
+
+/** Corrigir o texto de uma mensagem enviada (o WhatsApp mostra "Editada" para o cliente). */
+function EditMessageDialog({ m, onClose }: { m: Message; onClose: () => void }) {
+  const qc = useQueryClient()
+  const [text, setText] = useState(() => (m.text ?? '').replace(SIGNATURE, ''))
+  const save = useMutation({
+    mutationFn: () => api.patch(`/chat/mensagens/${m.id}`, { text: text.trim() }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['chat-conversa'] })
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+      toast.success('Mensagem corrigida.')
+      onClose()
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Corrigir mensagem</DialogTitle>
+          <DialogDescription>O cliente vê a mensagem corrigida com a marca “Editada”. O WhatsApp só deixa corrigir até 15 minutos depois do envio.</DialogDescription>
+        </DialogHeader>
+        <Textarea rows={5} maxLength={4000} value={text} onChange={(e) => setText(e.target.value)} aria-label="Texto da mensagem" autoFocus />
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="button" onClick={() => save.mutate()} disabled={save.isPending || !text.trim()}>
+            {save.isPending && <Loader2Icon className="animate-spin" />}
+            Salvar correção
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Apagar para todos: some do WhatsApp do cliente e no CRM fica "Mensagem apagada". */
+function DeleteMessageDialog({ m, onClose }: { m: Message; onClose: () => void }) {
+  const qc = useQueryClient()
+  const remove = useMutation({
+    mutationFn: () => api.delete(`/chat/mensagens/${m.id}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['chat-conversa'] })
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+      toast.success('Mensagem apagada para todos.')
+      onClose()
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Apagar para todos?</DialogTitle>
+          <DialogDescription>A mensagem some do WhatsApp do cliente e, aqui, fica “Mensagem apagada”. Não dá para desfazer. O WhatsApp só deixa apagar até 2 dias depois do envio.</DialogDescription>
+        </DialogHeader>
+        {m.text && <p className="line-clamp-4 rounded-md border bg-muted/40 p-2 text-sm whitespace-pre-wrap">{m.text}</p>}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="button" variant="destructive" onClick={() => remove.mutate()} disabled={remove.isPending}>
+            {remove.isPending && <Loader2Icon className="animate-spin" />}
+            Apagar para todos
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Ações ao lado da mensagem (aparecem ao passar o mouse; no celular ficam à vista, mais claras): responder, reagir, encaminhar, corrigir e apagar. */
 function MessageActions({ m, canForward, onReply, onForward }: { m: Message; canForward: boolean; onReply: () => void; onForward: () => void }) {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
+  const [change, setChange] = useState<'editar' | 'apagar' | null>(null)
   const mine = m.reactions?.find((r) => r.by === 'me')?.emoji ?? ''
   const react = useMutation({
     mutationFn: (emoji: string) => api.post(`/chat/mensagens/${m.id}/reacao`, { emoji }),
@@ -694,6 +776,29 @@ function MessageActions({ m, canForward, onReply, onForward }: { m: Message; can
   const cls = 'size-7 shrink-0 opacity-50 group-hover/msg:opacity-100 focus-visible:opacity-100 md:opacity-0'
   return (
     <span className={cn('flex shrink-0 items-center', m.fromMe ? 'flex-row' : 'flex-row-reverse')}>
+      {change === 'editar' && <EditMessageDialog m={m} onClose={() => setChange(null)} />}
+      {change === 'apagar' && <DeleteMessageDialog m={m} onClose={() => setChange(null)} />}
+      {(m.canEdit || m.canDelete) && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" size="icon" variant="ghost" className={cls} aria-label="Corrigir ou apagar mensagem" title="Corrigir ou apagar">
+              <EllipsisVerticalIcon className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align={m.fromMe ? 'end' : 'start'}>
+            {m.canEdit && (
+              <DropdownMenuItem onSelect={() => setChange('editar')}>
+                <PencilIcon /> Corrigir mensagem
+              </DropdownMenuItem>
+            )}
+            {m.canDelete && (
+              <DropdownMenuItem variant="destructive" onSelect={() => setChange('apagar')}>
+                <Trash2Icon /> Apagar para todos
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       {canForward && (
         <Button type="button" size="icon" variant="ghost" className={cls} onClick={onForward} aria-label="Encaminhar mensagem" title="Encaminhar">
           <ForwardIcon className="size-4" />
@@ -1448,6 +1553,13 @@ function ImageViewer({ src, alt, sticker }: { src: string; alt: string; sticker?
 
 function Bubble({ m }: { m: Message }) {
   const monitor = useContext(MonitorContext)
+  if (m.deleted) {
+    return (
+      <p className="flex items-center gap-1.5 italic opacity-70">
+        <BanIcon className="size-3.5" /> {m.fromMe ? 'Você apagou esta mensagem' : 'O contato apagou esta mensagem'}
+      </p>
+    )
+  }
   const src = `/api/chat/midias/${m.id}${monitor ? '?monitorar=true' : ''}`
   const text = m.text && <p className="break-words whitespace-pre-wrap">{waFormat(m.text)}</p>
   const pending = m.mediaStatus === 'PENDENTE' && <p className="text-xs italic opacity-70">Baixando a mídia…</p>

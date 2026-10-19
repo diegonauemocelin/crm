@@ -65,15 +65,15 @@ export class EvolutionClient {
    * Envio com uma segunda chance: se a sessão caiu ("Connection Closed"), reinicia a conexão do número, espera
    * alguns segundos e tenta de novo uma vez. Caindo de novo, devolve a explicação do que fazer.
    */
-  private async send<T>(instanceName: string, path: string, body: unknown, timeoutMs: number): Promise<T> {
+  private async send<T>(instanceName: string, path: string, body: unknown, timeoutMs: number, method = 'POST'): Promise<T> {
     try {
-      return await this.call<T>('POST', path, body, timeoutMs)
+      return await this.call<T>(method, path, body, timeoutMs)
     } catch (err) {
       if (!(err instanceof EvolutionError) || !isConnectionClosed(err.message)) throw err
       await this.restart(instanceName).catch(() => undefined)
       await new Promise((r) => setTimeout(r, this.retryDelayMs))
       try {
-        return await this.call<T>('POST', path, body, timeoutMs)
+        return await this.call<T>(method, path, body, timeoutMs)
       } catch (again) {
         if (again instanceof EvolutionError && isConnectionClosed(again.message)) throw new EvolutionError(CONNECTION_CLOSED_MESSAGE, again.status)
         throw again
@@ -203,6 +203,17 @@ export class EvolutionClient {
   async sendText(instanceName: string, number: string, text: string, quoted?: { waId: string; fromMe: boolean; remoteJid: string; text: string }) {
     const q = quoted ? { quoted: { key: { id: quoted.waId, fromMe: quoted.fromMe, remoteJid: quoted.remoteJid }, message: { conversation: quoted.text } } } : {}
     return this.sent(await this.send(instanceName, `/message/sendText/${encodeURIComponent(instanceName)}`, { number, text, ...q }, 30_000))
+  }
+
+  /** Corrige o texto de uma mensagem enviada (o WhatsApp aceita até 15 minutos depois do envio). */
+  async editText(instanceName: string, key: { id: string; remoteJid: string }, text: string) {
+    const number = key.remoteJid.endsWith('@s.whatsapp.net') ? key.remoteJid.split('@')[0]! : key.remoteJid
+    await this.send(instanceName, `/chat/updateMessage/${encodeURIComponent(instanceName)}`, { number, key: { id: key.id, remoteJid: key.remoteJid, fromMe: true }, text }, 20_000)
+  }
+
+  /** Apaga para todos uma mensagem enviada pela empresa. */
+  async deleteForEveryone(instanceName: string, key: { id: string; remoteJid: string }) {
+    await this.send(instanceName, `/chat/deleteMessageForEveryone/${encodeURIComponent(instanceName)}`, { id: key.id, remoteJid: key.remoteJid, fromMe: true }, 20_000, 'DELETE')
   }
 
   /** Reação (emoji) a uma mensagem; emoji vazio tira a reação. */

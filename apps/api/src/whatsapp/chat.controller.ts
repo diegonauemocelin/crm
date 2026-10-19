@@ -36,6 +36,10 @@ class TextDto {
   @IsOptional() @IsUUID() quotedId?: string
 }
 
+class EditTextDto {
+  @IsString() @Length(1, 4000) text!: string
+}
+
 class ReactionDto {
   /** Emoji; vazio tira a reação. */
   @IsString() @MaxLength(16) emoji!: string
@@ -345,6 +349,21 @@ export class ChatController {
   @Get('contatos-para-compartilhar')
   shareOptions(@CurrentUser() user: AuthUser, @Query() q: ShareSearchDto) {
     return this.chat.shareOptions(user, q.busca ?? '', q.numero)
+  }
+
+  /** Corrigir o texto de uma mensagem enviada (até 15 minutos depois, limite do WhatsApp). */
+  @Patch('mensagens/:id')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  editMessage(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: EditTextDto, @ReqContext() ctx: RequestCtx) {
+    return this.chat.editMessage(user, id, dto.text, ctx)
+  }
+
+  /** Apagar para todos uma mensagem enviada (até 2 dias depois, limite do WhatsApp). */
+  @Delete('mensagens/:id')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  deleteMessage(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    return this.chat.deleteMessage(user, id, ctx)
   }
 
   /** Reagir a uma mensagem (emoji; vazio tira). */

@@ -175,6 +175,34 @@ export function parseReaction(data: unknown): ParsedReaction | null {
   return { targetWaId: target, emoji: typeof r.text === 'string' ? r.text.slice(0, 16) : '', fromMe, reactor: fromMe ? 'me' : (str(d.key.participant, 120) ?? str(d.key.remoteJid, 120) ?? 'contato'), name: fromMe ? null : str(d.pushName, 120) }
 }
 
+export interface ParsedRevision {
+  /** Mensagem alterada (id no WhatsApp). */
+  targetWaId: string
+  /** Apagada para todos ou editada (com o texto novo). */
+  kind: 'apagada' | 'editada'
+  text: string | null
+}
+
+/**
+ * Mensagem apagada para todos ou editada, pelo cliente ou pelo celular da empresa (evento MESSAGES_UPSERT com
+ * protocolMessage: REVOKE = 0, MESSAGE_EDIT = 14).
+ */
+export function parseRevision(data: unknown): ParsedRevision | null {
+  const d = data as { key?: Obj; message?: Obj } | null
+  const p = unwrap(d?.message)?.protocolMessage as { key?: Obj; type?: unknown; editedMessage?: Obj } | undefined
+  const target = str(p?.key?.id, 120)
+  if (!d?.key || !p || !target) return null
+  if (p.type === 'REVOKE' || p.type === 0) return { targetWaId: target, kind: 'apagada', text: null }
+  if (p.type === 'MESSAGE_EDIT' || p.type === 14) {
+    const m = unwrap(p.editedMessage)
+    const ext = m?.extendedTextMessage as Obj | undefined
+    const media = ['imageMessage', 'videoMessage', 'documentMessage'].map((k) => m?.[k] as Obj | undefined).find((x) => !!x)
+    const text = str(m?.conversation) ?? str(ext?.text) ?? str(media?.caption)
+    return text ? { targetWaId: target, kind: 'editada', text } : null
+  }
+  return null
+}
+
 export interface Reaction {
   emoji: string
   by: 'me' | 'them'
