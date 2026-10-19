@@ -40,11 +40,46 @@ export function cleanQr(v: unknown): string | null {
   return /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(v) && v.length < 200_000 ? v : null
 }
 
+/** "Connection Closed": a sessão do número caiu dentro do serviço de WhatsApp (o estado ainda pode dizer "conectado"). */
+export function isConnectionClosed(message: string) {
+  return /connection closed|connection lost|not connected|socket.*clos/i.test(message)
+}
+
+export const CONNECTION_CLOSED_MESSAGE =
+  'O WhatsApp deste número perdeu a conexão com o servidor (Connection Closed). O CRM tentou reconectar sozinho e não conseguiu: em Administração › Números de WhatsApp, clique em Conectar neste número (se pedir, leia o QR Code de novo) e reenvie.'
+
 export class EvolutionClient {
   constructor(
     private readonly cfg: EvolutionConfig,
     private readonly fetchImpl: typeof fetch = fetch,
+    /** Espera entre reiniciar a conexão do número e tentar o envio de novo. */
+    private readonly retryDelayMs = 5_000,
   ) {}
+
+  /** Reinicia a conexão do número no serviço de WhatsApp (sem pedir QR Code se a sessão ainda vale). */
+  restart(instanceName: string) {
+    return this.call('POST', `/instance/restart/${encodeURIComponent(instanceName)}`, undefined, 20_000)
+  }
+
+  /**
+   * Envio com uma segunda chance: se a sessão caiu ("Connection Closed"), reinicia a conexão do número, espera
+   * alguns segundos e tenta de novo uma vez. Caindo de novo, devolve a explicação do que fazer.
+   */
+  private async send<T>(instanceName: string, path: string, body: unknown, timeoutMs: number): Promise<T> {
+    try {
+      return await this.call<T>('POST', path, body, timeoutMs)
+    } catch (err) {
+      if (!(err instanceof EvolutionError) || !isConnectionClosed(err.message)) throw err
+      await this.restart(instanceName).catch(() => undefined)
+      await new Promise((r) => setTimeout(r, this.retryDelayMs))
+      try {
+        return await this.call<T>('POST', path, body, timeoutMs)
+      } catch (again) {
+        if (again instanceof EvolutionError && isConnectionClosed(again.message)) throw new EvolutionError(CONNECTION_CLOSED_MESSAGE, again.status)
+        throw again
+      }
+    }
+  }
 
   private async call<T>(method: string, path: string, body?: unknown, timeoutMs = 15_000): Promise<T> {
     let res: Response
@@ -167,28 +202,28 @@ export class EvolutionClient {
   /** Texto; com quoted, sai como resposta (citação) a uma mensagem da conversa. */
   async sendText(instanceName: string, number: string, text: string, quoted?: { waId: string; fromMe: boolean; remoteJid: string; text: string }) {
     const q = quoted ? { quoted: { key: { id: quoted.waId, fromMe: quoted.fromMe, remoteJid: quoted.remoteJid }, message: { conversation: quoted.text } } } : {}
-    return this.sent(await this.call('POST', `/message/sendText/${encodeURIComponent(instanceName)}`, { number, text, ...q }, 30_000))
+    return this.sent(await this.send(instanceName, `/message/sendText/${encodeURIComponent(instanceName)}`, { number, text, ...q }, 30_000))
   }
 
   /** Reação (emoji) a uma mensagem; emoji vazio tira a reação. */
   async sendReaction(instanceName: string, key: { id: string; fromMe: boolean; remoteJid: string }, reaction: string) {
-    await this.call('POST', `/message/sendReaction/${encodeURIComponent(instanceName)}`, { key, reaction }, 20_000)
+    await this.send(instanceName, `/message/sendReaction/${encodeURIComponent(instanceName)}`, { key, reaction }, 20_000)
   }
 
   /** Cartão de contato (vCard): no WhatsApp aparece com os botões "Conversar" e "Adicionar". */
   async sendContact(instanceName: string, number: string, c: { fullName: string; wuid: string; phoneNumber: string }) {
-    return this.sent(await this.call('POST', `/message/sendContact/${encodeURIComponent(instanceName)}`, { number, contact: [{ fullName: c.fullName, wuid: c.wuid, phoneNumber: c.phoneNumber }] }, 30_000))
+    return this.sent(await this.send(instanceName, `/message/sendContact/${encodeURIComponent(instanceName)}`, { number, contact: [{ fullName: c.fullName, wuid: c.wuid, phoneNumber: c.phoneNumber }] }, 30_000))
   }
 
   async sendMedia(instanceName: string, number: string, m: { mediatype: 'image' | 'video' | 'document'; mimetype: string; base64: string; fileName: string; caption?: string }) {
     return this.sent(
-      await this.call('POST', `/message/sendMedia/${encodeURIComponent(instanceName)}`, { number, mediatype: m.mediatype, mimetype: m.mimetype, media: m.base64, fileName: m.fileName, caption: m.caption ?? '' }, 90_000),
+      await this.send(instanceName, `/message/sendMedia/${encodeURIComponent(instanceName)}`, { number, mediatype: m.mediatype, mimetype: m.mimetype, media: m.base64, fileName: m.fileName, caption: m.caption ?? '' }, 90_000),
     )
   }
 
   /** Áudio de voz (a Evolution converte para o formato do WhatsApp). */
   async sendAudio(instanceName: string, number: string, base64: string) {
-    return this.sent(await this.call('POST', `/message/sendWhatsAppAudio/${encodeURIComponent(instanceName)}`, { number, audio: base64 }, 90_000))
+    return this.sent(await this.send(instanceName, `/message/sendWhatsAppAudio/${encodeURIComponent(instanceName)}`, { number, audio: base64 }, 90_000))
   }
 
   async deleteInstance(instanceName: string) {

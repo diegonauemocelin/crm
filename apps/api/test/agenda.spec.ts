@@ -162,3 +162,29 @@ describe('Reagir e responder no chat', () => {
     expect(withReaction('lixo', { emoji: '👍', by: 'me', key: 'me', name: null })).toHaveLength(1)
   })
 })
+
+describe('Envio quando a conexão do número cai (Connection Closed)', () => {
+  const closed = () => new Response(JSON.stringify({ status: 400, error: 'Bad Request', response: { message: ['Error: Connection Closed'] } }), { status: 400 })
+  const ok = () => new Response(JSON.stringify({ key: { id: 'W1', remoteJid: '5547999990000@s.whatsapp.net' }, messageTimestamp: 1760000000 }), { status: 200 })
+
+  it('reinicia a conexão do número e envia de novo', async () => {
+    const { EvolutionClient } = await import('../src/whatsapp/evolution')
+    const calls: string[] = []
+    const replies = [closed(), new Response('{}', { status: 200 }), ok()]
+    const c = new EvolutionClient({ url: 'http://e', apiKey: 'k' }, (async (u: string) => (calls.push(String(u)), replies.shift()!)) as unknown as typeof fetch, 0)
+    const r = await c.sendText('crm-abc123', '5547999990000', 'oi')
+    expect(r.waId).toBe('W1')
+    expect(calls).toEqual(['http://e/message/sendText/crm-abc123', 'http://e/instance/restart/crm-abc123', 'http://e/message/sendText/crm-abc123'])
+  })
+
+  it('caindo de novo, explica o que fazer; outros erros passam direto', async () => {
+    const { EvolutionClient, CONNECTION_CLOSED_MESSAGE } = await import('../src/whatsapp/evolution')
+    const replies = [closed(), new Response('{}', { status: 200 }), closed()]
+    const c = new EvolutionClient({ url: 'http://e', apiKey: 'k' }, (async () => replies.shift()!) as unknown as typeof fetch, 0)
+    await expect(c.sendText('crm-abc123', '5547999990000', 'oi')).rejects.toThrow(CONNECTION_CLOSED_MESSAGE)
+    const calls: string[] = []
+    const c2 = new EvolutionClient({ url: 'http://e', apiKey: 'k' }, (async (u: string) => (calls.push(String(u)), new Response(JSON.stringify({ response: { message: ['number not exists'] } }), { status: 400 }))) as unknown as typeof fetch, 0)
+    await expect(c2.sendText('crm-abc123', '5547999990000', 'oi')).rejects.toThrow(/number not exists/)
+    expect(calls).toHaveLength(1)
+  })
+})

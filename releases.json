@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.58.1",
+      "date": "2026-10-19",
+      "title": "Envio religa a conexão do número quando ela cai",
+      "changes": [
+        { "type": "correcao", "area": "Chat WhatsApp", "text": "Erro \"Connection Closed\" ao enviar (a conexão do número caiu dentro do serviço de WhatsApp, mesmo aparecendo como conectado): o CRM reinicia a conexão do número sozinho, espera alguns segundos e envia de novo. Vale para texto, áudio, foto, vídeo, arquivo, contato e reação." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Se a conexão cair de novo, a mensagem de erro explica o que fazer: em Números de WhatsApp, clicar em Conectar no número (e ler o QR Code, se pedir)." }
+      ]
+    },
+    {
       "version": "0.58.0",
       "date": "2026-10-16",
       "title": "Responder e reagir no chat e aba Aguardando vendedor",
