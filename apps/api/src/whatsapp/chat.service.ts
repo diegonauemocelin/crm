@@ -810,17 +810,21 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
    * neste número ou abre uma, e fica registrada nela como mensagem automática. Não conta como atendimento.
    * Devolve null quando o número está no limite de envio (tentar no próximo minuto).
    */
-  async sendAutomatic(n: WhatsappNumber, phone: string, text: string, label: string, link: { leadId: string | null; recordId: string | null; name: string | null }) {
+  async sendAutomatic(n: WhatsappNumber, phone: string, text: string, label: string, link: { leadId: string | null; recordId: string | null; name: string | null; colleague?: boolean }) {
     const client = this.clientOf()
     if (!client) throw new Error('O WhatsApp não está ativo no servidor.')
     if (n.status !== 'CONECTADO') throw new Error(`O número ${n.name} está desconectado.`)
     if (this.rate.check(n.id)) return null
     const jid = `${phone.replace(/\D/g, '')}@s.whatsapp.net`
+    // Colega (ex.: o vendedor recebendo o resumo do dia): entra na agenda geral, e a resposta dele não vira lead nem pré-venda.
+    if (link.colleague && !(await this.prisma.whatsappContact.count({ where: { tenantId: n.tenantId, contactKey: { in: this.keysOf(phone) } } }))) {
+      await this.prisma.whatsappContact.create({ data: { tenantId: n.tenantId, scope: '', contactKey: phone, name: link.name, category: 'COLEGA' } })
+    }
     const conv =
       (await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, ...(link.recordId ? { recordId: link.recordId } : { id: { in: [] } }) } })) ??
       (await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: n.id, jid } } })) ??
       (await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, phone: { in: phoneVariants(phone) } } })) ??
-      (await this.prisma.whatsappConversation.create({ data: { tenantId: n.tenantId, numberId: n.id, jid, phone, name: link.name, leadId: link.leadId, recordId: link.recordId } }))
+      (await this.prisma.whatsappConversation.create({ data: { tenantId: n.tenantId, numberId: n.id, jid, phone, name: link.name, leadId: link.leadId, recordId: link.recordId, ...(link.colleague ? { category: 'COLEGA' } : {}) } }))
     const target = conv.jid.endsWith('@s.whatsapp.net') ? conv.jid.split('@')[0]! : conv.jid
     const r = await client.sendText(n.instanceName, target, text)
     const data = { sentByName: label, status: 'ENVIADA' }

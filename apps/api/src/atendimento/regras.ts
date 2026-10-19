@@ -129,6 +129,72 @@ export function nextDayWindow(time: string, now = new Date()): { from: Date; to:
   return { from, to, day: new Date(from.getTime() - 3 * 3_600_000).toISOString().slice(0, 10) }
 }
 
+// ---------- Resumo do dia para cada vendedor ----------
+
+export interface SellerDigest {
+  enabled: boolean
+  /** Horário de São Paulo (HH:MM) a partir do qual o resumo do dia sai. */
+  time: string
+  /** Abertura da mensagem; a lista de clientes vem logo abaixo. */
+  text: string
+  /** Número da empresa que envia (vazio: o primeiro conectado). */
+  numberId: string | null
+  /** Um cliente por mensagem (como se faz copiando e colando, cada telefone fica clicável) ou tudo numa lista só. */
+  split: boolean
+  /** Todos os vendedores (com telefone) ou só os escolhidos em sellerIds. */
+  allSellers: boolean
+  sellerIds: string[]
+}
+
+export const DEFAULT_DIGEST_TEXT = 'Olá, {vendedor}! Resumo de hoje ({data}): {quantidade} cliente(s) da pré-venda repassado(s) para você. Não deixe de chamar todos:'
+
+export const DEFAULT_DIGEST: SellerDigest = { enabled: false, time: '18:00', text: DEFAULT_DIGEST_TEXT, numberId: null, split: true, allSellers: true, sellerIds: [] }
+
+export function cleanDigest(raw: Partial<SellerDigest> | null | undefined): SellerDigest {
+  const r = raw ?? {}
+  const time = typeof r.time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(r.time) ? r.time : DEFAULT_DIGEST.time
+  const text = typeof r.text === 'string' && r.text.trim() ? r.text.trim().slice(0, 1000) : DEFAULT_DIGEST_TEXT
+  return { enabled: r.enabled === true, time, text, numberId: typeof r.numberId === 'string' ? r.numberId : null,
+    split: r.split !== false,
+    allSellers: r.allSellers !== false,
+    sellerIds: Array.isArray(r.sellerIds) ? [...new Set(r.sellerIds.filter((x): x is string => typeof x === 'string'))].slice(0, 500) : [],
+  }
+}
+
+/** O vendedor recebe o resumo? Ligado, e todos ou entre os escolhidos. */
+export function digestFor(c: SellerDigest, sellerId: string) {
+  return c.enabled && (c.allSellers || c.sellerIds.includes(sellerId))
+}
+
+/** Dia de hoje em São Paulo (início e fim) e se já passou do horário do envio. */
+export function todayWindow(time: string, now = new Date()) {
+  const local = new Date(now.getTime() - 3 * 3_600_000).toISOString()
+  const day = local.slice(0, 10)
+  const from = new Date(`${day}T00:00:00-03:00`)
+  return { day, from, to: new Date(from.getTime() + 86_400_000), due: local.slice(11, 16) >= time }
+}
+
+/** Telefone para ler: +5549999991111 -> (49) 99999-1111; fora do Brasil fica como está. */
+export function readablePhone(phone: string | null) {
+  if (!phone) return 'sem telefone'
+  const br = /^\+55(\d{2})(\d{4,5})(\d{4})$/.exec(phone)
+  return br ? `(${br[1]}) ${br[2]}-${br[3]}` : phone
+}
+
+/**
+ * Mensagens do resumo: a abertura (com {vendedor}, {data} e {quantidade}) e os clientes, telefone primeiro (no
+ * WhatsApp do vendedor o telefone fica clicável para "Conversar"). Separado: uma mensagem por cliente; senão, uma lista.
+ */
+export function digestMessages(intro: string, seller: string, day: string, items: { name: string; phone: string | null }[], split: boolean) {
+  const [y, m, d] = day.split('-')
+  const head = intro
+    .replace(/\{vendedor\}/gi, seller.trim().split(/\s+/)[0] ?? '')
+    .replace(/\{data\}/gi, `${d}/${m}/${y}`)
+    .replace(/\{quantidade\}/gi, String(items.length))
+  const lines = items.map((r) => `${readablePhone(r.phone)}\n${r.name}`)
+  return split ? [head, ...lines] : [[head, '', ...items.map((r, i) => `${i + 1}. ${readablePhone(r.phone)} — ${r.name}`)].join('\n')]
+}
+
 export const FIELD_LABELS: Record<string, string> = {
   kind: 'Tipo de atendimento',
   leadAt: 'Data do lead',

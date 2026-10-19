@@ -3,6 +3,7 @@ import { CombineIcon, FileSpreadsheetIcon, Loader2Icon, PencilIcon, PlusIcon } f
 import { type FormEvent, useState } from 'react'
 import { toast } from 'sonner'
 import { ImportDialog } from '@/components/atendimento/import-dialog'
+import { MultiSelect } from '@/components/multi-select'
 import { Can, EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -619,6 +620,13 @@ interface AlertConfig {
   postSaleOwnerByUnit: Record<string, string>
   callHours?: number
   nextDayMessage?: NextDayMessage
+  sellerDigest?: SellerDigest
+}
+
+interface SellerDigest extends NextDayMessage {
+  split: boolean
+  allSellers: boolean
+  sellerIds: string[]
 }
 
 interface NextDayMessage {
@@ -637,6 +645,7 @@ function AlertsTab() {
       <ReturnAlertCard config={q.data} />
       <CallAlertCard config={q.data} />
       <NextDayMessageCard config={q.data} />
+      <SellerDigestCard config={q.data} />
       <PostSaleCard config={q.data} />
     </div>
   )
@@ -897,6 +906,97 @@ function NextDayMessageCard({ config }: { config: AlertConfig }) {
       {canEdit && (
         <CardFooter>
           <Button onClick={() => save.mutate({ ...config, nextDayMessage: { ...m, text: m.text.trim() } })} disabled={save.isPending || !valid}>
+            {save.isPending && <Loader2Icon className="animate-spin" />}
+            Salvar
+          </Button>
+        </CardFooter>
+      )}
+    </Card>
+  )
+}
+
+/** Resumo do dia para cada vendedor: os clientes da pré-venda repassados a ele, pelo WhatsApp, a partir das 18h. */
+function SellerDigestCard({ config }: { config: AlertConfig }) {
+  const { can } = useAuth()
+  const sellerRows = useQuery({ queryKey: ['cadastros', 'vendedores'], queryFn: () => api.get<SellerRow[]>('/cadastros/vendedores') })
+  const canEdit = can('cadastros', 'edit')
+  const initial = config.sellerDigest ?? { enabled: false, time: '18:00', text: '', numberId: null, split: true, allSellers: true, sellerIds: [] }
+  const [d, setD] = useState<SellerDigest>(initial)
+  const numbers = useQuery({ queryKey: ['cadastros', 'alertas', 'numeros'], queryFn: () => api.get<{ id: string; name: string; phone: string | null; status: string }[]>('/cadastros/alertas/numeros') })
+  const save = useSaveAlerts(d.enabled ? 'Resumo do dia para os vendedores ligado.' : 'Resumo do dia salvo (desligado).')
+  const sellers = (sellerRows.data ?? []).filter((s) => s.active || d.sellerIds.includes(s.id))
+  const noPhone = sellers.filter((s) => !s.phone && (d.allSellers || d.sellerIds.includes(s.id)))
+  const valid = /^([01]\d|2[0-3]):[0-5]\d$/.test(d.time) && d.text.trim().length > 0 && (d.allSellers || d.sellerIds.length > 0)
+  return (
+    <Card className="h-fit">
+      <CardHeader>
+        <CardTitle>Resumo do dia para os vendedores</CardTitle>
+        <CardDescription>
+          Todo dia, a partir do horário escolhido, cada vendedor recebe no WhatsApp dele os clientes da pré-venda repassados a ele naquele dia (telefone e nome), em vez de copiar e colar um por um. Quem não teve repasse no dia não recebe nada. O mesmo resumo fica em Pré-Vendas › Resumo do dia, para copiar.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <label className="flex items-center justify-between gap-3 text-sm font-medium">
+          Enviar o resumo
+          <Switch checked={d.enabled} onCheckedChange={(enabled) => setD({ ...d, enabled })} disabled={!canEdit} />
+        </label>
+        <div className="space-y-2">
+          <Label>Para quem</Label>
+          <Select value={d.allSellers ? 'todos' : 'escolhidos'} onValueChange={(v) => setD({ ...d, allSellers: v === 'todos' })} disabled={!canEdit}>
+            <SelectTrigger className="w-full" aria-label="Para quem">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os vendedores</SelectItem>
+              <SelectItem value="escolhidos">Só os vendedores escolhidos</SelectItem>
+            </SelectContent>
+          </Select>
+          {!d.allSellers && <MultiSelect id="dg-sellers" items={sellers} value={d.sellerIds} onChange={(sellerIds) => setD({ ...d, sellerIds })} placeholder="Escolha os vendedores" disabled={!canEdit} />}
+          {noPhone.length > 0 && (
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              Sem telefone no cadastro (não recebem): {noPhone.map((s) => s.name).join(', ')}. Preencha em Cadastros › Vendedores.
+            </p>
+          )}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="dg-time">A partir de (horário de Brasília)</Label>
+            <Input id="dg-time" type="time" className="w-32" value={d.time} onChange={(e) => setD({ ...d, time: e.target.value })} disabled={!canEdit} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="dg-number">Número que envia</Label>
+            <Select value={d.numberId ?? FIRST_CONNECTED} onValueChange={(v) => setD({ ...d, numberId: v === FIRST_CONNECTED ? null : v })} disabled={!canEdit}>
+              <SelectTrigger id="dg-number" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={FIRST_CONNECTED}>O primeiro número conectado</SelectItem>
+                {(numbers.data ?? []).map((n) => (
+                  <SelectItem key={n.id} value={n.id}>
+                    {n.name}
+                    {n.status !== 'CONECTADO' && ' (desconectado)'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <label className="flex items-center justify-between gap-3 text-sm">
+          <span>
+            Um cliente por mensagem
+            <span className="block text-xs text-muted-foreground">Como hoje, colando um número por vez: cada telefone fica clicável. Desligado, vai uma lista só.</span>
+          </span>
+          <Switch checked={d.split} onCheckedChange={(split) => setD({ ...d, split })} disabled={!canEdit} />
+        </label>
+        <div className="space-y-2">
+          <Label htmlFor="dg-text">Abertura da mensagem</Label>
+          <Textarea id="dg-text" rows={3} maxLength={1000} value={d.text} onChange={(e) => setD({ ...d, text: e.target.value })} disabled={!canEdit} />
+          <p className="text-xs text-muted-foreground">Use {'{vendedor}'}, {'{data}'} e {'{quantidade}'}. Os clientes (telefone e nome) vêm logo depois, sozinhos.</p>
+        </div>
+      </CardContent>
+      {canEdit && (
+        <CardFooter>
+          <Button onClick={() => save.mutate({ ...config, sellerDigest: { ...d, text: d.text.trim() } })} disabled={save.isPending || !valid}>
             {save.isPending && <Loader2Icon className="animate-spin" />}
             Salvar
           </Button>

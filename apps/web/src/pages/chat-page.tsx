@@ -1114,6 +1114,18 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
   const [file, setFile] = useState<File | null>(null)
   const input = useRef<HTMLInputElement>(null)
   const id = thread.conversation.id
+  // Prévia da foto anexada ou colada (some ao trocar ou tirar o arquivo).
+  const preview = useMemo(() => (file && file.type.startsWith('image/') ? URL.createObjectURL(file) : null), [file])
+  useEffect(() => () => void (preview && URL.revokeObjectURL(preview)), [preview])
+  /** Arquivo colado (Ctrl+V) ou arrastado para a caixa: entra como anexo, com o texto digitado virando legenda. */
+  const attach = (f: File | null | undefined) => {
+    if (!f) return false
+    if (f.size > 16 * 1024 * 1024) return toast.error('Arquivo maior que 16 MB.'), true
+    // Imagem copiada da tela vem como "image.png": ganha um nome com a hora, para aparecer na conversa.
+    const named = f.type.startsWith('image/') && /^image\.\w+$/i.test(f.name) ? new File([f], `imagem-${new Date().toLocaleTimeString('pt-BR').replace(/:/g, '')}.${f.type.split('/')[1] === 'jpeg' ? 'jpg' : f.type.split('/')[1]}`, { type: f.type }) : f
+    setFile(named)
+    return true
+  }
   const voice = useVoiceRecorder(async (file) => {
     const fd = new FormData()
     fd.append('file', file)
@@ -1185,7 +1197,16 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
   }
   return (
     <>
-    <form onSubmit={submit} className="relative space-y-2 border-t p-2">
+    <form
+      onSubmit={submit}
+      className="relative space-y-2 border-t p-2"
+      onDragOver={(e) => e.dataTransfer.types.includes('Files') && e.preventDefault()}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return
+        e.preventDefault()
+        attach(e.dataTransfer.files[0])
+      }}
+    >
       {replyTo && (
         <div className="flex items-start gap-2 rounded-md border-l-4 border-l-[color:var(--brand)] bg-muted/60 px-2.5 py-1.5 text-xs">
           <ReplyIcon className="mt-0.5 size-3.5 shrink-0 text-[color:var(--brand)]" />
@@ -1221,7 +1242,7 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
       )}
       {file && (
         <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-2 py-1 text-xs">
-          <PaperclipIcon className="size-3.5" />
+          {preview ? <img src={preview} alt="Prévia da imagem" className="size-12 rounded object-cover" /> : <PaperclipIcon className="size-3.5" />}
           <span className="min-w-0 flex-1 truncate">{file.name}</span>
           <span className="text-muted-foreground tabular-nums">{(file.size / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB</span>
           <Button type="button" size="sm" variant="ghost" className="h-6 px-2" onClick={() => setFile(null)}>
@@ -1270,9 +1291,14 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
           value={text}
           onChange={(e) => (setText(e.target.value), setPick(0))}
           onKeyDown={onKey}
+          onPaste={(e) => {
+            // Imagem copiada (print, foto do site, do Explorer): vira anexo; texto colado segue normal.
+            const f = [...e.clipboardData.files].find((x) => x.type.startsWith('image/')) ?? e.clipboardData.files[0]
+            if (f && attach(f)) e.preventDefault()
+          }}
           rows={1}
           maxLength={file ? 1000 : 4000}
-          placeholder={file ? 'Legenda (opcional)' : novo ? 'Escreva a mensagem (Enter envia, / abre as respostas rápidas)' : 'Escreva a mensagem (Enter envia, Shift+Enter pula linha)'}
+          placeholder={file ? 'Legenda (opcional) · Enter envia' : novo ? 'Escreva a mensagem (Enter envia, / abre as respostas rápidas)' : 'Escreva a mensagem (Enter envia, Shift+Enter pula linha)'}
           className="max-h-40 min-h-9 flex-1 resize-none"
           aria-label="Mensagem"
         />

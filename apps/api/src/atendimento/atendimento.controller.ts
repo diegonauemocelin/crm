@@ -33,7 +33,7 @@ import { AuditService } from '../audit/audit.service'
 import { UFS, UF_LIST } from './br'
 import { CadastrosService, LOOKUP_TYPES } from './cadastros.service'
 import { ImportService } from './import.service'
-import { cleanNextDay } from './regras'
+import { cleanDigest, cleanNextDay } from './regras'
 import { callHoursOf, DEFAULT_ATENDIMENTO, ServiceRecordsService, type RecordFilters } from './service-records.service'
 
 const KINDS = ['PRE_VENDAS', 'POS_VENDAS'] as const
@@ -161,6 +161,12 @@ class NextDayMessageDto {
   @ApiPropertyOptional() @ValidateIf((_, v) => v !== null) @IsUUID() numberId!: string | null
 }
 
+class SellerDigestDto extends NextDayMessageDto {
+  @ApiProperty() @IsBoolean() split!: boolean
+  @ApiProperty({ description: 'true = todos os vendedores; false = só os de sellerIds' }) @IsBoolean() allSellers!: boolean
+  @ApiProperty() @IsArray() @ArrayMaxSize(500) @IsUUID('all', { each: true }) sellerIds!: string[]
+}
+
 class AlertSettingsDto {
   @ApiProperty() @Type(() => Number) @IsInt() @Min(1) @Max(720) alertHours!: number
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1440) newRecordMinutes?: number
@@ -169,6 +175,11 @@ class AlertSettingsDto {
   @ApiPropertyOptional({ description: 'unidade -> vendedor responsável pelo pós-venda' }) @IsOptional() @IsObject() postSaleOwnerByUnit?: Record<string, string>
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(720) callHours?: number
   @ApiPropertyOptional({ type: NextDayMessageDto }) @IsOptional() @ValidateNested() @Type(() => NextDayMessageDto) nextDayMessage?: NextDayMessageDto
+  @ApiPropertyOptional({ type: SellerDigestDto }) @IsOptional() @ValidateNested() @Type(() => SellerDigestDto) sellerDigest?: SellerDigestDto
+}
+
+class DigestDto {
+  @Matches(/^\d{4}-\d{2}-\d{2}$/) data!: string
 }
 
 function csvCell(v: unknown) {
@@ -204,6 +215,12 @@ export class AtendimentoController {
   @Get('alertas')
   alerts(@CurrentUser() user: AuthUser) {
     return this.records.alerts(user)
+  }
+
+  /** Resumo do dia por vendedor: clientes repassados a cada um, para copiar ou conferir o envio automático. */
+  @Get('resumo-vendedores')
+  sellerDigest(@CurrentUser() user: AuthUser, @Query() q: DigestDto) {
+    return this.records.sellerDigest(user, q.data)
   }
 
   @Get('exportar')
@@ -354,7 +371,7 @@ export class CadastrosController {
   @RequirePermission('cadastros', 'view')
   async alertSettings(@CurrentUser() user: AuthUser) {
     const s = await this.settings.get(user.tenantId, 'atendimento', DEFAULT_ATENDIMENTO)
-    return { ...s, callHours: callHoursOf(s), nextDayMessage: cleanNextDay(s.nextDayMessage) }
+    return { ...s, callHours: callHoursOf(s), nextDayMessage: cleanNextDay(s.nextDayMessage), sellerDigest: cleanDigest(s.sellerDigest) }
   }
 
   /** Números de WhatsApp para escolher quem envia a mensagem do dia seguinte. */
@@ -374,7 +391,10 @@ export class CadastrosController {
     if (Object.entries(byUnit).some(([k, v]) => !uuid.test(k) || !uuid.test(v))) throw new BadRequestException('Responsável por unidade inválido.')
     if (ids.length && (await this.cadastros.countSellers(user.tenantId, ids)) !== new Set(ids).size) throw new BadRequestException('Responsável pelo pós-venda inválido.')
     const nextDay = dto.nextDayMessage ? cleanNextDay(dto.nextDayMessage) : cleanNextDay(current.nextDayMessage)
-    if (nextDay.numberId && !(await this.cadastros.whatsappNumbers(user.tenantId)).some((n) => n.id === nextDay.numberId)) throw new BadRequestException('Número de WhatsApp inválido.')
+    const digest = dto.sellerDigest ? cleanDigest(dto.sellerDigest) : cleanDigest(current.sellerDigest)
+    const numberIds = (await this.cadastros.whatsappNumbers(user.tenantId)).map((n) => n.id)
+    if ([nextDay.numberId, digest.numberId].some((id) => id && !numberIds.includes(id))) throw new BadRequestException('Número de WhatsApp inválido.')
+    if (digest.sellerIds.length && (await this.cadastros.countSellers(user.tenantId, digest.sellerIds)) !== digest.sellerIds.length) throw new BadRequestException('Vendedor inválido no resumo do dia.')
     const next = {
       ...current,
       alertHours: dto.alertHours,
@@ -384,6 +404,7 @@ export class CadastrosController {
       postSaleOwnerByUnit: byUnit,
       callHours: dto.callHours ?? callHoursOf(current),
       nextDayMessage: nextDay,
+      sellerDigest: digest,
     }
     const saved = await this.settings.set(user.tenantId, 'atendimento', next)
     await this.audit.byUser(user, ctx, 'settings.atendimento_updated', 'settings', 'atendimento', { ...next })

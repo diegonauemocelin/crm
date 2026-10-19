@@ -10,6 +10,7 @@ import {
   FilterXIcon,
   HeadsetIcon,
   InboxIcon,
+  ListChecksIcon,
   Loader2Icon,
   PhoneCallIcon,
   PlusIcon,
@@ -55,6 +56,7 @@ import { cn } from '@/lib/utils'
 import { useAttendanceAlerts } from '@/components/layout/alerts-bell'
 import { ClearDialog } from './clear-dialog'
 import { ImportDialog } from './import-dialog'
+import { SellerDigestDialog } from './seller-digest'
 import { SavedViews } from '@/components/saved-views'
 import { RecordSheet } from './record-sheet'
 
@@ -121,6 +123,7 @@ export function RecordsList({ kind }: { kind: Kind }) {
   const [open, setOpen] = useState<ServiceRecord | 'new' | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [importing, setImporting] = useState(false)
+  const [digest, setDigest] = useState(false)
   const [clearing, setClearing] = useState(false)
   const page = Number(params.get('page') ?? '1')
   const openId = params.get('abrir')
@@ -235,6 +238,11 @@ export function RecordsList({ kind }: { kind: Kind }) {
         {can(info.module, 'create') && (
           <Button size="sm" onClick={() => setOpen('new')}>
             <PlusIcon /> Novo atendimento
+          </Button>
+        )}
+        {kind === 'PRE_VENDAS' && (
+          <Button size="sm" variant="outline" onClick={() => setDigest(true)} title="Clientes repassados a cada vendedor no dia, para copiar e colar no WhatsApp dele">
+            <ListChecksIcon /> Resumo do dia
           </Button>
         )}
         {can(info.module, 'export') && (
@@ -557,6 +565,7 @@ export function RecordsList({ kind }: { kind: Kind }) {
 
       {open && <RecordSheet kind={kind} record={open === 'new' ? null : open} onClose={() => setOpen(null)} />}
       {importing && <ImportDialog kind={kind} onClose={() => setImporting(false)} />}
+      {digest && <SellerDigestDialog onClose={() => setDigest(false)} />}
       {clearing && (
         <ClearDialog
           onClose={() => setClearing(false)}

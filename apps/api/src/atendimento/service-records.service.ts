@@ -10,7 +10,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { normalizePhone, REGIONS, regionOf, UF_LIST, UFS } from './br'
 import { buildDashboard, type DashRow } from './dashboard'
-import { applyAutomaticFields, DEFAULT_NEXT_DAY, diffRecord, FIELD_LABELS, type FollowStatus, inNegotiation, isCallOverdue, isFollowOverdue, isOverdue, nextCallDue, type NextDayMessage, type RecordState, shouldCreatePostSale, validateFollow, validateRecord } from './regras'
+import { applyAutomaticFields, cleanDigest, digestFor, DEFAULT_DIGEST, DEFAULT_NEXT_DAY, digestMessages, type SellerDigest, todayWindow, diffRecord, FIELD_LABELS, type FollowStatus, inNegotiation, isCallOverdue, isFollowOverdue, isOverdue, nextCallDue, type NextDayMessage, type RecordState, shouldCreatePostSale, validateFollow, validateRecord } from './regras'
 
 export const MODULE_BY_KIND: Record<ServiceKind, 'pre_vendas' | 'pos_vendas'> = { PRE_VENDAS: 'pre_vendas', POS_VENDAS: 'pos_vendas' }
 
@@ -27,8 +27,10 @@ export interface AtendimentoSettings {
   callHours?: number
   /** Mensagem de WhatsApp enviada sozinha no dia seguinte para quem abriu pré-venda. */
   nextDayMessage?: NextDayMessage
+  /** Resumo do dia para cada vendedor: os clientes repassados a ele, pelo WhatsApp. */
+  sellerDigest?: SellerDigest
 }
-export const DEFAULT_ATENDIMENTO: AtendimentoSettings = { alertHours: 24, newRecordMinutes: 10, postSaleHours: 24, postSaleOwnerId: null, postSaleOwnerByUnit: {}, callHours: 24, nextDayMessage: DEFAULT_NEXT_DAY }
+export const DEFAULT_ATENDIMENTO: AtendimentoSettings = { alertHours: 24, newRecordMinutes: 10, postSaleHours: 24, postSaleOwnerId: null, postSaleOwnerByUnit: {}, callHours: 24, nextDayMessage: DEFAULT_NEXT_DAY, sellerDigest: DEFAULT_DIGEST }
 export const callHoursOf = (s: AtendimentoSettings) => s.callHours ?? 24
 /** Pré-venda nova só conta como "aguardando" nos últimos dias (o histórico antigo não vira aviso). */
 const WAITING_WINDOW_MS = 7 * 86_400_000
@@ -473,6 +475,42 @@ export class ServiceRecordsService {
       },
     })
     await this.audit.byUser(user, ctx, 'atendimento.post_sale_created', 'service_record', post.id, { preVenda: pre.id, responsavel: owner?.id ?? null })
+  }
+
+  /**
+   * Resumo de um dia por vendedor: pré-vendas repassadas a ele naquele dia (data do repasse), com nome e telefone,
+   * as mensagens prontas para colar no WhatsApp dele e se o envio automático já saiu.
+   */
+  async sellerDigest(user: AuthUser, day: string) {
+    this.assertCan(user, 'PRE_VENDAS', 'view')
+    const from = dayStart(day)
+    const rows = await this.prisma.serviceRecord.findMany({
+      where: { tenantId: user.tenantId, kind: 'PRE_VENDAS', deletedAt: null, forwarded: true, sellerId: { not: null }, forwardedAt: { gte: from, lt: new Date(from.getTime() + 86_400_000) }, ...this.scope(user, 'PRE_VENDAS') },
+      orderBy: { forwardedAt: 'asc' },
+      select: { id: true, name: true, phone: true, forwardedAt: true, saleStatus: true, seller: { select: { id: true, name: true, phone: true } } },
+    })
+    const [config, log] = await Promise.all([
+      this.alertSettings(user.tenantId).then((s) => cleanDigest(s.sellerDigest)),
+      this.settings.get<{ day?: string; sellers?: Record<string, string> }>(user.tenantId, 'seller_digest_log', {}),
+    ])
+    const bySeller = new Map<string, { seller: { id: string; name: string; phone: string | null }; items: typeof rows }>()
+    for (const r of rows) {
+      const g = bySeller.get(r.seller!.id) ?? { seller: r.seller!, items: [] }
+      g.items.push(r)
+      bySeller.set(r.seller!.id, g)
+    }
+    const sellers = [...bySeller.values()]
+      .sort((a, b) => a.seller.name.localeCompare(b.seller.name, 'pt-BR'))
+      .map((g) => ({
+        sellerId: g.seller.id,
+        seller: g.seller.name,
+        sellerPhone: g.seller.phone ? (normalizePhone(g.seller.phone) ?? g.seller.phone) : null,
+        items: g.items.map((r) => ({ id: r.id, name: r.name, phone: r.phone, forwardedAt: r.forwardedAt, saleStatus: r.saleStatus })),
+        messages: digestMessages(config.text, g.seller.name, day, g.items, config.split),
+        status: log.day === day ? (log.sellers?.[g.seller.id] ?? null) : null,
+        automatic: digestFor(config, g.seller.id),
+      }))
+    return { day, today: todayWindow(config.time).day, config: { enabled: config.enabled, time: config.time, split: config.split, allSellers: config.allSellers }, total: rows.length, sellers }
   }
 
   /** "Chamei o cliente": registra o contato e o prazo recomeça (agora + prazo configurado). */

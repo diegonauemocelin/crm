@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.62.0",
+      "date": "2026-10-19",
+      "title": "Resumo do dia para os vendedores e colar imagem no chat",
+      "changes": [
+        { "type": "novo", "area": "Pré-Vendas", "text": "Resumo do dia para os vendedores: a partir do horário escolhido (padrão 18h), cada vendedor recebe no WhatsApp dele os clientes da pré-venda repassados a ele no dia, com telefone e nome, sem precisar copiar e colar um por um. Uma mensagem por cliente (cada telefone fica clicável) ou uma lista só." },
+        { "type": "novo", "area": "Cadastros", "text": "Em Cadastros › Alertas: ligar ou desligar o resumo, para todos os vendedores ou só os escolhidos, horário, número que envia e a abertura da mensagem ({vendedor}, {data}, {quantidade}). Vem desligado. O vendedor precisa ter telefone no cadastro." },
+        { "type": "novo", "area": "Pré-Vendas", "text": "Botão \"Resumo do dia\" em Pré-Vendas: os clientes repassados a cada vendedor em qualquer dia, com \"Copiar só os telefones\", \"Copiar com nomes\", \"Abrir no WhatsApp do vendedor\" (texto pronto) e se o envio automático já saiu." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Colar imagem no chat: Ctrl+V com uma imagem copiada (print, foto de site) anexa na hora, com prévia; o texto digitado vira legenda. Também dá para arrastar o arquivo para a caixa de mensagem." }
+      ]
+    },
+    {
       "version": "0.61.1",
       "date": "2026-10-19",
       "title": "Links do chat abrem em nova aba",
