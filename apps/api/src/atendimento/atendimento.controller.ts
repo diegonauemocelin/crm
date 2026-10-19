@@ -21,6 +21,7 @@ import {
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator'
 import type { Response } from 'express'
 import { CurrentUser, ReqContext, type RequestCtx, RequirePermission } from '../common/decorators'
@@ -32,7 +33,8 @@ import { AuditService } from '../audit/audit.service'
 import { UFS, UF_LIST } from './br'
 import { CadastrosService, LOOKUP_TYPES } from './cadastros.service'
 import { ImportService } from './import.service'
-import { DEFAULT_ATENDIMENTO, ServiceRecordsService, type RecordFilters } from './service-records.service'
+import { cleanNextDay } from './regras'
+import { callHoursOf, DEFAULT_ATENDIMENTO, ServiceRecordsService, type RecordFilters } from './service-records.service'
 
 const KINDS = ['PRE_VENDAS', 'POS_VENDAS'] as const
 const SALE = ['SIM', 'NAO', 'NEGOCIACAO'] as const
@@ -61,6 +63,7 @@ class FiltersDto implements RecordFilters {
   @IsOptional() @IsIn(FOLLOW) followStatus?: (typeof FOLLOW)[number]
   @IsOptional() @IsIn(['true']) followOverdue?: 'true'
   @IsOptional() @IsIn(['true']) postSaleReturned?: 'true'
+  @IsOptional() @IsIn(['true']) callDue?: 'true'
 }
 
 class ListDto extends FiltersDto {
@@ -95,6 +98,7 @@ class RecordDto {
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(5000) notes?: string | null
   @ApiPropertyOptional({ enum: FOLLOW }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsIn(FOLLOW) followStatus?: (typeof FOLLOW)[number] | null
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(2000) followNote?: string | null
+  @ApiPropertyOptional({ description: 'Em negociação: até quando chamar o cliente' }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsDateString() callDueAt?: string | null
 }
 
 class CreateRecordDto extends RecordDto {
@@ -150,12 +154,21 @@ class MergeDto {
   @ApiProperty() @IsUUID() targetId!: string
 }
 
+class NextDayMessageDto {
+  @ApiProperty() @IsBoolean() enabled!: boolean
+  @ApiProperty({ example: '09:00' }) @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'Horário inválido (use HH:MM).' }) time!: string
+  @ApiProperty() @IsString() @Length(1, 1000) text!: string
+  @ApiPropertyOptional() @ValidateIf((_, v) => v !== null) @IsUUID() numberId!: string | null
+}
+
 class AlertSettingsDto {
   @ApiProperty() @Type(() => Number) @IsInt() @Min(1) @Max(720) alertHours!: number
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1440) newRecordMinutes?: number
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(720) postSaleHours?: number
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() postSaleOwnerId?: string | null
   @ApiPropertyOptional({ description: 'unidade -> vendedor responsável pelo pós-venda' }) @IsOptional() @IsObject() postSaleOwnerByUnit?: Record<string, string>
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(720) callHours?: number
+  @ApiPropertyOptional({ type: NextDayMessageDto }) @IsOptional() @ValidateNested() @Type(() => NextDayMessageDto) nextDayMessage?: NextDayMessageDto
 }
 
 function csvCell(v: unknown) {
@@ -250,6 +263,12 @@ export class AtendimentoController {
     return this.records.update(user, id, dto, ctx)
   }
 
+  @Post(':id/chamei')
+  @HttpCode(200)
+  markCalled(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    return this.records.markCalled(user, id, ctx)
+  }
+
   @Delete(':id')
   @HttpCode(200)
   async remove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
@@ -333,8 +352,16 @@ export class CadastrosController {
 
   @Get('alertas')
   @RequirePermission('cadastros', 'view')
-  alertSettings(@CurrentUser() user: AuthUser) {
-    return this.settings.get(user.tenantId, 'atendimento', DEFAULT_ATENDIMENTO)
+  async alertSettings(@CurrentUser() user: AuthUser) {
+    const s = await this.settings.get(user.tenantId, 'atendimento', DEFAULT_ATENDIMENTO)
+    return { ...s, callHours: callHoursOf(s), nextDayMessage: cleanNextDay(s.nextDayMessage) }
+  }
+
+  /** Números de WhatsApp para escolher quem envia a mensagem do dia seguinte. */
+  @Get('alertas/numeros')
+  @RequirePermission('cadastros', 'view')
+  whatsappNumbers(@CurrentUser() user: AuthUser) {
+    return this.cadastros.whatsappNumbers(user.tenantId)
   }
 
   @Put('alertas')
@@ -346,6 +373,8 @@ export class CadastrosController {
     const uuid = /^[0-9a-f-]{36}$/
     if (Object.entries(byUnit).some(([k, v]) => !uuid.test(k) || !uuid.test(v))) throw new BadRequestException('Responsável por unidade inválido.')
     if (ids.length && (await this.cadastros.countSellers(user.tenantId, ids)) !== new Set(ids).size) throw new BadRequestException('Responsável pelo pós-venda inválido.')
+    const nextDay = dto.nextDayMessage ? cleanNextDay(dto.nextDayMessage) : cleanNextDay(current.nextDayMessage)
+    if (nextDay.numberId && !(await this.cadastros.whatsappNumbers(user.tenantId)).some((n) => n.id === nextDay.numberId)) throw new BadRequestException('Número de WhatsApp inválido.')
     const next = {
       ...current,
       alertHours: dto.alertHours,
@@ -353,6 +382,8 @@ export class CadastrosController {
       postSaleHours: dto.postSaleHours ?? current.postSaleHours,
       postSaleOwnerId: dto.postSaleOwnerId !== undefined ? dto.postSaleOwnerId : current.postSaleOwnerId,
       postSaleOwnerByUnit: byUnit,
+      callHours: dto.callHours ?? callHoursOf(current),
+      nextDayMessage: nextDay,
     }
     const saved = await this.settings.set(user.tenantId, 'atendimento', next)
     await this.audit.byUser(user, ctx, 'settings.atendimento_updated', 'settings', 'atendimento', { ...next })

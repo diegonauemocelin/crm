@@ -170,6 +170,10 @@ export class CadastrosService implements OnApplicationBootstrap {
     if (unitId && !(await this.prisma.unit.count({ where: { id: unitId, tenantId } }))) throw new BadRequestException('Unidade inválida.')
   }
 
+  whatsappNumbers(tenantId: string) {
+    return this.prisma.whatsappNumber.findMany({ where: { tenantId, deletedAt: null }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, phone: true, status: true } })
+  }
+
   countSellers(tenantId: string, ids: string[]) {
     return this.prisma.seller.count({ where: { tenantId, id: { in: [...new Set(ids)] } } })
   }

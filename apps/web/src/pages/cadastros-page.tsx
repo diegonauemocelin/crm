@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { int, type Kind, UF_LIST, UF_NAMES, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
@@ -616,6 +617,15 @@ interface AlertConfig {
   postSaleHours: number
   postSaleOwnerId: string | null
   postSaleOwnerByUnit: Record<string, string>
+  callHours?: number
+  nextDayMessage?: NextDayMessage
+}
+
+interface NextDayMessage {
+  enabled: boolean
+  time: string
+  text: string
+  numberId: string | null
 }
 
 function AlertsTab() {
@@ -625,6 +635,8 @@ function AlertsTab() {
     <div className="grid gap-4 xl:grid-cols-2">
       <NewRecordAlertCard config={q.data} />
       <ReturnAlertCard config={q.data} />
+      <CallAlertCard config={q.data} />
+      <NextDayMessageCard config={q.data} />
       <PostSaleCard config={q.data} />
     </div>
   )
@@ -784,6 +796,107 @@ function ReturnAlertCard({ config }: { config: AlertConfig }) {
       {can('cadastros', 'edit') && (
         <CardFooter>
           <Button onClick={() => save.mutate({ ...config, alertHours: value })} disabled={save.isPending || !(value >= 1 && value <= 720)}>
+            {save.isPending && <Loader2Icon className="animate-spin" />}
+            Salvar
+          </Button>
+        </CardFooter>
+      )}
+    </Card>
+  )
+}
+
+/** Pré-venda em negociação: prazo para chamar o cliente, renovado a cada "Chamei o cliente". */
+function CallAlertCard({ config }: { config: AlertConfig }) {
+  const { can } = useAuth()
+  const [hours, setHours] = useState<number | null>(null)
+  const save = useSaveAlerts('Prazo para chamar o cliente salvo.')
+  const value = hours ?? config.callHours ?? 24
+  return (
+    <Card className="h-fit">
+      <CardHeader>
+        <CardTitle>Prazo para chamar o cliente (em negociação)</CardTitle>
+        <CardDescription>
+          Toda pré-venda repassada ao vendedor e ainda “Em negociação” ganha o prazo “Chamar o cliente até”. Passou do prazo, avisa quem atende (sino, som e notificação) e a pré-venda entra no filtro “Chamar cliente”. Ao clicar em “Chamei o cliente” (ou responder pelo chat do CRM), o prazo recomeça.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Label htmlFor="call-hours">Prazo (horas)</Label>
+        <div className="mt-2 flex items-center gap-2">
+          <Input id="call-hours" type="number" min={1} max={720} className="w-28" value={value} onChange={(e) => setHours(Number(e.target.value))} disabled={!can('cadastros', 'edit')} />
+          <span className="text-sm text-muted-foreground">{value >= 24 ? `= ${(value / 24).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} dia(s)` : ''}</span>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">O novo prazo vale para os próximos repasses e contatos. Na ficha dá para escolher outra data (ex.: o cliente pediu retorno na segunda).</p>
+      </CardContent>
+      {can('cadastros', 'edit') && (
+        <CardFooter>
+          <Button onClick={() => save.mutate({ ...config, callHours: value })} disabled={save.isPending || !(value >= 1 && value <= 720)}>
+            {save.isPending && <Loader2Icon className="animate-spin" />}
+            Salvar
+          </Button>
+        </CardFooter>
+      )}
+    </Card>
+  )
+}
+
+const FIRST_CONNECTED = '__first__'
+
+/** Mensagem de WhatsApp enviada sozinha no dia seguinte para quem abriu pré-venda. */
+function NextDayMessageCard({ config }: { config: AlertConfig }) {
+  const { can } = useAuth()
+  const canEdit = can('cadastros', 'edit')
+  const initial = config.nextDayMessage ?? { enabled: false, time: '09:00', text: '', numberId: null }
+  const [m, setM] = useState<NextDayMessage>(initial)
+  const numbers = useQuery({ queryKey: ['cadastros', 'alertas', 'numeros'], queryFn: () => api.get<{ id: string; name: string; phone: string | null; status: string }[]>('/cadastros/alertas/numeros') })
+  const save = useSaveAlerts(m.enabled ? 'Mensagem do dia seguinte ligada.' : 'Mensagem do dia seguinte salva (desligada).')
+  const valid = /^([01]\d|2[0-3]):[0-5]\d$/.test(m.time) && m.text.trim().length > 0 && m.text.length <= 1000
+  return (
+    <Card className="h-fit">
+      <CardHeader>
+        <CardTitle>Mensagem automática no dia seguinte</CardTitle>
+        <CardDescription>
+          Todo dia, a partir do horário escolhido, o sistema manda esta mensagem pelo WhatsApp para cada cliente que abriu pré-venda no dia anterior. Vai uma vez só, pelo número em que o cliente chamou (quem veio de formulário recebe pelo número escolhido abaixo). Fica registrada na conversa e no histórico da pré-venda.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <label className="flex items-center justify-between gap-3 text-sm font-medium">
+          Enviar a mensagem
+          <Switch checked={m.enabled} onCheckedChange={(enabled) => setM({ ...m, enabled })} disabled={!canEdit} />
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="nd-time">A partir de (horário de Brasília)</Label>
+            <Input id="nd-time" type="time" className="w-32" value={m.time} onChange={(e) => setM({ ...m, time: e.target.value })} disabled={!canEdit} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="nd-number">Número para quem não chamou por WhatsApp</Label>
+            <Select value={m.numberId ?? FIRST_CONNECTED} onValueChange={(v) => setM({ ...m, numberId: v === FIRST_CONNECTED ? null : v })} disabled={!canEdit}>
+              <SelectTrigger id="nd-number" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={FIRST_CONNECTED}>O primeiro número conectado</SelectItem>
+                {(numbers.data ?? []).map((n) => (
+                  <SelectItem key={n.id} value={n.id}>
+                    {n.name}
+                    {n.status !== 'CONECTADO' && ' (desconectado)'}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="nd-text">Mensagem</Label>
+          <Textarea id="nd-text" rows={5} maxLength={1000} value={m.text} onChange={(e) => setM({ ...m, text: e.target.value })} disabled={!canEdit} />
+          <p className="text-xs text-muted-foreground">
+            Use {'{nome}'} para o primeiro nome do cliente e {'{vendedor}'} para o primeiro nome do vendedor da pré-venda. Não vai para pré-vendas importadas da planilha nem sem telefone. Se nenhum número estiver conectado, espera reconectar (no mesmo dia).
+          </p>
+        </div>
+      </CardContent>
+      {canEdit && (
+        <CardFooter>
+          <Button onClick={() => save.mutate({ ...config, nextDayMessage: { ...m, text: m.text.trim() } })} disabled={save.isPending || !valid}>
             {save.isPending && <Loader2Icon className="animate-spin" />}
             Salvar
           </Button>

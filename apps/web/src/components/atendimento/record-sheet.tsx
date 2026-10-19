@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangleIcon, ArrowRightLeftIcon, ClockIcon, Loader2Icon, MegaphoneIcon, MessageCircleIcon, Trash2Icon, GlobeIcon } from 'lucide-react'
+import { AlertTriangleIcon, ArrowRightLeftIcon, ClockIcon, Loader2Icon, MegaphoneIcon, MessageCircleIcon, PhoneCallIcon, Trash2Icon, GlobeIcon } from 'lucide-react'
 import { type FormEvent, type ReactNode, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
@@ -77,6 +77,8 @@ interface FormState {
   notes: string
   followStatus: FollowStatus | null
   followNote: string
+  /** Em negociação: até quando chamar o cliente (datetime-local, horário de São Paulo). */
+  callDueAt: string
 }
 
 /** ISO → valor para <input type="datetime-local"> no horário de São Paulo. */
@@ -113,6 +115,7 @@ function initial(kind: Kind, r: ServiceRecord | null, prefill?: RecordPrefill): 
     notes: r?.notes ?? prefill?.notes ?? '',
     followStatus: r?.followStatus ?? null,
     followNote: r?.followNote ?? '',
+    callDueAt: r?.callDueAt ? toLocalInput(r.callDueAt) : '',
   }
 }
 
@@ -154,6 +157,8 @@ function toPayload(f: FormState, r: ServiceRecord | null) {
     invoiceNumber: f.saleStatus === 'SIM' ? f.invoiceNumber.trim() || null : null,
     saleValue: f.saleStatus === 'SIM' ? f.saleValue : null,
     notes: f.notes.trim() || null,
+    // Só a data escolhida na ficha (mudou): o resto o servidor calcula (repasse, "Chamei o cliente").
+    ...(f.callDueAt && f.callDueAt !== (r?.callDueAt ? toLocalInput(r.callDueAt) : '') ? { callDueAt: fromLocalInput(f.callDueAt) } : {}),
   }
 }
 
@@ -234,6 +239,20 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
     onError: (err) => setError(errorMessage(err)),
   })
 
+  const called = useMutation({
+    mutationFn: () => api.post<ServiceRecord>(`/atendimentos/${record!.id}/chamei`),
+    onSuccess: (saved) => {
+      void qc.invalidateQueries({ queryKey: ['atendimentos'] })
+      void qc.invalidateQueries({ queryKey: ['atendimento-alertas'] })
+      void qc.invalidateQueries({ queryKey: ['atendimento', saved.id] })
+      void qc.invalidateQueries({ queryKey: ['atendimento-historico', saved.id] })
+      setForm((f) => ({ ...f, callDueAt: saved.callDueAt ? toLocalInput(saved.callDueAt) : '' }))
+      toast.success(`Contato registrado. Próximo prazo: ${saved.callDueAt ? formatDateTime(saved.callDueAt) : '—'}.`)
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const negotiating = form.kind === 'PRE_VENDAS' && form.forwarded && form.saleStatus === 'NEGOCIACAO'
+
   const remove = useMutation({
     mutationFn: () => api.delete(`/atendimentos/${record!.id}`),
     onSuccess: () => {
@@ -269,6 +288,8 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
               <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span>Lead de {formatDateTime(record.leadAt)}</span>
                 {record.importBatch && <span>· importado da planilha</span>}
+                {record.autoMessageStatus === 'ENVIADA' && record.autoMessageAt && <span>· mensagem do dia seguinte enviada em {formatDateTime(record.autoMessageAt)}</span>}
+                {record.autoMessageStatus?.startsWith('ERRO') && <span className="text-destructive">· mensagem do dia seguinte não enviada ({record.autoMessageStatus.replace(/^ERRO:\s*/, '')})</span>}
                 {record.phone && chatCan('chat', 'create') ? (
                   <button type="button" onClick={() => setChatOpen(true)} className="inline-flex items-center gap-1 text-emerald-700 hover:underline dark:text-emerald-400">
                     <MessageCircleIcon className="size-3.5" /> Conversar no WhatsApp
@@ -291,6 +312,18 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
           <p role="status" className="mx-4 flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-sm">
             <AlertTriangleIcon className="size-4 text-amber-600" />
             Repassado e ainda sem retorno do vendedor além do prazo de alerta.
+          </p>
+        )}
+        {record?.callOverdue && (
+          <p role="status" className="mx-4 flex flex-wrap items-center gap-2 rounded-md border border-violet-500/40 bg-violet-500/10 p-2.5 text-sm">
+            <PhoneCallIcon className="size-4 text-violet-600" />
+            <span className="flex-1">Em negociação e passou do prazo para chamar o cliente ({record.callDueAt ? formatDateTime(record.callDueAt) : '—'}).</span>
+            {canEdit && (
+              <Button type="button" size="sm" variant="outline" onClick={() => called.mutate()} disabled={called.isPending}>
+                {called.isPending && <Loader2Icon className="animate-spin" />}
+                Chamei o cliente
+              </Button>
+            )}
           </p>
         )}
 
@@ -540,6 +573,23 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                       <ToggleGroupItem value="NEGOCIACAO" className="px-4">Em negociação</ToggleGroupItem>
                     </ToggleGroup>
                   </Field>
+                  {negotiating && (
+                    <div className="flex flex-wrap items-end gap-3">
+                      <Field label="Chamar o cliente até" htmlFor="r-calldue">
+                        <Input id="r-calldue" type="datetime-local" className="w-56" value={form.callDueAt} onChange={(e) => set('callDueAt', e.target.value)} />
+                      </Field>
+                      {record?.callDueAt && record.forwarded && record.saleStatus === 'NEGOCIACAO' && canEdit && (
+                        <Button type="button" variant="outline" onClick={() => called.mutate()} disabled={called.isPending}>
+                          {called.isPending ? <Loader2Icon className="animate-spin" /> : <PhoneCallIcon />}
+                          Chamei o cliente
+                        </Button>
+                      )}
+                      <p className="w-full text-xs text-muted-foreground">
+                        {record?.calledAt ? `Último contato registrado: ${formatDateTime(record.calledAt)}. ` : ''}
+                        Vazio, o prazo é calculado sozinho ao repassar. Passou do prazo, vira aviso no sino. Responder o cliente pelo chat do CRM também conta como contato.
+                      </p>
+                    </div>
+                  )}
                   {form.saleStatus === 'NAO' && (
                     <Field label="Motivo da venda perdida" htmlFor="r-lost" required>
                       <OptionSelect id="r-lost" value={form.lostReasonId} onChange={(v) => set('lostReasonId', v)} items={o?.lostReasons ?? []} />
@@ -634,7 +684,7 @@ function formatValue(field: string, v: unknown, names: Map<string, string>): str
   if (field === 'saleStatus') return SALE_LABEL[v as SaleStatus] ?? String(v)
   if (field === 'returnStatus') return RETURN_LABEL[v as ReturnStatus] ?? String(v)
   if (field === 'kind') return KIND_INFO[v as Kind]?.title ?? String(v)
-  if (field === 'leadAt') return formatDateTime(String(v))
+  if (field === 'leadAt' || field === 'callDueAt') return formatDateTime(String(v))
   if (field === 'phone') return formatPhone(String(v))
   if (field === 'saleValue') return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   return String(v)

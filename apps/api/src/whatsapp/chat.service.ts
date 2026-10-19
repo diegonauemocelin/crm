@@ -11,6 +11,7 @@ import { LeadCaptureService } from '../leads/lead-capture.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { normalizePhone } from '../atendimento/br'
+import { callHoursOf, DEFAULT_ATENDIMENTO } from '../atendimento/service-records.service'
 import { type EvolutionClient, EvolutionError } from './evolution'
 import { sectorsOf, splitWhere } from './atendentes'
 import { type AgendaCategory, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, signed, uploadName, type WaRules } from './envio'
@@ -771,13 +772,52 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     })
     // Responder pelo CRM atende a pré-venda ligada à conversa (tira o aviso de pré-venda aguardando).
     const recordId = (await this.prisma.whatsappConversation.findUnique({ where: { id: c.conv.id }, select: { recordId: true } }))?.recordId
-    if (recordId) await this.prisma.serviceRecord.updateMany({ where: { id: recordId, kind: 'PRE_VENDAS', firstActionAt: null }, data: { firstActionAt: r.at } })
+    if (recordId) {
+      await this.prisma.serviceRecord.updateMany({ where: { id: recordId, kind: 'PRE_VENDAS', firstActionAt: null }, data: { firstActionAt: r.at } })
+      // Em negociação: falar com o cliente pelo CRM conta como "chamei o cliente" (o prazo recomeça).
+      const s = await this.settings.get(c.conv.tenantId, 'atendimento', DEFAULT_ATENDIMENTO)
+      await this.prisma.serviceRecord.updateMany({
+        where: { id: recordId, kind: 'PRE_VENDAS', forwarded: true, saleStatus: 'NEGOCIACAO', deletedAt: null },
+        data: { calledAt: r.at, callDueAt: new Date(r.at.getTime() + callHoursOf(s) * 3_600_000) },
+      })
+    }
     // O WhatsApp registrou o contato com outro identificador (ex.: celular sem o 9): a conversa passa a usar o dele.
     if (r.remoteJid?.endsWith('@s.whatsapp.net') && r.remoteJid !== c.conv.jid) {
       const taken = await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: c.conv.numberId, jid: r.remoteJid } } })
       if (!taken) await this.prisma.whatsappConversation.update({ where: { id: c.conv.id }, data: { jid: r.remoteJid } })
     }
     return { id: msg.id, fromMe: true, type: msg.type, text: msg.text, fileName: msg.fileName, mime: msg.mime, mediaStatus: msg.mediaStatus, hasFile: !!msg.fileId, sentAt: msg.sentAt, sentByName: msg.sentByName, status: msg.status, quotedText: msg.quotedText }
+  }
+
+  /**
+   * Mensagem enviada pelo próprio CRM, sem usuário (ex.: a do dia seguinte da pré-venda): usa a conversa do cliente
+   * neste número ou abre uma, e fica registrada nela como mensagem automática. Não conta como atendimento.
+   * Devolve null quando o número está no limite de envio (tentar no próximo minuto).
+   */
+  async sendAutomatic(n: WhatsappNumber, phone: string, text: string, label: string, link: { leadId: string | null; recordId: string | null; name: string | null }) {
+    const client = this.clientOf()
+    if (!client) throw new Error('O WhatsApp não está ativo no servidor.')
+    if (n.status !== 'CONECTADO') throw new Error(`O número ${n.name} está desconectado.`)
+    if (this.rate.check(n.id)) return null
+    const jid = `${phone.replace(/\D/g, '')}@s.whatsapp.net`
+    const conv =
+      (await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, ...(link.recordId ? { recordId: link.recordId } : { id: { in: [] } }) } })) ??
+      (await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: n.id, jid } } })) ??
+      (await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, phone: { in: phoneVariants(phone) } } })) ??
+      (await this.prisma.whatsappConversation.create({ data: { tenantId: n.tenantId, numberId: n.id, jid, phone, name: link.name, leadId: link.leadId, recordId: link.recordId } }))
+    const target = conv.jid.endsWith('@s.whatsapp.net') ? conv.jid.split('@')[0]! : conv.jid
+    const r = await client.sendText(n.instanceName, target, text)
+    const data = { sentByName: label, status: 'ENVIADA' }
+    await this.prisma.whatsappMessage.upsert({
+      where: { conversationId_waId: { conversationId: conv.id, waId: r.waId } },
+      create: { tenantId: n.tenantId, conversationId: conv.id, waId: r.waId, fromMe: true, type: 'texto', text, sentAt: r.at, ...data },
+      update: data,
+    })
+    await this.prisma.whatsappConversation.update({
+      where: { id: conv.id },
+      data: { lastMessageAt: r.at, lastPreview: previewOf({ type: 'texto', text }), lastFromMe: true, ...(link.recordId && !conv.recordId ? { recordId: link.recordId } : {}), ...(link.leadId && !conv.leadId ? { leadId: link.leadId } : {}) },
+    })
+    return { conversationId: conv.id }
   }
 
   private fail(err: unknown): never {

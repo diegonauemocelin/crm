@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangleIcon, BellIcon, ClockAlertIcon, HeadsetIcon, PhoneIcon, Undo2Icon } from 'lucide-react'
+import { AlertTriangleIcon, BellIcon, ClockAlertIcon, HeadsetIcon, PhoneCallIcon, PhoneIcon, Undo2Icon } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
@@ -23,6 +23,10 @@ export interface Alerts {
   waiting?: number
   fresh?: { id: string; name: string; leadAt: string; createdAt: string; origin: string | null; channel: string | null }[]
   overdueList?: { id: string; name: string; forwardedAt: string | null; seller: string | null; sellerPhone: string | null }[]
+  /** Em negociação e passou do prazo para chamar o cliente. */
+  callHours?: number
+  callDue?: number
+  callList?: { id: string; name: string; phone: string | null; callDueAt: string | null; seller: string | null }[]
 }
 
 export function useAttendanceAlerts() {
@@ -47,7 +51,9 @@ export function AttendanceNotifier() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const seen = useRef<Set<string> | null>(null)
+  const seenCalls = useRef<Set<string> | null>(null)
   const fresh = q.data?.fresh
+  const calls = q.data?.callList
   useEffect(() => {
     if (!fresh) return
     if (!seen.current) {
@@ -63,6 +69,21 @@ export function AttendanceNotifier() {
       if (pathname !== '/pre-vendas') toast(`Nova pré-venda: ${r.name}`, { description: from || 'Responda o cliente o quanto antes.', action: { label: 'Abrir', onClick: open }, duration: 15000 })
     }
   }, [fresh, navigate, pathname])
+  // Prazo para chamar o cliente venceu agora: avisa uma vez (os que já estavam vencidos ficam só no sino).
+  useEffect(() => {
+    if (!calls) return
+    if (!seenCalls.current) {
+      seenCalls.current = new Set(calls.map((r) => r.id))
+      return
+    }
+    for (const r of calls.filter((x) => !seenCalls.current!.has(x.id))) {
+      seenCalls.current.add(r.id)
+      const open = () => navigate(`/pre-vendas?abrir=${r.id}`)
+      beep()
+      systemNotify(`Chamar o cliente: ${r.name}`, 'Pré-venda em negociação passou do prazo. Chame o cliente.', open, `chamar-${r.id}`)
+      toast(`Chamar o cliente: ${r.name}`, { description: 'Pré-venda em negociação passou do prazo.', action: { label: 'Abrir', onClick: open }, duration: 15000 })
+    }
+  }, [calls, navigate])
   return null
 }
 
@@ -89,7 +110,7 @@ export function AlertsBell({ className }: { className?: string }) {
       <PopoverContent align="end" className="w-80 p-0">
         <div className="border-b px-4 py-3">
           <p className="font-medium">Notificações</p>
-          <p className="text-xs text-muted-foreground">Pré-vendas aguardando, retorno do vendedor e pós-venda fora do prazo</p>
+          <p className="text-xs text-muted-foreground">Pré-vendas aguardando, cliente a chamar, retorno do vendedor e pós-venda fora do prazo</p>
         </div>
         {total === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nenhum atendimento fora do prazo.</p>
@@ -105,6 +126,36 @@ export function AlertsBell({ className }: { className?: string }) {
                 </Link>
               </li>
             )}
+            {!!q.data?.callDue && (
+              <li>
+                <Link to="/pre-vendas?callDue=true" className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-muted">
+                  <PhoneCallIcon className="size-4 shrink-0 text-violet-600" />
+                  <span className="flex-1">
+                    <strong>{int.format(q.data.callDue)}</strong> pré-venda(s) em negociação passaram do prazo de {int.format(q.data.callHours ?? 24)} h. Chame o cliente.
+                  </span>
+                </Link>
+              </li>
+            )}
+            {(q.data?.callList ?? []).map((o) => (
+              <li key={`call-${o.id}`} className="flex items-center gap-2 px-4 py-2 text-xs">
+                <Link to={`/pre-vendas?abrir=${o.id}`} className="min-w-0 flex-1 hover:underline">
+                  <span className="block truncate font-medium">{o.name}</span>
+                  <span className="block truncate text-muted-foreground">vendedor: {o.seller ?? 'sem vendedor'}</span>
+                </Link>
+                {o.phone && (
+                  <>
+                    <a href={`tel:${o.phone}`} className="inline-flex items-center gap-1 rounded border px-1.5 py-1 hover:bg-muted" title={`Ligar para ${o.name}: ${formatPhone(o.phone)}`}>
+                      <PhoneIcon className="size-3" /> Ligar
+                    </a>
+                    {whatsappLink(o.phone) && (
+                      <a href={whatsappLink(o.phone)!} target="_blank" rel="noreferrer noopener" className="rounded border px-1.5 py-1 hover:bg-muted" title="Chamar o cliente no WhatsApp">
+                        WhatsApp
+                      </a>
+                    )}
+                  </>
+                )}
+              </li>
+            ))}
             {q.data?.items
               .filter((i) => i.overdue > 0)
               .map((i) => (

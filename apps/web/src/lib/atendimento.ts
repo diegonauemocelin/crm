@@ -105,6 +105,13 @@ export interface ServiceRecord {
   dueAt: string | null
   firstActionAt: string | null
   followOverdue: boolean
+  /** Em negociação: até quando chamar o cliente, quando chamaram por último e se o prazo já passou. */
+  callDueAt?: string | null
+  calledAt?: string | null
+  callOverdue?: boolean
+  /** Mensagem automática do dia seguinte: quando foi tentada e o resultado (ENVIADA ou ERRO: motivo). */
+  autoMessageAt?: string | null
+  autoMessageStatus?: string | null
   /** Só na consulta individual: a pré-venda de origem e os pós-vendas gerados. */
   parent?: { id: string; sellerId: string | null; leadAt: string; saleStatus: SaleStatus } | null
   children?: { id: string; sellerId: string | null; followStatus: FollowStatus | null; followNote: string | null; dueAt: string | null; firstActionAt: string | null }[]

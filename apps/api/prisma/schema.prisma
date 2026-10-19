@@ -420,6 +420,13 @@ model ServiceRecord {
   followNote     String?
   dueAt          DateTime?
   firstActionAt  DateTime?
+  /// Pré-venda em negociação (repassada ao vendedor): até quando chamar o cliente. Passou disso, vira aviso.
+  callDueAt      DateTime?
+  /// Última vez que marcaram "Chamei o cliente" (ou responderam pelo chat do CRM) com a pré-venda em negociação.
+  calledAt       DateTime?
+  /// Mensagem automática de WhatsApp do dia seguinte: quando foi tentada e o resultado (ENVIADA ou o motivo da falha).
+  autoMessageAt     DateTime?
+  autoMessageStatus String?
   /// Chave de deduplicação da importação: reimportar a mesma planilha não duplica registros.
   externalKey    String?
   importBatch    String?
@@ -458,6 +465,7 @@ model ServiceRecord {
   @@index([tenantId, kind, leadAt])
   @@index([sellerId])
   @@index([unitId])
+  @@index([tenantId, kind, callDueAt])
   @@index([leadId])
   @@index([phone])
   @@index([parentId])

@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.60.0",
+      "date": "2026-10-19",
+      "title": "Prazo para chamar o cliente e mensagem automática no dia seguinte",
+      "changes": [
+        { "type": "novo", "area": "Pré-Vendas", "text": "Campo \"Chamar o cliente até\": toda pré-venda repassada ao vendedor e em negociação ganha um prazo (padrão 24 horas). Passou do prazo, avisa no sino (com som e notificação), marca \"chamar cliente\" na lista e entra no filtro \"Chamar cliente\"." },
+        { "type": "novo", "area": "Pré-Vendas", "text": "Botão \"Chamei o cliente\" na ficha: registra o contato e o prazo recomeça. Responder o cliente pelo chat do CRM também conta. Na ficha dá para escolher outra data (ex.: o cliente pediu retorno na segunda)." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Mensagem automática no dia seguinte: a partir do horário escolhido, cada cliente que abriu pré-venda no dia anterior recebe a mensagem pelo WhatsApp, uma vez só, pelo número em que chamou. Fica na conversa e no histórico da pré-venda (enviada ou o motivo da falha)." },
+        { "type": "melhoria", "area": "Cadastros", "text": "Em Cadastros › Alertas: prazo para chamar o cliente (horas) e a mensagem do dia seguinte (ligar/desligar, horário, texto com {nome} e {vendedor} e o número para quem veio por formulário). A mensagem vem desligada." }
+      ]
+    },
+    {
       "version": "0.59.3",
       "date": "2026-10-19",
       "title": "Nome da empresa atualizado para Usaparts",

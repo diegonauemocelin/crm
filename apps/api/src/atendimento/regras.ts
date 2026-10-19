@@ -59,6 +59,76 @@ export function isOverdue(r: { forwarded: boolean; returnStatus: ReturnStatus | 
   return r.forwarded && r.returnStatus === 'PENDENTE' && !!r.forwardedAt && now.getTime() - r.forwardedAt.getTime() > alertHours * 3_600_000
 }
 
+// ---------- Em negociação: prazo para chamar o cliente ----------
+
+/** Pré-venda repassada ao vendedor e ainda sem resultado: o cliente precisa ser chamado dentro do prazo. */
+export function inNegotiation(r: { kind?: 'PRE_VENDAS' | 'POS_VENDAS'; forwarded: boolean; saleStatus: SaleStatus }) {
+  return (r.kind ?? 'PRE_VENDAS') === 'PRE_VENDAS' && r.forwarded && r.saleStatus === 'NEGOCIACAO'
+}
+
+/**
+ * Prazo para chamar o cliente depois de uma alteração:
+ * - fora da negociação (vendeu, perdeu ou não está repassada): sem prazo;
+ * - data escolhida na ficha: vale ela;
+ * - acabou de entrar em negociação: agora + prazo configurado;
+ * - continua em negociação: mantém o prazo que já tinha.
+ */
+export function nextCallDue(
+  next: { kind?: 'PRE_VENDAS' | 'POS_VENDAS'; forwarded: boolean; saleStatus: SaleStatus },
+  prev: { kind?: 'PRE_VENDAS' | 'POS_VENDAS'; forwarded: boolean; saleStatus: SaleStatus; callDueAt: Date | null } | null,
+  callHours: number,
+  chosen?: Date | null,
+  now = new Date(),
+): Date | null {
+  if (!inNegotiation(next)) return null
+  if (chosen) return chosen
+  const fresh = new Date(now.getTime() + callHours * 3_600_000)
+  if (!prev || !inNegotiation(prev)) return fresh
+  return prev.callDueAt ?? fresh
+}
+
+/** Em negociação e o prazo para chamar o cliente já passou. */
+export function isCallOverdue(r: { kind?: 'PRE_VENDAS' | 'POS_VENDAS'; forwarded: boolean; saleStatus: SaleStatus; callDueAt: Date | null }, now = new Date()) {
+  return inNegotiation(r) && !!r.callDueAt && r.callDueAt.getTime() < now.getTime()
+}
+
+// ---------- Mensagem automática no dia seguinte ----------
+
+export interface NextDayMessage {
+  enabled: boolean
+  /** Horário de São Paulo (HH:MM) a partir do qual a mensagem sai. */
+  time: string
+  text: string
+  /** Número que envia quando o cliente não chamou por WhatsApp (vazio: o primeiro conectado). */
+  numberId: string | null
+}
+
+export const DEFAULT_NEXT_DAY_TEXT =
+  'Olá, {nome}! Tudo bem? Ontem você entrou em contato com a gente. Conseguimos te ajudar com o que precisava? Se ficou alguma dúvida, é só responder esta mensagem.'
+
+export const DEFAULT_NEXT_DAY: NextDayMessage = { enabled: false, time: '09:00', text: DEFAULT_NEXT_DAY_TEXT, numberId: null }
+
+/** Configuração salva (ou incompleta) com valores válidos. */
+export function cleanNextDay(raw: Partial<NextDayMessage> | null | undefined): NextDayMessage {
+  const r = raw ?? {}
+  const time = typeof r.time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(r.time) ? r.time : DEFAULT_NEXT_DAY.time
+  const text = typeof r.text === 'string' && r.text.trim() ? r.text.trim().slice(0, 1000) : DEFAULT_NEXT_DAY_TEXT
+  return { enabled: r.enabled === true, time, text, numberId: typeof r.numberId === 'string' ? r.numberId : null }
+}
+
+/**
+ * Janela da mensagem do dia seguinte, no horário de São Paulo (UTC-3): a partir do horário configurado de hoje,
+ * vale para quem abriu pré-venda ontem. Antes do horário, nada sai (null).
+ */
+export function nextDayWindow(time: string, now = new Date()): { from: Date; to: Date; day: string } | null {
+  const local = new Date(now.getTime() - 3 * 3_600_000).toISOString()
+  if (local.slice(11, 16) < time) return null
+  const today = local.slice(0, 10)
+  const to = new Date(`${today}T00:00:00-03:00`)
+  const from = new Date(to.getTime() - 86_400_000)
+  return { from, to, day: new Date(from.getTime() - 3 * 3_600_000).toISOString().slice(0, 10) }
+}
+
 export const FIELD_LABELS: Record<string, string> = {
   kind: 'Tipo de atendimento',
   leadAt: 'Data do lead',
@@ -82,6 +152,7 @@ export const FIELD_LABELS: Record<string, string> = {
   invoiceNumber: 'Nota fiscal',
   saleValue: 'Valor da venda',
   notes: 'Observações',
+  callDueAt: 'Chamar o cliente até',
   followStatus: 'Situação do pós-venda',
   followNote: 'Observação do pós-venda',
 }

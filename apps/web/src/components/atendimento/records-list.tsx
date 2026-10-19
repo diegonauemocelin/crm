@@ -11,6 +11,7 @@ import {
   HeadsetIcon,
   InboxIcon,
   Loader2Icon,
+  PhoneCallIcon,
   PlusIcon,
   SearchIcon,
   Undo2Icon,
@@ -58,7 +59,7 @@ import { SavedViews } from '@/components/saved-views'
 import { RecordSheet } from './record-sheet'
 
 const ALL = '__all__'
-export const FILTER_KEYS = ['search', 'from', 'to', 'unitId', 'sellerId', 'originId', 'customerTypeId', 'state', 'region', 'brandId', 'partTypeId', 'forwarded', 'returnStatus', 'saleStatus', 'lostReasonId', 'overdue', 'followStatus', 'followOverdue', 'postSaleReturned', 'waiting'] as const
+export const FILTER_KEYS = ['search', 'from', 'to', 'unitId', 'sellerId', 'originId', 'customerTypeId', 'state', 'region', 'brandId', 'partTypeId', 'forwarded', 'returnStatus', 'saleStatus', 'lostReasonId', 'overdue', 'followStatus', 'followOverdue', 'postSaleReturned', 'waiting', 'callDue'] as const
 
 interface Page {
   total: number
@@ -294,6 +295,18 @@ export function RecordsList({ kind }: { kind: Kind }) {
         >
           <AlertTriangleIcon /> Sem retorno
         </Button>
+        {kind === 'PRE_VENDAS' && (
+          <Button
+            size="sm"
+            variant={params.get('callDue') ? 'default' : 'outline'}
+            className="h-8"
+            onClick={() => setFilter('callDue', params.get('callDue') ? null : 'true')}
+            aria-pressed={!!params.get('callDue')}
+            title="Em negociação e passou do prazo para chamar o cliente"
+          >
+            <PhoneCallIcon /> Chamar cliente
+          </Button>
+        )}
         {kind === 'POS_VENDAS' && (
           <>
             <FilterSelect label="Pós-venda" value={params.get('followStatus')} onChange={(v) => setFilter('followStatus', v)} items={FOLLOW_STATUSES.map((s) => ({ id: s, name: FOLLOW_LABEL[s] }))} />
@@ -413,6 +426,11 @@ export function RecordsList({ kind }: { kind: Kind }) {
                         {waitingMin(r) !== null && (
                           <Badge variant="outline" className={cn('shrink-0 font-normal', waitingMin(r)! >= newMinutes ? 'border-rose-500/50 text-rose-700 dark:text-rose-300' : 'border-sky-500/50 text-sky-700 dark:text-sky-300')} title="Ninguém atendeu ainda">
                             {waitingMin(r)! >= newMinutes ? `aguardando há ${minutesLabel(waitingMin(r)!)}` : 'nova'}
+                          </Badge>
+                        )}
+                        {r.callOverdue && (
+                          <Badge variant="outline" className="shrink-0 gap-1 border-violet-500/50 font-normal text-violet-700 dark:text-violet-300" title={`Prazo para chamar o cliente: ${r.callDueAt ? new Date(r.callDueAt).toLocaleString('pt-BR') : '—'}`}>
+                            <PhoneCallIcon className="size-3" /> chamar cliente
                           </Badge>
                         )}
                       </p>

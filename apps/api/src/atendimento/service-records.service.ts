@@ -10,7 +10,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { normalizePhone, REGIONS, regionOf, UF_LIST, UFS } from './br'
 import { buildDashboard, type DashRow } from './dashboard'
-import { applyAutomaticFields, diffRecord, FIELD_LABELS, type FollowStatus, isFollowOverdue, isOverdue, type RecordState, shouldCreatePostSale, validateFollow, validateRecord } from './regras'
+import { applyAutomaticFields, DEFAULT_NEXT_DAY, diffRecord, FIELD_LABELS, type FollowStatus, inNegotiation, isCallOverdue, isFollowOverdue, isOverdue, nextCallDue, type NextDayMessage, type RecordState, shouldCreatePostSale, validateFollow, validateRecord } from './regras'
 
 export const MODULE_BY_KIND: Record<ServiceKind, 'pre_vendas' | 'pos_vendas'> = { PRE_VENDAS: 'pre_vendas', POS_VENDAS: 'pos_vendas' }
 
@@ -23,8 +23,13 @@ export interface AtendimentoSettings {
   /** Quem recebe o pós-venda gerado da pré-venda: por unidade e, sem unidade configurada, o padrão. */
   postSaleOwnerId: string | null
   postSaleOwnerByUnit: Record<string, string>
+  /** Pré-venda em negociação: prazo (horas) para chamar o cliente, renovado a cada "Chamei o cliente". */
+  callHours?: number
+  /** Mensagem de WhatsApp enviada sozinha no dia seguinte para quem abriu pré-venda. */
+  nextDayMessage?: NextDayMessage
 }
-export const DEFAULT_ATENDIMENTO: AtendimentoSettings = { alertHours: 24, newRecordMinutes: 10, postSaleHours: 24, postSaleOwnerId: null, postSaleOwnerByUnit: {} }
+export const DEFAULT_ATENDIMENTO: AtendimentoSettings = { alertHours: 24, newRecordMinutes: 10, postSaleHours: 24, postSaleOwnerId: null, postSaleOwnerByUnit: {}, callHours: 24, nextDayMessage: DEFAULT_NEXT_DAY }
+export const callHoursOf = (s: AtendimentoSettings) => s.callHours ?? 24
 /** Pré-venda nova só conta como "aguardando" nos últimos dias (o histórico antigo não vira aviso). */
 const WAITING_WINDOW_MS = 7 * 86_400_000
 
@@ -52,6 +57,8 @@ export interface RecordFilters {
   postSaleReturned?: 'true'
   /** Pré-vendas novas que ninguém atendeu ainda. */
   waiting?: 'true'
+  /** Em negociação e já passou do prazo para chamar o cliente. */
+  callDue?: 'true'
 }
 
 export interface RecordInput {
@@ -79,6 +86,7 @@ export interface RecordInput {
   notes?: string | null
   followStatus?: FollowStatus | null
   followNote?: string | null
+  callDueAt?: string | null
 }
 
 const SORTABLE = new Set(['leadAt', 'name', 'saleValue', 'createdAt', 'updatedAt'])
@@ -138,6 +146,11 @@ export class ServiceRecordsService {
     return { kind: 'PRE_VENDAS', firstActionAt: null, forwarded: false, saleStatus: 'NEGOCIACAO', createdAt: { gte: new Date(now - WAITING_WINDOW_MS) } }
   }
 
+  /** Em negociação (repassada, sem resultado) com o prazo para chamar o cliente vencido. */
+  private callDueWhere(now: Date): Prisma.ServiceRecordWhereInput {
+    return { kind: 'PRE_VENDAS', forwarded: true, saleStatus: 'NEGOCIACAO', callDueAt: { lt: now } }
+  }
+
   async where(user: AuthUser, f: RecordFilters): Promise<Prisma.ServiceRecordWhereInput> {
     const and: Prisma.ServiceRecordWhereInput[] = [{ tenantId: user.tenantId, kind: f.kind, deletedAt: null }, this.scope(user, f.kind)]
     const search = f.search?.trim()
@@ -171,6 +184,7 @@ export class ServiceRecordsService {
     if (f.postSaleReturned === 'true') and.push({ children: { some: { followStatus: 'VOLTOU_AO_VENDEDOR', deletedAt: null } } })
     if (f.followOverdue === 'true') and.push({ followStatus: 'PENDENTE', dueAt: { lt: new Date() } })
     if (f.waiting === 'true') and.push(this.waitingWhere(Date.now()))
+    if (f.callDue === 'true') and.push(this.callDueWhere(new Date()))
     if (f.overdue === 'true') {
       const { alertHours } = await this.alertSettings(user.tenantId)
       and.push({ forwarded: true, returnStatus: 'PENDENTE', forwardedAt: { lt: new Date(Date.now() - alertHours * 3_600_000) } })
@@ -193,7 +207,7 @@ export class ServiceRecordsService {
 
   private view(r: Prisma.ServiceRecordGetPayload<object>, alertHours: number) {
     const { tenantId: _t, externalKey: _e, deletedAt: _d, ...rest } = r
-    return { ...rest, saleValue: r.saleValue === null ? null : Number(r.saleValue), region: regionOf(r.state), overdue: isOverdue(r, alertHours), followOverdue: isFollowOverdue(r) }
+    return { ...rest, saleValue: r.saleValue === null ? null : Number(r.saleValue), region: regionOf(r.state), overdue: isOverdue(r, alertHours), followOverdue: isFollowOverdue(r), callOverdue: isCallOverdue(r) }
   }
 
   private async load(user: AuthUser, id: string) {
@@ -309,6 +323,11 @@ export class ServiceRecordsService {
       out.phone = phone
     }
     if (d.email !== undefined) out.email = d.email?.trim().toLowerCase() || null
+    if (d.callDueAt !== undefined) {
+      const date = d.callDueAt ? new Date(d.callDueAt) : null
+      if (date && Number.isNaN(date.getTime())) throw new BadRequestException('Data para chamar o cliente inválida.')
+      out.callDueAt = date
+    }
     if (d.state !== undefined) out.state = d.state ? d.state.toUpperCase() : null
     for (const k of ['customerCode', 'city', 'invoiceNumber', 'notes', 'followNote'] as const) if (d[k] !== undefined) out[k] = d[k]?.trim() || null
     return out
@@ -333,10 +352,12 @@ export class ServiceRecordsService {
     )
     const problem = validateRecord(state)
     if (problem) throw new BadRequestException(problem)
+    const callDueAt = nextCallDue({ ...state, kind: d.kind }, null, callHoursOf(await this.alertSettings(user.tenantId)), base.callDueAt as Date | null | undefined)
 
     const record = await this.prisma.serviceRecord.create({
       data: {
         ...(state as unknown as Prisma.ServiceRecordUncheckedCreateInput),
+        callDueAt,
         tenantId: user.tenantId,
         kind: d.kind,
         leadAt: (base.leadAt as Date | undefined) ?? new Date(),
@@ -373,6 +394,7 @@ export class ServiceRecordsService {
       next.followStatus = current.followStatus
       next.followNote = current.followNote
     }
+    next.callDueAt = nextCallDue(next, current, callHoursOf(await this.alertSettings(user.tenantId)), base.callDueAt as Date | null | undefined)
 
     const changes = diffRecord(prev, next)
     if (Object.keys(changes).length === 0) {
@@ -453,6 +475,28 @@ export class ServiceRecordsService {
     await this.audit.byUser(user, ctx, 'atendimento.post_sale_created', 'service_record', post.id, { preVenda: pre.id, responsavel: owner?.id ?? null })
   }
 
+  /** "Chamei o cliente": registra o contato e o prazo recomeça (agora + prazo configurado). */
+  async markCalled(user: AuthUser, id: string, ctx: RequestCtx) {
+    const current = await this.load(user, id)
+    this.assertCan(user, current.kind, 'edit')
+    if (!inNegotiation(current)) throw new BadRequestException('Só pré-vendas repassadas ao vendedor e ainda em negociação têm prazo para chamar o cliente.')
+    const settings = await this.alertSettings(user.tenantId)
+    const now = new Date()
+    const callDueAt = new Date(now.getTime() + callHoursOf(settings) * 3_600_000)
+    const record = await this.prisma.serviceRecord.update({
+      where: { id },
+      data: {
+        calledAt: now,
+        callDueAt,
+        updatedById: user.id,
+        ...(current.firstActionAt ? {} : { firstActionAt: now }),
+        history: { create: { userId: user.id, userName: user.name, action: 'chamou o cliente sobre', changes: { callDueAt: { de: current.callDueAt, para: callDueAt } } } },
+      },
+    })
+    await this.audit.byUser(user, ctx, 'atendimento.client_called', 'service_record', id, {})
+    return this.view(record, settings.alertHours)
+  }
+
   /** Exclusão lógica: some das telas e relatórios, mas continua no banco e na auditoria. */
   async remove(user: AuthUser, id: string, ctx: RequestCtx) {
     const current = await this.load(user, id)
@@ -492,9 +536,18 @@ export class ServiceRecordsService {
     let fresh: { id: string; name: string; leadAt: Date; createdAt: Date; origin: string | null; channel: string | null }[] = []
     let waiting = 0
     const overdueList: { id: string; name: string; forwardedAt: Date | null; seller: string | null; sellerPhone: string | null }[] = []
+    let callDue = 0
+    let callList: { id: string; name: string; phone: string | null; callDueAt: Date | null; seller: string | null }[] = []
     if (can(user.permissions, user.role.isSystem, 'pre_vendas', 'view')) {
       const scope = this.scope(user, 'PRE_VENDAS')
       const base = { tenantId: user.tenantId, deletedAt: null, ...this.waitingWhere(Date.now()), ...scope }
+      const callWhere = { tenantId: user.tenantId, deletedAt: null, ...this.callDueWhere(new Date()), ...scope }
+      const [calls, callCount] = await Promise.all([
+        this.prisma.serviceRecord.findMany({ where: callWhere, orderBy: { callDueAt: 'asc' }, take: 5, select: { id: true, name: true, phone: true, callDueAt: true, seller: { select: { name: true } } } }),
+        this.prisma.serviceRecord.count({ where: callWhere }),
+      ])
+      callDue = callCount
+      callList = calls.map((c) => ({ id: c.id, name: c.name, phone: c.phone, callDueAt: c.callDueAt, seller: c.seller?.name ?? null }))
       const [rows, late, over] = await Promise.all([
         this.prisma.serviceRecord.findMany({ where: base, orderBy: { createdAt: 'desc' }, take: 10, select: { id: true, name: true, leadAt: true, createdAt: true, entryChannel: true, origin: { select: { name: true } } } }),
         this.prisma.serviceRecord.count({ where: { ...base, createdAt: { gte: new Date(Date.now() - WAITING_WINDOW_MS), lt: new Date(Date.now() - newRecordMinutes * 60_000) } } }),
@@ -530,18 +583,21 @@ export class ServiceRecordsService {
         where: { tenantId: user.tenantId, kind: 'POS_VENDAS', deletedAt: null, followStatus: 'VOLTOU_AO_VENDEDOR', parent: { seller: { userId: user.id } } },
       })
     }
-    const { postSaleHours } = await this.alertSettings(user.tenantId)
+    const settings = await this.alertSettings(user.tenantId)
     return {
       alertHours,
+      callHours: callHoursOf(settings),
+      callDue,
+      callList,
       newRecordMinutes,
-      postSaleHours,
+      postSaleHours: settings.postSaleHours,
       items: result,
       followOverdue,
       returnedToMe,
       waiting,
       fresh,
       overdueList,
-      total: result.reduce((s, r) => s + r.overdue, 0) + followOverdue + returnedToMe + waiting,
+      total: result.reduce((s, r) => s + r.overdue, 0) + followOverdue + returnedToMe + waiting + callDue,
     }
   }
 
