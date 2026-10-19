@@ -521,14 +521,14 @@ function SettingsEditor({ initial }: { initial: EmailSettings }) {
           <fieldset disabled={!can('email_marketing', 'edit')} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <Row label="Nome do remetente" htmlFor="em-from" hint="Vazio = o nome do SMTP.">
-                <Input id="em-from" maxLength={80} placeholder="USA Parts" value={s.fromName} onChange={(e) => setS({ ...s, fromName: e.target.value })} />
+                <Input id="em-from" maxLength={80} placeholder="Usaparts" value={s.fromName} onChange={(e) => setS({ ...s, fromName: e.target.value })} />
               </Row>
               <Row label="Responder para" htmlFor="em-reply" hint="Para onde vão as respostas dos clientes.">
                 <Input id="em-reply" type="email" placeholder="comercial@usaparts.com.br" value={s.replyTo} onChange={(e) => setS({ ...s, replyTo: e.target.value })} />
               </Row>
             </div>
             <Row label="Rodapé (dados da empresa)" htmlFor="em-footer" hint="Razão social, endereço e telefone: os provedores de e-mail exigem e passa confiança.">
-              <Textarea id="em-footer" rows={3} maxLength={500} placeholder={'USA Parts Importadora e Distribuidora\nMaravilha/SC · (49) 0000-0000'} value={s.footerText} onChange={(e) => setS({ ...s, footerText: e.target.value })} />
+              <Textarea id="em-footer" rows={3} maxLength={500} placeholder={'Usaparts Importadora e Distribuidora\nMaravilha/SC · (49) 0000-0000'} value={s.footerText} onChange={(e) => setS({ ...s, footerText: e.target.value })} />
             </Row>
             <div className="space-y-2 rounded-md border p-3">
               <p className="text-sm font-medium">Redes sociais</p>

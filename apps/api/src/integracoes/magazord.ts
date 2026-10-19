@@ -139,7 +139,7 @@ export function cartMessage(template: string, v: { name: string | null; items: C
 }
 
 export const DEFAULT_CART_MESSAGE =
-  'Olá, {nome}! Aqui é da USA Parts. Vi que você deixou {produtos} no carrinho. Posso te ajudar a finalizar? Use o cupom {cupom} para ganhar um desconto: {link}'
+  'Olá, {nome}! Aqui é da Usaparts. Vi que você deixou {produtos} no carrinho. Posso te ajudar a finalizar? Use o cupom {cupom} para ganhar um desconto: {link}'
 
 // ---------- Catálogo de produtos (para os e-mails) ----------
 

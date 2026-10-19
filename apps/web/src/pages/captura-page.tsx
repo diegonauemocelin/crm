@@ -917,7 +917,7 @@ const NEW_WHATSAPP = (): Omit<WhatsappButton, 'id' | 'submissions'> => ({
   sortOrder: 0,
   phone: '',
   buttonText: 'Fale no WhatsApp',
-  title: 'Fale com a USA Parts',
+  title: 'Fale com a Usaparts',
   subtitle: 'Deixe seu nome e WhatsApp para iniciar a conversa.',
   askEmail: false,
   requireName: true,

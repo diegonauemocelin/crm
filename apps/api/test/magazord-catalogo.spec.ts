@@ -51,7 +51,7 @@ describe('catálogo da Magazord: cópia e aviso de falha', () => {
     const settings = {
       get: async (_t: string, k: string, d: object) => ({ ...d, ...(store.get(k) ?? {}) }),
       set: async (_t: string, k: string, v: Record<string, unknown>) => void store.set(k, v),
-      branding: async () => ({ appName: 'USA Parts' }),
+      branding: async () => ({ appName: 'Usaparts' }),
     }
     const calls = { upserts: 0, deactivated: 0, mails: [] as string[] }
     const prisma = {

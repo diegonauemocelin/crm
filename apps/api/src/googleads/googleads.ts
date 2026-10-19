@@ -329,7 +329,7 @@ export function cleanCampaignList(raw: unknown): CampaignSync | { error: string 
 
 /** Script para colar em Google Ads → Ferramentas → Ações em massa → Scripts (programar: diariamente). */
 export function campaignsScript(url: string) {
-  return `/** CRM USA Parts: envia ao CRM o número e o nome de todas as campanhas desta conta (programe para rodar diariamente). */
+  return `/** CRM Usaparts: envia ao CRM o número e o nome de todas as campanhas desta conta (programe para rodar diariamente). */
 function main() {
   var lista = [];
   var fontes = ['campaigns', 'performanceMaxCampaigns', 'shoppingCampaigns', 'videoCampaigns'];

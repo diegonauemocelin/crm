@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { type Block, cleanBlocks, collectLinks, htmlToText, personalize, renderEmail, safeUrl, sanitizeRich, whatsappUrl } from '../src/email/blocos'
 
-const brand = { appName: 'USA Parts', color: '#1d4ed8', logoUrl: 'https://crm.usaparts.com.br/api/files/public/logo', footerText: 'USA Parts Importadora\nMaravilha/SC' }
+const brand = { appName: 'Usaparts', color: '#1d4ed8', logoUrl: 'https://crm.usaparts.com.br/api/files/public/logo', footerText: 'Usaparts Importadora\nMaravilha/SC' }
 const base = { brand, subject: 'Ofertas para {primeiro_nome}', person: { name: 'Maria Souza', email: 'maria@x.com' }, unsubscribeUrl: 'https://crm/descadastro/tok?c=1' }
 
 const clean = (raw: unknown[]) => {
@@ -198,7 +198,7 @@ describe('2 colunas, texto justificado e cores mais usadas', () => {
     expect(userPrompt('escrever', '', '')).toBeNull()
     expect(userPrompt('escrever', '', 'promoção de filtros JCB')).toContain('promoção de filtros JCB')
     expect(userPrompt('melhorar', 'Olá {primeiro_nome}', '')).toContain('Olá {primeiro_nome}')
-    expect(systemPrompt('USA Parts', 'peças para máquinas')).toContain('{primeiro_nome}')
+    expect(systemPrompt('Usaparts', 'peças para máquinas')).toContain('{primeiro_nome}')
     expect(cleanAnswer('"**Olá**, tudo bem?"')).toBe('Olá, tudo bem?')
     expect(answerHtml('Primeiro <b>parágrafo</b>.\n\nSegundo.')).toBe('<p>Primeiro &lt;b&gt;parágrafo&lt;/b&gt;.</p><p>Segundo.</p>')
     expect(answerOptions('1. Assunto um\n2. "Assunto dois"\n- Assunto três')).toEqual(['Assunto um', 'Assunto dois', 'Assunto três'])
@@ -206,7 +206,7 @@ describe('2 colunas, texto justificado e cores mais usadas', () => {
     const { EmailAiService } = await import('../src/email/ia.service')
     const { encrypt } = await import('../src/common/crypto')
     const store = new Map<string, object>([['email_ia', { apiKeyEnc: encrypt('AIzaFakeKeyForTests1234567890'), model: 'gemini-2.5-flash', about: '' }]])
-    const settings = { get: async (_t: string, k: string, d: object) => store.get(k) ?? d, set: async () => undefined, branding: async () => ({ appName: 'USA Parts' }) }
+    const settings = { get: async (_t: string, k: string, d: object) => store.get(k) ?? d, set: async () => undefined, branding: async () => ({ appName: 'Usaparts' }) }
     const svc = new EmailAiService(settings as never, { byUser: async () => undefined } as never)
     const user = { tenantId: 't', role: { isSystem: true }, permissions: {} } as never
     const original = globalThis.fetch
@@ -236,7 +236,7 @@ describe('chave do Gemini', () => {
   it('aceita o formato novo (AQ.) e o antigo (AIza), recusa texto estranho', async () => {
     const { EmailAiService } = await import('../src/email/ia.service')
     let saved: { apiKeyEnc: string | null } | null = null
-    const settings = { get: async (_t: string, _k: string, d: object) => d, set: async (_t: string, _k: string, v: { apiKeyEnc: string | null }) => void (saved = v), branding: async () => ({ appName: 'USA Parts' }) }
+    const settings = { get: async (_t: string, _k: string, d: object) => d, set: async (_t: string, _k: string, v: { apiKeyEnc: string | null }) => void (saved = v), branding: async () => ({ appName: 'Usaparts' }) }
     const svc = new EmailAiService(settings as never, { byUser: async () => undefined } as never)
     const user = { tenantId: 't', role: { isSystem: true }, permissions: {} } as never
     await svc.save(user, { apiKey: 'AQ.FakeNewFormatKey_for-tests1234567890' }, {} as never)
@@ -260,7 +260,7 @@ describe('modelo do Gemini', () => {
     const { EmailAiService } = await import('../src/email/ia.service')
     const { encrypt } = await import('../src/common/crypto')
     const store = new Map<string, object>([['email_ia', { apiKeyEnc: encrypt('AQ.FakeNewFormatKey_for-tests1234567890'), model: 'rapido', about: '' }]])
-    const settings = { get: async (_t: string, k: string, d: object) => store.get(k) ?? d, set: async () => undefined, branding: async () => ({ appName: 'USA Parts' }) }
+    const settings = { get: async (_t: string, k: string, d: object) => store.get(k) ?? d, set: async () => undefined, branding: async () => ({ appName: 'Usaparts' }) }
     const svc = new EmailAiService(settings as never, { byUser: async () => undefined } as never)
     const user = { tenantId: 't', role: { isSystem: true }, permissions: {} } as never
     const original = globalThis.fetch

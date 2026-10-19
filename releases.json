@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.59.3",
+      "date": "2026-10-19",
+      "title": "Nome da empresa atualizado para Usaparts",
+      "changes": [
+        { "type": "melhoria", "area": "Sistema", "text": "O nome da empresa passa a ser escrito \"Usaparts\" (antes \"USA Parts\"): nome do sistema, identidade visual, remetente e rodapé dos e-mails, textos prontos dos pop-ups, formulários, carrinho abandonado e mensagens de WhatsApp." }
+      ]
+    },
+    {
       "version": "0.59.2",
       "date": "2026-10-19",
       "title": "Deploy apaga imagens antigas e confere o espaço em disco",

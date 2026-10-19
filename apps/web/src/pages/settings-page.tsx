@@ -456,7 +456,7 @@ function SmtpEditor({ initial }: { initial: SmtpView }) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="s-fromname">Nome do remetente</Label>
-                <Input id="s-fromname" placeholder="USA Parts" value={form.fromName} onChange={(e) => set('fromName', e.target.value)} disabled={!canEdit} />
+                <Input id="s-fromname" placeholder="Usaparts" value={form.fromName} onChange={(e) => set('fromName', e.target.value)} disabled={!canEdit} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="s-from">E-mail do remetente</Label>

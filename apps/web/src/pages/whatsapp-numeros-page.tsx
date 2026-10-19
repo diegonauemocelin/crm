@@ -555,7 +555,7 @@ function QuickReplyDialog({ reply, onClose }: { reply: QuickReply | null; onClos
         >
           <DialogHeader>
             <DialogTitle>{reply ? 'Editar resposta rápida' : 'Nova resposta rápida'}</DialogTitle>
-            <DialogDescription>Ex.: Olá {'{nome}'}, aqui é o {'{vendedor}'} da USA Parts. Como posso ajudar?</DialogDescription>
+            <DialogDescription>Ex.: Olá {'{nome}'}, aqui é o {'{vendedor}'} da Usaparts. Como posso ajudar?</DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
             <Label htmlFor="qr-title">Título</Label>

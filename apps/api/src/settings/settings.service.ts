@@ -35,8 +35,8 @@ export interface SmtpSettings {
 }
 
 export const DEFAULT_BRANDING: BrandingSettings = {
-  appName: 'CRM USA Parts',
-  shortName: 'USA Parts',
+  appName: 'CRM Usaparts',
+  shortName: 'Usaparts',
   primaryColor: '#1d4ed8',
   sidebarColor: '#0f1e3d',
   logoFileId: null,

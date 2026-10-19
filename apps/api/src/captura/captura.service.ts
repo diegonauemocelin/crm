@@ -61,7 +61,7 @@ export const DEFAULT_WHATSAPP: WhatsappWidget = {
   enabled: false,
   phone: null,
   buttonText: 'Fale no WhatsApp',
-  title: 'Fale com a USA Parts',
+  title: 'Fale com a Usaparts',
   subtitle: 'Deixe seu nome e WhatsApp para iniciar a conversa.',
   askEmail: false,
   message: 'Olá! Meu nome é {nome}. Vim pelo site e gostaria de atendimento.',

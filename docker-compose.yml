@@ -70,7 +70,7 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
       SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-}
-      SEED_TENANT_NAME: ${SEED_TENANT_NAME:-USA Parts}
+      SEED_TENANT_NAME: ${SEED_TENANT_NAME:-Usaparts}
       # WhatsApp (Evolution API). Vazio = módulo desligado. Gerados por deploy/whatsapp.sh ativar.
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
       EVOLUTION_WEBHOOK_SECRET: ${EVOLUTION_WEBHOOK_SECRET:-}
@@ -186,7 +186,7 @@ services:
       CACHE_REDIS_PREFIX_KEY: evolution
       CACHE_REDIS_SAVE_INSTANCES: "false"
       CACHE_LOCAL_ENABLED: "false"
-      CONFIG_SESSION_PHONE_CLIENT: CRM USA Parts
+      CONFIG_SESSION_PHONE_CLIENT: CRM Usaparts
       CONFIG_SESSION_PHONE_NAME: Chrome
       QRCODE_LIMIT: "30"
       WEBHOOK_GLOBAL_ENABLED: "false"

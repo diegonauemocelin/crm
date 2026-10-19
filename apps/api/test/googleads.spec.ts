@@ -123,7 +123,7 @@ describe('Google Ads: campanha do contato', () => {
   })
 })
 
-describe('Google Ads: links como os da conta da USA Parts', () => {
+describe('Google Ads: links como os da conta da Usaparts', () => {
   it('utm_campaign repetido (nome + número) e meio "cpa"', async () => {
     const { classifyTouch } = await import('../src/rastreamento/origem')
     const { adsInfoOf, campaignLabel } = await import('../src/googleads/googleads')

@@ -4,7 +4,7 @@ O que já está em produção fica em [`releases.json`](../releases.json) (tela 
 
 | Etapa | Conteúdo | Situação |
 |---|---|---|
-| — | Landing pages: hospedadas pela própria USA Parts em `teste.usaparts.com.br` (pasta na hospedagem, decidido em 07/10/2026), usando os códigos da Captura (formulário com script, pop-up e WhatsApp). O CRM não hospeda as LPs | Em uso |
+| — | Landing pages: hospedadas pela própria Usaparts em `teste.usaparts.com.br` (pasta na hospedagem, decidido em 07/10/2026), usando os códigos da Captura (formulário com script, pop-up e WhatsApp). O CRM não hospeda as LPs | Em uso |
 | Fase 5 | Email marketing (SMTP Locaweb), editor visual de arrastar e soltar, imagens, catálogo de produtos da Magazord (tela própria na v0.10.0), botão de WhatsApp, relatório. Pendente: IA opcional (sem IA, Gemini gratuito ou paga) | Entregue (v0.6.0–v0.6.2) |
 | Fase 6 | Automações: construtor de fluxos (gatilhos, esperas, condições Sim/Não, e-mail, tags, vendedor, etapa, Pré-Vendas, aviso para a equipe), inatividade, saída por compra e vendas por fluxo. Pendente: WhatsApp automático (Fase 9) | Entregue (v0.7.0) |
 | Fase 7 | Dashboards e relatórios: visão geral, criador de relatórios com painel, exportação CSV e Google Analytics 4 | Entregue (v0.8.0) |

@@ -70,7 +70,7 @@ async function main() {
 
   const tenant = await prisma.tenant.upsert({
     where: { slug },
-    create: { slug, name: process.env.SEED_TENANT_NAME || 'USA Parts' },
+    create: { slug, name: process.env.SEED_TENANT_NAME || 'Usaparts' },
     update: {},
   })
 

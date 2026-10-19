@@ -115,7 +115,7 @@ export function panelPeriod(from?: string, to?: string) {
  * manda ao CRM o número e o nome das campanhas e o investimento dos últimos 35 dias por dia, campanha e palavra-chave.
  */
 export function adsScript(url: string) {
-  return `/** CRM USA Parts: envia ao CRM as campanhas (número e nome) e o investimento por dia, campanha e palavra-chave
+  return `/** CRM Usaparts: envia ao CRM as campanhas (número e nome) e o investimento por dia, campanha e palavra-chave
  *  dos últimos 35 dias. Programe para rodar 1 vez por dia (Frequência: Diariamente). Só lê a conta; não altera nada. */
 var CRM = '${url}';
 function main() {

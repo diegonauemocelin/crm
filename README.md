@@ -1,4 +1,4 @@
-# CRM USA Parts
+# CRM Usaparts
 
 CRM, automação de marketing e painel de pré e pós-vendas, whitelabel, em português do Brasil.
 

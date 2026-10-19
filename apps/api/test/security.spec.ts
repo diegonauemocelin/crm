@@ -205,7 +205,7 @@ describe('avisos de segurança por e-mail (Fase 8)', () => {
       user: { findUnique: async () => ({ tenantId: 't', email: 'ana@usaparts.com.br', name: 'Ana', active: true }) },
     }
     const mail = { send: async (_t: string, m: { to: string; subject: string; text: string }) => void sent.push(m), simpleTemplate: () => '<html></html>' }
-    const settings = { branding: async () => ({ appName: 'CRM USA Parts', primaryColor: '#1d4ed8' }) }
+    const settings = { branding: async () => ({ appName: 'CRM Usaparts', primaryColor: '#1d4ed8' }) }
     return { service: new SecurityService(prisma as never, mail as never, settings as never, {} as never), sent }
   }
 
@@ -223,7 +223,7 @@ describe('avisos de segurança por e-mail (Fase 8)', () => {
     await new Promise((r) => setTimeout(r, 20))
     expect(sent).toHaveLength(1)
     expect(sent[0]!.to).toBe('ana@usaparts.com.br')
-    expect(sent[0]!.subject).toBe('Novo acesso à sua conta - CRM USA Parts')
+    expect(sent[0]!.subject).toBe('Novo acesso à sua conta - CRM Usaparts')
     expect(sent[0]!.text).toContain('Firefox no Linux · IP 189.4.x.x')
     expect(sent[0]!.text).not.toContain('77.10')
     expect(sent[0]!.text).toMatch(/troque a senha/)
