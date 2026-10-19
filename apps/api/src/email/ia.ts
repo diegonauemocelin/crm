@@ -136,3 +136,22 @@ export function aiError(status: number, body: unknown) {
   if (status >= 500) return 'O Gemini não respondeu agora. Tente de novo em instantes.'
   return `O Gemini recusou o pedido (${status})${msg ? `: ${msg.slice(0, 160)}` : ''}.`
 }
+
+/** Pedido de transcrição dos áudios do chat (mensagens de voz de clientes e da equipe). */
+export const TRANSCRIBE_SYSTEM = [
+  'Você transcreve mensagens de voz do WhatsApp de uma empresa de peças para máquinas pesadas, em português do Brasil.',
+  'Escreva exatamente o que foi falado, com pontuação, sem resumir, sem comentar e sem traduzir.',
+  'Mantenha números, códigos de peças, marcas e modelos como foram ditos (ex.: 320D, 3304, Caterpillar).',
+  'Se não houver fala ou não der para entender, responda apenas: [áudio sem fala compreensível]',
+].join(' ')
+
+/** Texto da transcrição: sem aspas ou marcação em volta, no máximo 4.000 letras. */
+export function cleanTranscript(raw: string) {
+  return raw
+    .trim()
+    .replace(/^```[a-z]*\s*|\s*```$/g, '')
+    .replace(/^(transcri[çc][ãa]o:\s*)/i, '')
+    .replace(/^["“](.*)["”]$/s, '$1')
+    .trim()
+    .slice(0, 4000)
+}

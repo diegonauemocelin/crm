@@ -177,3 +177,32 @@
     @apply rounded-md shadow-none;
   }
 }
+/* Chat no estilo do WhatsApp Web: fundo bege com desenho discreto (escuro no tema escuro). */
+@layer components {
+  .wa-wallpaper {
+    background-color: #efeae2;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%23000' stroke-opacity='.045' stroke-width='1.5'%3E%3Ccircle cx='18' cy='20' r='7'/%3E%3Cpath d='M60 12l8 8-8 8-8-8z'/%3E%3Cpath d='M96 18h14M103 11v14'/%3E%3Cpath d='M14 70c6-8 14-8 20 0'/%3E%3Crect x='54' y='58' width='16' height='12' rx='3'/%3E%3Ccircle cx='100' cy='68' r='4'/%3E%3Cpath d='M20 104l10-6 10 6'/%3E%3Cpath d='M62 100h12'/%3E%3Ccircle cx='102' cy='106' r='6'/%3E%3C/g%3E%3C/svg%3E");
+  }
+  .dark .wa-wallpaper {
+    background-color: #0b141a;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%23fff' stroke-opacity='.04' stroke-width='1.5'%3E%3Ccircle cx='18' cy='20' r='7'/%3E%3Cpath d='M60 12l8 8-8 8-8-8z'/%3E%3Cpath d='M96 18h14M103 11v14'/%3E%3Cpath d='M14 70c6-8 14-8 20 0'/%3E%3Crect x='54' y='58' width='16' height='12' rx='3'/%3E%3Ccircle cx='100' cy='68' r='4'/%3E%3Cpath d='M20 104l10-6 10 6'/%3E%3Cpath d='M62 100h12'/%3E%3Ccircle cx='102' cy='106' r='6'/%3E%3C/g%3E%3C/svg%3E");
+  }
+  /* "Rabinho" do primeiro balão de uma sequência, como no WhatsApp. */
+  .wa-tail-in::before,
+  .wa-tail-out::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    width: 8px;
+    height: 13px;
+    background: inherit;
+  }
+  .wa-tail-in::before {
+    left: -8px;
+    clip-path: polygon(0 0, 100% 0, 100% 100%);
+  }
+  .wa-tail-out::before {
+    right: -8px;
+    clip-path: polygon(0 0, 100% 0, 0 100%);
+  }
+}

@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.63.0",
+      "date": "2026-10-19",
+      "title": "Transcrever áudios e chat com a cara do WhatsApp Web",
+      "changes": [
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Transcrever áudio: embaixo de cada áudio da conversa, o botão \"Transcrever\" mostra o texto do que foi falado. Usa a mesma chave do Gemini do e-mail marketing (E-mail marketing › Configurações); a transcrição fica guardada na mensagem para quem abrir depois." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Chat com a aparência do WhatsApp Web: fundo bege com desenho, balões com o \"rabinho\" no primeiro de cada sequência, dia como etiqueta (Hoje, Ontem), cabeçalho e caixa de mensagem em barra cinza, fotos com as iniciais coloridas de cada contato e contador de não lidas em verde." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "O chat ocupa a tela até embaixo: a caixa de mensagem aparece sem precisar rolar a página, em qualquer tamanho de tela." }
+      ]
+    },
+    {
       "version": "0.62.0",
       "date": "2026-10-19",
       "title": "Resumo do dia para os vendedores e colar imagem no chat",

@@ -1419,6 +1419,8 @@ model WhatsappMessage {
   /// Editada (pelo CRM, pelo celular da empresa ou pelo cliente) e apagada para todos (o texto deixa de aparecer).
   editedAt       DateTime?
   deletedAt      DateTime?
+  /// Áudio transcrito pelo Gemini (quando alguém pediu "Transcrever").
+  transcript     String?
   createdAt      DateTime @default(now())
 
   conversation WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

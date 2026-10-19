@@ -11,6 +11,6 @@ import { EmailDashboardService } from './painel.service'
   imports: [LeadsModule, RastreamentoModule],
   controllers: [EmailController, EmailTrackingController],
   providers: [EmailService, EmailAiService, EmailDashboardService],
-  exports: [EmailService],
+  exports: [EmailService, EmailAiService],
 })
 export class EmailModule {}

@@ -351,6 +351,14 @@ export class ChatController {
     return this.chat.shareOptions(user, q.busca ?? '', q.numero)
   }
 
+  /** Transcrever um áudio da conversa (Gemini, com a chave do e-mail marketing). */
+  @Post('mensagens/:id/transcrever')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  transcribe(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Query('monitorar') monitorar?: string) {
+    return this.chat.transcribe(user, id, monitorar === 'true')
+  }
+
   /** Corrigir o texto de uma mensagem enviada (até 15 minutos depois, limite do WhatsApp). */
   @Patch('mensagens/:id')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })

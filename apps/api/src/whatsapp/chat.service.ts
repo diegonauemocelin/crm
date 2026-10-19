@@ -5,6 +5,7 @@ import { CapturaService } from '../captura/captura.service'
 import type { RequestCtx } from '../common/decorators'
 import { can, type Scope } from '../common/permissions'
 import type { AuthUser } from '../common/types'
+import { EmailAiService } from '../email/ia.service'
 import { FilesService } from '../files/files.service'
 import { Prisma, type WhatsappNumber } from '../generated/prisma/client'
 import { LeadCaptureService } from '../leads/lead-capture.service'
@@ -40,6 +41,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly captura: CapturaService,
     private readonly settings: SettingsService,
     private readonly audit: AuditService,
+    private readonly ai?: EmailAiService,
   ) {}
 
   /** Última leitura em monitoramento registrada na auditoria (usuário + conversa), para não registrar a cada atualização da tela. */
@@ -748,6 +750,28 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     return { mime: asset.mime, content, fileName: m.fileName }
   }
 
+  /**
+   * Transcreve um áudio da conversa (de quem pode ver a conversa). Fica guardado na mensagem: a segunda pessoa que
+   * pedir vê na hora, sem mandar o áudio de novo ao Google.
+   */
+  async transcribe(user: AuthUser, messageId: string, monitor = false) {
+    if (monitor) this.assertMonitor(user)
+    const m = await this.prisma.whatsappMessage.findFirst({ where: { id: messageId, tenantId: user.tenantId } })
+    if (!m) throw new NotFoundException('Mensagem não encontrada.')
+    if (monitor) await this.loadMonitor(user, m.conversationId)
+    else await this.load(user, m.conversationId)
+    if (m.transcript) return { transcript: m.transcript }
+    if (m.type !== 'audio' || m.deletedAt) throw new BadRequestException('Só áudios podem ser transcritos.')
+    if (!m.fileId) throw new BadRequestException('O áudio ainda não foi baixado (ou passou do prazo de guarda): ouça no celular.')
+    if (!this.ai) throw new BadRequestException('Transcrição indisponível.')
+    const { content } = await this.files.read(m.fileId)
+    // O Gemini aceita áudio de até ~20 MB por pedido; mensagem de voz fica muito abaixo disso.
+    if (content.length > 15 * 1024 * 1024) throw new BadRequestException('Áudio grande demais para transcrever.')
+    const transcript = await this.ai.transcribe(user.tenantId, content, (m.mime ?? 'audio/ogg').split(';')[0]!.trim())
+    await this.prisma.whatsappMessage.update({ where: { id: m.id }, data: { transcript } })
+    return { transcript }
+  }
+
   // ---------- Envio pelo CRM ----------
 
   private assertAction(user: AuthUser, module: 'chat' | 'whatsapp', action: 'create' | 'edit') {
@@ -916,7 +940,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     return {
       id: m.id, fromMe: m.fromMe, type: m.type, text: gone ? null : m.text, fileName: gone ? null : m.fileName, mime: gone ? null : m.mime, mediaStatus: gone ? null : m.mediaStatus, hasFile: !gone && !!m.fileId,
       sentAt: m.sentAt, sentByName: m.sentByName, status: m.status, internal: m.internal, quotedText: m.quotedText, quotedFromMe, reactions: Array.isArray(m.reactions) ? m.reactions : [],
-      editedAt: m.editedAt, deleted: gone,
+      editedAt: m.editedAt, deleted: gone, transcript: gone ? null : m.transcript,
       // Só a própria mensagem com "Criar"; a dos outros com "Editar" no chat.
       canEdit: actions.edit && (m.sentById === user.id || can(user.permissions, user.role.isSystem, 'chat', 'edit')),
       canDelete: actions.delete && (m.sentById === user.id || can(user.permissions, user.role.isSystem, 'chat', 'edit')),

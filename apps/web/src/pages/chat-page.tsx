@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, AlertCircleIcon, BanIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ReplyIcon, SmilePlusIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, AlertCircleIcon, BanIcon, FileTextIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ReplyIcon, SmilePlusIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
 import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -103,6 +103,8 @@ interface Message {
   /** Enviada pela empresa e ainda no prazo do WhatsApp: corrigir (15 min) e apagar para todos (2 dias). */
   canEdit?: boolean
   canDelete?: boolean
+  /** Áudio transcrito (Gemini), quando alguém já pediu. */
+  transcript?: string | null
 }
 interface Thread {
   conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; helpers?: { id: string; name: string }[]; sectorId?: string | null; category: ContactCategory | 'GRUPO'; labels?: ChatLabel[] }
@@ -127,6 +129,47 @@ const categoryLabel = (c: string | undefined) => (c === 'NOVO' ? 'A classificar'
 const time = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })
 const day = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' })
 const dayKey = (iso: string) => day.format(new Date(iso))
+
+/** Iniciais e cor fixa por contato, como a foto vazia do WhatsApp. */
+const AVATAR_COLORS = ['bg-emerald-600', 'bg-sky-600', 'bg-violet-600', 'bg-amber-600', 'bg-rose-600', 'bg-teal-600', 'bg-indigo-600', 'bg-orange-600']
+function Avatar({ name, group, className }: { name: string | null; group?: boolean; className?: string }) {
+  const letters = (name ?? '').replace(/[^\p{L}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean)
+  const text = letters.length ? (letters[0]![0]! + (letters.length > 1 ? letters[letters.length - 1]![0]! : '')).toUpperCase() : ''
+  const color = AVATAR_COLORS[[...(name ?? '')].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % AVATAR_COLORS.length]
+  return (
+    <span className={cn('relative flex size-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white', text && !group ? color : 'bg-muted text-muted-foreground', className)} aria-hidden>
+      {group ? <UsersIcon className="size-4" /> : text || <UserIcon className="size-4" />}
+    </span>
+  )
+}
+
+/** Etiqueta do dia no meio da conversa: Hoje, Ontem ou a data. */
+function dayLabel(iso: string) {
+  const k = dayKey(iso)
+  if (k === day.format(new Date())) return 'Hoje'
+  if (k === day.format(new Date(Date.now() - 86_400_000))) return 'Ontem'
+  return k
+}
+
+/**
+ * Altura do chat até o fim da tela (como o WhatsApp Web), seja qual for a altura do topo da página: os botões podem
+ * quebrar em duas linhas em telas menores.
+ */
+function useFillHeight<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null)
+  const [height, setHeight] = useState<number | null>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const update = () => setHeight(Math.max(448, Math.floor(window.innerHeight - el.getBoundingClientRect().top - 16)))
+    update()
+    window.addEventListener('resize', update)
+    const ro = new ResizeObserver(update)
+    if (el.parentElement) ro.observe(el.parentElement)
+    return () => (window.removeEventListener('resize', update), ro.disconnect())
+  })
+  return [ref, height] as const
+}
 
 /** Hora se for hoje; senão, a data. */
 /** Cor do atraso de resposta: só quando a última mensagem é do cliente (verde, amarelo, vermelho). */
@@ -206,6 +249,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
   const [starting, setStarting] = useState(false)
   const { can } = useAuth()
   const { novo, colors } = useScreens()
+  const [fill, fillHeight] = useFillHeight<HTMLDivElement>()
   const [search, setSearch] = useState('')
   const [q, setQ] = useState('')
   useEffect(() => {
@@ -240,7 +284,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
     <div>
       <PageHeader
         title={monitor ? 'Monitorar conversas' : 'Chat WhatsApp'}
-        description={monitor ? 'Conversas de todos os números e vendedores, só para leitura. Abrir aqui não marca como lida: o vendedor continua vendo as mensagens novas.' : 'Conversas dos números da empresa. Responda por aqui ou pelo celular: tudo fica no histórico do lead.'}
+        description={monitor ? 'Conversas de todos os números e vendedores, só para leitura. Abrir aqui não marca como lida: o vendedor continua vendo as mensagens novas.' : undefined}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {!onlyMonitor && can('monitoramento') && (
@@ -287,7 +331,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
       {!toCall && list.isLoading && <TableSkeleton rows={6} />}
       {!toCall && list.error && <ErrorState error={list.error} onRetry={() => list.refetch()} />}
       {!toCall && list.data && (
-        <Card className={cn('grid h-[calc(100dvh-13rem)] min-h-[28rem] grid-cols-1 gap-0 overflow-hidden p-0 md:grid-cols-[20rem_minmax(0,1fr)]', novo && openId && 'xl:grid-cols-[20rem_minmax(0,1fr)_19rem]')}>
+        <Card ref={fill} style={fillHeight ? { height: fillHeight } : undefined} className={cn('grid h-[calc(100dvh-13rem)] min-h-[28rem] grid-cols-1 gap-0 overflow-hidden p-0 md:grid-cols-[20rem_minmax(0,1fr)]', novo && openId && 'xl:grid-cols-[20rem_minmax(0,1fr)_19rem]')}>
           <div className={cn('flex min-h-0 flex-col border-r', openId && 'hidden md:flex')}>
             <div className="space-y-2 border-b p-3">
               <div className="relative">
@@ -397,13 +441,13 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                     onClick={() => open(c.id)}
                     className={cn(
                       'flex w-full items-start gap-3 border-b px-3 py-2.5 text-left hover:bg-muted/50',
-                      openId === c.id && (colors ? 'bg-[color:var(--brand)]/10 shadow-[inset_3px_0_0_var(--brand)]' : 'bg-muted'),
+                      openId === c.id && (colors ? 'bg-[color:var(--brand)]/10 shadow-[inset_3px_0_0_var(--brand)]' : 'bg-[#f0f2f5] dark:bg-[#2a3942]'),
                       colors && openId !== c.id && wc?.label === 'atrasada' && 'bg-orange-50 dark:bg-orange-500/10',
                       colors && openId !== c.id && wc?.label === 'atenção' && 'bg-amber-50/70 dark:bg-amber-500/5',
                     )}
                   >
-                    <span className="relative mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                      {c.category === 'GRUPO' ? <UsersIcon className="size-4" /> : <UserIcon className="size-4" />}
+                    <span className="relative mt-0.5 shrink-0">
+                      <Avatar name={c.name} group={c.category === 'GRUPO'} />
                       {wc && <span className={cn('absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-background', wc.dot)} aria-label={`Sem resposta há ${waitText(wc.min)} (${wc.label})`} />}
                     </span>
                     <span className="min-w-0 flex-1">
@@ -428,7 +472,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                             <StickyNoteIcon className="size-3" /> Nota
                           </span>
                         )}
-                        {c.unread > 0 && <Badge className="h-5 shrink-0 px-1.5 tabular-nums" aria-label={`${c.unread} não lidas`}>{c.unread}</Badge>}
+                        {c.unread > 0 && <Badge className={cn('h-5 min-w-5 shrink-0 justify-center rounded-full px-1.5 tabular-nums', !colors && 'bg-[#25d366] text-white')} aria-label={`${c.unread} não lidas`}>{c.unread}</Badge>}
                       </span>
                       {((c.labels ?? []).length > 0 || c.stage) && (
                         <span className="mt-1 flex flex-wrap gap-1">
@@ -523,13 +567,14 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
   return (
     <MonitorContext.Provider value={monitor}>
     <div className="flex h-full min-h-0 flex-col">
-      <div className="@container/head space-y-2 border-b px-3 py-2">
+      <div className={cn('@container/head space-y-2 border-b px-3 py-2', !colors && 'bg-[#f0f2f5] dark:bg-[#202c33]')}>
         <div className="flex items-start gap-2">
           {onBack && (
             <Button size="icon" variant="ghost" className="size-8 shrink-0 md:hidden" onClick={onBack} aria-label="Voltar para a lista">
               <ArrowLeftIcon />
             </Button>
           )}
+          <Avatar name={d.conversation.name ?? d.lead?.name ?? null} group={d.conversation.category === 'GRUPO'} />
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium">{title}</p>
             <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
@@ -575,7 +620,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
         </div>
       </div>
       {!monitor && <ReminderBar conversationId={d.conversation.id} />}
-      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto bg-muted/30 px-3 py-3">
+      <div className={cn('min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3 sm:px-[6%]', colors ? 'bg-muted/30' : 'wa-wallpaper')}>
         {(d.hasMore || older.length > 0) && (
           <div className="text-center">
             <Button size="sm" variant="ghost" disabled={loadingOlder} onClick={() => void loadOlder()}>
@@ -585,9 +630,14 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
         )}
         {messages.map((m, i) => {
           const showDay = i === 0 || dayKey(messages[i - 1]!.sentAt) !== dayKey(m.sentAt)
+          // Primeiro balão de uma sequência do mesmo lado: ganha o "rabinho" e um respiro maior antes.
+          const prev = messages[i - 1]
+          const first = showDay || !prev || prev.fromMe !== m.fromMe || !!prev.internal
           return (
-            <div key={m.id}>
-              {showDay && <p className="my-2 text-center text-xs text-muted-foreground">{dayKey(m.sentAt)}</p>}
+            <div key={m.id} className={cn(first && i > 0 && 'pt-2')}>
+              {showDay && (
+                <p className="mx-auto my-2 w-fit rounded-md bg-white px-3 py-1 text-xs font-medium text-[#54656f] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] dark:bg-[#182229] dark:text-[#8696a0]">{dayLabel(m.sentAt)}</p>
+              )}
               {m.internal ? (
                 <div className="mx-auto my-1 max-w-[90%] rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 sm:max-w-[75%] dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
                   <p className="mb-0.5 flex items-center gap-1 text-[11px] font-semibold tracking-wide uppercase">
@@ -608,7 +658,13 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
                   <input type="checkbox" className="mr-1 size-4 shrink-0 accent-[color:var(--brand)]" checked={selecting.includes(m.id)} onChange={() => toggleSelect(m.id)} onClick={(e) => e.stopPropagation()} aria-label="Selecionar mensagem para encaminhar" />
                 )}
                 {!selecting && m.fromMe && canAct(m) && <MessageActions m={m} canForward={canForward(m)} onReply={() => setReplyTo(m)} onForward={() => setSelecting([m.id])} />}
-                <div className={cn('max-w-[85%] rounded-lg px-3 py-1.5 text-sm shadow-xs sm:max-w-[70%]', m.fromMe ? (colors ? 'bg-blue-100 text-slate-900 dark:bg-blue-900/60 dark:text-blue-50' : 'bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]') : cn('bg-card', colors && 'border'))}>
+                <div
+                  className={cn(
+                    'relative max-w-[85%] rounded-lg px-2.5 py-1.5 text-[14.2px] leading-[19px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] sm:max-w-[65%]',
+                    m.fromMe ? (colors ? 'bg-blue-100 text-slate-900 dark:bg-blue-900/60 dark:text-blue-50' : 'bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]') : colors ? 'border bg-card' : 'bg-white text-[#111b21] dark:bg-[#202c33] dark:text-[#e9edef]',
+                    first && (m.fromMe ? 'wa-tail-out rounded-tr-none' : 'wa-tail-in rounded-tl-none'),
+                  )}
+                >
                   {d.conversation.category === 'GRUPO' && !m.fromMe && m.sentByName && <p className="mb-0.5 text-xs font-semibold text-[color:var(--brand)]">{m.sentByName}</p>}
                   {m.quotedText && <QuotedBlock text={m.quotedText} who={m.quotedFromMe === true ? 'Você' : m.quotedFromMe === false ? title : null} />}
                   <Bubble m={m} />
@@ -1139,7 +1195,7 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
   })
   const replies = useQuery({ queryKey: ['chat-respostas', id], queryFn: () => api.get<{ id: string; title: string; preview: string; standard: boolean }[]>(`/chat/respostas?conversa=${id}`), enabled: can('chat', 'create'), staleTime: 60_000 })
   const [managing, setManaging] = useState(false)
-  const { novo } = useScreens()
+  const { novo, colors } = useScreens()
   const [pick, setPick] = useState(0)
   const slash = novo && !file && text.startsWith('/') && !text.includes('\n') ? text.slice(1).trim().toLowerCase() : null
   const slashList = slash === null ? [] : (replies.data ?? []).filter((r) => !slash || r.title.toLowerCase().includes(slash) || r.preview.toLowerCase().includes(slash)).slice(0, 8)
@@ -1199,7 +1255,7 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
     <>
     <form
       onSubmit={submit}
-      className="relative space-y-2 border-t p-2"
+      className={cn('relative space-y-2 border-t p-2', !colors && 'bg-[#f0f2f5] dark:bg-[#202c33]')}
       onDragOver={(e) => e.dataTransfer.types.includes('Files') && e.preventDefault()}
       onDrop={(e) => {
         if (!e.dataTransfer.files.length) return
@@ -1299,7 +1355,7 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
           rows={1}
           maxLength={file ? 1000 : 4000}
           placeholder={file ? 'Legenda (opcional) · Enter envia' : novo ? 'Escreva a mensagem (Enter envia, / abre as respostas rápidas)' : 'Escreva a mensagem (Enter envia, Shift+Enter pula linha)'}
-          className="max-h-40 min-h-9 flex-1 resize-none"
+          className={cn('max-h-40 min-h-9 flex-1 resize-none', !colors && 'rounded-lg border-transparent bg-white shadow-none dark:bg-[#2a3942]')}
           aria-label="Mensagem"
         />
         {voice.recording ? (
@@ -1555,6 +1611,36 @@ function waStyles(text: string) {
   return out
 }
 
+/** Transcrição do áudio: o texto, se já existe; senão o botão "Transcrever" (Gemini, com a chave do e-mail marketing). */
+function Transcript({ m }: { m: Message }) {
+  const monitor = useContext(MonitorContext)
+  const qc = useQueryClient()
+  const [text, setText] = useState<string | null>(m.transcript ?? null)
+  const run = useMutation({
+    mutationFn: () => api.post<{ transcript: string }>(`/chat/mensagens/${m.id}/transcrever${monitor ? '?monitorar=true' : ''}`),
+    onSuccess: (r) => {
+      setText(r.transcript)
+      void qc.invalidateQueries({ queryKey: ['chat-conversa'] })
+    },
+    onError: (err) => toast.error(errorMessage(err), { duration: 8000 }),
+  })
+  const shown = text ?? m.transcript
+  if (shown) {
+    return (
+      <p className="max-w-80 border-l-2 border-current/30 pl-2 text-[13px] break-words whitespace-pre-wrap opacity-90">
+        <span className="mb-0.5 block text-[10px] font-semibold tracking-wide uppercase opacity-60">Transcrição</span>
+        {shown}
+      </p>
+    )
+  }
+  return (
+    <button type="button" onClick={() => run.mutate()} disabled={run.isPending} className="inline-flex items-center gap-1 text-xs font-medium text-[color:var(--brand)] hover:underline disabled:opacity-60">
+      {run.isPending ? <Loader2Icon className="size-3.5 animate-spin" /> : <FileTextIcon className="size-3.5" />}
+      {run.isPending ? 'Transcrevendo…' : 'Transcrever'}
+    </button>
+  )
+}
+
 /** Foto da conversa: abre grande por cima do chat (sem sair do CRM), com zoom e botão para baixar. */
 function ImageViewer({ src, alt, sticker }: { src: string; alt: string; sticker?: boolean }) {
   const [open, setOpen] = useState(false)
@@ -1619,7 +1705,16 @@ function Bubble({ m }: { m: Message }) {
       </div>
     )
   }
-  if (m.type === 'audio') return m.hasFile ? <audio controls preload="none" src={src} className="max-w-full" /> : pending || missing || <p className="text-xs italic">Áudio</p>
+  if (m.type === 'audio') {
+    return m.hasFile ? (
+      <div className="space-y-1">
+        <audio controls preload="none" src={src} className="max-w-full" />
+        <Transcript m={m} />
+      </div>
+    ) : (
+      pending || missing || <p className="text-xs italic">Áudio</p>
+    )
+  }
   if (m.type === 'video') return <div className="space-y-1">{m.hasFile ? <video controls preload="none" src={src} className="max-h-72 max-w-full rounded" /> : pending || missing}{text}</div>
   if (m.type === 'contato') return <ContactBubble text={m.text} />
   if (m.type === 'documento') {

@@ -7,7 +7,7 @@ import { can } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import { SettingsService } from '../settings/settings.service'
 import { htmlToText } from './blocos'
-import { type AiAction, type AiMode, AI_MODES, aiError, answerHtml, answerOptions, cleanAnswer, FALLBACK_MODELS, type GeminiModel, rankModels, systemPrompt, userPrompt } from './ia'
+import { type AiAction, type AiMode, AI_MODES, aiError, answerHtml, answerOptions, cleanAnswer, cleanTranscript, TRANSCRIBE_SYSTEM, FALLBACK_MODELS, type GeminiModel, rankModels, systemPrompt, userPrompt } from './ia'
 
 interface AiSettings {
   apiKeyEnc: string | null
@@ -23,6 +23,8 @@ const GEMINI = 'https://generativelanguage.googleapis.com/v1beta/models'
 const MODELS_TTL_MS = 12 * 3_600_000
 /** Espera pela resposta: os modelos rápidos respondem em poucos segundos. */
 const TIMEOUT_MS = 25_000
+
+type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } }
 
 class GeminiError extends Error {
   constructor(
@@ -93,12 +95,12 @@ export class EmailAiService {
     return list
   }
 
-  private async request(apiKey: string, model: string, system: string, prompt: string, temperature: number) {
+  private async request(apiKey: string, model: string, system: string, prompt: string, temperature: number, extra: GeminiPart[] = [], maxOutputTokens = 1024) {
     const body = {
       systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      contents: [{ role: 'user', parts: [...extra, { text: prompt }] }],
       // Sem "raciocínio" nos modelos 2.5 (é o que mais demora); nos outros, o padrão do modelo.
-      generationConfig: { temperature, maxOutputTokens: 1024, ...(/2\.5-flash/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {}) },
+      generationConfig: { temperature, maxOutputTokens, ...(/2\.5-flash/.test(model) ? { thinkingConfig: { thinkingBudget: 0 } } : {}) },
     }
     let res: Response
     try {
@@ -125,7 +127,7 @@ export class EmailAiService {
    * Pede o texto ao modelo preferido. Modelo aposentado ou indisponível para a chave (404, ou 400 falando do modelo):
    * consulta a lista de novo e tenta o próximo, até 3 modelos.
    */
-  private async call(s: AiSettings, system: string, prompt: string, temperature: number) {
+  private async call(s: AiSettings, system: string, prompt: string, temperature: number, extra: GeminiPart[] = [], maxOutputTokens = 1024) {
     if (!s.apiKeyEnc) throw new BadRequestException('Cadastre a chave do Gemini em E-mail marketing → Configurações (é gratuita no Google AI Studio).')
     const apiKey = decrypt(s.apiKeyEnc)
     let list = await this.candidates(apiKey, s.model)
@@ -135,7 +137,7 @@ export class EmailAiService {
       if (!model) break
       tried.add(model)
       try {
-        return { text: await this.request(apiKey, model, system, prompt, temperature), model }
+        return { text: await this.request(apiKey, model, system, prompt, temperature, extra, maxOutputTokens), model }
       } catch (err) {
         if (!(err instanceof GeminiError)) throw err
         const msg = String((err.body as { error?: { message?: string } } | null)?.error?.message ?? '')
@@ -146,6 +148,22 @@ export class EmailAiService {
       }
     }
     throw new BadRequestException('Nenhum modelo do Gemini disponível para esta chave agora. Confira a chave no Google AI Studio ou tente mais tarde.')
+  }
+
+  /** Há chave do Gemini cadastrada (E-mail marketing → Configurações)? */
+  async available(tenantId: string) {
+    return !!(await this.config(tenantId)).apiKeyEnc
+  }
+
+  /**
+   * Transcreve um áudio do chat (mensagem de voz) com a mesma chave do Gemini do e-mail marketing. Só quando alguém
+   * pede (botão "Transcrever"): o áudio vai para o Google e o texto volta para a conversa.
+   */
+  async transcribe(tenantId: string, audio: Buffer, mime: string) {
+    const s = await this.config(tenantId)
+    if (!s.apiKeyEnc) throw new BadRequestException('Para transcrever áudios, cadastre a chave do Gemini em E-mail marketing → Configurações (é gratuita no Google AI Studio).')
+    const r = await this.call(s, TRANSCRIBE_SYSTEM, 'Transcreva este áudio.', 0, [{ inlineData: { mimeType: mime, data: audio.toString('base64') } }], 4096)
+    return cleanTranscript(r.text)
   }
 
   async test(user: AuthUser) {
