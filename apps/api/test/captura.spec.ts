@@ -47,6 +47,7 @@ describe('envio do formulário', () => {
         contact: { name: 'Ana', email: 'ana@x.com', phone: '+5547996470159', company: null, jobTitle: null, city: null, state: 'SC' },
         custom: { marca: 'Case' },
         message: 'Preciso de filtro',
+        customerType: null,
       },
     })
   })
@@ -215,5 +216,23 @@ describe('origem de anúncio no meio da visita', () => {
     const t = classifyTouch('https://lp.usaparts.com.br/pecas-jcb?gclid=Cj0KCQjwTesteClique123_ABC', null, [])!
     expect(t).toMatchObject({ source: 'google', medium: 'cpc' })
     expect(clickIdsFromUrl(t.landing)).toMatchObject({ gclid: 'Cj0KCQjwTesteClique123_ABC' })
+  })
+})
+
+describe('Campo "Tipo de cliente" nos formulários e pop-ups', () => {
+  it('usa as opções de Cadastros, confere a resposta e respeita o obrigatório', async () => {
+    const { cleanFields, validateSubmission, withCustomerTypes } = await import('../src/captura/regras')
+    const saved = cleanFields([{ key: 'phone', required: true }, { key: 'customerType', required: true }], [])
+    expect('fields' in saved && saved.fields[1]).toMatchObject({ key: 'customerType', label: 'Tipo de cliente', required: true, type: 'select' })
+    const fields = withCustomerTypes('fields' in saved ? saved.fields : [], ['Consumidor Final', 'Revenda', 'Mecânico / Oficina', 'Revenda'])
+    expect(fields[1]!.options).toEqual(['Consumidor Final', 'Revenda', 'Mecânico / Oficina'])
+    const ok = validateSubmission(fields, { phone: '(47) 99999-0000', customerType: 'Revenda' })
+    expect('data' in ok && ok.data.customerType).toBe('Revenda')
+    expect(validateSubmission(fields, { phone: '(47) 99999-0000' })).toEqual({ errors: { customerType: 'Preencha este campo.' } })
+    expect(validateSubmission(fields, { phone: '(47) 99999-0000', customerType: 'Outra coisa' })).toEqual({ errors: { customerType: 'Escolha uma das opções.' } })
+    // Não obrigatório: pode ficar em branco.
+    const optional = withCustomerTypes([{ key: 'phone', label: 'WhatsApp', required: true }, { key: 'customerType', label: 'Você é', required: false }], ['Revenda'])
+    const blank = validateSubmission(optional, { phone: '(47) 99999-0000' })
+    expect('data' in blank && blank.data.customerType).toBeNull()
   })
 })

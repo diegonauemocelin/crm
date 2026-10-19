@@ -14,6 +14,8 @@ export const BASE_FIELDS = {
   city: { label: 'Cidade', type: 'text' },
   state: { label: 'Estado', type: 'uf' },
   message: { label: 'Mensagem', type: 'textarea' },
+  /** Consumidor final, revenda, oficina...: as opções são as de Cadastros › Tipo de cliente (ativas). */
+  customerType: { label: 'Tipo de cliente', type: 'select' },
 } as const
 
 export type BaseKey = keyof typeof BASE_FIELDS
@@ -57,6 +59,14 @@ export interface SubmittedData {
   contact: { name: string | null; email: string | null; phone: string | null; company: string | null; jobTitle: string | null; city: string | null; state: string | null }
   custom: Record<string, string>
   message: string | null
+  /** Tipo de cliente escolhido no formulário (nome do item de Cadastros). */
+  customerType: string | null
+}
+
+/** Opções atuais do campo "Tipo de cliente" (Cadastros): entram na hora de mostrar e de conferir o formulário. */
+export function withCustomerTypes<T extends { key: string; options?: string[] }>(fields: T[], names: string[]): T[] {
+  const options = [...new Set(names.map((n) => n.trim()).filter(Boolean))]
+  return fields.map((f) => (f.key === 'customerType' ? { ...f, type: 'select', options } : f))
 }
 
 /** Confere o envio contra o formulário. Devolve os dados limpos ou a lista de problemas por campo. */
@@ -71,7 +81,7 @@ export function whatsappFields(w: { askEmail: boolean; requireName?: boolean; re
 
 export function validateSubmission(fields: FormField[], input: Record<string, unknown>): { data: SubmittedData } | { errors: Record<string, string> } {
   const errors: Record<string, string> = {}
-  const data: SubmittedData = { contact: { name: null, email: null, phone: null, company: null, jobTitle: null, city: null, state: null }, custom: {}, message: null }
+  const data: SubmittedData = { contact: { name: null, email: null, phone: null, company: null, jobTitle: null, city: null, state: null }, custom: {}, message: null, customerType: null }
   for (const f of fields) {
     const raw = input[f.key]
     const value = (Array.isArray(raw) ? raw.join(', ') : typeof raw === 'string' || typeof raw === 'number' ? String(raw) : '').trim()
@@ -104,6 +114,10 @@ export function validateSubmission(fields: FormField[], input: Record<string, un
       }
       case 'message':
         data.message = value
+        break
+      case 'customerType':
+        if (f.options?.length && !f.options.includes(value)) errors[f.key] = 'Escolha uma das opções.'
+        else data.customerType = value
         break
       case 'name':
       case 'company':

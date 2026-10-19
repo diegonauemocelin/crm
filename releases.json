@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.59.0",
+      "date": "2026-10-19",
+      "title": "Campo Tipo de cliente nos formulários e pop-ups",
+      "changes": [
+        { "type": "novo", "area": "Captura", "text": "Campo \"Tipo de cliente\" nos formulários e pop-ups: o visitante escolhe se é consumidor final, revenda, oficina... (as opções são as de Cadastros › Tipo de cliente). Em cada formulário dá para marcar se é obrigatório ou não e trocar o texto (ex.: \"Você é\")." },
+        { "type": "melhoria", "area": "Captura", "text": "A resposta vai para o lead (tag e linha do tempo) e para a pré-venda criada pelo formulário, e vale mais que o tipo de cliente fixo do formulário ou do pop-up." }
+      ]
+    },
+    {
       "version": "0.58.1",
       "date": "2026-10-19",
       "title": "Envio religa a conexão do número quando ela cai",

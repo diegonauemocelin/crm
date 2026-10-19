@@ -14,7 +14,7 @@ import { RastreamentoService } from '../rastreamento/rastreamento.service'
 import { SettingsService } from '../settings/settings.service'
 import { type AdsTag, type CaptureSettings, CapturaService, cleanAdsTag, DEFAULT_ADS_TAG } from './captura.service'
 import { cleanDesign } from './design'
-import { BASE_FIELDS, cleanFields, type CustomDef, safeRedirect } from './regras'
+import { BASE_FIELDS, cleanFields, type CustomDef, type FormField, safeRedirect, withCustomerTypes } from './regras'
 
 export interface FormInput {
   name: string
@@ -101,10 +101,16 @@ export class CapturaAdminService {
   async catalog(user: AuthUser) {
     this.assertCan(user, 'view')
     const customs = await this.config.listFields(user.tenantId)
+    const types = await this.customerTypeNames(user.tenantId)
     return [
-      ...Object.entries(BASE_FIELDS).map(([key, f]) => ({ key, label: f.label, type: f.type, custom: false })),
+      ...Object.entries(BASE_FIELDS).map(([key, f]) => ({ key, label: f.label, type: f.type, custom: false, ...(key === 'customerType' ? { options: types } : {}) })),
       ...customs.filter((c) => c.active).map((c) => ({ key: `custom:${c.key}`, label: c.label, type: c.type.toLowerCase(), options: c.options, custom: true })),
     ]
+  }
+
+  /** Opções do campo "Tipo de cliente": itens ativos de Cadastros › Tipo de cliente. */
+  private async customerTypeNames(tenantId: string) {
+    return (await this.prisma.lookupItem.findMany({ where: { tenantId, type: 'TIPO_CLIENTE', active: true }, orderBy: { name: 'asc' }, select: { name: true } })).map((l) => l.name)
   }
 
   private async assertOwner(tenantId: string, ownerId: string | null | undefined) {
@@ -223,10 +229,11 @@ export class CapturaAdminService {
   async editor(user: AuthUser, kind: 'popup' | 'form', id: string) {
     this.assertCan(user, 'view')
     const s = await this.captura.settingsOf(user.tenantId)
+    const types = await this.customerTypeNames(user.tenantId)
     const formView = (f: { id: string; name: string; fields: unknown; submitLabel: string; successMessage: string; consentText: string | null }) => ({
       id: f.id,
       name: f.name,
-      fields: f.fields,
+      fields: withCustomerTypes((f.fields ?? []) as FormField[], types),
       submitLabel: f.submitLabel,
       successMessage: f.successMessage,
       consentText: f.consentText,

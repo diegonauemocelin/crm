@@ -12,7 +12,7 @@ import { classifyDevice, classifyTouch, CLIENT_ID, domainAllowed, hasCampaign, t
 import { RastreamentoService } from '../rastreamento/rastreamento.service'
 import { env } from '../config/env'
 import { SettingsService } from '../settings/settings.service'
-import { BASE_FIELDS, type FormField, safeRedirect, validateSubmission, waLink, whatsappText, whatsappFields } from './regras'
+import { BASE_FIELDS, type FormField, safeRedirect, validateSubmission, waLink, whatsappText, whatsappFields, withCustomerTypes } from './regras'
 
 export interface WhatsappWidget {
   enabled: boolean
@@ -174,12 +174,13 @@ export class CapturaService {
       this.settingsOf(tenantId),
       this.prisma.captureWhatsapp.findMany({ where: { tenantId, active: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }),
     ])
+    const customerTypes = await this.customerTypeNames(tenantId)
     return {
       privacyUrl: s.privacyUrl || null,
       // Os mesmos IDs que ficariam no código da página (não são segredo).
       adsTag: s.adsTag && (s.adsTag.tagId || s.adsTag.formSendTo || s.adsTag.whatsappSendTo) ? { ...DEFAULT_ADS_TAG, ...s.adsTag } : null,
       forms: Object.fromEntries(
-        forms.map((f) => [f.id, { id: f.id, fields: f.fields, submitLabel: f.submitLabel, successMessage: f.successMessage, consentText: f.consentText, design: f.design ?? null }]),
+        forms.map((f) => [f.id, { id: f.id, fields: withCustomerTypes(f.fields as unknown as FormField[], customerTypes), submitLabel: f.submitLabel, successMessage: f.successMessage, consentText: f.consentText, design: f.design ?? null }]),
       ),
       popups: popups.map((p) => ({
         id: p.id,
@@ -200,6 +201,11 @@ export class CapturaService {
       // Vários botões: o script mostra o primeiro que combina com a página e o dispositivo. O número não vai junto.
       whatsapps: buttons.map((w) => ({ id: w.id, buttonText: w.buttonText, title: w.title, subtitle: w.subtitle, askEmail: w.askEmail, fields: whatsappFields(w), position: w.position, color: w.color, include: w.include, exclude: w.exclude, device: w.device })),
     }
+  }
+
+  /** Opções do campo "Tipo de cliente": os itens ativos de Cadastros › Tipo de cliente. */
+  private async customerTypeNames(tenantId: string) {
+    return (await this.prisma.lookupItem.findMany({ where: { tenantId, type: 'TIPO_CLIENTE', active: true }, orderBy: { name: 'asc' }, select: { name: true } })).map((l) => l.name)
   }
 
   async submit(tenantId: string, p: PublicSubmit, meta: { ip: string | null; userAgent?: string }): Promise<SubmitResult> {
@@ -228,7 +234,7 @@ export class CapturaService {
       form = await this.prisma.captureForm.findFirst({ where: { id: p.formId, tenantId, active: true } })
       if (!form) return { ok: false, message: 'Este formulário não está mais disponível.' }
       if (p.kind === 'popup' && p.popupId && UUID.test(p.popupId)) popup = await this.prisma.capturePopup.findFirst({ where: { id: p.popupId, tenantId }, select: { id: true, name: true, ownerId: true, customerTypeId: true, brandIds: true } })
-      fields = form.fields as unknown as FormField[]
+      fields = withCustomerTypes(form.fields as unknown as FormField[], await this.customerTypeNames(tenantId))
     }
 
     // Campos obrigatórios primeiro: quem envia vazio (pessoa ou robô) recebe o aviso do campo, nunca "Recebido".
@@ -236,7 +242,7 @@ export class CapturaService {
     if ('errors' in checked) return { ok: false, message: 'Confira os campos destacados.', errors: checked.errors }
     // Robô (campo escondido preenchido ou envio rápido demais): responde como se tivesse dado certo, sem gravar nada.
     if (p.hp || (typeof p.t === 'number' && p.t < MIN_FILL_MS)) return { ok: true, message: 'Recebido.' }
-    const { contact, custom, message } = checked.data
+    const { contact, custom, message, customerType: answeredType } = checked.data
 
     // Campos personalizados no tipo certo (número, data, lista...).
     const defs = await this.config.listFields(tenantId)
@@ -259,7 +265,9 @@ export class CapturaService {
     // Vendedor, tipo de cliente e marcas: do botão de WhatsApp, do pop-up (se ele definir) ou do formulário.
     const source = p.kind === 'whatsapp' ? wa! : form!
     const ownerId = (popup?.ownerId ?? source.ownerId) || null
-    const customerTypeId = (popup?.customerTypeId ?? source.customerTypeId) || null
+    // Tipo de cliente respondido no formulário vale mais que o fixo do pop-up ou do formulário.
+    const answered = answeredType ? await this.prisma.lookupItem.findFirst({ where: { tenantId, type: 'TIPO_CLIENTE', active: true, name: answeredType }, select: { id: true } }) : null
+    const customerTypeId = answered?.id ?? ((popup?.customerTypeId ?? source.customerTypeId) || null)
     const brandIds = popup?.brandIds.length ? popup.brandIds : (source.brandIds ?? [])
     const lookups = await this.prisma.lookupItem.findMany({ where: { tenantId, id: { in: [customerTypeId, ...brandIds].filter((x): x is string => !!x) } }, select: { id: true, name: true, type: true } })
     const customerType = lookups.find((l) => l.id === customerTypeId && l.type === 'TIPO_CLIENTE') ?? null
