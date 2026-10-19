@@ -26,6 +26,7 @@ import { api, errorMessage } from '@/lib/api'
 import { formatPhone, maskPhone, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import { setSoundOn, soundOn, useChatAlerts } from '@/lib/chat-alerts'
+import { splitLinks } from '@/lib/links'
 import { cn } from '@/lib/utils'
 
 interface NumberRef {
@@ -592,7 +593,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
                   <p className="mb-0.5 flex items-center gap-1 text-[11px] font-semibold tracking-wide uppercase">
                     <LockIcon className="size-3" /> Nota interna · o cliente não vê
                   </p>
-                  <p className="break-words whitespace-pre-wrap">{m.text}</p>
+                  <p className="break-words whitespace-pre-wrap">{waFormat(m.text ?? '')}</p>
                   <p className="mt-0.5 text-right text-[11px] tabular-nums opacity-70">
                     {m.sentByName ? `${m.sentByName} · ` : ''}
                     {time.format(new Date(m.sentAt))}
@@ -1499,7 +1500,21 @@ export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, e
 }
 
 /** Formatação do WhatsApp (*negrito*, _itálico_, ~riscado~) como elementos do React (nunca HTML vindo da mensagem). */
+/** Texto da mensagem: links clicáveis (abrem em nova aba) e a formatação do WhatsApp no resto. */
 function waFormat(text: string) {
+  return splitLinks(text).map((part, i) =>
+    part.href ? (
+      <a key={`l${i}`} href={part.href} target="_blank" rel="noopener noreferrer nofollow" className="break-all text-sky-700 underline underline-offset-2 hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-100" title={`Abrir em nova aba: ${part.href}`}>
+        {part.text}
+      </a>
+    ) : (
+      <span key={`t${i}`}>{waStyles(part.text)}</span>
+    ),
+  )
+}
+
+/** *negrito*, _itálico_ e ~riscado~ do WhatsApp. */
+function waStyles(text: string) {
   const out: (string | React.ReactElement)[] = []
   const re = /([*_~])([^*_~\n]+?)\1/g
   let last = 0

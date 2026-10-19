@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.61.1",
+      "date": "2026-10-19",
+      "title": "Links do chat abrem em nova aba",
+      "changes": [
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Links recebidos ou enviados no chat (https://... ou www....) ficam clicáveis e abrem em uma nova aba, sem precisar copiar e colar. Vale também para as notas internas." }
+      ]
+    },
+    {
       "version": "0.61.0",
       "date": "2026-10-19",
       "title": "Corrigir e apagar mensagens enviadas no chat",
