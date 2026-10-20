@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2Icon, LockIcon, PencilIcon, PlusIcon, ShieldCheckIcon, Trash2Icon } from 'lucide-react'
 import { type FormEvent, Fragment, useState } from 'react'
 import { toast } from 'sonner'
-import { Can, EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { Can, EmptyState, ErrorState, PageHeader, TableSkeleton } from '@/components/page'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,15 +42,7 @@ const EMPTY: PermissionEntry = { view: false, create: false, edit: false, delete
 /** Módulos em que faz sentido restringir a "somente os próprios registros". */
 const SCOPED_MODULES = new Set(['leads', 'pre_vendas', 'pos_vendas', 'chat'])
 
-export function RolesPage() {
-  return (
-    <RequirePermission module="perfis">
-      <RolesContent />
-    </RequirePermission>
-  )
-}
-
-function RolesContent() {
+export function RolesContent() {
   const qc = useQueryClient()
   const roles = useQuery({ queryKey: ['roles'], queryFn: () => api.get<RoleRow[]>('/roles') })
   const modules = useQuery({ queryKey: ['modules'], queryFn: () => api.get<ModuleDef[]>('/roles/modules'), staleTime: Infinity })

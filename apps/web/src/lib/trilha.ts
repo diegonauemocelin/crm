@@ -232,19 +232,19 @@ export const TRAIL: TrailModule[] = [
   },
   {
     key: 'cadastros',
-    title: 'Cadastros de atendimento',
+    title: 'Ajustes do atendimento',
     module: 'cadastros',
-    routes: ['/cadastros-atendimento'],
-    purpose: 'As listas usadas no atendimento: unidades, vendedores, origens, marcas, tipos de peça e motivos de perda.',
+    routes: ['/configuracoes?secao=listas', '/configuracoes?secao=vendedores', '/configuracoes?secao=unidades', '/configuracoes?secao=prazos', '/configuracoes?secao=mensagens-automaticas'],
+    purpose: 'Em Configurações: unidades, vendedores, listas (origens, marcas, tipos de peça, motivos de perda), prazos e mensagens automáticas.',
     lessons: [
       {
         id: 'cadastros.listas',
         title: 'Manter as listas em dia',
         steps: [
-          'Abra Atendimento Comercial → Cadastros.',
-          'Em Vendedores, cadastre cada vendedor e ligue ao login dele (para o escopo “Próprios”).',
+          'Abra Configurações → Listas do atendimento.',
+          'Em Configurações → Vendedores, cadastre cada vendedor com o telefone e ligue ao login dele (para o escopo “Próprios”).',
           'Desative o que não usa mais em vez de excluir: o histórico continua certo.',
-          'Em Importar, traga planilhas antigas de atendimento.',
+          'Em Configurações → Prazos e alertas e → Mensagens automáticas, ajuste os avisos e as mensagens de WhatsApp.',
         ],
       },
     ],
@@ -495,14 +495,14 @@ export const TRAIL: TrailModule[] = [
     key: 'admin',
     title: 'Administração',
     module: 'usuarios',
-    routes: ['/usuarios', '/perfis', '/configuracoes', '/auditoria', '/whatsapp/numeros', '/sugestoes/analisar'],
-    purpose: 'Usuários, perfis de acesso, números de WhatsApp, integrações e auditoria.',
+    routes: ['/configuracoes', '/auditoria', '/sugestoes/analisar'],
+    purpose: 'Configurações (empresa, equipe e acesso, WhatsApp, marketing e integrações) e auditoria.',
     lessons: [
       {
         id: 'admin.usuarios',
         title: 'Cadastrar um usuário',
         steps: [
-          'Abra Administração → Usuários → Novo usuário, com nome, e-mail e perfil.',
+          'Abra Configurações → Usuários → Novo usuário, com nome, e-mail e perfil.',
           'A pessoa recebe o convite por e-mail e cria a senha (com 2 fatores, se o perfil exigir).',
           'Para quem saiu da empresa: Desativar (o histórico continua; dá para reativar depois).',
         ],
@@ -511,7 +511,7 @@ export const TRAIL: TrailModule[] = [
         id: 'admin.perfis',
         title: 'Ajustar um perfil de acesso',
         steps: [
-          'Em Perfis de acesso, abra o perfil e marque o que ele pode ver, criar, editar, excluir e exportar.',
+          'Em Configurações → Perfis de acesso, abra o perfil e marque o que ele pode ver, criar, editar, excluir e exportar.',
           'Em Leads, Pré/Pós-Vendas e Chat, escolha o escopo: próprios, da unidade ou todos.',
           'Use o Gestor comercial para quem acompanha a equipe (inclui monitorar conversas).',
         ],
@@ -520,9 +520,9 @@ export const TRAIL: TrailModule[] = [
         id: 'admin.whatsapp',
         title: 'Números de WhatsApp',
         steps: [
-          'Em Números de WhatsApp, cadastre o número e clique em Conectar para ler o QR Code no celular.',
+          'Em Configurações → Números de WhatsApp, cadastre o número e clique em Conectar para ler o QR Code no celular.',
           'Ligue os usuários e vendedores que usam o número; ligue o atendimento dividido e os setores, se for o caso.',
-          'Defina as regras: o que vira lead e pré-venda e os contatos da empresa (colegas e fornecedores).',
+          'Em Configurações → Regras e horário, defina o que vira lead e pré-venda, o horário comercial e a mensagem de ausência.',
         ],
       },
       {

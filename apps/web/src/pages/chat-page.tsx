@@ -1220,7 +1220,7 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
   })
   if (!can('chat', 'create')) return <p className="border-t px-3 py-2 text-xs text-muted-foreground">Seu perfil só permite ler as conversas.</p>
   if (thread.number?.status !== 'CONECTADO') {
-    return <p className="border-t px-3 py-2 text-xs text-muted-foreground">O número {thread.number?.name} está desconectado: conecte de novo em Números de WhatsApp para responder por aqui.</p>
+    return <p className="border-t px-3 py-2 text-xs text-muted-foreground">O número {thread.number?.name} está desconectado: conecte de novo em Configurações → Números de WhatsApp para responder por aqui.</p>
   }
   const submit = (e?: FormEvent) => {
     e?.preventDefault()

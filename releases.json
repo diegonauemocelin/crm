@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.64.0",
+      "date": "2026-10-20",
+      "title": "Configurações num lugar só e nome Usaparts em todos os textos",
+      "changes": [
+        { "type": "melhoria", "area": "Configurações", "text": "Todos os ajustes do sistema num lugar só (menu Administração › Configurações), com menu lateral por assunto e busca: Empresa (identidade, aparência, unidades), Equipe e acesso (usuários, perfis, vendedores), Pré e Pós-Vendas (listas, prazos e alertas, mensagens automáticas, importar planilha), WhatsApp (números, regras e horário, respostas rápidas, etiquetas), Leads e marketing (campos, pontuação, tags, e-mail marketing, captura no site) e Integrações (SMTP, rastreamento, Magazord, Meta, Google Analytics, Google Ads, Tcar)." },
+        { "type": "melhoria", "area": "Configurações", "text": "Cada seção aparece só para quem tem a permissão dela. Os endereços antigos (Cadastros, Usuários, Perfis, Números de WhatsApp, Configurar leads, configurações do e-mail) abrem direto a seção nova." },
+        { "type": "novo", "area": "Configurações", "text": "Trocar o nome da empresa nos textos: em Configurações › Identidade da empresa, troca o nome antigo pelo novo em pop-ups, formulários, campanhas não enviadas, automações, respostas rápidas, etiquetas, listas e configurações, com prévia antes de aplicar. Endereços de site e e-mail não mudam." },
+        { "type": "correcao", "area": "Sistema", "text": "\"USA Parts\" (e variações como \"USA PARTS\" e \"USA-Parts\") trocado por \"Usaparts\" em todos os textos já salvos. Conversas, histórico e e-mails já enviados ficam como foram." },
+        { "type": "melhoria", "area": "Sistema", "text": "Preparação para vários clientes (SaaS): os textos padrão usam o nome da empresa cadastrado, sem nome fixo no sistema. Nova variável {empresa} na mensagem de carrinho abandonado." }
+      ]
+    },
+    {
       "version": "0.63.0",
       "date": "2026-10-19",
       "title": "Transcrever áudios e chat com a cara do WhatsApp Web",

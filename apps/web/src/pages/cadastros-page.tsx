@@ -4,7 +4,7 @@ import { type FormEvent, useState } from 'react'
 import { toast } from 'sonner'
 import { ImportDialog } from '@/components/atendimento/import-dialog'
 import { MultiSelect } from '@/components/multi-select'
-import { Can, EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { Can, EmptyState, ErrorState, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -55,51 +55,7 @@ function invalidateAll(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: ['atendimento-options'] })
 }
 
-export function CadastrosPage() {
-  const { me } = useAuth()
-  return (
-    <RequirePermission module="cadastros">
-      <PageHeader
-        title="Cadastros de atendimento"
-        description="Vendedores e listas usadas em Pré-Vendas e Pós-Vendas. Itens são desativados, nunca apagados, para não perder o histórico."
-      />
-      <Tabs defaultValue="unidades">
-        <TabsList className="mb-4 flex h-auto flex-wrap">
-          <TabsTrigger value="unidades">Unidades</TabsTrigger>
-          <TabsTrigger value="vendedores">Vendedores</TabsTrigger>
-          {LISTS.map((l) => (
-            <TabsTrigger key={l.type} value={l.type}>
-              {l.title}
-            </TabsTrigger>
-          ))}
-          <TabsTrigger value="alertas">Alertas</TabsTrigger>
-          {me?.role.isSystem && <TabsTrigger value="importar">Importar</TabsTrigger>}
-        </TabsList>
-        <TabsContent value="unidades">
-          <UnitsTab />
-        </TabsContent>
-        <TabsContent value="vendedores">
-          <SellersTab />
-        </TabsContent>
-        {LISTS.map((l) => (
-          <TabsContent key={l.type} value={l.type}>
-            <LookupTab type={l.type} title={l.title} single={l.single} />
-          </TabsContent>
-        ))}
-        <TabsContent value="alertas">
-          <AlertsTab />
-        </TabsContent>
-        {me?.role.isSystem && (
-          <TabsContent value="importar">
-            <ImportTab />
-          </TabsContent>
-        )}
-      </Tabs>
-    </RequirePermission>
-  )
-}
-
-function LookupTab({ type, title, single }: { type: string; title: string; single: string }) {
+export function LookupTab({ type, title, single }: { type: string; title: string; single: string }) {
   const qc = useQueryClient()
   const { can } = useAuth()
   const q = useQuery({ queryKey: ['cadastros', type], queryFn: () => api.get<LookupRow[]>(`/cadastros/listas/${type}`) })
@@ -212,7 +168,7 @@ function RenameDialog({ name, busy, onClose, onSave }: { name: string; busy: boo
   )
 }
 
-function SellersTab() {
+export function SellersTab() {
   const qc = useQueryClient()
   const { can } = useAuth()
   const q = useQuery({ queryKey: ['cadastros', 'vendedores'], queryFn: () => api.get<SellerRow[]>('/cadastros/vendedores') })
@@ -460,7 +416,7 @@ interface UnitRow {
   records: number
 }
 
-function UnitsTab() {
+export function UnitsTab() {
   const { can } = useAuth()
   const q = useQuery({ queryKey: ['cadastros', 'unidades'], queryFn: () => api.get<UnitRow[]>('/cadastros/unidades') })
   const [editing, setEditing] = useState<UnitRow | 'new' | null>(null)
@@ -636,18 +592,47 @@ interface NextDayMessage {
   numberId: string | null
 }
 
-function AlertsTab() {
+/** Prazos e avisos do atendimento, ou as mensagens automáticas de WhatsApp (dia seguinte e resumo dos vendedores). */
+export function AlertsTab({ only }: { only?: 'prazos' | 'mensagens' }) {
   const q = useQuery({ queryKey: ['cadastros', 'alertas'], queryFn: () => api.get<AlertConfig>('/cadastros/alertas') })
   if (q.isLoading || !q.data) return <TableSkeleton rows={2} />
   return (
     <div className="grid gap-4 xl:grid-cols-2">
-      <NewRecordAlertCard config={q.data} />
-      <ReturnAlertCard config={q.data} />
-      <CallAlertCard config={q.data} />
-      <NextDayMessageCard config={q.data} />
-      <SellerDigestCard config={q.data} />
-      <PostSaleCard config={q.data} />
+      {only !== 'mensagens' && (
+        <>
+          <NewRecordAlertCard config={q.data} />
+          <ReturnAlertCard config={q.data} />
+          <CallAlertCard config={q.data} />
+          <PostSaleCard config={q.data} />
+        </>
+      )}
+      {only !== 'prazos' && (
+        <>
+          <NextDayMessageCard config={q.data} />
+          <SellerDigestCard config={q.data} />
+        </>
+      )}
     </div>
+  )
+}
+
+/** Listas auxiliares do atendimento (origens, tipos de cliente, marcas, tipos de peça, motivos de perda). */
+export function ListsTab() {
+  return (
+    <Tabs defaultValue={LISTS[0].type}>
+      <TabsList className="mb-4 flex h-auto flex-wrap">
+        {LISTS.map((l) => (
+          <TabsTrigger key={l.type} value={l.type}>
+            {l.title}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {LISTS.map((l) => (
+        <TabsContent key={l.type} value={l.type}>
+          <LookupTab type={l.type} title={l.title} single={l.single} />
+        </TabsContent>
+      ))}
+    </Tabs>
   )
 }
 
@@ -668,7 +653,7 @@ function useSaveAlerts(message: string) {
 const NO_OWNER = '__none__'
 
 /** Pré-venda com resultado gera o pós-venda: aqui se define quem recebe e o prazo do primeiro contato. */
-function PostSaleCard({ config }: { config: AlertConfig }) {
+export function PostSaleCard({ config }: { config: AlertConfig }) {
   const { can } = useAuth()
   const options = useOptions()
   const canEdit = can('cadastros', 'edit')
@@ -750,7 +735,7 @@ function PostSaleCard({ config }: { config: AlertConfig }) {
   )
 }
 
-function NewRecordAlertCard({ config }: { config: AlertConfig }) {
+export function NewRecordAlertCard({ config }: { config: AlertConfig }) {
   const { can } = useAuth()
   const [minutes, setMinutes] = useState<number | null>(null)
   const save = useSaveAlerts('Prazo da pré-venda nova salvo.')
@@ -782,7 +767,7 @@ function NewRecordAlertCard({ config }: { config: AlertConfig }) {
   )
 }
 
-function ReturnAlertCard({ config }: { config: AlertConfig }) {
+export function ReturnAlertCard({ config }: { config: AlertConfig }) {
   const { can } = useAuth()
   const [hours, setHours] = useState<number | null>(null)
   const save = useSaveAlerts('Prazo do alerta salvo.')
@@ -815,7 +800,7 @@ function ReturnAlertCard({ config }: { config: AlertConfig }) {
 }
 
 /** Pré-venda em negociação: prazo para chamar o cliente, renovado a cada "Chamei o cliente". */
-function CallAlertCard({ config }: { config: AlertConfig }) {
+export function CallAlertCard({ config }: { config: AlertConfig }) {
   const { can } = useAuth()
   const [hours, setHours] = useState<number | null>(null)
   const save = useSaveAlerts('Prazo para chamar o cliente salvo.')
@@ -851,7 +836,7 @@ function CallAlertCard({ config }: { config: AlertConfig }) {
 const FIRST_CONNECTED = '__first__'
 
 /** Mensagem de WhatsApp enviada sozinha no dia seguinte para quem abriu pré-venda. */
-function NextDayMessageCard({ config }: { config: AlertConfig }) {
+export function NextDayMessageCard({ config }: { config: AlertConfig }) {
   const { can } = useAuth()
   const canEdit = can('cadastros', 'edit')
   const initial = config.nextDayMessage ?? { enabled: false, time: '09:00', text: '', numberId: null }
@@ -916,7 +901,7 @@ function NextDayMessageCard({ config }: { config: AlertConfig }) {
 }
 
 /** Resumo do dia para cada vendedor: os clientes da pré-venda repassados a ele, pelo WhatsApp, a partir das 18h. */
-function SellerDigestCard({ config }: { config: AlertConfig }) {
+export function SellerDigestCard({ config }: { config: AlertConfig }) {
   const { can } = useAuth()
   const sellerRows = useQuery({ queryKey: ['cadastros', 'vendedores'], queryFn: () => api.get<SellerRow[]>('/cadastros/vendedores') })
   const canEdit = can('cadastros', 'edit')
@@ -954,7 +939,7 @@ function SellerDigestCard({ config }: { config: AlertConfig }) {
           {!d.allSellers && <MultiSelect id="dg-sellers" items={sellers} value={d.sellerIds} onChange={(sellerIds) => setD({ ...d, sellerIds })} placeholder="Escolha os vendedores" disabled={!canEdit} />}
           {noPhone.length > 0 && (
             <p className="text-xs text-amber-700 dark:text-amber-400">
-              Sem telefone no cadastro (não recebem): {noPhone.map((s) => s.name).join(', ')}. Preencha em Cadastros › Vendedores.
+              Sem telefone no cadastro (não recebem): {noPhone.map((s) => s.name).join(', ')}. Preencha em Configurações › Vendedores.
             </p>
           )}
         </div>
@@ -1006,7 +991,7 @@ function SellerDigestCard({ config }: { config: AlertConfig }) {
   )
 }
 
-function ImportTab() {
+export function ImportTab() {
   const [kind, setKind] = useState<Kind | null>(null)
   return (
     <Card className="max-w-2xl">

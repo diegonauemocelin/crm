@@ -130,7 +130,7 @@ export interface Brand {
   logoUrl: string | null
   /** Endereço e dados da empresa no rodapé (boa prática e exigência dos provedores). */
   footerText: string
-  /** Redes sociais da empresa (cadastradas em E-mail marketing → Configurações). */
+  /** Redes sociais da empresa (cadastradas em Configurações → E-mail marketing). */
   social?: SocialLinks
   /** Ícones das redes no rodapé de todo e-mail (quando o e-mail não tem o bloco de redes). */
   socialInFooter?: boolean

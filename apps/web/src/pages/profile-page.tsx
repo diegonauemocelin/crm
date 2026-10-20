@@ -68,7 +68,7 @@ function ChatNameCard({ me }: { me: Me }) {
           <div className="space-y-2">
             <Label htmlFor="p-chat-name">Como aparecer</Label>
             <Input id="p-chat-name" value={value} onChange={(e) => setValue(e.target.value)} maxLength={40} placeholder={`Ex.: ${first || 'Diego'} - Vendas`} />
-            <p className="text-xs text-muted-foreground">Até 40 letras. Só vale nos números que assinam as mensagens (Números de WhatsApp).</p>
+            <p className="text-xs text-muted-foreground">Até 40 letras. Só vale nos números que assinam as mensagens (Configurações → Números de WhatsApp).</p>
           </div>
           <div className="space-y-2">
             <p className="text-sm font-medium">Como o cliente vê</p>

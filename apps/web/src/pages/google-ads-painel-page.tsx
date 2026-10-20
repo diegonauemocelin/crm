@@ -118,7 +118,7 @@ function Painel() {
                 <AlertTriangleIcon className="size-4 text-amber-600" />
                 <span>
                   Sem investimento neste período. Para trazer o valor investido, cole o script novo no Google Ads (em{' '}
-                  <Link to="/configuracoes?aba=google-ads" className="font-medium underline underline-offset-4">
+                  <Link to="/configuracoes?secao=google-ads" className="font-medium underline underline-offset-4">
                     Configurações → Google Ads
                   </Link>
                   , “Nomes das campanhas”) e programe para rodar diariamente.

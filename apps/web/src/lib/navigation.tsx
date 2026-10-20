@@ -10,18 +10,14 @@ import {
   InboxIcon,
   LayoutDashboardIcon,
   LightbulbIcon,
-  ListChecksIcon,
   MailIcon,
   MegaphoneIcon,
-  SmartphoneIcon,
   TargetIcon,
   MessageCircleIcon,
   PackageIcon,
   PackageSearchIcon,
   SettingsIcon,
-  ShieldCheckIcon,
   ShoppingCartIcon,
-  UsersIcon,
   UsersRoundIcon,
   type LucideIcon,
   BookUserIcon,
@@ -34,6 +30,8 @@ export interface NavItem {
   icon: LucideIcon
   module?: string
   action?: Action
+  /** Aparece se a pessoa pode ver qualquer um destes módulos (ex.: Configurações, com seções de vários módulos). */
+  anyOf?: string[]
   /** Fase do roadmap em que o módulo chega. Itens futuros aparecem com selo "Em breve". */
   phase?: number
 }
@@ -42,6 +40,9 @@ export interface NavGroup {
   title: string
   items: NavItem[]
 }
+
+/** Módulos com seções em Configurações (a tela mostra só as seções de cada um). */
+export const SETTINGS_MODULES = ['configuracoes', 'cadastros', 'usuarios', 'perfis', 'whatsapp', 'email_marketing', 'captura']
 
 /** Menu único, usado pelos dois layouts (Moderno e Clássico). Cada item respeita a permissão do perfil. */
 export const NAVIGATION: NavGroup[] = [
@@ -70,7 +71,6 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Agenda de contatos', to: '/agenda', icon: BookUserIcon, module: 'whatsapp' },
       { title: 'Monitorar conversas', to: '/chat?monitorar=1', icon: EyeIcon, module: 'monitoramento' },
       { title: 'Consulta de produtos', to: '/consulta-produtos', icon: PackageSearchIcon, module: 'consulta_produtos' },
-      { title: 'Cadastros', to: '/cadastros-atendimento', icon: ListChecksIcon, module: 'cadastros' },
     ],
   },
   {
@@ -99,10 +99,8 @@ export const NAVIGATION: NavGroup[] = [
   {
     title: 'Administração',
     items: [
-      { title: 'Usuários', to: '/usuarios', icon: UsersIcon, module: 'usuarios' },
-      { title: 'Perfis de acesso', to: '/perfis', icon: ShieldCheckIcon, module: 'perfis' },
-      { title: 'Números de WhatsApp', to: '/whatsapp/numeros', icon: SmartphoneIcon, module: 'whatsapp' },
-      { title: 'Configurações', to: '/configuracoes', icon: SettingsIcon, module: 'configuracoes' },
+      // Um lugar só para todos os ajustes: empresa, equipe e acesso, atendimento, WhatsApp, marketing e integrações.
+      { title: 'Configurações', to: '/configuracoes', icon: SettingsIcon, anyOf: SETTINGS_MODULES },
       { title: 'Auditoria', to: '/auditoria', icon: FileClockIcon, module: 'auditoria' },
     ],
   },
@@ -116,7 +114,8 @@ export const NAVIGATION: NavGroup[] = [
 ]
 
 export function visibleNavigation(can: (module: string, action?: Action) => boolean): NavGroup[] {
-  return NAVIGATION.map((g) => ({ ...g, items: g.items.filter((i) => !i.module || can(i.module, i.action ?? 'view')) })).filter(
+  const allowed = (i: NavItem) => (i.anyOf ? i.anyOf.some((m) => can(m, 'view')) : !i.module || can(i.module, i.action ?? 'view'))
+  return NAVIGATION.map((g) => ({ ...g, items: g.items.filter(allowed) })).filter(
     (g) => g.items.length > 0,
   )
 }

@@ -34,9 +34,10 @@ export interface SmtpSettings {
   maxPerMinute: number
 }
 
+/** Padrão de uma empresa nova: o nome vem do cadastro da empresa (cada cliente do CRM tem o seu). */
 export const DEFAULT_BRANDING: BrandingSettings = {
-  appName: 'CRM Usaparts',
-  shortName: 'Usaparts',
+  appName: 'CRM',
+  shortName: '',
   primaryColor: '#1d4ed8',
   sidebarColor: '#0f1e3d',
   logoFileId: null,
@@ -81,8 +82,9 @@ export class SettingsService {
     return value
   }
 
-  branding(tenantId: string) {
-    return this.get(tenantId, 'branding', DEFAULT_BRANDING)
+  async branding(tenantId: string) {
+    const name = (await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }))?.name?.trim() ?? ''
+    return this.get(tenantId, 'branding', { ...DEFAULT_BRANDING, ...(name ? { appName: `CRM ${name}`, shortName: name } : {}) })
   }
 
   smtp(tenantId: string) {

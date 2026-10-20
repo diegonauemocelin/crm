@@ -16,7 +16,7 @@ interface DigestLog {
 }
 
 /**
- * Resumo do dia para cada vendedor: a partir do horário configurado (Cadastros › Alertas, padrão 18h), cada vendedor
+ * Resumo do dia para cada vendedor: a partir do horário configurado (Configurações › Mensagens automáticas, padrão 18h), cada vendedor
  * escolhido recebe no WhatsApp dele os clientes da pré-venda repassados a ele no dia (telefone e nome), uma vez por dia.
  */
 @Injectable()

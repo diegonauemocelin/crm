@@ -135,6 +135,28 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (c: string)
 export function ManageLabelsDialog({ onClose }: { onClose: () => void }) {
   const { can } = useAuth()
   const admin = can('whatsapp', 'edit')
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Etiquetas do chat</DialogTitle>
+          <DialogDescription>Organize as conversas com etiquetas coloridas. As pessoais só você vê; as padrão aparecem para todos{admin ? ' (só administradores criam)' : ''}.</DialogDescription>
+        </DialogHeader>
+        <LabelsManager />
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Fechar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** A lista de etiquetas com o formulário (na janela do chat e em Configurações › Etiquetas do chat). */
+export function LabelsManager() {
+  const { can } = useAuth()
+  const admin = can('whatsapp', 'edit')
   const qc = useQueryClient()
   const labels = useLabels()
   const [editing, setEditing] = useState<ChatLabel | null>(null)
@@ -162,72 +184,61 @@ export function ManageLabelsDialog({ onClose }: { onClose: () => void }) {
   })
   const canEdit = (l: ChatLabel) => (l.standard ? admin : l.mine)
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Etiquetas do chat</DialogTitle>
-          <DialogDescription>Organize as conversas com etiquetas coloridas. As pessoais só você vê; as padrão aparecem para todos{admin ? ' (só administradores criam)' : ''}.</DialogDescription>
-        </DialogHeader>
-        <form
-          className="space-y-3 rounded-md border p-3"
-          onSubmit={(e: FormEvent) => {
-            e.preventDefault()
-            if (name.trim()) save.mutate()
-          }}
-        >
-          <div className="space-y-1.5">
-            <Label htmlFor="lb-name">{editing ? 'Editar etiqueta' : 'Nova etiqueta'}</Label>
-            <Input id="lb-name" maxLength={30} placeholder="Ex.: Orçamento enviado" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <ColorPicker value={color} onChange={setColor} />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            {!editing && admin ? (
-              <label className="flex items-center gap-2 text-sm">
-                <Switch checked={standard} onCheckedChange={setStandard} aria-label="Etiqueta padrão para todos" /> Padrão para todos
-              </label>
-            ) : (
-              <span />
-            )}
-            <div className="flex gap-2">
-              {editing && (
-                <Button type="button" variant="ghost" onClick={reset}>
-                  Cancelar
-                </Button>
-              )}
-              <Button type="submit" disabled={!name.trim() || save.isPending}>
-                {save.isPending ? <Loader2Icon className="animate-spin" /> : editing ? <CheckIcon /> : <PlusIcon />}
-                {editing ? 'Salvar' : 'Criar'}
+    <div className="max-w-xl space-y-3">
+      <form
+        className="space-y-3 rounded-md border p-3"
+        onSubmit={(e: FormEvent) => {
+          e.preventDefault()
+          if (name.trim()) save.mutate()
+        }}
+      >
+        <div className="space-y-1.5">
+          <Label htmlFor="lb-name">{editing ? 'Editar etiqueta' : 'Nova etiqueta'}</Label>
+          <Input id="lb-name" maxLength={30} placeholder="Ex.: Orçamento enviado" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <ColorPicker value={color} onChange={setColor} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {!editing && admin ? (
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={standard} onCheckedChange={setStandard} aria-label="Etiqueta padrão para todos" /> Padrão para todos
+            </label>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            {editing && (
+              <Button type="button" variant="ghost" onClick={reset}>
+                Cancelar
               </Button>
-            </div>
+            )}
+            <Button type="submit" disabled={!name.trim() || save.isPending}>
+              {save.isPending ? <Loader2Icon className="animate-spin" /> : editing ? <CheckIcon /> : <PlusIcon />}
+              {editing ? 'Salvar' : 'Criar'}
+            </Button>
           </div>
-          {name.trim() && <LabelChip label={{ name: name.trim(), color }} />}
-        </form>
-        <ul className="max-h-72 divide-y overflow-y-auto rounded-md border">
-          {(labels.data ?? []).length === 0 && <li className="p-4 text-center text-sm text-muted-foreground">Nenhuma etiqueta ainda.</li>}
-          {labels.data?.map((l) => (
-            <li key={l.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-              <LabelChip label={l} />
-              <span className="flex-1 text-xs text-muted-foreground">{l.standard ? 'Padrão (todos)' : 'Pessoal'}</span>
-              {canEdit(l) && (
-                <>
-                  <Button size="icon" variant="ghost" className="size-7" onClick={() => (setEditing(l), setName(l.name), setColor(l.color))} aria-label={`Editar ${l.name}`}>
-                    <PencilIcon />
-                  </Button>
-                  <Button size="icon" variant="ghost" className="size-7" onClick={() => del.mutate(l.id)} aria-label={`Excluir ${l.name}`} title="Excluir (sai de todas as conversas)">
-                    <Trash2Icon />
-                  </Button>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Fechar
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+        {name.trim() && <LabelChip label={{ name: name.trim(), color }} />}
+      </form>
+      <ul className="max-h-72 divide-y overflow-y-auto rounded-md border">
+        {(labels.data ?? []).length === 0 && <li className="p-4 text-center text-sm text-muted-foreground">Nenhuma etiqueta ainda.</li>}
+        {labels.data?.map((l) => (
+          <li key={l.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+            <LabelChip label={l} />
+            <span className="flex-1 text-xs text-muted-foreground">{l.standard ? 'Padrão (todos)' : 'Pessoal'}</span>
+            {canEdit(l) && (
+              <>
+                <Button size="icon" variant="ghost" className="size-7" onClick={() => (setEditing(l), setName(l.name), setColor(l.color))} aria-label={`Editar ${l.name}`}>
+                  <PencilIcon />
+                </Button>
+                <Button size="icon" variant="ghost" className="size-7" onClick={() => del.mutate(l.id)} aria-label={`Excluir ${l.name}`} title="Excluir (sai de todas as conversas)">
+                  <Trash2Icon />
+                </Button>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
@@ -282,7 +293,7 @@ export function ManageRepliesDialog({ onClose }: { onClose: () => void }) {
             <Label htmlFor="qr-title">{editing ? 'Editar resposta' : 'Nova resposta'}</Label>
             <Input id="qr-title" maxLength={60} placeholder="Título (ex.: Saudação)" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
-          <Textarea aria-label="Texto da resposta" rows={4} maxLength={2000} placeholder="Olá {nome}, aqui é {vendedor} da Usaparts. Como posso ajudar?" value={text} onChange={(e) => setText(e.target.value)} />
+          <Textarea aria-label="Texto da resposta" rows={4} maxLength={2000} placeholder="Olá {nome}, aqui é {vendedor}. Como posso ajudar?" value={text} onChange={(e) => setText(e.target.value)} />
           <div className="flex flex-wrap items-center justify-between gap-2">
             {!editing && admin ? (
               <label className="flex items-center gap-2 text-sm">

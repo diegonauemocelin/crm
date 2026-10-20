@@ -183,7 +183,7 @@ function Catalog() {
           <span>
             A cópia do catálogo está desligada.{' '}
             {can('configuracoes', 'view') && (
-              <Link to="/configuracoes?aba=loja" className="underline">
+              <Link to="/configuracoes?secao=loja" className="underline">
                 Ligar em Configurações → Loja virtual (Magazord)
               </Link>
             )}

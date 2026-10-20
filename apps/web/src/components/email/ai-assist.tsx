@@ -39,7 +39,7 @@ export function AiAssist({ html, onApply, disabled }: { html: string; onApply: (
   if (cfg.data && !cfg.data.configured) {
     return (
       <div className="rounded-md border border-dashed p-2.5 text-xs text-muted-foreground">
-        <SparklesIcon className="mr-1 inline size-3.5" /> Assistente de texto com IA: cadastre a chave gratuita do Gemini em E-mail marketing → Configurações.
+        <SparklesIcon className="mr-1 inline size-3.5" /> Assistente de texto com IA: cadastre a chave gratuita do Gemini em Configurações → E-mail marketing.
       </div>
     )
   }

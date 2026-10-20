@@ -446,7 +446,7 @@ function WhatsappSourceDialog({ initial, onClose, onPreview }: { initial: string
         {numbers.isLoading ? (
           <TableSkeleton rows={2} />
         ) : connected.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nenhum número conectado. Conecte em Administração → Números de WhatsApp.</p>
+          <p className="text-sm text-muted-foreground">Nenhum número conectado. Conecte em Configurações → Números de WhatsApp.</p>
         ) : (
           <div className="space-y-1.5">
             <Label htmlFor="ag-num">Número</Label>

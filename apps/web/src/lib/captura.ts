@@ -125,7 +125,8 @@ export const CHANNEL_LABEL: Record<Submission['channel'], string> = { formulario
 export const TRIGGER_LABEL: Record<Trigger, string> = { delay: 'Depois de alguns segundos', exit: 'Ao tentar sair da página', scroll: 'Ao rolar a página' }
 export const DEVICE_RULE_LABEL: Record<DeviceRule, string> = { todos: 'Celular e computador', celular: 'Só celular', computador: 'Só computador' }
 
-export const DEFAULT_CONSENT = 'Quero receber ofertas e novidades da Usaparts por e-mail. Posso cancelar quando quiser.'
+/** Texto padrão do consentimento (LGPD); {empresa} vira o nome cadastrado em Identidade da empresa. */
+export const consentText = (company: string) => `Quero receber ofertas e novidades${company ? ` da ${company}` : ''} por e-mail. Posso cancelar quando quiser.`
 
 /** Uma linha por padrão de página (o painel guarda como lista). */
 export const linesOf = (text: string) => text.split('\n').map((l) => l.trim()).filter(Boolean)

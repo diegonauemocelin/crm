@@ -1,9 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeftIcon, Loader2Icon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react'
+import { Loader2Icon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
-import { Link } from 'react-router'
 import { toast } from 'sonner'
-import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { ErrorState, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,45 +12,15 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { int, UF_LIST } from '@/lib/atendimento'
 import { type CustomField, FIELD_TYPE_LABEL, STAGE_LABEL, STAGES, useCustomFields, useTags } from '@/lib/leads'
 import { FormError } from './auth/auth-layout'
 
-export function LeadsConfigPage() {
-  return (
-    <RequirePermission module="configuracoes" action="edit">
-      <Button variant="ghost" size="sm" className="mb-2 -ml-2" asChild>
-        <Link to="/leads">
-          <ArrowLeftIcon /> Base de leads
-        </Link>
-      </Button>
-      <PageHeader title="Configurar leads" description="Campos personalizados, lead scoring e tags." />
-      <Tabs defaultValue="campos">
-        <TabsList className="mb-4">
-          <TabsTrigger value="campos">Campos personalizados</TabsTrigger>
-          <TabsTrigger value="scoring">Lead scoring</TabsTrigger>
-          <TabsTrigger value="tags">Tags</TabsTrigger>
-        </TabsList>
-        <TabsContent value="campos">
-          <FieldsTab />
-        </TabsContent>
-        <TabsContent value="scoring">
-          <ScoringTab />
-        </TabsContent>
-        <TabsContent value="tags">
-          <TagsTab />
-        </TabsContent>
-      </Tabs>
-    </RequirePermission>
-  )
-}
-
 // ---------- Campos personalizados ----------
 
-function FieldsTab() {
+export function FieldsTab() {
   const q = useCustomFields()
   const [editing, setEditing] = useState<CustomField | 'new' | null>(null)
   if (q.isLoading) return <TableSkeleton rows={3} />
@@ -239,7 +208,7 @@ function describe(r: Rule, fields: CustomField[]) {
   return r.field
 }
 
-function ScoringTab() {
+export function ScoringTab() {
   const qc = useQueryClient()
   const fields = useCustomFields()
   const q = useQuery({ queryKey: ['lead-scoring'], queryFn: () => api.get<{ rules: Rule[]; settings: ScoreSettings }>('/leads/config/scoring') })
@@ -536,7 +505,7 @@ function RuleDialog({ rule, dimension, fields, onClose }: { rule: Rule | null; d
 
 // ---------- Tags ----------
 
-function TagsTab() {
+export function TagsTab() {
   const qc = useQueryClient()
   const tags = useTags()
   const [editing, setEditing] = useState<string | null>(null)

@@ -6,6 +6,7 @@ import type { AuthUser } from '../common/types'
 import type { Prisma } from '../generated/prisma/client'
 import { LeadsService } from '../leads/leads.service'
 import { PrismaService } from '../prisma/prisma.service'
+import { SettingsService } from '../settings/settings.service'
 import { type CartItem, cartMessage } from './magazord'
 import { MagazordService } from './magazord.service'
 
@@ -29,6 +30,7 @@ export class LojaService {
     private readonly leads: LeadsService,
     private readonly magazord: MagazordService,
     private readonly audit: AuditService,
+    private readonly settings: SettingsService,
   ) {}
 
   /** Carrinhos e checkout têm permissão própria (antes seguiam a da base de leads). */
@@ -61,6 +63,7 @@ export class LojaService {
     this.assertCan(user, 'view')
     const where = await this.where(user, f)
     const s = await this.magazord.config(user.tenantId)
+    const company = (await this.settings.branding(user.tenantId)).shortName
     const [total, rows, counts] = await Promise.all([
       this.prisma.ecommerceCart.count({ where }),
       this.prisma.ecommerceCart.findMany({ where, orderBy: { lastActivityAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize }),
@@ -72,11 +75,11 @@ export class LojaService {
       pageSize,
       counts: Object.fromEntries(counts),
       configured: !!s.enabled,
-      items: rows.map((c) => this.view(c, s.cartMessage, s.coupon)),
+      items: rows.map((c) => this.view(c, s.cartMessage, s.coupon, company)),
     }
   }
 
-  private view(c: Prisma.EcommerceCartGetPayload<object>, template: string, coupon: string) {
+  private view(c: Prisma.EcommerceCartGetPayload<object>, template: string, coupon: string, company: string) {
     const { tenantId: _t, value, items, ...rest } = c
     const list = (items as unknown as CartItem[]) ?? []
     return {
@@ -84,7 +87,7 @@ export class LojaService {
       value: value === null ? null : Number(value),
       items: list,
       // Mensagem pronta para o WhatsApp, com nome, produtos, link do carrinho e cupom.
-      message: cartMessage(template, { name: c.customerName, items: list, link: c.checkoutUrl, coupon: coupon || '' }),
+      message: cartMessage(template, { name: c.customerName, items: list, link: c.checkoutUrl, coupon: coupon || '', company }),
     }
   }
 
@@ -104,7 +107,7 @@ export class LojaService {
     }
     await this.audit.byUser(user, ctx, 'ecommerce.cart_contact_updated', 'ecommerce_cart', id, { situacao: status })
     const s = await this.magazord.config(user.tenantId)
-    return this.view(updated, s.cartMessage, s.coupon)
+    return this.view(updated, s.cartMessage, s.coupon, (await this.settings.branding(user.tenantId)).shortName)
   }
 
   async exportRows(user: AuthUser, f: CartFilters) {

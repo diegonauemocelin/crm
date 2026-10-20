@@ -61,7 +61,7 @@ export const DEFAULT_WHATSAPP: WhatsappWidget = {
   enabled: false,
   phone: null,
   buttonText: 'Fale no WhatsApp',
-  title: 'Fale com a Usaparts',
+  title: 'Fale com a gente',
   subtitle: 'Deixe seu nome e WhatsApp para iniciar a conversa.',
   askEmail: false,
   message: 'Olá! Meu nome é {nome}. Vim pelo site e gostaria de atendimento.',
@@ -203,7 +203,7 @@ export class CapturaService {
     }
   }
 
-  /** Opções do campo "Tipo de cliente": os itens ativos de Cadastros › Tipo de cliente. */
+  /** Opções do campo "Tipo de cliente": os itens ativos de Configurações › Listas do atendimento › Tipos de cliente. */
   private async customerTypeNames(tenantId: string) {
     return (await this.prisma.lookupItem.findMany({ where: { tenantId, type: 'TIPO_CLIENTE', active: true }, orderBy: { name: 'asc' }, select: { name: true } })).map((l) => l.name)
   }

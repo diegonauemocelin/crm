@@ -125,8 +125,8 @@ export function cartItems(itens: { codigo_produto?: string | null; quantidade?: 
   })
 }
 
-/** Mensagem de WhatsApp para recuperar o carrinho. Variáveis: {nome}, {produtos}, {link}, {cupom}. */
-export function cartMessage(template: string, v: { name: string | null; items: CartItem[]; link: string | null; coupon: string }) {
+/** Mensagem de WhatsApp para recuperar o carrinho. Variáveis: {nome}, {produtos}, {link}, {cupom} e {empresa}. */
+export function cartMessage(template: string, v: { name: string | null; items: CartItem[]; link: string | null; coupon: string; company?: string }) {
   const first = v.name?.trim().split(/\s+/)[0] ?? ''
   const products = v.items.length ? (v.items.length > 2 ? `${v.items.slice(0, 2).map((i) => i.name).join(', ')} e mais ${v.items.length - 2}` : v.items.map((i) => i.name).join(' e ')) : 'os produtos'
   return template
@@ -134,12 +134,13 @@ export function cartMessage(template: string, v: { name: string | null; items: C
     .replaceAll('{produtos}', products)
     .replaceAll('{link}', v.link ?? '')
     .replaceAll('{cupom}', v.coupon)
+    .replaceAll('{empresa}', v.company ?? '')
     .replace(/[ \t]+\n/g, '\n')
     .trim()
 }
 
 export const DEFAULT_CART_MESSAGE =
-  'Olá, {nome}! Aqui é da Usaparts. Vi que você deixou {produtos} no carrinho. Posso te ajudar a finalizar? Use o cupom {cupom} para ganhar um desconto: {link}'
+  'Olá, {nome}! Aqui é da {empresa}. Vi que você deixou {produtos} no carrinho. Posso te ajudar a finalizar? Use o cupom {cupom} para ganhar um desconto: {link}'
 
 // ---------- Catálogo de produtos (para os e-mails) ----------
 

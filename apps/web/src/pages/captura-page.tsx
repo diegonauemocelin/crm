@@ -5,7 +5,7 @@ import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { CopyField } from '@/components/copy-field'
 import { MultiSelect } from '@/components/multi-select'
-import { EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { Can, EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -20,6 +20,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { formatPhone, int, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
+import { useBranding } from '@/lib/branding'
 import {
   type AfterSubmit,
   type CaptureForm,
@@ -27,7 +28,7 @@ import {
   type AdsTag,
   type CaptureSettings,
   CHANNEL_LABEL,
-  DEFAULT_CONSENT,
+  consentText,
   DEVICE_RULE_LABEL,
   type DeviceRule,
   type FieldCatalogItem,
@@ -250,7 +251,7 @@ function FormsTab() {
   )
 }
 
-const NEW_FORM = (): Omit<CaptureForm, 'id' | 'submissions' | 'createdAt'> => ({
+const NEW_FORM = (company: string): Omit<CaptureForm, 'id' | 'submissions' | 'createdAt'> => ({
   name: '',
   fields: [
     { key: 'name', label: 'Nome', required: true },
@@ -261,7 +262,7 @@ const NEW_FORM = (): Omit<CaptureForm, 'id' | 'submissions' | 'createdAt'> => ({
   successMessage: 'Recebemos seus dados! Nossa equipe vai falar com você em breve.',
   afterSubmit: 'mensagem',
   redirectUrl: null,
-  consentText: DEFAULT_CONSENT,
+  consentText: consentText(company),
   originName: 'Site - LP',
   ownerId: null,
   customerTypeId: null,
@@ -275,7 +276,8 @@ function FormEditor({ form, onClose }: { form: CaptureForm | null; onClose: () =
   const qc = useQueryClient()
   const catalog = useQuery({ queryKey: ['captura-catalog'], queryFn: () => api.get<FieldCatalogItem[]>('/captura/campos') })
   const options = useOptions()
-  const [f, setF] = useState(() => (form ? { ...form } : { ...NEW_FORM() }))
+  const company = useBranding().shortName
+  const [f, setF] = useState(() => (form ? { ...form } : { ...NEW_FORM(company) }))
   const [tags, setTags] = useState((form?.tags ?? []).join(', '))
   const [error, setError] = useState<string | null>(null)
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }))
@@ -805,15 +807,22 @@ function WhatsappTab() {
           </Table>
         </Card>
       )}
-      <PrivacyCard />
-      <AdsTagCard />
+      <Can module="captura" action="edit">
+        <p className="text-sm text-muted-foreground">
+          Política de privacidade e tag do Google Ads do site:{' '}
+          <Link to="/configuracoes?secao=captura" className="font-medium text-foreground underline underline-offset-4">
+            Configurações → Captura no site
+          </Link>
+          .
+        </p>
+      </Can>
       {open && <WhatsappEditor button={open === 'new' ? null : open} onClose={() => setOpen(null)} />}
     </div>
   )
 }
 
 /** Tag do Google Ads no site: cada contato (formulário, pop-up e WhatsApp) vira conversão na hora. */
-function AdsTagCard() {
+export function AdsTagCard() {
   const q = useQuery({ queryKey: ['captura-settings'], queryFn: () => api.get<CaptureSettings>('/captura/configuracoes') })
   const { can } = useAuth()
   const qc = useQueryClient()
@@ -875,7 +884,7 @@ function AdsTagCard() {
   )
 }
 
-function PrivacyCard() {
+export function PrivacyCard() {
   const q = useQuery({ queryKey: ['captura-settings'], queryFn: () => api.get<CaptureSettings>('/captura/configuracoes') })
   const { can } = useAuth()
   const qc = useQueryClient()
@@ -917,7 +926,7 @@ const NEW_WHATSAPP = (): Omit<WhatsappButton, 'id' | 'submissions'> => ({
   sortOrder: 0,
   phone: '',
   buttonText: 'Fale no WhatsApp',
-  title: 'Fale com a Usaparts',
+  title: 'Fale com a gente',
   subtitle: 'Deixe seu nome e WhatsApp para iniciar a conversa.',
   askEmail: false,
   requireName: true,

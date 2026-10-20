@@ -60,7 +60,7 @@ export function SellerDigestDialog({ onClose }: { onClose: () => void }) {
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Resumo do dia por vendedor</DialogTitle>
-          <DialogDescription>Clientes da pré-venda repassados a cada vendedor no dia (pela data do repasse). Copie e cole no WhatsApp dele, ou deixe o envio automático ligado em Cadastros › Alertas.</DialogDescription>
+          <DialogDescription>Clientes da pré-venda repassados a cada vendedor no dia (pela data do repasse). Copie e cole no WhatsApp dele, ou deixe o envio automático ligado em Configurações › Mensagens automáticas.</DialogDescription>
         </DialogHeader>
         <div className="flex items-end gap-2">
           <div className="space-y-1.5">

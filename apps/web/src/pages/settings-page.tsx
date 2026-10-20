@@ -1,81 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2Icon, ImageIcon, Loader2Icon, PlugZapIcon, SendIcon, Trash2Icon, UploadIcon, XCircleIcon } from 'lucide-react'
 import { type FormEvent, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { LayoutPicker, type ModelChoice } from '@/components/layout-picker'
-import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { ErrorState, TableSkeleton } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { applyBranding } from '@/lib/branding'
 import type { Branding } from '@/lib/types'
 import { FormError } from './auth/auth-layout'
-import { MetaTab } from './settings/meta-tab'
-import { Ga4Tab } from './settings/ga4-tab'
-import { GoogleAdsTab } from './settings/google-ads-tab'
-import { TcarTab } from './settings/tcar-tab'
-import { MagazordTab } from './settings/magazord-tab'
-import { TrackingTab } from './settings/tracking-tab'
-
-const TABS = ['marca', 'aparencia', 'email', 'rastreamento', 'loja', 'meta', 'ga4', 'google-ads', 'tcar']
-
-export function SettingsPage() {
-  // Aba inicial pelo endereço (?aba=loja), usada pelos atalhos de outras telas.
-  const [params] = useSearchParams()
-  const initial = TABS.includes(params.get('aba') ?? '') ? params.get('aba')! : 'marca'
-  return (
-    <RequirePermission module="configuracoes">
-      <PageHeader title="Configurações" description="Identidade visual, aparência, servidor de e-mail, rastreamento do site e integrações." />
-      <Tabs defaultValue={initial}>
-        <TabsList className="mb-4 h-auto flex-wrap">
-          <TabsTrigger value="marca">Identidade visual</TabsTrigger>
-          <TabsTrigger value="aparencia">Aparência</TabsTrigger>
-          <TabsTrigger value="email">E-mail (SMTP)</TabsTrigger>
-          <TabsTrigger value="rastreamento">Rastreamento do site</TabsTrigger>
-          <TabsTrigger value="loja">Loja virtual (Magazord)</TabsTrigger>
-          <TabsTrigger value="meta">Meta Lead Ads</TabsTrigger>
-          <TabsTrigger value="ga4">Google Analytics</TabsTrigger>
-          <TabsTrigger value="google-ads">Google Ads</TabsTrigger>
-          <TabsTrigger value="tcar">Tcar (ERP)</TabsTrigger>
-        </TabsList>
-        <TabsContent value="loja">
-          <MagazordTab />
-        </TabsContent>
-        <TabsContent value="rastreamento">
-          <TrackingTab />
-        </TabsContent>
-        <TabsContent value="meta">
-          <MetaTab />
-        </TabsContent>
-        <TabsContent value="google-ads">
-          <GoogleAdsTab />
-        </TabsContent>
-        <TabsContent value="tcar">
-          <TcarTab />
-        </TabsContent>
-        <TabsContent value="ga4">
-          <Ga4Tab />
-        </TabsContent>
-        <TabsContent value="marca">
-          <BrandingTab />
-        </TabsContent>
-        <TabsContent value="aparencia">
-          <AppearanceTab />
-        </TabsContent>
-        <TabsContent value="email">
-          <SmtpTab />
-        </TabsContent>
-      </Tabs>
-    </RequirePermission>
-  )
-}
 
 function useBrandingSettings() {
   return useQuery({ queryKey: ['settings-branding'], queryFn: () => api.get<Branding>('/settings/branding') })
@@ -184,7 +123,7 @@ function ImageSlot({ slot, label, hint, url, onSaved, disabled }: { slot: string
   )
 }
 
-function BrandingTab() {
+export function BrandingTab() {
   const query = useBrandingSettings()
   if (query.error) return <ErrorState error={query.error} onRetry={() => query.refetch()} />
   if (!query.data) return <TableSkeleton rows={5} />
@@ -273,7 +212,7 @@ function BrandingEditor({ data }: { data: Branding }) {
   )
 }
 
-function AppearanceTab() {
+export function AppearanceTab() {
   const query = useBrandingSettings()
   const { canEdit, onSaved } = useSaveBranding()
   const [model, setModel] = useState<ModelChoice | null>(null)
@@ -334,7 +273,7 @@ interface SmtpView {
 
 type TestResult = { ok: boolean; message: string } | null
 
-function SmtpTab() {
+export function SmtpTab() {
   const query = useQuery({ queryKey: ['settings-smtp'], queryFn: () => api.get<SmtpView>('/settings/smtp') })
   if (query.error) return <ErrorState error={query.error} onRetry={() => query.refetch()} />
   if (!query.data) return <TableSkeleton rows={5} />
@@ -456,7 +395,7 @@ function SmtpEditor({ initial }: { initial: SmtpView }) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="s-fromname">Nome do remetente</Label>
-                <Input id="s-fromname" placeholder="Usaparts" value={form.fromName} onChange={(e) => set('fromName', e.target.value)} disabled={!canEdit} />
+                <Input id="s-fromname" placeholder="Nome da empresa" value={form.fromName} onChange={(e) => set('fromName', e.target.value)} disabled={!canEdit} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="s-from">E-mail do remetente</Label>

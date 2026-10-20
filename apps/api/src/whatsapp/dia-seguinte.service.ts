@@ -12,7 +12,7 @@ const BATCH = 20
 const LABEL = 'Mensagem automática (dia seguinte)'
 
 /**
- * Mensagem de WhatsApp do dia seguinte: a partir do horário configurado (Cadastros › Alertas), quem abriu pré-venda
+ * Mensagem de WhatsApp do dia seguinte: a partir do horário configurado (Configurações › Mensagens automáticas), quem abriu pré-venda
  * ontem recebe a mensagem, uma vez só, pelo número em que chamou (ou pelo número escolhido na configuração).
  * O resultado fica na pré-venda (enviada ou o motivo) e no histórico dela.
  */

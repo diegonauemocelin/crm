@@ -144,7 +144,7 @@ function Carts() {
           action={
             can('configuracoes', 'edit') && (
               <Button asChild>
-                <Link to="/configuracoes?aba=loja">Configurar</Link>
+                <Link to="/configuracoes?secao=loja">Configurar</Link>
               </Button>
             )
           }

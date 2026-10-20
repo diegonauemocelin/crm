@@ -129,7 +129,7 @@ export function answerHtml(raw: string) {
 /** Mensagem clara para os erros do Gemini. */
 export function aiError(status: number, body: unknown) {
   const msg = String((body as { error?: { message?: string } } | null)?.error?.message ?? '')
-  if (status === 400 && /api key|API_KEY/i.test(msg)) return 'A chave do Gemini não foi aceita. Confira a chave em E-mail marketing → Configurações.'
+  if (status === 400 && /api key|API_KEY/i.test(msg)) return 'A chave do Gemini não foi aceita. Confira a chave em Configurações → E-mail marketing.'
   if (status === 403) return 'A chave do Gemini não tem permissão para este modelo. Gere outra chave no Google AI Studio.'
   if (status === 429) return 'Limite do plano gratuito do Gemini atingido. Tente de novo em alguns minutos.'
   if (status === 404) return 'Modelo do Gemini não encontrado. Escolha outro modelo nas configurações.'

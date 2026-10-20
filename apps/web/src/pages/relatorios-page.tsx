@@ -909,7 +909,7 @@ function Ga4() {
         action={
           can('configuracoes', 'view') ? (
             <Button asChild>
-              <Link to="/configuracoes?aba=ga4">Configurar Google Analytics</Link>
+              <Link to="/configuracoes?secao=ga4">Configurar Google Analytics</Link>
             </Button>
           ) : (
             <p className="text-sm text-muted-foreground">Peça a um administrador para conectar em Configurações → Google Analytics.</p>

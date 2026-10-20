@@ -130,7 +130,7 @@ function Search() {
             action={
               can('configuracoes', 'edit') ? (
                 <Button asChild variant="outline">
-                  <Link to="/configuracoes?aba=tcar">Configurar a Tcar</Link>
+                  <Link to="/configuracoes?secao=tcar">Configurar a Tcar</Link>
                 </Button>
               ) : undefined
             }

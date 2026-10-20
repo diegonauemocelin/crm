@@ -148,7 +148,7 @@ function LeadsContent() {
             </Can>
             <Can module="configuracoes" action="edit">
               <Button variant="outline" asChild>
-                <Link to="/leads/configuracoes">
+                <Link to="/configuracoes?secao=leads-campos">
                   <SettingsIcon /> Configurar
                 </Link>
               </Button>

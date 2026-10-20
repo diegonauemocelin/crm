@@ -108,7 +108,7 @@ export class CapturaAdminService {
     ]
   }
 
-  /** Opções do campo "Tipo de cliente": itens ativos de Cadastros › Tipo de cliente. */
+  /** Opções do campo "Tipo de cliente": itens ativos de Configurações › Listas do atendimento › Tipos de cliente. */
   private async customerTypeNames(tenantId: string) {
     return (await this.prisma.lookupItem.findMany({ where: { tenantId, type: 'TIPO_CLIENTE', active: true }, orderBy: { name: 'asc' }, select: { name: true } })).map((l) => l.name)
   }

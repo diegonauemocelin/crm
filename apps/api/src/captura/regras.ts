@@ -14,7 +14,7 @@ export const BASE_FIELDS = {
   city: { label: 'Cidade', type: 'text' },
   state: { label: 'Estado', type: 'uf' },
   message: { label: 'Mensagem', type: 'textarea' },
-  /** Consumidor final, revenda, oficina...: as opções são as de Cadastros › Tipo de cliente (ativas). */
+  /** Consumidor final, revenda, oficina...: as opções são as de Configurações › Listas do atendimento › Tipos de cliente (ativas). */
   customerType: { label: 'Tipo de cliente', type: 'select' },
 } as const
 

@@ -18,7 +18,7 @@ export function SellerLinkWarning() {
       <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-amber-600" />
       <span>
         Seu usuário ainda não está vinculado a um vendedor, então sua base aparece vazia. Peça ao administrador para vincular em{' '}
-        <strong>Cadastros → Vendedores</strong> (ou cadastrar o vendedor com o mesmo e-mail do seu login: <strong>{me.email}</strong>).
+        <strong>Configurações → Vendedores</strong> (ou cadastrar o vendedor com o mesmo e-mail do seu login: <strong>{me.email}</strong>).
       </span>
     </p>
   )

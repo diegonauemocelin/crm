@@ -4,7 +4,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { MultiSelect } from '@/components/multi-select'
-import { ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { ErrorState, formatDateTime, PageHeader, TableSkeleton } from '@/components/page'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -61,15 +61,7 @@ const STATUS: Record<Status, { label: string; className: string }> = {
 }
 const NONE = '__none__'
 
-export function WhatsappNumerosPage() {
-  return (
-    <RequirePermission module="whatsapp">
-      <Numbers />
-    </RequirePermission>
-  )
-}
-
-function Numbers() {
+export function Numbers() {
   const { can } = useAuth()
   const q = useQuery({ queryKey: ['whatsapp-numeros'], queryFn: () => api.get<ListData>('/whatsapp/numeros'), refetchInterval: 30_000 })
   const options = useOptions()
@@ -179,9 +171,7 @@ function Numbers() {
           <p className="text-xs text-muted-foreground">
             Use os números só para conversas com clientes (responder quem chamou). Envio em massa por aqui pode fazer o WhatsApp bloquear o número.
           </p>
-          <Rules editable={can('whatsapp', 'edit')} />
           <AgendaLink />
-          <QuickReplies editable={can('whatsapp', 'edit')} />
         </div>
       )}
       {editing && <NumberDialog number={editing === 'novo' ? null : editing} users={d?.users ?? []} onClose={() => setEditing(null)} />}
@@ -470,7 +460,7 @@ interface QuickReply {
 }
 
 /** Respostas rápidas do chat. {nome} vira o primeiro nome do cliente e {vendedor} o de quem envia. */
-function QuickReplies({ editable }: { editable: boolean }) {
+export function QuickReplies({ editable }: { editable: boolean }) {
   const qc = useQueryClient()
   // Aqui ficam só as padrão da empresa; as pessoais cada usuário cria no próprio chat.
   const list = useQuery({ queryKey: ['chat-respostas-admin'], queryFn: () => api.get<(QuickReply & { standard?: boolean })[]>('/chat/respostas').then((r) => r.filter((x) => x.standard !== false)) })
@@ -555,7 +545,7 @@ function QuickReplyDialog({ reply, onClose }: { reply: QuickReply | null; onClos
         >
           <DialogHeader>
             <DialogTitle>{reply ? 'Editar resposta rápida' : 'Nova resposta rápida'}</DialogTitle>
-            <DialogDescription>Ex.: Olá {'{nome}'}, aqui é o {'{vendedor}'} da Usaparts. Como posso ajudar?</DialogDescription>
+            <DialogDescription>Ex.: Olá {'{nome}'}, aqui é o {'{vendedor}'}. Como posso ajudar?</DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
             <Label htmlFor="qr-title">Título</Label>
@@ -699,7 +689,7 @@ function HoursAndAway({ form, set, editable }: { form: WaRules; set: <K extends 
 }
 
 /** O que cada conversa gera, sem o operador precisar fazer nada. */
-function Rules({ editable }: { editable: boolean }) {
+export function Rules({ editable }: { editable: boolean }) {
   const qc = useQueryClient()
   const q = useQuery({ queryKey: ['whatsapp-regras'], queryFn: () => api.get<WaRules>('/whatsapp/regras') })
   const [form, setForm] = useState<WaRules | null>(null)

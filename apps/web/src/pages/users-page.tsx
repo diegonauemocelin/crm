@@ -4,7 +4,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { UserAvatar } from '@/components/layout/user-menu'
 import { type Session, SessionsList } from '@/components/sessions-list'
-import { Can, EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { Can, EmptyState, ErrorState, formatDateTime, PageHeader, TableSkeleton } from '@/components/page'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,15 +33,7 @@ import { FormError } from './auth/auth-layout'
 
 type Confirm = { title: string; description: string; label: string; run: () => Promise<unknown> } | null
 
-export function UsersPage() {
-  return (
-    <RequirePermission module="usuarios">
-      <UsersContent />
-    </RequirePermission>
-  )
-}
-
-function UsersContent() {
+export function UsersContent() {
   const qc = useQueryClient()
   const { me, can } = useAuth()
   const [search, setSearch] = useState('')

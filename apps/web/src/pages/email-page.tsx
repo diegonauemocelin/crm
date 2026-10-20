@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BarChart3Icon, CopyIcon, ImageIcon, Loader2Icon, MailIcon, MapIcon, PencilIcon, PlusIcon, SparklesIcon, Trash2Icon, UploadIcon, UsersRoundIcon } from 'lucide-react'
+import { BarChart3Icon, SettingsIcon, CopyIcon, ImageIcon, Loader2Icon, MailIcon, MapIcon, PencilIcon, PlusIcon, SparklesIcon, Trash2Icon, UploadIcon, UsersRoundIcon } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
-import { EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { Can, EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -29,17 +29,28 @@ const ANY = '__any__'
 export function EmailPage() {
   const [params, setParams] = useSearchParams()
   const tab = params.get('aba') ?? 'campanhas'
+  // Os ajustes do e-mail (remetente, rodapé, logo, IA) ficam em Configurações.
+  if (tab === 'configuracoes') return <Navigate to="/configuracoes?secao=email-marketing" replace />
   return (
     <RequirePermission module="email_marketing">
       <PageHeader
         title="Email marketing"
         description="Campanhas para os leads que autorizaram receber e-mails, com aberturas, cliques e descadastros."
         actions={
-          <Button asChild variant="outline" size="sm">
-            <Link to="/email-marketing/dashboard">
-              <BarChart3Icon /> Dashboard
-            </Link>
-          </Button>
+          <>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/email-marketing/dashboard">
+                <BarChart3Icon /> Dashboard
+              </Link>
+            </Button>
+            <Can module="email_marketing" action="edit">
+              <Button asChild variant="outline" size="sm">
+                <Link to="/configuracoes?secao=email-marketing">
+                  <SettingsIcon /> Configurações do e-mail
+                </Link>
+              </Button>
+            </Can>
+          </>
         }
       />
       <Tabs value={tab} onValueChange={(v) => setParams(v === 'campanhas' ? {} : { aba: v }, { replace: true })}>
@@ -47,7 +58,6 @@ export function EmailPage() {
           <TabsTrigger value="campanhas">Campanhas</TabsTrigger>
           <TabsTrigger value="modelos">Modelos (automações)</TabsTrigger>
           <TabsTrigger value="segmentos">Segmentos</TabsTrigger>
-          <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
         </TabsList>
         <TabsContent value="campanhas">
           <CampaignsTab />
@@ -57,9 +67,6 @@ export function EmailPage() {
         </TabsContent>
         <TabsContent value="segmentos">
           <SegmentsTab />
-        </TabsContent>
-        <TabsContent value="configuracoes">
-          <SettingsTab />
         </TabsContent>
       </Tabs>
     </RequirePermission>
@@ -468,7 +475,7 @@ function SegmentDialog({ segment, onClose }: { segment: Segment | null; onClose:
 
 // ---------- Configurações ----------
 
-function SettingsTab() {
+export function SettingsTab() {
   const q = useQuery({ queryKey: ['email-settings'], queryFn: () => api.get<EmailSettings>('/email/configuracoes') })
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />
   if (!q.data) return <TableSkeleton rows={3} />
@@ -515,20 +522,20 @@ function SettingsEditor({ initial }: { initial: EmailSettings }) {
       >
         <CardHeader>
           <CardTitle>Envio das campanhas</CardTitle>
-          <CardDescription>O e-mail sai pelo servidor configurado em Configurações → E-mail (SMTP).</CardDescription>
+          <CardDescription>O e-mail sai pelo servidor configurado em Configurações → Servidor de e-mail (SMTP).</CardDescription>
         </CardHeader>
         <CardContent className="mt-4 space-y-4">
           <fieldset disabled={!can('email_marketing', 'edit')} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <Row label="Nome do remetente" htmlFor="em-from" hint="Vazio = o nome do SMTP.">
-                <Input id="em-from" maxLength={80} placeholder="Usaparts" value={s.fromName} onChange={(e) => setS({ ...s, fromName: e.target.value })} />
+                <Input id="em-from" maxLength={80} placeholder="Nome da empresa" value={s.fromName} onChange={(e) => setS({ ...s, fromName: e.target.value })} />
               </Row>
               <Row label="Responder para" htmlFor="em-reply" hint="Para onde vão as respostas dos clientes.">
                 <Input id="em-reply" type="email" placeholder="comercial@usaparts.com.br" value={s.replyTo} onChange={(e) => setS({ ...s, replyTo: e.target.value })} />
               </Row>
             </div>
             <Row label="Rodapé (dados da empresa)" htmlFor="em-footer" hint="Razão social, endereço e telefone: os provedores de e-mail exigem e passa confiança.">
-              <Textarea id="em-footer" rows={3} maxLength={500} placeholder={'Usaparts Importadora e Distribuidora\nMaravilha/SC · (49) 0000-0000'} value={s.footerText} onChange={(e) => setS({ ...s, footerText: e.target.value })} />
+              <Textarea id="em-footer" rows={3} maxLength={500} placeholder={'Nome da empresa\nCidade/UF · (00) 0000-0000'} value={s.footerText} onChange={(e) => setS({ ...s, footerText: e.target.value })} />
             </Row>
             <div className="space-y-2 rounded-md border p-3">
               <p className="text-sm font-medium">Redes sociais</p>
@@ -701,7 +708,7 @@ function LogoCard({ settings }: { settings: EmailSettings }) {
         <div className="flex h-24 items-center justify-center rounded-md border bg-white p-3">
           {settings.logoUrl ? <img src={settings.logoUrl} alt="Logo dos e-mails" className="max-h-full max-w-full object-contain" /> : <span className="flex items-center gap-2 text-sm text-[#6b7280]"><ImageIcon className="size-4" /> Sem logo: vai o nome da empresa</span>}
         </div>
-        <p className="text-xs text-muted-foreground">{settings.ownLogo ? 'Logo próprio dos e-mails.' : settings.logoUrl ? 'Usando o logo do sistema (Configurações → Aparência).' : ''}</p>
+        <p className="text-xs text-muted-foreground">{settings.ownLogo ? 'Logo próprio dos e-mails.' : settings.logoUrl ? 'Usando o logo do sistema (Configurações → Identidade da empresa).' : ''}</p>
         {can('email_marketing', 'edit') && (
           <div className="flex flex-wrap gap-2">
             <input ref={input} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) upload.mutate(f); e.target.value = '' }} />

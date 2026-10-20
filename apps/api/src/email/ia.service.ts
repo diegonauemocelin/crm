@@ -128,7 +128,7 @@ export class EmailAiService {
    * consulta a lista de novo e tenta o próximo, até 3 modelos.
    */
   private async call(s: AiSettings, system: string, prompt: string, temperature: number, extra: GeminiPart[] = [], maxOutputTokens = 1024) {
-    if (!s.apiKeyEnc) throw new BadRequestException('Cadastre a chave do Gemini em E-mail marketing → Configurações (é gratuita no Google AI Studio).')
+    if (!s.apiKeyEnc) throw new BadRequestException('Cadastre a chave do Gemini em Configurações → E-mail marketing (é gratuita no Google AI Studio).')
     const apiKey = decrypt(s.apiKeyEnc)
     let list = await this.candidates(apiKey, s.model)
     const tried = new Set<string>()
@@ -150,7 +150,7 @@ export class EmailAiService {
     throw new BadRequestException('Nenhum modelo do Gemini disponível para esta chave agora. Confira a chave no Google AI Studio ou tente mais tarde.')
   }
 
-  /** Há chave do Gemini cadastrada (E-mail marketing → Configurações)? */
+  /** Há chave do Gemini cadastrada (Configurações → E-mail marketing)? */
   async available(tenantId: string) {
     return !!(await this.config(tenantId)).apiKeyEnc
   }
@@ -161,7 +161,7 @@ export class EmailAiService {
    */
   async transcribe(tenantId: string, audio: Buffer, mime: string) {
     const s = await this.config(tenantId)
-    if (!s.apiKeyEnc) throw new BadRequestException('Para transcrever áudios, cadastre a chave do Gemini em E-mail marketing → Configurações (é gratuita no Google AI Studio).')
+    if (!s.apiKeyEnc) throw new BadRequestException('Para transcrever áudios, cadastre a chave do Gemini em Configurações → E-mail marketing (é gratuita no Google AI Studio).')
     const r = await this.call(s, TRANSCRIBE_SYSTEM, 'Transcreva este áudio.', 0, [{ inlineData: { mimeType: mime, data: audio.toString('base64') } }], 4096)
     return cleanTranscript(r.text)
   }

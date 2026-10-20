@@ -205,7 +205,7 @@ function MagazordEditor({ initial }: { initial: MagazordConfig }) {
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="mz-msg">Mensagem de WhatsApp para carrinho abandonado</Label>
               <Textarea id="mz-msg" rows={3} maxLength={1000} value={form.cartMessage} onChange={(e) => set('cartMessage', e.target.value)} disabled={!canEdit} />
-              <p className="text-xs text-muted-foreground">Variáveis: {'{nome}'}, {'{produtos}'}, {'{cupom}'} e {'{link}'} (link que reabre o carrinho do cliente).</p>
+              <p className="text-xs text-muted-foreground">Variáveis: {'{nome}'}, {'{produtos}'}, {'{cupom}'}, {'{empresa}'} (nome em Configurações → Identidade da empresa) e {'{link}'} (link que reabre o carrinho do cliente).</p>
             </div>
           </div>
           <FormError message={error} />
