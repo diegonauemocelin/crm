@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.71.1",
+      "date": "2026-10-20",
+      "title": "Menus de robô com botões no chat e correções do chat e da pré-venda",
+      "changes": [
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Menu de robô (RD Station, bancos, fornecedores): as opções aparecem como botões embaixo da mensagem. Clicar responde ao menu com o nome da opção (ex.: \"Marketing\", \"Informar Email\"), como quando se toca no botão no celular. Responder só o número o robô costuma recusar." },
+        { "type": "correcao", "area": "Chat WhatsApp", "text": "Mensagens com botões, lista de opções e as respostas tocadas no celular, que apareciam como \"Mensagem de um tipo que o CRM ainda não mostra\", agora mostram o texto e as opções. Mensagem de um tipo novo mostra ao menos o texto que vier nela. Vale para as que chegarem depois da atualização." },
+        { "type": "correcao", "area": "Chat WhatsApp", "text": "O visual do WhatsApp Web no chat (balões verdes e brancos, fundo com desenhos, barras cinza) passa a valer também no layout \"Moderno com telas novas\", que ainda mostrava balões azuis. As cores de atraso na lista e a faixa de espera continuam." },
+        { "type": "correcao", "area": "Chat WhatsApp", "text": "Conversa de cliente com pré-venda repassada ao vendedor (retorno pendente, em negociação) vai para a aba \"Aguardando vendedor\" também quando a pré-venda foi aberta à mão (ex.: origem Ligação), achando pelo telefone." },
+        { "type": "melhoria", "area": "Pré-Vendas", "text": "Ficha da pré/pós-venda aberta por quem não tem permissão de editar mostra o aviso \"Só leitura\" e onde liberar (Configurações › Perfis de acesso), em vez de os botões simplesmente não responderem." }
+      ]
+    },
+    {
       "version": "0.71.0",
       "date": "2026-10-20",
       "title": "Regras da mensagem automática de pós-venda (dia seguinte)",
@@ -11,11 +23,6 @@
         { "type": "novo", "area": "Pré-Vendas", "text": "Intervalo entre as mensagens: cada número manda uma por vez, com espera sorteada entre 3 e 20 minutos até a próxima (ajustável de 1 a 120), para não bloquear o número." },
         { "type": "novo", "area": "Pré-Vendas", "text": "Opção \"Também para quem não chamou por WhatsApp\" (cliente de formulário): desligada por padrão; ligada, sai pelo número escolhido." },
         { "type": "novo", "area": "Pré-Vendas", "text": "Escolha para quais situações da venda a mensagem vai: Em negociação, Venda realizada e/ou Venda não realizada." },
-        { "type": "novo", "area": "Chat WhatsApp", "text": "Menu de robô (RD Station, bancos, fornecedores): as opções aparecem como botões embaixo da mensagem. Clicar responde ao menu com o nome da opção (ex.: \"Marketing\", \"Informar Email\"), como quando se toca no botão no celular. Responder só o número o robô costuma recusar." },
-        { "type": "correcao", "area": "Chat WhatsApp", "text": "Mensagens com botões, lista de opções e as respostas tocadas no celular, que apareciam como \"Mensagem de um tipo que o CRM ainda não mostra\", agora mostram o texto e as opções. Mensagem de um tipo novo mostra ao menos o texto que vier nela. Vale para as que chegarem depois da atualização." },
-        { "type": "correcao", "area": "Chat WhatsApp", "text": "O visual do WhatsApp Web no chat (balões verdes e brancos, fundo com desenhos, barras cinza) passa a valer também no layout \"Moderno com telas novas\", que ainda mostrava balões azuis. As cores de atraso na lista e a faixa de espera continuam." },
-        { "type": "correcao", "area": "Chat WhatsApp", "text": "Conversa de cliente com pré-venda repassada ao vendedor (retorno pendente, em negociação) vai para a aba \"Aguardando vendedor\" também quando a pré-venda foi aberta à mão (ex.: origem Ligação), achando pelo telefone." },
-        { "type": "melhoria", "area": "Pré-Vendas", "text": "Ficha da pré/pós-venda aberta por quem não tem permissão de editar mostra o aviso \"Só leitura\" e onde liberar (Configurações › Perfis de acesso), em vez de os botões simplesmente não responderem." },
         { "type": "melhoria", "area": "Pré-Vendas", "text": "Conversa finalizada ou arquivada nunca recebe a mensagem; a pré-venda fica com o registro \"Não enviada: conversa finalizada ou arquivada\"." }
       ]
     },
