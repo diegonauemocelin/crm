@@ -3,6 +3,11 @@
 Situação: **aguardando aprovação**. Nenhuma linha de código, tabela ou tela foi criada ainda.
 Levantamento feito em 20/10/2026 sobre a versão 0.72.0.
 
+> **Regra confirmada pelo usuário (20/10/2026): não mexer no CRM que já está rodando.** Nenhuma tabela, coluna,
+> tela, regra, endpoint ou job atual é alterado. O módulo só **lê** os dados existentes e grava em tabelas `mkt_*`
+> próprias. Os únicos arquivos atuais tocados são os pontos de registro listados na seção 2 (importar o módulo,
+> acrescentar permissões, item de menu e rotas). São linhas acrescentadas, sem mudar nenhuma linha que já existe.
+
 Objetivo: uma aba nova **Marketing Inteligente** que liga investimento em mídia, redes sociais, site, leads,
 atendimento e venda. O módulo **lê** o que o CRM já tem e grava só em tabelas próprias. Nenhuma tela, tabela,
 permissão ou fluxo atual muda.
@@ -64,8 +69,15 @@ Princípios:
 | `apps/api/prisma/schema.prisma` | Acrescentar os modelos `mkt_*` | Nenhum: os modelos atuais não mudam |
 | `apps/web/src/lib/navigation.tsx` | Acrescentar o grupo "Marketing Inteligente" | Nenhum |
 | `apps/web/src/App.tsx` | Acrescentar as rotas `/marketing-inteligente/*` | Nenhum |
-| `apps/web/src/components/layout/classic-layout.tsx` | Rolagem no menu suspenso (`max-h` + `overflow-y-auto`), porque o grupo terá 15 itens | Visual baixo: menus curtos ficam iguais |
 | `releases.json` e `package.json` | Versão de cada entrega | Nenhum |
+
+O layout Clássico **não precisa mudar**: o menu suspenso do shadcn (`components/ui/dropdown-menu.tsx`) já tem rolagem
+quando a lista passa da altura da tela.
+
+**Não serão alterados:** os módulos `googleads`, `email`, `leads`, `atendimento`, `rastreamento`, `integracoes`,
+`relatorios` e `whatsapp`, os painéis atuais e o script do Google Ads que já roda. Os dados novos do Google Ads chegam
+por um **segundo script** e um **endpoint novo do módulo** (`/api/webhooks/marketing/google-ads/:token`). O script e o
+endpoint atuais continuam iguais.
 
 ---
 
@@ -79,7 +91,7 @@ inventado.
 |---|---|---|---|
 | 1 | Visão Geral de Marketing | Resumo por canal (pago, orgânico, e-mail, site), saúde das integrações, alertas abertos | Todas |
 | 2 | Dashboard Executivo | KPIs da seção 4 do pedido com período anterior, variação, histórico e tendência; metas | Mídia + CRM + loja |
-| 3 | Google Ads | Campanhas por tipo (Pesquisa, Display, Vídeo, PMax), grupos, anúncios, palavras-chave, termos de pesquisa, dispositivo, região, rede, páginas de destino; candidatas a palavra negativa para revisão | Script ampliado ou Google Ads API |
+| 3 | Google Ads | Campanhas por tipo (Pesquisa, Display, Vídeo, PMax), grupos, anúncios, palavras-chave, termos de pesquisa, dispositivo, região, rede, páginas de destino; candidatas a palavra negativa para revisão | Segundo script ou Google Ads API |
 | 4 | Meta Ads | Contas, campanhas, conjuntos, anúncios, criativos; comparador de criativos, públicos e posicionamentos; fadiga (frequência, custo subindo); resultado Meta × venda no CRM | Meta Marketing API (Insights) |
 | 5 | TikTok Ads | Campanhas, grupos, anúncios, vídeo, custo por resultado; comparação com Google e Meta | TikTok Marketing API |
 | 6 | Redes Sociais Orgânicas | Seguidores, alcance, engajamento, ranking de publicações, formato e tema, orgânico × pago, **calendário editorial** | Instagram/Facebook Graph API, TikTok |
@@ -161,7 +173,7 @@ o módulo novo leem o mesmo número.
 
 | Plataforma | API | Autenticação | Escopo (só leitura) | O que depende de vocês |
 |---|---|---|---|---|
-| Google Ads | **Opção A (recomendada para começar):** ampliar o script atual do Google Ads (grupos, anúncios, termos de pesquisa, dispositivo, região, rede, página de destino, tipo de campanha). **Opção B:** Google Ads API v2x. | A: token do webhook atual. B: OAuth + developer token | B: `adwords` (leitura no uso) | B: developer token aprovado pelo Google (dias a semanas) |
+| Google Ads | **Opção A (recomendada para começar):** segundo script do Google Ads, separado do atual (grupos, anúncios, termos de pesquisa, dispositivo, região, rede, página de destino, tipo de campanha). **Opção B:** Google Ads API v2x. | A: token próprio do módulo. B: OAuth + developer token | B: `adwords` (leitura no uso) | B: developer token aprovado pelo Google (dias a semanas) |
 | Meta Ads | Marketing API (Insights) | Token de **usuário do sistema** do Business Manager | `ads_read`, `read_insights` | Criar o usuário do sistema e liberar as contas de anúncio |
 | Instagram / Facebook orgânico | Graph API | Mesmo usuário do sistema ou token de página | `instagram_basic`, `instagram_manage_insights`, `pages_read_engagement`, `pages_show_list` | Conta profissional do Instagram ligada à página |
 | TikTok Ads | TikTok API for Business | App de desenvolvedor + OAuth do anunciante | Relatórios e gestão de anúncios (leitura) | Cadastro e aprovação do app no TikTok |
@@ -210,19 +222,18 @@ Nenhuma troca de linguagem, framework, banco ou infraestrutura.
 
 ## 7. Pontos que exigem decisão antes de programar
 
-1. **Data da venda.** `service_records` não tem data da venda, e os painéis atuais contam a venda no dia do lead.
-   - **Proposta (sem mexer no CRM):** o módulo usa a data em que o atendimento passou para "Venda: Sim" no histórico
-     (`service_record_history`), como já faz o envio ao Google Ads. Sem histórico (importação de planilha), usa
-     `leadAt` e marca o registro como "data estimada".
-   - **Alternativa:** coluna nova opcional `sale_at` em `service_records` (aditiva, preenchida pelo histórico). Isso
-     mexe numa tabela do CRM, por isso só com sua aprovação.
+1. **Data da venda — decidido: ler do histórico, sem mexer no CRM.** `service_records` não tem data da venda, e os
+   painéis atuais contam a venda no dia do lead. O módulo usa a data em que o atendimento passou para "Venda: Sim" no
+   histórico (`service_record_history`), como já faz o envio ao Google Ads. Sem histórico (importação de planilha),
+   usa `leadAt` e marca o registro como "data estimada". Os painéis atuais continuam como estão. Por isso, o
+   faturamento por período no módulo pode diferir do painel de atendimento, e a tela explica o motivo.
 2. **Lead qualificado.** Proposta: o lead está no estágio QUALIFICADO ou acima, **ou** tem pré-venda repassada ao
    vendedor. A regra fica configurável na tela 15.
 3. **Primeiro atendimento.** `firstActionAt` mistura chat, "chamei o cliente" e qualquer edição, e na importação vale
    o próprio `leadAt`. Proposta: usar o primeiro destes eventos — primeira resposta no WhatsApp, "Chamei o cliente"
    ou repasse —, ignorar os importados e mostrar o percentual de registros sem esse dado.
-4. **Google Ads: script ampliado (A) ou API oficial (B).** Recomendo A agora, porque funciona sem esperar aprovação, e
-   B depois, quando houver developer token.
+4. **Google Ads: segundo script (A) ou API oficial (B).** Recomendo A agora, com um script novo e separado (o atual não
+   é alterado), porque funciona sem esperar aprovação. B fica para depois, quando houver developer token.
 5. **Cliente novo × recorrente.** Não existe hoje. Proposta: é recorrente quem já tinha venda (atendimento ou pedido
    pago) antes da data da venda analisada, pelo mesmo lead. Sem CNPJ, a precisão depende da deduplicação por
    e-mail/telefone. Isso aparece como limitação.
@@ -230,9 +241,7 @@ Nenhuma troca de linguagem, framework, banco ou infraestrutura.
    intervalo de confiança), então os números são sempre reproduzíveis. O Gemini que já existe pode, se vocês quiserem,
    só redigir o texto a partir das evidências, sem inventar números. Enviar dados agregados de campanha ao Google
    Gemini precisa da sua aprovação; nenhum dado pessoal é enviado.
-7. **Menu do layout Clássico.** O grupo terá 15 itens. Proposta: rolagem no menu suspenso (mudança visual mínima e
-   compartilhada). Alternativa: agrupar em "Painéis", "Mídia paga", "Orgânico", "Análise" e "Gestão" dentro da mesma
-   aba, o que exige estender `NavGroup` (mudança maior).
+7. **Menu do layout Clássico — resolvido sem mudança:** o menu suspenso já tem rolagem.
 
 ---
 
@@ -247,7 +256,8 @@ Nenhuma troca de linguagem, framework, banco ou infraestrutura.
   reimportação do mesmo dia (não duplica).
 - **Permissões:** cada rota nova sem permissão → 403; escopo próprio/unidade aplicado aos dados do CRM; perfis atuais
   sem acesso após a migração.
-- **Não regressão:** a suíte atual (cerca de 37 arquivos) roda sem alteração. Teste novo confere que os números do
+- **Não regressão:** a suíte atual (cerca de 37 arquivos) roda sem alteração, e nenhum arquivo de teste atual é
+  editado. O CI confere que o diff não toca em arquivos fora da lista da seção 2. Teste novo confere que os números do
   painel atual do Google Ads e do módulo novo batem para o mesmo período.
 - **Migrações:** aplicar → reverter (`prisma/rollback/*.sql`) → aplicar de novo no job Docker do CI.
 - **Segurança:** credencial nunca aparece na resposta da API nem no log; auditoria de cada conexão, alteração de
@@ -263,7 +273,7 @@ Cada etapa sai como uma versão própria (`0.73.0` em diante), com `marketing.en
 | Etapa | Entrega | Depende de credenciais novas? |
 |---|---|---|
 | 3 — Estrutura | Permissões, menu, tela 15 (saúde e configurações), tabelas `mkt_*`, fórmulas centralizadas, Visão Geral, Dashboard Executivo, CRM e Leads, E-mail, Funil e Análise de Campanhas usando **só os dados que já existem** (Google Ads por script, CRM, loja, e-mail, rastreamento) | Não |
-| 4 — Integrações | Script do Google Ads ampliado; Meta Ads Insights; GA4 gravado + Search Console; redes orgânicas; TikTok | Sim (seção 5) |
+| 4 — Integrações | Segundo script do Google Ads; Meta Ads Insights; GA4 gravado + Search Console; redes orgânicas; TikTok | Sim (seção 5) |
 | 5 — CRM e e-mail | Atribuição multi-plataforma gravada em `mkt_attributions`, deduplicação, tempos de atendimento | Não |
 | 6 — BI | Orçamento, metas, cenários, comparação de campanhas, relatórios PDF/Excel e agendamento | Não |
 | 7 — IA | Motor de recomendações, palavras negativas para revisão, alertas | Opcional (Gemini) |
