@@ -718,7 +718,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const numberSectors = number ? (await this.sectors(user.tenantId)).filter((x) => servesNumber(x, number.id)) : []
     const attendants = number ? await this.prisma.user.findMany({ where: { id: { in: [...new Set([...number.userIds, ...numberSectors.flatMap((x) => x.userIds), ...(conv.assignedUserId ? [conv.assignedUserId] : []), ...conv.helperUserIds])] }, tenantId: user.tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true, active: true } }) : []
     const quotedIds = [...new Set(rows.map((r) => r.quotedWaId).filter((x): x is string => !!x))]
-    const quotedMine = new Map((quotedIds.length ? await this.prisma.whatsappMessage.findMany({ where: { conversationId: conv.id, waId: { in: quotedIds } }, select: { waId: true, fromMe: true } }) : []).map((q) => [q.waId, q.fromMe]))
+    // Mensagem respondida que está no CRM: se era da empresa e o id dela (para ir até ela na conversa).
+    const quotedRows = new Map((quotedIds.length ? await this.prisma.whatsappMessage.findMany({ where: { conversationId: conv.id, waId: { in: quotedIds } }, select: { id: true, waId: true, fromMe: true } }) : []).map((q) => [q.waId, { id: q.id, fromMe: q.fromMe }]))
     return {
       conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, assignedUserId: conv.assignedUserId, assignedUserName: attendants.find((a) => a.id === conv.assignedUserId)?.name ?? null, helpers: attendants.filter((a) => conv.helperUserIds.includes(a.id)).map((a) => ({ id: a.id, name: a.name })), sectorId: conv.sectorId, category: conv.category, unread: conv.unread, labels: (await this.labelsOf(user, [conv.id])).get(conv.id) ?? [] },
       /** Contato na agenda do número (ou na geral): nome e tipo salvos. */
@@ -737,7 +738,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       messages: rows
         .slice(0, PAGE)
         .reverse()
-        .map((m) => (monitor ? { ...this.messageView(m, user, m.quotedWaId ? (quotedMine.get(m.quotedWaId) ?? null) : null), canEdit: false, canDelete: false } : this.messageView(m, user, m.quotedWaId ? (quotedMine.get(m.quotedWaId) ?? null) : null))),
+        .map((m) => (monitor ? { ...this.messageView(m, user, m.quotedWaId ? (quotedRows.get(m.quotedWaId) ?? null) : null), canEdit: false, canDelete: false } : this.messageView(m, user, m.quotedWaId ? (quotedRows.get(m.quotedWaId) ?? null) : null))),
     }
   }
 
@@ -1050,12 +1051,12 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /** Mensagem como a tela recebe (a apagada perde o texto e o arquivo). */
-  private messageView(m: Prisma.WhatsappMessageGetPayload<object>, user: AuthUser, quotedFromMe: boolean | null = null) {
+  private messageView(m: Prisma.WhatsappMessageGetPayload<object>, user: AuthUser, quoted: { id: string; fromMe: boolean } | null = null) {
     const gone = !!m.deletedAt
     const actions = sentActions(m)
     return {
       id: m.id, fromMe: m.fromMe, type: m.type, text: gone ? null : m.text, fileName: gone ? null : m.fileName, mime: gone ? null : m.mime, mediaStatus: gone ? null : m.mediaStatus, hasFile: !gone && !!m.fileId,
-      sentAt: m.sentAt, sentByName: m.sentByName, status: m.status, internal: m.internal, quotedText: m.quotedText, quotedFromMe, reactions: Array.isArray(m.reactions) ? m.reactions : [],
+      sentAt: m.sentAt, sentByName: m.sentByName, status: m.status, internal: m.internal, quotedText: m.quotedText, quotedFromMe: quoted?.fromMe ?? null, quotedId: quoted?.id ?? null, reactions: Array.isArray(m.reactions) ? m.reactions : [],
       editedAt: m.editedAt, deleted: gone, transcript: gone ? null : m.transcript,
       // Só a própria mensagem com "Criar"; a dos outros com "Editar" no chat.
       canEdit: actions.edit && (m.sentById === user.id || can(user.permissions, user.role.isSystem, 'chat', 'edit')),

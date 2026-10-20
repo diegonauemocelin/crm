@@ -53,7 +53,7 @@ function unwrap(m: Obj | null | undefined): Obj | null {
  * status, canais, reações e avisos do sistema (mensagem apagada, chaves de criptografia). Grupos vêm com group = true.
  */
 export function parseMessage(data: unknown): ParsedMessage | null {
-  const d = data as { key?: Obj; message?: Obj; pushName?: unknown; messageTimestamp?: unknown } | null
+  const d = data as { key?: Obj; message?: Obj; pushName?: unknown; messageTimestamp?: unknown; contextInfo?: unknown } | null
   const key = d?.key
   if (!key || typeof key.id !== 'string') return null
   const remote = str(key.remoteJid, 120)
@@ -77,7 +77,7 @@ export function parseMessage(data: unknown): ParsedMessage | null {
     group,
     at: ts ? new Date(ts * 1000) : new Date(),
     raw: { key, message: d.message },
-    quoted: quotedOf(m),
+    quoted: quotedOf(m, d.contextInfo),
   }
   const media = (o: Obj, fileName?: unknown) => ({ mime: str(o.mimetype, 120)?.split(';')[0]?.trim() || null, fileName: str(fileName, 200), size: num(o.fileLength) })
   const o = (k: string) => (m[k] && typeof m[k] === 'object' ? (m[k] as Obj) : null)
@@ -144,14 +144,23 @@ function quotedPreview(q: Obj | null): string {
   return 'Mensagem'
 }
 
-/** A mensagem é resposta a outra? (contextInfo.stanzaId e o trecho de quotedMessage). */
-function quotedOf(m: Obj): { waId: string; text: string } | null {
+/** Citação a partir do contextInfo: stanzaId é a mensagem respondida e quotedMessage, o trecho dela. */
+function quotedFrom(ctx: unknown): { waId: string; text: string } | null {
+  const c = ctx && typeof ctx === 'object' ? (ctx as Obj) : null
+  const id = str(c?.stanzaId, 120)
+  return id ? { waId: id, text: quotedPreview((c!.quotedMessage as Obj | undefined) ?? null).slice(0, 300) } : null
+}
+
+/**
+ * A mensagem é resposta a outra? O contextInfo vem dentro do conteúdo (imageMessage, extendedTextMessage...) ou no
+ * nível de cima do evento: a Evolution v2 transforma a resposta de texto em "conversation" e leva o contextInfo para fora.
+ */
+function quotedOf(m: Obj, top: unknown): { waId: string; text: string } | null {
   for (const v of Object.values(m)) {
-    const ctx = v && typeof v === 'object' ? ((v as Obj).contextInfo as Obj | undefined) : undefined
-    const id = str(ctx?.stanzaId, 120)
-    if (id) return { waId: id, text: quotedPreview((ctx!.quotedMessage as Obj | undefined) ?? null).slice(0, 300) }
+    const q = v && typeof v === 'object' ? quotedFrom((v as Obj).contextInfo) : null
+    if (q) return q
   }
-  return null
+  return quotedFrom(top)
 }
 
 export interface ParsedReaction {

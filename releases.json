@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.70.0",
+      "date": "2026-10-20",
+      "title": "Mensagem em resposta a outra aparece com a citação no chat",
+      "changes": [
+        { "type": "correcao", "area": "Chat WhatsApp", "text": "Quando o cliente responde a uma mensagem (arrastar para o lado / Responder no WhatsApp), o chat mostra acima do texto a mensagem respondida, como no WhatsApp. Antes, a resposta de texto chegava sem a citação (o serviço de WhatsApp manda a citação num lugar diferente para esse tipo de mensagem)." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "A citação diz a quem foi a resposta (\"Em resposta a você\" ou ao nome do cliente) e, clicando nela, o chat vai até a mensagem respondida e a destaca. Se ela for mais antiga que as carregadas, o chat avisa para clicar em \"Mensagens anteriores\"." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Vale para as mensagens que chegarem depois da atualização; as respostas que já estão no chat continuam sem a citação." }
+      ]
+    },
+    {
       "version": "0.69.0",
       "date": "2026-10-20",
       "title": "Telefone clicável no chat: abre a conversa sem salvar o contato",

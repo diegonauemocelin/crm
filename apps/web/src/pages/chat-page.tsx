@@ -95,6 +95,8 @@ interface Message {
   /** Resposta (citação): o trecho da mensagem respondida e se ela era da empresa. */
   quotedText?: string | null
   quotedFromMe?: boolean | null
+  /** A mensagem respondida, quando está no CRM (clicar na citação vai até ela). */
+  quotedId?: string | null
   /** Reações (emoji), uma por pessoa. */
   reactions?: { emoji: string; by: 'me' | 'them'; name: string | null }[]
   /** Corrigida depois do envio e apagada para todos (o texto deixa de aparecer). */
@@ -645,7 +647,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
           const prev = messages[i - 1]
           const first = showDay || !prev || prev.fromMe !== m.fromMe || !!prev.internal
           return (
-            <div key={m.id} className={cn(first && i > 0 && 'pt-2')}>
+            <div key={m.id} id={`msg-${m.id}`} className={cn('scroll-mt-16', first && i > 0 && 'pt-2')}>
               {showDay && (
                 <p className="mx-auto my-2 w-fit rounded-md bg-white px-3 py-1 text-xs font-medium text-[#54656f] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] dark:bg-[#182229] dark:text-[#8696a0]">{dayLabel(m.sentAt)}</p>
               )}
@@ -677,7 +679,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
                   )}
                 >
                   {d.conversation.category === 'GRUPO' && !m.fromMe && m.sentByName && <p className="mb-0.5 text-xs font-semibold text-[color:var(--brand)]">{m.sentByName}</p>}
-                  {m.quotedText && <QuotedBlock text={m.quotedText} who={m.quotedFromMe === true ? 'Você' : m.quotedFromMe === false ? title : null} />}
+                  {m.quotedText && <QuotedBlock text={m.quotedText} who={m.quotedFromMe === true ? 'Você' : m.quotedFromMe === false ? title : null} targetId={m.quotedId ?? null} />}
                   <Bubble m={m} />
                   {!!m.reactions?.length && <Reactions list={m.reactions} />}
                   <p className={cn('mt-0.5 text-right text-[11px] tabular-nums', m.fromMe ? 'opacity-70' : 'text-muted-foreground')}>
@@ -904,12 +906,33 @@ function MessageActions({ m, canForward, onReply, onForward }: { m: Message; can
 }
 
 /** Mensagem citada (resposta) no topo do balão. */
-function QuotedBlock({ text, who }: { text: string; who: string | null }) {
-  return (
-    <div className="mb-1 rounded border-l-4 border-l-[color:var(--brand)] bg-black/5 px-2 py-1 text-xs dark:bg-white/10">
-      {who && <p className="font-semibold text-[color:var(--brand)]">{who}</p>}
-      <p className="line-clamp-3 opacity-80">{text}</p>
-    </div>
+function QuotedBlock({ text, who, targetId = null }: { text: string; who: string | null; targetId?: string | null }) {
+  const body = (
+    <>
+      <p className="flex items-center gap-1 font-semibold text-[color:var(--brand)]">
+        <ReplyIcon className="size-3" /> {who ? `Em resposta a ${who === 'Você' ? 'você' : who}` : 'Resposta a uma mensagem'}
+      </p>
+      <p className="line-clamp-3 opacity-80">{waStyles(text)}</p>
+    </>
+  )
+  const box = 'mb-1 block w-full rounded border-l-4 border-l-[color:var(--brand)] bg-black/5 px-2 py-1 text-left text-xs dark:bg-white/10'
+  // Clicar vai até a mensagem respondida e pisca o balão; se ela é mais antiga que as carregadas, avisa.
+  const go = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const el = targetId ? document.getElementById(`msg-${targetId}`) : null
+    if (!el) {
+      toast.info('A mensagem respondida é mais antiga: clique em "Mensagens anteriores", no alto da conversa, para carregar.')
+      return
+    }
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    el.animate([{ backgroundColor: 'rgba(37, 211, 102, 0.28)' }, { backgroundColor: 'transparent' }], { duration: 1800, easing: 'ease-out' })
+  }
+  return targetId ? (
+    <button type="button" className={cn(box, 'cursor-pointer hover:bg-black/10 dark:hover:bg-white/15')} onClick={go} title="Ir para a mensagem respondida">
+      {body}
+    </button>
+  ) : (
+    <div className={box}>{body}</div>
   )
 }
 
