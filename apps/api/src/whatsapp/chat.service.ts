@@ -549,14 +549,16 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   private async waitingSellerIds(tenantId: string): Promise<string[]> {
     const recs = await this.prisma.serviceRecord.findMany({
       where: { tenantId, kind: 'PRE_VENDAS', deletedAt: null, forwarded: true, returnStatus: 'PENDENTE', saleStatus: 'NEGOCIACAO' },
-      select: { id: true, leadId: true },
+      select: { id: true, leadId: true, phone: true },
       take: 10_000,
     })
     const leadIds = [...new Set(recs.map((r) => r.leadId).filter((x): x is string => !!x))]
+    // Pré-venda aberta à mão (ex.: origem Ligação) não fica ligada à conversa: acha também pelo telefone.
+    const phones = [...new Set(recs.flatMap((r) => phoneVariants(r.phone)))]
     // Pelos ids das conversas: "NOT (recordId IN … OR leadId IN …)" com campo vazio daria NULL no banco e
     // esconderia as conversas sem pré-venda ligada.
     const convs = recs.length
-      ? await this.prisma.whatsappConversation.findMany({ where: { tenantId, category: 'CLIENTE', OR: [{ recordId: { in: recs.map((r) => r.id) } }, ...(leadIds.length ? [{ leadId: { in: leadIds } }] : [])] }, select: { id: true }, take: 10_000 })
+      ? await this.prisma.whatsappConversation.findMany({ where: { tenantId, category: 'CLIENTE', OR: [{ recordId: { in: recs.map((r) => r.id) } }, ...(leadIds.length ? [{ leadId: { in: leadIds } }] : []), ...(phones.length ? [{ phone: { in: phones } }] : [])] }, select: { id: true }, take: 10_000 })
       : []
     return convs.map((c) => c.id)
   }

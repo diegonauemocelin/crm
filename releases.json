@@ -11,6 +11,8 @@
         { "type": "novo", "area": "Pré-Vendas", "text": "Intervalo entre as mensagens: cada número manda uma por vez, com espera sorteada entre 3 e 20 minutos até a próxima (ajustável de 1 a 120), para não bloquear o número." },
         { "type": "novo", "area": "Pré-Vendas", "text": "Opção \"Também para quem não chamou por WhatsApp\" (cliente de formulário): desligada por padrão; ligada, sai pelo número escolhido." },
         { "type": "novo", "area": "Pré-Vendas", "text": "Escolha para quais situações da venda a mensagem vai: Em negociação, Venda realizada e/ou Venda não realizada." },
+        { "type": "correcao", "area": "Chat WhatsApp", "text": "Conversa de cliente com pré-venda repassada ao vendedor (retorno pendente, em negociação) vai para a aba \"Aguardando vendedor\" também quando a pré-venda foi aberta à mão (ex.: origem Ligação), achando pelo telefone." },
+        { "type": "melhoria", "area": "Pré-Vendas", "text": "Ficha da pré/pós-venda aberta por quem não tem permissão de editar mostra o aviso \"Só leitura\" e onde liberar (Configurações › Perfis de acesso), em vez de os botões simplesmente não responderem." },
         { "type": "melhoria", "area": "Pré-Vendas", "text": "Conversa finalizada ou arquivada nunca recebe a mensagem; a pré-venda fica com o registro \"Não enviada: conversa finalizada ou arquivada\"." }
       ]
     },

@@ -434,6 +434,11 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                   </Field>
                 </section>
               )}
+              {!canEdit && (
+                <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+                  Só leitura: seu perfil não tem permissão para {record ? 'editar' : 'criar'} {record?.kind === 'POS_VENDAS' || kind === 'POS_VENDAS' ? 'pós-vendas' : 'pré-vendas'}. Peça ao administrador para liberar em Configurações › Perfis de acesso.
+                </p>
+              )}
               <fieldset disabled={!canEdit || save.isPending} className="space-y-6">
                 <section className="space-y-3">
                   <h3 className="text-sm font-semibold">Cliente</h3>

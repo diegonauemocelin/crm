@@ -166,3 +166,16 @@ describe('cores do atraso de resposta', () => {
     expect(cleanRules({})).toMatchObject({ yellowMinutes: 15, redMinutes: 60 })
   })
 })
+
+describe('aba Aguardando vendedor', () => {
+  it('acha a conversa pela pré-venda, pelo lead ou pelo telefone (pré-venda aberta à mão, sem ligação com a conversa)', async () => {
+    let where: { OR?: unknown[] } = {}
+    const prisma = {
+      serviceRecord: { findMany: async () => [{ id: 'r1', leadId: null, phone: '+5542999751979' }] },
+      whatsappConversation: { findMany: async (a: { where: { OR: unknown[] } }) => ((where = a.where), [{ id: 'c1' }]) },
+    }
+    const s = new ChatService(prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never)
+    expect(await (s as unknown as { waitingSellerIds: (t: string) => Promise<string[]> }).waitingSellerIds('t')).toEqual(['c1'])
+    expect(where.OR).toEqual([{ recordId: { in: ['r1'] } }, { phone: { in: ['+5542999751979', '+554299751979'] } }])
+  })
+})
