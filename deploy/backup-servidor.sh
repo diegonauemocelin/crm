@@ -98,7 +98,7 @@ salvar() {
   return 1
 }
 pular() { aviso "$1"; printf 'FORA\t-\t-\t%s\n' "$1" >> "$MANIFESTO"; AVISOS=$((AVISOS + 1)); }
-nome_seguro() { echo "$1" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-80; }
+nome_seguro() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-80; }
 
 # ---------- Produtores (escrevem na saída padrão) ----------
 # As senhas dos bancos são lidas DENTRO de cada container: não passam por esta tela nem pelo registro.
