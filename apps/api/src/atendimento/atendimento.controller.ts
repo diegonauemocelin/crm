@@ -160,6 +160,8 @@ class NextDayMessageDto {
   @ApiProperty({ example: '09:00' }) @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'Horário inválido (use HH:MM).' }) time!: string
   @ApiProperty() @IsString() @Length(1, 1000) text!: string
   @ApiPropertyOptional() @ValidateIf((_, v) => v !== null) @IsUUID() numberId!: string | null
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() onlyForwarded?: boolean
+  @ApiPropertyOptional({ enum: ['NEGOCIACAO', 'SIM', 'NAO'], isArray: true }) @IsOptional() @IsArray() @IsIn(['NEGOCIACAO', 'SIM', 'NAO'], { each: true }) saleStatuses?: ('NEGOCIACAO' | 'SIM' | 'NAO')[]
 }
 
 class SellerDigestDto extends NextDayMessageDto {

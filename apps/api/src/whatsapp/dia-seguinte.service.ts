@@ -1,10 +1,11 @@
 import { Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
-import { cleanNextDay, nextDayWindow } from '../atendimento/regras'
+import { cleanNextDay, conversationClosed, nextDayWindow } from '../atendimento/regras'
 import type { AtendimentoSettings } from '../atendimento/service-records.service'
 import type { WhatsappNumber } from '../generated/prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { ChatService } from './chat.service'
 import { applyVariables } from './envio'
+import { phoneVariants } from './mensagens'
 
 const TICK_MS = 60_000
 /** Por minuto e por empresa: o ritmo do número (20/min) segura o resto para o minuto seguinte. */
@@ -54,11 +55,14 @@ export class DiaSeguinteService implements OnApplicationBootstrap, OnModuleDestr
   private async runTenant(tenantId: string, config: ReturnType<typeof cleanNextDay>, now: Date) {
     const window = nextDayWindow(config.time, now)
     if (!window) return
+    const day = { gte: window.from, lt: window.to }
+    // Só repassadas: o dia seguinte conta do repasse ao vendedor (sem a data do repasse, do dia em que o cliente chamou).
+    const when = config.onlyForwarded ? { forwarded: true, OR: [{ forwardedAt: day }, { forwardedAt: null, leadAt: day }] } : { leadAt: day }
     const records = await this.prisma.serviceRecord.findMany({
-      where: { tenantId, kind: 'PRE_VENDAS', deletedAt: null, importBatch: null, phone: { not: null }, autoMessageAt: null, leadAt: { gte: window.from, lt: window.to } },
+      where: { tenantId, kind: 'PRE_VENDAS', deletedAt: null, importBatch: null, phone: { not: null }, autoMessageAt: null, saleStatus: { in: config.saleStatuses }, ...when },
       orderBy: { leadAt: 'asc' },
       take: BATCH,
-      select: { id: true, name: true, phone: true, leadId: true, seller: { select: { name: true } } },
+      select: { id: true, name: true, phone: true, leadId: true, leadAt: true, seller: { select: { name: true } } },
     })
     if (!records.length) return
     const numbers = await this.prisma.whatsappNumber.findMany({ where: { tenantId, deletedAt: null, status: 'CONECTADO' }, orderBy: { createdAt: 'asc' } })
@@ -66,6 +70,11 @@ export class DiaSeguinteService implements OnApplicationBootstrap, OnModuleDestr
     if (!numbers.length) return
     const fallback = numbers.find((n) => n.id === config.numberId) ?? numbers[0]!
     for (const r of records) {
+      // Atendimento finalizado ou conversa arquivada: não manda, e fica registrado o motivo.
+      if (conversationClosed(await this.conversationOf(tenantId, r.id, r.phone!), r.leadAt)) {
+        await this.prisma.serviceRecord.updateMany({ where: { id: r.id, autoMessageAt: null }, data: { autoMessageAt: new Date(), autoMessageStatus: 'NÃO ENVIADA: conversa finalizada ou arquivada' } })
+        continue
+      }
       const number = (await this.numberOf(tenantId, r.id, r.phone!, numbers)) ?? fallback
       // Marca antes de enviar: dois servidores (ou dois minutos) não mandam a mesma mensagem duas vezes.
       const claimed = await this.prisma.serviceRecord.updateMany({ where: { id: r.id, autoMessageAt: null }, data: { autoMessageAt: new Date(), autoMessageStatus: 'ENVIANDO' } })
@@ -90,6 +99,15 @@ export class DiaSeguinteService implements OnApplicationBootstrap, OnModuleDestr
         })
       }
     }
+  }
+
+  /** Conversa do cliente: a ligada à pré-venda ou, sem ela, a mais recente com o telefone (em qualquer número). */
+  private async conversationOf(tenantId: string, recordId: string, phone: string) {
+    const select = { status: true, closedAt: true }
+    return (
+      (await this.prisma.whatsappConversation.findFirst({ where: { tenantId, recordId }, orderBy: { lastMessageAt: 'desc' }, select })) ??
+      (await this.prisma.whatsappConversation.findFirst({ where: { tenantId, phone: { in: phoneVariants(phone) } }, orderBy: { lastMessageAt: 'desc' }, select }))
+    )
   }
 
   /** Número em que o cliente chamou: o da conversa ligada à pré-venda ou, sem ela, o da conversa mais recente com o telefone. */

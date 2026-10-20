@@ -8,6 +8,7 @@ import { Can, EmptyState, ErrorState, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -590,7 +591,17 @@ interface NextDayMessage {
   time: string
   text: string
   numberId: string | null
+  /** Só a mensagem do dia seguinte: só repassadas ao vendedor e as situações da venda que recebem. */
+  onlyForwarded?: boolean
+  saleStatuses?: SaleKey[]
 }
+
+type SaleKey = 'NEGOCIACAO' | 'SIM' | 'NAO'
+const SALE_OPTIONS: { key: SaleKey; label: string }[] = [
+  { key: 'NEGOCIACAO', label: 'Em negociação' },
+  { key: 'SIM', label: 'Venda realizada' },
+  { key: 'NAO', label: 'Venda não realizada' },
+]
 
 /** Prazos e avisos do atendimento, ou as mensagens automáticas de WhatsApp (dia seguinte e resumo dos vendedores). */
 export function AlertsTab({ only }: { only?: 'prazos' | 'mensagens' }) {
@@ -839,17 +850,18 @@ const FIRST_CONNECTED = '__first__'
 export function NextDayMessageCard({ config }: { config: AlertConfig }) {
   const { can } = useAuth()
   const canEdit = can('cadastros', 'edit')
-  const initial = config.nextDayMessage ?? { enabled: false, time: '09:00', text: '', numberId: null }
+  const initial = { onlyForwarded: true, saleStatuses: SALE_OPTIONS.map((o) => o.key), ...(config.nextDayMessage ?? { enabled: false, time: '09:00', text: '', numberId: null }) }
   const [m, setM] = useState<NextDayMessage>(initial)
+  const statuses = m.saleStatuses ?? []
   const numbers = useQuery({ queryKey: ['cadastros', 'alertas', 'numeros'], queryFn: () => api.get<{ id: string; name: string; phone: string | null; status: string }[]>('/cadastros/alertas/numeros') })
   const save = useSaveAlerts(m.enabled ? 'Mensagem do dia seguinte ligada.' : 'Mensagem do dia seguinte salva (desligada).')
-  const valid = /^([01]\d|2[0-3]):[0-5]\d$/.test(m.time) && m.text.trim().length > 0 && m.text.length <= 1000
+  const valid = /^([01]\d|2[0-3]):[0-5]\d$/.test(m.time) && m.text.trim().length > 0 && m.text.length <= 1000 && statuses.length > 0
   return (
     <Card className="h-fit">
       <CardHeader>
         <CardTitle>Mensagem automática no dia seguinte</CardTitle>
         <CardDescription>
-          Todo dia, a partir do horário escolhido, o sistema manda esta mensagem pelo WhatsApp para cada cliente que abriu pré-venda no dia anterior. Vai uma vez só, pelo número em que o cliente chamou (quem veio de formulário recebe pelo número escolhido abaixo). Fica registrada na conversa e no histórico da pré-venda.
+          Todo dia, a partir do horário escolhido, o sistema manda esta mensagem pelo WhatsApp para os clientes da pré-venda do dia anterior que seguem as regras abaixo. Vai uma vez só, pelo número em que o cliente chamou (quem veio de formulário recebe pelo número escolhido abaixo). Fica registrada na conversa e no histórico da pré-venda.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -879,6 +891,33 @@ export function NextDayMessageCard({ config }: { config: AlertConfig }) {
               </SelectContent>
             </Select>
           </div>
+        </div>
+        <div className="space-y-3 rounded-md border p-3">
+          <p className="text-sm font-medium">Para quem vai</p>
+          <label className="flex items-start justify-between gap-3 text-sm">
+            <span>
+              Só pré-venda com <strong>Repassou ao vendedor</strong>
+              <span className="block text-xs text-muted-foreground">Sai no dia seguinte ao repasse. Desligado: no dia seguinte ao contato, repassada ou não.</span>
+            </span>
+            <Switch checked={m.onlyForwarded !== false} onCheckedChange={(onlyForwarded) => setM({ ...m, onlyForwarded })} disabled={!canEdit} />
+          </label>
+          <div className="space-y-1.5">
+            <p className="text-sm">Situação da venda</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {SALE_OPTIONS.map((o) => (
+                <label key={o.key} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={statuses.includes(o.key)}
+                    onCheckedChange={(on) => setM({ ...m, saleStatuses: on ? SALE_OPTIONS.map((x) => x.key).filter((k) => k === o.key || statuses.includes(k)) : statuses.filter((k) => k !== o.key) })}
+                    disabled={!canEdit}
+                  />
+                  {o.label}
+                </label>
+              ))}
+            </div>
+            {!statuses.length && <p className="text-xs text-destructive">Marque ao menos uma situação.</p>}
+          </div>
+          <p className="text-xs text-muted-foreground">Conversa finalizada ou arquivada nunca recebe: fica anotado na pré-venda que não foi enviada.</p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="nd-text">Mensagem</Label>

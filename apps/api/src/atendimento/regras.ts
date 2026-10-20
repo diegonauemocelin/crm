@@ -101,19 +101,44 @@ export interface NextDayMessage {
   text: string
   /** Número que envia quando o cliente não chamou por WhatsApp (vazio: o primeiro conectado). */
   numberId: string | null
+  /** Só pré-venda marcada "Repassou ao vendedor"; o dia seguinte conta a partir do repasse. */
+  onlyForwarded: boolean
+  /** Situações da venda que recebem a mensagem. */
+  saleStatuses: SaleStatusKey[]
 }
+
+export type SaleStatusKey = 'NEGOCIACAO' | 'SIM' | 'NAO'
+export const SALE_STATUS_KEYS: SaleStatusKey[] = ['NEGOCIACAO', 'SIM', 'NAO']
 
 export const DEFAULT_NEXT_DAY_TEXT =
   'Olá, {nome}! Tudo bem? Ontem você entrou em contato com a gente. Conseguimos te ajudar com o que precisava? Se ficou alguma dúvida, é só responder esta mensagem.'
 
-export const DEFAULT_NEXT_DAY: NextDayMessage = { enabled: false, time: '09:00', text: DEFAULT_NEXT_DAY_TEXT, numberId: null }
+export const DEFAULT_NEXT_DAY: NextDayMessage = { enabled: false, time: '09:00', text: DEFAULT_NEXT_DAY_TEXT, numberId: null, onlyForwarded: true, saleStatuses: SALE_STATUS_KEYS }
 
 /** Configuração salva (ou incompleta) com valores válidos. */
 export function cleanNextDay(raw: Partial<NextDayMessage> | null | undefined): NextDayMessage {
   const r = raw ?? {}
   const time = typeof r.time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(r.time) ? r.time : DEFAULT_NEXT_DAY.time
   const text = typeof r.text === 'string' && r.text.trim() ? r.text.trim().slice(0, 1000) : DEFAULT_NEXT_DAY_TEXT
-  return { enabled: r.enabled === true, time, text, numberId: typeof r.numberId === 'string' ? r.numberId : null }
+  const statuses = Array.isArray(r.saleStatuses) ? SALE_STATUS_KEYS.filter((k) => r.saleStatuses!.includes(k)) : SALE_STATUS_KEYS
+  return {
+    enabled: r.enabled === true,
+    time,
+    text,
+    numberId: typeof r.numberId === 'string' ? r.numberId : null,
+    // Configuração salva antes desta regra: só repassadas (é o que faz sentido para a mensagem de pós-venda).
+    onlyForwarded: r.onlyForwarded !== false,
+    saleStatuses: statuses.length ? statuses : SALE_STATUS_KEYS,
+  }
+}
+
+/**
+ * Conversa finalizada ou arquivada não recebe a mensagem do dia seguinte: arquivada agora, ou finalizada depois que
+ * o cliente chamou (atendimento encerrado).
+ */
+export function conversationClosed(conv: { status: string; closedAt: Date | null } | null, leadAt: Date) {
+  if (!conv) return false
+  return conv.status === 'ARQUIVADA' || (!!conv.closedAt && conv.closedAt >= leadAt)
 }
 
 /**

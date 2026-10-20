@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.71.0",
+      "date": "2026-10-20",
+      "title": "Regras da mensagem automática de pós-venda (dia seguinte)",
+      "changes": [
+        { "type": "melhoria", "area": "Pré-Vendas", "text": "A mensagem automática do dia seguinte só vai para pré-venda marcada \"Repassou ao vendedor\", no dia seguinte ao repasse. Pode ser desligado em Configurações › Mensagens automáticas (aí vale o dia seguinte ao contato, como antes)." },
+        { "type": "novo", "area": "Pré-Vendas", "text": "Escolha para quais situações da venda a mensagem vai: Em negociação, Venda realizada e/ou Venda não realizada." },
+        { "type": "melhoria", "area": "Pré-Vendas", "text": "Conversa finalizada ou arquivada nunca recebe a mensagem; a pré-venda fica com o registro \"Não enviada: conversa finalizada ou arquivada\"." }
+      ]
+    },
+    {
       "version": "0.70.1",
       "date": "2026-10-20",
       "title": "Ajustes no telefone clicável do chat",
