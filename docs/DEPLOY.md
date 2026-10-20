@@ -184,3 +184,34 @@ sudo bash deploy/whatsapp.sh desativar     # para a Evolution; as sessões ficam
 - **Chaves:** `EVOLUTION_API_KEY` (CRM → Evolution) e `EVOLUTION_WEBHOOK_SECRET` (Evolution → CRM) ficam só no `.env`.
 - **Backup:** o backup diário copia o banco do CRM (onde ficarão as conversas). As sessões não entram: se o volume `evolution`
   se perder, basta ler o QR Code de novo em cada número.
+
+## Raio-x e backup completo do servidor
+
+**Raio-x (só leitura):** mostra uso de CPU, memória e disco, os sistemas instalados (projetos Docker, containers,
+sites do Nginx, serviços), os bancos de dados de cada um (com tamanho) e se cabe mais um sistema. Não altera nada e
+não mostra senhas.
+
+```bash
+cd /opt/usaparts-crm && sudo bash deploy/raio-x.sh
+```
+
+**Backup completo da VPS** (além do backup diário do CRM): bancos de todos os sistemas (PostgreSQL, MySQL/MariaDB,
+MongoDB, Redis, em container ou instalados direto), volumes do Docker, pastas dos sistemas (/opt, /var/www, /srv,
+/usr/local e projetos docker compose fora delas), configurações do servidor (/etc: Nginx, certificados, cron),
+/root e /home, e a lista de pacotes. Não para nenhum sistema. Tudo sai criptografado com a chave pública do backup
+(`BACKUP_AGE_RECIPIENT`): só abre com a chave privada, que fica com você.
+
+```bash
+cd /opt/usaparts-crm && sudo bash deploy/backup-servidor.sh
+```
+
+Salva em `/var/backups/servidor/AAAAMMDD-HHMM` (guarda os 3 últimos completos) com um `LEIA-ME.txt` dizendo o que
+entrou e como restaurar cada parte. Para outro disco: `--destino /mnt/disco`. Volumes acima de 10 GB ficam de fora
+(avisado no LEIA-ME), a não ser com `--tudo`. Baixe para o seu computador (PowerShell):
+
+```powershell
+scp -r usuario@IP-DA-VPS:/var/backups/servidor/AAAAMMDD-HHMM C:\Backups\
+```
+
+Antes de mudanças grandes no servidor, faça também o **snapshot** no painel do provedor da VPS: é a cópia do disco
+inteiro e volta tudo em minutos.

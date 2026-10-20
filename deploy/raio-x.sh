@@ -149,7 +149,9 @@ registrar_bancos() { # $1 = onde (rótulo), stdin = nome<TAB>bytes
   else
     echo "  Nenhum."
   fi
-  tem pm2 && { echo "  PM2 (Node.js):"; pm2 ls 2>/dev/null | sed 's/^/    /'; }
+  # PM2 sem rodar o comando pm2 (ele iniciaria um processo novo): só olha os processos que já existem.
+  PM2=$(ps -eo user=,args= 2>/dev/null | grep -E 'PM2 v|pm2 ' | grep -v grep | awk '{print $1}' | sort -u | tr '\n' ' ')
+  [ -n "$PM2" ] && echo "  PM2 (Node.js) rodando para: $PM2"
   echo "  Servidores de banco/web instalados direto no sistema:"
   for s in nginx apache2 postgresql mysql mariadb mongod redis-server php8.3-fpm php8.2-fpm php8.1-fpm php7.4-fpm; do
     systemctl is-active --quiet "$s" 2>/dev/null && echo "    $s: ATIVO"

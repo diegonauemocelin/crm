@@ -36,10 +36,15 @@ STAMP="$(date +%Y%m%d-%H%M)"
 DEST="$DESTINO_BASE/$STAMP"
 LOG="$DEST/registro.log"
 MANIFESTO="$DEST/.partes"
-umask 077
-mkdir -p "$DEST" || fatal "Não consegui criar $DEST."
+# A pasta base fica "atravessável" (0711) para o usuário do sudo baixar com scp; cada backup fica 700 e é dele.
+install -d -m 0711 "$DESTINO_BASE" || fatal "Não consegui criar $DESTINO_BASE."
 exec 9>"$DESTINO_BASE/.trava"
 flock -n 9 || fatal "Já tem um backup do servidor em andamento."
+umask 077
+mkdir -p "$DEST" || fatal "Não consegui criar $DEST."
+# Interrompido antes de terminar: não deixa pasta pela metade (o registro fica em ultimo-erro.log).
+encerrar() { if [ ! -f "$DEST/LEIA-ME.txt" ]; then cp -f "$LOG" "$DESTINO_BASE/ultimo-erro.log" 2>/dev/null; rm -rf "$DEST"; fi; }
+trap encerrar EXIT
 # Prioridade baixa: os sistemas continuam respondendo enquanto o backup roda.
 renice -n 10 $$ >/dev/null 2>&1 || true
 ionice -c2 -n7 -p $$ >/dev/null 2>&1 || true
@@ -120,10 +125,17 @@ dump_mongo() {
 dump_redis() {
   docker exec "$1" sh -c 'C="$(command -v redis-cli || command -v valkey-cli || command -v keydb-cli)"; [ -n "$C" ] || exit 1
     export REDISCLI_AUTH="${REDIS_PASSWORD:-}"; [ -n "$REDISCLI_AUTH" ] || unset REDISCLI_AUTH
+    "$C" --rdb - 2>/dev/null && exit 0
     F="/tmp/backup-$$.rdb"; "$C" --rdb "$F" >/dev/null 2>&1 && cat "$F"; S=$?; rm -f "$F"; exit $S'
 }
 tar_volume() { docker run --rm --network none --user 0 -v "$1":/v:ro --entrypoint tar "$IMG_TAR" -C /v -cf - .; }
 tar_host() { tar -C / --warning=no-file-changed --ignore-failed-read "${EXCLUIR[@]}" -cf - "$@"; }
+# O container tem a ferramenta de cópia? (imagem com "postgres" no nome pode ser um exportador ou um painel.)
+tem_ferramenta() {
+  local f
+  case "$2" in postgres) f=pg_dumpall ;; mysql) f="mariadb-dump mysqldump" ;; mongo) f=mongodump ;; redis) f="redis-cli valkey-cli keydb-cli" ;; esac
+  docker exec "$1" sh -c "for b in $f; do command -v \$b >/dev/null 2>&1 && exit 0; done; exit 1" >/dev/null 2>&1
+}
 tipo_banco() {
   case "$1" in
     *postgres*|*postgis*|*timescale*|*pgvector*) echo postgres ;;
@@ -140,7 +152,9 @@ info "Backup completo do servidor $(hostname) em $DEST"
 ESTIMATIVA_KB=$(du -sxk /etc /root /home /var/www /srv /opt /usr/local /var/spool/cron 2>/dev/null | awk '{s+=$1} END {print s+0}')
 if [ "$DOCKER" -eq 1 ]; then
   VOL_KB=$(for v in $(docker volume ls -q); do docker run --rm --network none -v "$v":/v:ro --entrypoint du "$IMG_TAR" -sk /v 2>/dev/null | cut -f1; done | awk '{s+=$1} END {print s+0}')
-  ESTIMATIVA_KB=$((ESTIMATIVA_KB + VOL_KB))
+  BIND_KB=$(docker ps -aq | xargs -r docker inspect -f '{{range .Mounts}}{{if eq .Type "bind"}}{{.Source}}{{"\n"}}{{end}}{{end}}' 2>/dev/null \
+    | grep -vE '^/(proc|sys|dev|run|var/run|etc|tmp|opt|var/www|srv|usr/local|root|home)(/|$)|docker\.sock$|^$' | sort -u | xargs -r du -sxk 2>/dev/null | awk '{s+=$1} END {print s+0}')
+  ESTIMATIVA_KB=$((ESTIMATIVA_KB + VOL_KB + BIND_KB))
 fi
 LIVRE_KB=$(df -Pk "$DESTINO_BASE" | awk 'NR==2 {print $4}')
 NECESSARIO_KB=$((ESTIMATIVA_KB * 6 / 10 + 1048576))
@@ -153,6 +167,7 @@ bash "$RAIZ/deploy/raio-x.sh" "$DEST/00-raio-x.txt" >/dev/null 2>>"$LOG" && ok "
 
 # ---------- 10-19: bancos de dados em containers ----------
 VOLUMES_COBERTOS=" "
+DADOS_BANCO=()
 # Projeto do docker compose do CRM: o que roda nesta pasta (ou o nome padrão, a pasta).
 CRM_PROJETO="$([ "$DOCKER" -eq 1 ] && docker ps -a --filter "label=com.docker.compose.project.working_dir=$RAIZ" --format '{{.Label "com.docker.compose.project"}}' | head -1)"
 CRM_PROJETO="${CRM_PROJETO:-$(sed -n 's/^name: *//p' "$RAIZ/docker-compose.yml" 2>/dev/null | head -1)}"
@@ -163,6 +178,7 @@ if [ "$DOCKER" -eq 1 ]; then
     [ -n "$cid" ] || continue
     t=$(tipo_banco "$imagem"); [ -n "$t" ] || continue
     rot="${projeto:-avulso}/${nome}"
+    if ! tem_ferramenta "$cid" "$t"; then pular "Container $rot ($imagem) não tem a ferramenta de cópia de banco: tratado como sistema comum (volumes e pastas)"; continue; fi
     arq="$(printf '%02d' "$n")-banco-$(nome_seguro "${projeto:-avulso}-$nome")"
     feito=0
     case "$t" in
@@ -180,6 +196,10 @@ if [ "$DOCKER" -eq 1 ]; then
       while IFS=$'\t' read -r vol destino; do
         case "$destino" in /var/lib/postgresql*|/var/lib/mysql*|/data/db|/data/configdb|/bitnami/*|/data) VOLUMES_COBERTOS="$VOLUMES_COBERTOS$vol " ;; esac
       done < <(docker inspect -f '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{"\t"}}{{.Destination}}{{"\n"}}{{end}}{{end}}' "$cid")
+      # Pasta de dados do banco montada do servidor (bind): também não vai crua (a cópia já foi feita).
+      while IFS=$'\t' read -r origem destino; do
+        case "$destino" in /var/lib/postgresql*|/var/lib/mysql*|/data/db|/data/configdb|/bitnami/*|/data) DADOS_BANCO+=(--exclude="${origem#/}") ;; esac
+      done < <(docker inspect -f '{{range .Mounts}}{{if eq .Type "bind"}}{{.Source}}{{"\t"}}{{.Destination}}{{"\n"}}{{end}}{{end}}' "$cid")
     fi
   done < <(docker ps --format '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Label "com.docker.compose.project"}}')
 fi
@@ -219,11 +239,18 @@ if [ "$DOCKER" -eq 1 ] && [ -n "$IMG_TAR" ]; then
 fi
 
 # ---------- 60: pastas do servidor ligadas aos containers (fora dos volumes) ----------
-EXCLUIR=(--exclude='*/node_modules' --exclude='*/.cache' --exclude='*/.npm' --exclude='*/__pycache__' --exclude="${DEST#/}" --exclude="${DESTINO_BASE#/}" --exclude="${RAIZ#/}/backups" --exclude='var/lib/docker' --exclude='proc' --exclude='sys' --exclude='dev' --exclude='run')
+# Já vão inteiras nas partes 70-72: não repete.
+JA_COPIADAS='^/(opt|var/www|srv|usr/local|root|home)(/|$)'
+EXCLUIR=(--exclude='*/node_modules' --exclude='*/.cache' --exclude='*/.npm' --exclude='*/__pycache__' --exclude="${DEST#/}" --exclude="${DESTINO_BASE#/}" --exclude="${RAIZ#/}/backups" --exclude='var/lib/docker' "${DADOS_BANCO[@]}")
 if [ "$DOCKER" -eq 1 ]; then
   mapfile -t PASTAS < <(docker ps -aq | xargs -r docker inspect -f '{{range .Mounts}}{{if eq .Type "bind"}}{{.Source}}{{"\n"}}{{end}}{{end}}' 2>/dev/null \
-    | grep -vE '^/(proc|sys|dev|run|var/run|etc|tmp)(/|$)|docker\.sock$|^$' | sort -u | sed 's#^/##')
-  [ "${#PASTAS[@]}" -gt 0 ] && TAR_TOLERANTE=1 salvar "60-pastas-dos-containers.tar.gz" "Pastas do servidor usadas pelos containers (${#PASTAS[@]})" tar_host "${PASTAS[@]}"
+    | grep -vE '^/(proc|sys|dev|run|var/run|etc|tmp)(/|$)|docker\.sock$|^$' | grep -vE "$JA_COPIADAS" | sort -u | sed 's#^/##')
+  # Pastas dos projetos docker compose (docker-compose.yml, .env) fora das pastas copiadas abaixo.
+  mapfile -t PROJETOS_FORA < <(docker ps -aq | xargs -r docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null | grep -v '^$' | grep -vE "$JA_COPIADAS" | sort -u | sed 's#^/##')
+  PASTAS+=("${PROJETOS_FORA[@]}")
+  # Pasta dentro de outra da lista vai uma vez só (a de fora já leva a de dentro).
+  mapfile -t PASTAS < <(printf '%s\n' "${PASTAS[@]}" | grep -v '^$' | sort -u | awk '{ for (i in p) if (index($0, p[i] "/") == 1) next; p[NR] = $0; print }')
+  [ "${#PASTAS[@]}" -gt 0 ] && TAR_TOLERANTE=1 salvar "60-pastas-dos-containers.tar.gz" "Pastas do servidor usadas pelos containers e projetos fora de /opt (${#PASTAS[@]})" tar_host "${PASTAS[@]}"
 fi
 
 # ---------- 70-79: configurações e arquivos do servidor ----------
@@ -274,8 +301,11 @@ IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
   echo "  (depois descompacte com 7-Zip, ou: gzip -d arquivo.gz)"
   echo
   echo "RESTAURAR"
-  echo "  PostgreSQL (.sql.gz):  age -d -i chave.txt ARQ.age | gunzip | docker exec -i CONTAINER psql -U USUARIO -d postgres"
-  echo "  MySQL/MariaDB:         age -d -i chave.txt ARQ.age | gunzip | docker exec -i CONTAINER sh -c 'MYSQL_PWD=\"\$MARIADB_ROOT_PASSWORD\" mariadb -uroot'"
+  echo "  Antes: pare os containers do sistema e deixe só o do banco no ar (ex.: docker compose stop api evolution), ou"
+  echo "  restaure num container de banco novo e vazio. Com o sistema gravando, a restauração fica pela metade."
+  echo "  PostgreSQL (.sql.gz):  age -d -i chave.txt ARQ.age | gunzip | docker exec -i CONTAINER psql -U USUARIO -d postgres -v ON_ERROR_STOP=0"
+  echo "                         (aviso de que o usuário conectado não pode ser apagado é normal)"
+  echo "  MySQL/MariaDB:         age -d -i chave.txt ARQ.age | gunzip | docker exec -i CONTAINER sh -c 'C=\$(command -v mariadb || command -v mysql); MYSQL_PWD=\"\${MARIADB_ROOT_PASSWORD:-\$MYSQL_ROOT_PASSWORD}\" exec \$C -uroot'"
   echo "  MongoDB:               age -d -i chave.txt ARQ.age | gunzip | docker exec -i CONTAINER mongorestore --archive --drop -u USUARIO -p SENHA --authenticationDatabase admin"
   echo "  Volume (.tar.gz):      age -d -i chave.txt ARQ.age | gunzip | docker run --rm -i -v VOLUME:/v alpine:3 tar -C /v -x"
   echo "  Pastas (.tar.gz):      age -d -i chave.txt ARQ.age | gunzip | sudo tar -C / -x   (cuidado: sobrescreve os arquivos)"
@@ -284,14 +314,17 @@ IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
   echo "Conferir se os arquivos chegaram inteiros: sha256sum -c SHA256SUMS"
 } > "$DEST/LEIA-ME.txt"
 rm -f "$MANIFESTO"
+[ "$FALHAS" -eq 0 ] && touch "$DEST/.completo"
 
 # Dono: quem chamou o sudo (para baixar com scp sem ser root). Os arquivos já estão criptografados.
 if [ -n "${SUDO_USER:-}" ]; then chown -R "$SUDO_USER" "$DEST"; fi
 chmod 700 "$DEST"
 
 # Guarda os N mais recentes só na pasta padrão (num disco escolhido com --destino, quem cuida é você).
-if [ "$DESTINO_BASE" = /var/backups/servidor ]; then
-  ls -1d "$DESTINO_BASE"/2[0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9] 2>/dev/null | sort | head -n -"$GUARDAR" | while read -r velho; do rm -rf "$velho" && info "Backup antigo apagado: $velho"; done
+# Só depois de um backup sem falhas, e só conta os completos: backup bom nunca é apagado por um que deu errado.
+if [ "$DESTINO_BASE" = /var/backups/servidor ] && [ "$FALHAS" -eq 0 ]; then
+  for d in "$DESTINO_BASE"/2[0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9]; do [ -f "$d/.completo" ] && echo "$d"; done | sort | head -n -"$GUARDAR" \
+    | while read -r velho; do rm -rf "$velho" && info "Backup antigo apagado: $velho"; done
 fi
 
 echo
