@@ -1,9 +1,10 @@
 import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
-import { ArrayMaxSize, IsArray, IsBoolean, IsOptional, IsString, IsUUID, Length, ValidateIf } from 'class-validator'
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, IsUUID, Length, MaxLength, ValidateIf } from 'class-validator'
 import { CurrentUser, Public, ReqContext, type RequestCtx, RequirePermission } from '../common/decorators'
 import type { AuthUser } from '../common/types'
+import { SetoresService } from './setores.service'
 import { WhatsappService } from './whatsapp.service'
 
 class NumberDto {
@@ -13,7 +14,7 @@ class NumberDto {
   @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() @ArrayMaxSize(100) @IsUUID('all', { each: true }) userIds?: string[]
   @ApiPropertyOptional() @IsOptional() @IsBoolean() splitAttendance?: boolean
   @ApiPropertyOptional({ description: 'Atendente que recebe os clientes novos (um dos usuários do número)' }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() defaultUserId?: string | null
-  @ApiPropertyOptional({ description: '[{ id?, name, userIds }]' }) @IsOptional() @IsArray() @ArrayMaxSize(20) sectors?: unknown[]
+  @ApiPropertyOptional({ description: 'Ignorado: os setores agora são da empresa (/whatsapp/setores)' }) @IsOptional() @IsArray() @ArrayMaxSize(20) sectors?: unknown[]
   @ApiPropertyOptional() @IsOptional() @IsBoolean() createRecords?: boolean
   @ApiPropertyOptional() @IsOptional() @IsBoolean() signMessages?: boolean
 }
@@ -82,5 +83,57 @@ export class WhatsappController {
   @RequirePermission('whatsapp', 'edit')
   disconnect(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
     return this.wa.disconnect(user, id, ctx)
+  }
+}
+
+class SectorDto {
+  @ApiProperty() @IsString() @Length(2, 40) name!: string
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(200) description?: string | null
+  @ApiProperty({ type: [String], description: 'Números em que atende (vazio = todos)' }) @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) numberIds!: string[]
+  @ApiProperty({ type: [String] }) @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) userIds!: string[]
+  @ApiProperty({ type: [String] }) @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) managerIds!: string[]
+  @ApiProperty({ enum: ['PROPRIAS', 'SETOR'] }) @IsIn(['PROPRIAS', 'SETOR']) visibility!: 'PROPRIAS' | 'SETOR'
+}
+
+class ManagersDto {
+  @ApiProperty({ type: [String] }) @IsArray() @ArrayMaxSize(20) @IsUUID('all', { each: true }) managerIds!: string[]
+}
+
+/** Setores de atendimento e gestores de cada pessoa (Configurações › Setores e equipes). */
+@ApiTags('WhatsApp')
+@Controller('whatsapp/setores')
+export class SetoresController {
+  constructor(private readonly setores: SetoresService) {}
+
+  @Get()
+  @RequirePermission('whatsapp', 'view')
+  list(@CurrentUser() user: AuthUser) {
+    return this.setores.list(user)
+  }
+
+  @Post()
+  @RequirePermission('whatsapp', 'edit')
+  create(@CurrentUser() user: AuthUser, @Body() dto: SectorDto, @ReqContext() ctx: RequestCtx) {
+    return this.setores.save(user, null, dto, ctx)
+  }
+
+  @Put(':id')
+  @RequirePermission('whatsapp', 'edit')
+  update(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SectorDto, @ReqContext() ctx: RequestCtx) {
+    return this.setores.save(user, id, dto, ctx)
+  }
+
+  @Delete(':id')
+  @HttpCode(200)
+  @RequirePermission('whatsapp', 'edit')
+  async remove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    await this.setores.remove(user, id, ctx)
+    return { ok: true }
+  }
+
+  @Put('gestores/:userId')
+  @RequirePermission('whatsapp', 'edit')
+  managers(@CurrentUser() user: AuthUser, @Param('userId', ParseUUIDPipe) userId: string, @Body() dto: ManagersDto, @ReqContext() ctx: RequestCtx) {
+    return this.setores.setManagers(user, userId, dto.managerIds, ctx)
   }
 }

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { ChatService } from '../src/whatsapp/chat.service'
 
-const svc = () => new ChatService({} as never, {} as never, {} as never, {} as never, {} as never, {} as never)
+// Sem equipe: ninguém tem a pessoa como gestora e não há setores.
+const empty = { user: { findMany: async () => [] }, whatsappSector: { findMany: async () => [] } }
+const svc = () => new ChatService(empty as never, {} as never, {} as never, {} as never, {} as never, {} as never)
 const user = (permissions: Record<string, unknown>, isSystem = false) => ({ id: 'u', tenantId: 't', role: { isSystem }, permissions }) as never
 const view = { view: true, create: false, edit: false, delete: false, export: false, scope: 'OWN' }
 
@@ -45,6 +47,7 @@ describe('cada login vê só o seu chat', () => {
     { id: 'n3', userIds: ['u9'], sellerIds: [] },
   ]
   const prisma = (sellerOf: Record<string, string>) => ({
+    whatsappSector: { findMany: async () => [] },
     seller: { findUnique: async (a: { where: { userId: string } }) => (sellerOf[a.where.userId] ? { id: sellerOf[a.where.userId] } : null) },
     whatsappNumber: {
       findMany: async (a: { where: { OR: ({ userIds?: { has: string } } | { sellerIds?: { has: string } })[] } }) =>
@@ -79,35 +82,72 @@ describe('nome do atendente nas mensagens', () => {
 })
 
 describe('vários atendentes no mesmo número', () => {
-  it('setores: limpa nomes repetidos e usuários fora do número', async () => {
-    const { cleanSectors } = await import('../src/whatsapp/atendentes')
-    const s = cleanSectors([{ name: ' Vendas ', userIds: ['u1', 'x'] }, { name: 'vendas', userIds: [] }, { name: '' }, { name: 'Financeiro', userIds: ['u2'] }], ['u1', 'u2'])
-    expect(s.map((x) => [x.name, x.userIds])).toEqual([['Vendas', ['u1']], ['Financeiro', ['u2']]])
-    expect(s[0]!.id).toMatch(/^[0-9a-f-]{36}$/)
+  type C = { numberId: string; assignedUserId: string | null; category: string; sectorId: string | null; helperUserIds?: string[] }
+  // Avalia o filtro como o banco faria, numa conversa.
+  const match = (c: C, w: Record<string, unknown>): boolean =>
+    Object.entries(w).every(([k, v]) => {
+      if (k === 'OR') return (v as Record<string, unknown>[]).some((x) => match(c, x))
+      const val = c[k as keyof C]
+      if (v && typeof v === 'object' && 'not' in v) return val !== (v as { not: unknown }).not
+      if (v && typeof v === 'object' && 'in' in v) return (v as { in: unknown[] }).in.includes(val)
+      if (v && typeof v === 'object' && 'has' in v) return ((val as string[] | undefined) ?? []).includes((v as { has: string }).has)
+      if (v && typeof v === 'object' && 'hasSome' in v) return ((val as string[] | undefined) ?? []).some((x) => (v as { hasSome: string[] }).hasSome.includes(x))
+      return val === v
+    })
+  const sector = (id: string, userIds: string[], extra: Partial<import('../src/whatsapp/atendentes').Sector> = {}) => ({ id, name: id, numberIds: [], userIds, managerIds: [], visibility: 'PROPRIAS' as const, ...extra })
+  const base = { numberId: 'n1', sectorId: null, category: 'CLIENTE' }
+
+  it('setor: limpa o nome, as listas e a visibilidade', async () => {
+    const { cleanSector } = await import('../src/whatsapp/atendentes')
+    const u = '11111111-1111-1111-1111-111111111111'
+    expect(cleanSector({ name: '  Pós   venda ', userIds: [u, u, 'x'], managerIds: null, visibility: 'qualquer' })).toEqual({ name: 'Pós venda', description: null, numberIds: [], userIds: [u], managerIds: [], visibility: 'PROPRIAS' })
+    expect(cleanSector({ name: 'Vendas', visibility: 'SETOR' }).visibility).toBe('SETOR')
   })
 
   it('atendente vê as dele, a fila do setor dele e os contatos da empresa; não as de clientes de outro atendente', async () => {
     const { splitWhere } = await import('../src/whatsapp/atendentes')
-    const where = splitWhere('u1', [{ id: 'n1', sectors: [{ id: 'sv', name: 'Vendas', userIds: ['u1'] }, { id: 'sf', name: 'Financeiro', userIds: ['u2'] }] }])
-    // Avalia o filtro como o banco faria, numa lista de conversas.
-    type C = { numberId: string; assignedUserId: string | null; category: string; sectorId: string | null }
-    const match = (c: C, w: Record<string, unknown>): boolean =>
-      Object.entries(w).every(([k, v]) => {
-        if (k === 'OR') return (v as Record<string, unknown>[]).some((x) => match(c, x))
-        const val = c[k as keyof C]
-        if (v && typeof v === 'object' && 'not' in v) return val !== (v as { not: unknown }).not
-        if (v && typeof v === 'object' && 'in' in v) return (v as { in: unknown[] }).in.includes(val)
-        return val === v
-      })
+    const where = splitWhere('u1', [{ id: 'n1' }], [sector('sv', ['u1']), sector('sf', ['u2']), sector('so', ['u1'], { numberIds: ['n9'] })])
     const sees = (c: C) => where.some((w) => match(c, w as Record<string, unknown>))
-    const base = { numberId: 'n1', sectorId: null, category: 'CLIENTE' }
     expect(sees({ ...base, assignedUserId: 'u1' })).toBe(true)
     expect(sees({ ...base, assignedUserId: 'u2' })).toBe(false)
     expect(sees({ ...base, assignedUserId: null })).toBe(true)
     expect(sees({ ...base, assignedUserId: null, sectorId: 'sv' })).toBe(true)
     expect(sees({ ...base, assignedUserId: null, sectorId: 'sf' })).toBe(false)
+    // Setor dele, mas que não atende neste número.
+    expect(sees({ ...base, assignedUserId: null, sectorId: 'so' })).toBe(false)
     expect(sees({ ...base, assignedUserId: 'u2', category: 'COLEGA' })).toBe(true)
     expect(sees({ ...base, numberId: 'n2', assignedUserId: null })).toBe(false)
+  })
+
+  it('setor com visibilidade "todo o setor": vê as conversas dos colegas do setor, não as de outro setor', async () => {
+    const { splitWhere } = await import('../src/whatsapp/atendentes')
+    const where = splitWhere('u1', [{ id: 'n1' }], [sector('sv', ['u1', 'u2'], { visibility: 'SETOR' }), sector('sf', ['u3'])])
+    const sees = (c: C) => where.some((w) => match(c, w as Record<string, unknown>))
+    expect(sees({ ...base, assignedUserId: 'u2', sectorId: 'sv' })).toBe(true)
+    expect(sees({ ...base, assignedUserId: 'u3', sectorId: 'sf' })).toBe(false)
+  })
+
+  it('gestor acompanha a equipe: quem o tem como gestor e os setores que gerencia', async () => {
+    const { teamOf, teamWhere } = await import('../src/whatsapp/atendentes')
+    const team = teamOf('g', [{ id: 'v1', managerIds: ['g'] }, { id: 'v2', managerIds: ['outro'] }], [sector('sv', ['v3', 'g'], { managerIds: ['g'] }), sector('sf', ['v4'])])
+    expect(team).toEqual({ userIds: ['v1', 'v3'], sectorIds: ['sv'] })
+    const w = teamWhere(team)!
+    const sees = (c: C) => match(c, w as Record<string, unknown>)
+    expect(sees({ ...base, assignedUserId: 'v1' })).toBe(true)
+    expect(sees({ ...base, assignedUserId: 'v3' })).toBe(true)
+    expect(sees({ ...base, assignedUserId: null, sectorId: 'sv' })).toBe(true)
+    expect(sees({ ...base, assignedUserId: 'v2' })).toBe(false)
+    expect(sees({ ...base, assignedUserId: 'v4', sectorId: 'sf' })).toBe(false)
+    expect(teamWhere(teamOf('ninguem', [], []))).toBeNull()
+  })
+
+  it('gestor sem a permissão de monitoramento só monitora a equipe dele', async () => {
+    const prisma = { user: { findMany: async () => [{ id: 'v1', managerIds: ['g'] }] }, whatsappSector: { findMany: async () => [] } }
+    const s = new ChatService(prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never)
+    const gestor = { id: 'g', tenantId: 't', role: { isSystem: false }, permissions: { chat: view } } as never
+    expect(await s.monitorAccess(gestor)).toEqual({ scope: 'EQUIPE' })
+    expect(await s.monitorScope(gestor)).toEqual({ tenantId: 't', OR: [{ assignedUserId: { in: ['v1'] } }, { helperUserIds: { hasSome: ['v1'] } }] })
+    expect(await svc().monitorAccess(gestor)).toEqual({ scope: null })
   })
 })
 

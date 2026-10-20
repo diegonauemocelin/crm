@@ -14,7 +14,7 @@ import { SettingsService } from '../settings/settings.service'
 import { normalizePhone } from '../atendimento/br'
 import { callHoursOf, DEFAULT_ATENDIMENTO } from '../atendimento/service-records.service'
 import { type EvolutionClient, EvolutionError } from './evolution'
-import { sectorsOf, splitWhere } from './atendentes'
+import { type Sector, servesNumber, splitWhere, teamOf, teamWhere } from './atendentes'
 import { type AgendaCategory, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
 import { parseCsv } from '../atendimento/planilha'
 import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, parseReaction, parseRevision, type ParsedMessage, type ParsedRevision, phoneFromDigits, phoneVariants, previewOf, withReaction } from './mensagens'
@@ -383,8 +383,36 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     return can(user.permissions, user.role.isSystem, 'monitoramento', 'view')
   }
 
-  private assertMonitor(user: AuthUser) {
-    if (!this.canMonitor(user)) throw new ForbiddenException('Você não tem permissão para monitorar as conversas.')
+  /** Setores de atendimento da empresa (ativos). */
+  async sectors(tenantId: string): Promise<Sector[]> {
+    const rows = await this.prisma.whatsappSector.findMany({ where: { tenantId, active: true }, orderBy: { name: 'asc' } })
+    return rows.map((r) => ({ id: r.id, name: r.name, numberIds: r.numberIds, userIds: r.userIds, managerIds: r.managerIds, visibility: r.visibility === 'SETOR' ? 'SETOR' : 'PROPRIAS' }))
+  }
+
+  /**
+   * O que a pessoa pode acompanhar no monitoramento: tudo (permissão "Monitorar conversas") ou só a equipe dela
+   * (quem a tem como gestora e os setores que ela gerencia). null = nada.
+   */
+  async monitorScope(user: AuthUser): Promise<Prisma.WhatsappConversationWhereInput | null> {
+    if (this.canMonitor(user)) return { tenantId: user.tenantId }
+    const [users, sectors] = await Promise.all([
+      this.prisma.user.findMany({ where: { tenantId: user.tenantId, active: true, managerIds: { has: user.id } }, select: { id: true, managerIds: true } }),
+      this.sectors(user.tenantId),
+    ])
+    const team = teamWhere(teamOf(user.id, users, sectors))
+    return team ? { tenantId: user.tenantId, ...team } : null
+  }
+
+  /** Para a tela: pode monitorar tudo, só a equipe, ou nada. */
+  async monitorAccess(user: AuthUser) {
+    if (this.canMonitor(user)) return { scope: 'TODOS' as const }
+    return { scope: (await this.monitorScope(user)) ? ('EQUIPE' as const) : null }
+  }
+
+  private async assertMonitor(user: AuthUser) {
+    const scope = await this.monitorScope(user)
+    if (!scope) throw new ForbiddenException('Você não tem permissão para monitorar as conversas.')
+    return scope
   }
 
   /** Conversas de um vendedor: as passadas para ele e as dos números em que ele atende. */
@@ -411,12 +439,13 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const { numbers, sellerId } = await this.ownNumbers(user)
     const normal = numbers.filter((n) => !n.splitAttendance).map((n) => n.id)
     const split = numbers.filter((n) => n.splitAttendance)
+    const sectors = split.length ? await this.sectors(user.tenantId) : []
     return {
       ...base,
       OR: [
         ...(normal.length ? [{ numberId: { in: normal } }] : []),
         // Atendimento dividido: as minhas, a fila do meu setor e os contatos da empresa.
-        ...splitWhere(user.id, split),
+        ...splitWhere(user.id, split, sectors),
         // Passadas para mim (mesmo de outro número) ou para o vendedor ligado ao meu login.
         { assignedUserId: user.id },
         ...(sellerId ? [{ assignedSellerId: sellerId }] : []),
@@ -427,9 +456,17 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   /** Números do usuário: ligados ao login dele ou ao vendedor dele (cadastro do número em Números de WhatsApp). */
   private async ownNumbers(user: AuthUser) {
     const seller = await this.prisma.seller.findUnique({ where: { userId: user.id }, select: { id: true } })
+    // Atendente de um setor atende nos números do setor (setor sem número escolhido: todos com atendimento dividido).
+    const mySectors = await this.prisma.whatsappSector.findMany({ where: { tenantId: user.tenantId, active: true, userIds: { has: user.id } }, select: { numberIds: true } })
+    const sectorNumbers = [...new Set(mySectors.flatMap((x) => x.numberIds))]
+    const anyNumber = mySectors.some((x) => !x.numberIds.length)
     const nums = await this.prisma.whatsappNumber.findMany({
-      where: { tenantId: user.tenantId, deletedAt: null, OR: [{ userIds: { has: user.id } }, ...(seller ? [{ sellerIds: { has: seller.id } }] : [])] },
-      select: { id: true, splitAttendance: true, sectors: true },
+      where: {
+        tenantId: user.tenantId,
+        deletedAt: null,
+        OR: [{ userIds: { has: user.id } }, ...(seller ? [{ sellerIds: { has: seller.id } }] : []), ...(sectorNumbers.length ? [{ id: { in: sectorNumbers }, splitAttendance: true }] : []), ...(anyNumber ? [{ splitAttendance: true }] : [])],
+      },
+      select: { id: true, splitAttendance: true },
     })
     return { numberIds: nums.map((n) => n.id), numbers: nums, sellerId: seller?.id ?? null }
   }
@@ -454,9 +491,9 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   async conversations(user: AuthUser, q: { numberId?: string; unread?: boolean; archived?: boolean; search?: string; page?: number; category?: string; leadId?: string; reminders?: boolean; monitor?: boolean; sellerId?: string; awaiting?: boolean; queue?: boolean; labelId?: string; waitingSeller?: boolean }) {
-    if (q.monitor) this.assertMonitor(user)
-    else this.assertCan(user)
-    const scope: Prisma.WhatsappConversationWhereInput = q.monitor ? { tenantId: user.tenantId } : await this.where(user)
+    if (!q.monitor) this.assertCan(user)
+    // Monitorar: tudo (permissão de monitoramento) ou só a equipe do gestor.
+    const scope: Prisma.WhatsappConversationWhereInput = q.monitor ? await this.assertMonitor(user) : await this.where(user)
     // Na ficha do lead aparecem todas as conversas dele (abertas e arquivadas).
     const and: Prisma.WhatsappConversationWhereInput[] = q.leadId ? [scope, { leadId: q.leadId }] : [scope, { lastMessageAt: { not: null } }, { status: q.archived ? 'ARQUIVADA' : 'ABERTA' }]
     if (q.numberId) and.push({ numberId: q.numberId })
@@ -579,8 +616,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
 
   /** Monitoramento: qualquer conversa da empresa, só para ler (registra na auditoria quem leu). */
   private async loadMonitor(user: AuthUser, id: string, ctx?: RequestCtx) {
-    this.assertMonitor(user)
-    const conv = await this.prisma.whatsappConversation.findFirst({ where: { id, tenantId: user.tenantId } })
+    const scope = await this.assertMonitor(user)
+    const conv = await this.prisma.whatsappConversation.findFirst({ where: { AND: [scope, { id }] } })
     if (!conv) throw new NotFoundException('Conversa não encontrada.')
     const key = `${user.id}:${id}`
     const last = this.monitored.get(key) ?? 0
@@ -606,14 +643,16 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (!monitor && !beforeDate && (conv.unread > 0 || conv.noteUnread)) await this.prisma.whatsappConversation.update({ where: { id }, data: { unread: 0, noteUnread: false } })
     const more = rows.length > PAGE
     // Atendentes do número (para assumir e transferir) e o nome de quem atende.
-    const attendants = number ? await this.prisma.user.findMany({ where: { id: { in: [...new Set([...number.userIds, ...(conv.assignedUserId ? [conv.assignedUserId] : []), ...conv.helperUserIds])] }, tenantId: user.tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true, active: true } }) : []
+    // Atendentes: os do número e os dos setores que atendem nele (para assumir e transferir).
+    const numberSectors = number ? (await this.sectors(user.tenantId)).filter((x) => servesNumber(x, number.id)) : []
+    const attendants = number ? await this.prisma.user.findMany({ where: { id: { in: [...new Set([...number.userIds, ...numberSectors.flatMap((x) => x.userIds), ...(conv.assignedUserId ? [conv.assignedUserId] : []), ...conv.helperUserIds])] }, tenantId: user.tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true, active: true } }) : []
     const quotedIds = [...new Set(rows.map((r) => r.quotedWaId).filter((x): x is string => !!x))]
     const quotedMine = new Map((quotedIds.length ? await this.prisma.whatsappMessage.findMany({ where: { conversationId: conv.id, waId: { in: quotedIds } }, select: { waId: true, fromMe: true } }) : []).map((q) => [q.waId, q.fromMe]))
     return {
       conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, assignedUserId: conv.assignedUserId, assignedUserName: attendants.find((a) => a.id === conv.assignedUserId)?.name ?? null, helpers: attendants.filter((a) => conv.helperUserIds.includes(a.id)).map((a) => ({ id: a.id, name: a.name })), sectorId: conv.sectorId, category: conv.category, unread: conv.unread, labels: (await this.labelsOf(user, [conv.id])).get(conv.id) ?? [] },
       /** Contato na agenda do número (ou na geral): nome e tipo salvos. */
       agenda: conv.category !== 'GRUPO' ? await this.agendaContact(user.tenantId, conv.numberId, conv.phone ?? conv.jid).then((c) => (c ? { name: c.name, category: c.category, general: c.scope === '' } : null)) : null,
-      attendance: number ? { split: number.splitAttendance, sectors: sectorsOf(number.sectors).map((s) => ({ id: s.id, name: s.name })), attendants: attendants.filter((a) => a.active).map((a) => ({ id: a.id, name: a.name })) } : null,
+      attendance: number ? { split: number.splitAttendance, sectors: numberSectors.map((x) => ({ id: x.id, name: x.name })), attendants: attendants.filter((a) => a.active).map((a) => ({ id: a.id, name: a.name })) } : null,
       monitor: !!monitor,
       number: number ? { id: number.id, name: number.name, phone: number.phone, status: number.status } : null,
       lead,
@@ -741,7 +780,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
 
   /** Mídia de uma mensagem, só para quem pode ver a conversa. */
   async media(user: AuthUser, messageId: string, monitor = false) {
-    if (monitor) this.assertMonitor(user)
+    if (monitor) await this.assertMonitor(user)
     const m = await this.prisma.whatsappMessage.findFirst({ where: { id: messageId, tenantId: user.tenantId } })
     if (!m?.fileId) throw new NotFoundException()
     if (monitor) await this.loadMonitor(user, m.conversationId)
@@ -755,7 +794,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
    * pedir vê na hora, sem mandar o áudio de novo ao Google.
    */
   async transcribe(user: AuthUser, messageId: string, monitor = false) {
-    if (monitor) this.assertMonitor(user)
+    if (monitor) await this.assertMonitor(user)
     const m = await this.prisma.whatsappMessage.findFirst({ where: { id: messageId, tenantId: user.tenantId } })
     if (!m) throw new NotFoundException('Mensagem não encontrada.')
     if (monitor) await this.loadMonitor(user, m.conversationId)
@@ -1157,11 +1196,12 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const conv = await this.load(user, id)
     const canEdit = can(user.permissions, user.role.isSystem, 'chat', 'edit')
     if (!canEdit && conv.assignedUserId && conv.assignedUserId !== user.id) throw new ForbiddenException('Esta conversa é de outro atendente.')
-    const number = await this.prisma.whatsappNumber.findUnique({ where: { id: conv.numberId }, select: { userIds: true, sectors: true } })
+    const number = await this.prisma.whatsappNumber.findUnique({ where: { id: conv.numberId }, select: { userIds: true } })
     if (!number) throw new NotFoundException('Número não encontrado.')
-    const sectors = sectorsOf(number.sectors)
+    const sectors = (await this.sectors(user.tenantId)).filter((s) => servesNumber(s, conv.numberId))
     const userId = d.userId === undefined ? conv.assignedUserId : d.userId
-    if (userId && userId !== user.id && !number.userIds.includes(userId)) throw new BadRequestException('Escolha um atendente deste número.')
+    // Atendente do número ou de um setor que atende nele.
+    if (userId && userId !== user.id && !number.userIds.includes(userId) && !sectors.some((s) => s.userIds.includes(userId))) throw new BadRequestException('Escolha um atendente deste número ou de um setor dele.')
     if (userId && !(await this.prisma.user.count({ where: { id: userId, tenantId: user.tenantId, active: true } }))) throw new BadRequestException('Atendente inválido.')
     const sectorId = d.sectorId === undefined ? conv.sectorId : d.sectorId
     if (sectorId && !sectors.some((s) => s.id === sectorId)) throw new BadRequestException('Setor inválido.')

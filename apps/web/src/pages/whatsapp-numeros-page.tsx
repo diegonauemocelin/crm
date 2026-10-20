@@ -34,7 +34,6 @@ interface WaNumber {
   splitAttendance?: boolean
   /** Atendente que recebe todos os clientes novos (atendimento dividido). */
   defaultUserId?: string | null
-  sectors?: { id: string; name: string; userIds: string[] }[]
   createRecords: boolean
   signMessages: boolean
   connectedAt: string | null
@@ -128,7 +127,7 @@ export function Numbers() {
                     <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
                       <UsersIcon className="mt-0.5 size-3.5 shrink-0" />
                       {n.userIds?.length ? `Usam: ${n.userIds.map((id) => d?.users.find((u) => u.id === id)?.name ?? 'usuário removido').join(', ')}` : 'Nenhum usuário ligado (só quem vê todas as conversas)'}
-                      {n.splitAttendance ? ` · atendimento dividido${n.sectors?.length ? ` (${n.sectors.map((s) => s.name).join(', ')})` : ''}${n.defaultUserId ? ` · clientes novos para ${d?.users.find((u) => u.id === n.defaultUserId)?.name ?? 'usuário removido'}` : ''}` : ''}
+                      {n.splitAttendance ? ` · atendimento dividido${n.defaultUserId ? ` · clientes novos para ${d?.users.find((u) => u.id === n.defaultUserId)?.name ?? 'usuário removido'}` : ''}` : ''}
                     </p>
                     {n.status === 'CONECTADO' && n.connectedAt && <p className="text-xs text-muted-foreground">Conectado desde {formatDateTime(n.connectedAt)}</p>}
                     {n.status === 'DESCONECTADO' && n.statusReason && (
@@ -211,13 +210,12 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
   const [userIds, setUserIds] = useState<string[]>(number?.userIds ?? [])
   const [split, setSplit] = useState(number?.splitAttendance ?? false)
   const [defaultUserId, setDefaultUserId] = useState<string | null>(number?.defaultUserId ?? null)
-  const [sectors, setSectors] = useState<{ id?: string; name: string; userIds: string[] }[]>(number?.sectors ?? [])
   const [createRecords, setCreateRecords] = useState(number?.createRecords ?? true)
   const [signMessages, setSignMessages] = useState(number?.signMessages ?? true)
   const [error, setError] = useState<string | null>(null)
   const save = useMutation({
     mutationFn: () => {
-      const body = { name, unitId, sellerIds, userIds, splitAttendance: split, defaultUserId: split && defaultUserId && userIds.includes(defaultUserId) ? defaultUserId : null, sectors: split ? sectors.filter((s) => s.name.trim()) : [], createRecords, signMessages }
+      const body = { name, unitId, sellerIds, userIds, splitAttendance: split, defaultUserId: split && defaultUserId && userIds.includes(defaultUserId) ? defaultUserId : null, createRecords, signMessages }
       return number ? api.put(`/whatsapp/numeros/${number.id}`, body) : api.post('/whatsapp/numeros', body)
     },
     onSuccess: () => {
@@ -304,24 +302,13 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
               </div>
             )}
             {split && (
-              <div className="space-y-2 border-t pt-3">
-                <p className="text-xs font-medium">Setores (opcional)</p>
-                <p className="text-xs text-muted-foreground">Ex.: Vendas e Financeiro. Uma conversa na fila de um setor só aparece para os atendentes dele.</p>
-                {sectors.map((s, i) => (
-                  <div key={s.id ?? i} className="space-y-1.5 rounded-md bg-muted/40 p-2">
-                    <div className="flex gap-2">
-                      <Input aria-label="Nome do setor" maxLength={40} placeholder="Nome do setor" value={s.name} onChange={(e) => setSectors(sectors.map((x, k) => (k === i ? { ...x, name: e.target.value } : x)))} />
-                      <Button type="button" size="icon" variant="ghost" aria-label="Remover setor" onClick={() => setSectors(sectors.filter((_, k) => k !== i))}>
-                        <Trash2Icon />
-                      </Button>
-                    </div>
-                    <MultiSelect id={`wa-sec-${i}`} items={users.filter((u) => userIds.includes(u.id))} value={s.userIds.filter((u) => userIds.includes(u))} onChange={(v) => setSectors(sectors.map((x, k) => (k === i ? { ...x, userIds: v } : x)))} placeholder="Atendentes do setor" />
-                  </div>
-                ))}
-                <Button type="button" size="sm" variant="outline" onClick={() => setSectors([...sectors, { name: '', userIds: [] }])} disabled={sectors.length >= 20}>
-                  <PlusIcon /> Adicionar setor
-                </Button>
-              </div>
+              <p className="border-t pt-3 text-xs text-muted-foreground">
+                Setores (Vendas, Pós-venda, Financeiro...), quem atende em cada um e os gestores ficam em{' '}
+                <Link to="/configuracoes?secao=setores" className="font-medium text-foreground underline underline-offset-4">
+                  Configurações → Setores e equipes
+                </Link>
+                .
+              </p>
             )}
           </div>
           <label className="flex items-start justify-between gap-3 rounded-md border p-3 text-sm">

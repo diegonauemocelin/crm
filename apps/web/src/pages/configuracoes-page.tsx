@@ -10,6 +10,7 @@ import {
   MailIcon,
   MegaphoneIcon,
   MessageSquareTextIcon,
+  NetworkIcon,
   PaletteIcon,
   RadarIcon,
   SearchIcon,
@@ -61,6 +62,7 @@ const RolesContent = lazyNamed(() => import('./roles-page'), 'RolesContent')
 const Numbers = lazyNamed(whatsapp, 'Numbers')
 const Rules = lazyNamed(whatsapp, 'Rules')
 const QuickReplies = lazyNamed(whatsapp, 'QuickReplies')
+const SectorsSettings = lazyNamed(() => import('@/components/whatsapp/setores'), 'SectorsSettings')
 const LabelsManager = lazyNamed(() => import('@/components/chat/organizar'), 'LabelsManager')
 const FieldsTab = lazyNamed(leadsConfig, 'FieldsTab')
 const ScoringTab = lazyNamed(leadsConfig, 'ScoringTab')
@@ -131,6 +133,16 @@ const SECTIONS: Section[] = [
 
   // ---------- WhatsApp ----------
   { id: 'whatsapp-numeros', group: 'WhatsApp', title: 'Números de WhatsApp', description: 'Números da empresa ligados ao CRM: conexão por QR Code, quem atende, setores e atendimento dividido.', icon: SmartphoneIcon, module: 'whatsapp', ownHeader: true, keywords: 'qr code conectar número chip', render: () => <Numbers /> },
+  {
+    id: 'setores',
+    group: 'WhatsApp',
+    title: 'Setores e equipes',
+    description: 'Setores de atendimento (Vendas, Pós-venda, Financeiro...): em que números atendem, quem atende, quem gerencia e o que cada um vê. E os gestores de cada vendedor, que acompanham as conversas da equipe.',
+    icon: NetworkIcon,
+    module: 'whatsapp',
+    keywords: 'setor fila gestor gerente equipe monitorar supervisor atendentes multiatendimento',
+    render: () => <SectorsSettings />,
+  },
   { id: 'whatsapp-regras', group: 'WhatsApp', title: 'Regras e horário', description: 'Contato novo e lead conhecido, cores de espera, horário comercial, mensagem de ausência e prazo de guarda das conversas (LGPD).', icon: SlidersHorizontalIcon, module: 'whatsapp', keywords: 'ausência horário comercial lgpd retenção cores espera', render: (can) => <Rules editable={can('whatsapp', 'edit')} /> },
   { id: 'respostas-rapidas', group: 'WhatsApp', title: 'Respostas rápidas', description: 'Respostas prontas da empresa, para toda a equipe usar no chat.', icon: MessageSquareTextIcon, module: 'whatsapp', keywords: 'atalho mensagem pronta', render: (can) => <QuickReplies editable={can('whatsapp', 'edit')} /> },
   { id: 'etiquetas', group: 'WhatsApp', title: 'Etiquetas do chat', description: 'Etiquetas para organizar as conversas (padrão da empresa ou de cada pessoa).', icon: TagIcon, module: 'whatsapp', keywords: 'organizar conversas cor', render: () => <LabelsManager /> },

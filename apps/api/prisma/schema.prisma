@@ -188,6 +188,8 @@ model User {
   savedViews Json?
   /// Como o nome aparece nas mensagens do WhatsApp enviadas pelo CRM (ex.: "Diego - Vendas"); vazio = primeiro nome.
   chatSignature String?
+  /// Gestores desta pessoa no chat: podem acompanhar (monitorar, só leitura) as conversas que ela atende.
+  managerIds    String[]  @default([]) @db.Uuid
   /// Lições da trilha de conhecimento concluídas (ids definidos na tela).
   trailDone String[] @default([])
   theme  ThemeMode   @default(SYSTEM)
@@ -1326,7 +1328,7 @@ model WhatsappNumber {
   splitAttendance Boolean  @default(false)
   /// Atendimento dividido: atendente que recebe todos os clientes novos que chamarem neste número (vazio = ficam na fila).
   defaultUserId  String?   @db.Uuid
-  /// Setores do número: [{ id, name, userIds }]. Conversa na fila de um setor só aparece para os atendentes dele.
+  /// Antigo: setores dentro do número (até a v0.64). Agora os setores são da empresa (tabela whatsapp_sectors).
   sectors        Json      @default("[]")
   /// Este número abre pré-venda (desligue em números que não são de venda). O que vira lead segue as regras do WhatsApp.
   createRecords  Boolean   @default(true)
@@ -1342,6 +1344,28 @@ model WhatsappNumber {
 
   @@index([tenantId, status])
   @@map("whatsapp_numbers")
+}
+
+/// Setor de atendimento da empresa (Vendas, Pós-venda, Financeiro...): quem atende, quem gerencia e o que cada um vê.
+model WhatsappSector {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  name        String
+  description String?
+  /// Números em que o setor atende (vazio = todos os números com atendimento dividido).
+  numberIds   String[] @default([]) @db.Uuid
+  /// Atendentes do setor: recebem a fila do setor.
+  userIds     String[] @default([]) @db.Uuid
+  /// Gestores do setor: acompanham (só leitura) todas as conversas do setor e de quem atende nele, e transferem.
+  managerIds  String[] @default([]) @db.Uuid
+  /// PROPRIAS: cada atendente vê só as conversas dele (e a fila do setor). SETOR: todos do setor veem todas as conversas do setor.
+  visibility  String   @default("PROPRIAS")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+  @@map("whatsapp_sectors")
 }
 
 /// Conversa de um número da empresa com um contato (uma por número + contato).

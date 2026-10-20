@@ -1,47 +1,46 @@
 /**
  * Vários atendentes no mesmo número ("atendimento dividido"): cada conversa de cliente tem um atendente (login).
- * Quem atende vê as conversas dele e a fila (sem atendente) do seu setor; conversas com colegas, fornecedores e
+ * Quem atende vê as conversas dele e a fila (sem atendente) dos seus setores; conversas com colegas, fornecedores e
  * outros contatos da empresa ficam visíveis para todos os atendentes do número.
+ * Setores são da empresa (Configurações › Setores e equipes): atendem em alguns ou em todos os números, têm
+ * atendentes e gestores, e dizem se cada um vê só as próprias conversas ou todas as do setor.
  */
-import { randomUUID } from 'node:crypto'
 import type { Prisma } from '../generated/prisma/client'
+
+export type SectorVisibility = 'PROPRIAS' | 'SETOR'
 
 export interface Sector {
   id: string
   name: string
+  /** Vazio = atende em todos os números. */
+  numberIds: string[]
   userIds: string[]
+  managerIds: string[]
+  visibility: SectorVisibility
 }
 
-/** Setores gravados no número (JSON), limpos: nome obrigatório, até 20 setores, usuários só do número. */
-export function cleanSectors(raw: unknown, numberUserIds: string[]): Sector[] {
-  if (!Array.isArray(raw)) return []
-  const allowed = new Set(numberUserIds)
-  const seen = new Set<string>()
-  const out: Sector[] = []
-  for (const r of raw.slice(0, 20) as Partial<Sector>[]) {
-    const name = String(r?.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 40)
-    if (!name || seen.has(name.toLowerCase())) continue
-    seen.add(name.toLowerCase())
-    const id = typeof r?.id === 'string' && /^[0-9a-f-]{36}$/i.test(r.id) ? r.id : randomUUID()
-    const userIds = [...new Set((Array.isArray(r?.userIds) ? r.userIds : []).filter((u): u is string => typeof u === 'string' && allowed.has(u)))]
-    out.push({ id, name, userIds })
-  }
-  return out
-}
+/** O setor atende neste número? */
+export const servesNumber = (s: Pick<Sector, 'numberIds'>, numberId: string) => !s.numberIds.length || s.numberIds.includes(numberId)
 
-export function sectorsOf(raw: unknown): Sector[] {
-  return Array.isArray(raw) ? (raw as Sector[]).filter((s) => s && typeof s.id === 'string' && typeof s.name === 'string') : []
+/** Setor salvo pela tela, limpo: nome obrigatório (até 40 letras), listas sem repetição, visibilidade conhecida. */
+export function cleanSector(raw: { name?: unknown; description?: unknown; numberIds?: unknown; userIds?: unknown; managerIds?: unknown; visibility?: unknown }) {
+  const ids = (v: unknown) => [...new Set((Array.isArray(v) ? v : []).filter((x): x is string => typeof x === 'string' && /^[0-9a-f-]{36}$/i.test(x)))].slice(0, 200)
+  const name = String(raw.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 40)
+  const description = String(raw.description ?? '').trim().slice(0, 200) || null
+  return { name, description, numberIds: ids(raw.numberIds), userIds: ids(raw.userIds), managerIds: ids(raw.managerIds), visibility: (raw.visibility === 'SETOR' ? 'SETOR' : 'PROPRIAS') as SectorVisibility }
 }
 
 /**
- * Filtro das conversas de um atendente nos números com atendimento dividido.
- * Fila: sem atendente e sem setor (todos do número veem) ou no setor da pessoa.
+ * Filtro das conversas de um atendente nos números com atendimento dividido:
+ * - as dele, as em que é participante e as dos contatos da empresa;
+ * - a fila: sem setor (todos do número veem) ou dos setores dele naquele número;
+ * - setor com visibilidade "SETOR": todas as conversas do setor, de qualquer atendente.
  */
-export function splitWhere(userId: string, numbers: { id: string; sectors: unknown }[]): Prisma.WhatsappConversationWhereInput[] {
+export function splitWhere(userId: string, numbers: { id: string }[], sectors: Sector[]): Prisma.WhatsappConversationWhereInput[] {
   return numbers.map((n) => {
-    const mine = sectorsOf(n.sectors)
-      .filter((s) => s.userIds.includes(userId))
-      .map((s) => s.id)
+    const mine = sectors.filter((s) => servesNumber(s, n.id) && s.userIds.includes(userId))
+    const queue = mine.map((s) => s.id)
+    const shared = mine.filter((s) => s.visibility === 'SETOR').map((s) => s.id)
     return {
       numberId: n.id,
       OR: [
@@ -49,8 +48,26 @@ export function splitWhere(userId: string, numbers: { id: string; sectors: unkno
         // Participante: outro atendente me colocou na conversa.
         { helperUserIds: { has: userId } },
         { category: { not: 'CLIENTE' } },
-        { assignedUserId: null, OR: [{ sectorId: null }, ...(mine.length ? [{ sectorId: { in: mine } }] : [])] },
+        { assignedUserId: null, OR: [{ sectorId: null }, ...(queue.length ? [{ sectorId: { in: queue } }] : [])] },
+        ...(shared.length ? [{ sectorId: { in: shared } }] : []),
       ],
     }
   })
+}
+
+/**
+ * Equipe de um gestor: as pessoas que o têm como gestor e os atendentes dos setores que ele gerencia.
+ * O gestor acompanha (só leitura) as conversas delas e as dos setores dele.
+ */
+export function teamOf(managerId: string, users: { id: string; managerIds: string[] }[], sectors: Sector[]) {
+  const managed = sectors.filter((s) => s.managerIds.includes(managerId))
+  const members = new Set([...users.filter((u) => u.managerIds.includes(managerId)).map((u) => u.id), ...managed.flatMap((s) => s.userIds)])
+  members.delete(managerId)
+  return { userIds: [...members], sectorIds: managed.map((s) => s.id) }
+}
+
+/** Conversas que o gestor acompanha (null = não é gestor de ninguém). */
+export function teamWhere(team: { userIds: string[]; sectorIds: string[] }): Prisma.WhatsappConversationWhereInput | null {
+  if (!team.userIds.length && !team.sectorIds.length) return null
+  return { OR: [...(team.userIds.length ? [{ assignedUserId: { in: team.userIds } }, { helperUserIds: { hasSome: team.userIds } }] : []), ...(team.sectorIds.length ? [{ sectorId: { in: team.sectorIds } }] : [])] }
 }

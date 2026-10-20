@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.65.0",
+      "date": "2026-10-20",
+      "title": "Setores de atendimento, gestores e monitoramento da equipe",
+      "changes": [
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Setores da empresa (Configurações › Setores e equipes): Vendas, Pós-venda, Financeiro... Cada setor diz em que números atende, quem atende e quem gerencia. Os setores que existiam dentro de cada número viraram setores da empresa, com as mesmas pessoas." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "O que cada setor vê: \"cada atendente vê só as conversas dele\" (mais a fila do setor; as conversas não se misturam) ou \"todo o setor vê as conversas do setor\" (caixa compartilhada)." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Gestores: ligue cada vendedor ou atendente a um ou mais gestores. O gestor acompanha as conversas da equipe dele e dos setores que gerencia em Chat WhatsApp › Monitorar equipe (só leitura, sem marcar como lida), sem precisar da permissão de monitorar todas as conversas." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Atendente de um setor passa a atender nos números do setor e aparece na lista para assumir e transferir conversas." }
+      ]
+    },
+    {
       "version": "0.64.0",
       "date": "2026-10-20",
       "title": "Configurações num lugar só e nome Usaparts em todos os textos",

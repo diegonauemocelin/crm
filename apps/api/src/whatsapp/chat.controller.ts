@@ -293,6 +293,12 @@ export class WhatsappRulesController {
 export class ChatController {
   constructor(private readonly chat: ChatService) {}
 
+  /** O que a pessoa pode monitorar: TODOS (permissão de monitoramento), EQUIPE (é gestora) ou nada. */
+  @Get('monitoramento')
+  monitorAccess(@CurrentUser() user: AuthUser) {
+    return this.chat.monitorAccess(user)
+  }
+
   @Get('conversas')
   list(@CurrentUser() user: AuthUser, @Query() q: ListDto) {
     return this.chat.conversations(user, { numberId: q.numero, unread: q.naoLidas, archived: q.arquivadas, search: q.busca, page: q.pagina, category: q.tipo, leadId: q.lead, reminders: q.lembretes, monitor: q.monitorar, sellerId: q.vendedor, awaiting: q.aguardando, queue: q.fila, labelId: q.etiqueta, waitingSeller: q.aguardandoVendedor })

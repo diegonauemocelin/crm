@@ -246,6 +246,9 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
   const [category, setCategory] = useState<ContactCategory | null>(null)
   const [labelId, setLabelId] = useState<string | null>(null)
   const labels = useLabels()
+  // Monitorar: tudo (permissão) ou a equipe de quem é gestor (Configurações › Setores e equipes).
+  const monitorAccess = useQuery({ queryKey: ['chat-monitoramento'], queryFn: () => api.get<{ scope: 'TODOS' | 'EQUIPE' | null }>('/chat/monitoramento'), staleTime: 5 * 60_000 })
+  const canWatch = !!monitorAccess.data?.scope
   const [starting, setStarting] = useState(false)
   const { can } = useAuth()
   const { novo, colors } = useScreens()
@@ -284,10 +287,10 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
     <div>
       <PageHeader
         title={monitor ? 'Monitorar conversas' : 'Chat WhatsApp'}
-        description={monitor ? 'Conversas de todos os números e vendedores, só para leitura. Abrir aqui não marca como lida: o vendedor continua vendo as mensagens novas.' : undefined}
+        description={monitor ? `${monitorAccess.data?.scope === 'EQUIPE' ? 'Conversas da sua equipe e dos setores que você gerencia' : 'Conversas de todos os números e vendedores'}, só para leitura. Abrir aqui não marca como lida: quem atende continua vendo as mensagens novas.` : undefined}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {!onlyMonitor && can('monitoramento') && (
+            {!onlyMonitor && canWatch && (
               <ToggleGroup type="single" variant="outline" size="sm" value={monitor ? 'equipe' : 'minhas'} onValueChange={(v) => v && setMonitor(v === 'equipe')} aria-label="Conversas">
                 <ToggleGroupItem value="minhas" className="px-3">
                   Minhas conversas
