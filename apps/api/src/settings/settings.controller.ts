@@ -22,6 +22,7 @@ import type { AuthUser } from '../common/types'
 import { FilesService, IMAGE_UPLOAD_LIMIT } from '../files/files.service'
 import { TenantService } from '../prisma/prisma.module'
 import { MailService } from './mail.service'
+import { RenomearService } from './renomear.service'
 import { type BrandingSettings, publicBranding, SettingsService, type SmtpSecurity, type SmtpSettings } from './settings.service'
 
 const HEX = /^#[0-9a-fA-F]{6}$/
@@ -59,6 +60,12 @@ class TestEmailDto extends SmtpDto {
   @ApiProperty() @IsEmail({}, { message: 'Destinatário inválido.' }) to!: string
 }
 
+class RenameDto {
+  @ApiProperty({ example: 'USA Parts' }) @IsString() @MaxLength(80) de!: string
+  @ApiProperty({ example: 'Usaparts' }) @IsString() @MaxLength(80) para!: string
+  @ApiProperty() @IsBoolean() aplicar!: boolean
+}
+
 const IMAGE_SLOTS = { logo: 'logoFileId', 'logo-dark': 'logoDarkFileId', favicon: 'faviconFileId' } as const
 
 function smtpView(s: SmtpSettings) {
@@ -75,7 +82,17 @@ export class SettingsController {
     private readonly files: FilesService,
     private readonly audit: AuditService,
     private readonly tenants: TenantService,
+    private readonly renomear: RenomearService,
   ) {}
+
+  /** Trocar o nome da empresa em todos os textos salvos: prévia (aplicar = false) e troca. */
+  @Post('settings/renomear-empresa')
+  @HttpCode(200)
+  @RequirePermission('configuracoes', 'edit')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  renameCompany(@CurrentUser() user: AuthUser, @Body() dto: RenameDto, @ReqContext() ctx: RequestCtx) {
+    return this.renomear.run(user, dto.de, dto.para, dto.aplicar, ctx)
+  }
 
   /** Identidade visual usada na tela de login, antes de existir sessão. */
   @Public()
