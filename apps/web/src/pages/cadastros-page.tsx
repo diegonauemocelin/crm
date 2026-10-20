@@ -596,6 +596,8 @@ interface NextDayMessage {
   saleStatuses?: SaleKey[]
   numberIds?: string[]
   withoutChat?: boolean
+  gapMin?: number
+  gapMax?: number
 }
 
 type SaleKey = 'NEGOCIACAO' | 'SIM' | 'NAO'
@@ -853,13 +855,14 @@ export function NextDayMessageCard({ config }: { config: AlertConfig }) {
   const { can } = useAuth()
   const canEdit = can('cadastros', 'edit')
   const saved = config.nextDayMessage ?? { enabled: false, time: '09:00', text: '', numberId: null }
-  const initial = { onlyForwarded: true, saleStatuses: SALE_OPTIONS.map((o) => o.key), withoutChat: false, ...saved, numberIds: saved.numberIds ?? (saved.numberId ? [saved.numberId] : []) }
+  const initial = { onlyForwarded: true, saleStatuses: SALE_OPTIONS.map((o) => o.key), withoutChat: false, gapMin: 3, gapMax: 20, ...saved, numberIds: saved.numberIds ?? (saved.numberId ? [saved.numberId] : []) }
   const [m, setM] = useState<NextDayMessage>(initial)
   const statuses = m.saleStatuses ?? []
   const chosen = m.numberIds ?? []
+  const gapOk = [m.gapMin, m.gapMax].every((v) => Number.isInteger(v) && v! >= 1 && v! <= 120) && m.gapMin! <= m.gapMax!
   const numbers = useQuery({ queryKey: ['cadastros', 'alertas', 'numeros'], queryFn: () => api.get<{ id: string; name: string; phone: string | null; status: string }[]>('/cadastros/alertas/numeros') })
   const save = useSaveAlerts(m.enabled ? 'Mensagem do dia seguinte ligada.' : 'Mensagem do dia seguinte salva (desligada).')
-  const valid = /^([01]\d|2[0-3]):[0-5]\d$/.test(m.time) && m.text.trim().length > 0 && m.text.length <= 1000 && statuses.length > 0 && chosen.length > 0
+  const valid = /^([01]\d|2[0-3]):[0-5]\d$/.test(m.time) && m.text.trim().length > 0 && m.text.length <= 1000 && statuses.length > 0 && chosen.length > 0 && gapOk
   return (
     <Card className="h-fit">
       <CardHeader>
@@ -949,6 +952,18 @@ export function NextDayMessageCard({ config }: { config: AlertConfig }) {
             {!statuses.length && <p className="text-xs text-destructive">Marque ao menos uma situação.</p>}
           </div>
           <p className="text-xs text-muted-foreground">Conversa finalizada ou arquivada nunca recebe: fica anotado na pré-venda que não foi enviada.</p>
+        </div>
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium">Intervalo entre as mensagens</p>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            de
+            <Input aria-label="Intervalo mínimo (minutos)" type="number" min={1} max={120} className="w-20" value={m.gapMin ?? ''} onChange={(e) => setM({ ...m, gapMin: e.target.value === '' ? undefined : Number(e.target.value) })} disabled={!canEdit} />
+            a
+            <Input aria-label="Intervalo máximo (minutos)" type="number" min={1} max={120} className="w-20" value={m.gapMax ?? ''} onChange={(e) => setM({ ...m, gapMax: e.target.value === '' ? undefined : Number(e.target.value) })} disabled={!canEdit} />
+            minutos
+          </div>
+          <p className="text-xs text-muted-foreground">Cada número manda uma mensagem por vez, com uma espera sorteada nesse intervalo até a próxima, para o WhatsApp não bloquear o número. Ex.: 3 a 20 minutos dá umas 4 por hora; o que não sair até a meia-noite não é mais enviado.</p>
+          {!gapOk && <p className="text-xs text-destructive">Use de 1 a 120 minutos, com o mínimo menor ou igual ao máximo.</p>}
         </div>
         <div className="space-y-2">
           <Label htmlFor="nd-text">Mensagem</Label>

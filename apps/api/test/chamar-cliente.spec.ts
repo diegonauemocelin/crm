@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanNextDay, conversationClosed, nextDayRoute, DEFAULT_NEXT_DAY_TEXT, isCallOverdue, nextCallDue, nextDayWindow } from '../src/atendimento/regras'
+import { cleanNextDay, conversationClosed, nextDayRoute, nextGapMs, DEFAULT_NEXT_DAY_TEXT, isCallOverdue, nextCallDue, nextDayWindow } from '../src/atendimento/regras'
 import { DiaSeguinteService } from '../src/whatsapp/dia-seguinte.service'
 
 const H = 3_600_000
@@ -36,7 +36,7 @@ describe('em negociação: prazo para chamar o cliente', () => {
 
 describe('mensagem automática no dia seguinte', () => {
   it('configuração inválida volta para o padrão (desligada)', () => {
-    expect(cleanNextDay(null)).toEqual({ enabled: false, time: '09:00', text: DEFAULT_NEXT_DAY_TEXT, numberId: null, numberIds: [], withoutChat: false, onlyForwarded: true, saleStatuses: ['NEGOCIACAO', 'SIM', 'NAO'] })
+    expect(cleanNextDay(null)).toEqual({ enabled: false, time: '09:00', text: DEFAULT_NEXT_DAY_TEXT, numberId: null, numberIds: [], withoutChat: false, onlyForwarded: true, saleStatuses: ['NEGOCIACAO', 'SIM', 'NAO'], gapMin: 3, gapMax: 20 })
     expect(cleanNextDay({ enabled: true, time: '25:00', text: '  ' })).toMatchObject({ enabled: true, time: '09:00', text: DEFAULT_NEXT_DAY_TEXT })
     expect(cleanNextDay({ enabled: true, time: '08:30', text: ' Oi {nome} ' })).toMatchObject({ time: '08:30', text: 'Oi {nome}' })
   })
@@ -90,6 +90,7 @@ describe('mensagem do dia seguinte: para quem vai', () => {
         update: async () => ({}),
       },
       whatsappNumber: { findMany: async () => [{ id: 'n1', name: 'Pré-vendas' }, { id: 'ecommerce', name: 'E-commerce' }] },
+      whatsappMessage: { findFirst: async () => null },
       whatsappConversation: {
         findFirst: async (a: { where: { recordId?: string; numberId?: unknown } }) =>
           a.where.recordId === 'r1' ? { numberId: 'n1', status: 'ARQUIVADA', closedAt: null } : a.where.recordId === 'r2' ? { numberId: 'n1', status: 'ABERTA', closedAt: null } : a.where.recordId === 'r3' ? { numberId: 'ecommerce', status: 'ABERTA', closedAt: null } : null,
@@ -123,5 +124,41 @@ describe('mensagem do dia seguinte: por qual número', () => {
   it('configuração salva antes: só o número que estava selecionado, nunca todos', () => {
     expect(cleanNextDay({ numberId: '11111111-1111-4111-8111-111111111111' })).toMatchObject({ numberIds: ['11111111-1111-4111-8111-111111111111'] })
     expect(cleanNextDay({})).toMatchObject({ numberIds: [] })
+  })
+})
+
+describe('mensagem do dia seguinte: intervalo entre os envios', () => {
+  it('sorteia de 3 a 20 minutos (configurável de 1 a 120)', () => {
+    const cfg = cleanNextDay({})
+    expect(nextGapMs(cfg, () => 0)).toBe(3 * 60_000)
+    expect(nextGapMs(cfg, () => 1)).toBe(20 * 60_000)
+    expect(cleanNextDay({ gapMin: 30, gapMax: 10 })).toMatchObject({ gapMin: 10, gapMax: 30 })
+    expect(cleanNextDay({ gapMin: 0, gapMax: 999 })).toMatchObject({ gapMin: 1, gapMax: 120 })
+  })
+
+  it('uma mensagem por vez em cada número; a próxima só depois do intervalo', async () => {
+    const sent: string[] = []
+    const pending = new Set(['r1', 'r2', 'r3'])
+    const prisma = {
+      tenantSetting: { findMany: async () => [{ tenantId: 't', value: { nextDayMessage: { enabled: true, time: '07:30', text: 'Oi', numberIds: ['n1'] } } }] },
+      serviceRecord: {
+        findMany: async () => [...pending].map((id) => ({ id, name: id, phone: `+55499999900${id.slice(1)}0`, leadId: null, leadAt: new Date('2026-10-19T12:00:00Z'), seller: null })),
+        updateMany: async (a: { where: { id: string } }) => (pending.delete(a.where.id), { count: 1 }),
+        update: async () => ({}),
+      },
+      whatsappNumber: { findMany: async () => [{ id: 'n1', name: 'Pré-vendas' }] },
+      whatsappMessage: { findFirst: async () => null },
+      whatsappConversation: { findFirst: async () => ({ numberId: 'n1', status: 'ABERTA', closedAt: null }) },
+    }
+    const svc = new DiaSeguinteService(prisma as never, { sendAutomatic: async (_n: unknown, phone: string) => (sent.push(phone), { waId: 'x' }) } as never)
+    svc.random = () => 0.5 // 11,5 minutos
+    const at = (min: number) => new Date(Date.parse('2026-10-20T11:00:00Z') + min * 60_000)
+    await svc.tick(at(0))
+    expect(sent).toHaveLength(1)
+    await svc.tick(at(5))
+    await svc.tick(at(11))
+    expect(sent).toHaveLength(1)
+    await svc.tick(at(12))
+    expect(sent).toHaveLength(2)
   })
 })

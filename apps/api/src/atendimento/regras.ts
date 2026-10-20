@@ -109,6 +109,9 @@ export interface NextDayMessage {
   onlyForwarded: boolean
   /** Situações da venda que recebem a mensagem. */
   saleStatuses: SaleStatusKey[]
+  /** Espera entre um envio e o próximo pelo mesmo número, sorteada entre o mínimo e o máximo (minutos). */
+  gapMin: number
+  gapMax: number
 }
 
 export type SaleStatusKey = 'NEGOCIACAO' | 'SIM' | 'NAO'
@@ -117,7 +120,7 @@ export const SALE_STATUS_KEYS: SaleStatusKey[] = ['NEGOCIACAO', 'SIM', 'NAO']
 export const DEFAULT_NEXT_DAY_TEXT =
   'Olá, {nome}! Tudo bem? Ontem você entrou em contato com a gente. Conseguimos te ajudar com o que precisava? Se ficou alguma dúvida, é só responder esta mensagem.'
 
-export const DEFAULT_NEXT_DAY: NextDayMessage = { enabled: false, time: '09:00', text: DEFAULT_NEXT_DAY_TEXT, numberId: null, numberIds: [], withoutChat: false, onlyForwarded: true, saleStatuses: SALE_STATUS_KEYS }
+export const DEFAULT_NEXT_DAY: NextDayMessage = { enabled: false, time: '09:00', text: DEFAULT_NEXT_DAY_TEXT, numberId: null, numberIds: [], withoutChat: false, onlyForwarded: true, saleStatuses: SALE_STATUS_KEYS, gapMin: 3, gapMax: 20 }
 
 /** Configuração salva (ou incompleta) com valores válidos. */
 export function cleanNextDay(raw: Partial<NextDayMessage> | null | undefined): NextDayMessage {
@@ -138,7 +141,21 @@ export function cleanNextDay(raw: Partial<NextDayMessage> | null | undefined): N
     // Configuração salva antes desta regra: só repassadas (é o que faz sentido para a mensagem de pós-venda).
     onlyForwarded: r.onlyForwarded !== false,
     saleStatuses: statuses.length ? statuses : SALE_STATUS_KEYS,
+    ...cleanGap(r.gapMin, r.gapMax),
   }
+}
+
+/** Intervalo entre envios: de 1 a 120 minutos, mínimo nunca maior que o máximo (padrão 3 a 20). */
+function cleanGap(min: unknown, max: unknown) {
+  const int = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(120, Math.max(1, Math.round(v))) : d)
+  const a = int(min, DEFAULT_NEXT_DAY.gapMin)
+  const b = int(max, DEFAULT_NEXT_DAY.gapMax)
+  return { gapMin: Math.min(a, b), gapMax: Math.max(a, b) }
+}
+
+/** Espera sorteada até o próximo envio (ms), para o WhatsApp não ver um padrão de robô e bloquear o número. */
+export function nextGapMs(cfg: Pick<NextDayMessage, 'gapMin' | 'gapMax'>, random = Math.random) {
+  return Math.round((cfg.gapMin + random() * (cfg.gapMax - cfg.gapMin)) * 60_000)
 }
 
 /**

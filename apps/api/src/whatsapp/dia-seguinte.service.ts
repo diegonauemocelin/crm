@@ -1,5 +1,5 @@
 import { Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
-import { cleanNextDay, conversationClosed, nextDayRoute, nextDayWindow } from '../atendimento/regras'
+import { cleanNextDay, conversationClosed, nextDayRoute, nextDayWindow, nextGapMs } from '../atendimento/regras'
 import type { AtendimentoSettings } from '../atendimento/service-records.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { ChatService } from './chat.service'
@@ -21,6 +21,9 @@ export class DiaSeguinteService implements OnApplicationBootstrap, OnModuleDestr
   private readonly logger = new Logger('DiaSeguinte')
   private timer: NodeJS.Timeout | null = null
   private running = false
+  /** Próximo envio liberado em cada número (intervalo sorteado entre as mensagens). */
+  private readonly nextAt = new Map<string, number>()
+  random = Math.random
 
   constructor(
     private readonly prisma: PrismaService,
@@ -83,6 +86,8 @@ export class DiaSeguinteService implements OnApplicationBootstrap, OnModuleDestr
       // Número escolhido desconectado: tenta de novo no próximo minuto (nunca por outro número).
       if ('wait' in route) continue
       const number = numbers.find((n) => n.id === route.send)!
+      // Uma mensagem por vez em cada número, com o intervalo sorteado: as outras ficam para os próximos minutos.
+      if (now.getTime() < (await this.releasedAt(number.id, config))) continue
       // Marca antes de enviar: dois servidores (ou dois minutos) não mandam a mesma mensagem duas vezes.
       const claimed = await this.prisma.serviceRecord.updateMany({ where: { id: r.id, autoMessageAt: null }, data: { autoMessageAt: new Date(), autoMessageStatus: 'ENVIANDO' } })
       if (!claimed.count) continue
@@ -94,6 +99,7 @@ export class DiaSeguinteService implements OnApplicationBootstrap, OnModuleDestr
           await this.prisma.serviceRecord.update({ where: { id: r.id }, data: { autoMessageAt: null, autoMessageStatus: null } })
           return
         }
+        this.nextAt.set(number.id, now.getTime() + nextGapMs(config, this.random))
         await this.prisma.serviceRecord.update({
           where: { id: r.id },
           data: { autoMessageStatus: 'ENVIADA', history: { create: { userName: 'Sistema', action: `enviou a mensagem automática do dia seguinte (WhatsApp ${number.name}) sobre`, changes: {} } } },
@@ -106,6 +112,16 @@ export class DiaSeguinteService implements OnApplicationBootstrap, OnModuleDestr
         })
       }
     }
+  }
+
+  /** Quando o número pode mandar a próxima: depois de reiniciar o servidor, conta do último envio gravado (com o intervalo mínimo). */
+  private async releasedAt(numberId: string, config: { gapMin: number }) {
+    const known = this.nextAt.get(numberId)
+    if (known !== undefined) return known
+    const last = await this.prisma.whatsappMessage.findFirst({ where: { sentByName: LABEL, conversation: { numberId } }, orderBy: { sentAt: 'desc' }, select: { sentAt: true } })
+    const at = last ? last.sentAt.getTime() + config.gapMin * 60_000 : 0
+    this.nextAt.set(numberId, at)
+    return at
   }
 
   /**

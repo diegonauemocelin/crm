@@ -8,6 +8,7 @@
       "changes": [
         { "type": "melhoria", "area": "Pré-Vendas", "text": "A mensagem automática do dia seguinte só vai para pré-venda marcada \"Repassou ao vendedor\", no dia seguinte ao repasse. Pode ser desligado em Configurações › Mensagens automáticas (aí vale o dia seguinte ao contato, como antes)." },
         { "type": "correcao", "area": "Pré-Vendas", "text": "A mensagem só vai para atendimentos dos números de WhatsApp marcados (ex.: só o de Pré-vendas) e sai pelo mesmo número. Atendimento de outro número (ex.: e-commerce) não recebe. Antes, saía para clientes de todos os números conectados. Quem já tinha a mensagem configurada fica só com o número que estava selecionado." },
+        { "type": "novo", "area": "Pré-Vendas", "text": "Intervalo entre as mensagens: cada número manda uma por vez, com espera sorteada entre 3 e 20 minutos até a próxima (ajustável de 1 a 120), para não bloquear o número." },
         { "type": "novo", "area": "Pré-Vendas", "text": "Opção \"Também para quem não chamou por WhatsApp\" (cliente de formulário): desligada por padrão; ligada, sai pelo número escolhido." },
         { "type": "novo", "area": "Pré-Vendas", "text": "Escolha para quais situações da venda a mensagem vai: Em negociação, Venda realizada e/ou Venda não realizada." },
         { "type": "melhoria", "area": "Pré-Vendas", "text": "Conversa finalizada ou arquivada nunca recebe a mensagem; a pré-venda fica com o registro \"Não enviada: conversa finalizada ou arquivada\"." }

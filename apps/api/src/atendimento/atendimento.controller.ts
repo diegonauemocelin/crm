@@ -163,6 +163,8 @@ class NextDayMessageDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() onlyForwarded?: boolean
   @ApiPropertyOptional() @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) numberIds?: string[]
   @ApiPropertyOptional() @IsOptional() @IsBoolean() withoutChat?: boolean
+  @ApiPropertyOptional({ minimum: 1, maximum: 120 }) @IsOptional() @IsInt() @Min(1) @Max(120) gapMin?: number
+  @ApiPropertyOptional({ minimum: 1, maximum: 120 }) @IsOptional() @IsInt() @Min(1) @Max(120) gapMax?: number
   @ApiPropertyOptional({ enum: ['NEGOCIACAO', 'SIM', 'NAO'], isArray: true }) @IsOptional() @IsArray() @IsIn(['NEGOCIACAO', 'SIM', 'NAO'], { each: true }) saleStatuses?: ('NEGOCIACAO' | 'SIM' | 'NAO')[]
 }
 
