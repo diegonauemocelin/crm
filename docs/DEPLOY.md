@@ -215,3 +215,35 @@ scp -r usuario@IP-DA-VPS:/var/backups/servidor/AAAAMMDD-HHMM C:\Backups\
 
 Antes de mudanças grandes no servidor, faça também o **snapshot** no painel do provedor da VPS: é a cópia do disco
 inteiro e volta tudo em minutos.
+
+### Backup no Google Drive (sem ocupar o disco da VPS)
+
+Com `--drive`, cada parte é criptografada e enviada direto ao Google Drive enquanto é gerada: nada fica no disco da
+VPS (só um registro pequeno em `/var/tmp/backup-servidor/ultimo.log`). No Drive ficam os 3 últimos completos, cada um
+com `LEIA-ME.txt`, `COMO-REINSTALAR.txt` (passo a passo para remontar o servidor, com os nomes desta VPS) e `MD5SUMS`.
+
+**Uma vez só — ligar a VPS ao Google Drive (rclone):**
+
+1. Na VPS: `apt install -y rclone`
+2. No seu computador (Windows): baixe o rclone em https://rclone.org/downloads/ (Windows, Intel/AMD 64 bits),
+   descompacte e, no PowerShell, dentro da pasta: `.\rclone.exe authorize "drive"`. Abre o navegador: entre com a conta
+   Google que vai guardar os backups e autorize. O PowerShell mostra um código (um texto entre chaves) — copie.
+3. Na VPS: `rclone config` → `n` (novo) → nome `gdrive` → tipo `drive` → client_id e client_secret em branco →
+   scope `1` (acesso total) ou `3` (só arquivos criados pelo rclone, mais seguro) → service_account_file em branco →
+   advanced `n` → auto config **`n`** → cole o código do passo 2 → shared drive `n` → `y` para salvar → `q`.
+4. Teste: `rclone lsd gdrive:`
+
+**Backup no Drive:**
+
+```bash
+bash /opt/usaparts-crm/deploy/backup-servidor.sh --drive gdrive:Backups-VPS
+```
+
+**Automático toda semana** (domingo às 4h), com `crontab -e` como root:
+
+```
+0 4 * * 0 bash /opt/usaparts-crm/deploy/backup-servidor.sh --drive gdrive:Backups-VPS >> /var/log/backup-servidor.log 2>&1
+```
+
+Para restaurar, baixe a pasta do Drive para o computador ou para a VPS nova e siga o `COMO-REINSTALAR.txt`. A chave
+privada (`chave-backup-crm.txt`) é necessária para abrir as partes: guarde em lugar seguro e fora do Drive.
