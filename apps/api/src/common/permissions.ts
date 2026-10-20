@@ -16,6 +16,8 @@ export const MODULES = [
   { key: 'catalogo', label: 'Catálogo de produtos', group: 'Marketing', help: 'Produtos da loja virtual e seus números.' },
   { key: 'relatorios', label: 'Dashboards e relatórios', group: 'Análise', help: 'Ver: dashboards e relatórios. Criar/Editar/Excluir: relatórios salvos. Exportar: baixar.' },
   { key: 'google_ads', label: 'Painel do Google Ads', group: 'Análise', help: 'Ver: investimento, leads, vendas e custo por campanha e palavra-chave. Editar: saldo, recargas e aviso de saldo.' },
+  { key: 'mkt_paineis', label: 'Marketing Inteligente: painéis', group: 'Marketing Inteligente', help: 'Ver: visão geral, dashboard executivo, leads de marketing, e-mail, funil e análise de campanhas. O escopo (próprios/unidade) vale para os atendimentos; com escopo restrito, investimento e pedidos da loja não aparecem. Exportar: baixar as tabelas.' },
+  { key: 'mkt_integracoes', label: 'Marketing Inteligente: integrações e regras', group: 'Marketing Inteligente', help: 'Ver: saúde das integrações e qualidade dos dados. Editar: modelo e janela de atribuição e a regra de lead qualificado.' },
   { key: 'usuarios', label: 'Usuários', group: 'Administração', help: 'Cadastrar, bloquear e desconectar usuários e aparelhos.' },
   { key: 'perfis', label: 'Perfis de acesso', group: 'Administração', help: 'Criar e alterar os perfis e estas permissões.' },
   { key: 'configuracoes', label: 'Configurações', group: 'Administração', help: 'Marca, e-mail, rastreamento, loja, Meta, GA4 e Google Ads (chaves e conversões).' },

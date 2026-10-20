@@ -20,6 +20,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module'
 import { env } from './config/env'
 import { FilesModule } from './files/files.module'
 import { LeadsModule } from './leads/leads.module'
+import { MarketingModule } from './marketing/marketing.module'
 import { PrismaModule } from './prisma/prisma.module'
 import { RastreamentoModule } from './rastreamento/rastreamento.module'
 import { RolesController } from './roles/roles.controller'
@@ -61,6 +62,7 @@ import { UsersService } from './users/users.service'
     WhatsappModule,
     SugestoesModule,
     TcarModule,
+    MarketingModule,
   ],
   controllers: [UsersController, RolesController, SystemController],
   providers: [
