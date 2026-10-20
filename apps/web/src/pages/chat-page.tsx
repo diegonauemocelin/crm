@@ -544,6 +544,10 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
   const [forwarding, setForwarding] = useState(false)
   /** Responder: a mensagem citada na próxima mensagem enviada. */
   const [replyTo, setReplyTo] = useState<Message | null>(null)
+  /** Arrastar e soltar arquivo do computador na conversa: o arquivo solto e o aviso enquanto arrasta. */
+  const [dropped, setDropped] = useState<File | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const dragDepth = useRef(0)
   const end = useRef<HTMLDivElement>(null)
   const lastId = q.data?.messages.at(-1)?.id
   useEffect(() => {
@@ -579,7 +583,34 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
   return (
     <MonitorContext.Provider value={monitor}>
     <ThreadNumberContext.Provider value={d.number?.id ?? null}>
-    <div className="flex h-full min-h-0 flex-col">
+    <div
+      className="relative flex h-full min-h-0 flex-col"
+      onDragEnter={(e) => {
+        if (monitor || !can('chat', 'create') || !e.dataTransfer.types.includes('Files')) return
+        dragDepth.current++
+        setDragging(true)
+      }}
+      onDragOver={(e) => e.dataTransfer.types.includes('Files') && !monitor && e.preventDefault()}
+      onDragLeave={() => {
+        dragDepth.current = Math.max(0, dragDepth.current - 1)
+        if (!dragDepth.current) setDragging(false)
+      }}
+      onDrop={(e) => {
+        dragDepth.current = 0
+        setDragging(false)
+        if (monitor || !can('chat', 'create') || !e.dataTransfer.files.length) return
+        e.preventDefault()
+        if (e.dataTransfer.files.length > 1) toast.info('Vai um arquivo por vez: anexei o primeiro.')
+        setDropped(e.dataTransfer.files[0]!)
+      }}
+    >
+      {dragging && (
+        <div className="pointer-events-none absolute inset-2 z-30 flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#25d366] bg-white/85 text-center dark:bg-[#111b21]/85">
+          <PaperclipIcon className="size-8 text-[#25d366]" />
+          <p className="font-medium">Solte para anexar</p>
+          <p className="text-xs text-muted-foreground">Foto, vídeo, PDF, planilha… até 64 MB. Você confere antes de enviar.</p>
+        </div>
+      )}
       <div className={cn('@container/head space-y-2 border-b bg-[#f0f2f5] px-3 py-2 dark:bg-[#202c33]')}>
         <div className="flex items-start gap-2">
           {onBack && (
@@ -717,7 +748,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
           </Button>
         </div>
       ) : (
-        <Composer thread={d} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
+        <Composer thread={d} replyTo={replyTo} onClearReply={() => setReplyTo(null)} dropped={dropped} onDroppedUsed={() => setDropped(null)} />
       )}
       {forwarding && selecting && (
         <ForwardDialog
@@ -1238,7 +1269,7 @@ function NoteButton({ conversationId, monitor }: { conversationId: string; monit
 }
 
 /** Caixa de envio: texto (Enter envia, Shift+Enter quebra linha), arquivo com legenda e respostas rápidas. */
-function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?: Message | null; onClearReply?: () => void }) {
+function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { thread: Thread; replyTo?: Message | null; onClearReply?: () => void; dropped?: File | null; onDroppedUsed?: () => void }) {
   const { can } = useAuth()
   const qc = useQueryClient()
   const [text, setText] = useState('')
@@ -1251,12 +1282,20 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
   /** Arquivo colado (Ctrl+V) ou arrastado para a caixa: entra como anexo, com o texto digitado virando legenda. */
   const attach = (f: File | null | undefined) => {
     if (!f) return false
-    if (f.size > 16 * 1024 * 1024) return toast.error('Arquivo maior que 16 MB.'), true
+    if (f.size > 64 * 1024 * 1024) return toast.error('Arquivo maior que 64 MB. Para arquivos maiores, envie um link (ex.: Google Drive).'), true
     // Imagem copiada da tela vem como "image.png": ganha um nome com a hora, para aparecer na conversa.
     const named = f.type.startsWith('image/') && /^image\.\w+$/i.test(f.name) ? new File([f], `imagem-${new Date().toLocaleTimeString('pt-BR').replace(/:/g, '')}.${f.type.split('/')[1] === 'jpeg' ? 'jpg' : f.type.split('/')[1]}`, { type: f.type }) : f
     setFile(named)
+    setReplyFile(null)
     return true
   }
+  // Arquivo solto em qualquer lugar da conversa (arrastado do computador): entra como anexo aqui.
+  useEffect(() => {
+    if (!dropped) return
+    attach(dropped)
+    onDroppedUsed?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dropped])
   const voice = useVoiceRecorder(async (file) => {
     const fd = new FormData()
     fd.append('file', file)
@@ -1268,14 +1307,25 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
       toast.error(`Áudio não enviado: ${errorMessage(err)}`, { duration: 10_000 })
     }
   })
-  const replies = useQuery({ queryKey: ['chat-respostas', id], queryFn: () => api.get<{ id: string; title: string; preview: string; standard: boolean }[]>(`/chat/respostas?conversa=${id}`), enabled: can('chat', 'create'), staleTime: 60_000 })
+  const replies = useQuery({ queryKey: ['chat-respostas', id], queryFn: () => api.get<{ id: string; title: string; preview: string; standard: boolean; fileName?: string | null }[]>(`/chat/respostas?conversa=${id}`), enabled: can('chat', 'create'), staleTime: 60_000 })
   const [managing, setManaging] = useState(false)
+  /** Resposta rápida com arquivo escolhida: o arquivo já está no servidor; o texto da caixa vira a legenda. */
+  const [replyFile, setReplyFile] = useState<{ id: string; fileName: string } | null>(null)
+  const applyReply = (r: { id: string; preview: string; fileName?: string | null }, append = false) => {
+    if (r.fileName) {
+      setFile(null)
+      setReplyFile({ id: r.id, fileName: r.fileName })
+      setText(r.preview)
+    } else setText((t) => (append && t ? `${t}\n${r.preview}` : r.preview))
+    setPick(0)
+  }
   const { novo } = useScreens()
   const [pick, setPick] = useState(0)
-  const slash = novo && !file && text.startsWith('/') && !text.includes('\n') ? text.slice(1).trim().toLowerCase() : null
+  const slash = novo && !file && !replyFile && text.startsWith('/') && !text.includes('\n') ? text.slice(1).trim().toLowerCase() : null
   const slashList = slash === null ? [] : (replies.data ?? []).filter((r) => !slash || r.title.toLowerCase().includes(slash) || r.preview.toLowerCase().includes(slash)).slice(0, 8)
   const send = useMutation({
     mutationFn: () => {
+      if (replyFile) return api.post(`/chat/conversas/${id}/respostas/${replyFile.id}/enviar`, { legenda: text.trim() || undefined })
       if (file) {
         const fd = new FormData()
         fd.append('file', file)
@@ -1287,6 +1337,7 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
     onSuccess: () => {
       setText('')
       setFile(null)
+      setReplyFile(null)
       onClearReply?.()
       void qc.invalidateQueries({ queryKey: ['chat-conversa', id] })
       void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
@@ -1299,7 +1350,7 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
   }
   const submit = (e?: FormEvent) => {
     e?.preventDefault()
-    if (send.isPending || (!text.trim() && !file)) return
+    if (send.isPending || (!text.trim() && !file && !replyFile)) return
     send.mutate()
   }
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1311,8 +1362,7 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
       }
       if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) {
         e.preventDefault()
-        setText(slashList[Math.min(pick, slashList.length - 1)]!.preview)
-        setPick(0)
+        applyReply(slashList[Math.min(pick, slashList.length - 1)]!)
         return
       }
       if (e.key === 'Escape') {
@@ -1331,12 +1381,6 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
     <form
       onSubmit={submit}
       className={cn('relative space-y-2 border-t bg-[#f0f2f5] p-2 dark:bg-[#202c33]')}
-      onDragOver={(e) => e.dataTransfer.types.includes('Files') && e.preventDefault()}
-      onDrop={(e) => {
-        if (!e.dataTransfer.files.length) return
-        e.preventDefault()
-        attach(e.dataTransfer.files[0])
-      }}
     >
       {replyTo && (
         <div className="flex items-start gap-2 rounded-md border-l-4 border-l-[color:var(--brand)] bg-muted/60 px-2.5 py-1.5 text-xs">
@@ -1362,13 +1406,26 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
               role="option"
               aria-selected={i === Math.min(pick, slashList.length - 1)}
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => (setText(r.preview), setPick(0))}
+              onClick={() => applyReply(r)}
               className={cn('flex w-full flex-col items-start rounded-md px-2 py-1.5 text-left text-sm', i === Math.min(pick, slashList.length - 1) ? 'bg-accent' : 'hover:bg-muted')}
             >
-              <span className="font-medium">{r.title}</span>
-              <span className="line-clamp-1 text-xs text-muted-foreground">{r.preview}</span>
+              <span className="flex items-center gap-1 font-medium">
+                {r.fileName && <PaperclipIcon className="size-3.5" aria-label="Com arquivo" />}
+                {r.title}
+              </span>
+              <span className="line-clamp-1 text-xs text-muted-foreground">{r.fileName ? `${r.fileName} · ` : ''}{r.preview}</span>
             </button>
           ))}
+        </div>
+      )}
+      {replyFile && (
+        <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-2 py-1 text-xs">
+          <PaperclipIcon className="size-3.5" />
+          <span className="min-w-0 flex-1 truncate">{replyFile.fileName}</span>
+          <span className="text-muted-foreground">resposta rápida</span>
+          <Button type="button" size="sm" variant="ghost" className="h-6 px-2" onClick={() => (setReplyFile(null), setText(''))}>
+            Tirar
+          </Button>
         </div>
       )}
       {file && (
@@ -1390,7 +1447,7 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
           onChange={(e) => {
             const f = e.target.files?.[0] ?? null
             e.target.value = ''
-            if (f && f.size > 16 * 1024 * 1024) return void toast.error('Arquivo maior que 16 MB.')
+            if (f && f.size > 64 * 1024 * 1024) return void toast.error('Arquivo maior que 64 MB. Para arquivos maiores, envie um link (ex.: Google Drive).')
             setFile(f)
           }}
         />
@@ -1408,8 +1465,11 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
             <DropdownMenuSeparator />
             {(replies.data ?? []).length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">Nenhuma ainda. Crie as suas em “Gerenciar respostas”.</p>}
             {replies.data?.map((r) => (
-              <DropdownMenuItem key={r.id} onSelect={() => setText((t) => (t ? `${t}\n${r.preview}` : r.preview))} className="flex-col items-start gap-0.5">
-                <span className="font-medium">{r.title}</span>
+              <DropdownMenuItem key={r.id} onSelect={() => applyReply(r, true)} className="flex-col items-start gap-0.5">
+                <span className="flex items-center gap-1 font-medium">
+                  {r.fileName && <PaperclipIcon className="size-3.5" aria-label="Com arquivo" />}
+                  {r.title}
+                </span>
                 <span className="line-clamp-2 text-xs text-muted-foreground">{r.preview}</span>
               </DropdownMenuItem>
             ))}
@@ -1428,8 +1488,8 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
             if (f && attach(f)) e.preventDefault()
           }}
           rows={1}
-          maxLength={file ? 1000 : 4000}
-          placeholder={file ? 'Legenda (opcional) · Enter envia' : novo ? 'Escreva a mensagem (Enter envia, / abre as respostas rápidas)' : 'Escreva a mensagem (Enter envia, Shift+Enter pula linha)'}
+          maxLength={file || replyFile ? 1000 : 4000}
+          placeholder={file || replyFile ? 'Legenda (opcional) · Enter envia' : novo ? 'Escreva a mensagem (Enter envia, / abre as respostas rápidas)' : 'Escreva a mensagem (Enter envia, Shift+Enter pula linha)'}
           className={cn('max-h-40 min-h-9 flex-1 resize-none rounded-lg border-transparent bg-white shadow-none dark:bg-[#2a3942]')}
           aria-label="Mensagem"
         />
@@ -1907,7 +1967,7 @@ function Bubble({ m }: { m: Message }) {
   const text = m.text && <p className="break-words whitespace-pre-wrap">{waFormat(m.text)}</p>
   const pending = m.mediaStatus === 'PENDENTE' && <p className="text-xs italic opacity-70">Baixando a mídia…</p>
   const missing = (m.mediaStatus === 'GRANDE' || m.mediaStatus === 'ERRO' || m.mediaStatus === 'APAGADA') && (
-    <p className="text-xs italic opacity-70">{m.mediaStatus === 'GRANDE' ? 'Arquivo grande (mais de 16 MB): veja no celular.' : m.mediaStatus === 'APAGADA' ? 'Arquivo apagado pelo prazo de guarda (LGPD).' : 'Não foi possível baixar a mídia: veja no celular.'}</p>
+    <p className="text-xs italic opacity-70">{m.mediaStatus === 'GRANDE' ? 'Arquivo grande (mais de 64 MB): veja no celular.' : m.mediaStatus === 'APAGADA' ? 'Arquivo apagado pelo prazo de guarda (LGPD).' : 'Não foi possível baixar a mídia: veja no celular.'}</p>
   )
   if (m.type === 'imagem' || m.type === 'figurinha') {
     return (

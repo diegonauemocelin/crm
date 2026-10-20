@@ -29,7 +29,12 @@ interface ToCallData {
   page: number
   days: number
   items: ToCallItem[]
+  /** Último lead que chegou por canal (com ou sem conversa), para ver se algum canal parou. */
+  latest?: { form: { at: string; name: string } | null; store: { at: string } | null; any: { at: string; origin: string | null } | null }
 }
+
+/** Data de hoje (ou de N dias atrás) em Brasília, AAAA-MM-DD. */
+const spDay = (back = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(Date.now() - back * 86_400_000))
 
 const VIA_STYLE: Record<ToCallItem['via']['kind'], { icon: typeof FileTextIcon; tone: string }> = {
   formulario: { icon: FileTextIcon, tone: 'bg-sky-100 text-sky-800 dark:bg-sky-500/20 dark:text-sky-300' },
@@ -42,6 +47,8 @@ export function ToCallPanel({ onStarted }: { onStarted: (conversationId: string)
   const [search, setSearch] = useState('')
   const [q, setQ] = useState('')
   const [days, setDays] = useState('30')
+  const [from, setFrom] = useState(spDay(7))
+  const [to, setTo] = useState(spDay())
   const [page, setPage] = useState(1)
   const [calling, setCalling] = useState<ToCallItem | null>(null)
   useEffect(() => {
@@ -51,7 +58,9 @@ export function ToCallPanel({ onStarted }: { onStarted: (conversationId: string)
     }, 300)
     return () => clearTimeout(t)
   }, [search])
-  const qs = new URLSearchParams({ dias: days, pagina: String(page), ...(q ? { busca: q } : {}) }).toString()
+  // Hoje, ontem e período escolhido no calendário vão como datas; o resto, como "últimos N dias".
+  const period: Record<string, string> = days === 'hoje' ? { de: spDay(), ate: spDay() } : days === 'ontem' ? { de: spDay(1), ate: spDay(1) } : days === 'periodo' ? { de: from, ate: to } : { dias: days }
+  const qs = new URLSearchParams({ ...period, pagina: String(page), ...(q ? { busca: q } : {}) }).toString()
   const list = useQuery({ queryKey: ['chat-para-chamar', qs], queryFn: () => api.get<ToCallData>(`/chat/para-chamar?${qs}`), placeholderData: keepPreviousData })
   return (
     <Card className="gap-0 overflow-hidden p-0">
@@ -65,14 +74,32 @@ export function ToCallPanel({ onStarted }: { onStarted: (conversationId: string)
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="hoje">Hoje</SelectItem>
+            <SelectItem value="ontem">Ontem</SelectItem>
             <SelectItem value="7">Últimos 7 dias</SelectItem>
             <SelectItem value="30">Últimos 30 dias</SelectItem>
             <SelectItem value="90">Últimos 90 dias</SelectItem>
             <SelectItem value="365">Último ano</SelectItem>
+            <SelectItem value="periodo">Escolher período…</SelectItem>
           </SelectContent>
         </Select>
+        {days === 'periodo' && (
+          <div className="flex items-center gap-1.5 text-sm">
+            <Input type="date" className="h-8 w-40" value={from} max={to} onChange={(e) => (setFrom(e.target.value), setPage(1))} aria-label="De" />
+            até
+            <Input type="date" className="h-8 w-40" value={to} min={from} max={spDay()} onChange={(e) => (setTo(e.target.value), setPage(1))} aria-label="Até" />
+          </div>
+        )}
         <p className="text-sm text-muted-foreground">{list.data ? `${list.data.total.toLocaleString('pt-BR')} lead(s) sem conversa no WhatsApp` : ''}</p>
       </div>
+      {list.data?.latest && (
+        <p className="border-b bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
+          Último lead que entrou no CRM: {list.data.latest.any ? `${formatDateTime(list.data.latest.any.at)}${list.data.latest.any.origin ? ` (${list.data.latest.any.origin})` : ''}` : 'nenhum'}
+          {' · '}último formulário/pop-up: {list.data.latest.form ? `${formatDateTime(list.data.latest.form.at)} (${list.data.latest.form.name})` : 'nenhum'}
+          {' · '}última da loja virtual: {list.data.latest.store ? formatDateTime(list.data.latest.store.at) : 'nenhum'}.
+          {' '}Data antiga num canal que deveria ter movimento = esse canal não está mandando leads para o CRM.
+        </p>
+      )}
       {list.isLoading ? (
         <div className="p-4">
           <TableSkeleton rows={6} />

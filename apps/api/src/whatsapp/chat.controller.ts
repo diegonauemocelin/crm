@@ -117,6 +117,10 @@ class SnoozeDto {
   @Type(() => Number) @IsInt() @Min(5) @Max(10_080) minutes!: number
 }
 
+class QuickReplySendDto {
+  @IsOptional() @IsString() @MaxLength(1000) legenda?: string
+}
+
 class QuickReplyDto {
   @IsString() @Length(1, 60) title!: string
   @IsString() @Length(1, 2000) text!: string
@@ -128,6 +132,9 @@ class ToCallQuery {
   @IsOptional() @IsString() @MaxLength(100) busca?: string
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) pagina?: number
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(365) dias?: number
+  /** Período (AAAA-MM-DD, horário de Brasília): de e até (inclusive). */
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) de?: string
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) ate?: string
 }
 
 class LabelDto {
@@ -483,10 +490,31 @@ export class ChatController {
     return this.chat.removeQuickReply(user, id)
   }
 
+  /** Arquivo da resposta rápida (catálogo em PDF, tabela, foto). */
+  @Post('respostas/:id/arquivo')
+  @HttpCode(200)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MEDIA_MAX_BYTES, files: 1 } }))
+  setQuickReplyFile(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file?: Express.Multer.File) {
+    return this.chat.setQuickReplyFile(user, id, file)
+  }
+
+  @Delete('respostas/:id/arquivo')
+  removeQuickReplyFile(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.chat.removeQuickReplyFile(user, id)
+  }
+
+  /** Manda na conversa o arquivo de uma resposta rápida, com a legenda. */
+  @Post('conversas/:id/respostas/:replyId/enviar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  sendQuickReplyFile(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Param('replyId', ParseUUIDPipe) replyId: string, @Body() dto: QuickReplySendDto) {
+    return this.chat.sendQuickReplyFile(user, id, replyId, dto.legenda)
+  }
+
   /** Leads com telefone que converteram e ainda não tiveram conversa no WhatsApp. */
   @Get('para-chamar')
   toCall(@CurrentUser() user: AuthUser, @Query() q: ToCallQuery) {
-    return this.chat.toCall(user, { search: q.busca, page: q.pagina, days: q.dias })
+    return this.chat.toCall(user, { search: q.busca, page: q.pagina, days: q.dias, from: q.de, to: q.ate })
   }
 
   @Get('etiquetas')

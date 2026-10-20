@@ -200,7 +200,7 @@ export class EvolutionClient {
 
   /** Baixa a mídia de uma mensagem (a Evolution não guarda as mensagens: vai a mensagem inteira). */
   async media(instanceName: string, raw: { key: unknown; message: unknown }) {
-    const r = await this.call<{ base64?: string; mimetype?: string }>('POST', `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`, { message: raw, convertToMp4: false }, 60_000)
+    const r = await this.call<{ base64?: string; mimetype?: string }>('POST', `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`, { message: raw, convertToMp4: false }, 180_000)
     return typeof r?.base64 === 'string' ? { base64: r.base64, mime: typeof r.mimetype === 'string' ? r.mimetype : null } : null
   }
 
@@ -252,7 +252,7 @@ export class EvolutionClient {
 
   async sendMedia(instanceName: string, number: string, m: { mediatype: 'image' | 'video' | 'document'; mimetype: string; base64: string; fileName: string; caption?: string }) {
     return this.sent(
-      await this.send(instanceName, `/message/sendMedia/${encodeURIComponent(instanceName)}`, { number, mediatype: m.mediatype, mimetype: m.mimetype, media: m.base64, fileName: m.fileName, caption: m.caption ?? '' }, 90_000),
+      await this.send(instanceName, `/message/sendMedia/${encodeURIComponent(instanceName)}`, { number, mediatype: m.mediatype, mimetype: m.mimetype, media: m.base64, fileName: m.fileName, caption: m.caption ?? '' }, 300_000),
     )
   }
 

@@ -381,7 +381,10 @@ export function previewOf(p: Pick<ParsedMessage, 'type' | 'text'>) {
 }
 
 /** Mídia guardada: até 16 MB (limite do WhatsApp para fotos e vídeos). Documento maior fica só no celular. */
-export const MEDIA_MAX_BYTES = 16 * 1024 * 1024
+/** Maior arquivo enviado ou baixado pelo chat (o WhatsApp aceita documentos bem maiores; o limite protege a memória do servidor). */
+export const MEDIA_MAX_BYTES = 64 * 1024 * 1024
+/** Foto e vídeo acima disto vão como documento (o WhatsApp não manda mídia maior como foto/vídeo). */
+export const INLINE_MEDIA_MAX_BYTES = 16 * 1024 * 1024
 
 /** Tipos que o navegador pode abrir direto; o resto vai como download (nunca HTML/SVG/script na tela). */
 export const INLINE_MIME = new Set(['audio/webm', 'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'audio/ogg', 'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/amr', 'video/mp4', 'video/3gpp', 'application/pdf'])

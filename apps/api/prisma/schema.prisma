@@ -1495,6 +1495,9 @@ model WhatsappQuickReply {
   userId    String?  @db.Uuid
   title     String
   text      String
+  /// Arquivo que vai junto (catálogo em PDF, tabela, foto...): o texto vira a legenda.
+  fileId    String?  @db.Uuid
+  fileName  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

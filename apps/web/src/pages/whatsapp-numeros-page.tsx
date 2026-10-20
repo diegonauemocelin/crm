@@ -3,6 +3,7 @@ import { AlertTriangleIcon, Loader2Icon, PencilIcon, PlugIcon, PlusIcon, Smartph
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
+import { ReplyFileField, saveReplyFile } from '@/components/chat/organizar'
 import { MultiSelect } from '@/components/multi-select'
 import { ErrorState, formatDateTime, PageHeader, TableSkeleton } from '@/components/page'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
@@ -444,6 +445,7 @@ interface QuickReply {
   id: string
   title: string
   text: string
+  fileName?: string | null
 }
 
 /** Respostas rápidas do chat. {nome} vira o primeiro nome do cliente e {vendedor} o de quem envia. */
@@ -483,6 +485,7 @@ export function QuickReplies({ editable }: { editable: boolean }) {
                 <div className="min-w-0 flex-1">
                   <p className="font-medium">{r.title}</p>
                   <p className="line-clamp-2 text-xs whitespace-pre-line text-muted-foreground">{r.text}</p>
+                  {r.fileName && <p className="mt-0.5 text-xs text-muted-foreground">📎 {r.fileName}</p>}
                 </div>
                 {editable && (
                   <>
@@ -509,8 +512,13 @@ function QuickReplyDialog({ reply, onClose }: { reply: QuickReply | null; onClos
   const [title, setTitle] = useState(reply?.title ?? '')
   const [text, setText] = useState(reply?.text ?? '')
   const [error, setError] = useState<string | null>(null)
+  const [picked, setPicked] = useState<File | null>(null)
+  const [removed, setRemoved] = useState(false)
   const save = useMutation({
-    mutationFn: () => (reply ? api.put(`/chat/respostas/${reply.id}`, { title, text }) : api.post('/chat/respostas', { title, text, standard: true })),
+    mutationFn: async () => {
+      const saved = await (reply ? api.put<{ id: string }>(`/chat/respostas/${reply.id}`, { title, text }) : api.post<{ id: string }>('/chat/respostas', { title, text, standard: true }))
+      await saveReplyFile(saved.id, picked, removed)
+    },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['chat-respostas-admin'] })
       void qc.invalidateQueries({ queryKey: ['chat-respostas'] })
@@ -541,6 +549,11 @@ function QuickReplyDialog({ reply, onClose }: { reply: QuickReply | null; onClos
           <div className="space-y-1.5">
             <Label htmlFor="qr-text">Texto</Label>
             <Textarea id="qr-text" required rows={5} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Arquivo (opcional)</Label>
+            <ReplyFileField current={reply?.fileName} picked={picked} removed={removed} onPick={setPicked} onRemove={setRemoved} />
+            <p className="text-xs text-muted-foreground">Catálogo em PDF, tabela, foto ou vídeo (até 64 MB). Vai junto, com o texto como legenda.</p>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>

@@ -75,4 +75,6 @@ registrar "deploy" "$VERSAO"
 docker image prune -f --filter "label=com.docker.compose.project=usaparts-crm" >/dev/null 2>&1 || true
 # Imagens das versões antigas do CRM: ficam só a atual e a anterior (o rollback volta para ela sem baixar de novo).
 bash "$RAIZ/deploy/limpar-imagens.sh" "$VERSAO" "${ATUAL_TAG:-}" || true
+# Nginx da VPS com o limite de tamanho dos arquivos do chat (só mexe no vhost do CRM).
+[ -f "$RAIZ/deploy/nginx-limite.sh" ] && { bash "$RAIZ/deploy/nginx-limite.sh" || aviso "Não deu para ajustar o Nginx: rode sudo bash deploy/nginx-limite.sh"; }
 ok "Versão $VERSAO no ar."

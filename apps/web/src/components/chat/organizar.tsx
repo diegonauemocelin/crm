@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckIcon, Loader2Icon, PencilIcon, PlusIcon, SettingsIcon, TagIcon, Trash2Icon } from 'lucide-react'
-import { type FormEvent, useState } from 'react'
+import { CheckIcon, Loader2Icon, PaperclipIcon, PencilIcon, PlusIcon, SettingsIcon, TagIcon, Trash2Icon } from 'lucide-react'
+import { type FormEvent, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -30,6 +30,58 @@ export interface QuickReply {
   preview?: string
   standard: boolean
   mine: boolean
+  /** Arquivo que vai junto (o texto vira a legenda). */
+  fileName?: string | null
+}
+
+const REPLY_FILE_TYPES = 'application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,image/jpeg,image/png,image/webp,video/mp4'
+
+/**
+ * Arquivo da resposta rápida (catálogo em PDF, tabela, foto): escolhe um novo (vai junto ao salvar) ou tira o atual.
+ * Quem chama envia o arquivo com saveReplyFile depois de salvar o texto.
+ */
+export function ReplyFileField({ current, picked, removed, onPick, onRemove }: { current?: string | null; picked: File | null; removed: boolean; onPick: (f: File | null) => void; onRemove: (v: boolean) => void }) {
+  const input = useRef<HTMLInputElement>(null)
+  const name = picked?.name ?? (removed ? null : current)
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <input
+        ref={input}
+        type="file"
+        className="hidden"
+        accept={REPLY_FILE_TYPES}
+        onChange={(e) => {
+          const f = e.target.files?.[0] ?? null
+          e.target.value = ''
+          if (f && f.size > 64 * 1024 * 1024) return void toast.error('Arquivo maior que 64 MB.')
+          onPick(f)
+          onRemove(false)
+        }}
+      />
+      <Button type="button" size="sm" variant="outline" onClick={() => input.current?.click()}>
+        <PaperclipIcon /> {name ? 'Trocar arquivo' : 'Anexar arquivo (PDF, catálogo...)'}
+      </Button>
+      {name && (
+        <>
+          <span className="min-w-0 max-w-56 truncate text-xs text-muted-foreground" title={name}>
+            {name}
+          </span>
+          <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={() => (onPick(null), onRemove(true))}>
+            Tirar
+          </Button>
+        </>
+      )}
+    </div>
+  )
+}
+
+/** Depois de salvar a resposta: manda o arquivo escolhido ou tira o que tinha. */
+export async function saveReplyFile(replyId: string, picked: File | null, removed: boolean) {
+  if (picked) {
+    const fd = new FormData()
+    fd.append('file', picked)
+    await api.post(`/chat/respostas/${replyId}/arquivo`, fd)
+  } else if (removed) await api.delete(`/chat/respostas/${replyId}/arquivo`)
 }
 
 export const LABEL_COLORS = ['cinza', 'vermelho', 'laranja', 'amarelo', 'verde', 'azul', 'roxo', 'rosa'] as const
@@ -252,14 +304,19 @@ export function ManageRepliesDialog({ onClose }: { onClose: () => void }) {
   const [title, setTitle] = useState('')
   const [text, setText] = useState('')
   const [standard, setStandard] = useState(false)
-  const reset = () => (setEditing(null), setTitle(''), setText(''), setStandard(false))
+  const [picked, setPicked] = useState<File | null>(null)
+  const [removed, setRemoved] = useState(false)
+  const reset = () => (setEditing(null), setTitle(''), setText(''), setStandard(false), setPicked(null), setRemoved(false))
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['chat-respostas-gerenciar'] })
     void qc.invalidateQueries({ queryKey: ['chat-respostas'] })
     void qc.invalidateQueries({ queryKey: ['chat-respostas-admin'] })
   }
   const save = useMutation({
-    mutationFn: () => (editing ? api.put(`/chat/respostas/${editing.id}`, { title, text }) : api.post('/chat/respostas', { title, text, standard })),
+    mutationFn: async () => {
+      const saved = await (editing ? api.put<{ id: string }>(`/chat/respostas/${editing.id}`, { title, text }) : api.post<{ id: string }>('/chat/respostas', { title, text, standard }))
+      await saveReplyFile(saved.id, picked, removed)
+    },
     onSuccess: () => {
       refresh()
       reset()
@@ -294,6 +351,7 @@ export function ManageRepliesDialog({ onClose }: { onClose: () => void }) {
             <Input id="qr-title" maxLength={60} placeholder="Título (ex.: Saudação)" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
           <Textarea aria-label="Texto da resposta" rows={4} maxLength={2000} placeholder="Olá {nome}, aqui é {vendedor}. Como posso ajudar?" value={text} onChange={(e) => setText(e.target.value)} />
+          <ReplyFileField current={editing?.fileName} picked={picked} removed={removed} onPick={setPicked} onRemove={setRemoved} />
           <div className="flex flex-wrap items-center justify-between gap-2">
             {!editing && admin ? (
               <label className="flex items-center gap-2 text-sm">
@@ -327,10 +385,15 @@ export function ManageRepliesDialog({ onClose }: { onClose: () => void }) {
                   </Badge>
                 </p>
                 <p className="line-clamp-2 text-xs text-muted-foreground">{r.text}</p>
+                {r.fileName && (
+                  <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                    <PaperclipIcon className="size-3" /> {r.fileName}
+                  </p>
+                )}
               </div>
               {canEdit(r) && (
                 <>
-                  <Button size="icon" variant="ghost" className="size-7" onClick={() => (setEditing(r), setTitle(r.title), setText(r.text))} aria-label={`Editar ${r.title}`}>
+                  <Button size="icon" variant="ghost" className="size-7" onClick={() => (setEditing(r), setTitle(r.title), setText(r.text), setPicked(null), setRemoved(false))} aria-label={`Editar ${r.title}`}>
                     <PencilIcon />
                   </Button>
                   <Button size="icon" variant="ghost" className="size-7" onClick={() => del.mutate(r.id)} aria-label={`Excluir ${r.title}`}>

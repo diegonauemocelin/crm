@@ -18,7 +18,7 @@ import { type Sector, servesNumber, splitWhere, teamOf, teamWhere } from './aten
 import { type AgendaCategory, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
 import { parseCsv } from '../atendimento/planilha'
 import { answersNote, type BotOutcome, botStateOf, chooseFlow, continueFlow, flowOf, startFlow } from './fluxo'
-import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, parseReaction, parseRevision, type ParsedMessage, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, whatsappOf, withReaction } from './mensagens'
+import { extOf, INLINE_MEDIA_MAX_BYTES, MEDIA_MAX_BYTES, parseCalls, parseMessage, parseReaction, parseRevision, type ParsedMessage, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, whatsappOf, withReaction } from './mensagens'
 
 const PAGE = 60
 /** Nome que aparece nas mensagens e notas do chatbot. */
@@ -748,11 +748,14 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
    * Leads para chamar: têm telefone, converteram no período (formulário, pop-up, botão de WhatsApp, loja virtual) e
    * nunca tiveram conversa no WhatsApp (nem pelo lead nem pelo telefone). Colegas, fornecedores e outros da agenda ficam de fora.
    */
-  async toCall(user: AuthUser, q: { search?: string; page?: number; days?: number }) {
+  async toCall(user: AuthUser, q: { search?: string; page?: number; days?: number; from?: string; to?: string }) {
     this.assertAction(user, 'chat', 'create')
     if (!can(user.permissions, user.role.isSystem, 'leads', 'view')) throw new ForbiddenException('Você não tem permissão para ver os leads.')
     const days = q.days && q.days > 0 ? Math.min(q.days, 365) : 30
-    const since = new Date(Date.now() - days * 86_400_000)
+    // Período escolhido no calendário (dias inteiros no horário de Brasília) ou os últimos N dias.
+    const range = toCallRange(q.from, q.to)
+    const since = range?.from ?? new Date(Date.now() - days * 86_400_000)
+    const until = range?.to ?? null
     const page = Math.max(1, q.page ?? 1)
     const s = q.search?.trim() ?? ''
     const digits = s.replace(/\D/g, '')
@@ -763,6 +766,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       FROM leads l
       WHERE l."tenantId" = ${user.tenantId}::uuid AND l."deletedAt" IS NULL AND l."anonymizedAt" IS NULL AND l.phone IS NOT NULL
         AND l."lastConversionAt" >= ${since}
+        ${until ? Prisma.sql`AND l."lastConversionAt" < ${until}` : Prisma.empty}
         AND NOT EXISTS (
           SELECT 1 FROM whatsapp_conversations c
           WHERE c."tenantId" = l."tenantId"
@@ -792,6 +796,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       total: Number(countRow[0]?.n ?? 0),
       page,
       days,
+      latest: await this.latestLeads(user.tenantId),
       items: ids.map((id) => {
         const l = byId.get(id)!
         const sub = lastSub.get(id)
@@ -1188,8 +1193,15 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
 
   async sendFile(user: AuthUser, id: string, file: Express.Multer.File | undefined, caption?: string, voice = false) {
     if (!file?.buffer?.length) throw new BadRequestException('Escolha um arquivo.')
-    if (file.size > MEDIA_MAX_BYTES) throw new BadRequestException('Arquivo maior que 16 MB.')
-    const kind = detectOutgoing(file.buffer, file.originalname ?? '', voice)
+    return this.sendBuffer(user, id, { buffer: file.buffer, size: file.size, originalname: file.originalname ?? '' }, caption, voice)
+  }
+
+  /** Envia um arquivo (do computador ou guardado, como o de uma resposta rápida) na conversa. */
+  private async sendBuffer(user: AuthUser, id: string, file: { buffer: Buffer; size: number; originalname: string }, caption?: string, voice = false) {
+    if (file.size > MEDIA_MAX_BYTES) throw new BadRequestException('Arquivo maior que 64 MB. Para arquivos maiores, envie um link (ex.: Google Drive).')
+    const detected = detectOutgoing(file.buffer, file.originalname, voice)
+    // Foto ou vídeo grande vai como documento (o cliente recebe o arquivo original, sem a compressão do WhatsApp).
+    const kind = detected && (detected.kind === 'image' || detected.kind === 'video') && file.size > INLINE_MEDIA_MAX_BYTES ? { ...detected, kind: 'document' as const } : detected
     if (!kind) throw new BadRequestException(voice ? 'Não foi possível ler o áudio gravado. Tente gravar de novo.' : 'Tipo de arquivo não aceito. Envie foto (JPG, PNG, WEBP), vídeo MP4, áudio (OGG, MP3, M4A), PDF, Word, Excel, CSV ou TXT.')
     const c = await this.sendContext(user, id)
     const fileName = safeFileName(uploadName(file.originalname), kind.ext)
@@ -1207,6 +1219,23 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const asset = await this.files.saveBuffer(c.conv.tenantId, 'whatsapp', file.buffer, kind.mime, kind.ext)
     const type = ({ image: 'imagem', video: 'video', audio: 'audio', document: 'documento' } as const)[kind.kind]
     return this.recordSent(user, c, r, { type, text: kind.kind === 'audio' ? null : text, fileId: asset.id, fileName, mime: kind.mime })
+  }
+
+  /**
+   * Último lead que chegou por canal (formulário/pop-up, loja virtual, qualquer um), com ou sem conversa: mostra na
+   * tela "Leads para chamar" se algum canal parou de mandar leads (ex.: LP ainda mandando para outro sistema).
+   */
+  private async latestLeads(tenantId: string) {
+    const [form, store, any] = await Promise.all([
+      this.prisma.captureSubmission.findFirst({ where: { tenantId, leadId: { not: null } }, orderBy: { createdAt: 'desc' }, select: { createdAt: true, channel: true, form: { select: { name: true } } } }),
+      this.prisma.lead.findFirst({ where: { tenantId, deletedAt: null, ecommerceId: { not: null } }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+      this.prisma.lead.findFirst({ where: { tenantId, deletedAt: null }, orderBy: { createdAt: 'desc' }, select: { createdAt: true, origin: { select: { name: true } } } }),
+    ])
+    return {
+      form: form ? { at: form.createdAt, name: form.form?.name ?? form.channel } : null,
+      store: store ? { at: store.createdAt } : null,
+      any: any ? { at: any.createdAt, origin: any.origin?.name ?? null } : null,
+    }
   }
 
   /** Números em que o usuário pode iniciar conversa (próprios: os ligados a ele ou ao vendedor dele; unidade: da unidade). */
@@ -1417,7 +1446,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       const c = await this.load(user, convId)
       nome = (c.leadId ? (await this.prisma.lead.findUnique({ where: { id: c.leadId }, select: { name: true } }))?.name : null) ?? c.name
     }
-    return rows.map((r) => ({ id: r.id, title: r.title, text: r.text, standard: r.userId === null, mine: r.userId === user.id, preview: applyVariables(r.text, { nome, vendedor: user.name }) }))
+    return rows.map((r) => ({ id: r.id, title: r.title, text: r.text, fileName: r.fileId ? r.fileName : null, standard: r.userId === null, mine: r.userId === user.id, preview: applyVariables(r.text, { nome, vendedor: user.name }) }))
   }
 
   async saveQuickReply(user: AuthUser, id: string | null, d: { title: string; text: string; standard?: boolean }) {
@@ -1443,7 +1472,46 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (!found) throw new NotFoundException('Resposta não encontrada.')
     this.assertOwn(user, found, 'resposta')
     await this.prisma.whatsappQuickReply.delete({ where: { id } })
+    if (found.fileId) await this.files.remove(found.fileId).catch(() => undefined)
     return { ok: true }
+  }
+
+  /** Arquivo da resposta rápida (catálogo em PDF, tabela, foto...): troca o anterior, se houver. */
+  async setQuickReplyFile(user: AuthUser, id: string, file: Express.Multer.File | undefined) {
+    this.assertCan(user)
+    const found = await this.prisma.whatsappQuickReply.findFirst({ where: { id, ...this.ownedWhere(user) } })
+    if (!found) throw new NotFoundException('Resposta não encontrada.')
+    this.assertOwn(user, found, 'resposta')
+    if (!file?.buffer?.length) throw new BadRequestException('Escolha um arquivo.')
+    if (file.size > MEDIA_MAX_BYTES) throw new BadRequestException('Arquivo maior que 64 MB.')
+    const kind = detectOutgoing(file.buffer, file.originalname ?? '')
+    if (!kind) throw new BadRequestException('Tipo de arquivo não aceito. Use PDF, Word, Excel, CSV, TXT, foto (JPG, PNG, WEBP) ou vídeo MP4.')
+    const fileName = safeFileName(uploadName(file.originalname), kind.ext)
+    const asset = await this.files.saveBuffer(user.tenantId, 'whatsapp', file.buffer, kind.mime, kind.ext)
+    await this.prisma.whatsappQuickReply.update({ where: { id }, data: { fileId: asset.id, fileName } })
+    if (found.fileId) await this.files.remove(found.fileId).catch(() => undefined)
+    return { id, fileName }
+  }
+
+  async removeQuickReplyFile(user: AuthUser, id: string) {
+    this.assertCan(user)
+    const found = await this.prisma.whatsappQuickReply.findFirst({ where: { id, ...this.ownedWhere(user) } })
+    if (!found) throw new NotFoundException('Resposta não encontrada.')
+    this.assertOwn(user, found, 'resposta')
+    await this.prisma.whatsappQuickReply.update({ where: { id }, data: { fileId: null, fileName: null } })
+    if (found.fileId) await this.files.remove(found.fileId).catch(() => undefined)
+    return { id, fileName: null }
+  }
+
+  /** Manda o arquivo da resposta rápida na conversa, com a legenda (o texto da resposta, que dá para mudar antes). */
+  async sendQuickReplyFile(user: AuthUser, id: string, replyId: string, caption?: string) {
+    const reply = await this.prisma.whatsappQuickReply.findFirst({ where: { id: replyId, ...this.ownedWhere(user) } })
+    if (!reply) throw new NotFoundException('Resposta não encontrada.')
+    if (!reply.fileId) throw new BadRequestException('Esta resposta não tem arquivo.')
+    const { content } = await this.files.read(reply.fileId).catch(() => {
+      throw new BadRequestException('O arquivo desta resposta não existe mais. Anexe de novo em Respostas rápidas.')
+    })
+    return this.sendBuffer(user, id, { buffer: content, size: content.length, originalname: reply.fileName ?? 'arquivo' }, caption)
   }
 
   // ---------- Etiquetas das conversas ----------
@@ -1922,4 +1990,15 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     await this.prisma.whatsappReminder.updateMany({ where: { id, userId: user.id, notifiedAt: null }, data: { notifiedAt: new Date() } })
     return { ok: true }
   }
+}
+
+/** Período de/até (AAAA-MM-DD, dias inteiros em Brasília, UTC-3); até antes de de é trocado. */
+export function toCallRange(from?: string, to?: string): { from: Date; to: Date } | null {
+  if (!from && !to) return null
+  const a = from ?? to!
+  const b = to ?? from!
+  const [lo, hi] = a <= b ? [a, b] : [b, a]
+  const start = new Date(`${lo}T00:00:00-03:00`)
+  const end = new Date(new Date(`${hi}T00:00:00-03:00`).getTime() + 86_400_000)
+  return Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) ? null : { from: start, to: end }
 }

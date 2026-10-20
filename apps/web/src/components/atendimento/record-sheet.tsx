@@ -207,6 +207,10 @@ export interface RecordPrefill {
   notes?: string
 }
 
+/** Opção escolhida (retorno do vendedor, venda realizada...) bem destacada: cor da marca, texto branco e um ✓. */
+const PICKED =
+  "px-4 data-[state=on]:border-[color:var(--brand)] data-[state=on]:bg-[color:var(--brand)] data-[state=on]:font-semibold data-[state=on]:text-white data-[state=on]:before:mr-1 data-[state=on]:before:content-['✓'] hover:data-[state=on]:bg-[color:var(--brand)] hover:data-[state=on]:text-white"
+
 export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; record: ServiceRecord | null; onClose: () => void; prefill?: RecordPrefill }) {
   const qc = useQueryClient()
   const { can } = useAuth()
@@ -415,7 +419,7 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                       aria-label="Situação do pós-venda"
                     >
                       {FOLLOW_STATUSES.filter((st) => st !== 'PENDENTE' || record.followStatus === 'PENDENTE').map((st) => (
-                        <ToggleGroupItem key={st} value={st} className="px-3">
+                        <ToggleGroupItem key={st} value={st} className={PICKED}>
                           {FOLLOW_LABEL[st]}
                         </ToggleGroupItem>
                       ))}
@@ -559,7 +563,7 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                           aria-label="Vendedor retornou?"
                         >
                           {(['SIM', 'NAO', 'PENDENTE'] as const).map((s) => (
-                            <ToggleGroupItem key={s} value={s} className="px-4">
+                            <ToggleGroupItem key={s} value={s} className={PICKED}>
                               {RETURN_LABEL[s]}
                             </ToggleGroupItem>
                           ))}
@@ -573,9 +577,9 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                   <h3 className="text-sm font-semibold">Resultado</h3>
                   <Field label="Venda realizada?">
                     <ToggleGroup type="single" variant="outline" value={form.saleStatus} onValueChange={(v) => v && set('saleStatus', v as SaleStatus)} aria-label="Venda realizada?">
-                      <ToggleGroupItem value="SIM" className="px-4">Sim</ToggleGroupItem>
-                      <ToggleGroupItem value="NAO" className="px-4">Não</ToggleGroupItem>
-                      <ToggleGroupItem value="NEGOCIACAO" className="px-4">Em negociação</ToggleGroupItem>
+                      <ToggleGroupItem value="SIM" className={PICKED}>Sim</ToggleGroupItem>
+                      <ToggleGroupItem value="NAO" className={PICKED}>Não</ToggleGroupItem>
+                      <ToggleGroupItem value="NEGOCIACAO" className={PICKED}>Em negociação</ToggleGroupItem>
                     </ToggleGroup>
                   </Field>
                   {negotiating && (
