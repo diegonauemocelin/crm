@@ -13,6 +13,7 @@ export type TriggerType =
   | 'email_aberto'
   | 'email_clicado'
   | 'visita'
+  | 'produto_visto'
   | 'etapa'
   | 'inatividade'
   | 'manual'
@@ -73,6 +74,7 @@ export type Step =
   | { id: string; type: 'alterar_etapa'; stage: string }
   | { id: string; type: 'criar_atendimento'; ownerId: string | null; note: string }
   | { id: string; type: 'notificar'; userIds: string[]; message: string }
+  | { id: string; type: 'enviar_whatsapp'; numberId: string | null; text: string; openRecord: boolean }
   | { id: string; type: 'encerrar' }
 
 export type StepType = Step['type']
@@ -101,6 +103,7 @@ export interface AutomationListItem extends Omit<Automation, 'steps'> {
 
 export interface AutomationOptions {
   templates: { id: string; name: string; subject: string }[]
+  numbers?: { id: string; name: string; status: string }[]
   users: { id: string; name: string; email: string }[]
   segments: { id: string; name: string }[]
   campaigns: { id: string; name: string }[]
@@ -148,6 +151,7 @@ export const TRIGGERS: { type: TriggerType; label: string; help: string; group: 
   { type: 'email_aberto', label: 'Abriu um e-mail', help: 'Quando o lead abre um e-mail (qualquer um ou um específico).', group: 'E-mail' },
   { type: 'email_clicado', label: 'Clicou em um e-mail', help: 'Quando o lead clica em um link de e-mail.', group: 'E-mail' },
   { type: 'visita', label: 'Visitou o site', help: 'Quando o lead visita o site (ou uma página específica).', group: 'Site' },
+  { type: 'produto_visto', label: 'Viu produtos da loja', help: 'Quando o lead abre a página de um produto do catálogo (pode filtrar pelo nome do produto). Use com a condição "Não comprou" para recuperar quem olhou e não comprou.', group: 'Loja' },
   { type: 'inatividade', label: 'Ficou X dias sem acessar', help: 'Quando o lead fica X dias sem acessar o site ou sem nenhuma interação.', group: 'Site' },
   { type: 'etapa', label: 'Mudou de etapa', help: 'Quando o lead passa para uma etapa (ex.: Cliente).', group: 'Funil' },
   { type: 'manual', label: 'Manual (por segmento)', help: 'Só entra quem você colocar, escolhendo um segmento.', group: 'Funil' },
@@ -178,6 +182,7 @@ export const STEP_INFO: Record<StepType, { label: string; help: string; group: '
   esperar: { label: 'Esperar', help: 'Aguarda minutos, horas ou dias antes do próximo passo.', group: 'Tempo e decisão' },
   condicao: { label: 'Condição (Sim / Não)', help: 'Divide o caminho: se atender às regras segue por "Sim", senão por "Não".', group: 'Tempo e decisão' },
   enviar_email: { label: 'Enviar e-mail', help: 'Envia um modelo de e-mail (só para quem autorizou).', group: 'Ações' },
+  enviar_whatsapp: { label: 'Enviar WhatsApp', help: 'Manda uma mensagem de WhatsApp para o lead pelo número escolhido; pode abrir pré-venda junto.', group: 'Ações' },
   adicionar_tag: { label: 'Adicionar tag', help: 'Coloca uma ou mais tags no lead.', group: 'Ações' },
   remover_tag: { label: 'Remover tag', help: 'Tira tags do lead.', group: 'Ações' },
   alterar_vendedor: { label: 'Trocar vendedor', help: 'Passa o lead para um vendedor.', group: 'Ações' },
@@ -211,6 +216,8 @@ export function newStep(type: StepType): Step {
       return { id, type, ownerId: null, note: '' }
     case 'notificar':
       return { id, type, userIds: [], message: 'O lead {nome} ({telefone}) chegou neste passo da automação "{automacao}".' }
+    case 'enviar_whatsapp':
+      return { id, type, numberId: null, text: 'Olá, {nome}! Vi que você olhou {produto} na nossa loja. Posso te ajudar com alguma dúvida ou um orçamento?', openRecord: true }
     case 'encerrar':
       return { id, type }
   }

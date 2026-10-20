@@ -14,6 +14,7 @@ import {
   HeadsetIcon,
   Loader2Icon,
   MailIcon,
+  MessageCircleIcon,
   MoreHorizontalIcon,
   PlusIcon,
   SettingsIcon,
@@ -42,6 +43,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
@@ -111,6 +113,7 @@ const STEP_ICON: Record<StepType, typeof MailIcon> = {
   criar_atendimento: HeadsetIcon,
   notificar: BellRingIcon,
   encerrar: FlagIcon,
+  enviar_whatsapp: MessageCircleIcon,
 }
 
 interface Ctx {
@@ -519,6 +522,8 @@ function describeTrigger(t: Trigger, ctx: Ctx): string {
       return t.text ? `${label} com "${t.text}" no nome` : label
     case 'visita':
       return t.text ? `Visitou página com "${t.text}"` : label
+    case 'produto_visto':
+      return t.text ? `Viu produto com "${t.text}" no nome` : label
     case 'email_aberto':
     case 'email_clicado':
       return t.campaignId ? `${label}: ${nameOf([...(ctx.options?.templates ?? []), ...(ctx.options?.campaigns ?? [])], t.campaignId) ?? 'e-mail escolhido'}` : `${label} (qualquer)`
@@ -576,6 +581,8 @@ function describeStep(s: Step, ctx: Ctx): { text: string; warn?: boolean } {
       return { text: s.ownerId ? `Para ${nameOf(ctx.lists?.sellers, s.ownerId) ?? 'vendedor'}` : 'Para o vendedor do lead' }
     case 'notificar':
       return s.userIds.length ? { text: s.userIds.map((id) => nameOf(ctx.options?.users, id) ?? '—').join(', ') } : { text: 'Escolha quem recebe o aviso', warn: true }
+    case 'enviar_whatsapp':
+      return s.text.trim() ? { text: `${s.numberId ? `Pelo número ${nameOf(ctx.options?.numbers, s.numberId) ?? 'escolhido'}` : 'Pelo primeiro número conectado'}${s.openRecord ? ' · abre pré-venda' : ''}` } : { text: 'Escreva a mensagem', warn: true }
     case 'encerrar':
       return { text: 'O lead sai do fluxo aqui' }
   }
@@ -657,6 +664,11 @@ function TriggerEditor({ trigger: t, ctx, disabled, onChange }: { trigger: Trigg
         {t.type === 'formulario' && (
           <Field label="Nome do formulário, pop-up ou botão contém (opcional)" htmlFor="t-text" hint="Vazio = qualquer captura. Ex.: JCB pega só a LP da JCB.">
             <Input id="t-text" maxLength={120} value={t.text ?? ''} onChange={(e) => onChange({ ...t, text: e.target.value })} disabled={disabled} />
+          </Field>
+        )}
+        {t.type === 'produto_visto' && (
+          <Field label="Nome do produto contém (opcional)" htmlFor="t-product" hint="Ex.: filtro ou 320D. Vazio = qualquer produto do catálogo. Precisa do catálogo da Magazord copiado e do rastreamento na loja.">
+            <Input id="t-product" maxLength={120} value={t.text ?? ''} onChange={(e) => onChange({ ...t, text: e.target.value })} disabled={disabled} />
           </Field>
         )}
         {t.type === 'visita' && (
@@ -965,6 +977,26 @@ function StepEditor({ step: s, ctx, disabled, onChange }: { step: Step; ctx: Ctx
           <Field label="Mensagem" htmlFor="s-msg" hint="Variáveis: {nome}, {email}, {telefone}, {automacao}. O link do lead vai junto.">
             <Textarea id="s-msg" rows={4} maxLength={1000} value={s.message} onChange={(e) => onChange({ ...s, message: e.target.value })} disabled={disabled} />
           </Field>
+        </>
+      )
+    case 'enviar_whatsapp':
+      return (
+        <>
+          {head}
+          <Field label="Número que envia" htmlFor="s-number" hint="Vazio = o primeiro número conectado. Desconectado: tenta de novo a cada 5 minutos por 1 hora.">
+            <SimpleSelect id="s-number" value={s.numberId ?? ANY} onChange={(v) => onChange({ ...s, numberId: v === ANY ? null : v })} items={[{ id: ANY, name: 'O primeiro número conectado' }, ...(ctx.options?.numbers ?? []).map((n) => ({ id: n.id, name: n.status === 'CONECTADO' ? n.name : `${n.name} (desconectado)` }))]} disabled={disabled} />
+          </Field>
+          <Field label="Mensagem" htmlFor="s-wa" hint="Variáveis: {nome} (primeiro nome) e {produto} (produto visto ou primeiro item do carrinho). Lead sem telefone é pulado.">
+            <Textarea id="s-wa" rows={4} maxLength={1000} value={s.text} onChange={(e) => onChange({ ...s, text: e.target.value })} disabled={disabled} />
+          </Field>
+          <label className="flex items-start gap-3 rounded-md border p-3 text-sm">
+            <Switch checked={s.openRecord} onCheckedChange={(openRecord) => onChange({ ...s, openRecord })} disabled={disabled} className="mt-0.5" aria-label="Abrir pré-venda" />
+            <span>
+              Abrir pré-venda junto
+              <span className="block text-xs text-muted-foreground">A conversa fica ligada à pré-venda e a resposta do cliente cai para quem atende. Não duplica se já houver pré-venda aberta nas últimas 24 horas.</span>
+            </span>
+          </label>
+          <p className="text-xs text-muted-foreground">Use com moderação: muitas mensagens automáticas para quem não pediu podem fazer o WhatsApp bloquear o número.</p>
         </>
       )
     case 'encerrar':

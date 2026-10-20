@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.68.0",
+      "date": "2026-10-20",
+      "title": "Automação por WhatsApp para quem viu produtos ou abandonou o carrinho",
+      "changes": [
+        { "type": "novo", "area": "Automações", "text": "Novo passo \"Enviar WhatsApp\" nas automações de marketing: escolha o número que envia (ou o primeiro conectado), escreva a mensagem com {nome} e {produto} e, se quiser, abra a pré-venda junto, para a resposta do cliente cair para quem atende." },
+        { "type": "novo", "area": "Automações", "text": "Novo gatilho \"Viu produtos da loja\": entra quem abriu a página de um produto do catálogo (pode filtrar pelo nome do produto). Junto com \"Colocou produto no carrinho\" e \"Abandonou o carrinho\", monte o fluxo: e-mail → esperar o tempo que quiser → condição \"Não comprou\" → WhatsApp." },
+        { "type": "melhoria", "area": "Automações", "text": "Lead sem telefone é pulado no passo de WhatsApp. Número desconectado: tenta de novo a cada 5 minutos por até 1 hora. Pré-venda não é duplicada se já houver uma aberta nas últimas 24 horas." }
+      ]
+    },
+    {
       "version": "0.67.0",
       "date": "2026-10-20",
       "title": "Google Ads × fora do Ads no painel de Pré-Vendas",

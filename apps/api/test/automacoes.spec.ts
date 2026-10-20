@@ -106,3 +106,28 @@ describe('gatilho: resultado do atendimento', () => {
     expect(eventMatches(any, { type: 'atendimento', title: 'x', data: {} })).toBe(false)
   })
 })
+
+describe('automação com WhatsApp e produtos vistos', () => {
+  it('passo "Enviar WhatsApp": mensagem obrigatória, número opcional, abrir pré-venda', async () => {
+    const { cleanSteps } = await import('../src/automacoes/fluxo')
+    expect(cleanSteps([{ id: 'w', type: 'enviar_whatsapp', text: '  ' }])).toEqual({ error: 'Escreva a mensagem do passo "Enviar WhatsApp".' })
+    expect(cleanSteps([{ id: 'w', type: 'enviar_whatsapp', text: 'Oi {nome}', numberId: 'x', openRecord: true }])).toEqual({ steps: [{ id: 'w', type: 'enviar_whatsapp', numberId: null, text: 'Oi {nome}', openRecord: true }] })
+  })
+
+  it('gatilho "Viu produtos da loja": só visita a página de produto, com filtro pelo nome', async () => {
+    const { eventMatches } = await import('../src/automacoes/fluxo')
+    const visit = (produto?: string) => ({ type: 'visita', title: 'Visitou o site', data: { pagina: 'https://loja.com/p/filtro', ...(produto ? { produto } : {}) } })
+    expect(eventMatches({ type: 'produto_visto' }, visit('Filtro hidráulico 320D'))).toBe(true)
+    expect(eventMatches({ type: 'produto_visto' }, visit())).toBe(false)
+    expect(eventMatches({ type: 'produto_visto', text: 'filtro' }, visit('Filtro hidráulico 320D'))).toBe(true)
+    expect(eventMatches({ type: 'produto_visto', text: 'bomba' }, visit('Filtro hidráulico 320D'))).toBe(false)
+    // O gatilho de visita continua igual.
+    expect(eventMatches({ type: 'visita' }, visit())).toBe(true)
+  })
+
+  it('mensagem com {nome} e {produto}', async () => {
+    const { fillWhatsapp } = await import('../src/automacoes/fluxo')
+    expect(fillWhatsapp('Oi {nome}, vi que você olhou {produto}. Posso ajudar?', { name: 'Maria Souza', product: 'Filtro 1R-0750' })).toBe('Oi Maria, vi que você olhou Filtro 1R-0750. Posso ajudar?')
+    expect(fillWhatsapp('Oi {nome}, {produto}!', { name: null, product: null })).toBe('Oi, o produto!')
+  })
+})

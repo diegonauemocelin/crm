@@ -17,6 +17,7 @@ export const TRIGGER_TYPES = [
   'email_aberto',
   'email_clicado',
   'visita',
+  'produto_visto',
   'etapa',
   'inatividade',
   'manual',
@@ -27,7 +28,7 @@ export interface Trigger {
   type: TriggerType
   /** lead_novo: só desta origem. */
   originId?: string | null
-  /** formulario: nome do formulário/pop-up/botão contém; visita: endereço da página contém. */
+  /** formulario: nome do formulário/pop-up/botão contém; visita: endereço da página contém; produto_visto: nome do produto contém. */
   text?: string
   /** email_aberto / email_clicado: só desta campanha ou modelo. */
   campaignId?: string | null
@@ -90,10 +91,12 @@ export type Step =
   | { id: string; type: 'alterar_etapa'; stage: string }
   | { id: string; type: 'criar_atendimento'; ownerId: string | null; note: string }
   | { id: string; type: 'notificar'; userIds: string[]; message: string }
+  /** WhatsApp para o lead: pelo número escolhido (vazio = o primeiro conectado); pode abrir pré-venda junto. */
+  | { id: string; type: 'enviar_whatsapp'; numberId: string | null; text: string; openRecord: boolean }
   | { id: string; type: 'encerrar' }
 
 export type StepType = Step['type']
-export const STEP_TYPES: StepType[] = ['esperar', 'condicao', 'enviar_email', 'adicionar_tag', 'remover_tag', 'alterar_vendedor', 'alterar_etapa', 'criar_atendimento', 'notificar', 'encerrar']
+export const STEP_TYPES: StepType[] = ['esperar', 'condicao', 'enviar_email', 'enviar_whatsapp', 'adicionar_tag', 'remover_tag', 'alterar_vendedor', 'alterar_etapa', 'criar_atendimento', 'notificar', 'encerrar']
 
 export const STAGES = ['LEAD', 'QUALIFICADO', 'OPORTUNIDADE', 'CLIENTE'] as const
 
@@ -109,7 +112,7 @@ export const EVENT_TRIGGERS: Record<string, TriggerType[]> = {
   compra_site: ['compra'],
   email_aberto: ['email_aberto'],
   email_clique: ['email_clicado'],
-  visita: ['visita'],
+  visita: ['visita', 'produto_visto'],
   estagio: ['etapa'],
 }
 export const PURCHASE_EVENTS = ['venda', 'compra_site']
@@ -139,7 +142,7 @@ export function cleanTrigger(raw: unknown): { trigger: Trigger } | { error: stri
     out.originId = uuidOrNull(t.originId)
     out.includeImported = t.includeImported === true
   }
-  if (type === 'formulario' || type === 'visita') out.text = str(t.text, 120)
+  if (type === 'formulario' || type === 'visita' || type === 'produto_visto') out.text = str(t.text, 120)
   if (type === 'resultado_atendimento') {
     out.result = t.result === 'venda' || t.result === 'perda' ? t.result : 'qualquer'
     out.lostReasonId = out.result === 'venda' ? null : uuidOrNull(t.lostReasonId)
@@ -262,6 +265,12 @@ function cleanList(raw: unknown, depth: number, seen: Set<string>): Step[] | str
         out.push({ id, type: 'notificar', userIds, message: str(r.message, 1000) })
         break
       }
+      case 'enviar_whatsapp': {
+        const text = str(r.text, 1000)
+        if (!text) return 'Escreva a mensagem do passo "Enviar WhatsApp".'
+        out.push({ id, type: 'enviar_whatsapp', numberId: uuidOrNull(r.numberId), text, openRecord: r.openRecord === true })
+        break
+      }
       case 'encerrar':
         out.push({ id, type: 'encerrar' })
         break
@@ -327,6 +336,8 @@ export function eventMatches(t: Trigger, e: EventInfo): boolean {
   const has = (hay: unknown, needle: string | undefined) => !needle || String(hay ?? '').toLowerCase().includes(needle.toLowerCase())
   if (t.type === 'formulario') return has(e.title, t.text)
   if (t.type === 'visita') return has(e.data?.pagina, t.text)
+  // Página de produto do catálogo (o serviço confere e põe o nome do produto no evento).
+  if (t.type === 'produto_visto') return !!e.data?.produto && has(e.data.produto, t.text)
   if ((t.type === 'email_aberto' || t.type === 'email_clicado') && t.campaignId) return e.data?.campanha === t.campaignId
   if (t.type === 'resultado_atendimento') {
     if (t.result && t.result !== 'qualquer' && e.data?.resultado !== t.result) return false
@@ -344,4 +355,14 @@ export function fillMessage(template: string, v: { name: string | null; email: s
     .replaceAll('{telefone}', v.phone ?? '-')
     .replaceAll('{link}', v.link)
     .replaceAll('{automacao}', v.automation)
+}
+
+/** Mensagem de WhatsApp da automação: {nome} (primeiro nome) e {produto} (produto visto ou do carrinho). */
+export function fillWhatsapp(template: string, v: { name: string | null; product: string | null }) {
+  const first = (v.name ?? '').trim().split(/\s+/)[0] ?? ''
+  return template
+    .replace(/\{nome\}/gi, first)
+    .replace(/\{produto\}/gi, v.product ?? 'o produto')
+    .replace(/[ \t]+([,.!?])/g, '$1')
+    .trim()
 }

@@ -13,6 +13,8 @@ import { PrismaService } from '../prisma/prisma.service'
 import { RastreamentoService } from '../rastreamento/rastreamento.service'
 import { MailService } from '../settings/mail.service'
 import { SettingsService } from '../settings/settings.service'
+import { pagePath } from '../rastreamento/origem'
+import { ChatService } from '../whatsapp/chat.service'
 import {
   allSteps,
   branchStart,
@@ -20,6 +22,7 @@ import {
   cleanTrigger,
   compile,
   EVENT_TRIGGERS,
+  fillWhatsapp,
   eventMatches,
   fillMessage,
   INTERACTION_EVENTS,
@@ -58,7 +61,7 @@ export interface AutomationInput {
   exitOnPurchase: boolean
 }
 
-type RunCtx = Record<string, unknown> & { waiting?: string; lastEmailRecipientId?: string }
+type RunCtx = Record<string, unknown> & { waiting?: string; lastEmailRecipientId?: string; waTries?: number }
 
 @Injectable()
 export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -76,6 +79,7 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
     private readonly tracking: RastreamentoService,
     private readonly mail: MailService,
     private readonly audit: AuditService,
+    private readonly chat?: ChatService,
   ) {}
 
   onApplicationBootstrap() {
@@ -282,7 +286,9 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
       this.prisma.emailSegment.findMany({ where: { tenantId: user.tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
     ])
     const campaigns = await this.prisma.emailCampaign.findMany({ where: { tenantId: user.tenantId, kind: 'CAMPANHA', status: { in: ['ENVIANDO', 'ENVIADA', 'PAUSADA'] } }, orderBy: { createdAt: 'desc' }, take: 50, select: { id: true, name: true } })
-    return { templates, users, segments, campaigns }
+    // Números de WhatsApp para o passo "Enviar WhatsApp".
+    const numbers = await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, deletedAt: null }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, status: true } })
+    return { templates, users, segments, campaigns, numbers }
   }
 
   // ---------- Motor ----------
@@ -336,8 +342,14 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
     // Acontecimentos do histórico do lead (formulário, carrinho, compra, e-mail...).
     const types = [...new Set([...Object.keys(EVENT_TRIGGERS), ...PURCHASE_EVENTS])]
     const events = await this.prisma.leadEvent.findMany({ where: { tenantId, type: { in: types }, ...this.after(cur.events) }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 500 })
+    // Visitas a páginas de produto do catálogo (gatilho "Viu produtos da loja"): o nome do produto vai no evento.
+    const products = autos.some((a) => trig(a).type === 'produto_visto') ? await this.productPages(tenantId, events.filter((e) => e.type === 'visita').map((e) => (e.data as { pagina?: string } | null)?.pagina)) : new Map<string, string>()
     for (const e of events) {
-      const data = (e.data ?? null) as Record<string, unknown> | null
+      const raw = (e.data ?? null) as Record<string, unknown> | null
+      // Produto visto (página do catálogo) ou o primeiro item do carrinho: vira {produto} no WhatsApp.
+      const cartItem = Array.isArray(raw?.itens) ? (raw.itens as { name?: unknown }[])[0]?.name : undefined
+      const product = e.type === 'visita' ? products.get(pagePath(String(raw?.pagina ?? '')) ?? '') : typeof cartItem === 'string' ? cartItem : undefined
+      const data = product && e.type === 'visita' ? { ...raw, produto: product } : raw
       if (PURCHASE_EVENTS.includes(e.type)) await this.exitOnPurchase(e.leadId)
       for (const a of autos) {
         if (!since(a, e.createdAt) || data?.automacao === a.id || !eventMatches(trig(a), { type: e.type, title: e.title, data })) continue
@@ -345,7 +357,7 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
           const lead = await this.prisma.lead.findUnique({ where: { id: e.leadId }, select: { stage: true } })
           if (lead?.stage !== trig(a).stage) continue
         }
-        await this.enroll(a, e.leadId, { evento: e.title.slice(0, 200), ...(data?.carrinho ? { carrinho: data.carrinho } : {}) })
+        await this.enroll(a, e.leadId, { evento: (product && trig(a).type === 'produto_visto' ? `Viu o produto ${product}` : e.title).slice(0, 200), ...(data?.carrinho ? { carrinho: data.carrinho } : {}), ...(product ? { produto: product } : {}) })
       }
     }
     if (events.length) cur.events = { at: events.at(-1)!.createdAt.toISOString(), id: events.at(-1)!.id }
@@ -389,6 +401,16 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
       cur.inactivityAt = new Date().toISOString()
     }
     await this.settings.set(tenantId, 'automation_cursor', cur)
+  }
+
+  /** Nome do produto de cada página vista que é página de produto do catálogo da loja. */
+  private async productPages(tenantId: string, urls: (string | undefined)[]) {
+    const paths = [...new Set(urls.map((u) => pagePath(u)).filter((x): x is string => !!x))]
+    if (!paths.length) return new Map<string, string>()
+    const rows = await this.prisma.storeProduct.findMany({ where: { tenantId, path: { in: paths } }, select: { path: true, name: true }, orderBy: { name: 'asc' } })
+    const out = new Map<string, string>()
+    for (const r of rows) if (r.path && !out.has(r.path)) out.set(r.path, r.name)
+    return out
   }
 
   /**
@@ -506,6 +528,16 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
           stepId = node.next
           break
         }
+        case 'enviar_whatsapp': {
+          const r = await this.sendWhatsapp(s, run, a, ctx)
+          if (r === 'tentar_depois') {
+            await this.prisma.automationRun.update({ where: { id: run.id }, data: { stepId, nextRunAt: new Date(Date.now() + 5 * 60_000), context: ctx as Prisma.InputJsonValue } })
+            return
+          }
+          delete ctx.waTries
+          stepId = node.next
+          break
+        }
         case 'encerrar':
           await this.saveCtx(run.id, ctx)
           return this.finish(run, 'CONCLUIDO', 'Fluxo encerrado pelo passo "Encerrar".')
@@ -577,6 +609,40 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
         return
       }
     }
+  }
+
+  /**
+   * Passo "Enviar WhatsApp": pelo número escolhido (ou o primeiro conectado), com {nome} e {produto}; pode abrir
+   * pré-venda junto (a conversa já fica ligada a ela). Sem número conectado, tenta de novo a cada 5 minutos por 1 hora.
+   */
+  private async sendWhatsapp(s: Extract<Step, { type: 'enviar_whatsapp' }>, run: AutomationRun, a: Automation, ctx: RunCtx): Promise<'ok' | 'tentar_depois'> {
+    if (!this.chat) return void (await this.log(run, s.id, 'erro', 'WhatsApp indisponível neste servidor: passo pulado.')), 'ok'
+    const lead = await this.prisma.lead.findUnique({ where: { id: run.leadId }, select: { name: true, phone: true, anonymizedAt: true, deletedAt: true } })
+    const phone = lead?.phone && /^\+\d{10,15}$/.test(lead.phone) ? lead.phone : null
+    if (!lead || lead.deletedAt || lead.anonymizedAt || !phone) return void (await this.log(run, s.id, 'pulado', 'Lead sem telefone: WhatsApp não enviado.')), 'ok'
+    const numbers = await this.prisma.whatsappNumber.findMany({ where: { tenantId: run.tenantId, deletedAt: null, status: 'CONECTADO' }, orderBy: { createdAt: 'asc' } })
+    const number = (s.numberId ? numbers.find((n) => n.id === s.numberId) : numbers[0]) ?? null
+    const tries = (ctx.waTries ?? 0) + 1
+    if (!number) {
+      if (tries <= 12) {
+        ctx.waTries = tries
+        await this.log(run, s.id, 'aviso', `${s.numberId ? 'O número escolhido' : 'Nenhum número de WhatsApp'} está desconectado. Nova tentativa em 5 minutos.`)
+        return 'tentar_depois'
+      }
+      return void (await this.log(run, s.id, 'erro', 'WhatsApp desconectado por mais de 1 hora: mensagem não enviada.')), 'ok'
+    }
+    const product = typeof ctx.produto === 'string' ? ctx.produto : null
+    const text = fillWhatsapp(s.text, { name: lead.name, product })
+    const recordId = s.openRecord ? await this.preVendas(run, a, null, `Automação "${a.name}": mensagem de WhatsApp enviada pelo número ${number.name}.`) : null
+    try {
+      const sent = await this.chat.sendAutomatic(number, phone, text, `Automação: ${a.name}`.slice(0, 120), { leadId: run.leadId, recordId, name: lead.name })
+      if (!sent) return 'tentar_depois'
+    } catch (err) {
+      return void (await this.log(run, s.id, 'erro', `WhatsApp não enviado: ${(err as Error).message}`)), 'ok'
+    }
+    await this.prisma.leadEvent.create({ data: { tenantId: run.tenantId, leadId: run.leadId, type: 'automacao', title: `Automação "${a.name}": WhatsApp enviado (${number.name})`.slice(0, 300), data: { automacao: a.id } } })
+    await this.log(run, s.id, 'whatsapp', `WhatsApp enviado pelo número ${number.name}${recordId ? ' e pré-venda aberta' : s.openRecord ? ' (já havia pré-venda aberta nas últimas 24 h)' : ''}.`)
+    return 'ok'
   }
 
   /** Abre um atendimento de Pré-Vendas para o lead (sem duplicar se já há um aberto nas últimas 24 h). */

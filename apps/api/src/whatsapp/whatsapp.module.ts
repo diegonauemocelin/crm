@@ -17,6 +17,6 @@ import { WhatsappService } from './whatsapp.service'
   imports: [LeadsModule, CapturaModule, EmailModule],
   controllers: [WhatsappController, WhatsappWebhookController, SetoresController, FluxosController, ChatController, WhatsappRulesController],
   providers: [WhatsappService, ChatService, WhatsappDashboardService, DiaSeguinteService, ResumoVendedoresService, SetoresService, FluxosService],
-  exports: [WhatsappService],
+  exports: [WhatsappService, ChatService],
 })
 export class WhatsappModule {}
