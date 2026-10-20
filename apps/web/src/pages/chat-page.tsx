@@ -452,7 +452,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                     onClick={() => open(c.id)}
                     className={cn(
                       'flex w-full items-start gap-3 border-b px-3 py-2.5 text-left hover:bg-muted/50',
-                      openId === c.id && (colors ? 'bg-[color:var(--brand)]/10 shadow-[inset_3px_0_0_var(--brand)]' : 'bg-[#f0f2f5] dark:bg-[#2a3942]'),
+                      openId === c.id && 'bg-[#f0f2f5] dark:bg-[#2a3942]',
                       colors && openId !== c.id && wc?.label === 'atrasada' && 'bg-orange-50 dark:bg-orange-500/10',
                       colors && openId !== c.id && wc?.label === 'atenção' && 'bg-amber-50/70 dark:bg-amber-500/5',
                     )}
@@ -483,7 +483,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                             <StickyNoteIcon className="size-3" /> Nota
                           </span>
                         )}
-                        {c.unread > 0 && <Badge className={cn('h-5 min-w-5 shrink-0 justify-center rounded-full px-1.5 tabular-nums', !colors && 'bg-[#25d366] text-white')} aria-label={`${c.unread} não lidas`}>{c.unread}</Badge>}
+                        {c.unread > 0 && <Badge className={cn('h-5 min-w-5 shrink-0 justify-center rounded-full px-1.5 tabular-nums', 'bg-[#25d366] text-white')} aria-label={`${c.unread} não lidas`}>{c.unread}</Badge>}
                       </span>
                       {((c.labels ?? []).length > 0 || c.stage) && (
                         <span className="mt-1 flex flex-wrap gap-1">
@@ -579,7 +579,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
     <MonitorContext.Provider value={monitor}>
     <ThreadNumberContext.Provider value={d.number?.id ?? null}>
     <div className="flex h-full min-h-0 flex-col">
-      <div className={cn('@container/head space-y-2 border-b px-3 py-2', !colors && 'bg-[#f0f2f5] dark:bg-[#202c33]')}>
+      <div className={cn('@container/head space-y-2 border-b bg-[#f0f2f5] px-3 py-2 dark:bg-[#202c33]')}>
         <div className="flex items-start gap-2">
           {onBack && (
             <Button size="icon" variant="ghost" className="size-8 shrink-0 md:hidden" onClick={onBack} aria-label="Voltar para a lista">
@@ -633,7 +633,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
         </div>
       </div>
       {!monitor && <ReminderBar conversationId={d.conversation.id} />}
-      <div className={cn('min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3 sm:px-[6%]', colors ? 'bg-muted/30' : 'wa-wallpaper')}>
+      <div className={cn('wa-wallpaper min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3 sm:px-[6%]')}>
         {(d.hasMore || older.length > 0) && (
           <div className="text-center">
             <Button size="sm" variant="ghost" disabled={loadingOlder} onClick={() => void loadOlder()}>
@@ -674,7 +674,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
                 <div
                   className={cn(
                     'relative max-w-[85%] rounded-lg px-2.5 py-1.5 text-[14.2px] leading-[19px] shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] sm:max-w-[65%]',
-                    m.fromMe ? (colors ? 'bg-blue-100 text-slate-900 dark:bg-blue-900/60 dark:text-blue-50' : 'bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]') : colors ? 'border bg-card' : 'bg-white text-[#111b21] dark:bg-[#202c33] dark:text-[#e9edef]',
+                    m.fromMe ? 'bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]' : 'bg-white text-[#111b21] dark:bg-[#202c33] dark:text-[#e9edef]',
                     first && (m.fromMe ? 'wa-tail-out rounded-tr-none' : 'wa-tail-in rounded-tl-none'),
                   )}
                 >
@@ -1230,7 +1230,7 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
   })
   const replies = useQuery({ queryKey: ['chat-respostas', id], queryFn: () => api.get<{ id: string; title: string; preview: string; standard: boolean }[]>(`/chat/respostas?conversa=${id}`), enabled: can('chat', 'create'), staleTime: 60_000 })
   const [managing, setManaging] = useState(false)
-  const { novo, colors } = useScreens()
+  const { novo } = useScreens()
   const [pick, setPick] = useState(0)
   const slash = novo && !file && text.startsWith('/') && !text.includes('\n') ? text.slice(1).trim().toLowerCase() : null
   const slashList = slash === null ? [] : (replies.data ?? []).filter((r) => !slash || r.title.toLowerCase().includes(slash) || r.preview.toLowerCase().includes(slash)).slice(0, 8)
@@ -1290,7 +1290,7 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
     <>
     <form
       onSubmit={submit}
-      className={cn('relative space-y-2 border-t p-2', !colors && 'bg-[#f0f2f5] dark:bg-[#202c33]')}
+      className={cn('relative space-y-2 border-t bg-[#f0f2f5] p-2 dark:bg-[#202c33]')}
       onDragOver={(e) => e.dataTransfer.types.includes('Files') && e.preventDefault()}
       onDrop={(e) => {
         if (!e.dataTransfer.files.length) return
@@ -1390,7 +1390,7 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
           rows={1}
           maxLength={file ? 1000 : 4000}
           placeholder={file ? 'Legenda (opcional) · Enter envia' : novo ? 'Escreva a mensagem (Enter envia, / abre as respostas rápidas)' : 'Escreva a mensagem (Enter envia, Shift+Enter pula linha)'}
-          className={cn('max-h-40 min-h-9 flex-1 resize-none', !colors && 'rounded-lg border-transparent bg-white shadow-none dark:bg-[#2a3942]')}
+          className={cn('max-h-40 min-h-9 flex-1 resize-none rounded-lg border-transparent bg-white shadow-none dark:bg-[#2a3942]')}
           aria-label="Mensagem"
         />
         {voice.recording ? (
