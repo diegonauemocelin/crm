@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanNextDay, conversationClosed, DEFAULT_NEXT_DAY_TEXT, isCallOverdue, nextCallDue, nextDayWindow } from '../src/atendimento/regras'
+import { cleanNextDay, conversationClosed, nextDayRoute, DEFAULT_NEXT_DAY_TEXT, isCallOverdue, nextCallDue, nextDayWindow } from '../src/atendimento/regras'
 import { DiaSeguinteService } from '../src/whatsapp/dia-seguinte.service'
 
 const H = 3_600_000
@@ -36,7 +36,7 @@ describe('em negociação: prazo para chamar o cliente', () => {
 
 describe('mensagem automática no dia seguinte', () => {
   it('configuração inválida volta para o padrão (desligada)', () => {
-    expect(cleanNextDay(null)).toEqual({ enabled: false, time: '09:00', text: DEFAULT_NEXT_DAY_TEXT, numberId: null, onlyForwarded: true, saleStatuses: ['NEGOCIACAO', 'SIM', 'NAO'] })
+    expect(cleanNextDay(null)).toEqual({ enabled: false, time: '09:00', text: DEFAULT_NEXT_DAY_TEXT, numberId: null, numberIds: [], withoutChat: false, onlyForwarded: true, saleStatuses: ['NEGOCIACAO', 'SIM', 'NAO'] })
     expect(cleanNextDay({ enabled: true, time: '25:00', text: '  ' })).toMatchObject({ enabled: true, time: '09:00', text: DEFAULT_NEXT_DAY_TEXT })
     expect(cleanNextDay({ enabled: true, time: '08:30', text: ' Oi {nome} ' })).toMatchObject({ time: '08:30', text: 'Oi {nome}' })
   })
@@ -78,19 +78,21 @@ describe('mensagem do dia seguinte: para quem vai', () => {
     const marked: Record<string, unknown>[] = []
     const sent: string[] = []
     const prisma = {
-      tenantSetting: { findMany: async () => [{ tenantId: 't', value: { nextDayMessage: { enabled: true, time: '07:30', text: 'Oi {nome}', saleStatuses: ['NEGOCIACAO', 'SIM'] } } }] },
+      tenantSetting: { findMany: async () => [{ tenantId: 't', value: { nextDayMessage: { enabled: true, time: '07:30', text: 'Oi {nome}', saleStatuses: ['NEGOCIACAO', 'SIM'], numberIds: ['n1'] } } }] },
       serviceRecord: {
         findMany: async (a: { where: Record<string, unknown> }) => ((where = a.where), [
           { id: 'r1', name: 'Ana', phone: '+5549999990001', leadId: null, leadAt: new Date('2026-10-19T12:00:00Z'), seller: null },
           { id: 'r2', name: 'Bia', phone: '+5549999990002', leadId: null, leadAt: new Date('2026-10-19T12:00:00Z'), seller: null },
+          { id: 'r3', name: 'Caio', phone: '+5549999990003', leadId: null, leadAt: new Date('2026-10-19T12:00:00Z'), seller: null },
+          { id: 'r4', name: 'Duda', phone: '+5549999990004', leadId: null, leadAt: new Date('2026-10-19T12:00:00Z'), seller: null },
         ]),
         updateMany: async (a: { where: { id: string }; data: Record<string, unknown> }) => (marked.push({ id: a.where.id, ...a.data }), { count: 1 }),
         update: async () => ({}),
       },
-      whatsappNumber: { findMany: async () => [{ id: 'n1', name: 'Pré-vendas' }] },
+      whatsappNumber: { findMany: async () => [{ id: 'n1', name: 'Pré-vendas' }, { id: 'ecommerce', name: 'E-commerce' }] },
       whatsappConversation: {
         findFirst: async (a: { where: { recordId?: string; numberId?: unknown } }) =>
-          a.where.numberId ? null : a.where.recordId === 'r1' ? { status: 'ARQUIVADA', closedAt: null } : a.where.recordId === 'r2' ? { status: 'ABERTA', closedAt: null } : null,
+          a.where.recordId === 'r1' ? { numberId: 'n1', status: 'ARQUIVADA', closedAt: null } : a.where.recordId === 'r2' ? { numberId: 'n1', status: 'ABERTA', closedAt: null } : a.where.recordId === 'r3' ? { numberId: 'ecommerce', status: 'ABERTA', closedAt: null } : null,
       },
     }
     const chat = { sendAutomatic: async (_n: unknown, phone: string) => (sent.push(phone), { waId: 'x' }) }
@@ -98,6 +100,28 @@ describe('mensagem do dia seguinte: para quem vai', () => {
     expect(where).toMatchObject({ forwarded: true, saleStatus: { in: ['NEGOCIACAO', 'SIM'] } })
     expect(where.OR).toEqual([{ forwardedAt: { gte: new Date('2026-10-19T03:00:00Z'), lt: new Date('2026-10-20T03:00:00Z') } }, { forwardedAt: null, leadAt: { gte: new Date('2026-10-19T03:00:00Z'), lt: new Date('2026-10-20T03:00:00Z') } }])
     expect(marked[0]).toMatchObject({ id: 'r1', autoMessageStatus: 'NÃO ENVIADA: conversa finalizada ou arquivada' })
+    expect(marked.find((m) => m.id === 'r3')).toMatchObject({ autoMessageStatus: 'NÃO ENVIADA: atendimento por um número de WhatsApp que não está nas regras' })
+    expect(marked.find((m) => m.id === 'r4')).toMatchObject({ autoMessageStatus: 'NÃO ENVIADA: cliente não chamou por WhatsApp' })
     expect(sent).toEqual(['+5549999990002'])
+  })
+})
+
+describe('mensagem do dia seguinte: por qual número', () => {
+  const cfg = { numberIds: ['pre'], numberId: null, withoutChat: false }
+  it('só atendimentos dos números escolhidos, pelo mesmo número; o do e-commerce não recebe', () => {
+    expect(nextDayRoute({ numberId: 'pre' }, cfg, ['pre', 'eco'])).toEqual({ send: 'pre' })
+    expect(nextDayRoute({ numberId: 'eco' }, cfg, ['pre', 'eco'])).toHaveProperty('skip')
+    expect(nextDayRoute({ numberId: 'eco' }, { ...cfg, numberIds: ['pre', 'eco'] }, ['pre', 'eco'])).toEqual({ send: 'eco' })
+    // Número escolhido desconectado: espera, nunca vai por outro.
+    expect(nextDayRoute({ numberId: 'pre' }, cfg, ['eco'])).toEqual({ wait: true })
+  })
+  it('sem conversa (formulário): só com a opção ligada, pelo número escolhido para isso', () => {
+    expect(nextDayRoute(null, cfg, ['pre'])).toEqual({ skip: 'cliente não chamou por WhatsApp' })
+    expect(nextDayRoute(null, { ...cfg, withoutChat: true }, ['pre'])).toEqual({ send: 'pre' })
+    expect(nextDayRoute(null, { ...cfg, withoutChat: true, numberId: 'eco' }, ['pre', 'eco'])).toEqual({ send: 'eco' })
+  })
+  it('configuração salva antes: só o número que estava selecionado, nunca todos', () => {
+    expect(cleanNextDay({ numberId: '11111111-1111-4111-8111-111111111111' })).toMatchObject({ numberIds: ['11111111-1111-4111-8111-111111111111'] })
+    expect(cleanNextDay({})).toMatchObject({ numberIds: [] })
   })
 })

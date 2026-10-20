@@ -1,7 +1,6 @@
 import { Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
-import { cleanNextDay, conversationClosed, nextDayWindow } from '../atendimento/regras'
+import { cleanNextDay, conversationClosed, nextDayRoute, nextDayWindow } from '../atendimento/regras'
 import type { AtendimentoSettings } from '../atendimento/service-records.service'
-import type { WhatsappNumber } from '../generated/prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { ChatService } from './chat.service'
 import { applyVariables } from './envio'
@@ -66,16 +65,24 @@ export class DiaSeguinteService implements OnApplicationBootstrap, OnModuleDestr
     })
     if (!records.length) return
     const numbers = await this.prisma.whatsappNumber.findMany({ where: { tenantId, deletedAt: null, status: 'CONECTADO' }, orderBy: { createdAt: 'asc' } })
-    // Sem número conectado não marca nada: tenta de novo no próximo minuto.
-    if (!numbers.length) return
-    const fallback = numbers.find((n) => n.id === config.numberId) ?? numbers[0]!
+    const connected = numbers.map((n) => n.id)
+    const skip = (id: string, reason: string) =>
+      this.prisma.serviceRecord.updateMany({ where: { id, autoMessageAt: null }, data: { autoMessageAt: new Date(), autoMessageStatus: `NÃO ENVIADA: ${reason}` } })
     for (const r of records) {
+      const conv = await this.conversationOf(tenantId, r.id, r.phone!, config.numberIds)
       // Atendimento finalizado ou conversa arquivada: não manda, e fica registrado o motivo.
-      if (conversationClosed(await this.conversationOf(tenantId, r.id, r.phone!), r.leadAt)) {
-        await this.prisma.serviceRecord.updateMany({ where: { id: r.id, autoMessageAt: null }, data: { autoMessageAt: new Date(), autoMessageStatus: 'NÃO ENVIADA: conversa finalizada ou arquivada' } })
+      if (conversationClosed(conv, r.leadAt)) {
+        await skip(r.id, 'conversa finalizada ou arquivada')
         continue
       }
-      const number = (await this.numberOf(tenantId, r.id, r.phone!, numbers)) ?? fallback
+      const route = nextDayRoute(conv, config, connected)
+      if ('skip' in route) {
+        await skip(r.id, route.skip)
+        continue
+      }
+      // Número escolhido desconectado: tenta de novo no próximo minuto (nunca por outro número).
+      if ('wait' in route) continue
+      const number = numbers.find((n) => n.id === route.send)!
       // Marca antes de enviar: dois servidores (ou dois minutos) não mandam a mesma mensagem duas vezes.
       const claimed = await this.prisma.serviceRecord.updateMany({ where: { id: r.id, autoMessageAt: null }, data: { autoMessageAt: new Date(), autoMessageStatus: 'ENVIANDO' } })
       if (!claimed.count) continue
@@ -101,21 +108,18 @@ export class DiaSeguinteService implements OnApplicationBootstrap, OnModuleDestr
     }
   }
 
-  /** Conversa do cliente: a ligada à pré-venda ou, sem ela, a mais recente com o telefone (em qualquer número). */
-  private async conversationOf(tenantId: string, recordId: string, phone: string) {
-    const select = { status: true, closedAt: true }
+  /**
+   * Conversa do cliente: a ligada à pré-venda; sem ela, a mais recente com o telefone nos números escolhidos e, por
+   * último, em qualquer número (atendimento por outro número não recebe).
+   */
+  private async conversationOf(tenantId: string, recordId: string, phone: string, numberIds: string[]) {
+    const select = { numberId: true, status: true, closedAt: true }
+    const orderBy = { lastMessageAt: 'desc' as const }
+    const phones = { in: phoneVariants(phone) }
     return (
-      (await this.prisma.whatsappConversation.findFirst({ where: { tenantId, recordId }, orderBy: { lastMessageAt: 'desc' }, select })) ??
-      (await this.prisma.whatsappConversation.findFirst({ where: { tenantId, phone: { in: phoneVariants(phone) } }, orderBy: { lastMessageAt: 'desc' }, select }))
+      (await this.prisma.whatsappConversation.findFirst({ where: { tenantId, recordId }, orderBy, select })) ??
+      (await this.prisma.whatsappConversation.findFirst({ where: { tenantId, phone: phones, numberId: { in: numberIds } }, orderBy, select })) ??
+      (await this.prisma.whatsappConversation.findFirst({ where: { tenantId, phone: phones }, orderBy, select }))
     )
-  }
-
-  /** Número em que o cliente chamou: o da conversa ligada à pré-venda ou, sem ela, o da conversa mais recente com o telefone. */
-  private async numberOf(tenantId: string, recordId: string, phone: string, connected: WhatsappNumber[]) {
-    const ids = connected.map((n) => n.id)
-    const conv =
-      (await this.prisma.whatsappConversation.findFirst({ where: { tenantId, recordId, numberId: { in: ids } }, select: { numberId: true } })) ??
-      (await this.prisma.whatsappConversation.findFirst({ where: { tenantId, phone, numberId: { in: ids } }, orderBy: { lastMessageAt: 'desc' }, select: { numberId: true } }))
-    return conv ? connected.find((n) => n.id === conv.numberId) : undefined
   }
 }

@@ -594,6 +594,8 @@ interface NextDayMessage {
   /** Só a mensagem do dia seguinte: só repassadas ao vendedor e as situações da venda que recebem. */
   onlyForwarded?: boolean
   saleStatuses?: SaleKey[]
+  numberIds?: string[]
+  withoutChat?: boolean
 }
 
 type SaleKey = 'NEGOCIACAO' | 'SIM' | 'NAO'
@@ -850,18 +852,20 @@ const FIRST_CONNECTED = '__first__'
 export function NextDayMessageCard({ config }: { config: AlertConfig }) {
   const { can } = useAuth()
   const canEdit = can('cadastros', 'edit')
-  const initial = { onlyForwarded: true, saleStatuses: SALE_OPTIONS.map((o) => o.key), ...(config.nextDayMessage ?? { enabled: false, time: '09:00', text: '', numberId: null }) }
+  const saved = config.nextDayMessage ?? { enabled: false, time: '09:00', text: '', numberId: null }
+  const initial = { onlyForwarded: true, saleStatuses: SALE_OPTIONS.map((o) => o.key), withoutChat: false, ...saved, numberIds: saved.numberIds ?? (saved.numberId ? [saved.numberId] : []) }
   const [m, setM] = useState<NextDayMessage>(initial)
   const statuses = m.saleStatuses ?? []
+  const chosen = m.numberIds ?? []
   const numbers = useQuery({ queryKey: ['cadastros', 'alertas', 'numeros'], queryFn: () => api.get<{ id: string; name: string; phone: string | null; status: string }[]>('/cadastros/alertas/numeros') })
   const save = useSaveAlerts(m.enabled ? 'Mensagem do dia seguinte ligada.' : 'Mensagem do dia seguinte salva (desligada).')
-  const valid = /^([01]\d|2[0-3]):[0-5]\d$/.test(m.time) && m.text.trim().length > 0 && m.text.length <= 1000 && statuses.length > 0
+  const valid = /^([01]\d|2[0-3]):[0-5]\d$/.test(m.time) && m.text.trim().length > 0 && m.text.length <= 1000 && statuses.length > 0 && chosen.length > 0
   return (
     <Card className="h-fit">
       <CardHeader>
         <CardTitle>Mensagem automática no dia seguinte</CardTitle>
         <CardDescription>
-          Todo dia, a partir do horário escolhido, o sistema manda esta mensagem pelo WhatsApp para os clientes da pré-venda do dia anterior que seguem as regras abaixo. Vai uma vez só, pelo número em que o cliente chamou (quem veio de formulário recebe pelo número escolhido abaixo). Fica registrada na conversa e no histórico da pré-venda.
+          Todo dia, a partir do horário escolhido, o sistema manda esta mensagem pelo WhatsApp para os clientes da pré-venda do dia anterior que seguem as regras abaixo. Vai uma vez só. Fica registrada na conversa e no histórico da pré-venda.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -874,14 +878,43 @@ export function NextDayMessageCard({ config }: { config: AlertConfig }) {
             <Label htmlFor="nd-time">A partir de (horário de Brasília)</Label>
             <Input id="nd-time" type="time" className="w-32" value={m.time} onChange={(e) => setM({ ...m, time: e.target.value })} disabled={!canEdit} />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="nd-number">Número para quem não chamou por WhatsApp</Label>
+        </div>
+        <div className="space-y-3 rounded-md border p-3">
+          <p className="text-sm font-medium">Para quem vai</p>
+          <div className="space-y-1.5">
+            <p className="text-sm">Atendimentos destes números de WhatsApp</p>
+            <div className="flex flex-col gap-2">
+              {(numbers.data ?? []).map((n) => (
+                <label key={n.id} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={chosen.includes(n.id)}
+                    onCheckedChange={(on) => setM({ ...m, numberIds: on ? [...chosen, n.id] : chosen.filter((x) => x !== n.id) })}
+                    disabled={!canEdit}
+                  />
+                  {n.name}
+                  {n.status !== 'CONECTADO' && <span className="text-xs text-muted-foreground">(desconectado)</span>}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">A mensagem sai pelo mesmo número em que o cliente foi atendido. Atendimento de número não marcado (ex.: e-commerce) não recebe.</p>
+            {!chosen.length && <p className="text-xs text-destructive">Marque ao menos um número.</p>}
+          </div>
+          <label className="flex items-start justify-between gap-3 text-sm">
+            <span>
+              Também para quem não chamou por WhatsApp
+              <span className="block text-xs text-muted-foreground">Cliente que veio de formulário, sem conversa no chat.</span>
+            </span>
+            <Switch checked={m.withoutChat === true} onCheckedChange={(withoutChat) => setM({ ...m, withoutChat })} disabled={!canEdit} />
+          </label>
+          {m.withoutChat && (
+          <div className="space-y-2 pl-1">
+            <Label htmlFor="nd-number">Número que envia para quem não chamou por WhatsApp</Label>
             <Select value={m.numberId ?? FIRST_CONNECTED} onValueChange={(v) => setM({ ...m, numberId: v === FIRST_CONNECTED ? null : v })} disabled={!canEdit}>
               <SelectTrigger id="nd-number" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={FIRST_CONNECTED}>O primeiro número conectado</SelectItem>
+                <SelectItem value={FIRST_CONNECTED}>O primeiro dos números marcados</SelectItem>
                 {(numbers.data ?? []).map((n) => (
                   <SelectItem key={n.id} value={n.id}>
                     {n.name}
@@ -891,9 +924,7 @@ export function NextDayMessageCard({ config }: { config: AlertConfig }) {
               </SelectContent>
             </Select>
           </div>
-        </div>
-        <div className="space-y-3 rounded-md border p-3">
-          <p className="text-sm font-medium">Para quem vai</p>
+          )}
           <label className="flex items-start justify-between gap-3 text-sm">
             <span>
               Só pré-venda com <strong>Repassou ao vendedor</strong>

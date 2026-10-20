@@ -99,8 +99,12 @@ export interface NextDayMessage {
   /** Horário de São Paulo (HH:MM) a partir do qual a mensagem sai. */
   time: string
   text: string
-  /** Número que envia quando o cliente não chamou por WhatsApp (vazio: o primeiro conectado). */
+  /** Número que envia para quem não chamou por WhatsApp (vazio: o primeiro dos escolhidos que estiver conectado). */
   numberId: string | null
+  /** Números de WhatsApp cujos atendimentos recebem a mensagem (ex.: só o de Pré-vendas); sai pelo mesmo número. */
+  numberIds: string[]
+  /** Também para quem não chamou por WhatsApp (veio de formulário): sai pelo numberId. */
+  withoutChat: boolean
   /** Só pré-venda marcada "Repassou ao vendedor"; o dia seguinte conta a partir do repasse. */
   onlyForwarded: boolean
   /** Situações da venda que recebem a mensagem. */
@@ -113,7 +117,7 @@ export const SALE_STATUS_KEYS: SaleStatusKey[] = ['NEGOCIACAO', 'SIM', 'NAO']
 export const DEFAULT_NEXT_DAY_TEXT =
   'Olá, {nome}! Tudo bem? Ontem você entrou em contato com a gente. Conseguimos te ajudar com o que precisava? Se ficou alguma dúvida, é só responder esta mensagem.'
 
-export const DEFAULT_NEXT_DAY: NextDayMessage = { enabled: false, time: '09:00', text: DEFAULT_NEXT_DAY_TEXT, numberId: null, onlyForwarded: true, saleStatuses: SALE_STATUS_KEYS }
+export const DEFAULT_NEXT_DAY: NextDayMessage = { enabled: false, time: '09:00', text: DEFAULT_NEXT_DAY_TEXT, numberId: null, numberIds: [], withoutChat: false, onlyForwarded: true, saleStatuses: SALE_STATUS_KEYS }
 
 /** Configuração salva (ou incompleta) com valores válidos. */
 export function cleanNextDay(raw: Partial<NextDayMessage> | null | undefined): NextDayMessage {
@@ -121,11 +125,16 @@ export function cleanNextDay(raw: Partial<NextDayMessage> | null | undefined): N
   const time = typeof r.time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(r.time) ? r.time : DEFAULT_NEXT_DAY.time
   const text = typeof r.text === 'string' && r.text.trim() ? r.text.trim().slice(0, 1000) : DEFAULT_NEXT_DAY_TEXT
   const statuses = Array.isArray(r.saleStatuses) ? SALE_STATUS_KEYS.filter((k) => r.saleStatuses!.includes(k)) : SALE_STATUS_KEYS
+  const numberId = typeof r.numberId === 'string' ? r.numberId : null
+  const ids = Array.isArray(r.numberIds) ? [...new Set(r.numberIds.filter((x): x is string => typeof x === 'string'))].slice(0, 50) : null
   return {
     enabled: r.enabled === true,
     time,
     text,
-    numberId: typeof r.numberId === 'string' ? r.numberId : null,
+    numberId,
+    // Salva antes desta escolha: só o número que estava selecionado (nunca todos os números conectados).
+    numberIds: ids ?? (numberId ? [numberId] : []),
+    withoutChat: r.withoutChat === true,
     // Configuração salva antes desta regra: só repassadas (é o que faz sentido para a mensagem de pós-venda).
     onlyForwarded: r.onlyForwarded !== false,
     saleStatuses: statuses.length ? statuses : SALE_STATUS_KEYS,
@@ -295,4 +304,21 @@ export function diffRecord(before: Record<string, unknown>, after: Record<string
     if (comparable(before[field]) !== comparable(after[field])) changes[field] = { de: before[field] ?? null, para: after[field] ?? null }
   }
   return changes
+}
+
+export type NextDayRoute = { send: string } | { skip: string } | { wait: true }
+
+/**
+ * Por qual número sai a mensagem do dia seguinte: o atendimento tem de ser de um dos números escolhidos e sai por ele;
+ * de outro número (ex.: e-commerce) não manda. Sem conversa (formulário), só se a opção estiver ligada.
+ * Número escolhido desconectado: espera reconectar.
+ */
+export function nextDayRoute(conv: { numberId: string } | null, cfg: Pick<NextDayMessage, 'numberIds' | 'numberId' | 'withoutChat'>, connected: string[]): NextDayRoute {
+  if (conv) {
+    if (!cfg.numberIds.includes(conv.numberId)) return { skip: 'atendimento por um número de WhatsApp que não está nas regras' }
+    return connected.includes(conv.numberId) ? { send: conv.numberId } : { wait: true }
+  }
+  if (!cfg.withoutChat) return { skip: 'cliente não chamou por WhatsApp' }
+  const pick = cfg.numberId && connected.includes(cfg.numberId) ? cfg.numberId : cfg.numberIds.find((id) => connected.includes(id))
+  return pick ? { send: pick } : { wait: true }
 }
