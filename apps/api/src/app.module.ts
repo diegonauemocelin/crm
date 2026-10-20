@@ -15,6 +15,7 @@ import { RelatoriosModule } from './relatorios/relatorios.module'
 import { CatalogoModule } from './catalogo/catalogo.module'
 import { GoogleAdsModule } from './googleads/googleads.module'
 import { SugestoesModule } from './sugestoes/sugestoes.module'
+import { MarketingModule } from './marketing/marketing.module'
 import { TcarModule } from './tcar/tcar.module'
 import { WhatsappModule } from './whatsapp/whatsapp.module'
 import { env } from './config/env'
@@ -60,6 +61,7 @@ import { UsersService } from './users/users.service'
     GoogleAdsModule,
     WhatsappModule,
     SugestoesModule,
+    MarketingModule,
     TcarModule,
   ],
   controllers: [UsersController, RolesController, SystemController],

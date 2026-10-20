@@ -2,6 +2,21 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.74.0",
+      "date": "2026-10-20",
+      "title": "Marketing Inteligente: dashboard executivo, funil, campanhas, recomendações e relatórios automáticos",
+      "changes": [
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Novo grupo no menu com 15 telas: visão geral, dashboard executivo, Google Ads, Meta Ads, TikTok Ads, redes sociais, SEO, CRM e leads, e-mail marketing, funil e atribuição, análise de campanhas, recomendações, planejamento, relatórios automáticos e integrações. Os módulos atuais não mudam." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Dashboard executivo com investimento, leads, qualificados, oportunidades, vendas e faturamento atribuídos ao marketing, CPL, custo por lead qualificado, CAC, conversão, ROAS, ROI estimado, ticket médio, atendidos, sem atendimento e perdidas, cada um com a variação contra o período anterior e a tendência; receita por plataforma, campanha, vendedor, região, estado, marca, tipo de peça e cliente novo/recorrente." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Filtros iguais em todas as telas (período, visão diária a anual, plataforma, campanha, marca, tipo de peça, estado, região, filial, vendedor, origem, tipo de cliente, situação e cliente novo/recorrente). Clicar numa linha filtra a tela por ela; tabelas com ordenação e CSV." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Funil da impressão à venda, com a passagem de cada etapa e o tempo até repassar e até o retorno do vendedor; análise de campanha e comparação de duas ou mais campanhas no mesmo período." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Recomendações com os números que as sustentam, prioridade, confiança, ação e como medir (CPL em alta, campanha sem lead ou sem venda, leads sem atendimento, demora no repasse, estados e vendedores fora da média, leads sem campanha, queda de faturamento, investimento desatualizado). Nada é alterado nas plataformas." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Relatórios automáticos por e-mail: cadastre os e-mails, a frequência (dia, semana ou mês), o dia, o horário, o período, os filtros e o que vai no relatório. Com prévia e Enviar agora." },
+        { "type": "novo", "area": "Configurações", "text": "Configurações › Marketing Inteligente: lead qualificado (padrão: repassado ao vendedor com retorno), margem de contribuição (padrão 30%), custos fixos de marketing, origens que contam como marketing, modelo e janela de atribuição; contas de Meta Ads, Instagram/Facebook, TikTok Ads e Search Console prontas para conectar, com Testar conexão (só leitura, tokens criptografados)." },
+        { "type": "seguranca", "area": "Perfis de acesso", "text": "Nove permissões novas no grupo Marketing Inteligente. Os perfis existentes começam sem acesso: cada parte só aparece para quem for liberado no perfil." }
+      ]
+    },
+    {
       "version": "0.73.1",
       "date": "2026-10-20",
       "title": "Foto do chat baixa com o formato certo e diagnóstico do investimento do Google Ads",

@@ -3,6 +3,7 @@ import {
   BotMessageSquareIcon,
   Building2Icon,
   ChartLineIcon,
+  ChartNoAxesCombinedIcon,
   ContactRoundIcon,
   DatabaseIcon,
   FileSpreadsheetIcon,
@@ -74,6 +75,7 @@ const PrivacyCard = lazyNamed(() => import('./captura-page'), 'PrivacyCard')
 const AdsTagCard = lazyNamed(() => import('./captura-page'), 'AdsTagCard')
 const TrackingTab = lazyNamed(() => import('./settings/tracking-tab'), 'TrackingTab')
 const MagazordTab = lazyNamed(() => import('./settings/magazord-tab'), 'MagazordTab')
+const MarketingSettingsTab = lazyNamed(() => import('./settings/marketing-tab'), 'MarketingSettingsTab')
 const MetaTab = lazyNamed(() => import('./settings/meta-tab'), 'MetaTab')
 const Ga4Tab = lazyNamed(() => import('./settings/ga4-tab'), 'Ga4Tab')
 const GoogleAdsTab = lazyNamed(() => import('./settings/google-ads-tab'), 'GoogleAdsTab')
@@ -181,6 +183,7 @@ const SECTIONS: Section[] = [
   },
 
   // ---------- Integrações ----------
+  { id: 'marketing-inteligente', group: 'Leads e marketing', title: 'Marketing Inteligente', description: 'Regras das análises (lead qualificado, margem, custos fixos, atribuição) e as contas de Meta Ads, Instagram/Facebook, TikTok Ads e Search Console.', icon: ChartNoAxesCombinedIcon, module: 'mi_config', keywords: 'meta tiktok search console margem roi atribuição lead qualificado instagram facebook', render: () => <MarketingSettingsTab /> },
   { id: 'smtp', group: 'Integrações', title: 'Servidor de e-mail (SMTP)', description: 'Servidor que envia os e-mails do sistema e das campanhas.', icon: ServerIcon, module: 'configuracoes', keywords: 'smtp locaweb envio email senha', render: () => <SmtpTab /> },
   { id: 'rastreamento', group: 'Integrações', title: 'Rastreamento do site', description: 'Script de visitas do site e do app, domínios, consentimento e prazo de guarda.', icon: RadarIcon, module: 'configuracoes', keywords: 'script visitas utm cookies', render: () => <TrackingTab /> },
   { id: 'loja', group: 'Integrações', title: 'Loja virtual (Magazord)', description: 'Pedidos, carrinhos e catálogo da loja virtual.', icon: ShoppingBagIcon, module: 'configuracoes', keywords: 'ecommerce magazord pedidos carrinho', render: () => <MagazordTab /> },

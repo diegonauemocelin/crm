@@ -641,6 +641,75 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'marketing',
+    title: 'Marketing Inteligente',
+    module: 'mi_executivo',
+    routes: ['/marketing'],
+    purpose: 'Investimento, leads, atendimento, vendas e retorno de todos os canais num lugar só, para decidir com números.',
+    howItWorks:
+      'O módulo lê o Pré-Vendas (fonte da verdade: leads, atendimento, vendas e o valor da venda) e o investimento das plataformas (hoje o Google Ads, pelo script). Um lead conta uma vez, mesmo com vários atendimentos; conversões das plataformas não são somadas às vendas do CRM. Cada tela tem os mesmos filtros (período, plataforma, campanha, marca, tipo de peça, estado, região, filial, vendedor, origem, tipo de cliente e cliente novo/recorrente) e compara com o período anterior do mesmo tamanho. Cada parte do menu só aparece para quem tem a permissão no perfil.',
+    lessons: [
+      {
+        id: 'mkt.ler',
+        title: 'Ler o dashboard executivo',
+        steps: [
+          'Abra Marketing Inteligente → Dashboard executivo e escolha o período (ou as datas).',
+          'Cada card mostra o valor, a variação contra o período anterior (verde quando melhora) e a tendência.',
+          'Clique numa linha das tabelas (campanha, vendedor, região, marca) para filtrar a tela inteira por ela; use “Limpar filtros” para voltar.',
+          'ROAS = faturamento atribuído ÷ investimento em mídia. ROI estimado usa a margem configurada (padrão 30%) e os custos fixos.',
+        ],
+        tip: 'Com filtro de marca, estado ou vendedor, o custo aparece como “—”: as plataformas não informam investimento por esses recortes.',
+      },
+      {
+        id: 'mkt.funil',
+        title: 'Funil, campanhas e recomendações',
+        steps: [
+          'Em Funil e atribuição, veja onde mais se perde (impressões → cliques → leads → atendidos → oportunidades → qualificados → vendas) e compare por plataforma, região, vendedor ou marca.',
+          'Em Análise de campanhas, clique no nome para investigar uma campanha, ou marque duas ou mais para comparar lado a lado.',
+          'Em Recomendações, cada diagnóstico traz os números que o sustentam, a ação sugerida e como medir. Nada é alterado nas plataformas.',
+        ],
+      },
+      {
+        id: 'mkt.relatorios',
+        title: 'Receber relatórios por e-mail',
+        steps: [
+          'Abra Marketing Inteligente → Relatórios automáticos → Novo relatório.',
+          'Cadastre os e-mails, a frequência (todo dia, semana ou mês), o dia e o horário, o período e o que vai no relatório.',
+          'Use Prévia para ver o e-mail com os dados de hoje e Enviar agora para mandar na hora.',
+        ],
+      },
+    ],
+  },
+  {
+    key: 'marketing-config',
+    title: 'Marketing Inteligente: regras e integrações',
+    module: 'mi_config',
+    routes: ['/marketing/integracoes', '/configuracoes?secao=marketing-inteligente'],
+    purpose: 'Definir como o módulo conta (lead qualificado, margem, custos, atribuição) e conectar Meta, TikTok e Search Console.',
+    howItWorks:
+      'Em Configurações › Marketing Inteligente ficam as regras das análises e as contas das plataformas, sempre só leitura: o CRM nunca altera campanha, orçamento ou anúncio. Os tokens ficam criptografados no servidor. A tela Integrações mostra a saúde de cada fonte e a qualidade dos dados dos leads (campanha identificada, origem, estado).',
+    lessons: [
+      {
+        id: 'mkt.regras',
+        title: 'Ajustar as regras',
+        steps: [
+          'Lead qualificado: repassado ao vendedor e com retorno do vendedor (padrão) ou só repassado.',
+          'Margem de contribuição média (padrão 30%) e custos fixos de marketing por mês, para o ROI e o CAC.',
+          'Origens do Pré-Vendas que também contam como marketing e o modelo/janela de atribuição.',
+        ],
+      },
+      {
+        id: 'mkt.contas',
+        title: 'Conectar as plataformas',
+        steps: [
+          'Meta Ads: token do usuário do sistema do Business Manager (ads_read, read_insights) e as contas act_…',
+          'TikTok Ads: token da Marketing API e o ID do anunciante. Search Console: adicione a conta de serviço do GA4 na propriedade.',
+          'Salve e clique em Testar conexão: o resultado fica na tela Integrações.',
+        ],
+      },
+    ],
+  },
+  {
     key: 'whatsapp-dash',
     title: 'Atendimento WhatsApp (painel)',
     module: 'chat',

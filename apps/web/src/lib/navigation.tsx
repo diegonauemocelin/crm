@@ -21,6 +21,19 @@ import {
   UsersRoundIcon,
   type LucideIcon,
   BookUserIcon,
+  BrainCircuitIcon,
+  CalendarRangeIcon,
+  FilterIcon,
+  GaugeIcon,
+  GlobeIcon,
+  MailOpenIcon,
+  MusicIcon,
+  PlugIcon,
+  PresentationIcon,
+  ScanSearchIcon,
+  Share2Icon,
+  UsersIcon,
+  FileBarChartIcon,
 } from 'lucide-react'
 import type { Action } from './types'
 
@@ -42,7 +55,7 @@ export interface NavGroup {
 }
 
 /** Módulos com seções em Configurações (a tela mostra só as seções de cada um). */
-export const SETTINGS_MODULES = ['configuracoes', 'cadastros', 'usuarios', 'perfis', 'whatsapp', 'email_marketing', 'captura']
+export const SETTINGS_MODULES = ['configuracoes', 'cadastros', 'usuarios', 'perfis', 'whatsapp', 'email_marketing', 'captura', 'mi_config']
 
 /** Menu único, usado pelos dois layouts (Moderno e Clássico). Cada item respeita a permissão do perfil. */
 export const NAVIGATION: NavGroup[] = [
@@ -87,6 +100,26 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Captura', to: '/captura', icon: MegaphoneIcon, module: 'captura' },
       { title: 'Email marketing', to: '/email-marketing', icon: MailIcon, module: 'email_marketing' },
       { title: 'Automações', to: '/automacoes', icon: BotIcon, module: 'automacoes' },
+    ],
+  },
+  {
+    title: 'Marketing Inteligente',
+    items: [
+      { title: 'Visão geral', to: '/marketing', icon: GaugeIcon, module: 'mi_executivo' },
+      { title: 'Dashboard executivo', to: '/marketing/executivo', icon: PresentationIcon, module: 'mi_executivo' },
+      { title: 'Google Ads', to: '/marketing/google-ads', icon: TargetIcon, module: 'mi_midia' },
+      { title: 'Meta Ads', to: '/marketing/meta-ads', icon: MegaphoneIcon, module: 'mi_midia' },
+      { title: 'TikTok Ads', to: '/marketing/tiktok-ads', icon: MusicIcon, module: 'mi_midia' },
+      { title: 'Redes sociais', to: '/marketing/redes-sociais', icon: Share2Icon, module: 'mi_social' },
+      { title: 'SEO e site', to: '/marketing/seo', icon: GlobeIcon, module: 'mi_seo' },
+      { title: 'CRM e leads', to: '/marketing/leads', icon: UsersIcon, module: 'mi_comercial' },
+      { title: 'E-mail marketing', to: '/marketing/email', icon: MailOpenIcon, module: 'mi_comercial' },
+      { title: 'Funil e atribuição', to: '/marketing/funil', icon: FilterIcon, module: 'mi_executivo' },
+      { title: 'Análise de campanhas', to: '/marketing/campanhas', icon: ScanSearchIcon, module: 'mi_executivo' },
+      { title: 'Recomendações', to: '/marketing/recomendacoes', icon: BrainCircuitIcon, module: 'mi_ia' },
+      { title: 'Planejamento', to: '/marketing/planejamento', icon: CalendarRangeIcon, module: 'mi_orcamento' },
+      { title: 'Relatórios automáticos', to: '/marketing/relatorios', icon: FileBarChartIcon, module: 'mi_relatorios' },
+      { title: 'Integrações', to: '/marketing/integracoes', icon: PlugIcon, module: 'mi_config' },
     ],
   },
   {
