@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { api } from '@/lib/api'
 import { brl, brlCompact, int, pctFmt, todaySP } from '@/lib/atendimento'
+import { type ScriptStatus, scriptDiagnosis } from '@/lib/google-ads'
 
 interface Ratios {
   cpc: number | null
@@ -35,6 +36,7 @@ interface Panel {
   from: string
   to: string
   costSyncedAt: string | null
+  script?: ScriptStatus
   hasCost: boolean
   hasKeywordCost: boolean
   balance: Balance
@@ -113,7 +115,18 @@ function Painel() {
 
         {d && t && (
           <>
-            {!d.hasCost && (
+            {scriptDiagnosis(d.costSyncedAt, d.script) ? (
+              <p role="alert" className="flex flex-wrap items-center gap-2 rounded-md border border-red-500/40 bg-red-500/10 p-3 text-sm">
+                <AlertTriangleIcon className="size-4 text-red-600" />
+                <span>
+                  {scriptDiagnosis(d.costSyncedAt, d.script)} O código do script fica em{' '}
+                  <Link to="/configuracoes?secao=google-ads" className="font-medium underline underline-offset-4">
+                    Configurações → Google Ads
+                  </Link>
+                  .
+                </span>
+              </p>
+            ) : !d.hasCost && (
               <p className="flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
                 <AlertTriangleIcon className="size-4 text-amber-600" />
                 <span>

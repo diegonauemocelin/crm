@@ -386,6 +386,32 @@ export const MEDIA_MAX_BYTES = 64 * 1024 * 1024
 /** Foto e vídeo acima disto vão como documento (o WhatsApp não manda mídia maior como foto/vídeo). */
 export const INLINE_MEDIA_MAX_BYTES = 16 * 1024 * 1024
 
+const MIME_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'image/heic': 'heic',
+  'video/mp4': 'mp4', 'video/3gpp': '3gp', 'video/quicktime': 'mov',
+  'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/aac': 'aac', 'audio/amr': 'amr', 'audio/webm': 'webm',
+  'application/pdf': 'pdf',
+}
+
+/**
+ * Nome do arquivo ao baixar a mídia: foto, vídeo e áudio chegam sem nome, então ganham um nome com a extensão
+ * do tipo (ex.: foto-20261020-1745.jpg), para o computador abrir com o programa certo. Nome sem extensão também ganha.
+ */
+export function mediaFileName(fileName: string | null | undefined, mime: string, sentAt?: Date | null) {
+  const type = mime.split(';')[0]!.trim().toLowerCase()
+  const ext = MIME_EXT[type]
+  const kind = type.startsWith('image/') ? 'foto' : type.startsWith('video/') ? 'video' : type.startsWith('audio/') ? 'audio' : 'arquivo'
+  const stamp = sentAt ? new Date(sentAt.getTime() - 3 * 3_600_000).toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-') : ''
+  const name = (fileName ?? '').replace(/[\u0000-\u001f\u007f/\\:*?"<>|]+/g, '_').trim().slice(0, 120) || (stamp ? `${kind}-${stamp}` : kind)
+  return ext && !/\.[a-z0-9]{2,5}$/i.test(name) ? `${name}.${ext}` : name
+}
+
+/** Content-Disposition com o nome em ASCII (navegadores antigos) e em UTF-8 (acentos). */
+export function contentDisposition(name: string, inline: boolean) {
+  const ascii = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.\- ]+/g, '_')
+  return `${inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)}`
+}
+
 /** Tipos que o navegador pode abrir direto; o resto vai como download (nunca HTML/SVG/script na tela). */
 export const INLINE_MIME = new Set(['audio/webm', 'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'audio/ogg', 'audio/mpeg', 'audio/mp4', 'audio/aac', 'audio/amr', 'video/mp4', 'video/3gpp', 'application/pdf'])
 

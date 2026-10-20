@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.73.1",
+      "date": "2026-10-20",
+      "title": "Foto do chat baixa com o formato certo e diagnóstico do investimento do Google Ads",
+      "changes": [
+        { "type": "correcao", "area": "Chat WhatsApp", "text": "Baixar uma foto, vídeo ou áudio recebido salvava como \"arquivo\", sem extensão. Agora salva com nome e formato certos (ex.: foto-20261020-1745.jpg), e nomes com acento ficam corretos." },
+        { "type": "melhoria", "area": "Google Ads", "text": "O CRM guarda o último contato do script do Google Ads e se aceitou ou recusou o envio. Quando o investimento fica mais de 36 horas sem atualizar, o painel diz o motivo: script parado (não programado \"Diariamente\" ou com erro no Google Ads), script antigo (só nomes das campanhas) ou envio recusado pelo CRM, com o erro." },
+        { "type": "melhoria", "area": "Configurações", "text": "Em Configurações › Google Ads, junto do código do script, aparece o último contato do script e se foi aceito." }
+      ]
+    },
+    {
       "version": "0.73.0",
       "date": "2026-10-20",
       "title": "Trilha de conhecimento completa, com explicação de cada módulo, imagens e vídeos",

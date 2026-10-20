@@ -27,6 +27,13 @@ export const BATCH_SIZE = 500
 
 export type ConversionKind = 'contato' | 'negociacao' | 'venda' | 'perda'
 
+/** Último contato do script do Google Ads (Ferramentas → Scripts), para avisar quando ele parar ou for recusado. */
+export interface ScriptState {
+  lastCallAt?: string
+  lastError?: string | null
+}
+export const SCRIPT_KEY = 'google_ads_script'
+
 export interface GoogleAdsSettings {
   enabled: boolean
   /** ID da conta (10 dígitos, sem hífen) e, se a conta for gerenciada por uma MCC, o ID da MCC. */

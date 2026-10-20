@@ -10,7 +10,7 @@ import type { AuthUser } from '../common/types'
 import { ChatService } from './chat.service'
 import { WhatsappDashboardService } from './dashboard.service'
 import { LABEL_COLORS } from './envio'
-import { INLINE_MIME, MEDIA_MAX_BYTES } from './mensagens'
+import { contentDisposition, INLINE_MIME, MEDIA_MAX_BYTES, mediaFileName } from './mensagens'
 
 class ListDto {
   @IsOptional() @IsUUID() numero?: string
@@ -585,8 +585,7 @@ export class ChatController {
     res.setHeader('Content-Type', inline ? m.mime : 'application/octet-stream')
     res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox")
-    const name = (m.fileName ?? 'arquivo').replace(/[^\w.\- ]+/g, '_').slice(0, 120)
-    res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${name}"`)
+    res.setHeader('Content-Disposition', contentDisposition(mediaFileName(m.fileName, m.mime, m.sentAt), inline))
     res.setHeader('Cache-Control', 'private, max-age=3600')
     res.send(m.content)
   }

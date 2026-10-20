@@ -15,6 +15,7 @@ import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { api, errorMessage } from '@/lib/api'
 import { brl, int, useOptions } from '@/lib/atendimento'
+import type { ScriptStatus } from '@/lib/google-ads'
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 import { FormError } from '../auth/auth-layout'
@@ -33,6 +34,7 @@ interface Config {
   campaigns: Record<string, string>
   campaignsScript: string | null
   campaignsSyncedAt: string | null
+  script?: ScriptStatus
   startDate: string | null
   updatedAt: string | null
 }
@@ -302,7 +304,8 @@ function Editor({ initial }: { initial: Config }) {
                   </p>
                   <CopyField value={initial.campaignsScript} multiline />
                   <p className="text-xs text-muted-foreground">
-                    {initial.campaignsSyncedAt ? `Última lista recebida: ${formatDateTime(initial.campaignsSyncedAt)}.` : 'Ainda não recebeu nenhuma lista.'} O código contém um endereço
+                    {initial.campaignsSyncedAt ? `Última lista recebida: ${formatDateTime(initial.campaignsSyncedAt)}.` : 'Ainda não recebeu nenhuma lista.'}{' '}
+                    {initial.script?.lastCallAt && `Último contato do script: ${formatDateTime(initial.script.lastCallAt)}${initial.script.lastError ? ` (recusado: ${initial.script.lastError})` : ' (aceito)'}.`} O código contém um endereço
                     secreto: não compartilhe fora da conta do Google Ads.
                   </p>
                 </div>

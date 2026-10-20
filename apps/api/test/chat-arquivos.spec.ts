@@ -36,3 +36,19 @@ describe('arquivos no chat', () => {
     expect(sent[0]).toMatchObject({ mediatype: 'document', fileName: 'catalogo.pdf', caption: 'Segue nosso catálogo' })
   })
 })
+
+describe('nome do arquivo ao baixar a mídia', () => {
+  it('foto, vídeo e áudio sem nome ganham nome com a extensão do tipo', async () => {
+    const { mediaFileName, contentDisposition } = await import('../src/whatsapp/mensagens')
+    const at = new Date('2026-10-20T20:45:00Z')
+    expect(mediaFileName(null, 'image/jpeg', at)).toBe('foto-20261020-1745.jpg')
+    expect(mediaFileName(null, 'image/webp', null)).toBe('foto.webp')
+    expect(mediaFileName(null, 'video/mp4', at)).toBe('video-20261020-1745.mp4')
+    expect(mediaFileName(null, 'audio/ogg; codecs=opus', at)).toBe('audio-20261020-1745.ogg')
+    expect(mediaFileName('Catálogo JCB.pdf', 'application/pdf')).toBe('Catálogo JCB.pdf')
+    expect(mediaFileName('desenho', 'image/png')).toBe('desenho.png')
+    expect(mediaFileName('planilha.xlsx', 'application/octet-stream')).toBe('planilha.xlsx')
+    expect(mediaFileName('../a/b:c.pdf', 'application/pdf')).toBe('.._a_b_c.pdf')
+    expect(contentDisposition("Catálogo d'água.pdf", false)).toBe("attachment; filename=\"Catalogo d_agua.pdf\"; filename*=UTF-8''Cat%C3%A1logo%20d%27%C3%A1gua.pdf")
+  })
+})

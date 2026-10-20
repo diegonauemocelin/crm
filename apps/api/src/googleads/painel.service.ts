@@ -7,7 +7,7 @@ import { env } from '../config/env'
 import { MailService } from '../settings/mail.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
-import { campaignLabel, DEFAULT_GOOGLE_ADS, type GoogleAdsSettings, normalizeEmail } from './googleads'
+import { campaignLabel, DEFAULT_GOOGLE_ADS, type GoogleAdsSettings, normalizeEmail, SCRIPT_KEY, type ScriptState } from './googleads'
 import { type BalanceState, type CampaignDayRow, DEFAULT_BALANCE, estimateBalance, keywordKey, type KeywordDayRow, panelPeriod, ratios } from './painel'
 
 const toNum = (v: unknown) => (v === null || v === undefined ? 0 : Number(v))
@@ -249,6 +249,7 @@ export class GoogleAdsPanelService {
       from,
       to,
       costSyncedAt: synced.syncedAt ?? null,
+      script: { ...(await this.settings.get<ScriptState>(tenantId, SCRIPT_KEY, {})), campaignsSyncedAt: s.campaignsSyncedAt ?? null },
       hasCost: costCamp.length > 0,
       hasKeywordCost: costKw.length > 0,
       balance: await this.balance(tenantId),

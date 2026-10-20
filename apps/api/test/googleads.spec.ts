@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { scriptDiagnosis } from '../../web/src/lib/google-ads'
 import { actionFor, buildEvent, clickIdsFromUrl, cleanActionId, cleanCustomerId, DEFAULT_GOOGLE_ADS, ingestBody, isGoogleAdsTouch, isoWithOffset, normalizeE164, normalizeEmail, sha256Hex } from '../src/googleads/googleads'
 
 describe('Google Ads: identificação do clique', () => {
@@ -538,5 +539,41 @@ describe('Google Ads: eventos recusados pelo índice', () => {
     } finally {
       globalThis.fetch = original
     }
+  })
+})
+
+describe('Google Ads: diagnóstico do script do investimento', () => {
+  const setup = async () => {
+    const { GoogleAdsService } = await import('../src/googleads/googleads.service')
+    const store = new Map<string, object>()
+    const token = 'tok_abcdefghijklmnopqrstuvwx'
+    const prisma = { tenantSetting: { findMany: async () => [{ tenantId: 't', value: { campaignsToken: token } }] } }
+    const settings = { get: async (_t: string, k: string, d: object) => store.get(k) ?? (k === 'google_ads' ? { ...DEFAULT_GOOGLE_ADS, campaignsToken: token } : d), set: async (_t: string, k: string, v: object) => (store.set(k, v), v) }
+    const stored: unknown[] = []
+    const panel = { store: async (_t: string, st: unknown) => (stored.push(st), { dias: 1, palavras: 0 }) }
+    const service = new GoogleAdsService(prisma as never, settings as never, {} as never, undefined, panel as never)
+    return { service, store, token, stored }
+  }
+
+  it('guarda o último contato do script, aceito ou recusado', async () => {
+    const { service, store, token } = await setup()
+    await service.receiveCampaigns(token, { campaigns: [{ id: '123', name: 'Pesquisa' }] })
+    expect(store.get('google_ads_script')).toMatchObject({ lastError: null })
+    expect((store.get('google_ads_script') as { lastCallAt: string }).lastCallAt).toMatch(/^\d{4}-/)
+    await expect(service.receiveCampaigns(token, { stats: { campaigns: Array.from({ length: 5001 }, () => ({})) } })).rejects.toThrow('Linhas demais')
+    expect(store.get('google_ads_script')).toMatchObject({ lastError: 'Linhas demais em um envio (máximo 5.000).' })
+    expect(await service.receiveCampaigns('endereco_que_nao_existe_mais', { campaigns: [] })).toBeNull()
+  })
+
+  it('explica por que o investimento não chega', () => {
+    const now = Date.parse('2026-10-20T20:00:00Z')
+    const h = (n: number) => new Date(now - n * 3_600_000).toISOString()
+    expect(scriptDiagnosis(h(10), { lastCallAt: h(10), lastError: null }, now)).toBeNull()
+    expect(scriptDiagnosis(h(24 * 11), { lastCallAt: h(2), lastError: 'Linhas demais em um envio (máximo 5.000).' }, now)).toContain('o CRM recusou: Linhas demais')
+    expect(scriptDiagnosis(h(24 * 11), { campaignsSyncedAt: h(5) }, now)).toContain('é o script antigo')
+    const parado = scriptDiagnosis(h(24 * 11), { campaignsSyncedAt: h(24 * 11) }, now)!
+    expect(parado).toContain('não manda dados desde')
+    expect(parado).toContain('Frequência “Diariamente”')
+    expect(scriptDiagnosis(null, undefined, now)).toContain('não manda dados ainda')
   })
 })

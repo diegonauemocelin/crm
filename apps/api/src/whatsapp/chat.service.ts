@@ -869,7 +869,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (monitor) await this.loadMonitor(user, m.conversationId)
     else await this.load(user, m.conversationId)
     const { asset, content } = await this.files.read(m.fileId)
-    return { mime: asset.mime, content, fileName: m.fileName }
+    return { mime: asset.mime, content, fileName: m.fileName, sentAt: m.sentAt }
   }
 
   /**

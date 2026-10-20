@@ -13,6 +13,8 @@ import { GA_TOKEN_URL, parseKeyFile, signJwt } from '../relatorios/ga4'
 import { SettingsService } from '../settings/settings.service'
 import {
   actionFor,
+  SCRIPT_KEY,
+  type ScriptState,
   adsError,
   adsInfoOf,
   campaignLabel,
@@ -145,6 +147,11 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
     return { ...rest, hasKey: !!privateKeyEnc, campaignsScript: url ? adsScript(url) : null }
   }
 
+  /** Último contato do script do Google Ads e se o CRM aceitou o envio. */
+  scriptState(tenantId: string) {
+    return this.settings.get<ScriptState>(tenantId, SCRIPT_KEY, {})
+  }
+
   /** Configuração com a chave do endereço dos nomes das campanhas (criada na primeira vez). */
   async configWithToken(tenantId: string) {
     const s = await this.config(tenantId)
@@ -162,7 +169,27 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
       const t = (r.value as { campaignsToken?: string } | null)?.campaignsToken
       return typeof t === 'string' && safeEqual(t, token)
     })
-    if (!row) return null
+    if (!row) {
+      this.logger.warn('Script do Google Ads chamou com um endereço que não existe mais (cole o código novo de Configurações → Google Ads).')
+      return null
+    }
+    // Último contato do script (com ou sem erro): mostra no painel se ele parou de rodar ou se o CRM recusou o envio.
+    const note = async (lastError: string | null) => {
+      const prev = await this.settings.get<ScriptState>(row.tenantId, SCRIPT_KEY, {})
+      await this.settings.set(row.tenantId, SCRIPT_KEY, { ...prev, lastCallAt: new Date().toISOString(), lastError })
+    }
+    try {
+      const out = await this.storeFromScript(row.tenantId, body)
+      await note(null)
+      return out
+    } catch (err) {
+      await note(((err as Error).message || 'erro desconhecido').slice(0, 300)).catch(() => {})
+      throw err
+    }
+  }
+
+  private async storeFromScript(tenantId: string, body: unknown) {
+    const row = { tenantId }
     const b = (body ?? {}) as { campaigns?: unknown; stats?: unknown }
     if (b.campaigns === undefined && b.stats === undefined) throw new BadRequestException('Nada para receber.')
     const out: Record<string, unknown> = { ok: true }
