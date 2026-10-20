@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2Icon, CircleHelpIcon, CircleIcon, GraduationCapIcon, LightbulbIcon } from 'lucide-react'
+import { CheckCircle2Icon, CircleHelpIcon, CircleIcon, GraduationCapIcon, LightbulbIcon, PlayCircleIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
-import { type Lesson, trailForRoute } from '@/lib/trilha'
+import { type Lesson, type Media, type TrailModule, trailForRoute } from '@/lib/trilha'
 import { cn } from '@/lib/utils'
 
 export function useTrailProgress() {
@@ -20,6 +21,52 @@ export function useTrailProgress() {
   })
   const done = new Set(q.data?.done ?? [])
   return { done, toggle: (id: string) => mark.mutate({ id, done: !done.has(id) }), busy: mark.isPending, loaded: !!q.data }
+}
+
+/** Print da tela (clique para ampliar) ou vídeo curto mostrando a tela funcionando. Arquivo que falta some sem erro. */
+export function TrailMedia({ media, className }: { media: Media; className?: string }) {
+  const [zoom, setZoom] = useState(false)
+  const [broken, setBroken] = useState(false)
+  if (broken) return null
+  if (media.kind === 'video') {
+    return (
+      <figure className={cn('space-y-1', className)}>
+        <video src={media.src} controls muted playsInline preload="metadata" className="w-full rounded-md border bg-black" onError={() => setBroken(true)} aria-label={media.alt} />
+        <figcaption className="flex items-center gap-1 text-xs text-muted-foreground">
+          <PlayCircleIcon className="size-3.5" /> {media.alt}
+        </figcaption>
+      </figure>
+    )
+  }
+  return (
+    <>
+      <button type="button" className={cn('block w-full overflow-hidden rounded-md border transition hover:opacity-90', className)} onClick={() => setZoom(true)} title="Clique para ampliar">
+        <img src={media.src} alt={media.alt} loading="lazy" className="w-full" onError={() => setBroken(true)} />
+      </button>
+      <Dialog open={zoom} onOpenChange={setZoom}>
+        <DialogContent className="max-w-[min(96vw,1400px)] p-2 sm:max-w-[min(96vw,1400px)]">
+          <DialogTitle className="sr-only">{media.alt}</DialogTitle>
+          <img src={media.src} alt={media.alt} className="w-full rounded" />
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+/** Abertura do módulo: como a tela funciona e o print dela. */
+export function ModuleIntro({ m }: { m: TrailModule }) {
+  if (!m.howItWorks && !m.media) return null
+  return (
+    <div className="space-y-2 rounded-lg bg-muted/40 p-3">
+      {m.howItWorks && (
+        <p className="text-sm">
+          <span className="font-medium">Como funciona: </span>
+          {m.howItWorks}
+        </p>
+      )}
+      {m.media && <TrailMedia media={m.media} />}
+    </div>
+  )
 }
 
 /** Uma lição: passos numerados, dica e o botão de concluída. */
@@ -37,6 +84,7 @@ export function LessonCard({ lesson, done, onToggle, disabled }: { lesson: Lesso
           <li key={i}>{s}</li>
         ))}
       </ol>
+      {lesson.media && <TrailMedia media={lesson.media} />}
       {lesson.tip && (
         <p className="flex items-start gap-1.5 rounded-md bg-amber-500/10 p-2 text-xs text-amber-900 dark:text-amber-200">
           <LightbulbIcon className="mt-0.5 size-3.5 shrink-0" /> {lesson.tip}
@@ -65,6 +113,7 @@ export function TrailHelp({ className }: { className?: string }) {
             <SheetDescription>{m ? m.purpose : 'Esta tela ainda não tem passo a passo. Veja a trilha completa.'}</SheetDescription>
           </SheetHeader>
           <div className="space-y-3 px-4 pb-6">
+            {m && <ModuleIntro m={m} />}
             {m?.lessons.map((l) => (
               <LessonCard key={l.id} lesson={l} done={progress.done.has(l.id)} onToggle={() => progress.toggle(l.id)} disabled={progress.busy} />
             ))}

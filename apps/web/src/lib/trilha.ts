@@ -4,11 +4,20 @@
  * Ao mudar uma tela, atualize aqui a lição correspondente (o id da lição não deve mudar: guarda o progresso).
  */
 
+/** Imagem (print da tela) ou vídeo curto que mostra a tela funcionando (arquivos em public/trilha). */
+export interface Media {
+  src: string
+  alt: string
+  kind?: 'imagem' | 'video'
+}
+
 export interface Lesson {
   id: string
   title: string
   steps: string[]
   tip?: string
+  /** Mostra este passo a passo acontecendo (vídeo curto ou print). */
+  media?: Media
 }
 
 export interface TrailModule {
@@ -20,6 +29,10 @@ export interface TrailModule {
   routes: string[]
   /** Para que serve, em uma frase. */
   purpose: string
+  /** Como a tela funciona, em poucas linhas (o "porquê" antes do passo a passo). */
+  howItWorks?: string
+  /** Print da tela principal do módulo. */
+  media?: Media
   lessons: Lesson[]
 }
 
@@ -27,14 +40,16 @@ export const TRAIL: TrailModule[] = [
   {
     key: 'primeiros-passos',
     title: 'Primeiros passos',
-    routes: ['/meu-perfil', '/atualizacoes'],
+    routes: ['/meu-perfil', '/atualizacoes', '/trilha'],
     purpose: 'Deixar sua conta segura e o sistema do seu jeito.',
+    howItWorks: 'Cada pessoa entra com o próprio e-mail e senha (e, se o perfil exigir, um código do celular). O menu mostra só as telas que o seu perfil de acesso libera. Em qualquer tela, o botão “?” no topo abre a ajuda daquela tela, e esta Trilha guarda o que você já aprendeu.',
+    media: { src: '/trilha/primeiros-passos.jpg', alt: 'Tela Meu perfil' },
     lessons: [
       {
         id: 'perfil.seguranca',
         title: 'Proteger a sua conta',
         steps: [
-          'Clique na sua foto (canto de baixo do menu) e abra Meu perfil.',
+          'Clique no seu nome (canto de baixo do menu) e abra Meu perfil.',
           'Ative a verificação em 2 fatores e leia o QR Code com o aplicativo autenticador do celular.',
           'Guarde os códigos de recuperação num lugar seguro (fora do computador do trabalho).',
           'Em Aparelhos conectados, desconecte os que você não reconhece.',
@@ -59,14 +74,25 @@ export const TRAIL: TrailModule[] = [
           'Em Sistema → Atualizações você vê o que mudou em cada versão.',
         ],
       },
+      {
+        id: 'sistema.ajuda',
+        title: 'Ajuda da tela e avisos',
+        steps: [
+          'Clique no “?” do topo: abre o passo a passo da tela em que você está.',
+          'O sino mostra os avisos: lembretes do chat, pré-vendas paradas, prazos vencidos e respostas às suas sugestões.',
+          'Os avisos vermelhos no canto (ex.: “clientes sem resposta no WhatsApp”) têm o botão para ir direto ao que precisa.',
+        ],
+      },
     ],
   },
   {
     key: 'inicio',
-    title: 'Início',
+    title: 'Início e Minha fila',
     module: 'dashboard',
     routes: ['/'],
-    purpose: 'Os números do dia: leads, atendimentos e vendas.',
+    purpose: 'Os números do dia e, nas telas novas, a sua fila de trabalho.',
+    howItWorks: 'O Início junta o que aconteceu hoje (leads, atendimentos e vendas) e compara com o período anterior. Nas telas novas ele vira a Minha fila: as conversas esperando você, as pré-vendas para chamar e os leads novos, na ordem de prioridade.',
+    media: { src: '/trilha/inicio.jpg', alt: 'Início com os números do dia' },
     lessons: [
       {
         id: 'inicio.ler',
@@ -77,6 +103,15 @@ export const TRAIL: TrailModule[] = [
           'Os relatórios marcados com Mostrar no Painel aparecem logo abaixo (marque em Relatórios).',
         ],
       },
+      {
+        id: 'inicio.fila',
+        title: 'Trabalhar pela Minha fila (telas novas)',
+        steps: [
+          'Em Meu perfil, escolha um modelo “com telas novas”: o Início vira a Minha fila.',
+          'Comece pelo topo: conversas esperando resposta há mais tempo e pré-vendas com prazo vencido.',
+          'Clique no item para abrir a conversa ou a ficha, resolva e volte: a fila se atualiza sozinha.',
+        ],
+      },
     ],
   },
   {
@@ -85,6 +120,8 @@ export const TRAIL: TrailModule[] = [
     module: 'pre_vendas',
     routes: ['/pre-vendas'],
     purpose: 'Registrar e acompanhar cada contato de cliente até a venda (ou o motivo da perda).',
+    howItWorks: 'Cada contato de cliente vira um atendimento de pré-venda: quem chamou, de onde veio (origem, Google Ads), o que procura e para qual vendedor foi repassado. O sistema cobra os prazos (retorno do vendedor e “chamar o cliente até”), e quando a venda fecha (Sim ou Não) o cliente vai sozinho para o Pós-Vendas.',
+    media: { src: '/trilha/pre-vendas.jpg', alt: 'Lista de Pré-Vendas' },
     lessons: [
       {
         id: 'prevenda.registrar',
@@ -96,15 +133,35 @@ export const TRAIL: TrailModule[] = [
           'Contatos que chegam por formulário, botão de WhatsApp ou chat já entram sozinhos: confira e complete.',
         ],
         tip: 'Telefone com DDD: o sistema usa para achar o lead e abrir a conversa no WhatsApp.',
+        media: { src: '/trilha/pre-vendas-registrar.webm', alt: 'Registrando um atendimento de pré-venda', kind: 'video' },
       },
       {
         id: 'prevenda.acompanhar',
         title: 'Acompanhar até fechar',
         steps: [
-          'Marque “Repassou ao vendedor” quando passar o contato e “Vendedor retornou?” quando ele der retorno.',
+          'Marque “Repassou ao vendedor” quando passar o contato e, em “Vendedor retornou?”, escolha Sim, Não ou Pendente (a opção escolhida fica destacada com ✓).',
           'Em “Venda realizada?”, marque Sim (com o valor da venda e a nota fiscal) ou Não (com o motivo da venda perdida).',
           'Use as observações para registrar o que foi conversado.',
-          'Filtre a lista por período, situação e vendedor para ver o que está parado.',
+          'Filtre a lista por período, situação, vendedor ou Google Ads para ver o que está parado.',
+        ],
+        tip: 'Se os botões não mudam ao clicar e aparece “Só leitura”, o seu perfil não pode editar pré-vendas: peça ao administrador.',
+      },
+      {
+        id: 'prevenda.prazo',
+        title: 'Prazo para chamar o cliente',
+        steps: [
+          'Em negociação, a ficha mostra “Chamar o cliente até”: o prazo é calculado sozinho ao repassar (pode mudar a data).',
+          'Ligou ou falou com o cliente? Clique em Chamei o cliente: o prazo recomeça. Responder pelo chat do CRM também conta.',
+          'Passou do prazo, vira aviso no sino para quem atende.',
+        ],
+      },
+      {
+        id: 'prevenda.quadro',
+        title: 'Quadro e resumo do dia',
+        steps: [
+          'Na aba Quadro, os atendimentos ficam em colunas por fase: arraste o cartão para mudar de fase.',
+          'Em Resumo do dia, veja os clientes repassados hoje a cada vendedor, com os telefones prontos para copiar.',
+          'Se estiver ligado em Configurações, cada vendedor recebe esse resumo no WhatsApp no fim do dia.',
         ],
       },
       {
@@ -112,6 +169,7 @@ export const TRAIL: TrailModule[] = [
         title: 'Ver o resultado',
         steps: [
           'Na aba Dashboard: atendimentos, taxa de conversão, valor vendido e motivos de perda.',
+          'O quadro “Google Ads × fora do Ads” compara leads, retorno do vendedor e vendas de quem veio do anúncio com o resto.',
           'Compare vendedores e origens para saber de onde vêm as melhores vendas.',
           'Exportar baixa a planilha com os filtros aplicados (se o seu perfil permitir).',
         ],
@@ -124,6 +182,8 @@ export const TRAIL: TrailModule[] = [
     module: 'pos_vendas',
     routes: ['/pos-vendas'],
     purpose: 'Acompanhar o cliente depois da compra: entrega, satisfação e nova venda.',
+    howItWorks: 'Quando uma pré-venda fecha (vendeu ou não), o sistema cria o acompanhamento de pós-venda com prazo para o contato. Assim nenhum cliente fica sem retorno depois da compra, e o motivo de quem não comprou também é ouvido.',
+    media: { src: '/trilha/pos-vendas.jpg', alt: 'Lista de Pós-Vendas' },
     lessons: [
       {
         id: 'posvenda.acompanhar',
@@ -142,44 +202,109 @@ export const TRAIL: TrailModule[] = [
     module: 'chat',
     routes: ['/chat'],
     purpose: 'Atender os clientes pelo WhatsApp da empresa direto no CRM, com tudo no histórico do lead.',
+    howItWorks: 'Os números de WhatsApp da empresa ficam conectados ao CRM: tudo o que chega e sai aparece aqui e no celular, igual ao WhatsApp Web. Cliente novo vira lead e pré-venda sozinho (conforme as regras), o robô de atendimento pode receber e direcionar, e cada conversa tem dono: as dos outros atendentes não se misturam com as suas.',
+    media: { src: '/trilha/chat.jpg', alt: 'Chat WhatsApp com conversa aberta' },
     lessons: [
       {
         id: 'chat.responder',
         title: 'Responder uma conversa',
         steps: [
-          'Abra Atendimento Comercial → Chat WhatsApp e escolha a conversa (as não lidas ficam em negrito).',
+          'Abra Atendimento Comercial → Chat WhatsApp e escolha a conversa (as não lidas ficam em negrito, com o número verde).',
           'Escreva e aperte Enter para enviar (Shift + Enter quebra a linha).',
           'Use o clipe para enviar foto ou arquivo e o microfone para gravar áudio.',
-          'Respostas rápidas: textos prontos, com o primeiro nome do cliente já preenchido.',
+          'Passe o mouse na mensagem: Responder (cita a mensagem), reagir com emoji, encaminhar e, nas suas, Corrigir ou apagar.',
         ],
         tip: 'Você também pode responder pelo celular: a conversa aparece igual no CRM.',
+        media: { src: '/trilha/chat-responder.webm', alt: 'Respondendo uma conversa no chat', kind: 'video' },
+      },
+      {
+        id: 'chat.arquivos',
+        title: 'Arquivos, imagens e respostas rápidas',
+        steps: [
+          'Arraste o arquivo do computador para a conversa (aparece “Solte para anexar”) ou cole uma imagem com Ctrl + V.',
+          'Vão arquivos de até 64 MB; foto ou vídeo grande vai como documento, com o arquivo original.',
+          'No raio (ou digitando / na caixa, nas telas novas), escolha uma resposta rápida: o nome do cliente já vem preenchido e, se ela tiver arquivo (catálogo em PDF), ele vai junto.',
+          'Áudio recebido: clique em Transcrever para ler o que foi dito.',
+        ],
+      },
+      {
+        id: 'chat.telefone',
+        title: 'Telefone na mensagem, contato e menu de robô',
+        steps: [
+          'Telefone escrito na mensagem fica azul: clique e o CRM confere se tem WhatsApp e abre a conversa, sem salvar o contato no celular.',
+          'Cartão de contato recebido tem o botão Conversar, que faz o mesmo.',
+          'Mensagem de robô com opções (“1 Marketing, 2 CRM...”) mostra botões: clique na opção para responder como se tocasse no celular.',
+          'Mensagem que é resposta a outra mostra a citação em cima; clique nela para ir até a mensagem original.',
+        ],
       },
       {
         id: 'chat.organizar',
-        title: 'Organizar: tipo de contato, lembrete e arquivo',
+        title: 'Organizar: tipo de contato, etiquetas, lembrete e arquivo',
         steps: [
           'Marque o tipo do contato (cliente, colega, fornecedor ou outro): só cliente vira lead e pré-venda.',
-          'Crie um lembrete para retornar depois (1 hora, amanhã ou uma data).',
+          'Use Etiquetas para separar as conversas (ex.: Orçamento, Urgente) e filtre a lista por elas.',
+          'Crie um Lembrete para retornar depois (1 hora, amanhã ou uma data): ele aparece no sino.',
           'Arquive a conversa resolvida: se o cliente escrever de novo, ela volta para a lista.',
         ],
       },
       {
         id: 'chat.fila',
-        title: 'Fila e atendimento dividido',
+        title: 'Fila, robô e atendimento dividido',
         steps: [
-          'Nos números com atendimento dividido, cliente novo aparece “Na fila”.',
-          'Clique em Assumir para a conversa ser sua (ou responda: ela vira sua sozinha).',
-          'Para passar para outra pessoa ou setor, escolha no campo do atendente, no topo da conversa.',
+          'Nos números com atendimento dividido, cliente novo aparece “Na fila” (ou passa antes pelo robô de atendimento, se houver um fluxo ligado).',
+          'Clique em Assumir para a conversa ser sua (ou responda: ela vira sua sozinha). As respostas do cliente ao robô aparecem numa nota.',
+          'Para passar para outra pessoa ou setor, escolha no campo do atendente, no topo da conversa. Ajudantes também podem responder.',
+        ],
+      },
+      {
+        id: 'chat.finalizar',
+        title: 'Finalizar o atendimento',
+        steps: [
+          'Terminou de atender? Clique em Finalizar no topo da conversa.',
+          'O sistema pode mandar a mensagem de encerramento (configurada em Regras e horário), tira a conversa de você e arquiva.',
+          'Se o cliente chamar de novo, começa um atendimento novo (fila ou robô).',
         ],
       },
       {
         id: 'chat.iniciar',
         title: 'Iniciar conversa com um cliente',
         steps: [
-          'Clique em Nova conversa, escolha o número da empresa e informe o telefone.',
-          'Na ficha do lead, o botão WhatsApp abre a conversa no CRM.',
+          'Clique em Nova conversa, escolha o número da empresa e informe o telefone ou o nome (busca na agenda, nos vendedores e nos leads).',
+          'O CRM confere se o número tem WhatsApp antes de abrir.',
+          'Na ficha do lead ou em Leads para chamar, o botão WhatsApp abre a conversa no CRM.',
         ],
         tip: 'Evite mandar a mesma mensagem para muitos contatos seguidos: o WhatsApp bloqueia números que parecem disparo em massa.',
+      },
+      {
+        id: 'chat.chamar',
+        title: 'Leads para chamar',
+        steps: [
+          'Na aba Leads para chamar ficam os leads que converteram (formulário, loja, botão) e ainda não conversaram no WhatsApp.',
+          'Filtre por Hoje, Ontem, últimos dias ou um período no calendário.',
+          'A linha de cima mostra quando chegou o último lead por canal: data antiga num canal com movimento é sinal de que ele parou de mandar leads.',
+          'Clique em Chamar no WhatsApp para abrir a conversa.',
+        ],
+      },
+    ],
+  },
+  {
+    key: 'agenda',
+    title: 'Agenda de contatos',
+    module: 'whatsapp',
+    routes: ['/agenda'],
+    purpose: 'Quem é cliente, colega, fornecedor ou outro em cada número de WhatsApp.',
+    howItWorks: 'Cada número de WhatsApp tem a sua agenda: o tipo de cada contato define o que acontece quando ele chama (só cliente vira lead e pré-venda; colega e fornecedor ficam fora das vendas). A agenda “Todos os números” vale para os números sem agenda própria.',
+    media: { src: '/trilha/agenda.jpg', alt: 'Agenda de contatos' },
+    lessons: [
+      {
+        id: 'agenda.usar',
+        title: 'Manter a agenda em dia',
+        steps: [
+          'Abra Atendimento Comercial → Agenda de contatos e escolha o número (ou Todos os números).',
+          'Busque o contato e mude o tipo: Cliente, Colega de trabalho, Fornecedor ou Outro.',
+          'Importe a agenda do celular (arquivo .vcf ou planilha do Google Contatos) para não classificar um por um.',
+          'Abrir conversa no chat leva direto ao WhatsApp do contato.',
+        ],
       },
     ],
   },
@@ -189,6 +314,8 @@ export const TRAIL: TrailModule[] = [
     module: 'monitoramento',
     routes: ['/chat?monitorar=1'],
     purpose: 'Acompanhar a equipe lendo as conversas, sem marcar como lidas para o vendedor.',
+    howItWorks: 'Quem tem a permissão de monitorar vê todas as conversas; o gestor de um setor (ou de vendedores) vê as da sua equipe. É só leitura: nada muda para quem atende, e cada leitura fica registrada na auditoria.',
+    media: { src: '/trilha/monitoramento.jpg', alt: 'Monitorar conversas da equipe' },
     lessons: [
       {
         id: 'monitor.ler',
@@ -216,6 +343,7 @@ export const TRAIL: TrailModule[] = [
     module: 'consulta_produtos',
     routes: ['/consulta-produtos'],
     purpose: 'Achar a peça na Tcar por código, referência ou título, com estoque e preço.',
+    howItWorks: 'A busca consulta o cadastro de peças da Tcar (o sistema da empresa) e atualiza o estoque na hora das primeiras peças encontradas, por filial.',
     lessons: [
       {
         id: 'produtos.buscar',
@@ -234,8 +362,10 @@ export const TRAIL: TrailModule[] = [
     key: 'cadastros',
     title: 'Ajustes do atendimento',
     module: 'cadastros',
-    routes: ['/configuracoes?secao=listas', '/configuracoes?secao=vendedores', '/configuracoes?secao=unidades', '/configuracoes?secao=prazos', '/configuracoes?secao=mensagens-automaticas'],
+    routes: ['/configuracoes?secao=listas', '/configuracoes?secao=vendedores', '/configuracoes?secao=unidades', '/configuracoes?secao=prazos', '/configuracoes?secao=mensagens-automaticas', '/configuracoes?secao=importar'],
     purpose: 'Em Configurações: unidades, vendedores, listas (origens, marcas, tipos de peça, motivos de perda), prazos e mensagens automáticas.',
+    howItWorks: 'As listas e os prazos daqui alimentam as fichas de Pré e Pós-Vendas. As mensagens automáticas mandam WhatsApp sozinhas no horário escolhido (pós-venda do dia seguinte e resumo do dia para os vendedores), sempre com intervalo entre os envios para não bloquear o número.',
+    media: { src: '/trilha/cadastros.jpg', alt: 'Configurações de mensagens automáticas' },
     lessons: [
       {
         id: 'cadastros.listas',
@@ -244,7 +374,27 @@ export const TRAIL: TrailModule[] = [
           'Abra Configurações → Listas do atendimento.',
           'Em Configurações → Vendedores, cadastre cada vendedor com o telefone e ligue ao login dele (para o escopo “Próprios”).',
           'Desative o que não usa mais em vez de excluir: o histórico continua certo.',
-          'Em Configurações → Prazos e alertas e → Mensagens automáticas, ajuste os avisos e as mensagens de WhatsApp.',
+          'Em Configurações → Prazos e alertas, ajuste o aviso de retorno do vendedor e o prazo para chamar o cliente.',
+        ],
+      },
+      {
+        id: 'cadastros.mensagens',
+        title: 'Mensagens automáticas de WhatsApp',
+        steps: [
+          'Abra Configurações → Mensagens automáticas.',
+          'Mensagem do dia seguinte (pós-venda): escolha o horário, o texto ({nome} e {vendedor}), os números de WhatsApp cujos atendimentos recebem, só repassadas ao vendedor e as situações da venda. Conversa finalizada ou arquivada nunca recebe.',
+          'Ajuste o intervalo entre as mensagens (padrão 3 a 20 minutos): o WhatsApp bloqueia número que manda muitas seguidas.',
+          'Resumo do dia para os vendedores: horário, texto e para quais vendedores vai.',
+        ],
+        tip: 'Comece com poucos envios por dia e acompanhe: mensagem automática para quem não pediu contato aumenta o risco de bloqueio.',
+      },
+      {
+        id: 'cadastros.importar',
+        title: 'Importar planilha de atendimentos',
+        steps: [
+          'Em Configurações → Importar planilha, envie a planilha antiga de pré-vendas (Excel ou CSV).',
+          'Confira como cada coluna foi entendida na prévia e importe.',
+          'Pré-vendas importadas não recebem mensagens automáticas.',
         ],
       },
     ],
@@ -253,8 +403,10 @@ export const TRAIL: TrailModule[] = [
     key: 'leads',
     title: 'Base de leads',
     module: 'leads',
-    routes: ['/leads'],
+    routes: ['/leads', '/configuracoes?secao=leads-campos', '/configuracoes?secao=leads-pontuacao', '/configuracoes?secao=leads-tags'],
     purpose: 'Todos os contatos da empresa, com origem, interesse, compras e histórico.',
+    howItWorks: 'Todo contato que chega (formulário, loja virtual, WhatsApp, Meta, planilha) vira um lead único, achado pelo e-mail ou telefone. A ficha junta tudo o que ele fez: conversões, atendimentos, e-mails, compras e páginas vistas, e a nota (A, B, C) mostra o perfil e o interesse.',
+    media: { src: '/trilha/leads.jpg', alt: 'Base de leads' },
     lessons: [
       {
         id: 'leads.filtrar',
@@ -262,6 +414,7 @@ export const TRAIL: TrailModule[] = [
         steps: [
           'Abra CRM → Base de leads e busque por nome, e-mail ou telefone.',
           'Use os filtros (estágio, nota, tags, estado, responsável, origem, datas) para montar listas.',
+          'Selecione vários (ou todos do filtro) para ações em lote: responsável, tags, etapa.',
           'Exportar baixa a lista filtrada (se o seu perfil permitir).',
         ],
       },
@@ -285,6 +438,15 @@ export const TRAIL: TrailModule[] = [
           'Importe só contatos com autorização para receber comunicação (LGPD).',
         ],
       },
+      {
+        id: 'leads.configurar',
+        title: 'Campos, pontuação e tags',
+        steps: [
+          'Em Configurações → Campos personalizados, crie os campos que a empresa usa (ex.: tipo de frota).',
+          'Em Pontuação dos leads, defina quanto vale cada perfil e cada interesse para a nota A, B, C.',
+          'Em Tags dos leads, organize as tags usadas nos filtros e nas automações.',
+        ],
+      },
     ],
   },
   {
@@ -293,6 +455,8 @@ export const TRAIL: TrailModule[] = [
     module: 'carrinhos',
     routes: ['/carrinhos'],
     purpose: 'Recuperar vendas de quem colocou produtos no carrinho da loja e não comprou.',
+    howItWorks: 'A loja virtual (Magazord) avisa o CRM de cada carrinho e checkout. Os que ficam parados sem compra aparecem aqui com o cliente e os produtos, prontos para um contato.',
+    media: { src: '/trilha/carrinhos.jpg', alt: 'Carrinhos e checkout' },
     lessons: [
       {
         id: 'carrinhos.recuperar',
@@ -311,6 +475,8 @@ export const TRAIL: TrailModule[] = [
     module: 'catalogo',
     routes: ['/catalogo'],
     purpose: 'Os produtos da loja virtual, o que os clientes mais veem e quem viu e não comprou.',
+    howItWorks: 'O catálogo da loja é copiado todo dia de madrugada. O rastreamento do site registra quais produtos cada visitante viu, e o CRM cruza com carrinhos e compras.',
+    media: { src: '/trilha/catalogo.jpg', alt: 'Catálogo da loja' },
     lessons: [
       {
         id: 'catalogo.usar',
@@ -336,15 +502,17 @@ export const TRAIL: TrailModule[] = [
     key: 'captura',
     title: 'Captura (formulários, pop-ups e WhatsApp)',
     module: 'captura',
-    routes: ['/captura'],
+    routes: ['/captura', '/configuracoes?secao=captura'],
     purpose: 'Transformar visitas do site e das landing pages em leads.',
+    howItWorks: 'Formulários, pop-ups e botões de WhatsApp criados aqui vão para o site e as landing pages com um código. Cada envio vira lead (e pré-venda, no botão de WhatsApp), com a origem e a campanha do Google Ads quando houver.',
+    media: { src: '/trilha/captura.jpg', alt: 'Captura: formulários' },
     lessons: [
       {
         id: 'captura.formulario',
-        title: 'Criar um formulário',
+        title: 'Criar um formulário ou pop-up',
         steps: [
-          'Abra Marketing → Captura → Formulários e clique em Novo.',
-          'Monte os campos no editor e o texto de consentimento (LGPD).',
+          'Abra Marketing → Captura → Formulários (ou Pop-ups) e clique em Novo.',
+          'Monte os campos no editor (inclusive Tipo de cliente) e o texto de consentimento (LGPD).',
           'Copie o código e cole no site ou na landing page.',
           'Em Envios, veja cada conversão e de onde veio.',
         ],
@@ -365,8 +533,10 @@ export const TRAIL: TrailModule[] = [
     key: 'email',
     title: 'Email marketing',
     module: 'email_marketing',
-    routes: ['/email-marketing'],
+    routes: ['/email-marketing', '/configuracoes?secao=email-marketing'],
     purpose: 'Campanhas para os leads que autorizaram receber e-mail, com resultado de cada envio.',
+    howItWorks: 'Você escolhe quem recebe (segmento), monta o e-mail com blocos e envia ou agenda. Só recebe quem autorizou e tem e-mail válido; aberturas, cliques e vendas de quem clicou voltam para o lead.',
+    media: { src: '/trilha/email.jpg', alt: 'Email marketing' },
     lessons: [
       {
         id: 'email.campanha',
@@ -405,17 +575,28 @@ export const TRAIL: TrailModule[] = [
     module: 'automacoes',
     routes: ['/automacoes'],
     purpose: 'Fluxos que trabalham sozinhos: e-mails, tarefas e mudanças no lead a partir de um acontecimento.',
+    howItWorks: 'Um fluxo começa com um gatilho (algo que o lead fez) e segue os passos em ordem: esperar, conferir uma condição e agir (e-mail, tag, vendedor, pré-venda). Cada lead anda no fluxo no seu tempo, e você acompanha quem está em cada passo no relatório.',
+    media: { src: '/trilha/automacoes.jpg', alt: 'Editor de automação' },
     lessons: [
       {
         id: 'automacoes.fluxo',
         title: 'Criar um fluxo',
         steps: [
           'Abra Marketing → Automações → Novo fluxo.',
-          'Escolha o gatilho (ex.: abandonou o carrinho, entrou no Pré-Vendas).',
-          'Adicione os passos: esperar, condição (sim/não) e ações (enviar e-mail, passar para vendedor, tag).',
+          'Escolha o gatilho (ex.: abandonou o carrinho, viu produtos da loja, entrou no Pré-Vendas).',
+          'Adicione os passos: esperar, condição (sim/não, ex.: “Não comprou”) e ações (enviar e-mail, passar para vendedor, tag, abrir atendimento).',
           'Ligue o fluxo: só acontecimentos a partir daí fazem o lead entrar.',
         ],
         tip: 'Deixe “sair do fluxo quando comprar” ligado para ninguém receber oferta do que já comprou.',
+      },
+      {
+        id: 'automacoes.whatsapp',
+        title: 'Passo de WhatsApp (só com autorização)',
+        steps: [
+          'O passo Enviar WhatsApp manda a mensagem pelo número escolhido, com {nome} e {produto}, e pode abrir a pré-venda junto.',
+          'Use só com a API oficial do WhatsApp e com clientes que autorizaram receber mensagens nos formulários.',
+          'Sem isso, deixe o fluxo desligado: mensagem automática para quem não pediu contato pode bloquear o número.',
+        ],
       },
     ],
   },
@@ -425,6 +606,8 @@ export const TRAIL: TrailModule[] = [
     module: 'relatorios',
     routes: ['/relatorios'],
     purpose: 'Visão geral do negócio e relatórios montados por você.',
+    howItWorks: 'Os relatórios leem os mesmos dados das telas (leads, atendimentos, vendas, e-mails) e você escolhe como agrupar e medir. Os marcados para o painel aparecem no Início para todos que podem vê-los.',
+    media: { src: '/trilha/analise.jpg', alt: 'Relatórios' },
     lessons: [
       {
         id: 'relatorios.criar',
@@ -441,8 +624,10 @@ export const TRAIL: TrailModule[] = [
     key: 'google-ads',
     title: 'Google Ads',
     module: 'google_ads',
-    routes: ['/google-ads'],
+    routes: ['/google-ads', '/configuracoes?secao=google-ads'],
     purpose: 'Quanto foi investido, quantos leads e vendas vieram e o custo de cada um, por campanha e palavra-chave.',
+    howItWorks: 'O CRM lê o investimento da conta do Google Ads e liga cada lead ao clique no anúncio. Assim dá para ver o custo real de cada lead e de cada venda, e o CRM devolve ao Google quem virou venda, para as campanhas aprenderem.',
+    media: { src: '/trilha/google-ads.jpg', alt: 'Painel do Google Ads' },
     lessons: [
       {
         id: 'ads.ler',
@@ -461,6 +646,8 @@ export const TRAIL: TrailModule[] = [
     module: 'chat',
     routes: ['/whatsapp/dashboard'],
     purpose: 'Tempo de resposta, volume, situação agora e o resultado comercial das conversas.',
+    howItWorks: 'O painel mede cada conversa: quanto tempo o cliente esperou pela primeira resposta (contando só o horário comercial), quantas ficaram sem resposta e quantas viraram pré-venda e venda.',
+    media: { src: '/trilha/whatsapp-dash.jpg', alt: 'Painel de atendimento WhatsApp' },
     lessons: [
       {
         id: 'wadash.ler',
@@ -475,10 +662,59 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'whatsapp-config',
+    title: 'WhatsApp: números, setores e robô',
+    module: 'whatsapp',
+    routes: ['/configuracoes?secao=whatsapp-numeros', '/configuracoes?secao=setores', '/configuracoes?secao=chatbot', '/configuracoes?secao=whatsapp-regras', '/configuracoes?secao=respostas-rapidas', '/configuracoes?secao=etiquetas'],
+    purpose: 'Configurar os números, quem atende cada um, o robô de atendimento, as regras e as respostas prontas.',
+    howItWorks: 'Cada número é conectado lendo o QR Code no celular. Setores dizem quem atende em quais números e quem gerencia; o robô (sem IA) recebe o cliente, mostra um menu e passa para o setor ou a pessoa certa. As regras dizem o que vira lead e pré-venda, o horário comercial e as mensagens de ausência e de encerramento.',
+    media: { src: '/trilha/whatsapp-config.jpg', alt: 'Configuração dos números de WhatsApp' },
+    lessons: [
+      {
+        id: 'admin.whatsapp',
+        title: 'Números de WhatsApp',
+        steps: [
+          'Em Configurações → Números de WhatsApp, cadastre o número e clique em Conectar para ler o QR Code no celular.',
+          'Ligue os usuários e vendedores que usam o número; ligue o atendimento dividido e os setores, se for o caso.',
+          'Em Configurações → Regras e horário, defina o que vira lead e pré-venda, o horário comercial, a mensagem de ausência e a de encerramento.',
+        ],
+      },
+      {
+        id: 'waconfig.setores',
+        title: 'Setores, equipes e gestores',
+        steps: [
+          'Em Configurações → Setores e equipes, crie os setores (Vendas, Pós-venda, Financeiro...).',
+          'Em cada setor, escolha os números em que atende, quem atende e quem gerencia (o gestor monitora a equipe).',
+          'Ligue cada vendedor a um ou mais gestores para eles acompanharem as conversas da equipe.',
+        ],
+      },
+      {
+        id: 'waconfig.chatbot',
+        title: 'Robô de atendimento (chatbot)',
+        steps: [
+          'Em Configurações → Chatbot de atendimento, crie um fluxo com mensagens, menu de opções, perguntas e transferência para setor ou pessoa.',
+          'Escolha quando começa: conversa nova ou parada, ou por palavra-chave (ex.: garantia), em todos ou alguns números, e se é só fora do horário.',
+          'Teste no simulador ao lado (nada é enviado de verdade) e só então ligue o fluxo.',
+        ],
+        media: { src: '/trilha/chatbot.webm', alt: 'Testando o robô de atendimento no simulador', kind: 'video' },
+      },
+      {
+        id: 'waconfig.respostas',
+        title: 'Respostas rápidas e etiquetas da empresa',
+        steps: [
+          'Em Configurações → Respostas rápidas, crie os textos padrão para todos, com {nome} e {vendedor}; anexe um arquivo (catálogo em PDF, tabela) se quiser que ele vá junto.',
+          'Em Configurações → Etiquetas do chat, crie as etiquetas padrão da empresa (cada pessoa também pode ter as suas).',
+        ],
+      },
+    ],
+  },
+  {
     key: 'sugestoes',
     title: 'Sugestões de melhoria',
     routes: ['/sugestoes'],
     purpose: 'Mandar ideias para melhorar o sistema e acompanhar a resposta.',
+    howItWorks: 'Cada sugestão vai para quem cuida do sistema, que responde e muda a situação (em análise, planejada, feita). Você é avisado a cada resposta.',
+    media: { src: '/trilha/sugestoes.jpg', alt: 'Sugestões de melhoria' },
     lessons: [
       {
         id: 'sugestoes.enviar',
@@ -493,11 +729,22 @@ export const TRAIL: TrailModule[] = [
   },
   {
     key: 'admin',
-    title: 'Administração',
+    title: 'Administração e configurações',
     module: 'usuarios',
     routes: ['/configuracoes', '/auditoria', '/sugestoes/analisar'],
-    purpose: 'Configurações (empresa, equipe e acesso, WhatsApp, marketing e integrações) e auditoria.',
+    purpose: 'Configurações (empresa, equipe e acesso, marketing e integrações) e auditoria.',
+    howItWorks: 'Tudo que é ajuste do sistema fica em Configurações, separado por grupo (Empresa, Equipe e acesso, Pré e Pós-Vendas, WhatsApp, Leads e marketing, Integrações). Cada pessoa vê só as seções que o perfil dela permite, e cada mudança fica na auditoria.',
+    media: { src: '/trilha/admin.jpg', alt: 'Configurações do sistema' },
     lessons: [
+      {
+        id: 'admin.empresa',
+        title: 'Identidade da empresa',
+        steps: [
+          'Em Configurações → Identidade da empresa, ajuste nome, logo e dados que aparecem nos e-mails e mensagens.',
+          'Mudou o nome da empresa? Use “Trocar o nome nos textos” para atualizar as mensagens e textos já salvos de uma vez.',
+          'Em Aparência, escolha as cores do sistema.',
+        ],
+      },
       {
         id: 'admin.usuarios',
         title: 'Cadastrar um usuário',
@@ -513,17 +760,19 @@ export const TRAIL: TrailModule[] = [
         steps: [
           'Em Configurações → Perfis de acesso, abra o perfil e marque o que ele pode ver, criar, editar, excluir e exportar.',
           'Em Leads, Pré/Pós-Vendas e Chat, escolha o escopo: próprios, da unidade ou todos.',
+          'Quem precisa marcar retorno e venda na pré-venda precisa de “Editar” em Pré-Vendas.',
           'Use o Gestor comercial para quem acompanha a equipe (inclui monitorar conversas).',
         ],
       },
       {
-        id: 'admin.whatsapp',
-        title: 'Números de WhatsApp',
+        id: 'admin.integracoes',
+        title: 'Integrações',
         steps: [
-          'Em Configurações → Números de WhatsApp, cadastre o número e clique em Conectar para ler o QR Code no celular.',
-          'Ligue os usuários e vendedores que usam o número; ligue o atendimento dividido e os setores, se for o caso.',
-          'Em Configurações → Regras e horário, defina o que vira lead e pré-venda, o horário comercial e a mensagem de ausência.',
+          'Servidor de e-mail (SMTP): de onde saem os e-mails do sistema e das campanhas.',
+          'Rastreamento do site e Google Analytics: o código que registra visitas e produtos vistos.',
+          'Loja virtual (Magazord), Meta Lead Ads, Google Ads e Tcar: cada uma tem o seu passo a passo na própria seção, com o botão de testar a conexão.',
         ],
+        tip: 'Chaves e senhas das integrações ficam criptografadas: nem quem administra consegue ver depois de salvas.',
       },
       {
         id: 'admin.auditoria',

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDownIcon } from 'lucide-react'
 import { useState } from 'react'
-import { LessonCard, useTrailProgress } from '@/components/trilha'
+import { LessonCard, ModuleIntro, useTrailProgress } from '@/components/trilha'
 import { PageHeader } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -77,6 +77,7 @@ export function TrilhaPage() {
                 </CollapsibleTrigger>
                 <CollapsibleContent>
                   <CardContent className="space-y-3 pb-6">
+                    <ModuleIntro m={m} />
                     {m.lessons.map((l) => (
                       <LessonCard key={l.id} lesson={l} done={progress.done.has(l.id)} onToggle={() => progress.toggle(l.id)} disabled={progress.busy} />
                     ))}

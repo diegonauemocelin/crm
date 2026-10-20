@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.73.0",
+      "date": "2026-10-20",
+      "title": "Trilha de conhecimento completa, com explicação de cada módulo, imagens e vídeos",
+      "changes": [
+        { "type": "melhoria", "area": "Trilha de conhecimento", "text": "A trilha passa a cobrir todas as telas do sistema: 21 módulos e 54 lições. Entraram Agenda de contatos, Minha fila, prazo e quadro da pré-venda, arquivos e arrastar e soltar no chat, telefone clicável, finalizar e Leads para chamar, mensagens e importação nos Cadastros, configuração dos leads, automação com WhatsApp, setores, robô de atendimento, respostas rápidas com arquivo, dados da empresa e integrações." },
+        { "type": "novo", "area": "Trilha de conhecimento", "text": "Cada módulo abre com um \"Como funciona\" que explica o módulo em poucas linhas e uma imagem da tela (clique para ampliar)." },
+        { "type": "novo", "area": "Trilha de conhecimento", "text": "Vídeos curtos mostrando na prática: registrar uma pré-venda, responder uma conversa no chat e montar o robô de atendimento." },
+        { "type": "melhoria", "area": "Trilha de conhecimento", "text": "O \"?\" do topo (Ajuda desta tela) mostra a explicação e a imagem do módulo antes das lições. O progresso já marcado continua valendo." }
+      ]
+    },
+    {
       "version": "0.72.0",
       "date": "2026-10-20",
       "title": "Arquivos de até 64 MB no chat, arrastar e soltar, respostas rápidas com arquivo e filtros de Leads para chamar",

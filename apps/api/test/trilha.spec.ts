@@ -27,3 +27,33 @@ describe('trilha de conhecimento', () => {
     expect(trailForRoute('/nada', '', () => true)).toBeNull()
   })
 })
+
+describe('trilha completa e com as imagens', () => {
+  it('toda tela do sistema tem ajuda na trilha', async () => {
+    const { readFileSync } = await import('node:fs')
+    const app = readFileSync(new URL('../../web/src/App.tsx', import.meta.url), 'utf8')
+    // Telas públicas (login, descadastro) e a própria trilha não precisam de lição.
+    const fora = new Set(['*', 'trilha'])
+    const rotas = [...app.matchAll(/path: '([^']+)'/g)].map((m) => m[1]!).filter((r) => !r.startsWith('/') && !fora.has(r))
+    const semAjuda = rotas.filter((r) => !trailForRoute(`/${r.replace(/:[a-z]+/g, 'x')}`, '', () => true))
+    // Endereços antigos que só redirecionam para Configurações.
+    const redirecionam = [...app.matchAll(/path: '([^']+)', element: <Navigate/g)].map((m) => m[1])
+    expect(semAjuda.filter((r) => !redirecionam.includes(r))).toEqual([])
+  })
+
+  it('cada seção de Configurações tem lição', async () => {
+    const { readFileSync } = await import('node:fs')
+    const cfg = readFileSync(new URL('../../web/src/pages/configuracoes-page.tsx', import.meta.url), 'utf8')
+    const secoes = [...cfg.matchAll(/^\s+(?:\{ )?id: '([a-z0-9-]+)'/gm)].map((m) => m[1]!)
+    expect(secoes.length).toBeGreaterThan(10)
+    // Cada seção cai num módulo da trilha (o mais específico ou a Administração).
+    for (const s of secoes) expect(trailForRoute('/configuracoes', `?secao=${s}`, () => true)).not.toBeNull()
+  })
+
+  it('as imagens e vídeos citados existem', async () => {
+    const { existsSync } = await import('node:fs')
+    const medias = [...TRAIL.flatMap((m) => (m.media ? [m.media] : [])), ...ALL_LESSONS.flatMap((l) => (l.media ? [l.media] : []))]
+    expect(medias.length).toBeGreaterThan(15)
+    for (const md of medias) expect(existsSync(new URL(`../../web/public${md.src}`, import.meta.url)), md.src).toBe(true)
+  })
+})
