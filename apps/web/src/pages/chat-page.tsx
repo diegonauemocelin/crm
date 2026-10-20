@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlarmClockIcon, AlertCircleIcon, BanIcon, CircleCheckBigIcon, FileTextIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ReplyIcon, SmilePlusIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
-import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { createContext, Fragment, type FormEvent, type KeyboardEvent, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { type ChatService, LastSeller, quickPrefill, ServiceButtons, StageBadge, type StageInfo } from '@/components/chat/atendimento-chat'
 import { ClientPanel } from '@/components/chat/painel-cliente'
@@ -26,7 +26,7 @@ import { api, errorMessage } from '@/lib/api'
 import { formatPhone, maskPhone, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import { setSoundOn, soundOn, useChatAlerts } from '@/lib/chat-alerts'
-import { splitLinks } from '@/lib/links'
+import { splitLinks, splitPhones } from '@/lib/links'
 import { cn } from '@/lib/utils'
 
 interface NumberRef {
@@ -219,6 +219,8 @@ function useScreens() {
 
 /** Monitoramento (ler as conversas da equipe sem responder e sem marcar como lidas): a mídia usa a mesma regra. */
 const MonitorContext = createContext(false)
+/** Número de WhatsApp da conversa aberta: telefone clicado na mensagem abre a conversa por ele. */
+const ThreadNumberContext = createContext<string | null>(null)
 
 export function ChatPage() {
   const { can } = useAuth()
@@ -573,6 +575,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
   const toggleSelect = (mid: string) => setSelecting((s) => (!s ? [mid] : s.includes(mid) ? s.filter((x) => x !== mid) : s.length >= 20 ? (toast.error('No máximo 20 mensagens por vez.'), s) : [...s, mid]))
   return (
     <MonitorContext.Provider value={monitor}>
+    <ThreadNumberContext.Provider value={d.number?.id ?? null}>
     <div className="flex h-full min-h-0 flex-col">
       <div className={cn('@container/head space-y-2 border-b px-3 py-2', !colors && 'bg-[#f0f2f5] dark:bg-[#202c33]')}>
         <div className="flex items-start gap-2">
@@ -722,6 +725,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
         />
       )}
     </div>
+    </ThreadNumberContext.Provider>
     </MonitorContext.Provider>
   )
 }
@@ -1491,7 +1495,7 @@ function ConversationActions({ thread }: { thread: Thread }) {
 }
 
 /** Começar conversa com um telefone (o lead, se existir, é ligado pela conversa). */
-export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, external, numberId: initialNumber, name: initialName }: { onClose: () => void; onStarted: (id: string) => void; leadId?: string | null; phone?: string | null; external?: string | null; numberId?: string | null; name?: string | null }) {
+export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, external, numberId: initialNumber, name: initialName, sameNumber = false }: { onClose: () => void; onStarted: (id: string) => void; leadId?: string | null; phone?: string | null; external?: string | null; numberId?: string | null; name?: string | null; sameNumber?: boolean }) {
   // Do lead/atendimento (telefone já conhecido) com um número só conectado: abre direto, sem perguntar.
   const autoStart = !!initialPhone
   const numbers = useQuery({ queryKey: ['chat-numeros-envio'], queryFn: () => api.get<NumberRef[]>('/chat/numeros') })
@@ -1533,12 +1537,16 @@ export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, e
   }
   const start = useMutation({
     mutationFn: () => api.post<{ id: string }>('/chat/conversas', { numberId: chosen, phone: phone || undefined, leadId: leadId ?? undefined }),
+    // Conversa nova: o servidor confere no WhatsApp se o telefone tem conta (leva alguns segundos).
+    onMutate: () => toast.loading('Conferindo o número no WhatsApp…', { id: 'chat-start' }),
+    onSettled: () => toast.dismiss('chat-start'),
     onSuccess: (r) => onStarted(r.id),
     onError: (err) => setError(errorMessage(err)),
   })
   const tried = useRef(false)
   // Abre direto só com um número conectado e, vindo da agenda de um número, se for esse mesmo número.
-  const direct = autoStart && connected.length === 1 && (!initialNumber || connected[0]!.id === initialNumber)
+  // Telefone clicado numa conversa (sameNumber): direto pelo número da conversa, se o usuário pode usá-lo.
+  const direct = autoStart && (sameNumber && !!initialNumber && connected.some((n) => n.id === initialNumber) ? true : connected.length === 1 && (!initialNumber || connected[0]!.id === initialNumber))
   useEffect(() => {
     if (direct && !tried.current && chosen) {
       tried.current = true
@@ -1646,7 +1654,7 @@ export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, e
 }
 
 /** Formatação do WhatsApp (*negrito*, _itálico_, ~riscado~) como elementos do React (nunca HTML vindo da mensagem). */
-/** Texto da mensagem: links clicáveis (abrem em nova aba) e a formatação do WhatsApp no resto. */
+/** Texto da mensagem: links clicáveis (abrem em nova aba), a formatação do WhatsApp e telefones clicáveis no resto. */
 function waFormat(text: string) {
   return splitLinks(text).map((part, i) =>
     part.href ? (
@@ -1654,24 +1662,94 @@ function waFormat(text: string) {
         {part.text}
       </a>
     ) : (
-      <span key={`t${i}`}>{waStyles(part.text)}</span>
+      <span key={`t${i}`}>{waStyles(part.text, phoneLinks)}</span>
     ),
   )
 }
 
-/** *negrito*, _itálico_ e ~riscado~ do WhatsApp. */
-function waStyles(text: string) {
-  const out: (string | React.ReactElement)[] = []
+/**
+ * Telefone escrito na mensagem ou no cartão de contato: clicar confere se tem WhatsApp e abre a conversa com ele pelo
+ * mesmo número da conversa, sem precisar salvar o contato. No monitoramento (só leitura) é só o link de ligar.
+ */
+function PhoneLink({ phone, children, button = false }: { phone: string; children: ReactNode; button?: boolean }) {
+  const monitor = useContext(MonitorContext)
+  const numberId = useContext(ThreadNumberContext)
+  const { can } = useAuth()
+  const navigate = useNavigate()
+  const [starting, setStarting] = useState(false)
+  if (monitor || !can('chat', 'create')) {
+    return button ? null : (
+      <a href={`tel:${phone}`} className="underline underline-offset-2">
+        {children}
+      </a>
+    )
+  }
+  const start = () => {
+    // Quem só arrastou para selecionar o número (copiar) não abre conversa.
+    if (!button && window.getSelection()?.toString()) return
+    setStarting(true)
+  }
+  return (
+    <>
+      {button ? (
+        <Button type="button" size="sm" variant="outline" className="h-7 shrink-0 px-2 text-xs" onClick={start} title={`Conversar no WhatsApp com ${formatPhone(phone)}`}>
+          <MessageCircleIcon /> Conversar
+        </Button>
+      ) : (
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={start}
+          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), start())}
+          className="cursor-pointer text-sky-700 underline underline-offset-2 hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-100"
+          title="Conversar no WhatsApp com este número"
+        >
+          {children}
+        </span>
+      )}
+      {starting && (
+        <StartDialog
+          phone={phone}
+          numberId={numberId}
+          sameNumber
+          onClose={() => setStarting(false)}
+          onStarted={(id) => {
+            setStarting(false)
+            navigate(`/chat?conversa=${id}`)
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+/** Trecho de texto com os telefones clicáveis (dentro do negrito/itálico, se for o caso). */
+function phoneLinks(text: string): ReactNode[] {
+  return splitPhones(text).map((p, i) =>
+    p.phone ? (
+      <PhoneLink key={i} phone={p.phone}>
+        {p.text}
+      </PhoneLink>
+    ) : (
+      p.text
+    ),
+  )
+}
+
+/** *negrito*, _itálico_ e ~riscado~ do WhatsApp; leaf transforma cada pedaço de texto (ex.: telefones clicáveis). */
+function waStyles(text: string, leaf: (t: string) => ReactNode[] = (t) => [t]) {
+  const out: React.ReactElement[] = []
   const re = /([*_~])([^*_~\n]+?)\1/g
   let last = 0
   let k = 0
+  const plain = (t: string) => out.push(<Fragment key={k++}>{leaf(t)}</Fragment>)
   for (let m = re.exec(text); m; m = re.exec(text)) {
-    if (m.index > last) out.push(text.slice(last, m.index))
-    const inner = m[2]!
+    if (m.index > last) plain(text.slice(last, m.index))
+    const inner = leaf(m[2]!)
     out.push(m[1] === '*' ? <strong key={k++}>{inner}</strong> : m[1] === '_' ? <em key={k++}>{inner}</em> : <s key={k++}>{inner}</s>)
     last = m.index + m[0].length
   }
-  if (last < text.length) out.push(text.slice(last))
+  if (last < text.length) plain(text.slice(last))
   return out
 }
 
@@ -1780,7 +1858,7 @@ function Bubble({ m }: { m: Message }) {
     )
   }
   if (m.type === 'video') return <div className="space-y-1">{m.hasFile ? <video controls preload="none" src={src} className="max-h-72 max-w-full rounded" /> : pending || missing}{text}</div>
-  if (m.type === 'contato') return <ContactBubble text={m.text} />
+  if (m.type === 'contato') return <ContactBubble text={m.text} chat={(phone) => <PhoneLink phone={phone} button>{phone}</PhoneLink>} />
   if (m.type === 'documento') {
     return (
       <div className="space-y-1">

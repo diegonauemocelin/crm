@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.69.0",
+      "date": "2026-10-20",
+      "title": "Telefone clicável no chat: abre a conversa sem salvar o contato",
+      "changes": [
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Telefone escrito na mensagem (ex.: \"(49) 98863-2548\", \"+55 49 98863-2548\", \"49988632548\") aparece como link: clicar confere se o número tem WhatsApp e já abre a conversa com ele pelo mesmo número da empresa, sem precisar salvar o contato no celular." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Cartão de contato recebido ou enviado no chat ganhou o botão \"Conversar\", que faz o mesmo." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Nova conversa (pelo botão, pela ficha do lead ou pela agenda) confere no WhatsApp se o número tem conta e avisa quando não tem. Celular antigo cadastrado sem o 9 abre na conversa certa. Número desconectado ou serviço fora do ar: abre sem conferir, como antes." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Só vira link o que tem formato de telefone: códigos de peça (Komatsu, Isuzu, Yanmar...), CPF, CNPJ, linha digitável de boleto, chave de NF-e, datas e valores continuam texto normal." },
+        { "type": "infra", "area": "Versões", "text": "Novo \"node scripts/versoes.mjs\": confere se todas as versões têm tag no GitHub e mostra os comandos para criar as que faltam. Nova Action \"Documentar versões antigas\" cria as notas (Release) das versões com tag e sem Release. Tag de versão antiga não vira mais a \"latest\"." }
+      ]
+    },
+    {
       "version": "0.68.0",
       "date": "2026-10-20",
       "title": "Automação por WhatsApp para quem viu produtos ou abandonou o carrinho",

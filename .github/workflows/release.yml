@@ -4,6 +4,7 @@ name: Publicar versão
 #  1. confere a versão;
 #  2. constrói as imagens Docker e publica no GitHub Container Registry (a VPS só baixa, sem compilar);
 #  3. publica a Release com as notas do releases.json (é o que o rodapé consulta para "nova versão disponível").
+# Tag de versão antiga (ex.: marcada depois) não vira a "latest": a imagem :latest e a Release "Latest" ficam com a mais nova.
 on:
   push:
     tags: ['v*.*.*']
@@ -48,6 +49,8 @@ jobs:
           echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           echo "data=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
           echo "imagem=ghcr.io/${GITHUB_REPOSITORY,,}-${{ matrix.nome }}" >> "$GITHUB_OUTPUT"
+          maior="$(git ls-remote --tags --refs origin 'v*.*.*' | sed 's#.*refs/tags/##' | sort -V | tail -n1)"
+          echo "latest=$([ "$maior" = "${GITHUB_REF_NAME}" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.contexto }}
@@ -56,7 +59,7 @@ jobs:
           push: true
           tags: |
             ${{ steps.meta.outputs.imagem }}:${{ steps.meta.outputs.versao }}
-            ${{ steps.meta.outputs.imagem }}:latest
+            ${{ steps.meta.outputs.latest == 'true' && format('{0}:latest', steps.meta.outputs.imagem) || '' }}
           build-args: |
             GIT_COMMIT=${{ steps.meta.outputs.commit }}
             BUILD_DATE=${{ steps.meta.outputs.data }}
@@ -76,19 +79,11 @@ jobs:
         with:
           node-version: 24
       - name: Gerar notas da versão
-        run: |
-          node -e '
-            const r = require("./releases.json").releases[0];
-            const nomes = { novo: "Novo", melhoria: "Melhoria", correcao: "Correção", seguranca: "Segurança", infra: "Infraestrutura" };
-            const areas = [...new Set(r.changes.map(c => c.area || "Geral"))];
-            let md = `## ${r.title}\n\nPublicada em ${r.date}.\n`;
-            for (const a of areas) {
-              md += `\n### ${a}\n`;
-              for (const c of r.changes.filter(c => (c.area || "Geral") === a)) md += `- **${nomes[c.type] || c.type}:** ${c.text}\n`;
-            }
-            require("fs").writeFileSync("notas.md", md);
-          '
+        run: node scripts/notas-versao.mjs "${GITHUB_REF_NAME}" > notas.md
       - name: Criar Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes-file notas.md --verify-tag
+        run: |
+          maior="$(git ls-remote --tags --refs origin 'v*.*.*' | sed 's#.*refs/tags/##' | sort -V | tail -n1)"
+          latest=$([ "$maior" = "${GITHUB_REF_NAME}" ] && echo true || echo false)
+          gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes-file notas.md --verify-tag --latest="$latest"

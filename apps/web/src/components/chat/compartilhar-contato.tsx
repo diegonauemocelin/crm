@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ContactIcon, Loader2Icon, SearchIcon, SendIcon } from 'lucide-react'
-import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { api, errorMessage } from '@/lib/api'
 import { formatPhone, maskPhone } from '@/lib/atendimento'
+import { phoneFromText } from '@/lib/links'
 import { cn } from '@/lib/utils'
 
 /** Compartilhar contato no chat: escolhe um vendedor, alguém da agenda ou um lead, ou digita nome e telefone. */
@@ -130,8 +131,8 @@ function ShareContactDialog({ conversationId, onClose }: { conversationId: strin
   )
 }
 
-/** Cartão do contato na conversa (enviado ou recebido): nome e telefone, com ligar. */
-export function ContactBubble({ text }: { text: string | null }) {
+/** Cartão do contato na conversa (enviado ou recebido): nome e telefone, com ligar e (chat) conversar no WhatsApp. */
+export function ContactBubble({ text, chat }: { text: string | null; chat?: (phone: string) => ReactNode }) {
   const lines = (text ?? 'Contato').split('\n').filter(Boolean)
   return (
     <div className="space-y-1.5">
@@ -140,7 +141,7 @@ export function ContactBubble({ text }: { text: string | null }) {
         return (
           <div key={i} className="flex items-center gap-2 rounded-md border bg-background/60 px-2.5 py-1.5">
             <ContactIcon className="size-5 shrink-0 opacity-70" />
-            <span className="min-w-0">
+            <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium">{name}</span>
               {tel && (
                 <a href={`tel:${tel.replace(/[^\d+]/g, '')}`} className="block text-xs underline-offset-4 hover:underline">
@@ -148,6 +149,7 @@ export function ContactBubble({ text }: { text: string | null }) {
                 </a>
               )}
             </span>
+            {tel && chat && phoneFromText(tel) && chat(phoneFromText(tel)!)}
           </div>
         )
       })}

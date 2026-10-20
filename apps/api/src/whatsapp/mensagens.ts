@@ -232,6 +232,23 @@ export function phoneVariants(e164: string | null): string[] {
   return m ? [e164, `+55${m[1]}${m[2]}`] : [e164]
 }
 
+/** +5549988632548 → (49) 98863-2548; número estrangeiro fica como está. */
+export function phoneLabel(e164: string) {
+  const m = /^\+55(\d{2})(\d{4,5})(\d{4})$/.exec(e164)
+  return m ? `(${m[1]}) ${m[2]}-${m[3]}` : e164
+}
+
+/**
+ * Resultado da conferência no WhatsApp (o celular vai nas duas formas, com e sem o 9): tem conta em alguma delas →
+ * o identificador dela; nenhuma → não tem WhatsApp; resposta vazia → não deu para saber (null).
+ */
+export function whatsappOf(checks: { number: string; exists: boolean; jid: string | null }[]): { exists: boolean; jid: string | null } | null {
+  if (!checks.length) return null
+  const hit = checks.find((c) => c.exists)
+  if (!hit) return { exists: false, jid: null }
+  return { exists: true, jid: hit.jid ?? (/^\d{8,15}$/.test(hit.number) ? `${hit.number}@s.whatsapp.net` : null) }
+}
+
 const LABEL: Record<MessageType, string> = { texto: '', imagem: 'Foto', audio: 'Áudio', video: 'Vídeo', documento: 'Documento', figurinha: 'Figurinha', localizacao: 'Localização', contato: 'Contato', chamada: '', outro: '' }
 
 /** Texto curto para a lista de conversas. */

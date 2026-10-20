@@ -48,6 +48,25 @@ export function isConnectionClosed(message: string) {
 export const CONNECTION_CLOSED_MESSAGE =
   'O WhatsApp deste número perdeu a conexão com o servidor (Connection Closed). O CRM tentou reconectar sozinho e não conseguiu: em Administração › Números de WhatsApp, clique em Conectar neste número (se pedir, leia o QR Code de novo) e reenvie.'
 
+/** Resposta da conferência de números: tem WhatsApp e o identificador que o WhatsApp usa (ex.: celular antigo sem o 9). */
+export interface NumberCheck {
+  number: string
+  exists: boolean
+  jid: string | null
+}
+
+export function parseNumberChecks(data: unknown): NumberCheck[] {
+  const raw = data as { response?: unknown } | null
+  const list = Array.isArray(data) ? data : Array.isArray(raw?.response) ? raw.response : []
+  return list.flatMap((x): NumberCheck[] => {
+    if (!x || typeof x !== 'object') return []
+    const r = x as Record<string, unknown>
+    const jid = typeof r.jid === 'string' && /^\d{8,15}@s\.whatsapp\.net$/.test(r.jid) ? r.jid : null
+    const number = typeof r.number === 'string' ? r.number.replace(/\D/g, '') : (jid?.split('@')[0] ?? '')
+    return [{ number, exists: r.exists === true, jid }]
+  })
+}
+
 export class EvolutionClient {
   constructor(
     private readonly cfg: EvolutionConfig,
@@ -197,6 +216,11 @@ export class EvolutionClient {
   async contacts(instanceName: string) {
     // A resposta pode ser a lista solta ou um objeto com a lista dentro (varia com a versão): quem lê é contactsFromWhatsapp.
     return this.call<unknown>('POST', `/chat/findContacts/${encodeURIComponent(instanceName)}`, { where: {} }, 60_000)
+  }
+
+  /** Confere se os telefones (só dígitos, com o código do país) têm WhatsApp. */
+  async checkNumbers(instanceName: string, numbers: string[]) {
+    return parseNumberChecks(await this.call<unknown>('POST', `/chat/whatsappNumbers/${encodeURIComponent(instanceName)}`, { numbers }, 20_000))
   }
 
   /** Texto; com quoted, sai como resposta (citação) a uma mensagem da conversa. */

@@ -1,0 +1,26 @@
+name: Documentar versões antigas
+
+# Cria a Release (só as notas do releases.json, sem gerar imagens) das versões que têm tag e ainda não têm
+# Release no GitHub. Rodar à mão: Actions › Documentar versões antigas › Run workflow. A versão mais nova continua
+# sendo a "Latest" (é ela que o rodapé do sistema consulta).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  notas:
+    name: Releases que faltam
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Criar as Releases que faltam
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/documentar-versoes.mjs

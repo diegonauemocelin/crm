@@ -18,7 +18,7 @@ import { type Sector, servesNumber, splitWhere, teamOf, teamWhere } from './aten
 import { type AgendaCategory, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
 import { parseCsv } from '../atendimento/planilha'
 import { answersNote, type BotOutcome, botStateOf, chooseFlow, continueFlow, flowOf, startFlow } from './fluxo'
-import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, parseReaction, parseRevision, type ParsedMessage, type ParsedRevision, phoneFromDigits, phoneVariants, previewOf, withReaction } from './mensagens'
+import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, parseReaction, parseRevision, type ParsedMessage, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, whatsappOf, withReaction } from './mensagens'
 
 const PAGE = 60
 /** Nome que aparece nas mensagens e notas do chatbot. */
@@ -1229,27 +1229,61 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (d.leadId && !lead) throw new BadRequestException('Lead não encontrado.')
     const raw = (d.phone ?? lead?.phone ?? '').trim()
     const intl = raw.replace(/[^\d+]/g, '')
-    const phone = normalizePhone(raw) ?? (/^\+\d{10,15}$/.test(intl) ? intl : null)
+    // Com + e outro código de país é número estrangeiro: não passa pela regra do DDD brasileiro.
+    const phone = (/^\+(?!55)\d{10,15}$/.test(intl) ? intl : null) ?? normalizePhone(raw) ?? (/^\+\d{10,15}$/.test(intl) ? intl : null)
     if (!phone) throw new BadRequestException('Telefone inválido. Use DDD + número.')
     const jid = `${phone.slice(1)}@s.whatsapp.net`
     const existing =
       (await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: number.id, jid } } })) ??
       (await this.prisma.whatsappConversation.findFirst({ where: { numberId: number.id, phone: { in: phoneVariants(phone) } } }))
-    const split = (await this.prisma.whatsappNumber.findUnique({ where: { id: number.id }, select: { splitAttendance: true } }))?.splitAttendance ?? false
-    if (existing) {
+    const full = await this.prisma.whatsappNumber.findUnique({ where: { id: number.id }, select: { splitAttendance: true, instanceName: true, status: true } })
+    const split = full?.splitAttendance ?? false
+    const reuse = async (c: { id: string; leadId: string | null; assignedUserId: string | null; category: string }) => {
       // Atendimento dividido: cliente de outro atendente não muda de dono; da fila, passa para quem iniciou.
-      if (split && existing.assignedUserId && existing.assignedUserId !== user.id && existing.category === 'CLIENTE' && this.scopeOf(user) === 'OWN') {
-        const owner = await this.prisma.user.findUnique({ where: { id: existing.assignedUserId }, select: { name: true } })
+      if (split && c.assignedUserId && c.assignedUserId !== user.id && c.category === 'CLIENTE' && this.scopeOf(user) === 'OWN') {
+        const owner = await this.prisma.user.findUnique({ where: { id: c.assignedUserId }, select: { name: true } })
         throw new BadRequestException(`Este cliente já é atendido por ${owner?.name ?? 'outro atendente'} neste número. Peça a transferência para você.`)
       }
-      const patch = { ...(lead && !existing.leadId ? { leadId: lead.id } : {}), ...(split && !existing.assignedUserId ? { assignedUserId: user.id } : {}) }
-      if (Object.keys(patch).length) await this.prisma.whatsappConversation.update({ where: { id: existing.id }, data: patch })
-      return { id: existing.id }
+      const patch = { ...(lead && !c.leadId ? { leadId: lead.id } : {}), ...(split && !c.assignedUserId ? { assignedUserId: user.id } : {}) }
+      if (Object.keys(patch).length) await this.prisma.whatsappConversation.update({ where: { id: c.id }, data: patch })
+      return { id: c.id }
     }
-    const conv = await this.prisma.whatsappConversation.create({
-      data: { tenantId: user.tenantId, numberId: number.id, jid, phone, name: lead?.name ?? null, leadId: lead?.id ?? null, lastMessageAt: new Date(), lastPreview: 'Conversa iniciada pelo CRM', lastFromMe: true, ...(split ? { assignedUserId: user.id } : {}) },
-    })
-    return { id: conv.id }
+    if (existing) return reuse(existing)
+    // Conversa nova: confere se o telefone tem WhatsApp (e o identificador que o WhatsApp usa, ex.: celular antigo sem o 9).
+    const check = full ? await this.checkWhatsapp(full, phone) : null
+    if (check && !check.exists) throw new BadRequestException(`O telefone ${phoneLabel(phone)} não tem WhatsApp. Confira o DDD e o número.`)
+    const realJid = check?.jid ?? jid
+    if (realJid !== jid) {
+      const taken = await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: number.id, jid: realJid } } })
+      if (taken) return reuse(taken)
+    }
+    try {
+      const conv = await this.prisma.whatsappConversation.create({
+        data: { tenantId: user.tenantId, numberId: number.id, jid: realJid, phone, name: lead?.name ?? null, leadId: lead?.id ?? null, lastMessageAt: new Date(), lastPreview: 'Conversa iniciada pelo CRM', lastFromMe: true, ...(split ? { assignedUserId: user.id } : {}) },
+      })
+      return { id: conv.id }
+    } catch (e) {
+      // Aberta ao mesmo tempo (outro clique, outro atendente ou o cliente escreveu enquanto conferia): usa a que ficou.
+      if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')) throw e
+      const now = await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: number.id, jid: realJid } } })
+      if (!now) throw e
+      return reuse(now)
+    }
+  }
+
+  /**
+   * O telefone tem WhatsApp? Pergunta ao WhatsApp pelo número da empresa (o celular nas duas formas, com e sem o 9).
+   * null quando não dá para conferir (número desconectado, serviço fora do ar): a conversa abre sem conferir.
+   */
+  private async checkWhatsapp(n: { instanceName: string; status: string }, phone: string) {
+    const client = this.clientOf()
+    if (!client || n.status !== 'CONECTADO') return null
+    try {
+      return whatsappOf(await client.checkNumbers(n.instanceName, phoneVariants(phone).map((p) => p.slice(1))))
+    } catch (e) {
+      this.logger.warn(`Não deu para conferir se ${phone} tem WhatsApp: ${(e as Error).message}`)
+      return null
+    }
   }
 
   /** Passar a conversa para um vendedor (ele passa a ver mesmo com "somente os próprios") e arquivar/reabrir. */
