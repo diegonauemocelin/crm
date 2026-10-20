@@ -163,7 +163,7 @@ info "Dados a copiar: ~$((ESTIMATIVA_KB / 1024)) MB (antes de comprimir) · livr
 
 # ---------- 00: raio-x do servidor (sem senhas, fica legível) ----------
 info "Raio-x do servidor"
-bash "$RAIZ/deploy/raio-x.sh" "$DEST/00-raio-x.txt" >/dev/null 2>>"$LOG" && ok "Raio-x salvo (00-raio-x.txt)" || aviso "Raio-x incompleto (veja $LOG)"
+bash "$(dirname "$0")/raio-x.sh" "$DEST/00-raio-x.txt" >/dev/null 2>>"$LOG" && ok "Raio-x salvo (00-raio-x.txt)" || aviso "Raio-x incompleto (veja $LOG)"
 
 # ---------- 10-19: bancos de dados em containers ----------
 VOLUMES_COBERTOS=" "
