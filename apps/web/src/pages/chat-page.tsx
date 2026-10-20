@@ -1700,6 +1700,7 @@ function PhoneLink({ phone, children, button = false }: { phone: string; childre
   const { can } = useAuth()
   const navigate = useNavigate()
   const [starting, setStarting] = useState(false)
+  const timer = useRef<number | null>(null)
   if (monitor || !can('chat', 'create')) {
     return button ? null : (
       <a href={`tel:${phone}`} className="underline underline-offset-2">
@@ -1707,10 +1708,17 @@ function PhoneLink({ phone, children, button = false }: { phone: string; childre
       </a>
     )
   }
-  const start = () => {
-    // Quem só arrastou para selecionar o número (copiar) não abre conversa.
-    if (!button && window.getSelection()?.toString()) return
-    setStarting(true)
+  // Não passa o clique para o balão (no modo de encaminhar, clicar no balão marca a mensagem).
+  const start = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation()
+    if (timer.current) window.clearTimeout(timer.current)
+    // Duplo/triplo clique é para selecionar e copiar o número; arrastar também. Só o clique simples abre a conversa.
+    if ('detail' in e && e.detail > 1) return
+    timer.current = window.setTimeout(() => {
+      timer.current = null
+      if (!button && window.getSelection()?.toString()) return
+      setStarting(true)
+    }, button ? 0 : 250)
   }
   return (
     <>
@@ -1723,7 +1731,7 @@ function PhoneLink({ phone, children, button = false }: { phone: string; childre
           role="button"
           tabIndex={0}
           onClick={start}
-          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), start())}
+          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), start(e))}
           className="cursor-pointer text-sky-700 underline underline-offset-2 hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-100"
           title="Conversar no WhatsApp com este número"
         >
@@ -1731,6 +1739,8 @@ function PhoneLink({ phone, children, button = false }: { phone: string; childre
         </span>
       )}
       {starting && (
+        // A janela é filha do balão no React: os cliques dentro dela não podem marcar a mensagem.
+        <span className="contents" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
         <StartDialog
           phone={phone}
           numberId={numberId}
@@ -1741,6 +1751,7 @@ function PhoneLink({ phone, children, button = false }: { phone: string; childre
             navigate(`/chat?conversa=${id}`)
           }}
         />
+        </span>
       )}
     </>
   )

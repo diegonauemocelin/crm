@@ -16,6 +16,11 @@ describe('telefone escrito na mensagem', () => {
     expect(phones('049 98863-2548')).toEqual([['049 98863-2548', '+5549988632548']])
     expect(phones('(11)91234-5678')).toEqual([['(11)91234-5678', '+5511912345678']])
     expect(phones('+1 305 555 1234')).toEqual([['+1 305 555 1234', '+13055551234']])
+    expect(phones('049 98863-2548 ou (049) 3664-0888')).toEqual([['049 98863-2548', '+5549988632548'], ['(049) 3664-0888', '+554936640888']])
+    // Texto longo só de números não trava (busca limitada por telefone).
+    const t0 = performance.now()
+    phones(Array.from({ length: 3000 }, (_, i) => String(1000 + i)).join(' '))
+    expect(performance.now() - t0).toBeLessThan(1000)
     expect(phones('_(49) 98863-2548_')).toEqual([['(49) 98863-2548', '+5549988632548']])
     expect(phones('(49)  98863-2548')).toEqual([['(49)  98863-2548', '+5549988632548']])
   })
@@ -53,7 +58,7 @@ describe('telefone escrito na mensagem', () => {
       'Bomba Komatsu 6754-61-2110 PC200-8', '6754-71-6110', '195-78-21331', '175-27-22325', '419-22-12345', '8-98018858-0', '1-13240184-0', '119802-55800', '129900-35151', '16271-32430', 'ref 1234567890',
       // Linha digitável de boleto (Sicredi, Sicoob) e chave de NF-e em blocos de 4.
       'Linha digitavel: 74891.12345 12345.678901 12345.678901 1 23450000010000', '75691.31407 01130.051202',
-      'Chave 4226 1001 7040 7900 0100 5500 1000 1234 5517 6036 3031',
+      'Chave 4226 1001 7040 7900 0100 5500 1000 1234 5517 6036 3031', 'Chave 4226 0419 8765 4321 0001 5500 1000 0123 4510 1234 5678', 'Chave 4226 1001 7040 7900 0100 5500 1000 0479 1211 2345 6789',
     ]) {
       expect(phones(t)).toEqual([])
     }

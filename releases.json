@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.70.1",
+      "date": "2026-10-20",
+      "title": "Ajustes no telefone clicável do chat",
+      "changes": [
+        { "type": "correcao", "area": "Chat WhatsApp", "text": "Blocos da chave de NF-e (ex.: \"0419 8765 4321\") não viram mais link de telefone." },
+        { "type": "correcao", "area": "Chat WhatsApp", "text": "No modo de encaminhar, clicar no telefone não marca a mensagem nem abre conversa por engano; cliques dentro da janela de conversa também não mexem na seleção." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Duplo clique no telefone seleciona o número para copiar, sem abrir conversa. Mensagem muito longa só de números não deixa a tela lenta." }
+      ]
+    },
+    {
       "version": "0.70.0",
       "date": "2026-10-20",
       "title": "Mensagem em resposta a outra aparece com a citação no chat",
