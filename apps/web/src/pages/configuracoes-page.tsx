@@ -1,4 +1,5 @@
 import {
+  BotIcon,
   BotMessageSquareIcon,
   Building2Icon,
   ChartLineIcon,
@@ -63,6 +64,7 @@ const Numbers = lazyNamed(whatsapp, 'Numbers')
 const Rules = lazyNamed(whatsapp, 'Rules')
 const QuickReplies = lazyNamed(whatsapp, 'QuickReplies')
 const SectorsSettings = lazyNamed(() => import('@/components/whatsapp/setores'), 'SectorsSettings')
+const ChatbotSettings = lazyNamed(() => import('@/components/whatsapp/chatbot'), 'ChatbotSettings')
 const LabelsManager = lazyNamed(() => import('@/components/chat/organizar'), 'LabelsManager')
 const FieldsTab = lazyNamed(leadsConfig, 'FieldsTab')
 const ScoringTab = lazyNamed(leadsConfig, 'ScoringTab')
@@ -142,6 +144,16 @@ const SECTIONS: Section[] = [
     module: 'whatsapp',
     keywords: 'setor fila gestor gerente equipe monitorar supervisor atendentes multiatendimento',
     render: () => <SectorsSettings />,
+  },
+  {
+    id: 'chatbot',
+    group: 'WhatsApp',
+    title: 'Chatbot de atendimento',
+    description: 'Fluxos sem IA que recebem o cliente, mostram um menu, fazem perguntas e passam a conversa para o setor ou a pessoa certa. Com simulador para testar antes de ligar.',
+    icon: BotIcon,
+    module: 'whatsapp',
+    keywords: 'robô bot fluxo menu ura direcionar triagem automático respostas',
+    render: () => <ChatbotSettings />,
   },
   { id: 'whatsapp-regras', group: 'WhatsApp', title: 'Regras e horário', description: 'Contato novo e lead conhecido, cores de espera, horário comercial, mensagem de ausência e prazo de guarda das conversas (LGPD).', icon: SlidersHorizontalIcon, module: 'whatsapp', keywords: 'ausência horário comercial lgpd retenção cores espera', render: (can) => <Rules editable={can('whatsapp', 'edit')} /> },
   { id: 'respostas-rapidas', group: 'WhatsApp', title: 'Respostas rápidas', description: 'Respostas prontas da empresa, para toda a equipe usar no chat.', icon: MessageSquareTextIcon, module: 'whatsapp', keywords: 'atalho mensagem pronta', render: (can) => <QuickReplies editable={can('whatsapp', 'edit')} /> },

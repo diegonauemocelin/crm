@@ -36,6 +36,10 @@ class TextDto {
   @IsOptional() @IsUUID() quotedId?: string
 }
 
+class FinishDto {
+  @IsBoolean() enviarMensagem!: boolean
+}
+
 class EditTextDto {
   @IsString() @Length(1, 4000) text!: string
 }
@@ -292,6 +296,13 @@ export class WhatsappRulesController {
 @Controller('chat')
 export class ChatController {
   constructor(private readonly chat: ChatService) {}
+
+  /** Finalizar atendimento: mensagem de encerramento (opcional), sai do atendente e da fila, arquiva. */
+  @Post('conversas/:id/finalizar')
+  @HttpCode(200)
+  finish(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: FinishDto, @ReqContext() ctx: RequestCtx) {
+    return this.chat.finish(user, id, dto.enviarMensagem, ctx)
+  }
 
   /** O que a pessoa pode monitorar: TODOS (permissão de monitoramento), EQUIPE (é gestora) ou nada. */
   @Get('monitoramento')

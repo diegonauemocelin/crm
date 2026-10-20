@@ -566,6 +566,7 @@ interface WaRules {
   businessHours?: { enabled: boolean; days: ({ start: string; end: string } | null)[] }
   away?: { enabled: boolean; text: string; cooldownHours: number }
   retention?: { enabled: boolean; clientMonths: number; otherMonths: number; mediaMonths: number }
+  close?: { enabled: boolean; text: string }
 }
 const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 const NEW_CONTACT: Record<WaRules['newContact'], string> = {
@@ -675,6 +676,23 @@ function HoursAndAway({ form, set, editable }: { form: WaRules; set: <K extends 
   )
 }
 
+/** Finalizar atendimento: mensagem de encerramento que vai para o cliente (quem finaliza pode não enviar na hora). */
+function CloseMessage({ form, set, editable }: { form: WaRules; set: <K extends keyof WaRules>(k: K, v: WaRules[K]) => void; editable: boolean }) {
+  const close = form.close ?? { enabled: true, text: '' }
+  return (
+    <div className="space-y-2 border-t pt-3">
+      <label className="flex items-center justify-between gap-3">
+        <span>
+          <span className="block text-sm font-medium">Mensagem ao finalizar o atendimento</span>
+          <span className="block text-xs text-muted-foreground">Enviada quando o atendente clica em Finalizar no chat (ele pode desmarcar na hora). A conversa sai dele e da fila; se o cliente chamar de novo, começa outro atendimento.</span>
+        </span>
+        <Switch checked={close.enabled} onCheckedChange={(v) => set('close', { ...close, enabled: v })} disabled={!editable} aria-label="Enviar mensagem ao finalizar" />
+      </label>
+      {close.enabled && <Textarea rows={3} maxLength={1000} value={close.text} onChange={(e) => set('close', { ...close, text: e.target.value })} disabled={!editable} aria-label="Texto da mensagem de encerramento" />}
+    </div>
+  )
+}
+
 /** O que cada conversa gera, sem o operador precisar fazer nada. */
 export function Rules({ editable }: { editable: boolean }) {
   const qc = useQueryClient()
@@ -750,6 +768,7 @@ export function Rules({ editable }: { editable: boolean }) {
           </div>
         </div>
         <HoursAndAway form={form} set={set} editable={editable} />
+        <CloseMessage form={form} set={set} editable={editable} />
         <RetentionSettings form={form} set={set} editable={editable} />
         <p className="text-xs text-muted-foreground">A pré-venda só abre em números marcados com “Este número abre pré-venda” e quando é o cliente que chama (não quando a empresa inicia a conversa).</p>
         {editable && (

@@ -17,9 +17,12 @@ import { type EvolutionClient, EvolutionError } from './evolution'
 import { type Sector, servesNumber, splitWhere, teamOf, teamWhere } from './atendentes'
 import { type AgendaCategory, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
 import { parseCsv } from '../atendimento/planilha'
+import { answersNote, type BotOutcome, botStateOf, chooseFlow, continueFlow, flowOf, startFlow } from './fluxo'
 import { extOf, MEDIA_MAX_BYTES, parseCalls, parseMessage, parseReaction, parseRevision, type ParsedMessage, type ParsedRevision, phoneFromDigits, phoneVariants, previewOf, withReaction } from './mensagens'
 
 const PAGE = 60
+/** Nome que aparece nas mensagens e notas do chatbot. */
+const BOT_NAME = 'Robô de atendimento'
 
 /**
  * Conversas do WhatsApp: grava o que chega pela Evolution (ligando ao lead e ao Pré-Vendas) e entrega para a tela,
@@ -201,7 +204,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       (await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: n.id, jid: p.jid } } })) ??
       (phone ? await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, phone } }) : null)
     const rules = await this.rules(n.tenantId)
-    const idle = !conv?.lastMessageAt || p.at.getTime() - conv.lastMessageAt.getTime() > rules.reopenDays * 86_400_000
+    // Atendimento finalizado conta como conversa nova: a próxima mensagem do cliente abre outro atendimento.
+    const idle = !conv?.lastMessageAt || !!conv.closedAt || p.at.getTime() - conv.lastMessageAt.getTime() > rules.reopenDays * 86_400_000
     // Contato da empresa (lista do administrador) ou marcado no chat: vale para todos os números.
     const contact = await this.agendaContact(n.tenantId, n.id, phone ?? p.jid)
     conv ??= await this.prisma.whatsappConversation.create({ data: { tenantId: n.tenantId, numberId: n.id, jid: p.jid, phone, name: p.pushName, category: contact?.category ?? 'CLIENTE' } })
@@ -275,11 +279,78 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         ...(p.pushName && !conv.name ? { name: p.pushName } : {}),
         ...(later ? { lastMessageAt: p.at, lastPreview: previewOf(p), lastFromMe: p.fromMe } : {}),
         // Resposta pelo celular zera as não lidas (alguém já está atendendo).
-        ...(p.fromMe ? { unread: 0 } : { unread: { increment: 1 }, status: 'ABERTA' }),
+        ...(p.fromMe ? { unread: 0 } : { unread: { increment: 1 }, status: 'ABERTA', closedAt: null, closedByName: null }),
       },
     })
     if (p.media && !tooBig && client) void this.downloadMedia(n, saved[0]!.id, p, client)
-    if (!p.fromMe && category === 'CLIENTE' && client) void this.sendAway(n, conv, p, rules, client).catch((err: unknown) => this.logger.warn(`Mensagem de ausência não enviada (${n.name}): ${(err as Error).message}`))
+    // Resposta de uma pessoa da empresa pelo celular: o robô sai da conversa.
+    if (p.fromMe && conv.botFlowId) await this.prisma.whatsappConversation.update({ where: { id: conv.id }, data: { botFlowId: null, botState: Prisma.DbNull } })
+    // Chatbot: continua o fluxo ou começa um (cliente sem atendente). Com o robô atendendo, não vai a mensagem de ausência.
+    const botHandled =
+      !p.fromMe && category === 'CLIENTE' && client && n.status === 'CONECTADO' && Date.now() - p.at.getTime() < 10 * 60_000
+        ? await this.runBot(n, { ...conv, assignedUserId: toDefault ? n.defaultUserId : conv.assignedUserId }, p, rules, idle, client).catch((err: unknown) => (this.logger.warn(`Chatbot (${n.name}): ${(err as Error).message}`), false))
+        : false
+    if (!botHandled && !p.fromMe && category === 'CLIENTE' && client) void this.sendAway(n, conv, p, rules, client).catch((err: unknown) => this.logger.warn(`Mensagem de ausência não enviada (${n.name}): ${(err as Error).message}`))
+  }
+
+  // ---------- Chatbot de atendimento ----------
+
+  /**
+   * Robô de atendimento: com a conversa num fluxo, interpreta a resposta do cliente; sem fluxo e sem atendente,
+   * começa o fluxo que se aplica (palavra-chave, conversa nova ou parada, fora do horário). Devolve se o robô atendeu.
+   */
+  private async runBot(n: WhatsappNumber, conv: Prisma.WhatsappConversationGetPayload<object>, p: ParsedMessage, rules: WaRules, idle: boolean, client: EvolutionClient) {
+    const name = conv.name ?? p.pushName ?? null
+    if (conv.botFlowId) {
+      const flow = await this.prisma.whatsappFlow.findFirst({ where: { id: conv.botFlowId, tenantId: n.tenantId, active: true } })
+      const expired = !flow || !conv.botAt || Date.now() - conv.botAt.getTime() > flow.timeoutMinutes * 60_000
+      if (flow && !expired && !conv.assignedUserId) {
+        await this.applyBot(n, conv, flow, continueFlow(flowOf(flow), botStateOf(conv.botState), p.text ?? '', name), client)
+        return true
+      }
+      // Cliente sumiu (passou do tempo) ou alguém assumiu: o robô sai sem avisar.
+      await this.prisma.whatsappConversation.update({ where: { id: conv.id }, data: { botFlowId: null, botState: Prisma.DbNull } })
+      if (conv.assignedUserId) return false
+    } else if (conv.assignedUserId) return false
+    const flows = await this.prisma.whatsappFlow.findMany({ where: { tenantId: n.tenantId, active: true }, orderBy: { createdAt: 'asc' } })
+    const flow = chooseFlow(flows, { numberId: n.id, text: p.text ?? '', idle, afterHours: rules.businessHours.enabled && !isOpen(rules.businessHours, p.at) })
+    if (!flow) return false
+    await this.applyBot(n, conv, flow, startFlow(flowOf(flow), name), client)
+    return true
+  }
+
+  /** Envia as mensagens do robô e grava onde a conversa ficou (ou para quem foi transferida). */
+  private async applyBot(n: WhatsappNumber, conv: { id: string; jid: string; numberId: string }, flow: { id: string; name: string }, out: BotOutcome, client: EvolutionClient) {
+    const target = conv.jid.endsWith('@s.whatsapp.net') ? conv.jid.split('@')[0]! : conv.jid
+    for (const text of out.messages) {
+      if (this.rate.check(n.id)) break
+      const r = await client.sendText(n.instanceName, target, text)
+      const data = { sentByName: BOT_NAME, status: 'ENVIADA' }
+      await this.prisma.whatsappMessage.upsert({
+        where: { conversationId_waId: { conversationId: conv.id, waId: r.waId } },
+        create: { tenantId: n.tenantId, conversationId: conv.id, waId: r.waId, fromMe: true, type: 'texto', text, sentAt: r.at, ...data },
+        update: data,
+      })
+      await this.prisma.whatsappConversation.update({ where: { id: conv.id }, data: { lastMessageAt: r.at, lastPreview: previewOf({ type: 'texto', text }), lastFromMe: true } })
+    }
+    if (out.state) {
+      await this.prisma.whatsappConversation.update({ where: { id: conv.id }, data: { botFlowId: flow.id, botState: out.state as unknown as Prisma.InputJsonValue, botAt: new Date() } })
+      return
+    }
+    // Saiu: transfere (setor válido no número, pessoa ativa) e deixa as respostas como nota para quem atender.
+    const sectors = (await this.sectors(n.tenantId)).filter((x) => servesNumber(x, n.id))
+    const sectorId = out.transfer?.sectorId && sectors.some((x) => x.id === out.transfer!.sectorId) ? out.transfer.sectorId : null
+    const userId = out.transfer?.userId && (await this.prisma.user.count({ where: { id: out.transfer.userId, tenantId: n.tenantId, active: true } })) ? out.transfer.userId : null
+    const note = answersNote(out.answers ?? [])
+    await this.prisma.whatsappConversation.update({
+      where: { id: conv.id },
+      data: { botFlowId: null, botState: Prisma.DbNull, botAt: new Date(), ...(sectorId ? { sectorId } : {}), ...(userId ? { assignedUserId: userId } : {}), ...(note ? { noteUnread: true } : {}) },
+    })
+    const where = userId ? 'para a pessoa escolhida' : sectorId ? `para o setor ${sectors.find((x) => x.id === sectorId)?.name ?? ''}` : 'para a fila'
+    const lines = [`${BOT_NAME} (${flow.name}): conversa ${out.ended === 'sem_resposta_valida' ? 'sem resposta válida, passada' : 'passada'} ${where}.`, ...(note ? ['', note] : [])]
+    await this.prisma.whatsappMessage.create({
+      data: { tenantId: n.tenantId, conversationId: conv.id, waId: `nota:${randomUUID()}`, fromMe: true, type: 'nota', text: lines.join('\n'), internal: true, sentByName: BOT_NAME, status: 'NOTA', sentAt: new Date() },
+    })
   }
 
   /**
@@ -654,6 +725,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       agenda: conv.category !== 'GRUPO' ? await this.agendaContact(user.tenantId, conv.numberId, conv.phone ?? conv.jid).then((c) => (c ? { name: c.name, category: c.category, general: c.scope === '' } : null)) : null,
       attendance: number ? { split: number.splitAttendance, sectors: numberSectors.map((x) => ({ id: x.id, name: x.name })), attendants: attendants.filter((a) => a.active).map((a) => ({ id: a.id, name: a.name })) } : null,
       monitor: !!monitor,
+      /** Finalizar atendimento: texto da mensagem de encerramento (null = desligada em Regras e horário). */
+      closeText: await this.rules(user.tenantId).then((r) => (r.close.enabled ? r.close.text : null)),
+      closedAt: conv.closedAt,
+      closedByName: conv.closedByName,
       number: number ? { id: number.id, name: number.name, phone: number.phone, status: number.status } : null,
       lead,
       record,
@@ -849,6 +924,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       where: { id: c.conv.id },
       data: { lastMessageAt: r.at, lastPreview: previewOf({ type: m.type as ParsedMessage['type'], text: m.text }), lastFromMe: true, unread: 0, status: 'ABERTA', ...(c.number.splitAttendance && !c.conv.assignedUserId ? { assignedUserId: user.id } : {}) },
     })
+    // Uma pessoa respondeu: o robô de atendimento sai da conversa.
+    await this.prisma.whatsappConversation.updateMany({ where: { id: c.conv.id, botFlowId: { not: null } }, data: { botFlowId: null, botState: Prisma.DbNull } })
     // Responder pelo CRM atende a pré-venda ligada à conversa (tira o aviso de pré-venda aguardando).
     const recordId = (await this.prisma.whatsappConversation.findUnique({ where: { id: c.conv.id }, select: { recordId: true } }))?.recordId
     if (recordId) {
@@ -1188,6 +1265,34 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /**
+   * Finalizar atendimento: (opcional) manda a mensagem de encerramento, tira a conversa do atendente e da fila e
+   * arquiva. Se o cliente chamar de novo, é um atendimento novo (fila ou robô de atendimento).
+   */
+  async finish(user: AuthUser, id: string, sendMessage: boolean, ctx: RequestCtx) {
+    this.assertAction(user, 'chat', 'create')
+    const conv = await this.load(user, id)
+    if (conv.assignedUserId && conv.assignedUserId !== user.id && !can(user.permissions, user.role.isSystem, 'chat', 'edit')) throw new ForbiddenException('Esta conversa é de outro atendente.')
+    const rules = await this.rules(user.tenantId)
+    let sent = false
+    if (sendMessage && rules.close.enabled && conv.category === 'CLIENTE') {
+      const c = await this.sendContext(user, id)
+      const r = await c.client.sendText(c.number.instanceName, c.target, rules.close.text).catch((e: unknown) => this.fail(e))
+      await this.recordSent(user, c, r, { type: 'texto', text: rules.close.text })
+      sent = true
+    }
+    const now = new Date()
+    await this.prisma.whatsappConversation.update({
+      where: { id },
+      data: { status: 'ARQUIVADA', assignedUserId: null, sectorId: null, helperUserIds: [], botFlowId: null, botState: Prisma.DbNull, unread: 0, closedAt: now, closedByName: user.name.slice(0, 120) },
+    })
+    await this.prisma.whatsappMessage.create({
+      data: { tenantId: user.tenantId, conversationId: id, waId: `nota:${randomUUID()}`, fromMe: true, type: 'nota', text: `Atendimento finalizado por ${user.name}${sent ? ' (mensagem de encerramento enviada)' : ''}.`, internal: true, sentById: user.id, sentByName: user.name.slice(0, 120), status: 'NOTA', sentAt: now },
+    })
+    await this.audit.byUser(user, ctx, 'chat.finalizada', 'whatsapp_conversation', id, { contato: conv.name ?? conv.phone ?? null, mensagem: sent })
+    return { id, status: 'ARQUIVADA', closedAt: now }
+  }
+
+  /**
    * Atendimento dividido: assumir da fila ou transferir para outro atendente ou para a fila de um setor.
    * Quem atende pode passar a própria conversa (ou uma da fila); com a ação Editar do chat, qualquer uma.
    */
@@ -1205,7 +1310,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (userId && !(await this.prisma.user.count({ where: { id: userId, tenantId: user.tenantId, active: true } }))) throw new BadRequestException('Atendente inválido.')
     const sectorId = d.sectorId === undefined ? conv.sectorId : d.sectorId
     if (sectorId && !sectors.some((s) => s.id === sectorId)) throw new BadRequestException('Setor inválido.')
-    const r = await this.prisma.whatsappConversation.update({ where: { id }, data: { assignedUserId: userId ?? null, sectorId: sectorId ?? null, helperUserIds: conv.helperUserIds.filter((h) => h !== userId) } })
+    const r = await this.prisma.whatsappConversation.update({ where: { id }, data: { assignedUserId: userId ?? null, sectorId: sectorId ?? null, helperUserIds: conv.helperUserIds.filter((h) => h !== userId), botFlowId: null, botState: Prisma.DbNull } })
     await this.audit.byUser(user, ctx, userId === user.id && conv.assignedUserId !== user.id ? 'chat.assumida' : 'chat.transferida', 'whatsapp_conversation', id, {
       atendente: userId ?? null,
       setor: sectors.find((s) => s.id === sectorId)?.name ?? null,

@@ -1,9 +1,11 @@
 import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, IsUUID, Length, MaxLength, ValidateIf } from 'class-validator'
+import { Type } from 'class-transformer'
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateIf } from 'class-validator'
 import { CurrentUser, Public, ReqContext, type RequestCtx, RequirePermission } from '../common/decorators'
 import type { AuthUser } from '../common/types'
+import { FluxosService } from './fluxos.service'
 import { SetoresService } from './setores.service'
 import { WhatsappService } from './whatsapp.service'
 
@@ -135,5 +137,77 @@ export class SetoresController {
   @RequirePermission('whatsapp', 'edit')
   managers(@CurrentUser() user: AuthUser, @Param('userId', ParseUUIDPipe) userId: string, @Body() dto: ManagersDto, @ReqContext() ctx: RequestCtx) {
     return this.setores.setManagers(user, userId, dto.managerIds, ctx)
+  }
+}
+
+class FlowDto {
+  @ApiProperty() @IsString() @Length(2, 60) name!: string
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(200) description?: string | null
+  @ApiProperty({ type: [String] }) @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) numberIds!: string[]
+  @ApiProperty({ enum: ['NOVA_CONVERSA', 'PALAVRA'] }) @IsIn(['NOVA_CONVERSA', 'PALAVRA']) trigger!: 'NOVA_CONVERSA' | 'PALAVRA'
+  @ApiProperty({ type: [String] }) @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @MaxLength(40, { each: true }) keywords!: string[]
+  @ApiProperty() @IsBoolean() onlyAfterHours!: boolean
+  @ApiProperty() @Type(() => Number) @IsInt() @Min(5) @Max(1440) timeoutMinutes!: number
+  @ApiProperty({ description: 'Etapas [{ id, type, text, options, go, label }]' }) @IsArray() @ArrayMaxSize(60) steps!: unknown[]
+  @ApiProperty() @IsString() @MaxLength(40) startStepId!: string
+}
+
+class FlowActiveDto {
+  @ApiProperty() @IsBoolean() active!: boolean
+}
+
+class SimulateDto {
+  @ApiProperty() @IsArray() @ArrayMaxSize(60) steps!: unknown[]
+  @ApiProperty() @IsString() @MaxLength(40) startStepId!: string
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsObject() state!: { stepId: string; tries: number; answers: { label: string; text: string }[] } | null
+  @ApiProperty() @IsString() @MaxLength(1000) text!: string
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) name?: string
+}
+
+/** Chatbot de atendimento: fluxos sem IA que recebem o cliente e direcionam (Configurações › Chatbot de atendimento). */
+@ApiTags('WhatsApp')
+@Controller('whatsapp/fluxos')
+export class FluxosController {
+  constructor(private readonly fluxos: FluxosService) {}
+
+  @Get()
+  @RequirePermission('whatsapp', 'view')
+  list(@CurrentUser() user: AuthUser) {
+    return this.fluxos.list(user)
+  }
+
+  @Post('simular')
+  @HttpCode(200)
+  @RequirePermission('whatsapp', 'view')
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  simulate(@Body() dto: SimulateDto) {
+    return this.fluxos.simulate(dto)
+  }
+
+  @Post()
+  @RequirePermission('whatsapp', 'edit')
+  create(@CurrentUser() user: AuthUser, @Body() dto: FlowDto, @ReqContext() ctx: RequestCtx) {
+    return this.fluxos.save(user, null, dto, ctx)
+  }
+
+  @Put(':id')
+  @RequirePermission('whatsapp', 'edit')
+  update(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: FlowDto, @ReqContext() ctx: RequestCtx) {
+    return this.fluxos.save(user, id, dto, ctx)
+  }
+
+  @Post(':id/situacao')
+  @HttpCode(200)
+  @RequirePermission('whatsapp', 'edit')
+  setActive(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: FlowActiveDto, @ReqContext() ctx: RequestCtx) {
+    return this.fluxos.setActive(user, id, dto.active, ctx)
+  }
+
+  @Delete(':id')
+  @HttpCode(200)
+  @RequirePermission('whatsapp', 'edit')
+  async remove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    await this.fluxos.remove(user, id, ctx)
+    return { ok: true }
   }
 }

@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, AlertCircleIcon, BanIcon, FileTextIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ReplyIcon, SmilePlusIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, AlertCircleIcon, BanIcon, CircleCheckBigIcon, FileTextIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ReplyIcon, SmilePlusIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
 import { createContext, type FormEvent, type KeyboardEvent, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -118,6 +118,10 @@ interface Thread {
   record: { id: string; kind: 'PRE_VENDAS' | 'POS_VENDAS'; leadAt: string; saleStatus: string; adsVia: string | null; adsCampaign: string | null; adsCampaignId: string | null; entryChannel: string | null } | null
   hasMore: boolean
   messages: Message[]
+  /** Finalizar atendimento: mensagem de encerramento (null = desligada) e quando/quem finalizou. */
+  closeText?: string | null
+  closedAt?: string | null
+  closedByName?: string | null
   monitor?: boolean
 }
 
@@ -619,6 +623,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
           {!monitor && d.attendance?.split && d.conversation.category === 'CLIENTE' && <AttendantPicker thread={d} />}
           {!monitor && d.attendance?.split && d.conversation.category === 'CLIENTE' && <HelpersPicker thread={d} />}
           {!monitor && d.conversation.category !== 'GRUPO' && d.conversation.phone && <SaveContactButton thread={d} />}
+          {!monitor && can('chat', 'create') && d.conversation.category === 'CLIENTE' && d.conversation.status === 'ABERTA' && <FinishButton thread={d} />}
           {!monitor && <ConversationActions thread={d} />}
         </div>
       </div>
@@ -1385,6 +1390,62 @@ function Composer({ thread, replyTo, onClearReply }: { thread: Thread; replyTo?:
       </div>
     </form>
     {managing && <ManageRepliesDialog onClose={() => setManaging(false)} />}
+    </>
+  )
+}
+
+/**
+ * Finalizar atendimento: manda (se quiser) a mensagem de encerramento, tira a conversa do atendente e da fila e
+ * arquiva. Se o cliente chamar de novo, começa outro atendimento (fila ou robô).
+ */
+function FinishButton({ thread }: { thread: Thread }) {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [send, setSend] = useState(true)
+  const id = thread.conversation.id
+  const finish = useMutation({
+    mutationFn: () => api.post(`/chat/conversas/${id}/finalizar`, { enviarMensagem: !!thread.closeText && send }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['chat-conversa', id] })
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+      toast.success('Atendimento finalizado. Se o cliente chamar de novo, começa um atendimento novo.')
+      setOpen(false)
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  return (
+    <>
+      <Button size="sm" onClick={() => setOpen(true)} title="Finalizar o atendimento desta conversa">
+        <CircleCheckBigIcon /> <span className="hidden @4xl/head:inline">Finalizar</span>
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Finalizar atendimento</DialogTitle>
+            <DialogDescription>A conversa sai de quem atende e da fila e vai para as arquivadas. Se o cliente chamar de novo, começa um atendimento novo.</DialogDescription>
+          </DialogHeader>
+          {thread.closeText ? (
+            <label className="flex items-start gap-3 rounded-md border p-3 text-sm">
+              <Switch checked={send} onCheckedChange={setSend} className="mt-0.5" aria-label="Enviar a mensagem de encerramento" />
+              <span>
+                Enviar a mensagem de encerramento
+                <span className="mt-1 block text-xs whitespace-pre-wrap text-muted-foreground">“{thread.closeText}”</span>
+              </span>
+            </label>
+          ) : (
+            <p className="text-xs text-muted-foreground">A mensagem de encerramento está desligada (Configurações › Regras e horário).</p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => finish.mutate()} disabled={finish.isPending}>
+              {finish.isPending && <Loader2Icon className="animate-spin" />}
+              Finalizar atendimento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

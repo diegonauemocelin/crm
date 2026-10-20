@@ -140,7 +140,11 @@ export interface WaRules {
   away: { enabled: boolean; text: string; cooldownHours: number }
   /** Prazo de guarda das conversas (LGPD): em meses, por tipo de contato; as mídias saem antes (só fica o texto). */
   retention: Retention
+  /** Finalizar atendimento: mensagem de encerramento enviada ao cliente (quando ligada; dá para não enviar na hora). */
+  close: { enabled: boolean; text: string }
 }
+
+export const DEFAULT_CLOSE_TEXT = 'Seu atendimento foi finalizado. Obrigado pelo contato! Se precisar de algo, é só chamar por aqui.'
 export interface Retention {
   enabled: boolean
   clientMonths: number
@@ -186,6 +190,7 @@ export const DEFAULT_RULES: WaRules = {
   businessHours: DEFAULT_HOURS,
   away: { enabled: false, text: DEFAULT_AWAY_TEXT, cooldownHours: 12 },
   retention: DEFAULT_RETENTION,
+  close: { enabled: true, text: DEFAULT_CLOSE_TEXT },
 }
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -264,6 +269,10 @@ export function cleanRules(raw: Partial<WaRules> | null | undefined): WaRules {
       cooldownHours: Number.isInteger(r.away?.cooldownHours) && r.away!.cooldownHours >= 1 && r.away!.cooldownHours <= 168 ? r.away!.cooldownHours : 12,
     },
     retention: cleanRetention(r.retention),
+    close: {
+      enabled: r.close?.enabled !== false,
+      text: typeof r.close?.text === 'string' && r.close.text.trim() ? r.close.text.trim().slice(0, 1000) : DEFAULT_CLOSE_TEXT,
+    },
   }
 }
 

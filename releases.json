@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.66.0",
+      "date": "2026-10-20",
+      "title": "Chatbot de atendimento e Finalizar atendimento",
+      "changes": [
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Chatbot de atendimento (sem IA), em Configurações › Chatbot de atendimento: fluxos com mensagens, menu de opções numeradas, perguntas e transferência para um setor ou uma pessoa. O robô recebe o cliente que chama sem atendente e passa a conversa adiante, com as respostas do cliente numa nota para quem vai atender." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Cada fluxo começa quando o cliente sem atendente chama (conversa nova ou parada) ou por palavra-chave (ex.: garantia), em todos ou em alguns números e, se quiser, só fora do horário comercial. Sem resposta do cliente pelo tempo escolhido, o robô sai e a conversa fica na fila." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Simulador ao lado do editor: teste o fluxo como se fosse o cliente, sem enviar nada de verdade. O fluxo começa desligado; ligue quando estiver pronto." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Finalizar atendimento: botão no chat que envia a mensagem de encerramento (opcional, texto em Configurações › Regras e horário), tira a conversa do atendente e da fila e arquiva. Se o cliente chamar de novo, começa um atendimento novo (fila ou robô)." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Quando uma pessoa responde (pelo CRM ou pelo celular) ou a conversa é transferida, o robô sai na hora. Números com atendente padrão não passam pelo robô." }
+      ]
+    },
+    {
       "version": "0.65.0",
       "date": "2026-10-20",
       "title": "Setores de atendimento, gestores e monitoramento da equipe",

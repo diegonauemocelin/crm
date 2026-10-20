@@ -1346,6 +1346,32 @@ model WhatsappNumber {
   @@map("whatsapp_numbers")
 }
 
+/// Chatbot de atendimento (sem IA): fluxo de etapas que recebe o cliente e direciona para um setor ou pessoa.
+model WhatsappFlow {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  name          String
+  description   String?
+  active        Boolean  @default(false)
+  /// Números em que o fluxo atende (vazio = todos).
+  numberIds     String[] @default([]) @db.Uuid
+  /// NOVA_CONVERSA: cliente sem atendente chamou (conversa nova ou parada); PALAVRA: só quando escrever uma das palavras.
+  trigger       String   @default("NOVA_CONVERSA")
+  keywords      String[] @default([])
+  /// Só fora do horário comercial (Configurações › Regras e horário).
+  onlyAfterHours Boolean @default(false)
+  /// Etapas [{ id, type, text, options, go, label }] e a etapa inicial.
+  steps         Json     @default("[]")
+  startStepId   String   @default("")
+  /// Sem resposta do cliente por estes minutos: o robô sai e a conversa fica na fila.
+  timeoutMinutes Int     @default(30)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenantId, active])
+  @@map("whatsapp_flows")
+}
+
 /// Setor de atendimento da empresa (Vendas, Pós-venda, Financeiro...): quem atende, quem gerencia e o que cada um vê.
 model WhatsappSector {
   id          String   @id @default(uuid()) @db.Uuid
@@ -1398,6 +1424,13 @@ model WhatsappConversation {
   noteUnread       Boolean   @default(false)
   /// Última mensagem de ausência enviada (fora do horário comercial), para não repetir a cada mensagem.
   awaySentAt       DateTime?
+  /// Chatbot: fluxo e etapa em que a conversa está (vazio = robô fora da conversa), quando o robô falou por último e as respostas.
+  botFlowId        String?   @db.Uuid
+  botState         Json?
+  botAt            DateTime?
+  /// Atendimento finalizado (quando e por quem): a próxima mensagem do cliente abre um atendimento novo (fila ou robô).
+  closedAt         DateTime?
+  closedByName     String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
