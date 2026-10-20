@@ -27,6 +27,7 @@ import { formatPhone, maskPhone, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import { setSoundOn, soundOn, useChatAlerts } from '@/lib/chat-alerts'
 import { splitLinks, splitPhones } from '@/lib/links'
+import { menuFor } from '@/lib/menu'
 import { cn } from '@/lib/utils'
 
 interface NumberRef {
@@ -681,6 +682,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
                   {d.conversation.category === 'GRUPO' && !m.fromMe && m.sentByName && <p className="mb-0.5 text-xs font-semibold text-[color:var(--brand)]">{m.sentByName}</p>}
                   {m.quotedText && <QuotedBlock text={m.quotedText} who={m.quotedFromMe === true ? 'Você' : m.quotedFromMe === false ? title : null} targetId={m.quotedId ?? null} />}
                   <Bubble m={m} />
+                  {!m.fromMe && m.type === 'texto' && canAct(m) && <MenuButtons m={m} conversationId={d.conversation.id} category={d.conversation.category} />}
                   {!!m.reactions?.length && <Reactions list={m.reactions} />}
                   <p className={cn('mt-0.5 text-right text-[11px] tabular-nums', m.fromMe ? 'opacity-70' : 'text-muted-foreground')}>
                     {m.fromMe && (m.sentByName ? `${m.sentByName} · ` : 'pelo celular · ')}
@@ -933,6 +935,44 @@ function QuotedBlock({ text, who, targetId = null }: { text: string; who: string
     </button>
   ) : (
     <div className={box}>{body}</div>
+  )
+}
+
+/**
+ * Menu de robô recebido ("1 Marketing / 2 Conversas..."): as opções viram botões. Clicar responde à mensagem do menu
+ * com o nome da opção, que é o que o robô recebe quando a pessoa toca no botão no celular (responder só "1" ele recusa).
+ */
+function MenuButtons({ m, conversationId, category }: { m: Message; conversationId: string; category: string }) {
+  const qc = useQueryClient()
+  const options = useMemo(() => menuFor(m.text, category), [m.text, category])
+  const send = useMutation({
+    mutationFn: (label: string) => api.post(`/chat/conversas/${conversationId}/mensagens`, { text: label, quotedId: m.id }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['chat-conversa', conversationId] })
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  if (!options.length) return null
+  return (
+    <div className="mt-1.5 -mx-1 flex flex-col gap-1 border-t border-black/10 pt-1.5 dark:border-white/10">
+      {options.map((o) => (
+        <button
+          key={o.n}
+          type="button"
+          disabled={send.isPending}
+          onClick={(e) => {
+            e.stopPropagation()
+            send.mutate(o.label)
+          }}
+          className="rounded px-2 py-1 text-center text-sm font-medium text-[#027eb5] hover:bg-black/5 disabled:opacity-50 dark:text-[#53bdeb] dark:hover:bg-white/10"
+          title={`Responder ao menu com "${o.label}"`}
+        >
+          {send.isPending && send.variables === o.label ? <Loader2Icon className="mr-1 inline size-3.5 animate-spin" /> : null}
+          {o.label}
+        </button>
+      ))}
+    </div>
   )
 }
 

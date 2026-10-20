@@ -110,12 +110,124 @@ export function parseMessage(data: unknown): ParsedMessage | null {
     const list = (Array.isArray(many.contacts) ? (many.contacts as Obj[]) : []).slice(0, 10).map(contactLine)
     return { ...base, type: 'contato', text: list.join('\n') || str(many.displayName, 200) || 'Contato', media: null }
   }
+  // Menu de robô (botões, lista, mensagem interativa): o texto e as opções numeradas, para escolher pelo chat.
+  const menu = menuOf(m)
+  if (menu) return { ...base, type: 'texto', text: menu, media: null }
+  // Resposta a um menu (tocada no celular): o texto da opção escolhida.
+  const picked = pickedOption(m)
+  if (picked) return { ...base, type: 'texto', text: picked, media: null }
   const poll = o('pollCreationMessage') ?? o('pollCreationMessageV3')
   if (poll) return { ...base, type: 'outro', text: `Enquete: ${str(poll.name, 300) ?? ''}`, media: null }
   // Reações, avisos do sistema e chaves de criptografia não viram mensagem na conversa.
   const keys = Object.keys(m).filter((k) => k !== 'messageContextInfo')
   if (!keys.length || keys.some((k) => ['reactionMessage', 'protocolMessage', 'senderKeyDistributionMessage', 'pollUpdateMessage', 'keepInChatMessage'].includes(k))) return null
+  const found = anyText(m)
+  if (found) return { ...base, type: 'texto', text: found, media: null }
   return { ...base, type: 'outro', text: 'Mensagem de um tipo que o CRM ainda não mostra (veja no celular).', media: null }
+}
+
+const obj = (v: unknown) => (v && typeof v === 'object' ? (v as Obj) : null)
+
+/** Texto do menu com as opções numeradas ("1 Marketing"), como o chat mostra e o cliente vê no celular. */
+function menuText(body: string | null, options: string[]) {
+  const opts = options.map((t) => t.trim()).filter(Boolean).slice(0, 30)
+  if (!opts.length) return null
+  return [body?.trim() || 'Escolha uma opção:', ...opts.map((t, i) => `${i + 1} ${t.slice(0, 80)}`)].join('\n').slice(0, 4000)
+}
+
+/** Botões, lista ou mensagem interativa (WhatsApp Business / robôs): o texto e as opções. */
+function menuOf(m: Obj): string | null {
+  const btn = obj(m.buttonsMessage)
+  if (btn) return menuText(str(btn.contentText) ?? str(btn.text), (Array.isArray(btn.buttons) ? btn.buttons : []).map((b) => str(obj(obj(b)?.buttonText)?.displayText, 120) ?? ''))
+  const list = obj(m.listMessage)
+  if (list) {
+    const rows = (Array.isArray(list.sections) ? list.sections : []).flatMap((sec) => (Array.isArray(obj(sec)?.rows) ? (obj(sec)!.rows as unknown[]) : []))
+    return menuText([str(list.title, 300), str(list.description)].filter(Boolean).join('\n') || null, rows.map((r) => str(obj(r)?.title, 120) ?? ''))
+  }
+  const tm = obj(m.templateMessage)
+  // Modelo com mensagem interativa dentro: lê como a interativa.
+  const tplInter = obj(tm?.interactiveMessageTemplate)
+  if (tplInter) return menuOf({ interactiveMessage: tplInter })
+  const tpl = obj(tm?.hydratedTemplate) ?? obj(tm?.hydratedFourRowTemplate) ?? obj(tm?.fourRowTemplate)
+  if (tpl) {
+    const buttons = Array.isArray(tpl.hydratedButtons) ? tpl.hydratedButtons : []
+    const label = (b: unknown) => str(obj(obj(b)?.quickReplyButton)?.displayText, 120) ?? str(obj(obj(b)?.urlButton)?.displayText, 120) ?? str(obj(obj(b)?.callButton)?.displayText, 120) ?? ''
+    return menuText(str(tpl.hydratedContentText) ?? str(obj(tpl.content)?.namespace), buttons.map(label)) ?? str(tpl.hydratedContentText)
+  }
+  const inter = obj(m.interactiveMessage)
+  if (inter) {
+    const body = [str(obj(inter.header)?.title, 300), str(obj(inter.body)?.text)].filter(Boolean).join('\n') || null
+    const flow = obj(inter.nativeFlowMessage)
+    const options: string[] = []
+    for (const b of Array.isArray(flow?.buttons) ? (flow!.buttons as unknown[]) : []) {
+      let params: Obj = {}
+      try {
+        params = JSON.parse(str(obj(b)?.buttonParamsJson, 20_000) ?? '{}') as Obj
+      } catch {
+        /* botão sem parâmetros legíveis */
+      }
+      const rows = (Array.isArray(params.sections) ? params.sections : []).flatMap((sec) => (Array.isArray(obj(sec)?.rows) ? (obj(sec)!.rows as unknown[]) : []))
+      if (rows.length) options.push(...rows.map((r) => str(obj(r)?.title, 120) ?? ''))
+      else if (str(params.display_text, 120) && obj(b)?.name === 'quick_reply') options.push(str(params.display_text, 120)!)
+    }
+    return menuText(body, options) ?? body
+  }
+  return null
+}
+
+/** Resposta de botão de fluxo (paramsJson com o texto ou o id da opção). */
+function nativeReply(r: Obj | null): string | null {
+  if (!r) return null
+  try {
+    const p = JSON.parse(str(r.paramsJson, 20_000) ?? '{}') as Obj
+    return str(p.display_text, 300) ?? str(p.title, 300) ?? str(p.id, 300)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Último recurso para mensagem de um tipo novo: junta o texto e os nomes dos botões que vierem dentro dela, em vez de
+ * mostrar só "tipo que o CRM ainda não mostra".
+ */
+function anyText(m: Obj): string | null {
+  const texts: string[] = []
+  const buttons: string[] = []
+  const walk = (v: unknown, depth: number) => {
+    if (depth > 8 || texts.length + buttons.length > 40) return
+    if (Array.isArray(v)) return v.forEach((x) => walk(x, depth + 1))
+    const o = obj(v)
+    if (!o) return
+    for (const [k, x] of Object.entries(o)) {
+      if (k === 'contextInfo' || k === 'messageContextInfo' || k === 'jpegThumbnail') continue
+      if (typeof x === 'string' && x.trim()) {
+        if (['displayText', 'display_text', 'selectedDisplayText'].includes(k)) buttons.push(x.trim())
+        else if (['text', 'contentText', 'conversation', 'caption', 'description', 'hydratedContentText', 'footerText', 'title'].includes(k)) texts.push(x.trim())
+        else if (k === 'buttonParamsJson' || k === 'paramsJson') {
+          try {
+            walk(JSON.parse(x), depth + 1)
+          } catch {
+            /* não é JSON */
+          }
+        }
+      } else walk(x, depth + 1)
+    }
+  }
+  walk(m, 0)
+  const body = [...new Set(texts)].join('\n').slice(0, 3000)
+  return menuText(body || null, [...new Set(buttons)]) ?? (body || null)
+}
+
+/** Opção tocada num menu (resposta de botão ou de lista). */
+function pickedOption(m: Obj): string | null {
+  return (
+    str(obj(m.buttonsResponseMessage)?.selectedDisplayText, 300) ??
+    str(obj(m.listResponseMessage)?.title, 300) ??
+    str(obj(m.templateButtonReplyMessage)?.selectedDisplayText, 300) ??
+    str(obj(obj(m.interactiveResponseMessage)?.body)?.text, 300) ??
+    nativeReply(obj(obj(m.interactiveResponseMessage)?.nativeFlowResponseMessage)) ??
+    null
+  )
 }
 
 /** "Nome · +55 47 99999-0000" a partir do cartão (vCard) que veio na mensagem. */
@@ -141,7 +253,8 @@ function quotedPreview(q: Obj | null): string {
   if (o('stickerMessage')) return 'Figurinha'
   if (o('contactMessage')) return `Contato: ${str(o('contactMessage')!.displayName, 120) ?? ''}`
   if (o('locationMessage')) return 'Localização'
-  return 'Mensagem'
+  // Menu de robô (botões, lista): o texto dele.
+  return (menuOf(inner) ?? anyText(inner) ?? 'Mensagem').slice(0, 300)
 }
 
 /** Citação a partir do contextInfo: stanzaId é a mensagem respondida e quotedMessage, o trecho dela. */
