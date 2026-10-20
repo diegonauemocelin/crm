@@ -61,7 +61,7 @@ import { SavedViews } from '@/components/saved-views'
 import { RecordSheet } from './record-sheet'
 
 const ALL = '__all__'
-export const FILTER_KEYS = ['search', 'from', 'to', 'unitId', 'sellerId', 'originId', 'customerTypeId', 'state', 'region', 'brandId', 'partTypeId', 'forwarded', 'returnStatus', 'saleStatus', 'lostReasonId', 'overdue', 'followStatus', 'followOverdue', 'postSaleReturned', 'waiting', 'callDue'] as const
+export const FILTER_KEYS = ['search', 'from', 'to', 'unitId', 'sellerId', 'originId', 'customerTypeId', 'state', 'region', 'brandId', 'partTypeId', 'forwarded', 'returnStatus', 'saleStatus', 'lostReasonId', 'overdue', 'followStatus', 'followOverdue', 'postSaleReturned', 'waiting', 'callDue', 'adsVia'] as const
 
 interface Page {
   total: number
@@ -315,6 +315,7 @@ export function RecordsList({ kind }: { kind: Kind }) {
             <PhoneCallIcon /> Chamar cliente
           </Button>
         )}
+        <FilterSelect label="Google Ads" value={params.get('adsVia')} onChange={(v) => setFilter('adsVia', v)} items={[{ id: 'ads', name: 'Veio do Google Ads' }, { id: 'nao', name: 'Fora do Google Ads' }]} />
         {kind === 'POS_VENDAS' && (
           <>
             <FilterSelect label="Pós-venda" value={params.get('followStatus')} onChange={(v) => setFilter('followStatus', v)} items={FOLLOW_STATUSES.map((s) => ({ id: s, name: FOLLOW_LABEL[s] }))} />

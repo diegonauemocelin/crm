@@ -64,6 +64,7 @@ class FiltersDto implements RecordFilters {
   @IsOptional() @IsIn(['true']) followOverdue?: 'true'
   @IsOptional() @IsIn(['true']) postSaleReturned?: 'true'
   @IsOptional() @IsIn(['true']) callDue?: 'true'
+  @IsOptional() @IsIn(['ads', 'nao']) adsVia?: 'ads' | 'nao'
 }
 
 class ListDto extends FiltersDto {

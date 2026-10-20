@@ -19,6 +19,11 @@ export interface DashRow {
   saleStatus: SaleStatus
   lostReasonId: string | null
   saleValue: number | null
+  /** Google Ads: ANUNCIO (campanha identificada pelo clique), ORIGEM (origem com "Google" no nome) ou vazio. */
+  adsVia?: string | null
+  /** Quem é o contato (lead da base ou telefone), para contar leads distintos. */
+  leadId?: string | null
+  phone?: string | null
 }
 
 const NONE = 'none'
@@ -80,6 +85,27 @@ export function bucketOf(date: Date, granularity: 'dia' | 'semana' | 'mes') {
   return sp.toISOString().slice(0, 10)
 }
 
+/**
+ * Google Ads × fora do Ads: os mesmos números dos dois lados (leads distintos, atendimentos, repassados, retorno do
+ * vendedor, vendas e faturamento). Conta como Ads o atendimento ligado a uma campanha do Google (clique no anúncio)
+ * ou com origem "Google"; o resto é fora do Ads.
+ */
+export function adsComparison(rows: DashRow[], alertHours: number) {
+  const side = (list: DashRow[]) => {
+    const k = kpis(list, alertHours)
+    const leads = new Set(list.map((r, i) => r.leadId ?? r.phone ?? `#${i}`)).size
+    return { leads, records: k.total, forwarded: k.forwarded, returned: k.returned, returnRate: k.returnRate, sales: k.sales, conversion: k.conversion, revenue: k.revenue, ticket: k.ticket, lost: k.lost, negotiating: k.negotiating }
+  }
+  const ads = rows.filter((r) => r.adsVia === 'ANUNCIO' || r.adsVia === 'ORIGEM')
+  return {
+    ads: side(ads),
+    notAds: side(rows.filter((r) => r.adsVia !== 'ANUNCIO' && r.adsVia !== 'ORIGEM')),
+    /** Detalhe do lado Ads: com a campanha identificada ou só pela origem. */
+    byCampaign: ads.filter((r) => r.adsVia === 'ANUNCIO').length,
+    byOrigin: ads.filter((r) => r.adsVia === 'ORIGEM').length,
+  }
+}
+
 export function buildDashboard(current: DashRow[], previous: DashRow[], opts: { from: string; to: string; alertHours: number }) {
   const days = Math.round((Date.parse(opts.to) - Date.parse(opts.from)) / 86_400_000) + 1
   const granularity = days <= 62 ? 'dia' : days <= 400 ? 'semana' : 'mes'
@@ -130,5 +156,7 @@ export function buildDashboard(current: DashRow[], previous: DashRow[], opts: { 
     byPartType: countBy(current, (r) => r.partTypeIds),
     lostReasons: pareto,
     sellers,
+    ads: adsComparison(current, opts.alertHours),
+    previousAds: adsComparison(previous, opts.alertHours),
   }
 }

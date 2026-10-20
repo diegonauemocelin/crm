@@ -52,6 +52,89 @@ interface Dashboard {
   byPartType: Group[]
   lostReasons: { id: string; count: number; cumulative: number }[]
   sellers: { id: string; leads: number; forwarded: number; returned: number; returnRate: number | null; avgReturnHours: number | null; sales: number; revenue: number; conversion: number | null }[]
+  /** Google Ads × fora do Ads (atendimentos ligados a campanha do Google ou origem "Google"). */
+  ads?: AdsComparison
+  previousAds?: AdsComparison
+}
+
+interface AdsSide {
+  leads: number
+  records: number
+  forwarded: number
+  returned: number
+  returnRate: number | null
+  sales: number
+  conversion: number | null
+  revenue: number
+  ticket: number | null
+  lost: number
+  negotiating: number
+}
+interface AdsComparison {
+  ads: AdsSide
+  notAds: AdsSide
+  byCampaign: number
+  byOrigin: number
+}
+
+/** Os mesmos números lado a lado: o que veio do Google Ads e o que não veio. */
+function AdsCard({ now, before, kind }: { now: AdsComparison; before?: AdsComparison; kind: Kind }) {
+  const pct = (v: number | null) => (v === null ? '—' : pctFmt.format(v))
+  const rows: { label: string; get: (s: AdsSide) => number | null; show: (s: AdsSide) => string; lowerIsBetter?: boolean; points?: boolean; hint?: string }[] = [
+    { label: 'Leads (contatos distintos)', get: (s) => s.leads, show: (s) => int.format(s.leads) },
+    { label: 'Atendimentos', get: (s) => s.records, show: (s) => int.format(s.records) },
+    { label: 'Repassados ao vendedor', get: (s) => s.forwarded, show: (s) => int.format(s.forwarded) },
+    { label: 'Retorno do vendedor', get: (s) => s.returnRate, show: (s) => `${pct(s.returnRate)} (${int.format(s.returned)})`, points: true },
+    { label: 'Vendas', get: (s) => s.sales, show: (s) => int.format(s.sales) },
+    { label: 'Conversão em venda', get: (s) => s.conversion, show: (s) => pct(s.conversion), points: true },
+    { label: 'Valor vendido', get: (s) => s.revenue, show: (s) => brl.format(s.revenue) },
+    { label: 'Ticket médio', get: (s) => s.ticket, show: (s) => (s.ticket === null ? '—' : brl.format(s.ticket)) },
+    { label: 'Em negociação', get: (s) => s.negotiating, show: (s) => int.format(s.negotiating) },
+    { label: 'Vendas perdidas', get: (s) => s.lost, show: (s) => int.format(s.lost), lowerIsBetter: true },
+  ]
+  const share = now.ads.records + now.notAds.records ? now.ads.records / (now.ads.records + now.notAds.records) : null
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Google Ads × fora do Ads</CardTitle>
+        <CardDescription>
+          Do Google Ads: atendimento ligado a uma campanha (clique no anúncio, {int.format(now.byCampaign)}) ou com origem “Google” ({int.format(now.byOrigin)}). {share !== null && `${pctFmt.format(share)} dos atendimentos do período vieram do Ads.`} A seta compara com o período anterior.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead />
+              <TableHead className="text-right">
+                <Link to={`${KIND_INFO[kind].path}?adsVia=ads`} className="text-sky-700 hover:underline dark:text-sky-300">
+                  Google Ads
+                </Link>
+              </TableHead>
+              <TableHead className="text-right">
+                <Link to={`${KIND_INFO[kind].path}?adsVia=nao`} className="hover:underline">
+                  Fora do Ads
+                </Link>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r) => (
+              <TableRow key={r.label}>
+                <TableCell className="text-sm">{r.label}</TableCell>
+                {(['ads', 'notAds'] as const).map((side) => (
+                  <TableCell key={side} className="text-right tabular-nums">
+                    <span className="font-medium">{r.show(now[side])}</span>
+                    {before && <span className="ml-2 inline-block align-middle"><Delta now={r.get(now[side])} before={r.get(before[side])} lowerIsBetter={r.lowerIsBetter} asPoints={r.points} /></span>}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  )
 }
 
 const PRESETS = [
@@ -347,6 +430,8 @@ export function AtendimentoDashboard({ kind }: { kind: Kind }) {
             <Stat label="Vendas perdidas" value={int.format(k.lost)} delta={<Delta now={k.lost} before={p.lost} lowerIsBetter />} />
             <Stat label="Tempo médio de retorno" value={hours(k.avgReturnHours)} delta={<Delta now={k.avgReturnHours} before={p.avgReturnHours} lowerIsBetter />} hint="Repasse até o retorno, nos registros feitos pelo sistema" />
           </div>
+
+          {d.ads && kind === 'PRE_VENDAS' && <AdsCard now={d.ads} before={d.previousAds} kind={kind} />}
 
           <Card>
             <CardHeader>

@@ -61,6 +61,8 @@ export interface RecordFilters {
   waiting?: 'true'
   /** Em negociação e já passou do prazo para chamar o cliente. */
   callDue?: 'true'
+  /** Veio do Google Ads (campanha ou origem "Google") ou não. */
+  adsVia?: 'ads' | 'nao'
 }
 
 export interface RecordInput {
@@ -187,6 +189,8 @@ export class ServiceRecordsService {
     if (f.followOverdue === 'true') and.push({ followStatus: 'PENDENTE', dueAt: { lt: new Date() } })
     if (f.waiting === 'true') and.push(this.waitingWhere(Date.now()))
     if (f.callDue === 'true') and.push(this.callDueWhere(new Date()))
+    if (f.adsVia === 'ads') and.push({ adsVia: { in: ['ANUNCIO', 'ORIGEM'] } })
+    if (f.adsVia === 'nao') and.push({ OR: [{ adsVia: null }, { adsVia: { notIn: ['ANUNCIO', 'ORIGEM'] } }] })
     if (f.overdue === 'true') {
       const { alertHours } = await this.alertSettings(user.tenantId)
       and.push({ forwarded: true, returnStatus: 'PENDENTE', forwardedAt: { lt: new Date(Date.now() - alertHours * 3_600_000) } })
@@ -659,6 +663,9 @@ export class ServiceRecordsService {
         saleStatus: true,
         lostReasonId: true,
         saleValue: true,
+        adsVia: true,
+        leadId: true,
+        phone: true,
       },
     })
     return rows.map((r) => ({ ...r, saleValue: r.saleValue === null ? null : Number(r.saleValue) }))

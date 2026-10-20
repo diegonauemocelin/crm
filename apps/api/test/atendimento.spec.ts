@@ -230,3 +230,20 @@ describe('dashboard', () => {
     expect(d.byUnit.find((u) => u.id === 'cascavel')).toMatchObject({ leads: 1, sales: 0 })
   })
 })
+
+describe('Google Ads × fora do Ads', () => {
+  it('separa os atendimentos que vieram do Ads (campanha ou origem Google) dos outros, com leads distintos', async () => {
+    const { adsComparison } = await import('../src/atendimento/dashboard')
+    const row = (o: Partial<DashRow>): DashRow => ({ leadAt: new Date('2026-10-01T12:00:00Z'), sellerId: null, unitId: null, originId: null, customerTypeId: null, state: 'SC', country: 'BR', brandIds: [], partTypeIds: [], forwarded: false, forwardedAt: null, returnStatus: null, returnedAt: null, saleStatus: 'NEGOCIACAO', lostReasonId: null, saleValue: null, ...o })
+    const rows = [
+      row({ adsVia: 'ANUNCIO', leadId: 'l1', forwarded: true, returnStatus: 'SIM', saleStatus: 'SIM', saleValue: 1000 }),
+      row({ adsVia: 'ANUNCIO', leadId: 'l1', forwarded: true, returnStatus: 'PENDENTE' }),
+      row({ adsVia: 'ORIGEM', phone: '+5549999990000', saleStatus: 'NAO', lostReasonId: 'x' }),
+      row({ adsVia: null, leadId: 'l9', forwarded: true, returnStatus: 'SIM', saleStatus: 'SIM', saleValue: 500 }),
+    ]
+    const r = adsComparison(rows, 24)
+    expect(r.ads).toMatchObject({ leads: 2, records: 3, forwarded: 2, returned: 1, sales: 1, revenue: 1000, lost: 1 })
+    expect(r.notAds).toMatchObject({ leads: 1, records: 1, sales: 1, revenue: 500, conversion: 1 })
+    expect([r.byCampaign, r.byOrigin]).toEqual([2, 1])
+  })
+})

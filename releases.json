@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.67.0",
+      "date": "2026-10-20",
+      "title": "Google Ads × fora do Ads no painel de Pré-Vendas",
+      "changes": [
+        { "type": "novo", "area": "Pré-Vendas", "text": "No Dashboard de Pré-Vendas, o quadro \"Google Ads × fora do Ads\" mostra lado a lado: leads (contatos distintos), atendimentos, repassados ao vendedor, retorno do vendedor, vendas, conversão, valor vendido, ticket médio, em negociação e perdidas, com a comparação com o período anterior." },
+        { "type": "novo", "area": "Pré-Vendas", "text": "Conta como Google Ads o atendimento ligado a uma campanha do Google (clique no anúncio) ou com origem \"Google\". Novo filtro \"Google Ads\" na lista de atendimentos (veio do Ads / fora do Ads); os títulos do quadro abrem a lista já filtrada." }
+      ]
+    },
+    {
       "version": "0.66.0",
       "date": "2026-10-20",
       "title": "Chatbot de atendimento e Finalizar atendimento",
