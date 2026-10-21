@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.78.2",
+      "date": "2026-10-21",
+      "title": "Instagram: dados dos concorrentes buscados na hora",
+      "changes": [
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Ao salvar a lista de concorrentes, o CRM já busca os seguidores e as publicações públicas deles, sem esperar a próxima sincronização. Na comparação há o botão \"Buscar dados agora\" e, em cada concorrente, a data dos dados ou o motivo de a Meta não ter entregado (ex.: conta pessoal, que a Meta não mostra)." }
+      ]
+    },
+    {
       "version": "0.78.1",
       "date": "2026-10-21",
       "title": "Chat: ligação de número escondido mostra o cliente",

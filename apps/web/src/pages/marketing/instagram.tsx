@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ExternalLinkIcon, Loader2Icon, PencilIcon, PlusIcon, SearchIcon, Trash2Icon } from 'lucide-react'
+import { ExternalLinkIcon, Loader2Icon, PencilIcon, PlusIcon, RefreshCwIcon, SearchIcon, Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { BestTimes, type OnlinePeaks, type TimeCell } from '@/components/marketing/horarios'
@@ -701,6 +701,10 @@ interface CompetitorRow {
   adLibrary: string | null
   status: { at: string; error: string | null } | null
 }
+type QC = ReturnType<typeof useQueryClient>
+/** A busca dos concorrentes roda no servidor por alguns segundos: atualiza a tabela logo depois. */
+const refreshCompetitorsSoon = (qc: QC) => [5_000, 15_000].forEach((ms) => setTimeout(() => void qc.invalidateQueries({ queryKey: ['mkt-ig-concorrentes'] }), ms))
+
 interface CompetitorsData {
   connected: boolean
   list: { username: string; label: string }[]
@@ -722,6 +726,15 @@ function Competitors() {
     onSuccess: () => (toast.success('Registro excluído.'), void qc.invalidateQueries({ queryKey: ['mkt-ig-concorrentes'] })),
     onError: (e) => toast.error(errorMessage(e)),
   })
+  const fetchNow = useMutation({
+    mutationFn: () => api.post<{ ok: boolean; message: string }>('/marketing/instagram/concorrentes/buscar'),
+    onSuccess: (r) => {
+      if (!r.ok) return void toast.error(r.message)
+      toast.success(r.message)
+      refreshCompetitorsSoon(qc)
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
   const d = q.data
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />
   if (!d) return <TableSkeleton rows={4} />
@@ -731,9 +744,16 @@ function Competitors() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">Mesmo cálculo para todos, só com o que é público: seguidores, publicações no feed e reels, curtidas e comentários.</p>
         {can('mi_social', 'edit') && (
-          <Button size="sm" onClick={() => setEditing(true)}>
-            <PencilIcon /> Concorrentes ({d.list.length}/{d.max})
-          </Button>
+          <div className="flex gap-2">
+            {d.list.length > 0 && (
+              <Button size="sm" variant="outline" disabled={fetchNow.isPending} onClick={() => fetchNow.mutate()} title="Busca agora seguidores e publicações públicas dos concorrentes (também é feito sozinho a cada sincronização do Instagram)">
+                {fetchNow.isPending ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />} Buscar dados agora
+              </Button>
+            )}
+            <Button size="sm" onClick={() => setEditing(true)}>
+              <PencilIcon /> Concorrentes ({d.list.length}/{d.max})
+            </Button>
+          </div>
         )}
       </div>
       {d.list.length === 0 ? (
@@ -767,7 +787,11 @@ function Competitors() {
                       </a>
                     )}
                   </p>
-                  {r.status?.error && <p className="max-w-72 whitespace-normal text-xs text-red-600">{r.status.error}</p>}
+                  {r.status?.error ? (
+                    <p className="max-w-72 whitespace-normal text-xs text-red-600">{r.status.error}</p>
+                  ) : !r.own && (
+                    <p className="text-xs text-muted-foreground">{r.status ? `Dados de ${formatDateTime(r.status.at)}` : 'Ainda não buscado: clique em "Buscar dados agora"'}</p>
+                  )}
                 </div>
               ),
               csv: (r) => label(r),
@@ -856,9 +880,12 @@ function CompetitorsDialog({ list: initial, max, onClose }: { list: { username: 
   const [list, setList] = useState(start)
   const guard = useCloseGuard(isDirty(start, list), onClose, 'os concorrentes')
   const save = useMutation({
-    mutationFn: () => api.put('/marketing/instagram/concorrentes', { list: list.filter((c) => c.username.trim()) }),
-    onSuccess: () => {
-      toast.success('Concorrentes salvos. Os números aparecem depois da próxima sincronização do Instagram.')
+    mutationFn: () => api.put<{ busca?: { ok: boolean; message: string } }>('/marketing/instagram/concorrentes', { list: list.filter((c) => c.username.trim()) }),
+    onSuccess: (r) => {
+      if (r.busca?.ok) {
+        toast.success(`Concorrentes salvos. ${r.busca.message}`)
+        refreshCompetitorsSoon(qc)
+      } else toast.success(`Concorrentes salvos. ${r.busca?.message ?? 'Os números aparecem depois da próxima sincronização do Instagram.'}`)
       void qc.invalidateQueries({ queryKey: ['mkt-ig-concorrentes'] })
       onClose()
     },

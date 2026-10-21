@@ -60,6 +60,7 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
   private readonly logger = new Logger(MarketingSyncService.name)
   private timer: NodeJS.Timeout | null = null
   private busy = false
+  private readonly competitorsBusy = new Set<string>()
   /** Intervalo entre chamadas às APIs (respeita os limites das plataformas); zerado nos testes. */
   gapMs = 300
   fetcher: typeof fetch = (...a) => fetch(...a)
@@ -118,6 +119,24 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
     if (st?.running && st.lastRunAt && Date.now() - Date.parse(st.lastRunAt) < 30 * 60_000) throw new BadRequestException('A sincronização já está rodando. Aguarde alguns minutos.')
     void this.run(user.tenantId, key, c)
     return { ok: true, message: 'Sincronização iniciada. Os dados aparecem em alguns minutos.' }
+  }
+
+  /**
+   * Concorrentes: busca os dados públicos agora (ao salvar a lista ou pelo botão), sem esperar a próxima
+   * sincronização da Meta orgânica. Devolve o motivo quando não dá para buscar.
+   */
+  async syncCompetitorsNow(tenantId: string): Promise<{ ok: boolean; message: string }> {
+    const c = { ...DEFAULT_INTEGRATIONS, ...(await this.settings.get<IntegrationsConfig>(tenantId, INTEGRATIONS_KEY, DEFAULT_INTEGRATIONS)) }
+    const official = c.metaOrganic.instagramId
+    if (!c.metaOrganic.enabled || !official || !c.metaAds.tokenEnc) return { ok: false, message: 'Conecte o Instagram oficial em Configurações › Marketing (Meta orgânico) para buscar os concorrentes.' }
+    if (this.competitorsBusy.has(tenantId)) return { ok: true, message: 'A busca já está rodando. Os dados aparecem em instantes.' }
+    this.competitorsBusy.add(tenantId)
+    const auth = { headers: { Authorization: `Bearer ${decrypt(c.metaAds.tokenEnc)}` } }
+    const accounts = cleanIgAccounts((await this.settings.get<{ list?: unknown }>(tenantId, IG_ACCOUNTS_KEY, {})).list, official)
+    void this.syncPublicProfiles(tenantId, official, auth, accounts.filter((a) => !a.id).map((a) => a.username))
+      .catch((err: unknown) => this.logger.warn(`Concorrentes: ${(err as Error).message}`))
+      .finally(() => this.competitorsBusy.delete(tenantId))
+    return { ok: true, message: 'Buscando os dados dos concorrentes. Aparecem em instantes.' }
   }
 
   async run(tenantId: string, key: IntegrationKey, c: IntegrationsConfig) {

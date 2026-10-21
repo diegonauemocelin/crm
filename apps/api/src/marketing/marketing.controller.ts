@@ -274,7 +274,16 @@ export class MarketingController {
   @Put('instagram/concorrentes')
   saveCompetitors(@CurrentUser() user: AuthUser, @Body() body: CompetitorsDto, @ReqContext() ctx: RequestCtx) {
     this.mkt.assertCan(user, 'mi_social', 'edit')
-    return this.instagramSvc.saveCompetitors(user, body.list, ctx)
+    return this.instagramSvc.saveCompetitors(user, body.list, ctx).then(async (r) => ({ ...r, busca: await this.sync.syncCompetitorsNow(user.tenantId) }))
+  }
+
+  /** Buscar agora os dados públicos dos concorrentes (sem esperar a sincronização). */
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
+  @Post('instagram/concorrentes/buscar')
+  @HttpCode(200)
+  fetchCompetitors(@CurrentUser() user: AuthUser) {
+    this.mkt.assertCan(user, 'mi_social', 'edit')
+    return this.sync.syncCompetitorsNow(user.tenantId)
   }
 
   @Post('instagram/concorrentes/registros')
