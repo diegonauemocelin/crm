@@ -81,3 +81,10 @@ export const SyncLine = ({ sync, label }: { sync: { lastOkAt?: string; lastError
   </p>
 )
 
+
+/** Miniatura da publicação (imagem do próprio Instagram/Facebook). Some sozinha se o link da Meta expirar. */
+export function Thumb({ src, alt }: { src?: string | number | null; alt: string }) {
+  const [broken, setBroken] = useState(false)
+  if (typeof src !== 'string' || !src || broken) return <div className="size-12 shrink-0 rounded-md bg-muted" aria-hidden />
+  return <img src={src} alt={alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} className="size-12 shrink-0 rounded-md object-cover" />
+}

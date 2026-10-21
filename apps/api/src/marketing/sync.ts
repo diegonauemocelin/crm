@@ -146,9 +146,15 @@ export interface SocialPostRow {
   reach: number | null
   impressions: number | null
   videoViews: number | null
-  extra?: Record<string, number> | null
+  extra?: Record<string, number | string> | null
   /** Conta que publicou (preenchida na sincronização). */
   profileId?: string
+}
+
+/** Miniatura da publicação: só imagens do próprio Instagram/Facebook (CDN da Meta), em https. */
+export function metaThumb(v: unknown) {
+  const u = text(v, 2000)
+  return /^https:\/\/[a-z0-9.-]+\.(cdninstagram\.com|fbcdn\.net)\//i.test(u) ? u : null
 }
 
 export function parseIgMedia(m: Record<string, unknown>, insights: Record<string, number>): SocialPostRow | null {
@@ -173,12 +179,16 @@ export function parseIgMedia(m: Record<string, unknown>, insights: Record<string
     reach: insights.reach ?? null,
     impressions: insights.views ?? insights.impressions ?? null,
     videoViews: format === 'Reels' || format === 'Vídeo' ? (insights.views ?? null) : null,
-    extra: igExtra(format, insights),
+    extra: withThumb(igExtra(format, insights), metaThumb(m.thumbnail_url ?? (type === 'VIDEO' ? null : m.media_url))),
   }
 }
 
+function withThumb(extra: Record<string, number | string> | null, thumb: string | null) {
+  return thumb ? { ...(extra ?? {}), thumb } : extra
+}
+
 /** Métricas que só alguns formatos têm: interações totais, respostas e navegação dos stories, tempo médio dos reels. */
-function igExtra(format: string, i: Record<string, number>) {
+function igExtra(format: string, i: Record<string, number>): Record<string, number | string> | null {
   const out: Record<string, number> = {}
   if (i.total_interactions !== undefined) out.interactions = i.total_interactions
   if (format === 'Reels' && i.ig_reels_avg_watch_time !== undefined) out.avgWatchMs = i.ig_reels_avg_watch_time
@@ -208,6 +218,7 @@ export function parseFbPost(p: Record<string, unknown>): SocialPostRow | null {
     reach: null,
     impressions: null,
     videoViews: null,
+    extra: withThumb(null, metaThumb(p.full_picture)),
   }
 }
 

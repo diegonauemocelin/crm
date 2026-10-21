@@ -280,7 +280,7 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
         daily.set(day, { ...(daily.get(day) ?? {}), followers: Number(info.followers_count ?? info.fan_count ?? 0) })
         rows += await this.storeProfileDays(tenantId, 'facebook', page, daily, { reach: 'page_impressions_unique', profileViews: 'page_views_total' })
         // Publicações da própria página: published_posts pede só pages_read_engagement; posts pede também pages_read_user_content.
-        const postFields = 'id,message,created_time,permalink_url,status_type,shares,reactions.summary(true).limit(0),comments.summary(true).limit(0)&limit=50'
+        const postFields = 'id,message,created_time,permalink_url,status_type,full_picture,shares,reactions.summary(true).limit(0),comments.summary(true).limit(0)&limit=50'
         let list: Record<string, unknown>[] = []
         try {
           list = (await this.graphAll(`${GRAPH}/${page}/published_posts?fields=${postFields}`, pageToken)).slice(0, 100)
@@ -354,7 +354,7 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
     // Sem a permissão de publicações, o resto (seguidores, público) é gravado assim mesmo e o aviso diz o que falta.
     let media: Record<string, unknown>[] = []
     try {
-      media = (await this.graphAll(`${GRAPH}/${ig}/media?fields=id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count&limit=50`, token)).slice(0, 100)
+      media = (await this.graphAll(`${GRAPH}/${ig}/media?fields=id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count,media_url,thumbnail_url&limit=50`, token)).slice(0, 100)
     } catch (err) {
       warnings.push(`publicações não lidas (${permissionHint((err as Error).message)})`)
     }
@@ -375,7 +375,7 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
     }
     // Stories ficam 24 h na API: a sincronização a cada 6 h guarda cada um antes de sumir.
     try {
-      const stories = await this.graphAll(`${GRAPH}/${ig}/stories?fields=id,caption,media_type,media_product_type,permalink,timestamp&limit=50`, token)
+      const stories = await this.graphAll(`${GRAPH}/${ig}/stories?fields=id,caption,media_type,media_product_type,permalink,timestamp,media_url,thumbnail_url&limit=50`, token)
       for (const st0 of stories) {
         let insights: Record<string, number> = {}
         for (const metrics of ['reach,replies,shares,views,total_interactions', 'reach,replies']) {
@@ -416,22 +416,33 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
 
   /** Público do Instagram: horas em que os seguidores ficam online e cidade, idade, gênero e país (só totais). */
   private async syncIgAudience(tenantId: string, ig: string, auth: RequestInit) {
-    const out: IgAudience = { updatedAt: new Date().toISOString(), online: null, city: [], age: [], gender: [], country: [] }
+    const out: IgAudience = { updatedAt: new Date().toISOString(), online: null, city: [], age: [], gender: [], country: [], error: null }
+    const errors: string[] = []
     try {
       out.online = parseOnlineFollowers((await this.getJson(`${GRAPH}/${ig}/insights?metric=online_followers&period=lifetime`, auth, metaError)).data)
-    } catch {
+    } catch (err) {
       // A Meta não oferece em toda conta/versão: a tela usa o desempenho das publicações.
+      errors.push(`horários online: ${(err as Error).message}`)
     }
+    // A Meta já mudou o parâmetro de período desta métrica entre versões: tenta as formas aceitas até uma responder.
     for (const b of ['city', 'age', 'gender', 'country'] as const) {
-      for (const extra of ['', '&timeframe=this_month']) {
+      let last = ''
+      for (const extra of ['', '&timeframe=last_90_days', '&timeframe=last_30_days', '&timeframe=this_month']) {
         try {
-          out[b] = parseDemographics((await this.getJson(`${GRAPH}/${ig}/insights?metric=follower_demographics&period=lifetime&metric_type=total_value&breakdown=${b}${extra}`, auth, metaError)).data)
-          break
-        } catch {
-          // tenta com o período; sem 100 seguidores a Meta não entrega
+          const list = parseDemographics((await this.getJson(`${GRAPH}/${ig}/insights?metric=follower_demographics&period=lifetime&metric_type=total_value&breakdown=${b}${extra}`, auth, metaError)).data)
+          if (list.length) {
+            out[b] = list
+            last = ''
+            break
+          }
+          last = 'a Meta respondeu sem dados'
+        } catch (err) {
+          last = (err as Error).message
         }
       }
+      if (last) errors.push(`${b}: ${last}`)
     }
+    out.error = errors.length ? errors.join(' · ').slice(0, 600) : null
     const prev = await this.settings.get<Partial<IgAudience>>(tenantId, audienceKey(ig), {})
     // Não apaga o que já tinha se a Meta não respondeu desta vez.
     await this.settings.set(tenantId, audienceKey(ig), {

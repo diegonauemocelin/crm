@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { accountKey, adLibraryUrl, cleanCompetitors, cleanIgAccounts, cleanUsername, formLeads, instagramPaid, onlinePeaks, postTimes, profileStats, recommendTimes } from '../src/marketing/instagram'
-import { parseCompetitor, parseDemographics, parseIgMedia, parseOnlineFollowers, parseTotalValues } from '../src/marketing/sync'
+import { metaThumb, parseCompetitor, parseDemographics, parseFbPost, parseIgMedia, parseOnlineFollowers, parseTotalValues } from '../src/marketing/sync'
 
 describe('Instagram: leitura da API', () => {
   it('totais do dia, com quebra (seguir/deixar de seguir e navegação dos stories)', () => {
@@ -61,6 +61,21 @@ describe('Instagram: perfis da empresa', () => {
       { id: '', username: 'maria.pecas', label: '@maria.pecas', owner: 'vendedor', sellerId: null },
     ])
     expect(list.map(accountKey)).toEqual(['17841400000555', '@maria.pecas'])
+  })
+})
+
+describe('Miniaturas das publicações', () => {
+  it('só imagens da Meta; vídeo usa a capa (thumbnail_url)', () => {
+    const cdn = 'https://scontent.cdninstagram.com/v/t51/abc.jpg?x=1'
+    expect(metaThumb(cdn)).toBe(cdn)
+    expect(metaThumb('https://example.com/a.jpg')).toBeNull()
+    expect(metaThumb('http://scontent.cdninstagram.com/a.jpg')).toBeNull()
+    const img = parseIgMedia({ id: '1', timestamp: '2026-10-20T12:00:00+0000', media_type: 'IMAGE', media_url: cdn }, {})!
+    expect(img.extra).toEqual({ thumb: cdn })
+    const reel = parseIgMedia({ id: '2', timestamp: '2026-10-20T12:00:00+0000', media_type: 'VIDEO', media_product_type: 'REELS', media_url: 'https://video.cdninstagram.com/v.mp4', thumbnail_url: cdn }, { total_interactions: 9 })!
+    expect(reel.extra).toEqual({ interactions: 9, thumb: cdn })
+    const fb = parseFbPost({ id: '222_1', created_time: '2026-10-20T12:00:00+0000', full_picture: 'https://scontent.xx.fbcdn.net/p.jpg' })!
+    expect(fb.extra).toEqual({ thumb: 'https://scontent.xx.fbcdn.net/p.jpg' })
   })
 })
 

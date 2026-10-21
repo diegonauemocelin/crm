@@ -19,6 +19,8 @@ export interface IgAudience {
   age: { key: string; value: number }[]
   gender: { key: string; value: number }[]
   country: { key: string; value: number }[]
+  /** O que a Meta respondeu quando recusou (para mostrar na tela o motivo real). */
+  error?: string | null
 }
 
 export interface Competitor {

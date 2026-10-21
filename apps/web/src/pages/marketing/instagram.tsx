@@ -3,7 +3,7 @@ import { ExternalLinkIcon, Loader2Icon, PencilIcon, PlusIcon, SearchIcon, Trash2
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { BestTimes, type OnlinePeaks, type TimeCell } from '@/components/marketing/horarios'
-import { type Col, NA, optNum, SimpleTable, SyncLine } from '@/components/marketing/tabela'
+import { type Col, NA, optNum, SimpleTable, SyncLine, Thumb } from '@/components/marketing/tabela'
 import { Kpi, MktFilters, PendingIntegration, TrendChart } from '@/components/marketing/ui'
 import { isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
 import { EmptyState, ErrorState, formatDate, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -38,10 +38,11 @@ interface IgPost {
   videoViews: number | null
   engagement: number
   engagementRate: number | null
-  extra: Record<string, number> | null
+  extra: Record<string, number | string> | null
 }
 interface IgStory {
   postId: string
+  thumb: string | null
   account: string | null
   publishedAt: string
   permalink: string | null
@@ -69,7 +70,7 @@ interface IgView {
   content: { posts: IgPost[]; byFormat: { format: string; posts: number; engagement: number; reach: number | null; avgEngagement: number; engagementRate: number | null }[]; postsPerWeek: number; reelsAvgWatchSec: number | null }
   stories: { count: number; perDay: number; avgReach: number | null; replies: number; exitRate: number | null; list: IgStory[] }
   times: { online: number[][] | null; peaks: OnlinePeaks | null; cells: TimeCell[]; best: TimeCell[]; recommendations: string[]; basedOnPosts: number }
-  audience: { of: 'oficial' | 'perfil'; updatedAt: string | null; city: KV[]; age: KV[]; gender: KV[]; country: KV[] }
+  audience: { of: 'oficial' | 'perfil'; updatedAt: string | null; error: string | null; city: KV[]; age: KV[]; gender: KV[]; country: KV[] }
   paid: {
     totals: { spend: number; impressions: number; clicks: number; leads: number; ctr: number | null; cpc: number | null; cpl: number | null; shareOfMeta: number | null }
     positions: { label: string; spend: number; impressions: number; clicks: number; leads: number; ctr: number | null; cpc: number | null; cpl: number | null }[]
@@ -227,7 +228,9 @@ const POST_COLS: Col<IgPost>[] = [
   {
     label: 'Publicação',
     value: (p) => (
-      <div className="min-w-0">
+      <div className="flex min-w-0 items-center gap-3">
+        <Thumb src={p.extra?.thumb} alt={p.caption.slice(0, 80) || p.format} />
+        <div className="min-w-0">
         <p className="line-clamp-2 text-sm">{p.caption || '(sem texto)'}</p>
         <p className="text-xs text-muted-foreground">
           {p.format} · {formatDate(p.publishedAt)}
@@ -237,6 +240,7 @@ const POST_COLS: Col<IgPost>[] = [
             </a>
           )}
         </p>
+        </div>
       </div>
     ),
     csv: (p) => p.caption,
@@ -290,7 +294,9 @@ function Stories({ d }: { d: IgView }) {
           {
             label: 'Publicado',
             value: (r) => (
-              <div>
+              <div className="flex items-center gap-3">
+                <Thumb src={r.thumb} alt="Story" />
+                <div>
                 {r.permalink ? (
                   <a href={r.permalink} target="_blank" rel="noreferrer noopener" className="inline-flex items-center hover:underline">
                     {formatDateTime(r.publishedAt)} <ExternalLinkIcon className="ml-1 size-3" />
@@ -299,6 +305,7 @@ function Stories({ d }: { d: IgView }) {
                   formatDateTime(r.publishedAt)
                 )}
                 {r.account && <p className="text-xs text-muted-foreground">{r.account}</p>}
+                </div>
               </div>
             ),
           },
@@ -324,13 +331,18 @@ function Audience({ d }: { d: IgView }) {
     { label: 'Seguidores', value: (r) => num(r.value), right: true },
     { label: '%', value: (r) => pct(total(l) ? Math.round((r.value / total(l)) * 1000) / 10 : null), right: true },
   ]
-  const empty = 'A Meta não informou (só entrega para contas com 100 seguidores ou mais).'
+  const empty = a.error ? 'A Meta não entregou estes dados (veja o motivo acima).' : 'A Meta não informou (só entrega para contas com 100 seguidores ou mais).'
   return (
     <>
       <p className="text-xs text-muted-foreground">
         {a.of === 'oficial' && d.accounts.length > 1 ? 'Público do perfil oficial. Escolha um perfil no topo para ver o público dele. ' : ''}
         Só totais por cidade, idade e gênero: nenhum seguidor é identificado. {a.updatedAt ? `Atualizado em ${formatDateTime(a.updatedAt)}.` : ''}
       </p>
+      {a.error && (
+        <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          A Meta recusou parte destes dados. Resposta dela: {a.error}
+        </p>
+      )}
       <div className="grid gap-4 xl:grid-cols-2">
         <SimpleTable title="Cidades" rows={a.city} rowKey={(r) => r.key} cols={cols('Cidade', a.city)} empty={empty} limit={15} />
         <SimpleTable title="Idade" rows={a.age} rowKey={(r) => r.key} cols={cols('Faixa', a.age)} empty={empty} />

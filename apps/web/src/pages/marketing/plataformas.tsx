@@ -20,7 +20,7 @@ import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { downloadCsv, money, moneyShort, num, pct, times, useAnalysis, useMktFilters } from '@/lib/marketing'
 import { spark } from './paineis'
-import { type Col, NA, optNum, SimpleTable, SyncLine } from '@/components/marketing/tabela'
+import { type Col, NA, optNum, SimpleTable, SyncLine, Thumb } from '@/components/marketing/tabela'
 import { BestTimes, type TimeCell } from '@/components/marketing/horarios'
 
 // ---------- Google Ads ----------
@@ -509,11 +509,14 @@ interface Post {
   videoViews: number | null
   engagement: number
   engagementRate: number | null
+  extra?: Record<string, number | string> | null
 }
 
 const POST_COLS: Col<Post>[] = [
   { label: 'Publicação', value: (p) => (
-    <div className="min-w-0">
+    <div className="flex min-w-0 items-center gap-3">
+      <Thumb src={p.extra?.thumb} alt={p.caption.slice(0, 80) || p.format} />
+      <div className="min-w-0">
       <p className="line-clamp-2 text-sm">{p.caption || '(sem texto)'}</p>
       <p className="text-xs text-muted-foreground">
         {p.network === 'instagram' ? 'Instagram' : 'Facebook'} · {p.format} · {formatDate(p.publishedAt)}
@@ -523,6 +526,7 @@ const POST_COLS: Col<Post>[] = [
           </a>
         )}
       </p>
+      </div>
     </div>
   ), csv: (p) => p.caption },
   { label: 'Alcance', value: (p) => optNum(p.reach), right: true, csv: (p) => p.reach },

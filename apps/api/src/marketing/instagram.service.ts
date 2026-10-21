@@ -156,10 +156,10 @@ export class MarketingInstagramService {
         avgReach: stories.length && stories.some((x) => x.reach !== null) ? Math.round(storyReach / stories.length) : null,
         replies: stories.reduce((s, x) => s + ex(x, 'replies'), 0),
         exitRate: storyReach ? r2((storyExits / storyReach) * 100) : null,
-        list: stories.slice(0, 60).map((x) => ({ postId: x.postId, account: ids.length > 1 ? (connected.find((a) => a.id === (x.profileId ?? official))?.label ?? null) : null, publishedAt: x.publishedAt, permalink: x.permalink, reach: x.reach, views: x.impressions, replies: ex(x, 'replies'), tapsForward: ex(x, 'tapsForward'), tapsBack: ex(x, 'tapsBack'), exits: ex(x, 'exits') })),
+        list: stories.slice(0, 60).map((x) => ({ postId: x.postId, thumb: typeof (x.extra as Record<string, unknown> | null)?.thumb === 'string' ? String((x.extra as Record<string, unknown>).thumb) : null, account: ids.length > 1 ? (connected.find((a) => a.id === (x.profileId ?? official))?.label ?? null) : null, publishedAt: x.publishedAt, permalink: x.permalink, reach: x.reach, views: x.impressions, replies: ex(x, 'replies'), tapsForward: ex(x, 'tapsForward'), tapsBack: ex(x, 'tapsBack'), exits: ex(x, 'exits') })),
       },
       times: { online: audience.online ?? null, peaks, cells: times.cells, best: times.best, recommendations: recommendTimes(peaks, times.best), basedOnPosts: timedPosts.filter((x) => x.format !== 'Story').length },
-      audience: { of: selected === 'todas' ? 'oficial' : 'perfil', updatedAt: audience.updatedAt ?? null, city: (audience.city ?? []).slice(0, 15), age: audience.age ?? [], gender: audience.gender ?? [], country: (audience.country ?? []).slice(0, 10) },
+      audience: { of: selected === 'todas' ? 'oficial' : 'perfil', updatedAt: audience.updatedAt ?? null, error: audience.error ?? null, city: (audience.city ?? []).slice(0, 15), age: audience.age ?? [], gender: audience.gender ?? [], country: (audience.country ?? []).slice(0, 10) },
       // Anúncios, site e leads são da empresa: aparecem na visão geral e no perfil oficial.
       paid: company && this.can(user, 'mi_midia') ? await this.paid(T, range) : null,
       site: company ? await this.site(T, p) : null,

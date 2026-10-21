@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.77.3",
+      "date": "2026-10-21",
+      "title": "Instagram e Facebook: miniatura das publicações e motivo quando o público não vem",
+      "changes": [
+        { "type": "novo", "area": "Marketing Inteligente", "text": "As publicações, reels e stories do Instagram e as publicações do Facebook mostram uma miniatura da imagem ao lado do texto (Instagram › Conteúdo e Stories, e Redes sociais)." },
+        { "type": "correcao", "area": "Marketing Inteligente", "text": "Público por cidade, idade, gênero e país: o CRM tenta as formas de período que a Meta aceita em cada versão e, se ela recusar, a tela mostra a resposta da Meta em vez de só \"não informou\"." }
+      ]
+    },
+    {
       "version": "0.77.2",
       "date": "2026-10-21",
       "title": "Facebook: publicações da página sem pedir permissão extra",
