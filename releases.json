@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.78.1",
+      "date": "2026-10-21",
+      "title": "Chat: ligação de número escondido mostra o cliente",
+      "changes": [
+        { "type": "correcao", "area": "Chat WhatsApp", "text": "Ligação recebida de cliente com o número escondido pelo WhatsApp abria uma conversa \"Contato\" sem telefone e sem o botão Ligar. Agora o CRM usa o telefone de quem ligou que a Evolution informa, e uma conversa que ficou sem telefone se junta à do cliente assim que ele mandar mensagem." }
+      ]
+    },
+    {
       "version": "0.78.0",
       "date": "2026-10-21",
       "title": "Chat: mensagem editada e apagada como no celular, e despedida não conta como espera",

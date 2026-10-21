@@ -162,6 +162,24 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     await this.prisma.whatsappConversation.updateMany({ where: { id: m.conversationId, lastMessageAt: m.sentAt }, data: { lastPreview: previewOf({ type, text: v.text }) } })
   }
 
+  /**
+   * Conversa aberta pelo número escondido (@lid, ex.: ligação sem o telefone): quando chega uma mensagem com o
+   * telefone, ela vira a conversa do telefone (ou se junta à que já existe), em vez de ficar um "Contato" sem nome.
+   */
+  private async adoptHidden(n: WhatsappNumber, lid: string, jid: string, phone: string | null, conv: Prisma.WhatsappConversationGetPayload<object> | null) {
+    const hidden = await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: n.id, jid: lid } } })
+    if (!hidden || hidden.id === conv?.id) return conv
+    if (!conv) return this.prisma.whatsappConversation.update({ where: { id: hidden.id }, data: { jid, ...(phone ? { phone } : {}) } })
+    await this.prisma.whatsappMessage.updateMany({ where: { conversationId: hidden.id }, data: { conversationId: conv.id } })
+    await this.prisma.whatsappReminder.updateMany({ where: { conversationId: hidden.id }, data: { conversationId: conv.id } })
+    const later = hidden.lastMessageAt && (!conv.lastMessageAt || hidden.lastMessageAt > conv.lastMessageAt)
+    await this.prisma.whatsappConversation.delete({ where: { id: hidden.id } })
+    return this.prisma.whatsappConversation.update({
+      where: { id: conv.id },
+      data: { unread: { increment: hidden.unread }, ...(later ? { lastMessageAt: hidden.lastMessageAt, lastPreview: hidden.lastPreview, lastFromMe: hidden.lastFromMe, status: hidden.status === 'ABERTA' ? 'ABERTA' : conv.status } : {}) },
+    })
+  }
+
   private async storeGroup(n: WhatsappNumber, p: ParsedMessage, client: EvolutionClient | null) {
     let conv = await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: n.id, jid: p.jid } } })
     if (!conv || !conv.name) {
@@ -212,6 +230,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     let conv =
       (await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: n.id, jid: p.jid } } })) ??
       (phone ? await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, phone } }) : null)
+    if (p.lid) conv = await this.adoptHidden(n, p.lid, p.jid, phone, conv)
     const rules = await this.rules(n.tenantId)
     // "Muito obrigada!", "ok 👍" depois da última fala da empresa: o cliente não espera resposta.
     const goodbye = !p.fromMe && !!conv && (conv.lastFromMe || conv.noReplyNeeded) && isClosingMessage(p)

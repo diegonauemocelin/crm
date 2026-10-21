@@ -52,3 +52,22 @@ describe('edição e exclusão nos eventos da Evolution 2.3', () => {
     expect(unknownKeys(data)).toBe('algoNovoMessage')
   })
 })
+
+describe('número escondido (@lid)', () => {
+  it('ligação com o telefone em callerPn vira conversa do telefone', async () => {
+    const { parseCalls } = await import('../src/whatsapp/mensagens')
+    const [c] = parseCalls({ id: 'CALL1', from: '123456789012345@lid', chatId: '123456789012345@lid', callerPn: '5549988887777@s.whatsapp.net', status: 'offer', date: '2026-10-21T15:44:00Z' })
+    expect(c).toMatchObject({ jid: '5549988887777@s.whatsapp.net', phoneDigits: '5549988887777' })
+  })
+
+  it('ligação só com o @lid continua registrada (sem telefone)', async () => {
+    const { parseCalls } = await import('../src/whatsapp/mensagens')
+    expect(parseCalls({ id: 'CALL2', from: '123456789012345@lid', status: 'offer' })[0]).toMatchObject({ jid: '123456789012345@lid', phoneDigits: null })
+  })
+
+  it('mensagem pelo @lid com o telefone junto guarda o @lid para juntar a conversa escondida', () => {
+    const p = parseMessage({ key: { id: 'M2', remoteJid: '123456789012345@lid', remoteJidAlt: '5549988887777@s.whatsapp.net', fromMe: false }, message: { conversation: 'oi' } })
+    expect(p).toMatchObject({ jid: '5549988887777@s.whatsapp.net', lid: '123456789012345@lid' })
+    expect(parseMessage({ key: { id: 'M3', remoteJid: '5549988887777@s.whatsapp.net', fromMe: false }, message: { conversation: 'oi' } })?.lid).toBeNull()
+  })
+})

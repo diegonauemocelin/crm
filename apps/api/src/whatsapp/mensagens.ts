@@ -19,6 +19,8 @@ export interface ParsedMessage {
   media: { mime: string | null; fileName: string | null; size: number | null } | null
   /** Resposta (citação) a outra mensagem: id dela no WhatsApp e o trecho citado. */
   quoted?: { waId: string; text: string } | null
+  /** Identificador escondido (@lid) do contato, quando a mensagem veio por ele com o telefone junto. */
+  lid?: string | null
   /** Mensagem crua (chave + conteúdo) para pedir a mídia à Evolution. */
   raw: { key: unknown; message: unknown }
 }
@@ -74,6 +76,7 @@ export function parseMessage(data: unknown): ParsedMessage | null {
     waId: key.id.slice(0, 120),
     fromMe,
     jid: phoneDigits ? `${phoneDigits}@s.whatsapp.net` : jid,
+    lid: remote.endsWith('@lid') && phoneDigits ? remote : null,
     phoneDigits,
     pushName: fromMe ? null : str(d.pushName, 120),
     group,
@@ -492,7 +495,9 @@ export function parseCalls(data: unknown): ParsedCall[] {
     if (c.isGroup === true) continue
     const from = [c.from, c.chatId].find((v) => typeof v === 'string' && v.endsWith('@s.whatsapp.net')) as string | undefined
     const lid = [c.from, c.chatId].find((v) => typeof v === 'string' && v.endsWith('@lid')) as string | undefined
-    const jid = from ?? lid
+    // Número escondido (LID): a Evolution 2.3 manda o telefone de quem ligou em callerPn.
+    const pn = [c.callerPn, c.fromPn, c.chatIdPn].find((v) => typeof v === 'string' && v.endsWith('@s.whatsapp.net')) as string | undefined
+    const jid = from ?? pn ?? lid
     if (!jid) continue
     const digits = /^(\d{8,15})(?::\d+)?@s\.whatsapp\.net$/.exec(jid)?.[1] ?? null
     const ts = c.date instanceof Date ? c.date.getTime() : typeof c.date === 'string' || typeof c.date === 'number' ? new Date(c.date).getTime() : NaN
