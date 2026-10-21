@@ -4,11 +4,13 @@
  */
 import { zipSync, strToU8 } from 'fflate'
 import type { ReportSection } from './config'
+import type { PdfImage } from './pdf-imagem'
 import type { MarketingService } from './marketing.service'
 
 type Analysis = Awaited<ReturnType<MarketingService['analyze']>>
 type Email = Awaited<ReturnType<MarketingService['email']>>
 type Health = Awaited<ReturnType<MarketingService['health']>>
+export type Store = Awaited<ReturnType<MarketingService['store']>>
 
 type Kind = 'brl' | 'int' | 'pct' | 'x' | 'num'
 export interface Sheet {
@@ -20,6 +22,8 @@ export interface Sheet {
   colKinds?: (Kind | null)[]
   /** Formato por linha (tabela de indicadores: cada linha é uma medida diferente). */
   rowKinds?: Kind[]
+  /** text = texto corrido (resumo da IA), sem tabela. */
+  kind?: 'text'
 }
 
 const brl = (n: number | null) => (n === null ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
@@ -61,11 +65,18 @@ const BREAK: [ReportSection, string, keyof Analysis, string, boolean][] = [
   ['origens', 'Origens', 'byOrigin', 'Origem', false],
 ]
 
+/** Cartões do topo do PDF: os seis números que a diretoria olha primeiro. */
+export function pdfCards(d: Analysis) {
+  const n = (k: K) => (d.now[k] as number | null) ?? null
+  const card = (label: string, k: K, kind: Kind, goodUp = true) => ({ label, value: n(k) === null ? '—' : FMT[kind](n(k)!), delta: d.deltas[k] ?? null, goodUp })
+  return [card('Investimento em mídia', 'mediaCost', 'brl', false), card('Leads gerados', 'leads', 'int'), card('Vendas', 'sales', 'int'), card('Faturamento', 'revenue', 'brl'), card('Custo por lead', 'cpl', 'brl', false), card('ROAS de mídia', 'roas', 'x')]
+}
+
 /** As tabelas do relatório (mesmo conteúdo para Excel e PDF), só das partes escolhidas. */
-export function reportSheets(d: Analysis, sections: ReportSection[], email: Email | null, health: Health | null, aiSummary: string | null): Sheet[] {
+export function reportSheets(d: Analysis, sections: ReportSection[], email: Email | null, health: Health | null, aiSummary: string | null, store: Store | null = null): Sheet[] {
   const has = (k: ReportSection) => sections.includes(k)
   const out: Sheet[] = []
-  if (aiSummary && has('resumo_ia')) out.push({ name: 'Resumo', header: ['Resumo do período (gerado por IA a partir dos números agregados)'], rows: aiSummary.split('\n').filter(Boolean).map((l) => [l]) })
+  if (aiSummary && has('resumo_ia')) out.push({ name: 'Resumo do período', kind: 'text', header: ['Resumo do período (gerado por IA a partir dos números agregados)'], rows: aiSummary.split('\n').filter(Boolean).map((l) => [l]), note: 'Texto gerado pela IA a partir dos números agregados do período. Confira os números nas tabelas.' })
   if (has('kpis')) {
     out.push({
       name: 'Indicadores',
@@ -88,9 +99,33 @@ export function reportSheets(d: Analysis, sections: ReportSection[], email: Emai
   }
   if (has('funil')) out.push({ name: 'Funil', header: ['Etapa', 'Volume', 'Passagem (%)'], rows: [...d.funnel.steps.map((s) => [s.label, s.value, s.rate]), ['Faturamento', d.funnel.revenue, null]], rowKinds: [...d.funnel.steps.map((): Kind => 'int'), 'brl'], colKinds: [null, null, 'pct'] })
   if (has('email') && email) out.push({ name: 'E-mail', header: ['Campanha', 'Enviados', 'Abertura registrada (%)', 'Cliques (%)', 'Descadastros (%)', 'Vendas', 'Faturamento'], rows: email.campaigns.map((c) => [c.name, c.sent, c.openRate, c.clickRate, c.unsubRate, c.orders, c.revenue]), colKinds: [null, 'int', 'pct', 'pct', 'pct', 'int', 'brl'], note: 'Abertura registrada pode ser maior que a real (privacidade do Apple Mail).' })
+  if (has('loja') && store) out.push(...storeSheets(store))
   if (has('recomendacoes')) out.push({ name: 'Recomendações', header: ['Prioridade', 'Confiança', 'Problema', 'Evidência', 'Ação sugerida', 'Como medir', 'Fonte'], rows: d.recommendations.map((r) => [r.priority, r.confidence, r.problem, r.evidence.join(' · '), r.action, r.validate, r.source]) })
   if (has('saude') && health) out.push({ name: 'Saúde dos dados', header: ['Fonte', 'Situação', 'Última atualização', 'Detalhe'], rows: health.sources.map((s) => [s.name, s.status, s.lastAt ? new Date(s.lastAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : null, s.detail]) })
   return out
+}
+
+/** Loja virtual (Magazord): resumo, valor por canal de venda e produtos mais vendidos. */
+export function storeSheets(st: Store): Sheet[] {
+  const pending = st.pendingItems ? `${st.pendingItems} pedido(s) do período ainda sem os itens lidos da Magazord: os mais vendidos ficam completos quando a leitura terminar.` : undefined
+  return [
+    {
+      name: 'Loja virtual',
+      header: ['Indicador', 'Período', 'Anterior', 'Variação (%)'],
+      rows: [
+        ['Vendas (pedidos pagos)', st.now.orders, st.before.orders, st.deltas.orders],
+        ['Faturamento', st.now.revenue, st.before.revenue, st.deltas.revenue],
+        ['Ticket médio', st.now.ticket, st.before.ticket, st.deltas.ticket],
+        ['Pedidos pendentes', st.now.pending, st.before.pending, null],
+        ['Pedidos cancelados', st.now.canceled, st.before.canceled, null],
+      ],
+      rowKinds: ['int', 'brl', 'brl', 'int', 'int'],
+      colKinds: [null, null, null, 'pct'],
+      note: 'Pedidos da Magazord; vendas e faturamento só dos pagos (aprovado, faturado, enviado ou entregue).',
+    },
+    { name: 'Canais de venda', header: ['Canal', 'Vendas', 'Faturamento', 'Participação (%)'], rows: st.channels.map((c) => [c.name, c.orders, c.revenue, c.share]), colKinds: [null, 'int', 'brl', 'pct'] },
+    { name: 'Produtos mais vendidos', header: ['Produto', 'Código', 'Quantidade', 'Pedidos', 'Faturamento'], rows: st.products.map((p) => [p.name, p.sku ?? '—', p.quantity, p.orders, p.revenue]), colKinds: [null, null, 'int', 'int', 'brl'], note: pending },
+  ]
 }
 
 // ---------- Excel (.xlsx) ----------
@@ -190,6 +225,14 @@ export interface PdfDoc {
   sheets: Sheet[]
   footer: string
   color?: string
+  /** Nome da empresa (vai no cabeçalho quando não há logo). */
+  brandName?: string
+  /** Logo da empresa (Configurações › Marca), já preparado para o PDF. */
+  logo?: PdfImage | null
+  /** Linha com os dados da empresa no rodapé (site, telefone, endereço). */
+  info?: string
+  /** Cartões com os números principais, no topo da primeira página. */
+  cards?: { label: string; value: string; delta: number | null; goodUp: boolean }[]
 }
 
 const FMT: Record<Kind, (n: number) => string> = { brl: (n) => brl(n), int: (n) => n.toLocaleString('pt-BR', { maximumFractionDigits: 0 }), pct: (n) => pct(n), x: (n) => x2(n), num: (n) => n.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) }
@@ -200,27 +243,44 @@ const fmtCell = (v: string | number | null, s: Sheet, col: number, row: number) 
   return FMT[kind](v)
 }
 
-/** PDF A4 retrato com título, tabelas (quebra de página automática) e rodapé com as fontes. */
+const hexRgb = (hex: string) => {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex) ?? ['', '1d', '4e', 'd8']
+  return [m[1], m[2], m[3]].map((h) => parseInt(h!, 16) / 255)
+}
+const rgbOp = (c: number[]) => c.map((v) => v.toFixed(3)).join(' ')
+/** Cor da marca clareada (mistura com branco): fundo dos cartões e do resumo. */
+const tint = (c: number[], white: number) => c.map((v) => v + (1 - v) * white)
+
+/**
+ * PDF A4 retrato no padrão da marca: faixa na cor da empresa com o logo, cartões dos números principais, títulos
+ * com marcador, tabelas com cabeçalho colorido e linhas alternadas, resumo em quadro e rodapé com os dados da empresa.
+ */
 export function toPdf(doc: PdfDoc): Uint8Array {
   const W = 595
   const H = 842
   const M = 36
+  const BOTTOM = 56
   const pages: string[] = []
   let ops: string[] = []
   let y = H - M
-  const rgb = (hex: string) => {
-    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex) ?? ['', '1d', '4e', 'd8']
-    return [m[1], m[2], m[3]].map((h) => (parseInt(h!, 16) / 255).toFixed(3)).join(' ')
-  }
-  const brand = rgb(doc.color ?? '#1d4ed8')
-  const text = (s: string, x: number, yy: number, size: number, bold = false, color = '0 0 0') => ops.push(`BT ${color} rg /${bold ? 'F2' : 'F1'} ${size} Tf ${x.toFixed(1)} ${yy.toFixed(1)} Td (${pdfText(s)}) Tj ET`)
+  const brandC = hexRgb(doc.color ?? '#1d4ed8')
+  const brand = rgbOp(brandC)
+  const light = rgbOp(tint(brandC, 0.92))
+  const GRAY = '0.42 0.44 0.48'
+  const DARK = '0.12 0.14 0.18'
+  const WHITE = '1 1 1'
+  const text = (s: string, x: number, yy: number, size: number, bold = false, color = DARK) => ops.push(`BT ${color} rg /${bold ? 'F2' : 'F1'} ${size} Tf ${x.toFixed(1)} ${yy.toFixed(1)} Td (${pdfText(s)}) Tj ET`)
+  const rect = (x: number, yy: number, w: number, h: number, color: string) => ops.push(`${color} rg ${x.toFixed(1)} ${yy.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)} re f`)
   const newPage = () => {
     if (ops.length) pages.push(ops.join('\n'))
     ops = []
-    y = H - M
+    // Páginas seguintes: filete na cor da marca e o nome do relatório.
+    rect(0, H - 5, W, 5, brand)
+    text(fit(`${doc.brandName ? `${doc.brandName} · ` : ''}${doc.title}`, W - 2 * M, 7.5), M, H - 22, 7.5, false, GRAY)
+    y = H - 38
   }
   const need = (h: number) => {
-    if (y - h < M + 20) newPage()
+    if (y - h < BOTTOM) newPage()
   }
   const wrap = (s: string, width: number, size: number) => {
     const words = s.split(/\s+/)
@@ -236,73 +296,197 @@ export function toPdf(doc: PdfDoc): Uint8Array {
     if (cur) lines.push(cur)
     return lines
   }
-  text('MARKETING INTELIGENTE', M, y, 8, true, brand)
-  y -= 18
-  for (const l of wrap(doc.title, W - 2 * M, 16)) {
-    text(l, M, y, 16, true)
-    y -= 20
+
+  // ---- Cabeçalho da primeira página ----
+  const bandH = 92
+  rect(0, H - bandH, W, bandH, brand)
+  const boxW = 150
+  const boxH = 60
+  const boxY = H - bandH + (bandH - boxH) / 2
+  if (doc.logo) {
+    rect(M, boxY, boxW, boxH, WHITE)
+    const scale = Math.min((boxW - 16) / doc.logo.width, (boxH - 12) / doc.logo.height)
+    const w = doc.logo.width * scale
+    const h = doc.logo.height * scale
+    ops.push(`q ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${(M + (boxW - w) / 2).toFixed(2)} ${(boxY + (boxH - h) / 2).toFixed(2)} cm /Im1 Do Q`)
+  } else if (doc.brandName) {
+    for (const [i, l] of wrap(doc.brandName, boxW, 15).slice(0, 2).entries()) text(l, M, H - 44 - i * 18, 15, true, WHITE)
   }
-  for (const l of wrap(doc.subtitle, W - 2 * M, 8.5)) {
-    text(l, M, y, 8.5, false, '0.4 0.4 0.45')
-    y -= 12
+  const rightX = M + boxW + 24
+  const rightW = W - M - rightX
+  text('MARKETING INTELIGENTE', rightX, H - 30, 7.5, true, rgbOp(tint(brandC, 0.75)))
+  const titleLines = wrap(doc.title, rightW, 17).slice(0, 2)
+  titleLines.forEach((l, i) => text(l, rightX, H - 52 - i * 20, 17, true, WHITE))
+  y = H - bandH - 18
+  for (const l of wrap(doc.subtitle, W - 2 * M, 8)) {
+    text(l, M, y, 8, false, GRAY)
+    y -= 11
   }
-  y -= 6
+  y -= 8
+
+  // ---- Cartões dos números principais ----
+  if (doc.cards?.length) {
+    const cols = 3
+    const gap = 10
+    const cw = (W - 2 * M - gap * (cols - 1)) / cols
+    const ch = 54
+    doc.cards.slice(0, 6).forEach((c, i) => {
+      const col = i % cols
+      if (col === 0) {
+        need(ch + gap)
+        if (i) y -= gap
+      }
+      const x = M + col * (cw + gap)
+      const top = y
+      rect(x, top - ch, cw, ch, light)
+      rect(x, top - ch, 3, ch, brand)
+      text(fit(c.label.toUpperCase(), cw - 16, 6.8), x + 10, top - 14, 6.8, true, GRAY)
+      text(fit(c.value, cw - 16, 14), x + 10, top - 33, 14, true, DARK)
+      if (c.delta !== null) {
+        const good = c.delta === 0 ? null : (c.delta > 0) === c.goodUp
+        const color = good === null ? GRAY : good ? '0.08 0.50 0.24' : '0.73 0.11 0.11'
+        text(`${c.delta > 0 ? '+' : c.delta < 0 ? '-' : '='} ${Math.abs(c.delta).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% vs. anterior`, x + 10, top - 46, 7, false, color)
+      } else text('sem comparação', x + 10, top - 46, 7, false, GRAY)
+      if (col === cols - 1 || i === Math.min(5, doc.cards!.length - 1)) y -= ch
+    })
+    y -= 18
+  }
+
+  // ---- Seções ----
+  const sectionTitle = (name: string) => {
+    need(56)
+    rect(M, y - 11, 3.5, 13, brand)
+    text(name, M + 10, y - 9, 11.5, true, DARK)
+    y -= 22
+  }
   for (const s of doc.sheets) {
-    need(60)
-    text(s.name, M, y, 12, true, brand)
-    y -= 16
+    sectionTitle(s.name)
+    if (s.kind === 'text') {
+      // Texto corrido (resumo da IA): quadro claro com a barra da marca; "Próximos passos" em negrito.
+      const size = 8.5
+      const lh = size + 4
+      const lines: { t: string; bold: boolean; indent: number }[] = []
+      for (const r of s.rows) {
+        const raw = String(r[0] ?? '').trim()
+        if (!raw) continue
+        const bullet = /^[-•*]\s*/.test(raw)
+        const t = raw.replace(/^[-•*]\s*/, '')
+        const bold = /^(próximos passos|pontos de atenção|destaques)\b/i.test(t) || /:$/.test(t)
+        wrap(t, W - 2 * M - 30, size).forEach((l, i) => lines.push({ t: bullet && i === 0 ? `• ${l}` : l, bold, indent: bullet && i > 0 ? 8 : 0 }))
+      }
+      need(lh + 12)
+      rect(M, y - 6, W - 2 * M, 6, light)
+      y -= 6
+      for (const l of lines) {
+        if (y - lh < BOTTOM) {
+          newPage()
+          rect(M, y - 6, W - 2 * M, 6, light)
+          y -= 6
+        }
+        rect(M, y - lh, W - 2 * M, lh, light)
+        rect(M, y - lh, 3, lh, brand)
+        text(l.t, M + 14 + l.indent, y - lh + 3.5, size, l.bold, DARK)
+        y -= lh
+      }
+      rect(M, y - 8, W - 2 * M, 8, light)
+      rect(M, y - 8, 3, 8, brand)
+      y -= 8
+      if (s.note) {
+        for (const l of wrap(s.note, W - 2 * M, 7)) {
+          need(10)
+          text(l, M, y - 9, 7, false, GRAY)
+          y -= 10
+        }
+      }
+      y -= 16
+      continue
+    }
     const cols = s.header.length
     const avail = W - 2 * M
     // A 1ª coluna (nomes) fica com mais espaço; as numéricas dividem o resto.
-    const first = cols === 1 ? avail : Math.max(avail * 0.34, avail - (cols - 1) * 62)
+    const first = cols === 1 ? avail : cols >= 9 ? avail * 0.25 : Math.max(avail * 0.34, avail - (cols - 1) * 80)
     const rest = cols > 1 ? (avail - first) / (cols - 1) : 0
     const widths = s.header.map((_, i) => (i === 0 ? first : rest))
     const size = cols > 7 ? 6.5 : 7.5
-    const row = (cells: string[], bold: boolean) => {
+    const row = (cells: string[], header: boolean, zebra: boolean) => {
       // Texto longo (recomendações) quebra em linhas; tabelas numéricas cortam com reticências.
-      const wrapped = cells.map((c, i) => (cols <= 2 || (cols >= 7 && i >= 2 && !bold) ? wrap(c, widths[i]! - 4, size).slice(0, 6) : [fit(c, widths[i]! - 4, size)]))
-      const h = Math.max(...wrapped.map((w) => w.length)) * (size + 2.5) + 3
-      need(h)
+      const pad = cols >= 9 ? 2.5 : 4
+      const wrapped = cells.map((c, i) => (cols <= 2 || (cols >= 7 && i >= 2 && !header) ? wrap(c, widths[i]! - pad * 2, size).slice(0, 6) : [fit(c, widths[i]! - pad * 2, size)]))
+      const h = Math.max(...wrapped.map((w) => w.length)) * (size + 2.5) + 6
+      need(h + (header ? 16 : 0))
+      if (header) rect(M, y - h, avail, h, brand)
+      else if (zebra) rect(M, y - h, avail, h, '0.965 0.969 0.976')
       let x = M
       wrapped.forEach((lines, i) => {
-        const right = i > 0 && !bold && cols > 2 && /^[\d.,R$%x\s—-]+$/.test(cells[i] ?? '') && !(cols >= 7)
-        lines.forEach((ln, li) => text(ln, right ? x + widths[i]! - 2 - textWidth(ln, size) : x + 2, y - (li + 1) * (size + 2.5) + 2, size, bold))
+        const right = i > 0 && cols > 2 && !(cols >= 7) && (header ? true : /^[\d.,R$%x\s—+-]+$/.test(cells[i] ?? ''))
+        lines.forEach((ln, li) => text(ln, right ? x + widths[i]! - pad - textWidth(ln, size) : x + pad, y - (li + 1) * (size + 2.5) - 1, size, header, header ? WHITE : DARK))
         x += widths[i]!
       })
       y -= h
-      ops.push(`0.88 0.89 0.92 RG 0.4 w ${M} ${y.toFixed(1)} m ${W - M} ${y.toFixed(1)} l S`)
     }
-    row(s.header, true)
-    s.rows.slice(0, 400).forEach((r, ri) => row(r.map((v, i) => fmtCell(v, s, i, ri)), false))
+    row(s.header, true, false)
+    s.rows.slice(0, 400).forEach((r, ri) => {
+      // Tabela que continua em outra página repete o cabeçalho.
+      const cells = r.map((v, i) => fmtCell(v, s, i, ri))
+      if (y - (size + 2.5) * 2 - 6 < BOTTOM) {
+        newPage()
+        row(s.header, true, false)
+      }
+      row(cells, false, ri % 2 === 1)
+    })
+    if (!s.rows.length) {
+      need(14)
+      text('Sem dados no período.', M + 4, y - 10, 7.5, false, GRAY)
+      y -= 14
+    }
+    ops.push(`${brand} RG 0.8 w ${M} ${y.toFixed(1)} m ${W - M} ${y.toFixed(1)} l S`)
     if (s.rows.length > 400) {
       need(14)
-      text(`E mais ${s.rows.length - 400} linha(s): baixe o Excel para ver tudo.`, M, y - 10, 7.5, false, '0.4 0.4 0.45')
+      text(`E mais ${s.rows.length - 400} linha(s): baixe o Excel para ver tudo.`, M, y - 10, 7.5, false, GRAY)
       y -= 14
     }
     if (s.note) {
-      for (const l of wrap(s.note, W - 2 * M, 7.5)) {
-        need(11)
-        text(l, M, y - 10, 7.5, false, '0.4 0.4 0.45')
-        y -= 11
+      y -= 2
+      for (const l of wrap(s.note, W - 2 * M, 7)) {
+        need(10)
+        text(l, M, y - 9, 7, false, GRAY)
+        y -= 10
       }
     }
-    y -= 14
+    y -= 16
   }
-  newPage()
-  // Monta o arquivo: catálogo, páginas, fontes padrão (Helvetica) e o conteúdo de cada página.
+  pages.push(ops.join('\n'))
+
+  // Monta o arquivo: catálogo, páginas, fontes padrão (Helvetica), o logo e o conteúdo de cada página.
   const objs: string[] = []
   const add = (s: string) => objs.push(s) // número do objeto = índice + 1
   add('<< /Type /Catalog /Pages 2 0 R >>')
   add('') // páginas, preenchido depois
   add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>')
   add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>')
+  const stream = (dict: string, data: Buffer) => `<< ${dict} /Length ${data.length} >>\nstream\n${data.toString('latin1')}\nendstream`
+  let imageRef = ''
+  if (doc.logo) {
+    let smaskId = 0
+    if (doc.logo.smask) {
+      add(stream(doc.logo.smask.dict, doc.logo.smask.data))
+      smaskId = objs.length
+    }
+    add(stream(doc.logo.image.dict.replace('{SMASK}', String(smaskId)), doc.logo.image.data))
+    imageRef = ` /XObject << /Im1 ${objs.length} 0 R >>`
+  }
   const kids: number[] = []
   pages.forEach((content, i) => {
-    const footer = `BT 0.55 0.55 0.6 rg /F1 6.5 Tf ${M} 20 Td (${pdfText(`${doc.footer} · página ${i + 1} de ${pages.length}`)}) Tj ET`
-    const stream = `${content}\n${footer}`
-    add(`<< /Length ${Buffer.byteLength(stream, 'latin1')} >>\nstream\n${stream}\nendstream`)
+    const foot = [
+      `${brand} RG 0.6 w ${M} 40 m ${W - M} 40 l S`,
+      ...(doc.info ? [`BT ${DARK} rg /F2 7 Tf ${M} 29 Td (${pdfText(fit(doc.info, W - 2 * M - 70, 7))}) Tj ET`] : []),
+      `BT ${GRAY} rg /F1 6.5 Tf ${M} ${doc.info ? 19 : 27} Td (${pdfText(fit(doc.footer, W - 2 * M - 70, 6.5))}) Tj ET`,
+      `BT ${GRAY} rg /F1 7 Tf ${W - M - 58} 29 Td (${pdfText(`página ${i + 1} de ${pages.length}`)}) Tj ET`,
+    ].join('\n')
+    const body = Buffer.from(`${content}\n${foot}`, 'latin1')
+    add(stream('', body))
     const contentId = objs.length
-    add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentId} 0 R >>`)
+    add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>${imageRef} >> /Contents ${contentId} 0 R >>`)
     kids.push(objs.length)
   })
   objs[1] = `<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(' ')}] /Count ${kids.length} >>`

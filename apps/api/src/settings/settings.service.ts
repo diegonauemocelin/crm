@@ -17,6 +17,8 @@ export interface BrandingSettings {
   /** Modelo das telas padrão: ATUAL ou NOVO (Minha fila, quadro de pré-vendas, chat com painel). */
   defaultScreens: 'ATUAL' | 'NOVO'
   supportEmail: string
+  /** Dados da empresa no rodapé dos relatórios (site, telefone, endereço). */
+  companyInfo: string
 }
 
 export type SmtpSecurity = 'ssl' | 'starttls' | 'none'
@@ -49,6 +51,7 @@ export const DEFAULT_BRANDING: BrandingSettings = {
   allowLayoutChoice: true,
   defaultScreens: 'ATUAL',
   supportEmail: '',
+  companyInfo: '',
 }
 
 export const DEFAULT_SMTP: SmtpSettings = {

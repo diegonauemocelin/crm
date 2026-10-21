@@ -10,7 +10,7 @@ import { RastreamentoService } from '../rastreamento/rastreamento.service'
 import { env } from '../config/env'
 import { MailService } from '../settings/mail.service'
 import { SettingsService } from '../settings/settings.service'
-import { cartItems, cleanBaseUrl, cleanHttpsBase, type CustomerData, customerFrom, DEFAULT_CART_MESSAGE, type MagazordPessoa, type MzSiteProduct, mzDateTime, orderGroup, parseMzDate, PRODUCTS_MAX_ATTEMPTS, productFrom, productsDue, shrinkError, spDay } from './magazord'
+import { cartItems, cleanBaseUrl, cleanHttpsBase, type CustomerData, customerFrom, DEFAULT_CART_MESSAGE, type MagazordPessoa, type MzSiteProduct, mzDateTime, orderGroup, parseMzDate, PRODUCTS_MAX_ATTEMPTS, orderChannel, orderLines, productFrom, productsDue, shrinkError, spDay } from './magazord'
 
 export interface MagazordSettings {
   enabled: boolean
@@ -82,6 +82,9 @@ export interface MagazordState {
   /** Dia em que o aviso de falha foi enviado (no máximo um por dia). */
   productsAlertDay?: string | null
   totals: { customers: number; leadsCreated: number; orders: number; carts: number; products?: number }
+  /** Itens e canal dos pedidos (detalhe de cada pedido): quantos faltam e o último erro. */
+  orderItemsPending?: number
+  orderItemsError?: string | null
 }
 
 export const DEFAULT_STATE: MagazordState = {
@@ -117,6 +120,8 @@ interface MzOrder {
   pedidoSituacao: number
   pedidoSituacaoDescricao?: string | null
   formaPagamentoNome?: string | null
+  origem?: number | null
+  lojaDoMarketplaceNome?: string | null
 }
 
 interface MzCart {
@@ -257,6 +262,7 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
     try {
       if (s.importCustomers) await this.syncCustomers(tenantId, s)
       if (s.importOrders) await this.syncOrders(tenantId, s)
+      if (s.importOrders) await this.syncOrderItems(tenantId, s)
       if (s.importCarts) await this.syncCarts(tenantId, s)
       if (s.importProducts) await this.syncProducts(tenantId, s, false)
       await this.saveState(tenantId, { running: false, lastOkAt: new Date().toISOString(), lastError: null })
@@ -370,6 +376,36 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
     await this.saveState(tenantId, { ordersCursor: startedAt.toISOString() })
   }
 
+  /**
+   * Itens e canal de venda de cada pedido (consulta do pedido pelo código). Aos poucos: os mais recentes primeiro,
+   * até 300 por rodada, para não pesar na loja; a carga dos 2 anos termina em algumas rodadas.
+   */
+  private async syncOrderItems(tenantId: string, s: MagazordSettings) {
+    const todo = await this.prisma.ecommerceOrder.findMany({ where: { tenantId, itemsAt: null }, orderBy: { orderedAt: 'desc' }, take: 300, select: { id: true, code: true } })
+    let error: string | null = null
+    for (const o of todo) {
+      try {
+        const d = await this.get<Record<string, unknown>>(s, `/v2/site/pedido/${encodeURIComponent(o.code)}`)
+        const lines = orderLines(d)
+        await this.prisma.$transaction([
+          this.prisma.ecommerceOrderItem.deleteMany({ where: { orderId: o.id } }),
+          this.prisma.ecommerceOrderItem.createMany({ data: lines.map((l) => ({ tenantId, orderId: o.id, ...l })) }),
+          this.prisma.ecommerceOrder.update({ where: { id: o.id }, data: { itemsAt: new Date(), channel: orderChannel(d) } }),
+        ])
+      } catch (err) {
+        const msg = (err as Error).message
+        // Pedido que a Magazord não acha mais: marca como lido (sem itens) para não tentar para sempre.
+        if (/respondeu 404/.test(msg)) await this.prisma.ecommerceOrder.update({ where: { id: o.id }, data: { itemsAt: new Date() } })
+        else {
+          error = `Pedido ${o.code}: ${msg}`.slice(0, 300)
+          break
+        }
+      }
+    }
+    const pending = await this.prisma.ecommerceOrder.count({ where: { tenantId, itemsAt: null } })
+    await this.saveState(tenantId, { orderItemsPending: pending, orderItemsError: error })
+  }
+
   private async upsertOrder(tenantId: string, s: MagazordSettings, o: MzOrder) {
     const externalId = String(o.id)
     const statusCode = Number(o.pedidoSituacao) || 0
@@ -389,6 +425,8 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
       statusName: (o.pedidoSituacaoDescricao ?? `Situação ${statusCode}`).slice(0, 80),
       statusGroup: group,
       payment: o.formaPagamentoNome?.slice(0, 80) ?? null,
+      // A lista só traz o marketplace; o detalhe (itens) completa com a origem.
+      ...(before?.itemsAt ? {} : { channel: orderChannel(o) }),
     }
     await this.prisma.ecommerceOrder.upsert({ where: { tenantId_externalId: { tenantId, externalId } }, create: { tenantId, externalId, ...data }, update: data })
     // Carrinho que virou este pedido: comprado.

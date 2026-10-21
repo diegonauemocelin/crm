@@ -119,6 +119,8 @@ export interface MagazordState {
   customersBackfillDone: boolean
   productsSyncedAt?: string | null
   productsError?: string | null
+  orderItemsPending?: number
+  orderItemsError?: string | null
   totals: { customers: number; leadsCreated: number; orders: number; carts: number; products?: number }
 }
 

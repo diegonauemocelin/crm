@@ -55,6 +55,7 @@ export interface Branding {
   allowLayoutChoice: boolean
   defaultScreens?: ScreenModel
   supportEmail: string
+  companyInfo?: string
   logoUrl: string | null
   logoDarkUrl: string | null
   faviconUrl: string | null

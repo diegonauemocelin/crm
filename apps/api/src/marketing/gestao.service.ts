@@ -8,7 +8,9 @@ import { EmailAiService } from '../email/ia.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { MailService } from '../settings/mail.service'
 import { SettingsService } from '../settings/settings.service'
-import { periodLabel, reportSheets, toPdf, toXlsx } from './arquivos'
+import { pdfCards, periodLabel, reportSheets, toPdf, toXlsx } from './arquivos'
+import { pdfImage } from './pdf-imagem'
+import { FilesService } from '../files/files.service'
 import { cleanFilters, DEFAULT_INTEGRATIONS, INTEGRATIONS_KEY, type IntegrationsConfig, type ReportSection } from './config'
 import { aiPrompt, AI_SYSTEM, cleanAiText } from './ia'
 import { MarketingService } from './marketing.service'
@@ -51,7 +53,19 @@ export class MarketingManagementService implements OnApplicationBootstrap, OnMod
     private readonly mail: MailService,
     private readonly ai: EmailAiService,
     private readonly mkt: MarketingService,
+    private readonly files: FilesService,
   ) {}
+
+  /** Logo da empresa (Configurações › Marca) preparado para o PDF; sem logo ou formato que não abre: null. */
+  private async logo(fileId: string | null) {
+    if (!fileId) return null
+    try {
+      const { asset, content } = await this.files.read(fileId)
+      return pdfImage(content, asset.mime)
+    } catch {
+      return null
+    }
+  }
 
   onApplicationBootstrap() {
     this.timer = setInterval(() => void this.tick(), HOUR)
@@ -280,20 +294,32 @@ export class MarketingManagementService implements OnApplicationBootstrap, OnMod
 
   async file(tenantId: string, format: 'pdf' | 'xlsx', q: { from?: string; to?: string; filters?: Partial<Record<string, unknown>> | Filters; sections: ReportSection[]; title: string; withAi?: boolean }) {
     const d = await this.mkt.analyze(tenantId, { from: q.from, to: q.to, filters: cleanFilters(q.filters ?? {}) })
-    const [email, health, branding, ai] = await Promise.all([
+    const [email, health, branding, ai, store] = await Promise.all([
       q.sections.includes('email') ? this.mkt.email(tenantId, { from: d.period.from, to: d.period.to }) : Promise.resolve(null),
       q.sections.includes('saude') ? this.mkt.health(tenantId) : Promise.resolve(null),
       this.settings.branding(tenantId),
       q.sections.includes('resumo_ia') && (await this.ai.available(tenantId))
         ? this.ai.complete(tenantId, AI_SYSTEM, aiPrompt(d), 1200).then(cleanAiText).catch(() => null)
         : Promise.resolve(null),
+      q.sections.includes('loja') ? this.mkt.store(tenantId, { from: d.period.from, to: d.period.to }) : Promise.resolve(null),
     ])
-    const sheets = reportSheets(d, q.sections, email, health, ai)
+    const sheets = reportSheets(d, q.sections, email, health, ai, store)
     const period = periodLabel(d.period.from, d.period.to)
     const base = `${q.title} ${d.period.from}${d.period.from === d.period.to ? '' : `_${d.period.to}`}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase()
     const footer = `${branding.appName} · Fonte: Pré-Vendas do CRM e plataformas conectadas · gerado em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`
     if (format === 'xlsx') return { filename: `${base}.xlsx`, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', content: Buffer.from(toXlsx(sheets, q.title)) }
     const subtitle = `${period} (comparado com ${periodLabel(d.period.prevFrom, d.period.prevTo)}) · atribuição ${d.rules.attribution.model === 'primeiro' ? 'primeiro toque' : 'último toque'}, janela de ${d.rules.attribution.windowDays} dias · investimento do Google Ads ${d.updatedAt.googleAdsCost ? `atualizado em ${new Date(d.updatedAt.googleAdsCost).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` : 'ainda não recebido'}${d.crmOnlyFilters.length ? ' · com filtro só do CRM: custos fora das contas' : ''}`
-    return { filename: `${base}.pdf`, contentType: 'application/pdf', content: Buffer.from(toPdf({ title: q.title, subtitle, sheets, footer, color: branding.primaryColor })) }
+    const pdf = toPdf({
+      title: q.title,
+      subtitle,
+      sheets,
+      footer,
+      color: branding.primaryColor,
+      brandName: branding.shortName || branding.appName,
+      logo: await this.logo(branding.logoFileId),
+      info: branding.companyInfo || undefined,
+      cards: q.sections.includes('kpis') ? pdfCards(d) : undefined,
+    })
+    return { filename: `${base}.pdf`, contentType: 'application/pdf', content: Buffer.from(pdf) }
   }
 }

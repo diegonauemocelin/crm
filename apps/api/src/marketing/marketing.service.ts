@@ -5,6 +5,7 @@ import type { RequestCtx } from '../common/decorators'
 import { type Action, can } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import { DEFAULT_GOOGLE_ADS, type GoogleAdsSettings, SCRIPT_KEY, type ScriptState } from '../googleads/googleads'
+import { Prisma } from '../generated/prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { DEFAULT_GA4, type Ga4Settings, GA_TOKEN_URL, signJwt } from '../relatorios/ga4'
 import { SettingsService } from '../settings/settings.service'
@@ -495,6 +496,48 @@ export class MarketingService {
     return {
       negativeTerms: sug.length ? { count: sug.length, cost: Math.round(sug.reduce((a, t) => a + t.cost, 0) * 100) / 100, examples: sug.map((t) => t.term) } : undefined,
       fatigued: tired,
+    }
+  }
+
+  /**
+   * Loja virtual (pedidos da Magazord): vendas pagas, ticket, pendentes e cancelados, valor por canal de venda e
+   * produtos mais vendidos. Compara com o período anterior do mesmo tamanho.
+   */
+  async store(tenantId: string, q: { from?: string; to?: string }) {
+    const p = periods(q.from, q.to)
+    const T = tenantId
+    const totals = async (start: Date, end: Date) => {
+      const rows = await this.prisma.ecommerceOrder.groupBy({ by: ['statusGroup'], where: { tenantId: T, orderedAt: { gte: start, lt: end } }, _count: { _all: true }, _sum: { total: true } })
+      const g = (k: string) => rows.find((r) => r.statusGroup === k)
+      const orders = g('pago')?._count._all ?? 0
+      const revenue = Math.round(Number(g('pago')?._sum.total ?? 0) * 100) / 100
+      return { orders, revenue, ticket: orders ? Math.round((revenue / orders) * 100) / 100 : null, pending: g('pendente')?._count._all ?? 0, canceled: g('cancelado')?._count._all ?? 0 }
+    }
+    const [now, before, channels, products, coverage] = await Promise.all([
+      totals(p.start, p.end),
+      totals(p.prevStart, p.prevEnd),
+      this.prisma.ecommerceOrder.groupBy({ by: ['channel'], where: { tenantId: T, statusGroup: 'pago', orderedAt: { gte: p.start, lt: p.end } }, _count: { _all: true }, _sum: { total: true } }),
+      this.prisma.$queryRaw<{ name: string; sku: string | null; quantity: bigint; revenue: Prisma.Decimal; orders: bigint }[]>`
+        SELECT max(i.name) AS name, i.sku, sum(i.quantity) AS quantity, sum(i.total) AS revenue, count(DISTINCT i."orderId") AS orders
+        FROM ecommerce_order_items i JOIN ecommerce_orders o ON o.id = i."orderId"
+        WHERE o."tenantId" = ${T}::uuid AND o."statusGroup" = 'pago' AND o."orderedAt" >= ${p.start} AND o."orderedAt" < ${p.end}
+        GROUP BY COALESCE(i.sku, i.name), i.sku
+        ORDER BY sum(i.total) DESC LIMIT 15`,
+      this.prisma.ecommerceOrder.count({ where: { tenantId: T, orderedAt: { gte: p.start, lt: p.end }, itemsAt: null } }),
+    ])
+    const delta = (a: number | null, b: number | null) => (a === null || b === null || b === 0 ? null : Math.round(((a - b) / b) * 1000) / 10)
+    return {
+      period: { from: p.from, to: p.to },
+      now,
+      before,
+      deltas: { orders: delta(now.orders, before.orders), revenue: delta(now.revenue, before.revenue), ticket: delta(now.ticket, before.ticket) },
+      channels: channels
+        .map((c) => ({ name: c.channel ?? 'Sem canal informado', orders: c._count._all, revenue: Math.round(Number(c._sum.total ?? 0) * 100) / 100 }))
+        .map((c) => ({ ...c, share: now.revenue ? Math.round((c.revenue / now.revenue) * 1000) / 10 : null }))
+        .sort((a, b) => b.revenue - a.revenue),
+      products: products.map((r) => ({ name: r.name, sku: r.sku, quantity: Number(r.quantity), orders: Number(r.orders), revenue: Math.round(Number(r.revenue) * 100) / 100 })),
+      /** Pedidos do período ainda sem os itens buscados na Magazord (os mais vendidos ficam incompletos). */
+      pendingItems: coverage,
     }
   }
 

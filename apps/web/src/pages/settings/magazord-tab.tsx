@@ -281,6 +281,15 @@ function SyncStatus({ config }: { config: MagazordConfig }) {
         {!st.customersBackfillDone && st.customersPage > 1 && (
           <p className="text-sm text-muted-foreground">Carga inicial de clientes em andamento: página {int.format(st.customersPage - 1)} concluída (100 clientes por página).</p>
         )}
+        {(st.orderItemsPending ?? 0) > 0 && (
+          <p className="text-sm text-muted-foreground">Lendo os itens e o canal de venda dos pedidos (para o relatório de produtos mais vendidos e canais): faltam {int.format(st.orderItemsPending!)} pedido(s). Vai aos poucos, até 300 por rodada.</p>
+        )}
+        {st.orderItemsError && (
+          <p role="alert" className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+            <XCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
+            Itens dos pedidos: {st.orderItemsError}
+          </p>
+        )}
         {st.productsError && (
           <p role="alert" className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
             <XCircleIcon className="mt-0.5 size-4 shrink-0 text-destructive" />

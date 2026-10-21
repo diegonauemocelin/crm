@@ -9,6 +9,7 @@ import type { MarketingService } from './marketing.service'
 type Analysis = Awaited<ReturnType<MarketingService['analyze']>>
 type Email = Awaited<ReturnType<MarketingService['email']>>
 type Health = Awaited<ReturnType<MarketingService['health']>>
+type Store = Awaited<ReturnType<MarketingService['store']>>
 
 export interface ReportInput {
   schedule: Pick<ReportSchedule, 'name' | 'sections'>
@@ -16,8 +17,10 @@ export interface ReportInput {
   data: Analysis
   email: Email | null
   health: Health | null
-  branding: Pick<BrandingSettings, 'appName' | 'primaryColor'>
+  branding: Pick<BrandingSettings, 'appName' | 'primaryColor'> & Partial<Pick<BrandingSettings, 'shortName' | 'companyInfo'>> & { logoUrl?: string | null }
   link: string
+  /** Loja virtual (Magazord), com a parte "loja" marcada. */
+  store?: Store | null
   /** Resumo escrito pela IA (só com a parte "resumo_ia" marcada e a chave do Gemini cadastrada). */
   ai?: string | null
 }
@@ -62,9 +65,22 @@ const KPIS: { key: K; label: string; fmt: (n: number | null) => string; goodUp?:
   { key: 'lostRate', label: 'Oportunidades perdidas', fmt: pc, goodUp: false },
 ]
 
-const th = (s: string, right = false) => `<th style="text-align:${right ? 'right' : 'left'};padding:6px 8px;border-bottom:2px solid #e5e7eb;font-size:12px;color:#6b7280;font-weight:600">${esc(s)}</th>`
-const td = (s: string, right = false) => `<td style="text-align:${right ? 'right' : 'left'};padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:13px">${s}</td>`
-const h2 = (s: string, color: string) => `<tr><td style="padding:24px 0 8px;font-size:16px;font-weight:700;color:${color}">${esc(s)}</td></tr>`
+// Cor da marca da tela atual (cabeçalho das tabelas); trocada no início de cada relatório.
+let BRAND = '#1d4ed8'
+const th = (s: string, right = false) => `<th style="text-align:${right ? 'right' : 'left'};padding:7px 8px;background:${BRAND};font-size:12px;color:#ffffff;font-weight:600">${esc(s)}</th>`
+const td = (s: string, right = false) => `<td style="text-align:${right ? 'right' : 'left'};padding:6px 8px;border-bottom:1px solid #eef0f3;font-size:13px">${s}</td>`
+const h2 = (s: string, color: string) => `<tr><td style="padding:26px 0 10px"><div style="border-left:4px solid ${color};padding-left:10px;font-size:16px;font-weight:700;color:#111827">${esc(s)}</div></td></tr>`
+/** Cor da marca clareada (fundo dos cartões e do resumo). */
+const lighten = (hex: string, w: number) =>
+  `#${[1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) + (255 - parseInt(hex.slice(i, i + 2), 16)) * w).toString(16).padStart(2, '0')).join('')}`
+const CARDS: { key: K; label: string; fmt: (n: number | null) => string; goodUp: boolean }[] = [
+  { key: 'mediaCost', label: 'Investimento em mídia', fmt: brl, goodUp: false },
+  { key: 'leads', label: 'Leads gerados', fmt: int, goodUp: true },
+  { key: 'sales', label: 'Vendas', fmt: int, goodUp: true },
+  { key: 'revenue', label: 'Faturamento', fmt: brl, goodUp: true },
+  { key: 'cpl', label: 'Custo por lead', fmt: brl, goodUp: false },
+  { key: 'roas', label: 'ROAS de mídia', fmt: x2, goodUp: true },
+]
 const table = (head: string, body: string) => `<tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">${head}${body}</table></td></tr>`
 
 type Row = Analysis['byCampaign'][number]
@@ -80,6 +96,8 @@ function breakdownTable(rows: Row[], label: string, withCost: boolean, limit = 1
 
 export function reportHtml(x: ReportInput) {
   const color = /^#[0-9a-f]{6}$/i.test(x.branding.primaryColor) ? x.branding.primaryColor : '#1d4ed8'
+  BRAND = color
+  const soft = lighten(color, 0.92)
   const d = x.data
   const has = (k: string) => (x.schedule.sections as string[]).includes(k)
   const parts: string[] = []
@@ -91,12 +109,21 @@ export function reportHtml(x: ReportInput) {
     parts.push(h2('Resumo do período', color))
     parts.push(
       x.ai
-        ? `<tr><td style="font-size:13px;line-height:20px">${x.ai.split('\n').filter(Boolean).map((l) => esc(l)).join('<br>')}<br><span style="font-size:11px;color:#6b7280">Texto da IA (Gemini) a partir dos números agregados do período. Confira os números abaixo.</span></td></tr>`
+        ? `<tr><td style="font-size:13px;line-height:20px;background:${soft};border-left:4px solid ${color};padding:12px 16px;border-radius:4px">${x.ai
+            .split('\n')
+            .filter(Boolean)
+            .map((l) => (/^(próximos passos|pontos de atenção|destaques)\b/i.test(l.replace(/^[-•*]\s*/, '')) ? `<b>${esc(l)}</b>` : esc(l.replace(/^[-•*]\s*/, '• '))))
+            .join('<br>')}<br><span style="font-size:11px;color:#6b7280">Texto da IA (Gemini) a partir dos números agregados do período. Confira os números abaixo.</span></td></tr>`
         : '<tr><td style="font-size:13px;color:#6b7280">Resumo pela IA indisponível (cadastre a chave do Gemini em Configurações › E-mail marketing).</td></tr>',
     )
   }
   if (has('kpis')) {
     parts.push(h2('Indicadores principais', color))
+    // Cartões com os seis números principais (3 por linha) antes da tabela completa.
+    const card = (k: (typeof CARDS)[number]) =>
+      `<td width="33%" valign="top" style="padding:4px"><div style="background:${soft};border-left:4px solid ${color};border-radius:4px;padding:10px 12px"><div style="font-size:10px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.04em">${esc(k.label)}</div><div style="font-size:19px;font-weight:700;color:#111827;padding:2px 0">${k.fmt(d.now[k.key] as number | null)}</div><div style="font-size:11px">${arrow(d.deltas[k.key] ?? null, k.goodUp)} <span style="color:#9ca3af">vs. anterior</span></div></div></td>`
+    parts.push(`<tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${CARDS.slice(0, 3).map(card).join('')}</tr><tr>${CARDS.slice(3).map(card).join('')}</tr></table></td></tr>`)
+    parts.push('<tr><td style="height:10px"></td></tr>')
     const rows = KPIS.map((k) => `<tr>${td(esc(k.label))}${td(`<b>${k.fmt(d.now[k.key] as number | null)}</b>`, true)}${td(k.fmt(d.before[k.key] as number | null), true)}${td(arrow(d.deltas[k.key] ?? null, k.goodUp ?? true), true)}</tr>`).join('')
     parts.push(table(`<tr>${th('Indicador')}${th('Período', true)}${th('Anterior', true)}${th('Variação', true)}</tr>`, rows))
     parts.push(`<tr><td style="font-size:12px;color:#6b7280;padding-top:6px">ROI estimado com margem de ${pc(d.rules.marginPct)}${d.rules.fixedMonthly ? ` e custos fixos de ${brl(d.rules.fixedMonthly)}/mês` : ''}. ROAS = faturamento atribuído ÷ investimento em mídia.</td></tr>`)
@@ -121,6 +148,37 @@ export function reportHtml(x: ReportInput) {
     parts.push(table(`<tr>${th('Enviados', true)}${th('Abertura registrada', true)}${th('Cliques', true)}${th('Descadastros', true)}${th('Vendas de quem clicou', true)}</tr>`, `<tr>${td(int(e.sent), true)}${td(pc(e.openRate), true)}${td(pc(e.clickRate), true)}${td(pc(e.unsubRate), true)}${td(`${int(e.orders)} · ${brl(e.revenue)}`, true)}</tr>`))
     parts.push('<tr><td style="font-size:12px;color:#6b7280;padding-top:6px">A abertura registrada pode ser maior que a real (proteção de privacidade do Apple Mail e outros abre as imagens sozinhos). Cliques são mais confiáveis.</td></tr>')
   }
+  if (has('loja') && x.store) {
+    const st = x.store
+    parts.push(h2('Loja virtual (Magazord)', color))
+    parts.push(
+      table(
+        `<tr>${th('Indicador')}${th('Período', true)}${th('Anterior', true)}${th('Variação', true)}</tr>`,
+        [
+          ['Vendas (pedidos pagos)', int(st.now.orders), int(st.before.orders), arrow(st.deltas.orders)],
+          ['Faturamento', `<b>${brl(st.now.revenue)}</b>`, brl(st.before.revenue), arrow(st.deltas.revenue)],
+          ['Ticket médio', brl(st.now.ticket), brl(st.before.ticket), arrow(st.deltas.ticket)],
+          ['Pedidos pendentes', int(st.now.pending), int(st.before.pending), ''],
+          ['Pedidos cancelados', int(st.now.canceled), int(st.before.canceled), ''],
+        ]
+          .map((r) => `<tr>${td(esc(r[0]))}${td(r[1]!, true)}${td(r[2]!, true)}${td(r[3]!, true)}</tr>`)
+          .join(''),
+      ),
+    )
+    parts.push(h2('Valor por canal de venda', color))
+    parts.push(
+      st.channels.length
+        ? table(`<tr>${th('Canal')}${th('Vendas', true)}${th('Faturamento', true)}${th('Participação', true)}</tr>`, st.channels.map((c) => `<tr>${td(esc(c.name))}${td(int(c.orders), true)}${td(brl(c.revenue), true)}${td(pc(c.share), true)}</tr>`).join(''))
+        : '<tr><td style="font-size:13px;color:#6b7280">Sem vendas pagas no período.</td></tr>',
+    )
+    parts.push(h2('Produtos mais vendidos', color))
+    parts.push(
+      st.products.length
+        ? table(`<tr>${th('Produto')}${th('Qtd.', true)}${th('Pedidos', true)}${th('Faturamento', true)}</tr>`, st.products.map((p) => `<tr>${td(`${esc(p.name)}${p.sku ? `<br><span style="font-size:11px;color:#9ca3af">${esc(p.sku)}</span>` : ''}`)}${td(int(p.quantity), true)}${td(int(p.orders), true)}${td(brl(p.revenue), true)}</tr>`).join(''))
+        : '<tr><td style="font-size:13px;color:#6b7280">Sem itens de pedidos pagos no período.</td></tr>',
+    )
+    if (st.pendingItems) parts.push(`<tr><td style="font-size:12px;color:#6b7280;padding-top:6px">${int(st.pendingItems)} pedido(s) do período ainda sem os itens lidos da Magazord: os mais vendidos ficam completos quando a leitura terminar.</td></tr>`)
+  }
   if (has('recomendacoes')) {
     parts.push(h2('Recomendações', color))
     if (!d.recommendations.length) parts.push('<tr><td style="font-size:13px;color:#6b7280">Nenhum ponto de atenção com amostra suficiente no período.</td></tr>')
@@ -140,14 +198,19 @@ export function reportHtml(x: ReportInput) {
   const period = d.period.from === d.period.to ? day(d.period.from) : `${day(d.period.from)} a ${day(d.period.to)}`
   return `<!doctype html><html lang="pt-BR"><body style="margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;color:#1f2937">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">
-<table role="presentation" width="680" cellpadding="0" cellspacing="0" style="max-width:680px;background:#ffffff;border-radius:8px;padding:28px">
-<tr><td style="font-size:12px;color:${color};font-weight:700;letter-spacing:.08em;text-transform:uppercase">Marketing Inteligente</td></tr>
-<tr><td style="font-size:21px;font-weight:700;padding:4px 0">${esc(x.schedule.name)}</td></tr>
+<table role="presentation" width="680" cellpadding="0" cellspacing="0" style="max-width:680px;background:#ffffff;border-radius:8px;overflow:hidden">
+<tr><td style="background:${color};padding:22px 28px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+<td valign="middle" style="width:170px">${x.branding.logoUrl ? `<div style="background:#ffffff;border-radius:6px;padding:8px 12px;display:inline-block"><img src="${esc(x.branding.logoUrl)}" alt="${esc(x.branding.shortName || x.branding.appName)}" height="40" style="display:block;max-width:150px;height:40px;border:0"></div>` : `<span style="font-size:18px;font-weight:700;color:#ffffff">${esc(x.branding.shortName || x.branding.appName)}</span>`}</td>
+<td valign="middle" style="padding-left:18px"><div style="font-size:11px;color:${lighten(color, 0.7)};font-weight:700;letter-spacing:.08em;text-transform:uppercase">Marketing Inteligente</div><div style="font-size:21px;font-weight:700;color:#ffffff;padding-top:2px">${esc(x.schedule.name)}</div></td>
+</tr></table></td></tr>
+<tr><td style="padding:16px 28px 28px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr><td style="font-size:13px;color:#6b7280">${esc(x.periodLabel)}: ${period} · comparado com ${day(d.period.prevFrom)} a ${day(d.period.prevTo)} · atribuição: ${d.rules.attribution.model === 'primeiro' ? 'primeiro toque' : 'último toque'}, janela de ${d.rules.attribution.windowDays} dias</td></tr>
 ${notes.map((n) => `<tr><td style="font-size:12px;color:#92400e;background:#fffbeb;padding:8px;margin-top:8px">${esc(n)}</td></tr>`).join('')}
 ${parts.join('\n')}
 <tr><td style="padding:24px 0 8px"><a href="${esc(x.link)}" style="background:${color};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;display:inline-block;font-weight:600">Abrir no sistema</a></td></tr>
 <tr><td style="font-size:11px;color:#9ca3af;line-height:16px">Fontes: Pré-Vendas do CRM (leads, atendimento e valor da venda) e investimento das plataformas conectadas. Investimento do Google Ads atualizado em ${d.updatedAt.googleAdsCost ? new Date(d.updatedAt.googleAdsCost).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—'}. Conversões das plataformas não são somadas às vendas do CRM. Relatório gerado em ${new Date(d.updatedAt.crm).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}.</td></tr>
+</table></td></tr>
+<tr><td style="border-top:3px solid ${color};padding:14px 28px;font-size:12px;color:#4b5563"><b>${esc(x.branding.shortName || x.branding.appName)}</b>${x.branding.companyInfo ? ` · ${esc(x.branding.companyInfo)}` : ''}</td></tr>
 </table>
 <p style="font-size:12px;color:#9ca3af;margin-top:16px">${esc(x.branding.appName)}</p>
 </td></tr></table></body></html>`
@@ -172,6 +235,10 @@ export function reportWhatsapp(x: ReportInput) {
   for (const key of WA_KPIS) {
     const k = KPIS.find((y) => y.key === key)!
     lines.push(`${k.label}: *${k.fmt(d.now[k.key] as number | null)}* (antes: ${k.fmt(d.before[k.key] as number | null)})`)
+  }
+  if (x.store && (x.schedule.sections as string[]).includes('loja')) {
+    const top = x.store.channels.slice(0, 3).map((c) => `${c.name} ${brl(c.revenue)}`).join(' · ')
+    lines.push('', `Loja virtual: *${int(x.store.now.orders)} vendas · ${brl(x.store.now.revenue)}*${top ? ` (${top})` : ''}`)
   }
   if (x.ai && (x.schedule.sections as string[]).includes('resumo_ia')) lines.push('', x.ai.length > 600 ? `${x.ai.slice(0, 597).trimEnd()}...` : x.ai)
   lines.push('', `Ver tudo no sistema: ${x.link}`)

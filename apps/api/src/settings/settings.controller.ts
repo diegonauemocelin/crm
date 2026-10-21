@@ -38,6 +38,7 @@ class BrandingDto {
   @ApiProperty() @IsBoolean() allowLayoutChoice!: boolean
   @ApiPropertyOptional({ enum: ['ATUAL', 'NOVO'] }) @IsOptional() @IsIn(['ATUAL', 'NOVO']) defaultScreens?: 'ATUAL' | 'NOVO'
   @ApiProperty() @ValidateIf((o: BrandingDto) => o.supportEmail !== '') @IsEmail() supportEmail!: string
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) companyInfo?: string
 }
 
 class SmtpDto {

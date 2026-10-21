@@ -127,6 +127,7 @@ export const REPORT_SECTIONS = [
   { key: 'categorias', label: 'Resultado por tipo de peça' },
   { key: 'origens', label: 'Resultado por origem do lead' },
   { key: 'email', label: 'E-mail marketing do período' },
+  { key: 'loja', label: 'Loja virtual (Magazord): vendas, canais de venda e produtos mais vendidos' },
   { key: 'recomendacoes', label: 'Recomendações (diagnósticos com os números)' },
   { key: 'saude', label: 'Saúde dos dados (fontes, última atualização, leads sem campanha)' },
 ] as const

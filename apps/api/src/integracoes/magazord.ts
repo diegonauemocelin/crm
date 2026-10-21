@@ -286,3 +286,50 @@ export function shrinkError(count: number, activeBefore: number, manual: boolean
   }
   return null
 }
+
+const ORIGINS: Record<number, string> = { 1: 'Site', 2: 'Marketplace', 3: 'Manual', 4: 'PDV (loja física)' }
+
+/**
+ * Canal de venda do pedido: nome do marketplace (ex.: Mercado Livre) quando veio de um; senão a origem
+ * (1 site, 2 marketplace, 3 manual, 4 PDV). A lista de pedidos só traz o nome da loja do marketplace.
+ */
+export function orderChannel(o: { origem?: unknown; marketplaceNome?: unknown; lojaDoMarketplaceNome?: unknown } | null | undefined): string | null {
+  if (!o) return null
+  const name = [o.marketplaceNome, o.lojaDoMarketplaceNome].find((v) => typeof v === 'string' && v.trim()) as string | undefined
+  const origin = Number(o.origem)
+  if (name && origin !== 1 && origin !== 4) return name.trim().slice(0, 60)
+  return ORIGINS[origin] ?? (name ? name.trim().slice(0, 60) : null)
+}
+
+export interface OrderLine {
+  sku: string | null
+  name: string
+  brand: string | null
+  quantity: number
+  total: number
+}
+
+/** Itens do detalhe do pedido (arrayPedidoRastreio[].pedidoItem[]); item de kit conta pelo kit. */
+export function orderLines(detail: unknown): OrderLine[] {
+  const d = detail as { arrayPedidoRastreio?: unknown } | null
+  const out: OrderLine[] = []
+  for (const r of Array.isArray(d?.arrayPedidoRastreio) ? d.arrayPedidoRastreio : []) {
+    const items = (r as { pedidoItem?: unknown } | null)?.pedidoItem
+    for (const raw of Array.isArray(items) ? items : []) {
+      const i = raw as Record<string, unknown>
+      if (!i || typeof i !== 'object' || i.pedidoItemKitId) continue
+      const quantity = Math.round(Number(i.quantidade) || 0)
+      if (quantity <= 0) continue
+      const name = [i.produtoNome, i.descricao, i.produtoTitulo].find((v) => typeof v === 'string' && v.trim()) as string | undefined
+      const total = Number(i.valorItem)
+      out.push({
+        sku: typeof i.produtoDerivacaoCodigo === 'string' && i.produtoDerivacaoCodigo.trim() ? i.produtoDerivacaoCodigo.trim().slice(0, 60) : null,
+        name: (name ?? 'Produto sem nome').trim().slice(0, 200),
+        brand: typeof i.marcaNome === 'string' && i.marcaNome.trim() ? i.marcaNome.trim().slice(0, 80) : null,
+        quantity,
+        total: Math.round((Number.isFinite(total) && total > 0 ? total : (Number(i.valorUnitario) || 0) * quantity) * 100) / 100,
+      })
+    }
+  }
+  return out
+}

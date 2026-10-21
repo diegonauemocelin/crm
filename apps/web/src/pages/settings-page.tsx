@@ -191,6 +191,11 @@ function BrandingEditor({ data }: { data: Branding }) {
               <Label htmlFor="b-support">E-mail de suporte (opcional)</Label>
               <Input id="b-support" type="email" maxLength={200} value={form.supportEmail} onChange={(e) => set('supportEmail', e.target.value)} disabled={!canEdit} />
             </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="b-info">Dados da empresa nos relatórios (opcional)</Label>
+              <Input id="b-info" maxLength={200} placeholder="Ex.: usaparts.com.br · (49) 3664-0888 · Maravilha/SC" value={form.companyInfo ?? ''} onChange={(e) => set('companyInfo', e.target.value)} disabled={!canEdit} />
+              <p className="text-xs text-muted-foreground">Vai no rodapé do PDF e do e-mail dos relatórios, junto com o logo e a cor principal desta tela.</p>
+            </div>
             <div className="sm:col-span-2">
               <FormError message={error} />
             </div>

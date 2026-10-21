@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.80.0",
+      "date": "2026-10-21",
+      "title": "Relatórios no padrão da marca e loja virtual (Magazord) no relatório",
+      "changes": [
+        { "type": "melhoria", "area": "Marketing Inteligente", "text": "PDF e e-mail dos relatórios no padrão da empresa: faixa na cor da marca com o logo, cartões com os seis números principais (com a variação contra o período anterior), resumo da IA em quadro, tabelas com cabeçalho colorido e linhas alternadas, e rodapé com os dados da empresa. Logo e cor vêm de Configurações › Marca; o logo precisa ser PNG ou JPG." },
+        { "type": "novo", "area": "Configurações", "text": "Campo \"Dados da empresa nos relatórios\" em Configurações › Marca (site, telefone, endereço), que vai no rodapé do PDF e do e-mail." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Nova parte \"Loja virtual (Magazord)\" nos relatórios: vendas, faturamento e ticket médio comparados com o período anterior, pedidos pendentes e cancelados, valor por canal de venda (site, Mercado Livre e outros marketplaces, manual, PDV) e os 15 produtos mais vendidos. No WhatsApp vai uma linha com as vendas da loja e os principais canais." },
+        { "type": "novo", "area": "Integrações", "text": "A integração com a Magazord passa a ler os itens e o canal de venda de cada pedido, aos poucos (até 300 pedidos por rodada, os mais recentes primeiro). A tela da integração mostra quantos faltam." }
+      ]
+    },
+    {
       "version": "0.79.0",
       "date": "2026-10-21",
       "title": "Relatórios do marketing também pelo WhatsApp",
