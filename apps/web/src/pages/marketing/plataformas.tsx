@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangleIcon, BanIcon, CalendarPlusIcon, CheckIcon, DownloadIcon, ExternalLinkIcon, Loader2Icon, PencilIcon, Trash2Icon, Undo2Icon } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { BreakdownTable, CrmOnlyNotice, Kpi, MEDIA_COLS, MktFilters, PendingIntegration, TrendChart, UpdatedLine } from '@/components/marketing/ui'
@@ -18,81 +18,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { downloadCsv, money, moneyShort, num, pct, times, useAnalysis, useMktFilters } from '@/lib/marketing'
-import { cn } from '@/lib/utils'
 import { spark } from './paineis'
-
-/** Tabela simples com colunas formatadas (as telas das plataformas têm colunas diferentes das do CRM). */
-interface Col<T> {
-  label: string
-  value: (r: T) => ReactNode
-  right?: boolean
-  csv?: (r: T) => string | number | null
-}
-function SimpleTable<T>({ title, description, rows, cols, rowKey, exportName, empty = 'Sem dados no período.', limit = 50 }: { title: string; description?: ReactNode; rows: T[]; cols: Col<T>[]; rowKey: (r: T) => string; exportName?: string; empty?: string; limit?: number }) {
-  const { can } = useAuth()
-  const [all, setAll] = useState(false)
-  const shown = all ? rows : rows.slice(0, limit)
-  const canExport = exportName && (can('mi_midia', 'export') || can('mi_executivo', 'export'))
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-2">
-        <div className="space-y-1.5">
-          <CardTitle className="text-base">{title}</CardTitle>
-          {description && <CardDescription>{description}</CardDescription>}
-        </div>
-        {canExport && rows.length > 0 && (
-          <Button size="sm" variant="outline" onClick={() => downloadCsv(exportName, cols.map((c) => c.label), rows.map((r) => cols.map((c) => (c.csv ? c.csv(r) : String(c.value(r) ?? '')))))}>
-            <DownloadIcon /> CSV
-          </Button>
-        )}
-      </CardHeader>
-      <CardContent className="px-0">
-        {rows.length === 0 ? (
-          <p className="px-6 text-sm text-muted-foreground">{empty}</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {cols.map((c, i) => (
-                  <TableHead key={c.label} className={cn(i === 0 && 'pl-6', c.right && 'text-right')}>
-                    {c.label}
-                  </TableHead>
-                ))}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {shown.map((r) => (
-                <TableRow key={rowKey(r)}>
-                  {cols.map((c, i) => (
-                    <TableCell key={c.label} className={cn(i === 0 && 'max-w-80 pl-6', c.right && 'text-right tabular-nums')}>
-                      {c.value(r)}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-        {rows.length > limit && (
-          <div className="px-6 pt-2">
-            <Button variant="ghost" size="sm" onClick={() => setAll((a) => !a)}>
-              {all ? 'Mostrar menos' : `Mostrar todas (${rows.length})`}
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-const NA = <span className="text-muted-foreground" title="A plataforma não informou esta métrica">Não disponível</span>
-const optNum = (v: number | null | undefined) => (v === null || v === undefined ? NA : num(v))
-const SyncLine = ({ sync, label }: { sync: { lastOkAt?: string; lastError?: string | null } | null; label: string }) => (
-  <p className={cn('text-xs', sync?.lastError ? 'text-red-600' : 'text-muted-foreground')}>
-    {label}: {sync?.lastOkAt ? `sincronizado em ${formatDateTime(sync.lastOkAt)}` : 'ainda não sincronizado'}
-    {sync?.lastError ? ` · última tentativa falhou: ${sync.lastError}` : ''}
-  </p>
-)
+import { type Col, NA, optNum, SimpleTable, SyncLine } from '@/components/marketing/tabela'
+import { BestTimes, type TimeCell } from '@/components/marketing/horarios'
 
 // ---------- Google Ads ----------
 
@@ -556,12 +484,13 @@ function PaidPlatform({ platform, title }: { platform: 'meta' | 'tiktok'; title:
 interface SocialData {
   connected: boolean
   sync: { lastOkAt?: string; lastError?: string | null } | null
-  networks: { network: string; profileId: string; followers: number | null; followersGrowth: number | null; reach: number | null; impressions: number | null; profileViews: number | null; websiteClicks: number | null; series: { label: string; followers: number | null; reach: number | null }[] }[]
+  networks: { network: string; profileId: string; label: string; followers: number | null; followersGrowth: number | null; reach: number | null; impressions: number | null; profileViews: number | null; websiteClicks: number | null; series: { label: string; followers: number | null; reach: number | null }[] }[]
   posts: Post[]
   worst: Post[]
   byFormat: { format: string; posts: number; engagement: number; reach: number | null; avgEngagement: number; engagementRate: number | null }[]
   byTheme: { theme: string; posts: number; engagement: number; avgEngagement: number }[]
   postsPerWeek: number | null
+  times: { network: 'instagram' | 'facebook'; cells: TimeCell[]; best: TimeCell[] }[]
   organicVsPaid: { organicReach: number | null; paidImpressions: number; paidSpend: number; paidClicks: number; paidLeads: number }
 }
 interface Post {
@@ -643,7 +572,7 @@ function Social() {
                     {d.networks.map((n) => (
                       <Card key={`${n.network}-${n.profileId}`}>
                         <CardHeader>
-                          <CardTitle className="text-base">{n.network === 'instagram' ? 'Instagram' : 'Facebook'}</CardTitle>
+                          <CardTitle className="text-base">{n.label}</CardTitle>
                         </CardHeader>
                         <CardContent className="grid grid-cols-2 gap-3 text-sm">
                           <Kpi label="Seguidores" value={optNumText(n.followers)} hint={n.followersGrowth !== null ? `${n.followersGrowth >= 0 ? '+' : ''}${num(n.followersGrowth)} no período` : undefined} />
@@ -665,6 +594,15 @@ function Social() {
                   <SimpleTable title="Por formato" rows={d.byFormat} rowKey={(r) => r.format} cols={[{ label: 'Formato', value: (r) => r.format }, { label: 'Publicações', value: (r) => num(r.posts), right: true }, { label: 'Engajamento médio', value: (r) => num(r.avgEngagement), right: true }, { label: 'Taxa', value: (r) => pct(r.engagementRate), right: true }]} />
                   <SimpleTable title="Por tema (marcas e tipos de peça citados)" rows={d.byTheme} rowKey={(r) => r.theme} cols={[{ label: 'Tema', value: (r) => r.theme }, { label: 'Publicações', value: (r) => num(r.posts), right: true }, { label: 'Engajamento médio', value: (r) => num(r.avgEngagement), right: true }]} empty="Nenhuma publicação cita marcas ou tipos de peça cadastrados." />
                 </div>
+                {d.times.some((t) => t.cells.length > 0) && (
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    {d.times
+                      .filter((t) => t.cells.length > 0)
+                      .map((t) => (
+                        <BestTimes key={t.network} network={t.network === 'instagram' ? 'Instagram' : 'Facebook'} cells={t.cells} best={t.best} basedOnPosts={t.cells.reduce((n, c) => n + c.posts, 0)} />
+                      ))}
+                  </div>
+                )}
                 <SimpleTable title="Melhores publicações (por taxa de engajamento)" rows={d.posts} rowKey={(p) => p.postId} cols={POST_COLS} exportName="publicacoes" limit={15} empty="Nenhuma publicação sincronizada no período." />
                 <SimpleTable title="Publicações com menor engajamento" rows={d.worst} rowKey={(p) => p.postId} cols={POST_COLS} limit={10} empty="—" />
               </>

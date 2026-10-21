@@ -207,7 +207,7 @@ export interface PostRow {
   videoViews: number | null
 }
 
-export function rankPosts(posts: PostRow[]) {
+export function rankPosts<T extends PostRow>(posts: T[]) {
   return posts
     .map((p) => {
       const engagement = (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0)
@@ -216,8 +216,8 @@ export function rankPosts(posts: PostRow[]) {
     .sort((a, b) => (b.engagementRate ?? -1) - (a.engagementRate ?? -1) || b.engagement - a.engagement)
 }
 
-export function byFormat(posts: ReturnType<typeof rankPosts>) {
-  const map = new Map<string, ReturnType<typeof rankPosts>>()
+export function byFormat(posts: ReturnType<typeof rankPosts<PostRow>>) {
+  const map = new Map<string, ReturnType<typeof rankPosts<PostRow>>>()
   for (const p of posts) map.set(p.format, [...(map.get(p.format) ?? []), p])
   return [...map.entries()]
     .map(([format, list]) => {

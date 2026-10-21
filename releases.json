@@ -2,6 +2,20 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.76.0",
+      "date": "2026-10-21",
+      "title": "Instagram no Marketing Inteligente: perfis da empresa e dos vendedores, melhores horários e concorrentes",
+      "changes": [
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Nova tela Instagram: seguidores, novos seguidores e quem deixou de seguir, alcance, visualizações, contas com interação, interações, taxa de engajamento, visitas ao perfil e toques nos links, comparados com o período anterior; publicações por formato, tempo médio dos reels e cada story (o CRM guarda os stories a cada 6 horas, antes de sumirem)." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Perfis: o oficial da Usaparts e os dos vendedores, um a um ou em visão geral, com comparação lado a lado. Contas no Gerenciador de Negócios da empresa trazem dados completos (botão Buscar contas); contas comerciais fora dele entram pelo @, com os dados públicos." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Melhores horários para postar: as horas em que os seguidores da Usaparts ficam online (horário de Brasília) e o alcance das publicações por dia da semana e faixa de horário, com os 3 horários sugeridos. A tela Redes sociais também mostra os melhores horários do Instagram e do Facebook." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Concorrentes: cadastre até 10 perfis e compare seguidores, crescimento, publicações no feed e reels, frequência, curtidas, comentários e engajamento, com o mesmo cálculo para todos. Stories e anúncio ativo: link para a Biblioteca de Anúncios da Meta e registro do que a equipe viu." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Público do Instagram por cidade, idade, gênero e país; tráfego pago por posicionamento (feed, stories, reels, explorar); visitas ao site vindas do Instagram, orgânicas e de anúncio." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Leads do Instagram contam só quem preencheu formulário (Lead Ads da Meta, formulário, pop-up ou landing page do site), com qualificados, vendas e faturamento desse lead no Pré-Vendas. Seguidores, curtidas, comentários e mensagens não entram na base de leads nem contam como possível venda." },
+        { "type": "melhoria", "area": "Marketing Inteligente", "text": "Quando uma das contas não sincroniza (ex.: o perfil de um vendedor saiu do Gerenciador), as outras seguem e o aviso aparece na tela." }
+      ]
+    },
+    {
       "version": "0.75.1",
       "date": "2026-10-21",
       "title": "WhatsApp: sessão que cai é detectada sozinha, Desconectar funciona e reconectar pede QR Code novo",

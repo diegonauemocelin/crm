@@ -8,6 +8,7 @@ import { SettingsService } from '../settings/settings.service'
 import { CONFIG_KEY, DEFAULT_CONFIG, DEFAULT_INTEGRATIONS, INTEGRATIONS_KEY, type IntegrationsConfig, type MarketingConfig } from './config'
 import { MarketingService } from './marketing.service'
 import { div, pct, periods } from './metricas'
+import { cleanIgAccounts, IG_ACCOUNTS_KEY, postTimes } from './instagram'
 import { aggregateMedia, aggregateSeo, byFormat, fatigue, groupByNames, type MediaDay, pagePath, rankPosts, seoOpportunities, themesOf } from './plataformas'
 import { SYNC_KEY, type SyncStates } from './sync.service'
 
@@ -289,12 +290,19 @@ export class MarketingPlatformsService {
     const range = { gte: new Date(`${p.from}T00:00:00Z`), lte: new Date(`${p.to}T00:00:00Z`) }
     const [profileDays, posts, names, states, integ, paid] = await Promise.all([
       this.prisma.mktSocialProfileDay.findMany({ where: { tenantId, date: { gte: new Date(Date.parse(`${p.from}T00:00:00Z`) - 7 * 86_400_000), lte: range.lte } }, orderBy: { date: 'asc' } }),
-      this.prisma.mktSocialPost.findMany({ where: { tenantId, publishedAt: { gte: p.start, lt: p.end } }, orderBy: { publishedAt: 'desc' }, take: 500 }),
+      // Stories têm métricas próprias (tela Instagram): fora do ranking de publicações.
+      this.prisma.mktSocialPost.findMany({ where: { tenantId, publishedAt: { gte: p.start, lt: p.end }, format: { not: 'Story' } }, orderBy: { publishedAt: 'desc' }, take: 500 }),
       this.mkt.names(tenantId),
       this.settings.get<SyncStates>(tenantId, SYNC_KEY, {}),
       this.settings.get<IntegrationsConfig>(tenantId, INTEGRATIONS_KEY, DEFAULT_INTEGRATIONS),
       this.prisma.mktAdDay.aggregate({ where: { tenantId, platform: 'meta', level: 'campaign', date: range }, _sum: { spend: true, impressions: true, clicks: true, leads: true } }),
     ])
+    // Melhores horários: últimos 90 dias (mais publicações dão uma leitura mais firme do que só o período).
+    const [timed, igAccounts] = await Promise.all([
+      this.prisma.mktSocialPost.findMany({ where: { tenantId, publishedAt: { gte: new Date(Date.now() - 90 * 86_400_000) }, format: { not: 'Story' } }, select: { network: true, publishedAt: true, format: true, reach: true, likes: true, comments: true, shares: true, saves: true }, take: 3000 }),
+      this.settings.get<{ list?: unknown }>(tenantId, IG_ACCOUNTS_KEY, {}),
+    ])
+    const igLabels = new Map(cleanIgAccounts(igAccounts.list).map((a) => [a.id, a.label]))
     const networks = [...new Set(profileDays.map((d) => `${d.network}|${d.profileId}`))].map((k) => {
       const [network, profileId] = k.split('|') as [string, string]
       const list = profileDays.filter((d) => d.network === network && d.profileId === profileId)
@@ -306,6 +314,7 @@ export class MarketingPlatformsService {
       return {
         network,
         profileId,
+        label: network === 'facebook' ? 'Facebook' : (igLabels.get(profileId) ?? 'Instagram (oficial)'),
         followers: last?.followers ?? null,
         followersGrowth: first && last && first !== last ? (last.followers ?? 0) - (first.followers ?? 0) : null,
         reach: sumOf('reach'),
@@ -339,6 +348,7 @@ export class MarketingPlatformsService {
       byFormat: byFormat(ranked),
       byTheme: [...themes.entries()].map(([theme, m]) => ({ theme, ...m, avgEngagement: Math.round(m.engagement / m.posts) })).sort((a, b) => b.avgEngagement - a.avgEngagement),
       postsPerWeek: r2((posts.length / Math.max(1, p.days)) * 7),
+      times: (['instagram', 'facebook'] as const).map((network) => ({ network, ...postTimes(timed.filter((x) => x.network === network)) })),
       organicVsPaid: { organicReach: networks.length ? organicReach : null, paidImpressions: Number(paid._sum.impressions ?? 0), paidSpend: Math.round(Number(paid._sum.spend ?? 0) * 100) / 100, paidClicks: Number(paid._sum.clicks ?? 0), paidLeads: Number(paid._sum.leads ?? 0) },
     }
   }

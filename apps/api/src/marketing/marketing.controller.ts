@@ -2,13 +2,14 @@ import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, NotFoundEx
 import type { Response } from 'express'
 import { ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
-import { IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator'
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { can } from '../common/permissions'
 import { DEFAULT_ALERT_WORDS } from '../googleads/detalhes'
 import { INTEGRATION_KEYS, type IntegrationKey, integrationsView, type MarketingConfig, REPORT_SECTIONS, type ReportSchedule, type ReportSection } from './config'
 import { MarketingManagementService } from './gestao.service'
+import { MarketingInstagramService } from './instagram.service'
 import type { AlertRule, MonthPlan } from './planejamento'
 import { MarketingPlatformsService } from './plataformas.service'
 import { MarketingSyncService } from './sync.service'
@@ -20,6 +21,26 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/
 class PeriodDto {
   @IsOptional() @Matches(DATE) de?: string
   @IsOptional() @Matches(DATE) ate?: string
+}
+
+class InstagramDto extends PeriodDto {
+  @IsOptional() @Matches(/^(todas|\d{5,30})$/) conta?: string
+}
+
+class IgAccountsDto {
+  @IsArray() @ArrayMaxSize(30) list!: { id?: string; username?: string; label?: string; owner?: string; sellerId?: string | null }[]
+}
+
+class CompetitorsDto {
+  @IsArray() @ArrayMaxSize(10) list!: { username: string; label?: string }[]
+}
+
+class CompetitorNoteDto {
+  @IsString() @MaxLength(80) username!: string
+  @IsOptional() @Matches(DATE) date?: string
+  @IsOptional() @IsInt() @Min(0) @Max(200) storiesSeen?: number | null
+  @IsOptional() @IsBoolean() adsActive?: boolean | null
+  @IsOptional() @IsString() @MaxLength(500) note?: string
 }
 
 class TermDto {
@@ -77,6 +98,7 @@ export class MarketingController {
     private readonly platforms: MarketingPlatformsService,
     private readonly management: MarketingManagementService,
     private readonly sync: MarketingSyncService,
+    private readonly instagramSvc: MarketingInstagramService,
   ) {}
 
   /** Módulos do Marketing Inteligente que podem usar os dados de análise (cada tela pede o seu). */
@@ -188,6 +210,56 @@ export class MarketingController {
   social(@CurrentUser() user: AuthUser, @Query() q: PeriodDto) {
     this.mkt.assertCan(user, 'mi_social')
     return this.platforms.social(user.tenantId, { from: q.de, to: q.ate })
+  }
+
+  @Get('instagram')
+  instagram(@CurrentUser() user: AuthUser, @Query() q: InstagramDto) {
+    this.mkt.assertCan(user, 'mi_social')
+    return this.instagramSvc.view(user, { from: q.de, to: q.ate, conta: q.conta })
+  }
+
+  @Get('instagram/perfis')
+  igProfiles(@CurrentUser() user: AuthUser, @Query() q: PeriodDto) {
+    this.mkt.assertCan(user, 'mi_social')
+    return this.instagramSvc.profiles(user, { from: q.de, to: q.ate })
+  }
+
+  @Put('instagram/perfis')
+  saveIgProfiles(@CurrentUser() user: AuthUser, @Body() body: IgAccountsDto, @ReqContext() ctx: RequestCtx) {
+    this.mkt.assertCan(user, 'mi_social', 'edit')
+    return this.instagramSvc.saveAccounts(user, body.list, ctx)
+  }
+
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('instagram/perfis/buscar')
+  @HttpCode(200)
+  discoverIgProfiles(@CurrentUser() user: AuthUser) {
+    this.mkt.assertCan(user, 'mi_social', 'edit')
+    return this.instagramSvc.discover(user)
+  }
+
+  @Get('instagram/concorrentes')
+  competitors(@CurrentUser() user: AuthUser, @Query() q: PeriodDto) {
+    this.mkt.assertCan(user, 'mi_social')
+    return this.instagramSvc.competitors(user, { from: q.de, to: q.ate })
+  }
+
+  @Put('instagram/concorrentes')
+  saveCompetitors(@CurrentUser() user: AuthUser, @Body() body: CompetitorsDto, @ReqContext() ctx: RequestCtx) {
+    this.mkt.assertCan(user, 'mi_social', 'edit')
+    return this.instagramSvc.saveCompetitors(user, body.list, ctx)
+  }
+
+  @Post('instagram/concorrentes/registros')
+  addCompetitorNote(@CurrentUser() user: AuthUser, @Body() body: CompetitorNoteDto) {
+    this.mkt.assertCan(user, 'mi_social', 'create')
+    return this.instagramSvc.addNote(user, body)
+  }
+
+  @Delete('instagram/concorrentes/registros/:id')
+  removeCompetitorNote(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    this.mkt.assertCan(user, 'mi_social', 'delete')
+    return this.instagramSvc.removeNote(user, id)
   }
 
   @Get('editorial')

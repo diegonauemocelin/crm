@@ -1777,6 +1777,13 @@ model MktSocialProfileDay {
   impressions   Int?
   profileViews  Int?
   websiteClicks Int?
+  /// Instagram: novos seguidores, deixaram de seguir, contas com interação, interações, toques nos links e visualizações do dia.
+  follows         Int?
+  unfollows       Int?
+  accountsEngaged Int?
+  interactions    Int?
+  linkTaps        Int?
+  views           Int?
   updatedAt     DateTime @updatedAt
 
   @@unique([tenantId, network, profileId, date])
@@ -1789,6 +1796,8 @@ model MktSocialPost {
   tenantId    String   @db.Uuid
   network     String
   postId      String
+  /// Conta que publicou (id do Instagram ou da página); vazio nas publicações guardadas antes da 0.76.
+  profileId   String?
   publishedAt DateTime
   format      String
   caption     String
@@ -1800,10 +1809,13 @@ model MktSocialPost {
   reach       Int?
   impressions Int?
   videoViews  Int?
+  /// Métricas extras (stories: avanços, voltas, saídas e respostas; reels: tempo médio assistido).
+  extra       Json?
   updatedAt   DateTime @updatedAt
 
   @@unique([tenantId, network, postId])
   @@index([tenantId, publishedAt])
+  @@index([tenantId, profileId, publishedAt])
   @@map("mkt_social_posts")
 }
 
@@ -1846,4 +1858,55 @@ model MktEditorialItem {
 
   @@index([tenantId, plannedAt])
   @@map("mkt_editorial_items")
+}
+
+/// Concorrentes no Instagram: dados públicos do perfil comercial (Business Discovery), um registro por dia.
+model MktCompetitorDay {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  username   String
+  date       DateTime @db.Date
+  name       String?
+  followers  Int
+  mediaCount Int
+  updatedAt  DateTime @updatedAt
+
+  @@unique([tenantId, username, date])
+  @@map("mkt_competitor_days")
+}
+
+/// Publicações públicas dos concorrentes (feed e reels; a API não entrega stories de outras contas).
+model MktCompetitorPost {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  username    String
+  postId      String
+  publishedAt DateTime
+  format      String
+  caption     String
+  permalink   String?
+  likes       Int?
+  comments    Int?
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, username, postId])
+  @@index([tenantId, username, publishedAt])
+  @@map("mkt_competitor_posts")
+}
+
+/// O que a equipe viu do concorrente e a API não entrega: stories do dia e anúncio ativo (Biblioteca de Anúncios).
+model MktCompetitorNote {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  username    String
+  date        DateTime  @db.Date
+  storiesSeen Int?
+  adsActive   Boolean?
+  note        String?
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+
+  @@index([tenantId, username, date])
+  @@map("mkt_competitor_notes")
 }

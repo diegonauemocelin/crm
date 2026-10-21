@@ -146,6 +146,9 @@ export interface SocialPostRow {
   reach: number | null
   impressions: number | null
   videoViews: number | null
+  extra?: Record<string, number> | null
+  /** Conta que publicou (preenchida na sincronização). */
+  profileId?: string
 }
 
 export function parseIgMedia(m: Record<string, unknown>, insights: Record<string, number>): SocialPostRow | null {
@@ -170,7 +173,19 @@ export function parseIgMedia(m: Record<string, unknown>, insights: Record<string
     reach: insights.reach ?? null,
     impressions: insights.views ?? insights.impressions ?? null,
     videoViews: format === 'Reels' || format === 'Vídeo' ? (insights.views ?? null) : null,
+    extra: igExtra(format, insights),
   }
+}
+
+/** Métricas que só alguns formatos têm: interações totais, respostas e navegação dos stories, tempo médio dos reels. */
+function igExtra(format: string, i: Record<string, number>) {
+  const out: Record<string, number> = {}
+  if (i.total_interactions !== undefined) out.interactions = i.total_interactions
+  if (format === 'Reels' && i.ig_reels_avg_watch_time !== undefined) out.avgWatchMs = i.ig_reels_avg_watch_time
+  if (format === 'Story') {
+    for (const [k, v] of [['replies', i.replies], ['tapsForward', i.tap_forward], ['tapsBack', i.tap_back], ['exits', i.tap_exit], ['swipeForward', i.swipe_forward]] as const) if (v !== undefined) out[k] = v
+  }
+  return Object.keys(out).length ? out : null
 }
 
 export function parseFbPost(p: Record<string, unknown>): SocialPostRow | null {
@@ -222,6 +237,93 @@ export function parsePostInsights(data: unknown) {
     if (typeof v === 'number' || typeof v === 'string') out[m.name] = toNum(v)
   }
   return out
+}
+
+/**
+ * Métricas "total_value" do Instagram (contas com interação, interações, toques nos links...), num dia.
+ * Com breakdown (ex.: follows_and_unfollows por follow_type, navigation dos stories), cada resultado vira uma chave.
+ */
+export function parseTotalValues(data: unknown) {
+  const out: Record<string, number> = {}
+  if (!Array.isArray(data)) return out
+  for (const m of data as { name?: string; total_value?: { value?: unknown; breakdowns?: { results?: { dimension_values?: unknown[]; value?: unknown }[] }[] } }[]) {
+    if (!m.name || !m.total_value) continue
+    const results = m.total_value.breakdowns?.[0]?.results
+    if (Array.isArray(results)) {
+      for (const r of results) {
+        const k = String(r.dimension_values?.[0] ?? '').toLowerCase()
+        if (/^[a-z_]{1,40}$/.test(k)) out[k] = (out[k] ?? 0) + toNum(r.value)
+      }
+    }
+    if (m.total_value.value !== undefined) out[m.name] = toNum(m.total_value.value)
+  }
+  return out
+}
+
+/** Público por cidade, idade, gênero ou país (follower_demographics): [{ key, value }], do maior para o menor. */
+export function parseDemographics(data: unknown) {
+  const m = Array.isArray(data) ? (data[0] as { total_value?: { breakdowns?: { results?: { dimension_values?: unknown[]; value?: unknown }[] }[] } } | undefined) : undefined
+  const results = m?.total_value?.breakdowns?.[0]?.results
+  if (!Array.isArray(results)) return []
+  return results
+    .map((r) => ({ key: text((r.dimension_values ?? []).join(' · '), 80), value: Math.round(toNum(r.value)) }))
+    .filter((r) => r.key && r.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 50)
+}
+
+/**
+ * Seguidores online por hora (online_followers, últimos 30 dias): média por dia da semana e hora de Brasília,
+ * matriz [7][24] (0 = domingo). A Meta manda a hora no fuso do Pacífico (PST/PDT); aqui vira hora de Brasília.
+ */
+export function parseOnlineFollowers(data: unknown) {
+  const sum = Array.from({ length: 7 }, () => new Array<number>(24).fill(0))
+  const count = Array.from({ length: 7 }, () => new Array<number>(24).fill(0))
+  const m = Array.isArray(data) ? (data[0] as { values?: { value?: unknown; end_time?: string }[] } | undefined) : undefined
+  let days = 0
+  for (const v of m?.values ?? []) {
+    const end = Date.parse(String(v.end_time ?? ''))
+    if (!Number.isFinite(end) || !v.value || typeof v.value !== 'object') continue
+    const hours = v.value as Record<string, unknown>
+    if (!Object.keys(hours).length) continue
+    days++
+    // end_time = meia-noite (Pacífico) do dia seguinte: o dia medido começa 24 h antes.
+    const dayStart = end - 86_400_000
+    for (const [h, n] of Object.entries(hours)) {
+      const hour = Number(h)
+      if (!Number.isInteger(hour) || hour < 0 || hour > 23) continue
+      const at = new Date(dayStart + hour * 3_600_000 - 3 * 3_600_000)
+      sum[at.getUTCDay()]![at.getUTCHours()]! += toNum(n)
+      count[at.getUTCDay()]![at.getUTCHours()]! += 1
+    }
+  }
+  if (!days) return null
+  return sum.map((row, d) => row.map((x, h) => (count[d]![h] ? Math.round(x / count[d]![h]!) : 0)))
+}
+
+export interface CompetitorPostRow {
+  postId: string
+  publishedAt: Date
+  format: string
+  caption: string
+  permalink: string | null
+  likes: number | null
+  comments: number | null
+}
+
+/** Perfil público de outra conta comercial (Business Discovery): seguidores, publicações e as últimas mídias. */
+export function parseCompetitor(body: unknown) {
+  const bd = (body as { business_discovery?: Record<string, unknown> } | null)?.business_discovery
+  if (!bd) return null
+  const username = text(bd.username, 60).toLowerCase()
+  if (!/^[a-z0-9._]{1,30}$/.test(username)) return null
+  const media = ((bd.media as { data?: unknown } | undefined)?.data ?? []) as Record<string, unknown>[]
+  const posts: CompetitorPostRow[] = []
+  for (const m of Array.isArray(media) ? media : []) {
+    const p = parseIgMedia(m, {})
+    if (p) posts.push({ postId: p.postId, publishedAt: p.publishedAt, format: p.format, caption: p.caption.slice(0, 500), permalink: p.permalink, likes: p.likes, comments: p.comments })
+  }
+  return { username, name: text(bd.name, 120) || null, followers: Math.round(toNum(bd.followers_count)), mediaCount: Math.round(toNum(bd.media_count)), posts }
 }
 
 // ---------- TikTok ----------

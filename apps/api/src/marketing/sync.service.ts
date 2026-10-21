@@ -5,7 +5,12 @@ import { PrismaService } from '../prisma/prisma.service'
 import { DEFAULT_GA4, type Ga4Settings, GA_TOKEN_URL, signJwt } from '../relatorios/ga4'
 import { SettingsService } from '../settings/settings.service'
 import { DEFAULT_INTEGRATIONS, GRAPH, INTEGRATIONS_KEY, type IntegrationKey, type IntegrationsConfig, SC_SCOPE, TIKTOK_API } from './config'
+import { audienceKey, cleanCompetitors, cleanIgAccounts, COMPETITORS_KEY, COMPETITORS_STATUS_KEY, IG_ACCOUNTS_KEY, type IgAudience, type ProfileField } from './instagram'
 import {
+  parseCompetitor,
+  parseDemographics,
+  parseOnlineFollowers,
+  parseTotalValues,
   type AdDayRow,
   type BreakdownDayRow,
   daysToSync,
@@ -116,7 +121,8 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
     try {
       const r =
         key === 'metaAds' ? await this.syncMetaAds(tenantId, c, st) : key === 'metaOrganic' ? await this.syncMetaOrganic(tenantId, c) : key === 'tiktok' ? await this.syncTikTok(tenantId, c, st) : await this.syncSearchConsole(tenantId, c, st)
-      await this.setState(tenantId, key, { running: false, lastOkAt: new Date().toISOString(), lastError: null, rows: r.rows, ...(r.backfill ?? {}) })
+      const warning = 'warning' in r ? (r.warning ?? null) : null
+      await this.setState(tenantId, key, { running: false, lastOkAt: new Date().toISOString(), lastError: warning ? warning.slice(0, 300) : null, rows: r.rows, ...(r.backfill ?? {}) })
       return r
     } catch (err) {
       const message = ((err as Error).message || 'falha').slice(0, 300)
@@ -229,38 +235,23 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
     let rows = 0
     const posts: SocialPostRow[] = []
     const errors: string[] = []
-    const ig = c.metaOrganic.instagramId
-    if (ig) {
+    // Perfis do Instagram: o oficial (da integração) e os outros conectados ao Gerenciador de Negócios da empresa.
+    const official = c.metaOrganic.instagramId
+    const accounts = cleanIgAccounts((await this.settings.get<{ list?: unknown }>(tenantId, IG_ACCOUNTS_KEY, {})).list, official)
+    const connected = [...new Set([official, ...accounts.map((a) => a.id)].filter(Boolean))]
+    for (const ig of connected) {
       try {
-        const profile = await this.getJson(`${GRAPH}/${ig}?fields=followers_count,media_count`, auth, metaError)
-        const daily = new Map<string, Record<string, number>>()
-        for (const metric of ['reach', 'profile_views', 'website_clicks']) {
-          try {
-            const r = await this.getJson(`${GRAPH}/${ig}/insights?metric=${metric}&period=day&since=${since}&until=${until}`, auth, metaError)
-            for (const [d, v] of parseDailyInsights(r.data)) daily.set(d, { ...(daily.get(d) ?? {}), ...v })
-          } catch {
-            // Métrica que a conta ou a versão da API não oferece: fica "Não disponível".
-          }
-        }
-        daily.set(day, { ...(daily.get(day) ?? {}), followers: Number(profile.followers_count ?? 0) })
-        rows += await this.storeProfileDays(tenantId, 'instagram', ig, daily, { reach: 'reach', profileViews: 'profile_views', websiteClicks: 'website_clicks' })
-        const media = (await this.graphAll(`${GRAPH}/${ig}/media?fields=id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count&limit=50`, token)).slice(0, 100)
-        for (const m of media) {
-          if (Date.parse(String(m.timestamp ?? '')) < Date.now() - 120 * 86_400_000) continue
-          let insights: Record<string, number> = {}
-          for (const metrics of ['reach,saved,shares,views', 'reach,saved']) {
-            try {
-              insights = parsePostInsights((await this.getJson(`${GRAPH}/${m.id}/insights?metric=${metrics}`, auth, metaError)).data)
-              break
-            } catch {
-              // tenta a lista menor (publicações antigas não têm "views").
-            }
-          }
-          const p = parseIgMedia(m, insights)
-          if (p) posts.push(p)
-        }
+        rows += await this.syncIgAccount(tenantId, ig, token, auth, day, since, until, posts)
       } catch (err) {
-        errors.push(`Instagram: ${(err as Error).message}`)
+        errors.push(`Instagram ${ig === official ? 'oficial' : (accounts.find((a) => a.id === ig)?.label ?? ig)}: ${(err as Error).message}`)
+      }
+    }
+    // Concorrentes e perfis só públicos (vendedores fora do Gerenciador): lidos pela conta oficial.
+    if (official) {
+      try {
+        await this.syncPublicProfiles(tenantId, official, auth, accounts.filter((a) => !a.id).map((a) => a.username))
+      } catch (err) {
+        errors.push(`Perfis públicos: ${(err as Error).message}`)
       }
     }
     const page = c.metaOrganic.pageId
@@ -283,31 +274,176 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
         const list = (await this.graphAll(`${GRAPH}/${page}/posts?fields=id,message,created_time,permalink_url,status_type,shares,reactions.summary(true).limit(0),comments.summary(true).limit(0)&limit=50`, pageToken)).slice(0, 100)
         for (const p of list) {
           const row = parseFbPost(p)
-          if (row) posts.push(row)
+          if (row) posts.push({ ...row, profileId: page })
         }
       } catch (err) {
         errors.push(`Facebook: ${(err as Error).message}`)
       }
     }
     for (const p of posts) {
-      const data = { publishedAt: p.publishedAt, format: p.format, caption: p.caption, permalink: p.permalink, likes: p.likes, comments: p.comments, shares: p.shares, saves: p.saves, reach: p.reach, impressions: p.impressions, videoViews: p.videoViews }
+      const data = { publishedAt: p.publishedAt, format: p.format, caption: p.caption, permalink: p.permalink, likes: p.likes, comments: p.comments, shares: p.shares, saves: p.saves, reach: p.reach, impressions: p.impressions, videoViews: p.videoViews, ...(p.extra ? { extra: p.extra } : {}), ...(p.profileId ? { profileId: p.profileId } : {}) }
       await this.prisma.mktSocialPost.upsert({ where: { tenantId_network_postId: { tenantId, network: p.network, postId: p.postId } }, create: { tenantId, network: p.network, postId: p.postId, ...data }, update: data })
     }
     rows += posts.length
     if (errors.length && !rows) throw new Error(errors.join(' · '))
-    return { rows, backfill: undefined as SyncState | undefined }
+    // Parte sincronizou e parte não (ex.: o perfil de um vendedor saiu do Gerenciador): avisa sem perder o resto.
+    return { rows, backfill: undefined as SyncState | undefined, warning: errors.length ? `Parte não sincronizou: ${errors.join(' · ')}` : null }
   }
 
-  private async storeProfileDays(tenantId: string, network: string, profileId: string, daily: Map<string, Record<string, number>>, map: { reach?: string; profileViews?: string; websiteClicks?: string }) {
+  /** Um perfil do Instagram com acesso completo: dias, publicações, stories e público. */
+  private async syncIgAccount(tenantId: string, ig: string, token: string, auth: RequestInit, day: string, since: number, until: number, posts: SocialPostRow[]) {
+    let rows = 0
+    const profile = await this.getJson(`${GRAPH}/${ig}?fields=followers_count,media_count`, auth, metaError)
+    const daily = new Map<string, Record<string, number>>()
+    const merge = (d: string, v: Record<string, number>) => daily.set(d, { ...(daily.get(d) ?? {}), ...v })
+    for (const metric of ['reach', 'follower_count']) {
+      try {
+        const r = await this.getJson(`${GRAPH}/${ig}/insights?metric=${metric}&period=day&since=${since}&until=${until}`, auth, metaError)
+        for (const [d, v] of parseDailyInsights(r.data)) merge(d, v)
+      } catch {
+        // Métrica que a conta ou a versão da API não oferece: fica "Não disponível" (follower_count pede 100+ seguidores).
+      }
+    }
+    // Métricas de total do dia (a API só entrega como "total_value"): 28 dias na 1ª vez, depois os 3 últimos.
+    const known = await this.prisma.mktSocialProfileDay.count({ where: { tenantId, network: 'instagram', profileId: ig, accountsEngaged: { not: null } } })
+    for (let i = known ? 3 : 28; i >= 1; i--) {
+      const d = addDays(day, -i)
+      const s0 = Math.floor(Date.parse(`${d}T03:00:00Z`) / 1000)
+      const range = `period=day&metric_type=total_value&since=${s0}&until=${s0 + 86_400}`
+      for (const metrics of ['accounts_engaged,total_interactions,profile_links_taps,views,profile_views,website_clicks', 'accounts_engaged,total_interactions']) {
+        try {
+          merge(d, parseTotalValues((await this.getJson(`${GRAPH}/${ig}/insights?metric=${metrics}&${range}`, auth, metaError)).data))
+          break
+        } catch {
+          // tenta a lista menor
+        }
+      }
+      try {
+        merge(d, parseTotalValues((await this.getJson(`${GRAPH}/${ig}/insights?metric=follows_and_unfollows&breakdown=follow_type&${range}`, auth, metaError)).data))
+      } catch {
+        // conta sem a métrica
+      }
+    }
+    merge(day, { followers: Number(profile.followers_count ?? 0) })
+    rows += await this.storeProfileDays(tenantId, 'instagram', ig, daily, {
+      reach: 'reach', profileViews: 'profile_views', websiteClicks: 'website_clicks', follows: 'follower', unfollows: 'non_follower', accountsEngaged: 'accounts_engaged', interactions: 'total_interactions', linkTaps: 'profile_links_taps', views: 'views',
+    })
+    // Novos seguidores do dia pela série follower_count, quando a quebra por tipo não vier.
+    for (const [d, v] of daily) if (v.follower === undefined && v.follower_count !== undefined) await this.prisma.mktSocialProfileDay.updateMany({ where: { tenantId, network: 'instagram', profileId: ig, date: new Date(`${d}T00:00:00Z`) }, data: { follows: Math.round(v.follower_count) } })
+
+    const media = (await this.graphAll(`${GRAPH}/${ig}/media?fields=id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count&limit=50`, token)).slice(0, 100)
+    for (const m of media) {
+      if (Date.parse(String(m.timestamp ?? '')) < Date.now() - 120 * 86_400_000) continue
+      const reels = m.media_product_type === 'REELS'
+      let insights: Record<string, number> = {}
+      for (const metrics of [reels ? 'reach,saved,shares,views,total_interactions,ig_reels_avg_watch_time' : 'reach,saved,shares,views,total_interactions', 'reach,saved,shares,views', 'reach,saved']) {
+        try {
+          insights = parsePostInsights((await this.getJson(`${GRAPH}/${m.id}/insights?metric=${metrics}`, auth, metaError)).data)
+          break
+        } catch {
+          // tenta a lista menor (publicações antigas não têm "views").
+        }
+      }
+      const p = parseIgMedia(m, insights)
+      if (p) posts.push({ ...p, profileId: ig })
+    }
+    // Stories ficam 24 h na API: a sincronização a cada 6 h guarda cada um antes de sumir.
+    try {
+      const stories = await this.graphAll(`${GRAPH}/${ig}/stories?fields=id,caption,media_type,media_product_type,permalink,timestamp&limit=50`, token)
+      for (const st0 of stories) {
+        let insights: Record<string, number> = {}
+        for (const metrics of ['reach,replies,shares,views,total_interactions', 'reach,replies']) {
+          try {
+            insights = parsePostInsights((await this.getJson(`${GRAPH}/${st0.id}/insights?metric=${metrics}`, auth, metaError)).data)
+            break
+          } catch {
+            // idem
+          }
+        }
+        try {
+          insights = { ...insights, ...parseTotalValues((await this.getJson(`${GRAPH}/${st0.id}/insights?metric=navigation&breakdown=story_navigation_action_type`, auth, metaError)).data) }
+        } catch {
+          // sem navegação
+        }
+        const p = parseIgMedia({ ...st0, media_product_type: 'STORY' }, insights)
+        if (p) posts.push({ ...p, profileId: ig })
+      }
+    } catch {
+      // conta sem permissão para stories
+    }
+    await this.syncIgAudience(tenantId, ig, auth)
+    return rows
+  }
+
+  private async storeProfileDays(tenantId: string, network: string, profileId: string, daily: Map<string, Record<string, number>>, map: Partial<Record<ProfileField, string>>) {
     let n = 0
     for (const [date, v] of daily) {
       const pick = (k?: string) => (k && v[k] !== undefined ? Math.round(v[k]!) : undefined)
-      const data = { followers: pick('followers'), reach: pick(map.reach), profileViews: pick(map.profileViews), websiteClicks: pick(map.websiteClicks) }
+      const data: Partial<Record<ProfileField | 'followers', number>> = { followers: pick('followers') }
+      for (const [field, key] of Object.entries(map) as [ProfileField, string][]) data[field] = pick(key)
       const clean = Object.fromEntries(Object.entries(data).filter(([, x]) => x !== undefined))
       await this.prisma.mktSocialProfileDay.upsert({ where: { tenantId_network_profileId_date: { tenantId, network, profileId, date: new Date(`${date}T00:00:00Z`) } }, create: { tenantId, network, profileId, date: new Date(`${date}T00:00:00Z`), ...clean }, update: clean })
       n++
     }
     return n
+  }
+
+  /** Público do Instagram: horas em que os seguidores ficam online e cidade, idade, gênero e país (só totais). */
+  private async syncIgAudience(tenantId: string, ig: string, auth: RequestInit) {
+    const out: IgAudience = { updatedAt: new Date().toISOString(), online: null, city: [], age: [], gender: [], country: [] }
+    try {
+      out.online = parseOnlineFollowers((await this.getJson(`${GRAPH}/${ig}/insights?metric=online_followers&period=lifetime`, auth, metaError)).data)
+    } catch {
+      // A Meta não oferece em toda conta/versão: a tela usa o desempenho das publicações.
+    }
+    for (const b of ['city', 'age', 'gender', 'country'] as const) {
+      for (const extra of ['', '&timeframe=this_month']) {
+        try {
+          out[b] = parseDemographics((await this.getJson(`${GRAPH}/${ig}/insights?metric=follower_demographics&period=lifetime&metric_type=total_value&breakdown=${b}${extra}`, auth, metaError)).data)
+          break
+        } catch {
+          // tenta com o período; sem 100 seguidores a Meta não entrega
+        }
+      }
+    }
+    const prev = await this.settings.get<Partial<IgAudience>>(tenantId, audienceKey(ig), {})
+    // Não apaga o que já tinha se a Meta não respondeu desta vez.
+    await this.settings.set(tenantId, audienceKey(ig), {
+      ...out,
+      online: out.online ?? prev.online ?? null,
+      city: out.city.length ? out.city : (prev.city ?? []),
+      age: out.age.length ? out.age : (prev.age ?? []),
+      gender: out.gender.length ? out.gender : (prev.gender ?? []),
+      country: out.country.length ? out.country : (prev.country ?? []),
+    })
+  }
+
+  /** Concorrentes e perfis só públicos: perfil e últimas publicações (Business Discovery). Só contas comerciais ou de criador. */
+  private async syncPublicProfiles(tenantId: string, ig: string, auth: RequestInit, extra: string[]) {
+    const list = [...cleanCompetitors((await this.settings.get<{ list?: unknown }>(tenantId, COMPETITORS_KEY, {})).list), ...extra.map((username) => ({ username, label: '' }))].filter((c, i, all) => all.findIndex((x) => x.username === c.username) === i)
+    const day = today()
+    const status: Record<string, { at: string; error: string | null }> = {}
+    for (const comp of list) {
+      try {
+        const fields = `business_discovery.username(${comp.username}){username,name,followers_count,media_count,media.limit(50){id,caption,like_count,comments_count,timestamp,media_type,media_product_type,permalink}}`
+        const c = parseCompetitor(await this.getJson(`${GRAPH}/${ig}?fields=${encodeURIComponent(fields)}`, auth, metaError))
+        if (!c) throw new Error('Perfil não encontrado.')
+        await this.prisma.mktCompetitorDay.upsert({
+          where: { tenantId_username_date: { tenantId, username: c.username, date: new Date(`${day}T00:00:00Z`) } },
+          create: { tenantId, username: c.username, date: new Date(`${day}T00:00:00Z`), name: c.name, followers: c.followers, mediaCount: c.mediaCount },
+          update: { name: c.name, followers: c.followers, mediaCount: c.mediaCount },
+        })
+        for (const p of c.posts) {
+          const data = { publishedAt: p.publishedAt, format: p.format, caption: p.caption, permalink: p.permalink, likes: p.likes, comments: p.comments }
+          await this.prisma.mktCompetitorPost.upsert({ where: { tenantId_username_postId: { tenantId, username: c.username, postId: p.postId } }, create: { tenantId, username: c.username, postId: p.postId, ...data }, update: data })
+        }
+        status[comp.username] = { at: new Date().toISOString(), error: null }
+      } catch (err) {
+        const msg = (err as Error).message
+        status[comp.username] = { at: new Date().toISOString(), error: /code.?110|not found|não encontrado|cannot be found|invalid user/i.test(msg) ? 'Perfil não encontrado ou não é conta comercial/criador (a Meta só mostra dados públicos dessas contas).' : msg.slice(0, 200) }
+      }
+    }
+    await this.settings.set(tenantId, COMPETITORS_STATUS_KEY, status)
   }
 
   // ---------- TikTok ----------

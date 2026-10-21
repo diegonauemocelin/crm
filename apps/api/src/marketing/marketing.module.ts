@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import { EmailModule } from '../email/email.module'
 import { MarketingManagementService } from './gestao.service'
+import { MarketingInstagramService } from './instagram.service'
 import { MarketingController } from './marketing.controller'
 import { MarketingService } from './marketing.service'
 import { MarketingPlatformsService } from './plataformas.service'
@@ -11,6 +12,6 @@ import { MarketingSyncService } from './sync.service'
 @Module({
   imports: [EmailModule],
   controllers: [MarketingController],
-  providers: [MarketingService, MarketingReportsService, MarketingPlatformsService, MarketingManagementService, MarketingSyncService],
+  providers: [MarketingService, MarketingReportsService, MarketingPlatformsService, MarketingManagementService, MarketingSyncService, MarketingInstagramService],
 })
 export class MarketingModule {}

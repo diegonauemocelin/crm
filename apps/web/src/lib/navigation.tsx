@@ -32,6 +32,7 @@ import {
   PresentationIcon,
   ScanSearchIcon,
   Share2Icon,
+  CameraIcon,
   UsersIcon,
   FileBarChartIcon,
 } from 'lucide-react'
@@ -111,6 +112,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Meta Ads', to: '/marketing/meta-ads', icon: MegaphoneIcon, module: 'mi_midia' },
       { title: 'TikTok Ads', to: '/marketing/tiktok-ads', icon: MusicIcon, module: 'mi_midia' },
       { title: 'Redes sociais', to: '/marketing/redes-sociais', icon: Share2Icon, module: 'mi_social' },
+      { title: 'Instagram', to: '/marketing/instagram', icon: CameraIcon, module: 'mi_social' },
       { title: 'SEO e site', to: '/marketing/seo', icon: GlobeIcon, module: 'mi_seo' },
       { title: 'CRM e leads', to: '/marketing/leads', icon: UsersIcon, module: 'mi_comercial' },
       { title: 'E-mail marketing', to: '/marketing/email', icon: MailOpenIcon, module: 'mi_comercial' },
