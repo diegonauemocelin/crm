@@ -10,6 +10,7 @@ import { DEFAULT_ALERT_WORDS } from '../googleads/detalhes'
 import { INTEGRATION_KEYS, type IntegrationKey, integrationsView, type MarketingConfig, REPORT_SECTIONS, type ReportSchedule, type ReportSection } from './config'
 import { MarketingManagementService } from './gestao.service'
 import { MarketingInstagramService } from './instagram.service'
+import { fetchThumb, ThumbError } from './miniaturas'
 import type { AlertRule, MonthPlan } from './planejamento'
 import { MarketingPlatformsService } from './plataformas.service'
 import { MarketingSyncService } from './sync.service'
@@ -21,6 +22,10 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/
 class PeriodDto {
   @IsOptional() @Matches(DATE) de?: string
   @IsOptional() @Matches(DATE) ate?: string
+}
+
+class ThumbDto {
+  @IsString() @MaxLength(2000) u!: string
 }
 
 class InstagramDto extends PeriodDto {
@@ -218,6 +223,20 @@ export class MarketingController {
   social(@CurrentUser() user: AuthUser, @Query() q: PeriodDto) {
     this.mkt.assertCan(user, 'mi_social')
     return this.platforms.social(user.tenantId, { from: q.de, to: q.ate })
+  }
+
+  /** Miniatura de uma publicação (imagem da CDN da Meta entregue pelo CRM). */
+  @Get('miniatura')
+  @Throttle({ default: { limit: 300, ttl: 60_000 } })
+  async thumb(@CurrentUser() user: AuthUser, @Query() q: ThumbDto, @Res() res: Response) {
+    this.mkt.assertCan(user, 'mi_social')
+    try {
+      const t = await fetchThumb(q.u)
+      res.set({ 'Content-Type': t.type, 'Cache-Control': 'private, max-age=21600', 'X-Content-Type-Options': 'nosniff' })
+      res.send(t.body)
+    } catch (err) {
+      res.status(err instanceof ThumbError ? err.status : 502).json({ message: (err as Error).message })
+    }
   }
 
   @Get('instagram')

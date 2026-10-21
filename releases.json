@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.77.4",
+      "date": "2026-10-21",
+      "title": "Miniaturas das publicações aparecem (o Instagram bloqueava exibir direto)",
+      "changes": [
+        { "type": "correcao", "area": "Marketing Inteligente", "text": "As miniaturas das publicações e stories ficavam em branco porque o Instagram bloqueia mostrar as imagens dele em outro site. Agora o CRM busca a imagem e entrega para a tela (só imagens da Meta, com cache de 6 horas)." }
+      ]
+    },
+    {
       "version": "0.77.3",
       "date": "2026-10-21",
       "title": "Instagram e Facebook: miniatura das publicações e motivo quando o público não vem",

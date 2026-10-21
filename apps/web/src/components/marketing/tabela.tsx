@@ -86,5 +86,6 @@ export const SyncLine = ({ sync, label }: { sync: { lastOkAt?: string; lastError
 export function Thumb({ src, alt }: { src?: string | number | null; alt: string }) {
   const [broken, setBroken] = useState(false)
   if (typeof src !== 'string' || !src || broken) return <div className="size-12 shrink-0 rounded-md bg-muted" aria-hidden />
-  return <img src={src} alt={alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setBroken(true)} className="size-12 shrink-0 rounded-md object-cover" />
+  // Passa pelo CRM: o Instagram bloqueia mostrar as imagens dele direto em outro site.
+  return <img src={`/api/marketing/miniatura?u=${encodeURIComponent(src)}`} alt={alt} loading="lazy" onError={() => setBroken(true)} className="size-12 shrink-0 rounded-md object-cover" />
 }
