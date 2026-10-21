@@ -168,7 +168,8 @@ sem nenhuma porta publicada: só a API do CRM fala com eles, pela rede interna d
 (com as regras de LGPD); a Evolution guarda só as sessões dos aparelhos (volume `evolution`).
 
 ```bash
-sudo bash deploy/whatsapp.sh status        # situação, versão e memória livre
+sudo bash deploy/whatsapp.sh status        # situação, versão, memória e quedas da conexão nas últimas 24 h
+sudo bash deploy/whatsapp.sh reiniciar     # reinicia a Evolution; os números reconectam sozinhos, sem QR Code
 sudo bash deploy/whatsapp.sh ativar        # gera as chaves no .env, cria o banco "evolution" e sobe tudo
 sudo bash deploy/whatsapp.sh atualizacao-automatica ligar   # confere toda semana (domingo, 4h), só versões estáveis 2.x
 sudo bash deploy/whatsapp.sh atualizar     # atualiza na hora (volta sozinho para a versão anterior se a nova não responder)

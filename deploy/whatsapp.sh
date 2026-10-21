@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # WhatsApp do CRM (Evolution API) na VPS.
-#   sudo bash deploy/whatsapp.sh status                      -> situação, versão e memória livre
+#   sudo bash deploy/whatsapp.sh status                      -> situação, versão, memória e quedas das últimas 24 h
+#   sudo bash deploy/whatsapp.sh reiniciar                   -> reinicia a Evolution: os números voltam sozinhos, sem QR Code
 #   sudo bash deploy/whatsapp.sh ativar [--forcar]           -> gera as chaves, cria o banco e sobe a Evolution
 #   sudo bash deploy/whatsapp.sh desativar                   -> para a Evolution (as sessões ficam guardadas)
 #   sudo bash deploy/whatsapp.sh limite 5                    -> números conectados ao mesmo tempo (depois do upgrade da VPS)
@@ -57,7 +58,33 @@ cmd_status() {
   echo "  Limites: $(env_get WHATSAPP_MAX_NUMBERS || true) números cadastrados (padrão 10), $(env_get WHATSAPP_MAX_CONNECTED || true) conectados ao mesmo tempo (padrão 3)"
   echo "  Memória livre na VPS: $(memoria_livre_mb) MB"
   dc ps evolution evolution-redis 2>/dev/null || true
+  diagnostico_quedas
   if [ -f "$CRON" ]; then ok "Atualização automática ligada (domingo, 4h)"; else echo "  Atualização automática: desligada"; fi
+}
+
+# Por que os números caem: reinícios e falta de memória do contêiner e erros de conexão no log.
+diagnostico_quedas() {
+  local id quedas
+  id="$(dc ps -q evolution 2>/dev/null || true)"
+  [ -n "$id" ] || return 0
+  info "Quedas da conexão"
+  docker inspect -f '  Contêiner no ar desde {{.State.StartedAt}} · reinícios: {{.RestartCount}} · parou por falta de memória: {{.State.OOMKilled}}' "$id" 2>/dev/null || true
+  docker stats --no-stream --format '  Memória da Evolution agora: {{.MemUsage}} ({{.MemPerc}})' "$id" 2>/dev/null || true
+  quedas="$(dc logs --no-log-prefix --since 24h evolution 2>/dev/null | grep -ciE 'connection closed|stream errored|connection lost|restart required|timed out' || true)"
+  echo "  Erros de conexão no log nas últimas 24 h: ${quedas:-0}"
+  if [ "${quedas:-0}" -gt 0 ]; then
+    echo "  Últimos:"
+    dc logs --no-log-prefix --since 24h evolution 2>/dev/null | grep -iE 'connection closed|stream errored|connection lost|restart required|timed out' | tail -8 | cut -c1-220 | sed 's/^/    /' || true
+  fi
+}
+
+cmd_reiniciar() {
+  whatsapp_ativo || fatal "O WhatsApp não está ligado."
+  info "Reiniciando a Evolution (as sessões ficam guardadas: os números reconectam sem QR Code)"
+  dc restart evolution
+  aguardar_evolution || fatal "A Evolution não respondeu: $(diagnostico). Veja: docker compose logs --tail 80 evolution"
+  registrar "whatsapp-reiniciado" "$(versao_rodando)"
+  ok "Evolution no ar de novo. Em 1 ou 2 minutos os números aparecem conectados no CRM; o que pedir QR Code, conecte em Configurações › Números de WhatsApp."
 }
 
 cmd_ativar() {
@@ -163,6 +190,7 @@ case "${1:-status}" in
   desativar) cmd_desativar ;;
   limite) cmd_limite "${2:-}" ;;
   atualizar) cmd_atualizar ;;
+  reiniciar) cmd_reiniciar ;;
   atualizacao-automatica) cmd_auto "${2:-}" ;;
-  *) fatal "Comando desconhecido: $1 (use status, ativar, desativar, limite, atualizar ou atualizacao-automatica)" ;;
+  *) fatal "Comando desconhecido: $1 (use status, reiniciar, ativar, desativar, limite, atualizar ou atualizacao-automatica)" ;;
 esac

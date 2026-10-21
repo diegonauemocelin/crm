@@ -7,7 +7,7 @@ import { env } from '../config/env'
 import { PrismaService } from '../prisma/prisma.service'
 import { ChatService } from './chat.service'
 import type { Prisma } from '../generated/prisma/client'
-import { EvolutionClient, EvolutionError, cleanQr, type NumberStatus, statusOf } from './evolution'
+import { EvolutionClient, EvolutionError, SESSION_DEAD_REASON, cleanQr, isConnectionClosed, type NumberStatus, statusOf } from './evolution'
 
 export interface NumberInput {
   name: string
@@ -25,6 +25,8 @@ const QR_TTL_MS = 60_000
 const CONNECT_TIMEOUT_MS = 3 * 60_000
 const TICK_MS = 60_000
 const CHECK_CONNECTED_MS = 5 * 60_000
+/** Espera depois de reiniciar a conexão de um número antes de conferir de novo. */
+const RESTART_WAIT_MS = 10_000
 
 /**
  * Números de WhatsApp da empresa (Evolution API). Limites do .env: WHATSAPP_MAX_NUMBERS cadastrados e
@@ -47,6 +49,28 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
     private readonly chat: ChatService,
   ) {
     this.chat.clientOf = () => this.client
+    if (this.client) this.client.onSessionDead = (instanceName) => void this.markDead(instanceName)
+  }
+
+  /** Testes encurtam a espera depois de reiniciar a conexão. */
+  restartWaitMs = RESTART_WAIT_MS
+
+  /**
+   * Sessão morta por dentro da Evolution (ela ainda diz "conectado"): o número passa a aparecer desconectado,
+   * com o motivo, para a equipe clicar em Conectar em vez de descobrir no envio.
+   */
+  async markDead(instanceName: string) {
+    const n = await this.prisma.whatsappNumber.findUnique({ where: { instanceName } })
+    if (!n || n.deletedAt || n.status !== 'CONECTADO') return
+    this.logger.warn(`Sessão do número ${n.name} caiu (Connection Closed).`)
+    await this.prisma.whatsappNumber.update({ where: { id: n.id }, data: { status: 'DESCONECTADO', statusReason: SESSION_DEAD_REASON, disconnectedAt: new Date() } })
+  }
+
+  /** Apaga a sessão morta e cria a instância de novo (o próximo connect devolve um QR Code novo). */
+  private async recreate(evo: EvolutionClient, instanceName: string) {
+    await evo.logout(instanceName).catch(() => undefined)
+    await evo.deleteInstance(instanceName).catch((err: unknown) => this.logger.warn(`Instância ${instanceName} não apagada: ${(err as Error).message}`))
+    await evo.createInstance(instanceName, this.webhookUrl())
   }
 
   onApplicationBootstrap() {
@@ -199,6 +223,12 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
         throw err
       })
       if (!r.qr && r.state !== 'open') r = await evo.connect(n.instanceName)
+      // A Evolution diz "open", mas a sessão pode estar morta (Connection Closed): recria e pede QR Code novo.
+      if (r.state === 'open' && (await evo.alive(n.instanceName, n.phone)) === false) {
+        await this.recreate(evo, n.instanceName)
+        r = await evo.connect(n.instanceName)
+        if (!r.qr && r.state !== 'open') r = await evo.connect(n.instanceName)
+      }
       if (r.qr) this.qrs.set(id, { qr: r.qr, at: Date.now() })
       if (r.state === 'open') await this.applyState(n.id, n.instanceName, 'open', null)
     } catch (err) {
@@ -223,11 +253,12 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
 
   async disconnect(user: AuthUser, id: string, ctx: RequestCtx) {
     const n = await this.load(user.tenantId, id)
-    await this.evo()
-      .logout(n.instanceName)
-      .catch((err: unknown) => {
-        throw err instanceof EvolutionError ? new BadRequestException(err.message) : err
-      })
+    const evo = this.evo()
+    await evo.logout(n.instanceName).catch(async (err: unknown) => {
+      // Sessão morta (Connection Closed): a Evolution não consegue sair dela; apaga a instância e segue.
+      if (err instanceof EvolutionError && isConnectionClosed(err.message)) return evo.deleteInstance(n.instanceName).catch(() => undefined)
+      throw err instanceof EvolutionError ? new BadRequestException(err.message) : err
+    })
     this.qrs.delete(id)
     const r = await this.prisma.whatsappNumber.update({ where: { id }, data: { status: 'DESCONECTADO', statusReason: 'Desconectado pelo CRM', disconnectedAt: new Date() } })
     await this.audit.byUser(user, ctx, 'whatsapp.desconectado', 'whatsapp_number', id, { nome: n.name, telefone: n.phone })
@@ -321,6 +352,13 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
           const state = await this.client.state(n.instanceName).catch(() => undefined)
           // Sem resposta do serviço: não muda nada (não é o número que caiu).
           if (state === 'close') await this.applyState(n.id, n.instanceName, 'close', 'Conexão perdida')
+          // "open" pode mentir: confere usando a conexão; morta, reinicia e confere de novo antes de avisar.
+          else if (state === 'open' && n.phone && (await this.client.alive(n.instanceName, n.phone)) === false) {
+            await this.client.restart(n.instanceName).catch(() => undefined)
+            await new Promise((r) => setTimeout(r, this.restartWaitMs))
+            if ((await this.client.alive(n.instanceName, n.phone)) === false) await this.markDead(n.instanceName)
+            else this.logger.log(`Sessão do número ${n.name} recuperada sozinha.`)
+          }
           // Número ainda sem telefone (a consulta falhou na hora de conectar): tenta de novo.
           else if (state === 'open' && !n.phone) {
             const info = await this.client.info(n.instanceName).catch(() => null)

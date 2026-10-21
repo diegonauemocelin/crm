@@ -187,4 +187,25 @@ describe('Envio quando a conexão do número cai (Connection Closed)', () => {
     await expect(c2.sendText('crm-abc123', '5547999990000', 'oi')).rejects.toThrow(/number not exists/)
     expect(calls).toHaveLength(1)
   })
+
+  it('sessão morta: avisa o CRM, a conferência pelo próprio número detecta e o logout sem saída é reconhecido', async () => {
+    const { EvolutionClient, EvolutionError, isConnectionClosed } = await import('../src/whatsapp/evolution')
+    const dead: string[] = []
+    const replies = [closed(), new Response('{}', { status: 200 }), closed()]
+    const c = new EvolutionClient({ url: 'http://e', apiKey: 'k' }, (async () => replies.shift()!) as unknown as typeof fetch, 0)
+    c.onSessionDead = (i) => dead.push(i)
+    await expect(c.sendText('crm-abc123', '5547999990000', 'oi')).rejects.toThrow()
+    expect(dead).toEqual(['crm-abc123'])
+
+    const probe = (res: () => Response) => new EvolutionClient({ url: 'http://e', apiKey: 'k' }, (async () => res()) as unknown as typeof fetch, 0)
+    expect(await probe(closed).alive('crm-abc123', '+5549999990000')).toBe(false)
+    expect(await probe(() => new Response(JSON.stringify([{ exists: true, jid: '5549999990000@s.whatsapp.net', number: '5549999990000' }]), { status: 200 })).alive('crm-abc123', '+5549999990000')).toBe(true)
+    expect(await probe(() => new Response('{}', { status: 502 })).alive('crm-abc123', '+5549999990000')).toBeNull()
+    expect(await probe(closed).alive('crm-abc123', null)).toBeNull()
+
+    // O logout de uma sessão morta devolve 500 "Connection Closed": o CRM reconhece e apaga a instância.
+    const closed500 = () => new Response(JSON.stringify({ status: 500, error: 'Internal Server Error', response: { message: ['Error: Connection Closed'] } }), { status: 500 })
+    const err = await probe(closed500).logout('crm-abc123').catch((e: unknown) => e)
+    expect(err instanceof EvolutionError && isConnectionClosed(err.message)).toBe(true)
+  })
 })

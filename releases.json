@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.75.1",
+      "date": "2026-10-21",
+      "title": "WhatsApp: sessão que cai é detectada sozinha, Desconectar funciona e reconectar pede QR Code novo",
+      "changes": [
+        { "type": "correcao", "area": "WhatsApp", "text": "O serviço de WhatsApp às vezes perde a sessão de um número por dentro, mas continua dizendo \"conectado\" (Connection Closed). Agora o CRM confere cada número a cada 5 minutos usando a conexão de verdade: se caiu, tenta reconectar sozinho; não voltando, o número aparece desconectado em Configurações › Números de WhatsApp, com o motivo, antes de alguém tentar enviar." },
+        { "type": "correcao", "area": "WhatsApp", "text": "Desconectar um número com a sessão caída dava \"O serviço de WhatsApp recusou (500): Connection Closed\". Agora desconecta normalmente." },
+        { "type": "correcao", "area": "WhatsApp", "text": "Conectar um número com a sessão caída voltava a mostrar \"conectado\" sem funcionar. Agora o CRM apaga a sessão quebrada e mostra um QR Code novo para ler." },
+        { "type": "melhoria", "area": "WhatsApp", "text": "Envio que falha por queda da sessão já marca o número como desconectado na hora." },
+        { "type": "melhoria", "area": "Servidor", "text": "deploy/whatsapp.sh status mostra por que os números caem (reinícios e falta de memória do serviço, erros de conexão das últimas 24 h) e o novo deploy/whatsapp.sh reiniciar reconecta todos os números sem ler o QR Code." }
+      ]
+    },
+    {
       "version": "0.75.0",
       "date": "2026-10-21",
       "title": "Marketing Inteligente completo: Google Ads detalhado, Meta, TikTok, redes sociais, SEO, planejamento, alertas, PDF/Excel e IA",

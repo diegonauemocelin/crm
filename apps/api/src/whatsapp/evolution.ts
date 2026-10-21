@@ -46,7 +46,10 @@ export function isConnectionClosed(message: string) {
 }
 
 export const CONNECTION_CLOSED_MESSAGE =
-  'O WhatsApp deste número perdeu a conexão com o servidor (Connection Closed). O CRM tentou reconectar sozinho e não conseguiu: em Administração › Números de WhatsApp, clique em Conectar neste número (se pedir, leia o QR Code de novo) e reenvie.'
+  'O WhatsApp deste número perdeu a conexão com o servidor (Connection Closed). O CRM tentou reconectar sozinho e não conseguiu: em Configurações › Números de WhatsApp, clique em Conectar neste número, leia o QR Code de novo e reenvie.'
+
+/** Motivo gravado no número quando a sessão morre por dentro da Evolution (ela ainda diz "conectado"). */
+export const SESSION_DEAD_REASON = 'A sessão caiu no serviço de WhatsApp (Connection Closed). Clique em Conectar e leia o QR Code.'
 
 /** Resposta da conferência de números: tem WhatsApp e o identificador que o WhatsApp usa (ex.: celular antigo sem o 9). */
 export interface NumberCheck {
@@ -75,6 +78,9 @@ export class EvolutionClient {
     private readonly retryDelayMs = 5_000,
   ) {}
 
+  /** Avisado quando um envio falha duas vezes com "Connection Closed" (a sessão do número morreu). */
+  onSessionDead: ((instanceName: string) => void) | null = null
+
   /** Reinicia a conexão do número no serviço de WhatsApp (sem pedir QR Code se a sessão ainda vale). */
   restart(instanceName: string) {
     return this.call('POST', `/instance/restart/${encodeURIComponent(instanceName)}`, undefined, 20_000)
@@ -94,7 +100,10 @@ export class EvolutionClient {
       try {
         return await this.call<T>(method, path, body, timeoutMs)
       } catch (again) {
-        if (again instanceof EvolutionError && isConnectionClosed(again.message)) throw new EvolutionError(CONNECTION_CLOSED_MESSAGE, again.status)
+        if (again instanceof EvolutionError && isConnectionClosed(again.message)) {
+          this.onSessionDead?.(instanceName)
+          throw new EvolutionError(CONNECTION_CLOSED_MESSAGE, again.status)
+        }
         throw again
       }
     }
@@ -171,6 +180,21 @@ export class EvolutionClient {
       // Já desconectada: tudo certo.
       if (!(err instanceof EvolutionError && (err.status === 400 || err.status === 404))) throw err
     })
+  }
+
+  /**
+   * A Evolution 2.3.x pode dizer "open" com a sessão já morta por dentro: só um pedido que usa a conexão revela.
+   * Confere o próprio número do aparelho. true = viva, false = Connection Closed, null = não deu para saber.
+   */
+  async alive(instanceName: string, phone: string | null): Promise<boolean | null> {
+    const digits = phone?.replace(/\D/g, '') ?? ''
+    if (digits.length < 10) return null
+    try {
+      await this.checkNumbers(instanceName, [digits])
+      return true
+    } catch (err) {
+      return err instanceof EvolutionError && isConnectionClosed(err.message) ? false : null
+    }
   }
 
   /** Atualiza o endereço e os eventos de uma instância já criada (ex.: depois de uma atualização do CRM). */
