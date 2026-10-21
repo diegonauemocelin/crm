@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.77.1",
+      "date": "2026-10-21",
+      "title": "Instagram: sincroniza o que a permissão permite e diz o que falta no token da Meta",
+      "changes": [
+        { "type": "correcao", "area": "Marketing Inteligente", "text": "Quando o token da Meta não tem todas as permissões do Instagram, os seguidores e o público são gravados assim mesmo (antes a conta inteira dava erro) e o aviso diz exatamente o que falta: instagram_basic para as publicações e instagram_manage_insights para alcance, interações e stories." },
+        { "type": "melhoria", "area": "Configurações", "text": "A ajuda da Meta Ads em Configurações › Marketing Inteligente pede só ads_read para os anúncios; read_insights é da Página e fica no cartão do Instagram e Facebook. O erro de permissão no Testar conexão diz o que acrescentar." }
+      ]
+    },
+    {
       "version": "0.77.0",
       "date": "2026-10-21",
       "title": "Ergonomia: menos risco de perder trabalho, mensagens claras e o sistema mais fácil de usar",

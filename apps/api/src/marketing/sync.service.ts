@@ -49,6 +49,11 @@ const today = () => new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 
 const addDays = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+/** Explica o erro de permissão da Meta (#10/#200) dizendo o que acrescentar ao token. */
+function permissionHint(message: string) {
+  return /#10\b|#200\b|permission/i.test(message) ? 'o token precisa de instagram_basic e instagram_manage_insights: adicione no app e gere o token de novo' : message
+}
+
 /** Sincroniza Meta Ads, Instagram/Facebook, TikTok e Search Console (só leitura), de tempos em tempos e sob pedido. */
 @Injectable()
 export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -240,10 +245,13 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
     const accounts = cleanIgAccounts((await this.settings.get<{ list?: unknown }>(tenantId, IG_ACCOUNTS_KEY, {})).list, official)
     const connected = [...new Set([official, ...accounts.map((a) => a.id)].filter(Boolean))]
     for (const ig of connected) {
+      const label = ig === official ? 'oficial' : (accounts.find((a) => a.id === ig)?.label ?? ig)
       try {
-        rows += await this.syncIgAccount(tenantId, ig, token, auth, day, since, until, posts)
+        const warnings: string[] = []
+        rows += await this.syncIgAccount(tenantId, ig, token, auth, day, since, until, posts, warnings)
+        if (warnings.length) errors.push(`Instagram ${label}: ${warnings.join('; ')}`)
       } catch (err) {
-        errors.push(`Instagram ${ig === official ? 'oficial' : (accounts.find((a) => a.id === ig)?.label ?? ig)}: ${(err as Error).message}`)
+        errors.push(`Instagram ${label}: ${permissionHint((err as Error).message)}`)
       }
     }
     // Concorrentes e perfis só públicos (vendedores fora do Gerenciador): lidos pela conta oficial.
@@ -291,7 +299,7 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
   }
 
   /** Um perfil do Instagram com acesso completo: dias, publicações, stories e público. */
-  private async syncIgAccount(tenantId: string, ig: string, token: string, auth: RequestInit, day: string, since: number, until: number, posts: SocialPostRow[]) {
+  private async syncIgAccount(tenantId: string, ig: string, token: string, auth: RequestInit, day: string, since: number, until: number, posts: SocialPostRow[], warnings: string[]) {
     let rows = 0
     const profile = await this.getJson(`${GRAPH}/${ig}?fields=followers_count,media_count`, auth, metaError)
     const daily = new Map<string, Record<string, number>>()
@@ -324,6 +332,7 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
         // conta sem a métrica
       }
     }
+    if (![...daily.values()].some((v) => v.reach !== undefined || v.accounts_engaged !== undefined)) warnings.push('alcance e interações não lidos (o token precisa de instagram_manage_insights)')
     merge(day, { followers: Number(profile.followers_count ?? 0) })
     rows += await this.storeProfileDays(tenantId, 'instagram', ig, daily, {
       reach: 'reach', profileViews: 'profile_views', websiteClicks: 'website_clicks', follows: 'follower', unfollows: 'non_follower', accountsEngaged: 'accounts_engaged', interactions: 'total_interactions', linkTaps: 'profile_links_taps', views: 'views',
@@ -331,7 +340,13 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
     // Novos seguidores do dia pela série follower_count, quando a quebra por tipo não vier.
     for (const [d, v] of daily) if (v.follower === undefined && v.follower_count !== undefined) await this.prisma.mktSocialProfileDay.updateMany({ where: { tenantId, network: 'instagram', profileId: ig, date: new Date(`${d}T00:00:00Z`) }, data: { follows: Math.round(v.follower_count) } })
 
-    const media = (await this.graphAll(`${GRAPH}/${ig}/media?fields=id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count&limit=50`, token)).slice(0, 100)
+    // Sem a permissão de publicações, o resto (seguidores, público) é gravado assim mesmo e o aviso diz o que falta.
+    let media: Record<string, unknown>[] = []
+    try {
+      media = (await this.graphAll(`${GRAPH}/${ig}/media?fields=id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count&limit=50`, token)).slice(0, 100)
+    } catch (err) {
+      warnings.push(`publicações não lidas (${permissionHint((err as Error).message)})`)
+    }
     for (const m of media) {
       if (Date.parse(String(m.timestamp ?? '')) < Date.now() - 120 * 86_400_000) continue
       const reels = m.media_product_type === 'REELS'
