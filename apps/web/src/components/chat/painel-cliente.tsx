@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { type RecordPrefill, RecordSheet } from '@/components/atendimento/record-sheet'
+import { InlineError } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { api, errorMessage } from '@/lib/api'
 import { formatPhone, type Kind, type ServiceRecord, useOptions } from '@/lib/atendimento'
@@ -52,7 +53,7 @@ export function ClientPanel({ id, monitor }: { id: string; monitor: boolean }) {
   const [open, setOpen] = useState<{ kind: Kind; record: ServiceRecord | null; prefill?: RecordPrefill } | null>(null)
   const [loading, setLoading] = useState<string | null>(null)
   const d = q.data
-  if (!d) return <div className="p-4 text-sm text-muted-foreground">{q.isLoading ? 'Carregando…' : ''}</div>
+  if (!d) return <div className="p-4 text-sm text-muted-foreground">{q.error ? <InlineError error={q.error} onRetry={() => void q.refetch()} /> : q.isLoading ? 'Carregando…' : ''}</div>
 
   const name = d.lead?.name || d.conversation.name || formatPhone(d.conversation.phone) || 'Contato'
   const pre = d.service?.pre ?? null

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { CheckIcon, CopyIcon, Loader2Icon, MessageCircleIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { InlineError } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -71,6 +72,8 @@ export function SellerDigestDialog({ onClose }: { onClose: () => void }) {
         </div>
         {q.isLoading ? (
           <Loader2Icon className="mx-auto my-8 size-5 animate-spin text-muted-foreground" />
+        ) : q.isError ? (
+          <InlineError error={q.error} onRetry={() => void q.refetch()} />
         ) : !q.data?.sellers.length ? (
           <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma pré-venda repassada a vendedor neste dia.</p>
         ) : (

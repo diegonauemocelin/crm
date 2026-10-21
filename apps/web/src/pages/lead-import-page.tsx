@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeftIcon, CheckCircle2Icon, FileSpreadsheetIcon, Loader2Icon, PlayIcon, SearchCheckIcon, UploadIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
-import { formatDateTime, PageHeader, RequirePermission } from '@/components/page'
+import { formatDateTime, InlineError, PageHeader, RequirePermission } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -214,6 +214,11 @@ function ImportWizard() {
         description="CSV, planilha do Excel (XLSX ou “Texto Unicode”) ou o export do RD Station. Nada é gravado antes da análise e da sua confirmação. Quem já está na base é atualizado, não duplicado."
       />
 
+      {runningId && !run && status.error && (
+        <div className="mb-4">
+          <InlineError error={status.error} onRetry={() => void status.refetch()} />
+        </div>
+      )}
       {run ? (
         <Card>
           <CardHeader>
@@ -532,6 +537,11 @@ function ImportWizard() {
         </div>
       )}
 
+      {history.error && (
+        <div className="mt-6">
+          <InlineError error={history.error} onRetry={() => void history.refetch()} />
+        </div>
+      )}
       {!!history.data?.length && (
         <Card className="mt-6">
           <CardHeader>

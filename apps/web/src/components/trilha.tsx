@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2Icon, CircleHelpIcon, CircleIcon, GraduationCapIcon, LightbulbIcon, PlayCircleIcon } from 'lucide-react'
-import { useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -94,6 +94,35 @@ export function LessonCard({ lesson, done, onToggle, disabled }: { lesson: Lesso
   )
 }
 
+const SHORTCUTS: [string, string][] = [
+  ['Ctrl + K', 'Buscar tela, lead ou cliente'],
+  ['?', 'Abrir esta ajuda'],
+  ['Esc', 'Fechar a janela aberta (pergunta antes se houver algo não salvo)'],
+  ['Enter', 'Salvar a janela aberta'],
+  ['Tab / Shift + Tab', 'Ir para o próximo / anterior campo'],
+  ['Chat: Enter', 'Enviar a mensagem (Shift + Enter quebra a linha)'],
+  ['Chat: /', 'Abrir as respostas rápidas'],
+]
+
+/** Atalhos de teclado do sistema (os mesmos em todas as telas). */
+function Shortcuts() {
+  return (
+    <details className="rounded-lg border p-3 text-sm">
+      <summary className="cursor-pointer font-medium">Atalhos de teclado</summary>
+      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
+        {SHORTCUTS.map(([k, v]) => (
+          <Fragment key={k}>
+            <dt>
+              <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">{k}</kbd>
+            </dt>
+            <dd className="text-muted-foreground">{v}</dd>
+          </Fragment>
+        ))}
+      </dl>
+    </details>
+  )
+}
+
 /** Botão "?" do topo: abre o "o que fazer e como fazer" da tela aberta. */
 export function TrailHelp({ className }: { className?: string }) {
   const { pathname, search } = useLocation()
@@ -101,9 +130,20 @@ export function TrailHelp({ className }: { className?: string }) {
   const [open, setOpen] = useState(false)
   const progress = useTrailProgress()
   const m = trailForRoute(pathname, search, (mod) => can(mod))
+  // "?" fora de um campo de texto abre a ajuda da tela.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null
+      if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey || t?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return
+      e.preventDefault()
+      setOpen(true)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
   return (
     <>
-      <Button type="button" variant="ghost" size="icon" className={className} onClick={() => setOpen(true)} aria-label="Ajuda desta tela" title="Ajuda desta tela">
+      <Button type="button" variant="ghost" size="icon" className={className} onClick={() => setOpen(true)} aria-label="Ajuda desta tela (?)">
         <CircleHelpIcon />
       </Button>
       <Sheet open={open} onOpenChange={setOpen}>
@@ -117,6 +157,7 @@ export function TrailHelp({ className }: { className?: string }) {
             {m?.lessons.map((l) => (
               <LessonCard key={l.id} lesson={l} done={progress.done.has(l.id)} onToggle={() => progress.toggle(l.id)} disabled={progress.busy} />
             ))}
+            <Shortcuts />
             <Button asChild variant="outline" className="w-full" onClick={() => setOpen(false)}>
               <Link to="/trilha">
                 <GraduationCapIcon /> Ver a trilha completa

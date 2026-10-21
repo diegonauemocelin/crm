@@ -50,7 +50,7 @@ import {
 import { type DragEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
-import { formatDateTime, PageHeader } from '@/components/page'
+import { formatDateTime, InlineError, PageHeader } from '@/components/page'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -74,8 +74,10 @@ import { api, errorMessage } from '@/lib/api'
 import { int } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import { useBranding } from '@/lib/branding'
+import { usePageTitle } from '@/lib/page-title'
+import { useConfirm, useUnsavedChangesPrompt } from '@/components/confirm'
 import { AiAssist, AiSuggest } from '@/components/email/ai-assist'
-import { Swatches, useEmailPalette } from '@/components/email/palette'
+import { PaletteError, Swatches, useEmailPalette } from '@/components/email/palette'
 import {
   type Align,
   type Block,
@@ -189,12 +191,8 @@ export function Editor({ campaign }: { campaign: Campaign }) {
     itemsRef.current = items
   }, [items])
 
-  useEffect(() => {
-    if (!dirty) return
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
-    window.addEventListener('beforeunload', warn)
-    return () => window.removeEventListener('beforeunload', warn)
-  }, [dirty])
+  useUnsavedChangesPrompt(dirty, 'o e-mail')
+  usePageTitle(c.name || (isModel ? 'Modelo' : 'Campanha'))
 
   const change = (fn: (x: Item[]) => Item[]) => {
     setItems(fn)
@@ -362,6 +360,19 @@ export function Editor({ campaign }: { campaign: Campaign }) {
     void qc.invalidateQueries({ queryKey: ['email-campaigns'] })
   }
   const save = useMutation({ mutationFn: persist, onSuccess: () => toast.success('Campanha salva.'), onError: (err) => toast.error(errorMessage(err)) })
+  // Ctrl+S (Cmd+S no Mac) salva sem sair do teclado.
+  const { mutate: saveNow, isPending: saving } = save
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        if (canEdit && dirty && !saving) saveNow()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [canEdit, dirty, saving, saveNow])
+  const sendBlocked = !c.segmentId ? 'Escolha o segmento para enviar.' : !c.subject.trim() ? 'Escreva o assunto para enviar.' : !items.length ? 'Coloque ao menos um bloco no e-mail para enviar.' : null
   const test = useMutation({
     mutationFn: async () => {
       await persist()
@@ -416,14 +427,17 @@ export function Editor({ campaign }: { campaign: Campaign }) {
                 <Button variant="outline" onClick={() => setTestOpen(true)}>
                   <SendIcon /> Teste
                 </Button>
-                <Button variant="outline" onClick={() => save.mutate()} disabled={save.isPending}>
+                <Button variant="outline" onClick={() => save.mutate()} disabled={save.isPending} title="Salvar (Ctrl+S)">
                   {save.isPending && <Loader2Icon className="animate-spin" />}
                   Salvar{dirty ? ' *' : ''}
                 </Button>
                 {!isModel && (
-                  <Button onClick={() => setConfirmSend(true)} disabled={!c.segmentId || !c.subject.trim() || !items.length}>
-                    <SendIcon /> Enviar
-                  </Button>
+                  <>
+                    {sendBlocked && <span className="self-center text-xs text-muted-foreground">{sendBlocked}</span>}
+                    <Button onClick={() => setConfirmSend(true)} disabled={!!sendBlocked}>
+                      <SendIcon /> Enviar
+                    </Button>
+                  </>
                 )}
               </>
             )}
@@ -437,7 +451,7 @@ export function Editor({ campaign }: { campaign: Campaign }) {
             <Input id="c-name" maxLength={120} value={c.name} onChange={(e) => set('name', e.target.value)} disabled={!canEdit} />
           </Field>
           {!isModel && (
-          <Field label="Segmento (quem recebe)" htmlFor="c-seg" hint={segment ? `${int.format(segment.eligible)} podem receber agora.` : 'Crie segmentos na aba Segmentos.'}>
+          <Field label="Segmento (quem recebe)" htmlFor="c-seg" required hint={segment ? `${int.format(segment.eligible)} podem receber agora.` : 'Crie segmentos na aba Segmentos.'}>
             <Select value={c.segmentId ?? NONE} onValueChange={(v) => set('segmentId', v === NONE ? null : v)} disabled={!canEdit}>
               <SelectTrigger id="c-seg" className="w-full">
                 <SelectValue />
@@ -453,7 +467,7 @@ export function Editor({ campaign }: { campaign: Campaign }) {
             </Select>
           </Field>
           )}
-          <Field label="Assunto" htmlFor="c-subject" hint="Use {primeiro_nome} para personalizar.">
+          <Field label="Assunto" htmlFor="c-subject" required={!isModel} hint="Use {primeiro_nome} para personalizar.">
             <Input id="c-subject" maxLength={200} placeholder="Ex.: {primeiro_nome}, peças JCB com frete grátis" value={c.subject} onChange={(e) => set('subject', e.target.value)} disabled={!canEdit} />
             <AiSuggest action="assunto" content={contentHtml} onPick={(v) => set('subject', v)} disabled={!canEdit} />
           </Field>
@@ -541,7 +555,7 @@ export function Editor({ campaign }: { campaign: Campaign }) {
               test.mutate()
             }}
           >
-            <Input type="email" aria-label="E-mail para o teste" value={testTo} onChange={(e) => setTestTo(e.target.value)} required />
+            <Input type="email" autoFocus aria-label="E-mail para o teste" value={testTo} onChange={(e) => setTestTo(e.target.value)} required />
             <Button type="submit" disabled={test.isPending || !testTo}>
               {test.isPending ? <Loader2Icon className="animate-spin" /> : <SendIcon />} Enviar
             </Button>
@@ -582,10 +596,12 @@ export function Editor({ campaign }: { campaign: Campaign }) {
   )
 }
 
-function Field({ label, htmlFor, children, hint }: { label: string; htmlFor?: string; children: ReactNode; hint?: string }) {
+function Field({ label, htmlFor, children, hint, required }: { label: string; htmlFor?: string; children: ReactNode; hint?: string; required?: boolean }) {
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={htmlFor}>{label}</Label>
+      <Label htmlFor={htmlFor} required={required}>
+        {label}
+      </Label>
       {children}
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
@@ -779,7 +795,7 @@ function CanvasBlock(props: {
           <span className="cursor-grab px-1.5 text-muted-foreground active:cursor-grabbing" draggable onDragStart={(e) => startDrag(e, { kind: 'move', id: item.id })} title="Arraste para mover">
             <GripVerticalIcon className="size-4" />
           </span>
-          <span className="px-1 text-[11px] font-medium text-muted-foreground">{BLOCK_LABEL[b.type]}</span>
+          <span className="px-1 text-xs font-medium text-muted-foreground">{BLOCK_LABEL[b.type]}</span>
           <ToolButton label="Subir" disabled={props.index === 0} onClick={() => props.onMove(-1)}>
             <ArrowUpIcon />
           </ToolButton>
@@ -789,7 +805,7 @@ function CanvasBlock(props: {
           <ToolButton label="Duplicar" onClick={props.onDuplicate}>
             <CopyIcon />
           </ToolButton>
-          <ToolButton label="Remover" onClick={props.onRemove}>
+          <ToolButton label="Remover bloco do e-mail" onClick={props.onRemove}>
             <Trash2Icon />
           </ToolButton>
         </div>
@@ -973,7 +989,7 @@ function RowView({ rowId, row, brand, canEdit, ctx }: { rowId: string; row: Row;
                       <ToolButton label="Duplicar" onClick={() => ctx.onAction(p, 'duplicate')}>
                         <CopyIcon />
                       </ToolButton>
-                      <ToolButton label="Remover" onClick={() => ctx.onAction(p, 'remove')}>
+                      <ToolButton label="Remover bloco da coluna" onClick={() => ctx.onAction(p, 'remove')}>
                         <Trash2Icon />
                       </ToolButton>
                     </div>
@@ -996,7 +1012,7 @@ function RowView({ rowId, row, brand, canEdit, ctx }: { rowId: string; row: Row;
 /** Coluna vazia: arraste um bloco para cá ou escolha qual colocar. */
 function EmptyColumn({ canEdit, highlighted, onAdd }: { canEdit: boolean; highlighted: boolean; onAdd: (t: BlockType) => void }) {
   return (
-    <div className={cn('flex min-h-16 flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed p-2 text-center text-[11px] text-[#6b7280]', highlighted ? 'border-[color:var(--brand)]' : 'border-[#d1d5db]')}>
+    <div className={cn('flex min-h-16 flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed p-2 text-center text-xs text-[#6b7280]', highlighted ? 'border-[color:var(--brand)]' : 'border-[#d1d5db]')}>
       Arraste um bloco para cá
       {canEdit && (
         <DropdownMenu>
@@ -1307,7 +1323,7 @@ function FormatBar({ active }: { active: boolean }) {
       <span className="mx-1 h-5 w-px bg-border" />
       <Popover open={linkOpen} onOpenChange={setLinkOpen}>
         <PopoverTrigger asChild>
-          <Button type="button" size="icon" variant="ghost" className="size-7 [&_svg]:size-3.5" aria-label="Link" title="Link">
+          <Button type="button" size="icon" variant="ghost" className="size-7 [&_svg]:size-3.5" aria-label="Inserir link" title="Inserir link">
             <LinkIcon />
           </Button>
         </PopoverTrigger>
@@ -1390,6 +1406,7 @@ function ColorPick({ label, icon, onPick }: { label: string; icon: ReactNode; on
         <Swatches label="Marca e mais usadas" colors={palette.top} onPick={choose} />
         <Swatches label="Recentes" colors={palette.recent} onPick={choose} />
         <Swatches label="Paleta" colors={palette.classic} onPick={choose} />
+        <PaletteError palette={palette} />
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           Outra cor
           <input type="color" className="h-7 w-12 cursor-pointer rounded border p-0.5" onChange={(e) => onPick(e.target.value)} />
@@ -1444,6 +1461,7 @@ function useImageUpload() {
 function ImagesPanel({ canEdit, onPick, replacing }: { canEdit: boolean; onPick: (url: string) => void; replacing: boolean }) {
   const qc = useQueryClient()
   const q = useQuery({ queryKey: ['email-images'], queryFn: () => api.get<EmailImage[]>('/email/imagens') })
+  const confirm = useConfirm()
   const upload = useImageUpload()
   const input = useRef<HTMLInputElement>(null)
   const [over, setOver] = useState(false)
@@ -1480,7 +1498,9 @@ function ImagesPanel({ canEdit, onPick, replacing }: { canEdit: boolean; onPick:
         </div>
       )}
       <p className="text-xs text-muted-foreground">{replacing ? 'Clique para trocar a imagem do bloco selecionado, ou arraste para o e-mail.' : 'Arraste para o e-mail ou clique para inserir.'}</p>
-      {q.isLoading ? (
+      {q.error ? (
+        <InlineError error={q.error} onRetry={() => void q.refetch()} />
+      ) : q.isLoading ? (
         <Loader2Icon className="mx-auto animate-spin text-muted-foreground" />
       ) : !q.data?.length ? (
         <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma imagem enviada ainda.</p>
@@ -1501,9 +1521,12 @@ function ImagesPanel({ canEdit, onPick, replacing }: { canEdit: boolean; onPick:
               {canEdit && (
                 <button
                   type="button"
-                  aria-label="Apagar imagem"
-                  className="absolute top-1 right-1 hidden rounded bg-background/90 p-1 shadow group-hover:block"
-                  onClick={() => confirm('Apagar esta imagem? Só dá para apagar imagens que nenhuma campanha usa.') && del.mutate(img.id)}
+                  aria-label="Excluir imagem"
+                  title="Excluir imagem"
+                  className="absolute top-1 right-1 hidden rounded bg-background/90 p-1 shadow group-hover:block group-focus-within:block"
+                  onClick={async () => {
+                    if (await confirm({ title: 'Excluir esta imagem?', description: 'Ela some da biblioteca de imagens. Só dá para excluir imagens que nenhuma campanha usa.', confirmLabel: 'Excluir imagem' })) del.mutate(img.id)
+                  }}
                 >
                   <XIcon className="size-3.5" />
                 </button>

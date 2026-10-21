@@ -1,3 +1,5 @@
+import { money } from './format'
+
 export type CampaignStatus = 'RASCUNHO' | 'AGENDADA' | 'ENVIANDO' | 'PAUSADA' | 'ENVIADA' | 'CANCELADA'
 
 export const STATUS_LABEL: Record<CampaignStatus, string> = {
@@ -183,13 +185,11 @@ export interface ProductSearch {
   catalog: { enabled: boolean; updating: boolean; syncedAt: string | null; error: string | null }
 }
 
-const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
-
 export function productItem(p: StoreProduct): ProductItem {
-  return { name: p.name, image: p.image ?? undefined, url: p.url ?? undefined, price: p.price ? brl.format(p.price) : undefined, oldPrice: p.priceFrom ? brl.format(p.priceFrom) : undefined }
+  return { name: p.name, image: p.image ?? undefined, url: p.url ?? undefined, price: p.price ? money(p.price) : undefined, oldPrice: p.priceFrom ? money(p.priceFrom) : undefined }
 }
 
-export const formatBRL = (v: number | null) => (v ? brl.format(v) : '—')
+export const formatBRL = (v: number | null) => (v ? money(v) : '—')
 
 export interface EmailImage {
   id: string

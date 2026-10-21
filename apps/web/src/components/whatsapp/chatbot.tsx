@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDownIcon, ArrowUpIcon, BotIcon, Loader2Icon, MessageSquareIcon, PencilIcon, PlayIcon, PlusIcon, RotateCcwIcon, SendIcon, Trash2Icon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { toast } from 'sonner'
+import { isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
 import { MultiSelect } from '@/components/multi-select'
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
@@ -216,7 +217,9 @@ function FlowEditor({ flow, data, onClose }: { flow: FlowRow | null; data: Data;
     const t = flow ?? { ...template(data.sectors), name: 'Atendimento inicial', description: '', numberIds: [], trigger: 'NOVA_CONVERSA' as const, keywords: [], onlyAfterHours: false, timeoutMinutes: 30 }
     return { name: t.name, description: t.description ?? '', numberIds: t.numberIds, trigger: t.trigger, keywords: t.keywords.join(', '), onlyAfterHours: t.onlyAfterHours, timeoutMinutes: t.timeoutMinutes, steps: t.steps, startStepId: t.startStepId }
   })
-  const [confirmRemove, setConfirmRemove] = useState(false)
+  const [initial] = useState(f)
+  const confirm = useConfirm()
+  const guard = useCloseGuard(isDirty(initial, f), onClose, 'o fluxo')
   const setStep = (i: number, patch: Partial<Step>) => setF((x) => ({ ...x, steps: x.steps.map((s, k) => (k === i ? { ...s, ...patch } : s)) }))
   const move = (i: number, d: -1 | 1) => setF((x) => {
     const steps = [...x.steps]
@@ -261,8 +264,11 @@ function FlowEditor({ flow, data, onClose }: { flow: FlowRow | null; data: Data;
     onSuccess: () => done('Fluxo excluído.'),
     onError: (err) => toast.error(errorMessage(err)),
   })
+  const askRemove = async () => {
+    if (await confirm({ title: `Excluir o fluxo “${flow!.name}”?`, description: 'O robô deixa de atender por este fluxo e as etapas se perdem. Não dá para desfazer.', confirmLabel: 'Excluir fluxo' })) remove.mutate()
+  }
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-6xl">
         <DialogHeader>
           <DialogTitle>{flow ? `Fluxo ${flow.name}` : 'Novo fluxo de atendimento'}</DialogTitle>
@@ -273,7 +279,7 @@ function FlowEditor({ flow, data, onClose }: { flow: FlowRow | null; data: Data;
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="fl-name">Nome</Label>
-                <Input id="fl-name" maxLength={60} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+                <Input id="fl-name" autoFocus maxLength={60} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="fl-desc">Descrição (opcional)</Label>
@@ -347,7 +353,7 @@ function FlowEditor({ flow, data, onClose }: { flow: FlowRow | null; data: Data;
                         <Button size="icon" variant="ghost" className="size-7" onClick={() => move(i, 1)} aria-label="Descer etapa" disabled={i === f.steps.length - 1}>
                           <ArrowDownIcon />
                         </Button>
-                        <Button size="icon" variant="ghost" className="size-7" onClick={() => removeStep(i)} aria-label="Excluir etapa">
+                        <Button size="icon" variant="ghost" className="size-7" onClick={() => removeStep(i)} aria-label={`Remover etapa ${i + 1}`}>
                           <Trash2Icon />
                         </Button>
                       </span>
@@ -364,7 +370,7 @@ function FlowEditor({ flow, data, onClose }: { flow: FlowRow | null; data: Data;
                             <span className="text-sm font-medium tabular-nums">{k + 1}.</span>
                             <Input aria-label={`Opção ${k + 1}`} maxLength={60} placeholder="Texto da opção" value={o.label} onChange={(e) => setStep(i, { options: s.options!.map((x, m) => (m === k ? { ...x, label: e.target.value } : x)) })} />
                             <GoPicker value={o} onChange={(g) => setStep(i, { options: s.options!.map((x, m) => (m === k ? { label: x.label, ...g } : x)) })} steps={f.steps} data={data} selfId={s.id} />
-                            <Button size="icon" variant="ghost" className="size-8" onClick={() => setStep(i, { options: s.options!.filter((_, m) => m !== k) })} aria-label={`Excluir opção ${k + 1}`}>
+                            <Button size="icon" variant="ghost" className="size-8" onClick={() => setStep(i, { options: s.options!.filter((_, m) => m !== k) })} aria-label={`Remover opção ${k + 1}`}>
                               <Trash2Icon />
                             </Button>
                           </div>
@@ -399,20 +405,14 @@ function FlowEditor({ flow, data, onClose }: { flow: FlowRow | null; data: Data;
         </div>
         <DialogFooter className="gap-2 sm:justify-between">
           {flow ? (
-            confirmRemove ? (
-              <Button variant="destructive" onClick={() => remove.mutate()} disabled={remove.isPending}>
-                Confirmar exclusão
-              </Button>
-            ) : (
-              <Button variant="ghost" className="text-destructive" onClick={() => setConfirmRemove(true)}>
-                <Trash2Icon /> Excluir fluxo
-              </Button>
-            )
+            <Button variant="ghost" className="text-destructive" onClick={() => void askRemove()} disabled={remove.isPending}>
+              <Trash2Icon /> Excluir fluxo
+            </Button>
           ) : (
             <span />
           )}
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button onClick={() => save.mutate()} disabled={save.isPending}>
@@ -497,7 +497,7 @@ function Simulator({ steps, startStepId, data }: { steps: Step[]; startStepId: s
       </div>
       <form onSubmit={send} className="flex gap-2 border-t bg-[#f0f2f5] p-2 dark:bg-[#202c33]">
         <Input value={text} onChange={(e) => setText(e.target.value)} placeholder={running ? 'Responda como o cliente' : 'Clique em Começar'} disabled={!running || !state} className="bg-white dark:bg-[#2a3942]" aria-label="Resposta do cliente" />
-        <Button type="submit" size="icon" disabled={!running || !state || call.isPending} aria-label="Enviar">
+        <Button type="submit" size="icon" disabled={!running || !state || call.isPending} aria-label="Enviar resposta de teste">
           {call.isPending ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
         </Button>
       </form>

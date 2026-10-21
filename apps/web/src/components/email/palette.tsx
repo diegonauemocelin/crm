@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
+import { InlineError } from '@/components/page'
 import { api } from '@/lib/api'
 import { useBranding } from '@/lib/branding'
 
@@ -43,14 +44,14 @@ export function useEmailPalette() {
   }, [])
   // Marca + mais usadas, sem repetir.
   const top = [brand, ...(used.data ?? []).filter((c) => c !== brand)].slice(0, 9)
-  return { brand, top, recent: recent.filter((c) => !top.includes(c)), classic: CLASSIC_COLORS, remember }
+  return { brand, top, recent: recent.filter((c) => !top.includes(c)), classic: CLASSIC_COLORS, remember, error: used.error, retry: () => void used.refetch() }
 }
 
 export function Swatches({ colors, onPick, size = 'md', label }: { colors: string[]; onPick: (c: string) => void; size?: 'sm' | 'md'; label?: string }) {
   if (!colors.length) return null
   return (
     <div className="space-y-1">
-      {label && <p className="text-[11px] text-muted-foreground">{label}</p>}
+      {label && <p className="text-xs text-muted-foreground">{label}</p>}
       <div className="flex flex-wrap gap-1">
         {colors.map((c) => (
           <button
@@ -66,4 +67,9 @@ export function Swatches({ colors, onPick, size = 'md', label }: { colors: strin
       </div>
     </div>
   )
+}
+
+/** Aviso discreto quando não deu para buscar as cores mais usadas (a marca e a paleta continuam disponíveis). */
+export function PaletteError({ palette }: { palette: Pick<ReturnType<typeof useEmailPalette>, 'error' | 'retry'> }) {
+  return palette.error ? <InlineError error={palette.error} onRetry={palette.retry} /> : null
 }

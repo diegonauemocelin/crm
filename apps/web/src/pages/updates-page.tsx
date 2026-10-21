@@ -128,7 +128,7 @@ export function UpdatesPage() {
                           .filter((c) => (c.area ?? 'Geral') === area)
                           .map((c, i) => (
                             <li key={i} className="flex gap-2 text-sm">
-                              <Badge variant="outline" className={cn('h-5 shrink-0 px-1.5 text-[11px]', TYPE_META[c.type]?.className)}>
+                              <Badge variant="outline" className={cn('h-5 shrink-0 px-1.5 text-xs', TYPE_META[c.type]?.className)}>
                                 {TYPE_META[c.type]?.label ?? c.type}
                               </Badge>
                               <span className="leading-5">{c.text}</span>

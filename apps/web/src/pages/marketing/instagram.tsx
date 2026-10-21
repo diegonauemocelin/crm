@@ -5,7 +5,8 @@ import { toast } from 'sonner'
 import { BestTimes, type OnlinePeaks, type TimeCell } from '@/components/marketing/horarios'
 import { type Col, NA, optNum, SimpleTable, SyncLine } from '@/components/marketing/tabela'
 import { Kpi, MktFilters, PendingIntegration, TrendChart } from '@/components/marketing/ui'
-import { ErrorState, formatDate, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
+import { EmptyState, ErrorState, formatDate, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -546,24 +547,32 @@ function ProfilesDialog({ d, onClose }: { d: ProfilesData; onClose: () => void }
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
+  const guard = useCloseGuard(isDirty(d.list, list), onClose, 'os perfis')
   const discover = useMutation({
     mutationFn: () => api.post<{ accounts: { id: string; username: string; name: string }[] }>('/marketing/instagram/perfis/buscar'),
     onSuccess: (r) => setFound(r.accounts.filter((a) => a.id !== d.officialId)),
     onError: (e) => toast.error(errorMessage(e)),
   })
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Perfis do Instagram da empresa</DialogTitle>
           <DialogDescription>O perfil oficial vem de Configurações › Marketing Inteligente. Aqui entram os outros perfis da empresa e os dos vendedores (até {d.max}).</DialogDescription>
         </DialogHeader>
+        <form
+          className="grid gap-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            save.mutate()
+          }}
+        >
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => discover.mutate()} disabled={discover.isPending}>
+            <Button type="button" size="sm" variant="outline" onClick={() => discover.mutate()} disabled={discover.isPending}>
               {discover.isPending ? <Loader2Icon className="animate-spin" /> : <SearchIcon />} Buscar contas do Gerenciador
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setList((l) => [...l, { id: '', username: '', label: '', owner: 'vendedor', sellerId: null }])} disabled={list.length >= d.max}>
+            <Button type="button" size="sm" variant="outline" onClick={() => setList((l) => [...l, { id: '', username: '', label: '', owner: 'vendedor', sellerId: null }])} disabled={list.length >= d.max}>
               <PlusIcon /> Adicionar pelo @
             </Button>
           </div>
@@ -580,7 +589,7 @@ function ProfilesDialog({ d, onClose }: { d: ProfilesData; onClose: () => void }
                         <span>
                           @{a.username || a.id} {a.name && <span className="text-muted-foreground">· {a.name}</span>}
                         </span>
-                        <Button size="sm" variant="ghost" disabled={added} onClick={() => setList((l) => [...l, { id: a.id, username: a.username, label: a.name || `@${a.username}`, owner: 'vendedor', sellerId: null }])}>
+                        <Button type="button" size="sm" variant="ghost" disabled={added} onClick={() => setList((l) => [...l, { id: a.id, username: a.username, label: a.name || `@${a.username}`, owner: 'vendedor', sellerId: null }])}>
                           {added ? 'Adicionado' : 'Adicionar (dados completos)'}
                         </Button>
                       </div>
@@ -631,7 +640,7 @@ function ProfilesDialog({ d, onClose }: { d: ProfilesData; onClose: () => void }
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant={x.id ? 'default' : 'secondary'}>{x.id ? 'Completo' : 'Público'}</Badge>
-                <Button size="icon" variant="ghost" aria-label="Remover" onClick={() => setList((l) => l.filter((_, j) => j !== i))}>
+                <Button type="button" size="icon" variant="ghost" aria-label={`Remover perfil ${x.username || x.label}`.trim()} onClick={() => setList((l) => l.filter((_, j) => j !== i))}>
                   <Trash2Icon />
                 </Button>
               </div>
@@ -640,13 +649,14 @@ function ProfilesDialog({ d, onClose }: { d: ProfilesData; onClose: () => void }
           <p className="text-xs text-muted-foreground">Pelo @ só funciona com conta comercial ou de criador (a Meta não mostra dados de conta pessoal). Para ver alcance, stories e público do perfil de um vendedor, ele precisa estar no Gerenciador de Negócios da empresa: aí use “Buscar contas do Gerenciador”.</p>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={() => void guard()}>
             Cancelar
           </Button>
-          <Button onClick={() => save.mutate()} disabled={save.isPending}>
+          <Button type="submit" disabled={save.isPending}>
             {save.isPending && <Loader2Icon className="animate-spin" />} Salvar
           </Button>
         </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )
@@ -693,10 +703,11 @@ function Competitors() {
   const qc = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [noting, setNoting] = useState<string | null>(null)
+  const confirm = useConfirm()
   const q = useQuery({ queryKey: ['mkt-ig-concorrentes', f.from, f.to], queryFn: () => api.get<CompetitorsData>(`/marketing/instagram/concorrentes?de=${f.from}&ate=${f.to}`), placeholderData: keepPreviousData })
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/marketing/instagram/concorrentes/registros/${id}`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['mkt-ig-concorrentes'] }),
+    onSuccess: () => (toast.success('Registro excluído.'), void qc.invalidateQueries({ queryKey: ['mkt-ig-concorrentes'] })),
     onError: (e) => toast.error(errorMessage(e)),
   })
   const d = q.data
@@ -714,9 +725,17 @@ function Competitors() {
         )}
       </div>
       {d.list.length === 0 ? (
-        <Card>
-          <CardContent className="py-6 text-sm text-muted-foreground">Nenhum concorrente cadastrado. Clique em “Concorrentes” e informe o @ de cada um (só contas comerciais ou de criador).</CardContent>
-        </Card>
+        <EmptyState
+          title="Nenhum concorrente cadastrado"
+          description="Informe o @ de cada concorrente (só contas comerciais ou de criador)."
+          action={
+            can('mi_social', 'edit') ? (
+              <Button size="sm" onClick={() => setEditing(true)}>
+                <PlusIcon /> Cadastrar concorrentes
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <SimpleTable
           title="Comparação com concorrentes"
@@ -775,7 +794,7 @@ function Competitors() {
                 ),
               csv: (r) => (r.adsActive === null ? '' : r.adsActive ? 'Sim' : 'Não'),
             },
-            { label: '', value: (r) => (!r.own && can('mi_social', 'create') ? <Button size="sm" variant="outline" onClick={() => setNoting(r.username)}>Registrar</Button> : null) },
+            { label: '', value: (r) => (!r.own && can('mi_social', 'create') ? <Button size="sm" variant="outline" aria-label={`Registrar o que viu de @${r.username}`} onClick={() => setNoting(r.username)}>Registrar</Button> : null) },
           ]}
         />
       )}
@@ -794,7 +813,22 @@ function Competitors() {
             { label: 'Stories vistos', value: (r) => (r.storiesSeen === null ? '—' : num(r.storiesSeen)), right: true },
             { label: 'Anúncio ativo', value: (r) => (r.adsActive === null ? '—' : r.adsActive ? 'Sim' : 'Não') },
             { label: 'Observação', value: (r) => <span className="line-clamp-2 text-sm">{r.note ?? ''}</span> },
-            { label: '', value: (r) => (can('mi_social', 'delete') ? <Button size="icon" variant="ghost" aria-label="Excluir" onClick={() => remove.mutate(r.id)}><Trash2Icon /></Button> : null) },
+            {
+              label: '',
+              value: (r) =>
+                can('mi_social', 'delete') ? (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label={`Excluir registro de @${r.username}`}
+                    onClick={async () => {
+                      if (await confirm({ title: `Excluir o registro de @${r.username}?`, description: `O registro de ${formatDate(`${r.date}T12:00:00`)} sai do histórico da equipe. Não dá para desfazer.`, confirmLabel: 'Excluir registro' })) remove.mutate(r.id)
+                    }}
+                  >
+                    <Trash2Icon />
+                  </Button>
+                ) : null,
+            },
           ]}
         />
       )}
@@ -806,7 +840,9 @@ function Competitors() {
 
 function CompetitorsDialog({ list: initial, max, onClose }: { list: { username: string; label: string }[]; max: number; onClose: () => void }) {
   const qc = useQueryClient()
-  const [list, setList] = useState(initial.length ? initial.map((c) => ({ ...c, username: `@${c.username}` })) : [{ username: '', label: '' }])
+  const [start] = useState(() => (initial.length ? initial.map((c) => ({ ...c, username: `@${c.username}` })) : [{ username: '', label: '' }]))
+  const [list, setList] = useState(start)
+  const guard = useCloseGuard(isDirty(start, list), onClose, 'os concorrentes')
   const save = useMutation({
     mutationFn: () => api.put('/marketing/instagram/concorrentes', { list: list.filter((c) => c.username.trim()) }),
     onSuccess: () => {
@@ -817,41 +853,49 @@ function CompetitorsDialog({ list: initial, max, onClose }: { list: { username: 
     onError: (e) => toast.error(errorMessage(e)),
   })
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Concorrentes no Instagram</DialogTitle>
           <DialogDescription>Informe o @ (ou o link do perfil) de até {max} concorrentes. O nome serve para buscar os anúncios na Biblioteca de Anúncios da Meta.</DialogDescription>
         </DialogHeader>
+        <form
+          className="grid gap-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            save.mutate()
+          }}
+        >
         <div className="space-y-2">
           {list.map((c, i) => (
             <div key={i} className="flex items-end gap-2">
               <div className="flex-1 space-y-1">
                 {i === 0 && <Label className="text-xs">@ do Instagram</Label>}
-                <Input value={c.username} onChange={(e) => setList((l) => l.map((x, j) => (j === i ? { ...x, username: e.target.value } : x)))} placeholder="@concorrente" />
+                <Input autoFocus={i === 0} value={c.username} onChange={(e) => setList((l) => l.map((x, j) => (j === i ? { ...x, username: e.target.value } : x)))} placeholder="@concorrente" />
               </div>
               <div className="flex-1 space-y-1">
                 {i === 0 && <Label className="text-xs">Nome da empresa</Label>}
                 <Input value={c.label} maxLength={80} onChange={(e) => setList((l) => l.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} placeholder="Ex.: Peças Tratores Ltda" />
               </div>
-              <Button size="icon" variant="ghost" aria-label="Remover" onClick={() => setList((l) => l.filter((_, j) => j !== i))}>
+              <Button type="button" size="icon" variant="ghost" aria-label={`Remover concorrente ${c.username || c.label}`.trim()} onClick={() => setList((l) => l.filter((_, j) => j !== i))}>
                 <Trash2Icon />
               </Button>
             </div>
           ))}
-          <Button size="sm" variant="outline" onClick={() => setList((l) => [...l, { username: '', label: '' }])} disabled={list.length >= max}>
-            <PlusIcon /> Adicionar
+          <Button type="button" size="sm" variant="outline" onClick={() => setList((l) => [...l, { username: '', label: '' }])} disabled={list.length >= max}>
+            <PlusIcon /> Adicionar concorrente
           </Button>
           <p className="text-xs text-muted-foreground">Só contas comerciais ou de criador mostram dados públicos para a Meta. O CRM lê apenas o que qualquer pessoa vê no perfil.</p>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={() => void guard()}>
             Cancelar
           </Button>
-          <Button onClick={() => save.mutate()} disabled={save.isPending}>
+          <Button type="submit" disabled={save.isPending}>
             {save.isPending && <Loader2Icon className="animate-spin" />} Salvar
           </Button>
         </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )
@@ -862,6 +906,8 @@ function NoteDialog({ username, onClose }: { username: string; onClose: () => vo
   const [stories, setStories] = useState('')
   const [ads, setAds] = useState<'—' | 'sim' | 'nao'>('—')
   const [note, setNote] = useState('')
+  const empty = stories === '' && ads === '—' && !note.trim()
+  const guard = useCloseGuard(!empty, onClose, 'o registro')
   const save = useMutation({
     mutationFn: () => api.post('/marketing/instagram/concorrentes/registros', { username, storiesSeen: stories === '' ? null : Number(stories), adsActive: ads === '—' ? null : ads === 'sim', note: note.trim() || undefined }),
     onSuccess: () => {
@@ -872,16 +918,23 @@ function NoteDialog({ username, onClose }: { username: string; onClose: () => vo
     onError: (e) => toast.error(errorMessage(e)),
   })
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Registrar o que viu de @{username}</DialogTitle>
           <DialogDescription>Hoje. Preencha o que conferiu: stories no perfil e anúncio ativo na Biblioteca de Anúncios.</DialogDescription>
         </DialogHeader>
+        <form
+          className="grid gap-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            save.mutate()
+          }}
+        >
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label>Stories no ar agora</Label>
-            <Input type="number" min={0} max={200} value={stories} onChange={(e) => setStories(e.target.value)} placeholder="Ex.: 3 (0 se não tinha)" />
+            <Label htmlFor="note-stories">Stories no ar agora</Label>
+            <Input id="note-stories" autoFocus type="number" min={0} max={200} value={stories} onChange={(e) => setStories(e.target.value)} placeholder="Ex.: 3 (0 se não tinha)" />
           </div>
           <div className="space-y-1">
             <Label>Anúncio patrocinado ativo</Label>
@@ -897,18 +950,20 @@ function NoteDialog({ username, onClose }: { username: string; onClose: () => vo
             </Select>
           </div>
           <div className="space-y-1">
-            <Label>Observação</Label>
-            <Textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="Ex.: promoção de filtros JCB, sorteio, vídeo de oficina..." />
+            <Label htmlFor="note-text">Observação</Label>
+            <Textarea id="note-text" value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="Ex.: promoção de filtros JCB, sorteio, vídeo de oficina..." />
           </div>
+          {empty && <p className="text-xs text-muted-foreground">Preencha ao menos um campo para salvar.</p>}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={() => void guard()}>
             Cancelar
           </Button>
-          <Button onClick={() => save.mutate()} disabled={save.isPending || (stories === '' && ads === '—' && !note.trim())}>
+          <Button type="submit" disabled={save.isPending || empty}>
             {save.isPending && <Loader2Icon className="animate-spin" />} Salvar
           </Button>
         </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )

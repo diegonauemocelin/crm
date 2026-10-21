@@ -64,15 +64,15 @@ export function AccountSetupPage() {
       <AuthLayout title="Crie sua senha" subtitle={`Passo ${stepNumber} de ${totalSteps}: troque a senha provisória recebida.`}>
         <form onSubmit={changePassword} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="current">Senha provisória</Label>
+            <Label htmlFor="current" required>Senha provisória</Label>
             <Input id="current" type="password" autoComplete="current-password" required autoFocus value={current} onChange={(e) => setCurrent(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="next">Nova senha</Label>
+            <Label htmlFor="next" required>Nova senha</Label>
             <Input id="next" type="password" autoComplete="new-password" required value={next} onChange={(e) => setNext(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="confirm">Confirme a nova senha</Label>
+            <Label htmlFor="confirm" required>Confirme a nova senha</Label>
             <Input id="confirm" type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
           </div>
           <PasswordRules />

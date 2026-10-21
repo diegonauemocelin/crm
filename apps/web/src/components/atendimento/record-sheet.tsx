@@ -5,17 +5,8 @@ import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { MoneyInput } from '@/components/money-input'
 import { MultiSelect } from '@/components/multi-select'
-import { formatDateTime } from '@/components/page'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { formatDateTime, InlineError } from '@/components/page'
+import { isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -26,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { api, errorMessage } from '@/lib/api'
+import { money } from '@/lib/format'
 import {
   FOLLOW_LABEL,
   FOLLOW_STATUSES,
@@ -119,14 +111,16 @@ function initial(kind: Kind, r: ServiceRecord | null, prefill?: RecordPrefill): 
   }
 }
 
-/** Mesmas regras do servidor, para avisar antes de salvar. */
-function validate(f: FormState, r: ServiceRecord | null): string | null {
-  if (!f.name.trim()) return 'Informe o nome.'
-  if (r?.followStatus && f.followStatus !== r.followStatus && !f.followNote.trim()) return 'Escreva uma observação sobre o contato com o cliente.'
-  if (f.saleStatus === 'NAO' && !f.lostReasonId) return 'Informe o motivo da venda perdida.'
-  if (f.saleStatus === 'SIM' && !f.invoiceNumber.trim()) return 'Informe o número da nota fiscal.'
-  if (f.saleStatus === 'SIM' && !(f.saleValue && f.saleValue > 0)) return 'Informe o valor da venda.'
-  if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) return 'E-mail inválido.'
+/** Mesmas regras do servidor, para avisar antes de salvar. Diz também qual campo (id) está com problema. */
+function validate(f: FormState, r: ServiceRecord | null): { field: string; message: string } | null {
+  if (!f.leadAt) return { field: 'r-date', message: 'Informe a data do lead.' }
+  if (!f.name.trim()) return { field: 'r-name', message: 'Informe o nome.' }
+  if (!f.country.trim()) return { field: 'r-country', message: 'Informe o país.' }
+  if (r?.followStatus && f.followStatus !== r.followStatus && !f.followNote.trim()) return { field: 'r-follow-note', message: 'Escreva uma observação sobre o contato com o cliente.' }
+  if (f.saleStatus === 'NAO' && !f.lostReasonId) return { field: 'r-lost', message: 'Informe o motivo da venda perdida.' }
+  if (f.saleStatus === 'SIM' && !f.invoiceNumber.trim()) return { field: 'r-nf', message: 'Informe o número da nota fiscal.' }
+  if (f.saleStatus === 'SIM' && !(f.saleValue && f.saleValue > 0)) return { field: 'r-value', message: 'Informe o valor da venda.' }
+  if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) return { field: 'r-email', message: 'E-mail inválido.' }
   return null
 }
 
@@ -162,23 +156,27 @@ function toPayload(f: FormState, r: ServiceRecord | null) {
   }
 }
 
-function Field({ label, htmlFor, required, children, className }: { label: string; htmlFor?: string; required?: boolean; children: ReactNode; className?: string }) {
+function Field({ label, htmlFor, required, error, children, className }: { label: string; htmlFor?: string; required?: boolean; error?: string | null; children: ReactNode; className?: string }) {
   return (
     <div className={className ?? 'space-y-1.5'}>
-      <Label htmlFor={htmlFor}>
+      <Label htmlFor={htmlFor} required={required}>
         {label}
-        {required && <span className="text-destructive" aria-hidden> *</span>}
       </Label>
       {children}
+      {error && (
+        <p id={htmlFor ? `${htmlFor}-error` : undefined} className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   )
 }
 
-function OptionSelect({ id, value, onChange, items, placeholder = 'Selecione', disabled }: { id?: string; value: string | null; onChange: (v: string | null) => void; items: { id: string; name: string; active?: boolean }[]; placeholder?: string; disabled?: boolean }) {
+function OptionSelect({ id, value, onChange, items, placeholder = 'Selecione', disabled, invalid }: { id?: string; value: string | null; onChange: (v: string | null) => void; items: { id: string; name: string; active?: boolean }[]; placeholder?: string; disabled?: boolean; invalid?: boolean }) {
   const visible = items.filter((i) => i.active !== false || i.id === value)
   return (
     <Select value={value ?? NONE} onValueChange={(v) => onChange(v === NONE ? null : v)} disabled={disabled}>
-      <SelectTrigger id={id} className="w-full">
+      <SelectTrigger id={id} className="w-full" aria-invalid={invalid || undefined} aria-describedby={invalid && id ? `${id}-error` : undefined}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
@@ -215,14 +213,25 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
   const qc = useQueryClient()
   const { can } = useAuth()
   const options = useOptions()
-  const [form, setForm] = useState<FormState>(() => initial(kind, record, prefill))
+  // Valores ao abrir: fechar com algo diferente disso pergunta antes de descartar.
+  const [start, setStart] = useState<FormState>(() => initial(kind, record, prefill))
+  const [form, setForm] = useState<FormState>(start)
   const [error, setError] = useState<string | null>(null)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  /** Campo (id) apontado pela validação: fica marcado e com a mensagem logo abaixo. */
+  const [invalid, setInvalid] = useState<{ field: string; message: string } | null>(null)
+  const confirm = useConfirm()
   const module = KIND_INFO[record?.kind ?? kind].module
   const canEdit = record ? can(module, 'edit') : can(module, 'create')
   const o = options.data
 
-  const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => ({ ...f, [k]: v }))
+  const set = <K extends keyof FormState>(k: K, v: FormState[K]) => {
+    setForm((f) => ({ ...f, [k]: v }))
+    setInvalid(null)
+  }
+  const fieldError = (id: string) => (invalid?.field === id ? invalid.message : null)
+  const invalidProps = (id: string) => (invalid?.field === id ? { 'aria-invalid': true, 'aria-describedby': `${id}-error` } : {})
+  const dirty = canEdit && isDirty(start, form)
+  const guard = useCloseGuard(dirty, onClose, 'o atendimento')
   const full = useQuery({ queryKey: ['atendimento', record?.id], queryFn: () => api.get<ServiceRecord>(`/atendimentos/${record!.id}`), enabled: !!record })
   const linked = full.data
 
@@ -250,7 +259,9 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
       void qc.invalidateQueries({ queryKey: ['atendimento-alertas'] })
       void qc.invalidateQueries({ queryKey: ['atendimento', saved.id] })
       void qc.invalidateQueries({ queryKey: ['atendimento-historico', saved.id] })
-      setForm((f) => ({ ...f, callDueAt: saved.callDueAt ? toLocalInput(saved.callDueAt) : '' }))
+      const callDueAt = saved.callDueAt ? toLocalInput(saved.callDueAt) : ''
+      setForm((f) => ({ ...f, callDueAt }))
+      setStart((f) => ({ ...f, callDueAt }))
       toast.success(`Contato registrado. Próximo prazo: ${saved.callDueAt ? formatDateTime(saved.callDueAt) : '—'}.`)
     },
     onError: (err) => toast.error(errorMessage(err)),
@@ -270,8 +281,28 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
   const submit = (e: FormEvent) => {
     e.preventDefault()
     const problem = validate(form, record)
-    setError(problem)
-    if (!problem) save.mutate()
+    setError(problem?.message ?? null)
+    setInvalid(problem)
+    if (!problem) {
+      save.mutate()
+      return
+    }
+    // Leva o usuário até o campo com problema (a ficha é longa).
+    requestAnimationFrame(() => {
+      const el = document.getElementById(problem.field)
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      el?.focus({ preventScroll: true })
+    })
+  }
+
+  const askDelete = async () => {
+    if (!record) return
+    const ok = await confirm({
+      title: `Excluir o atendimento de ${record.name}?`,
+      description: 'Ele deixa de aparecer nas telas e no dashboard. O registro continua guardado na auditoria.',
+      confirmLabel: 'Excluir atendimento',
+    })
+    if (ok) remove.mutate()
   }
 
   const wa = whatsappLink(record?.phone ?? null)
@@ -280,7 +311,7 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
   const { can: chatCan } = useAuth()
 
   return (
-    <Sheet open onOpenChange={(open) => !open && onClose()}>
+    <Sheet open onOpenChange={(open) => !open && void guard()}>
       {chatOpen && record && (
         <StartDialog leadId={record.leadId} phone={record.phone} external={wa} onClose={() => setChatOpen(false)} onStarted={(cid) => chatNav(`/chat?conversa=${cid}`)} />
       )}
@@ -339,7 +370,7 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
             </TabsList>
           )}
           <TabsContent value="dados">
-            <form onSubmit={submit} className="space-y-6">
+            <form onSubmit={submit} className="space-y-6" noValidate>
               {linked?.googleAds?.notAds && (
                 <p className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 p-2.5 text-sm">
                   <GlobeIcon className="size-4 text-muted-foreground" />
@@ -425,9 +456,10 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                       ))}
                     </ToggleGroup>
                   </Field>
-                  <Field label="Observação do contato" htmlFor="r-follow-note" required={form.followStatus !== record.followStatus}>
+                  <Field label="Observação do contato" htmlFor="r-follow-note" required={form.followStatus !== record.followStatus} error={fieldError('r-follow-note')}>
                     <Textarea
                       id="r-follow-note"
+                      {...invalidProps('r-follow-note')}
                       rows={2}
                       maxLength={2000}
                       placeholder="Ex.: liguei, o cliente recebeu a peça e está satisfeito."
@@ -447,14 +479,14 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                 <section className="space-y-3">
                   <h3 className="text-sm font-semibold">Cliente</h3>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Data do lead" htmlFor="r-date" required>
-                      <Input id="r-date" type="datetime-local" required value={form.leadAt} onChange={(e) => set('leadAt', e.target.value)} />
+                    <Field label="Data do lead" htmlFor="r-date" required error={fieldError('r-date')}>
+                      <Input id="r-date" type="datetime-local" {...invalidProps('r-date')} required value={form.leadAt} onChange={(e) => set('leadAt', e.target.value)} />
                     </Field>
                     <Field label="Código do cliente" htmlFor="r-code">
                       <Input id="r-code" value={form.customerCode} maxLength={40} onChange={(e) => set('customerCode', e.target.value)} />
                     </Field>
-                    <Field label="Nome" htmlFor="r-name" required className="space-y-1.5 sm:col-span-2">
-                      <Input id="r-name" required maxLength={160} value={form.name} onChange={(e) => set('name', e.target.value)} autoFocus={!record} />
+                    <Field label="Nome" htmlFor="r-name" required error={fieldError('r-name')} className="space-y-1.5 sm:col-span-2">
+                      <Input id="r-name" {...invalidProps('r-name')} required maxLength={160} value={form.name} onChange={(e) => set('name', e.target.value)} autoFocus={!record} />
                     </Field>
                     <Field label="Telefone" htmlFor="r-phone">
                       <Input
@@ -469,8 +501,8 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                         }}
                       />
                     </Field>
-                    <Field label="E-mail" htmlFor="r-email">
-                      <Input id="r-email" type="email" value={form.email} maxLength={200} onChange={(e) => set('email', e.target.value)} />
+                    <Field label="E-mail" htmlFor="r-email" error={fieldError('r-email')}>
+                      <Input id="r-email" {...invalidProps('r-email')} type="email" value={form.email} maxLength={200} onChange={(e) => set('email', e.target.value)} />
                     </Field>
                     <Field label="Estado" htmlFor="r-state">
                       <Select
@@ -497,8 +529,8 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                       </Select>
                     </Field>
                     {form.country !== 'BR' ? (
-                      <Field label="País" htmlFor="r-country" required>
-                        <Input id="r-country" required value={form.country} maxLength={40} onChange={(e) => set('country', e.target.value)} />
+                      <Field label="País" htmlFor="r-country" required error={fieldError('r-country')}>
+                        <Input id="r-country" {...invalidProps('r-country')} required value={form.country} maxLength={40} onChange={(e) => set('country', e.target.value)} />
                       </Field>
                     ) : (
                       <Field label="Cidade" htmlFor="r-city">
@@ -600,17 +632,17 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                     </div>
                   )}
                   {form.saleStatus === 'NAO' && (
-                    <Field label="Motivo da venda perdida" htmlFor="r-lost" required>
-                      <OptionSelect id="r-lost" value={form.lostReasonId} onChange={(v) => set('lostReasonId', v)} items={o?.lostReasons ?? []} />
+                    <Field label="Motivo da venda perdida" htmlFor="r-lost" required error={fieldError('r-lost')}>
+                      <OptionSelect id="r-lost" invalid={invalid?.field === 'r-lost'} value={form.lostReasonId} onChange={(v) => set('lostReasonId', v)} items={o?.lostReasons ?? []} />
                     </Field>
                   )}
                   {form.saleStatus === 'SIM' && (
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <Field label="Número da nota fiscal" htmlFor="r-nf" required>
-                        <Input id="r-nf" value={form.invoiceNumber} maxLength={40} onChange={(e) => set('invoiceNumber', e.target.value)} />
+                      <Field label="Número da nota fiscal" htmlFor="r-nf" required error={fieldError('r-nf')}>
+                        <Input id="r-nf" {...invalidProps('r-nf')} value={form.invoiceNumber} maxLength={40} onChange={(e) => set('invoiceNumber', e.target.value)} />
                       </Field>
-                      <Field label="Valor da venda" htmlFor="r-value" required>
-                        <MoneyInput id="r-value" value={form.saleValue} onChange={(v) => set('saleValue', v)} />
+                      <Field label="Valor da venda" htmlFor="r-value" required error={fieldError('r-value')}>
+                        <MoneyInput id="r-value" invalid={invalid?.field === 'r-value'} value={form.saleValue} onChange={(v) => set('saleValue', v)} />
                       </Field>
                     </div>
                   )}
@@ -633,12 +665,12 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                     {record ? 'Salvar alterações' : 'Registrar atendimento'}
                   </Button>
                 )}
-                <Button type="button" variant="outline" onClick={onClose}>
+                <Button type="button" variant="outline" onClick={() => void guard()}>
                   {canEdit ? 'Cancelar' : 'Fechar'}
                 </Button>
                 {record && can(module, 'delete') && (
-                  <Button type="button" variant="ghost" className="ml-auto text-destructive" onClick={() => setConfirmDelete(true)}>
-                    <Trash2Icon /> Excluir
+                  <Button type="button" variant="ghost" className="ml-auto text-destructive" onClick={() => void askDelete()} disabled={remove.isPending}>
+                    {remove.isPending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />} Excluir atendimento
                   </Button>
                 )}
               </div>
@@ -651,26 +683,6 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
           )}
         </Tabs>
 
-        <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Excluir este atendimento?</AlertDialogTitle>
-              <AlertDialogDescription>Ele deixa de aparecer nas telas e no dashboard. O registro continua guardado na auditoria.</AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={(e) => {
-                  e.preventDefault()
-                  remove.mutate()
-                }}
-              >
-                {remove.isPending && <Loader2Icon className="animate-spin" />}
-                Excluir
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </SheetContent>
     </Sheet>
   )
@@ -695,13 +707,14 @@ function formatValue(field: string, v: unknown, names: Map<string, string>): str
   if (field === 'kind') return KIND_INFO[v as Kind]?.title ?? String(v)
   if (field === 'leadAt' || field === 'callDueAt') return formatDateTime(String(v))
   if (field === 'phone') return formatPhone(String(v))
-  if (field === 'saleValue') return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  if (field === 'saleValue') return money(Number(v))
   return String(v)
 }
 
 function History({ id, names }: { id: string; names: Map<string, string> }) {
   const q = useQuery({ queryKey: ['atendimento-historico', id], queryFn: () => api.get<HistoryEntry[]>(`/atendimentos/${id}/historico`) })
   if (q.isLoading) return <Loader2Icon className="mx-auto my-8 size-5 animate-spin text-muted-foreground" />
+  if (q.isError) return <InlineError error={q.error} onRetry={() => void q.refetch()} />
   if (!q.data?.length) return <p className="py-6 text-sm text-muted-foreground">Nenhuma alteração registrada pelo sistema (registro importado da planilha).</p>
   return (
     <ol className="space-y-4 py-2">

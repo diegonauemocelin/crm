@@ -2,6 +2,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { ContactIcon, Loader2Icon, SearchIcon, SendIcon } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { useCloseGuard } from '@/components/confirm'
+import { InlineError } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -24,7 +26,7 @@ export function ShareContactButton({ conversationId, disabled }: { conversationI
   const [open, setOpen] = useState(false)
   return (
     <>
-      <Button type="button" size="icon" variant="ghost" onClick={() => setOpen(true)} disabled={disabled} aria-label="Compartilhar contato" title="Compartilhar contato (cartão com nome e telefone)">
+      <Button type="button" size="icon" variant="ghost" onClick={() => setOpen(true)} disabled={disabled} aria-label="Compartilhar contato (cartão com nome e telefone)">
         <ContactIcon />
       </Button>
       {open && <ShareContactDialog conversationId={conversationId} onClose={() => setOpen(false)} />}
@@ -68,8 +70,10 @@ function ShareContactDialog({ conversationId, onClose }: { conversationId: strin
     if (!name.trim() || !phone.trim()) return
     send.mutate({ name: name.trim(), phone: phone.trim() })
   }
+  // Nome ou telefone digitados: pergunta antes de fechar.
+  const guard = useCloseGuard(!!(name.trim() || phone.trim()), onClose, 'o contato')
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Compartilhar contato</DialogTitle>
@@ -83,6 +87,11 @@ function ShareContactDialog({ conversationId, onClose }: { conversationId: strin
             </div>
             <ul className="max-h-56 overflow-y-auto rounded-md border" role="listbox" aria-label="Contatos">
               {options.isLoading && <li className="p-3 text-sm text-muted-foreground">Carregando…</li>}
+              {options.error && !options.data && (
+                <li className="p-3">
+                  <InlineError error={options.error} onRetry={() => void options.refetch()} />
+                </li>
+              )}
               {options.data?.length === 0 && (
                 <li className="p-3 text-sm text-muted-foreground">
                   {q ? 'Nenhum contato com esse nome. Digite nome e telefone abaixo.' : 'Digite um nome para buscar nos vendedores, na agenda e nos leads, ou preencha nome e telefone abaixo.'}
@@ -101,7 +110,7 @@ function ShareContactDialog({ conversationId, onClose }: { conversationId: strin
                       <span className="block truncate font-medium">{o.name}</span>
                       <span className="block text-xs text-muted-foreground">{o.phone.startsWith('+55') ? formatPhone(o.phone) : o.phone}</span>
                     </span>
-                    <span className="shrink-0 rounded bg-muted px-1.5 text-[11px] text-muted-foreground">{o.source}</span>
+                    <span className="shrink-0 rounded bg-muted px-1.5 text-xs text-muted-foreground">{o.source}</span>
                   </button>
                 </li>
               ))}
@@ -109,16 +118,16 @@ function ShareContactDialog({ conversationId, onClose }: { conversationId: strin
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="share-name">Nome no cartão</Label>
+              <Label htmlFor="share-name" required>Nome no cartão</Label>
               <Input id="share-name" value={name} maxLength={80} onChange={(e) => (setName(e.target.value), setPicked(null))} placeholder="ex.: Roberto - Vendas" />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="share-phone">Telefone</Label>
+              <Label htmlFor="share-phone" required>Telefone</Label>
               <Input id="share-phone" value={phone} maxLength={30} inputMode="tel" onChange={(e) => (setPhone(e.target.value.startsWith('+') ? e.target.value : maskPhone(e.target.value)), setPicked(null))} placeholder="(47) 99999-0000" />
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button type="submit" disabled={!name.trim() || !phone.trim() || send.isPending}>

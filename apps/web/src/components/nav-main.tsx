@@ -27,9 +27,9 @@ function Items({ items }: { items: NavItem[] }) {
               <span>{item.title}</span>
             </NavLink>
           </SidebarMenuButton>
-          {item.phase && <SidebarMenuBadge className="text-[10px] font-normal opacity-60">Em breve</SidebarMenuBadge>}
+          {item.phase && <SidebarMenuBadge className="text-xs font-normal text-muted-foreground">Em breve</SidebarMenuBadge>}
           {badge(item.to).n > 0 && (
-            <SidebarMenuBadge className="rounded-full bg-primary px-1.5 text-[11px] text-primary-foreground tabular-nums" aria-label={`${badge(item.to).n} ${badge(item.to).label}`}>
+            <SidebarMenuBadge className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground tabular-nums" aria-label={`${badge(item.to).n} ${badge(item.to).label}`}>
               {badge(item.to).n}
             </SidebarMenuBadge>
           )}

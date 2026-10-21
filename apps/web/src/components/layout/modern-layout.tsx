@@ -1,4 +1,4 @@
-import { Fragment } from 'react'
+import { Fragment, useEffect } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
 import { AppSidebar } from '@/components/app-sidebar'
 import {
@@ -12,6 +12,8 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { findNavItem } from '@/lib/navigation'
+import { useCurrentPageTitle } from '@/lib/page-title'
+import { useBranding } from '@/lib/branding'
 import { AlertsBell, AttendanceNotifier } from './alerts-bell'
 import { SellerLinkWarning } from './seller-link-warning'
 import { AppFooter } from './app-footer'
@@ -22,11 +24,26 @@ import { ChatNotifier } from '@/lib/chat-alerts'
 
 const EXTRA_TITLES: Record<string, string> = { '/meu-perfil': 'Meu perfil' }
 
-export function useBreadcrumb() {
+export interface Crumb {
+  title: string
+  to?: string
+}
+
+/** Grupo do menu › tela › registro aberto (quando a tela de detalhe informa o nome). A tela vira link quando há um nível abaixo. */
+export function useBreadcrumb(): Crumb[] {
   const { pathname, search } = useLocation()
   const found = findNavItem(pathname, search)
-  if (found) return found.item.to === '/' ? [{ title: 'Início' }] : [{ title: found.group.title }, { title: found.item.title, to: found.item.to }]
-  return [{ title: EXTRA_TITLES[pathname] ?? 'Página' }]
+  const record = useCurrentPageTitle(pathname)
+  const crumbs: Crumb[] = found ? (found.item.to === '/' ? [{ title: 'Início' }] : [{ title: found.group.title }, { title: found.item.title, to: found.item.to }]) : [{ title: EXTRA_TITLES[pathname] ?? 'Página' }]
+  if (record && found && pathname !== found.item.to.split('?')[0]) crumbs.push({ title: record })
+  const last = crumbs[crumbs.length - 1]!
+  const { appName } = useBranding()
+  // Título da aba: a tela (ou o registro) primeiro, para achar a aba certa entre várias abertas. Mantém o "(3)" das conversas não lidas.
+  useEffect(() => {
+    const unread = /^\(\d+\)\s+/.exec(document.title)?.[0] ?? ''
+    document.title = `${unread}${last.title === 'Início' ? '' : `${last.title} · `}${appName}`
+  }, [last.title, appName])
+  return crumbs
 }
 
 /** Layout Moderno: shadcn/ui SidebarProvider + sidebar-07 (recolhível), cabeçalho com breadcrumb e busca. */
@@ -49,10 +66,18 @@ export function ModernLayout() {
               {crumbs
                 .filter((c) => c.title !== 'Início')
                 .map((c, i, arr) => (
-                  <Fragment key={c.title}>
+                  <Fragment key={`${i}-${c.title}`}>
                     <BreadcrumbSeparator className="hidden md:block" />
-                    <BreadcrumbItem className={i < arr.length - 1 ? 'hidden md:block' : undefined}>
-                      {i === arr.length - 1 ? <BreadcrumbPage>{c.title}</BreadcrumbPage> : <span>{c.title}</span>}
+                    <BreadcrumbItem className={i < arr.length - 1 ? 'hidden md:block' : 'min-w-0'}>
+                      {i === arr.length - 1 ? (
+                        <BreadcrumbPage className="truncate">{c.title}</BreadcrumbPage>
+                      ) : c.to ? (
+                        <BreadcrumbLink asChild>
+                          <Link to={c.to}>{c.title}</Link>
+                        </BreadcrumbLink>
+                      ) : (
+                        <span>{c.title}</span>
+                      )}
                     </BreadcrumbItem>
                   </Fragment>
                 ))}

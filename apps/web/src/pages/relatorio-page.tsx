@@ -19,6 +19,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { api, errorMessage } from '@/lib/api'
 import { int, todaySP } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
+import { usePageTitle } from '@/lib/page-title'
 import {
   type Chart,
   CHART_LABEL,
@@ -80,6 +81,7 @@ function Builder({ sources, saved }: { sources: SourceInfo[]; saved: SavedReport
   const source = sources.find((s) => s.key === config.source) ?? sources[0]!
   const canEdit = saved ? (saved.mine || saved.visibility === 'equipe') && can('relatorios', 'edit') : can('relatorios', 'create')
   const canDelete = !!saved && (saved.mine || saved.visibility === 'equipe') && can('relatorios', 'delete')
+  usePageTitle(saved ? saved.name : 'Novo relatório')
 
   // Prévia ao vivo, com um pequeno atraso para não consultar a cada clique.
   const [debounced, setDebounced] = useState(config)
@@ -379,12 +381,14 @@ function Builder({ sources, saved }: { sources: SourceInfo[]; saved: SavedReport
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir o relatório?</AlertDialogTitle>
+            <AlertDialogTitle>Excluir o relatório "{saved?.name}"?</AlertDialogTitle>
             <AlertDialogDescription>"{saved?.name}" sai da lista e do Painel{saved?.visibility === 'equipe' ? ' para toda a equipe' : ''}. Os dados em si não são apagados.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void remove()}>Excluir</AlertDialogAction>
+            <AlertDialogAction variant="destructive" onClick={() => void remove()}>
+              Excluir relatório
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -457,7 +461,7 @@ function FiltersCard({ source, filters, onChange }: { source: SourceInfo; filter
                   <SelectItem value="diferente">não é</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="ghost" size="icon" className="size-8" aria-label="Remover filtro" onClick={() => onChange(filters.filter((_, j) => j !== i))}>
+              <Button variant="ghost" size="icon" className="size-8" aria-label={`Remover filtro ${fields.find((d) => d.key === f.field)?.label ?? ''}`.trim()} onClick={() => onChange(filters.filter((_, j) => j !== i))}>
                 <XIcon />
               </Button>
             </div>

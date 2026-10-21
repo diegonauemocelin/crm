@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2Icon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { toast } from 'sonner'
+import { isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
 import { ErrorState, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -63,7 +64,7 @@ export function FieldsTab() {
                   <TableCell className="max-w-64 truncate text-sm text-muted-foreground">{f.options.join(', ') || '—'}</TableCell>
                   <TableCell>{f.active ? <Badge variant="outline">Ativo</Badge> : <Badge variant="secondary">Inativo</Badge>}</TableCell>
                   <TableCell className="pr-6">
-                    <Button variant="ghost" size="icon" className="size-8" onClick={() => setEditing(f)} aria-label={`Editar ${f.label}`}>
+                    <Button variant="ghost" size="icon" className="size-8" onClick={() => setEditing(f)} aria-label={`Editar o campo ${f.label}`}>
                       <PencilIcon />
                     </Button>
                   </TableCell>
@@ -86,6 +87,8 @@ function FieldDialog({ field, onClose }: { field: CustomField | null; onClose: (
   const [active, setActive] = useState(field?.active ?? true)
   const [error, setError] = useState<string | null>(null)
   const isList = type === 'SELECT' || type === 'MULTISELECT'
+  const [start] = useState({ label, type, options, active })
+  const guard = useCloseGuard(isDirty(start, { label, type, options, active }), onClose, 'o campo')
 
   const save = useMutation({
     mutationFn: () => {
@@ -101,7 +104,7 @@ function FieldDialog({ field, onClose }: { field: CustomField | null; onClose: (
   })
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="sm:max-w-md">
         <form
           onSubmit={(e: FormEvent) => {
@@ -116,7 +119,9 @@ function FieldDialog({ field, onClose }: { field: CustomField | null; onClose: (
             {field && <DialogDescription>O tipo não muda depois de criado, para não invalidar os valores já gravados.</DialogDescription>}
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="f-label">Nome do campo</Label>
+            <Label htmlFor="f-label" required>
+              Nome do campo
+            </Label>
             <Input id="f-label" required minLength={2} maxLength={60} value={label} onChange={(e) => setLabel(e.target.value)} autoFocus />
           </div>
           <div className="space-y-2">
@@ -136,7 +141,9 @@ function FieldDialog({ field, onClose }: { field: CustomField | null; onClose: (
           </div>
           {isList && (
             <div className="space-y-2">
-              <Label htmlFor="f-options">Opções (uma por linha)</Label>
+              <Label htmlFor="f-options" required>
+                Opções (uma por linha)
+              </Label>
               <Textarea id="f-options" rows={5} value={options} onChange={(e) => setOptions(e.target.value)} />
             </div>
           )}
@@ -148,14 +155,15 @@ function FieldDialog({ field, onClose }: { field: CustomField | null; onClose: (
           )}
           <FormError message={error} />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button type="submit" disabled={save.isPending || label.trim().length < 2}>
               {save.isPending && <Loader2Icon className="animate-spin" />}
-              Salvar
+              {field ? 'Salvar campo' : 'Criar campo'}
             </Button>
           </DialogFooter>
+          {label.trim().length < 2 && <p className="text-right text-xs text-muted-foreground">Nome do campo: mínimo 2 caracteres.</p>}
         </form>
       </DialogContent>
     </Dialog>
@@ -214,6 +222,7 @@ export function ScoringTab() {
   const q = useQuery({ queryKey: ['lead-scoring'], queryFn: () => api.get<{ rules: Rule[]; settings: ScoreSettings }>('/leads/config/scoring') })
   const [settings, setSettings] = useState<ScoreSettings | null>(null)
   const [editing, setEditing] = useState<Rule | 'PERFIL' | 'INTERESSE' | null>(null)
+  const confirm = useConfirm()
 
   const saveSettings = useMutation({
     mutationFn: (s: ScoreSettings) => api.put('/leads/config/scoring', { ...s }),
@@ -233,8 +242,17 @@ export function ScoringTab() {
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />
   const s = settings ?? q.data!.settings
   const setS = (k: keyof ScoreSettings, v: number) => setSettings({ ...s, [k]: v })
+  const askRemove = async (id: string) => {
+    const rule = q.data!.rules.find((x) => x.id === id)
+    const ok = await confirm({
+      title: `Excluir a regra "${rule?.name ?? ''}"?`,
+      description: 'Os pontos desta regra deixam de contar e as notas dos leads são recalculadas.',
+      confirmLabel: 'Excluir regra',
+    })
+    if (ok) remove.mutate(id)
+  }
 
-  const tableProps = { rules: q.data!.rules, fields: fields.data ?? [], onEdit: setEditing, onAdd: setEditing, onRemove: (id: string) => remove.mutate(id) }
+  const tableProps = { rules: q.data!.rules, fields: fields.data ?? [], onEdit: setEditing, onAdd: setEditing, onRemove: (id: string) => void askRemove(id) }
 
   return (
     <div className="space-y-4">
@@ -334,10 +352,10 @@ function RuleTable({
                   </TableCell>
                   <TableCell className="w-24 pr-6">
                     <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon" className="size-8" onClick={() => onEdit(r)} aria-label={`Editar ${r.name}`}>
+                      <Button variant="ghost" size="icon" className="size-8" onClick={() => onEdit(r)} aria-label={`Editar a regra ${r.name}`}>
                         <PencilIcon />
                       </Button>
-                      <Button variant="ghost" size="icon" className="size-8" onClick={() => onRemove(r.id)} aria-label={`Excluir ${r.name}`}>
+                      <Button variant="ghost" size="icon" className="size-8" onClick={() => onRemove(r.id)} aria-label={`Excluir a regra ${r.name}`}>
                         <Trash2Icon />
                       </Button>
                     </div>
@@ -359,6 +377,8 @@ function RuleDialog({ rule, dimension, fields, onClose }: { rule: Rule | null; d
   const [points, setPoints] = useState(rule?.points ?? 10)
   const [active, setActive] = useState(rule?.active ?? true)
   const [error, setError] = useState<string | null>(null)
+  const [start] = useState({ name, field, value, points, active })
+  const guard = useCloseGuard(isDirty(start, { name, field, value, points, active }), onClose, 'a regra')
 
   const cf = field.startsWith('custom:') ? fields.find((f) => f.key === field.slice(7)) : undefined
   const save = useMutation({
@@ -389,7 +409,7 @@ function RuleDialog({ rule, dimension, fields, onClose }: { rule: Rule | null; d
   })
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="sm:max-w-md">
         <form
           onSubmit={(e: FormEvent) => {
@@ -403,7 +423,9 @@ function RuleDialog({ rule, dimension, fields, onClose }: { rule: Rule | null; d
             <DialogTitle>{rule ? 'Editar regra' : `Nova regra de ${dimension === 'PERFIL' ? 'perfil' : 'interesse'}`}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="r-name">Nome</Label>
+            <Label htmlFor="r-name" required>
+              Nome
+            </Label>
             <Input id="r-name" required minLength={2} maxLength={80} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </div>
           <div className="space-y-2">
@@ -480,7 +502,9 @@ function RuleDialog({ rule, dimension, fields, onClose }: { rule: Rule | null; d
           )}
           {cf && (cf.type === 'TEXT' || cf.type === 'DATE') && <p className="text-xs text-muted-foreground">Pontua quando o campo estiver preenchido.</p>}
           <div className="space-y-2">
-            <Label htmlFor="r-points">Pontos (negativo diminui a nota)</Label>
+            <Label htmlFor="r-points" required>
+              Pontos (negativo diminui a nota)
+            </Label>
             <Input id="r-points" type="number" min={-100} max={100} required value={points} onChange={(e) => setPoints(Number(e.target.value))} />
           </div>
           <label className="flex items-center justify-between gap-3 text-sm">
@@ -489,14 +513,15 @@ function RuleDialog({ rule, dimension, fields, onClose }: { rule: Rule | null; d
           </label>
           <FormError message={error} />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button type="submit" disabled={save.isPending || name.trim().length < 2}>
               {save.isPending && <Loader2Icon className="animate-spin" />}
-              Salvar
+              {rule ? 'Salvar regra' : 'Criar regra'}
             </Button>
           </DialogFooter>
+          {name.trim().length < 2 && <p className="text-right text-xs text-muted-foreground">Nome da regra: mínimo 2 caracteres.</p>}
         </form>
       </DialogContent>
     </Dialog>
@@ -510,6 +535,7 @@ export function TagsTab() {
   const tags = useTags()
   const [editing, setEditing] = useState<string | null>(null)
   const [to, setTo] = useState('')
+  const confirm = useConfirm()
   const rename = useMutation({
     mutationFn: (p: { from: string; to: string | null }) => api.post<{ affected: number }>('/leads/config/tags/renomear', p),
     onSuccess: (r) => {
@@ -521,6 +547,15 @@ export function TagsTab() {
     onError: (err) => toast.error(errorMessage(err)),
   })
   if (tags.isLoading) return <TableSkeleton rows={4} />
+  if (tags.error) return <ErrorState error={tags.error} onRetry={() => tags.refetch()} />
+  const askRemove = async (tag: string, total: number) => {
+    const ok = await confirm({
+      title: `Remover a tag "${tag}"?`,
+      description: `A tag sai de ${int.format(total)} lead(s). Os leads continuam na base.`,
+      confirmLabel: 'Remover tag',
+    })
+    if (ok) rename.mutate({ from: tag, to: null })
+  }
   return (
     <Card className="max-w-2xl">
       <CardHeader>
@@ -536,10 +571,10 @@ export function TagsTab() {
                 {t.tag}
               </Badge>
               <span className="flex-1 text-sm text-muted-foreground">{int.format(t.total)} lead(s)</span>
-              <Button variant="ghost" size="icon" className="size-8" onClick={() => (setEditing(t.tag), setTo(t.tag))} aria-label={`Renomear ${t.tag}`}>
+              <Button variant="ghost" size="icon" className="size-8" onClick={() => (setEditing(t.tag), setTo(t.tag))} aria-label={`Renomear a tag ${t.tag}`}>
                 <PencilIcon />
               </Button>
-              <Button variant="ghost" size="icon" className="size-8" onClick={() => rename.mutate({ from: t.tag, to: null })} aria-label={`Remover ${t.tag}`}>
+              <Button variant="ghost" size="icon" className="size-8" onClick={() => void askRemove(t.tag, t.total)} aria-label={`Remover a tag ${t.tag}`}>
                 <Trash2Icon />
               </Button>
             </li>
@@ -564,7 +599,7 @@ export function TagsTab() {
                 Cancelar
               </Button>
               <Button type="submit" disabled={rename.isPending || !to.trim()}>
-                Salvar
+                Renomear tag
               </Button>
             </DialogFooter>
           </form>

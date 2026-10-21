@@ -13,6 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { api, errorMessage } from '@/lib/api'
 import { brl, int } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
+import { todaySP } from '@/lib/format'
+import { usePersistedSearch } from '@/lib/persisted-search'
 import { cn } from '@/lib/utils'
 
 interface Product {
@@ -74,8 +76,17 @@ export function CatalogoPage() {
 function Catalog() {
   const qc = useQueryClient()
   const { can } = useAuth()
+  // Voltando pelo menu, reaplica os filtros da última visita.
+  usePersistedSearch('catalogo')
   const [params, setParams] = useSearchParams()
   const [searchText, setSearchText] = useState(params.get('search') ?? '')
+  // Busca reaplicada de fora (filtro lembrado): o campo acompanha.
+  const searchParam = params.get('search') ?? ''
+  const [lastSearchParam, setLastSearchParam] = useState(searchParam)
+  if (searchParam !== lastSearchParam) {
+    setLastSearchParam(searchParam)
+    if (searchParam !== searchText.trim()) setSearchText(searchParam)
+  }
   const [exporting, setExporting] = useState(false)
   const page = Number(params.get('page') ?? 1) || 1
 
@@ -129,11 +140,9 @@ function Catalog() {
     q.delete('pageSize')
     setExporting(true)
     try {
-      const res = await fetch(`/api/catalogo/exportar?${q}`, { credentials: 'same-origin' })
-      if (!res.ok) return toast.error(((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? 'Falha ao exportar.')
-      const url = URL.createObjectURL(await res.blob())
-      Object.assign(document.createElement('a'), { href: url, download: `catalogo-${new Date().toISOString().slice(0, 10)}.csv` }).click()
-      URL.revokeObjectURL(url)
+      await api.download(`/catalogo/exportar?${q}`, `catalogo-${todaySP()}.csv`)
+    } catch (err) {
+      toast.error(errorMessage(err))
     } finally {
       setExporting(false)
     }

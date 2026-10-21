@@ -115,7 +115,7 @@ export function HomePage() {
                       {done ? <CheckCircle2Icon className="size-4 text-emerald-600" /> : <CircleDashedIcon className="size-4 text-muted-foreground" />}
                       Fase {p.n}
                     </span>
-                    <Badge variant={done ? 'secondary' : 'outline'} className="text-[10px]">
+                    <Badge variant={done ? 'secondary' : 'outline'} className="text-xs">
                       {done ? 'Entregue' : doing ? 'Em andamento' : 'Planejada'}
                     </Badge>
                   </div>

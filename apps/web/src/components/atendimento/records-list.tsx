@@ -21,6 +21,8 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
+import { dateTime, todaySP } from '@/lib/format'
+import { usePersistedSearch } from '@/lib/persisted-search'
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -111,6 +113,8 @@ function waitingMin(r: { kind?: string; firstActionAt: string | null; forwarded?
 }
 const minutesLabel = (m: number) => (m < 60 ? `${m} min` : m < 1440 ? `${Math.floor(m / 60)} h` : `${Math.floor(m / 1440)} dia(s)`)
 
+const PERSIST_IGNORE = ['page', 'abrir', 'aba', 'visao']
+
 export function RecordsList({ kind }: { kind: Kind }) {
   const info = KIND_INFO[kind]
   const newMinutes = useAttendanceAlerts().data?.newRecordMinutes ?? 10
@@ -118,8 +122,17 @@ export function RecordsList({ kind }: { kind: Kind }) {
   const { can, me } = useAuth()
   const options = useOptions()
   const names = useMemo(() => namesOf(options.data), [options.data])
+  // Voltando pelo menu, reaplica os filtros da última visita (o atendimento aberto e a aba não contam).
+  usePersistedSearch(`atendimentos:${kind}`, PERSIST_IGNORE)
   const [params, setParams] = useSearchParams()
   const [searchText, setSearchText] = useState(params.get('search') ?? '')
+  // Busca reaplicada de fora (filtro lembrado, visão salva): o campo acompanha.
+  const searchParam = params.get('search') ?? ''
+  const [lastSearchParam, setLastSearchParam] = useState(searchParam)
+  if (searchParam !== lastSearchParam) {
+    setLastSearchParam(searchParam)
+    if (searchParam !== searchText.trim()) setSearchText(searchParam)
+  }
   const [open, setOpen] = useState<ServiceRecord | 'new' | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [importing, setImporting] = useState(false)
@@ -198,15 +211,11 @@ export function RecordsList({ kind }: { kind: Kind }) {
     const q = new URLSearchParams(query)
     q.delete('page')
     q.delete('pageSize')
-    const res = await fetch(`/api/atendimentos/exportar?${q}`, { credentials: 'same-origin' })
-    if (!res.ok) {
-      toast.error(((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? 'Falha ao exportar.')
-      return
+    try {
+      await api.download(`/atendimentos/exportar?${q}`, `${kind === 'PRE_VENDAS' ? 'pre-vendas' : 'pos-vendas'}-${todaySP()}.csv`)
+    } catch (err) {
+      toast.error(errorMessage(err))
     }
-    const url = URL.createObjectURL(await res.blob())
-    const a = Object.assign(document.createElement('a'), { href: url, download: `${kind === 'PRE_VENDAS' ? 'pre-vendas' : 'pos-vendas'}-${new Date().toISOString().slice(0, 10)}.csv` })
-    a.click()
-    URL.revokeObjectURL(url)
   }
 
   const o = options.data
@@ -378,6 +387,13 @@ export function RecordsList({ kind }: { kind: Kind }) {
           icon={InboxIcon}
           title={activeFilters ? 'Nenhum atendimento com esses filtros' : 'Nenhum atendimento ainda'}
           description={activeFilters ? 'Ajuste ou limpe os filtros.' : 'Registre o primeiro atendimento ou importe a planilha atual.'}
+          action={
+            !activeFilters && can(info.module, 'create') ? (
+              <Button size="sm" onClick={() => setOpen('new')}>
+                <PlusIcon /> Novo atendimento
+              </Button>
+            ) : undefined
+          }
         />
       )}
 
@@ -438,7 +454,7 @@ export function RecordsList({ kind }: { kind: Kind }) {
                           </Badge>
                         )}
                         {r.callOverdue && (
-                          <Badge variant="outline" className="shrink-0 gap-1 border-violet-500/50 font-normal text-violet-700 dark:text-violet-300" title={`Prazo para chamar o cliente: ${r.callDueAt ? new Date(r.callDueAt).toLocaleString('pt-BR') : '—'}`}>
+                          <Badge variant="outline" className="shrink-0 gap-1 border-violet-500/50 font-normal text-violet-700 dark:text-violet-300" title={`Prazo para chamar o cliente: ${r.callDueAt ? dateTime(r.callDueAt) : '—'}`}>
                             <PhoneCallIcon className="size-3" /> chamar cliente
                           </Badge>
                         )}

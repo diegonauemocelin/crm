@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
 import { ChevronLeftIcon, ChevronRightIcon, FileClockIcon, Loader2Icon, ShieldAlertIcon, ShieldCheckIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { EmptyState, ErrorState, formatDateTime, InlineError, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -100,6 +100,11 @@ function AuditContent() {
         }
       />
 
+      {verify.error && (
+        <div className="mb-4">
+          <InlineError error={verify.error} onRetry={() => verify.mutate()} />
+        </div>
+      )}
       {verify.data && (
         <p
           role="status"
@@ -154,7 +159,7 @@ function AuditContent() {
                   <TableCell>
                     <span className="flex items-center gap-2 text-sm">
                       {SECURITY_ACTIONS.has(r.action) && (
-                        <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
+                        <Badge variant="destructive" className="h-5 px-1.5 text-xs">
                           Segurança
                         </Badge>
                       )}

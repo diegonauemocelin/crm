@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeftIcon, ClockIcon, CopyIcon, PauseIcon, PlayIcon, RotateCcwIcon } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
+import { useConfirm } from '@/components/confirm'
 import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { api, errorMessage } from '@/lib/api'
 import { int } from '@/lib/atendimento'
+import { usePageTitle } from '@/lib/page-title'
 import { useAuth } from '@/lib/auth'
 import { type Campaign, type CampaignReport, pct, STATUS_LABEL, STATUS_TONE } from '@/lib/email'
 import { Editor } from './email-editor'
@@ -52,6 +54,8 @@ function Report({ campaign: c }: { campaign: Campaign }) {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const { can } = useAuth()
+  const confirm = useConfirm()
+  usePageTitle(c.name)
   const r = useQuery({ queryKey: ['email-report', c.id], queryFn: () => api.get<CampaignReport>(`/email/campanhas/${c.id}/relatorio`), refetchInterval: c.status === 'ENVIANDO' ? 5_000 : false })
   const status = useMutation({
     mutationFn: (action: 'pausar' | 'retomar' | 'cancelar') => api.post(`/email/campanhas/${c.id}/situacao`, { action }),
@@ -103,7 +107,9 @@ function Report({ campaign: c }: { campaign: Campaign }) {
               </Button>
             )}
             {can('email_marketing', 'edit') && ['ENVIANDO', 'PAUSADA', 'AGENDADA'].includes(c.status) && (
-              <Button variant="ghost" size="sm" onClick={() => confirm('Cancelar o envio? Quem ainda não recebeu não vai receber.') && status.mutate('cancelar')}>
+              <Button variant="ghost" size="sm" onClick={async () => {
+                  if (await confirm({ title: `Cancelar o envio de “${c.name}”?`, description: 'Quem ainda não recebeu não vai receber. Não dá para retomar uma campanha cancelada.', confirmLabel: 'Cancelar envio', cancelLabel: 'Continuar enviando' })) status.mutate('cancelar')
+                }}>
                 Cancelar envio
               </Button>
             )}

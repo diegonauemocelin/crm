@@ -2,6 +2,7 @@ import type { GoogleAdsInfo } from './leads'
 import { useQuery } from '@tanstack/react-query'
 import { api } from './api'
 import { DDD_UF } from './ddd'
+import { dateShort, todaySP } from './format'
 
 export type Kind = 'PRE_VENDAS' | 'POS_VENDAS'
 export type SaleStatus = 'SIM' | 'NAO' | 'NEGOCIACAO'
@@ -171,15 +172,7 @@ export const brlCompact = new Intl.NumberFormat('pt-BR', { style: 'currency', cu
 export const int = new Intl.NumberFormat('pt-BR')
 export const pctFmt = new Intl.NumberFormat('pt-BR', { style: 'percent', maximumFractionDigits: 1 })
 
-export function formatDay(iso: string) {
-  return new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(new Date(iso))
-}
-
-/** Data de hoje em São Paulo no formato AAAA-MM-DD. */
-export function todaySP(offsetDays = 0) {
-  const d = new Date(Date.now() - 3 * 3_600_000 + offsetDays * 86_400_000)
-  return d.toISOString().slice(0, 10)
-}
+export { dateShort as formatDay, todaySP }
 
 /** Número para o link do WhatsApp (wa.me): só os dígitos, como cadastrado (celular com o 9; o WhatsApp acerta o resto). */
 export function waDigits(phone: string) {

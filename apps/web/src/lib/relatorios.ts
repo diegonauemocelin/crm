@@ -147,16 +147,6 @@ export const RANGE_PRESETS = [
 
 /** Baixa o CSV do relatório (a API devolve o arquivo; o navegador salva). */
 export async function downloadReport(config: ReportConfig, name: string) {
-  const csrf = document.cookie.split('; ').find((c) => c.startsWith('crm_csrf='))?.split('=')[1] ?? ''
-  const res = await fetch('/api/relatorios/exportar', {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-    body: JSON.stringify({ config }),
-  })
-  if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? 'Falha ao exportar.')
-  const url = URL.createObjectURL(await res.blob())
   const safe = name.normalize('NFD').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').toLowerCase() || 'relatorio'
-  Object.assign(document.createElement('a'), { href: url, download: `${safe}-${todaySP()}.csv` }).click()
-  URL.revokeObjectURL(url)
+  await api.download('/relatorios/exportar', `${safe}-${todaySP()}.csv`, { method: 'POST', body: { config } })
 }

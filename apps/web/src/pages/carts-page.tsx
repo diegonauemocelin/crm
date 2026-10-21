@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { isDirty, useCloseGuard } from '@/components/confirm'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -16,6 +17,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { formatPhone, int, waDigits } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
+import { todaySP } from '@/lib/format'
+import { usePersistedSearch } from '@/lib/persisted-search'
 import { type Cart, CONTACT_LABEL, type CartPage, type ContactStatus } from '@/lib/rastreamento'
 
 const VIEWS = [
@@ -43,11 +46,20 @@ export function CartsPage() {
 }
 
 function Carts() {
+  // Voltando pelo menu, reaplica a aba e os filtros da última visita.
+  usePersistedSearch('carrinhos')
   const [params, setParams] = useSearchParams()
   const { can } = useAuth()
   const view = (params.get('view') as View | null) ?? 'abandonados'
   const page = Number(params.get('page') ?? '1')
   const [search, setSearch] = useState(params.get('search') ?? '')
+  // Busca reaplicada de fora (filtro lembrado): o campo acompanha.
+  const searchParam = params.get('search') ?? ''
+  const [lastSearchParam, setLastSearchParam] = useState(searchParam)
+  if (searchParam !== lastSearchParam) {
+    setLastSearchParam(searchParam)
+    if (searchParam !== search.trim()) setSearch(searchParam)
+  }
   const [editing, setEditing] = useState<Cart | null>(null)
 
   const set = (k: string, v: string | null) => {
@@ -77,11 +89,11 @@ function Carts() {
     const e = new URLSearchParams(query)
     e.delete('page')
     e.delete('pageSize')
-    const res = await fetch(`/api/loja/carrinhos/exportar?${e}`, { credentials: 'same-origin' })
-    if (!res.ok) return toast.error(((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? 'Falha ao exportar.')
-    const url = URL.createObjectURL(await res.blob())
-    Object.assign(document.createElement('a'), { href: url, download: `carrinhos-${view}-${new Date().toISOString().slice(0, 10)}.csv` }).click()
-    URL.revokeObjectURL(url)
+    try {
+      await api.download(`/loja/carrinhos/exportar?${e}`, `carrinhos-${view}-${todaySP()}.csv`)
+    } catch (err) {
+      toast.error(errorMessage(err))
+    }
   }
 
   const data = q.data
@@ -255,15 +267,15 @@ function CartCard({ cart: c, onEdit, canEdit }: { cart: Cart; onEdit: () => void
             )}
             {c.checkoutUrl && (
               <Button size="sm" variant="outline" onClick={() => void copy(c.checkoutUrl!, 'Link do carrinho')}>
-                <CopyIcon /> Link
+                <CopyIcon /> Copiar link
               </Button>
             )}
             <Button size="sm" variant="outline" onClick={() => void copy(c.message, 'Mensagem')}>
-              <CopyIcon /> Mensagem
+              <CopyIcon /> Copiar mensagem
             </Button>
             {c.checkoutUrl && (
               <Button size="sm" variant="ghost" asChild>
-                <a href={c.checkoutUrl} target="_blank" rel="noreferrer noopener" aria-label="Abrir carrinho na loja">
+                <a href={c.checkoutUrl} target="_blank" rel="noreferrer noopener" aria-label="Abrir carrinho na loja" title="Abrir carrinho na loja">
                   <ExternalLinkIcon />
                 </a>
               </Button>
@@ -284,6 +296,8 @@ function ContactDialog({ cart, onClose }: { cart: Cart; onClose: () => void }) {
   const qc = useQueryClient()
   const [status, setStatus] = useState<ContactStatus>(cart.contactStatus === 'PENDENTE' ? 'CONTATADO' : cart.contactStatus)
   const [note, setNote] = useState('')
+  const [start] = useState({ status, note })
+  const guard = useCloseGuard(isDirty(start, { status, note }), onClose, 'o contato')
   const save = useMutation({
     mutationFn: () => api.patch(`/loja/carrinhos/${cart.id}`, { contactStatus: status, note: note.trim() || null }),
     onSuccess: () => {
@@ -298,7 +312,7 @@ function ContactDialog({ cart, onClose }: { cart: Cart; onClose: () => void }) {
     save.mutate()
   }
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent>
         <form onSubmit={submit}>
           <DialogHeader>
@@ -327,12 +341,12 @@ function ContactDialog({ cart, onClose }: { cart: Cart; onClose: () => void }) {
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button type="submit" disabled={save.isPending}>
               {save.isPending && <Loader2Icon className="animate-spin" />}
-              Salvar
+              Registrar contato
             </Button>
           </DialogFooter>
         </form>

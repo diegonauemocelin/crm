@@ -1,3 +1,4 @@
+import { dateTime } from './format'
 /** Último contato do script do Google Ads (Ferramentas → Scripts), como a API devolve. */
 export interface ScriptStatus {
   lastCallAt?: string
@@ -8,7 +9,7 @@ export interface ScriptStatus {
 /** O script roda 1 vez por dia: investimento mais velho que isto quer dizer que ele parou ou foi recusado. */
 export const SCRIPT_STALE_HOURS = 36
 
-const fmt = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+const fmt = (iso: string) => dateTime(iso)
 
 /**
  * Diagnóstico do investimento do Google Ads: diz por que o valor investido não chega.

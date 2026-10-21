@@ -2,6 +2,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { BookUserIcon, ForwardIcon, Loader2Icon, MessageCircleIcon, SearchIcon, UsersIcon, XIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { useCloseGuard } from '@/components/confirm'
+import { InlineError } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -91,9 +93,12 @@ export function ForwardDialog({ messageIds, sourceConversationId, preview, onClo
   const agendaTargets: Target[] = (agenda.data ?? []).map((a) => ({ key: `p-${a.phone}`, label: a.name, detail: `${a.phone.startsWith('+55') ? formatPhone(a.phone) : a.phone} · ${a.source}`, phone: a.phone }))
   const list = tab === 'conversas' ? convTargets : agendaTargets
   const loading = tab === 'conversas' ? convs.isLoading : agenda.isLoading
+  const failed = tab === 'conversas' ? (convs.error ?? groups.error) : agenda.error
+  // Destinos já escolhidos: pergunta antes de fechar.
+  const guard = useCloseGuard(picked.length > 0, onClose, 'o encaminhamento')
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{messageIds.length > 1 ? `Encaminhar ${messageIds.length} mensagens` : 'Encaminhar mensagem'}</DialogTitle>
@@ -124,7 +129,12 @@ export function ForwardDialog({ messageIds, sourceConversationId, preview, onClo
         </div>
         <ul className="max-h-64 overflow-y-auto rounded-md border" aria-label="Destinos">
           {loading && <li className="p-3 text-sm text-muted-foreground">Carregando…</li>}
-          {!loading && list.length === 0 && (
+          {!loading && failed && (
+            <li className="p-3">
+              <InlineError error={failed} onRetry={() => void (tab === 'conversas' ? (convs.refetch(), groups.refetch()) : agenda.refetch())} />
+            </li>
+          )}
+          {!loading && !failed && list.length === 0 && (
             <li className="p-3 text-sm text-muted-foreground">{tab === 'agenda' && !q ? 'Digite um nome para buscar na agenda, nos vendedores e nos leads.' : 'Nada encontrado.'}</li>
           )}
           {list.map((t) => (
@@ -145,7 +155,7 @@ export function ForwardDialog({ messageIds, sourceConversationId, preview, onClo
             {picked.map((p) => (
               <span key={p.key} className="inline-flex items-center gap-1 rounded-full bg-[color:var(--brand)]/10 py-0.5 pr-1 pl-2.5 text-xs font-medium">
                 {p.label}
-                <button type="button" className="rounded-full p-0.5 hover:bg-background" onClick={() => toggle(p)} aria-label={`Tirar ${p.label}`}>
+                <button type="button" className="rounded-full p-0.5 hover:bg-background" onClick={() => toggle(p)} aria-label={`Remover ${p.label} dos destinos`}>
                   <XIcon className="size-3" />
                 </button>
               </span>
@@ -154,7 +164,7 @@ export function ForwardDialog({ messageIds, sourceConversationId, preview, onClo
         )}
         <p className="text-xs text-muted-foreground">Contato da agenda sem conversa: a conversa é aberta pelo mesmo número de WhatsApp desta mensagem.</p>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={() => void guard()}>
             Cancelar
           </Button>
           <Button type="button" onClick={() => send.mutate()} disabled={!picked.length || send.isPending}>

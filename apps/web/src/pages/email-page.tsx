@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BarChart3Icon, SettingsIcon, CopyIcon, ImageIcon, Loader2Icon, MailIcon, MapIcon, PencilIcon, PlusIcon, SparklesIcon, Trash2Icon, UploadIcon, UsersRoundIcon } from 'lucide-react'
+import { BarChart3Icon, SettingsIcon, CopyIcon, ImageIcon, Loader2Icon, MailIcon, MapIcon, PencilIcon, PlusIcon, SearchIcon, SparklesIcon, Trash2Icon, UploadIcon, UsersRoundIcon } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
+import { isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
 import { Can, EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -25,6 +26,19 @@ import { FormError } from './auth/auth-layout'
 import { LEAD_REGIONS } from '@/lib/automacoes'
 
 const ANY = '__any__'
+
+/** Busca simples pelo nome (sem acento e sem diferenciar maiúsculas). */
+const norm = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+const byName = <T extends { name: string }>(items: T[], term: string) => (term.trim() ? items.filter((i) => norm(i.name).includes(norm(term.trim()))) : items)
+
+function SearchBox({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
+  return (
+    <div className="relative w-full max-w-xs">
+      <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+      <Input type="search" className="pl-8" placeholder="Buscar…" aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  )
+}
 
 export function EmailPage() {
   const [params, setParams] = useSearchParams()
@@ -80,6 +94,8 @@ function ModelsTab() {
   const { can } = useAuth()
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const confirm = useConfirm()
+  const [search, setSearch] = useState('')
   const create = useMutation({
     mutationFn: () => api.post<Campaign>('/email/campanhas', { name: 'Novo modelo', subject: '', kind: 'MODELO', blocks: [newBlock('titulo'), newBlock('texto')] }),
     onSuccess: (c) => navigate(`/email-marketing/${c.id}`),
@@ -107,6 +123,8 @@ function ModelsTab() {
       ) : !q.data.length ? (
         <EmptyState icon={MailIcon} title="Nenhum modelo ainda" description="Crie um modelo (ex.: “Recuperação de carrinho com cupom”) e use no passo Enviar e-mail de uma automação." />
       ) : (
+        <>
+        <SearchBox value={search} onChange={setSearch} label="Buscar modelo pelo nome" />
         <Card className="overflow-hidden py-0">
           <Table>
             <TableHeader>
@@ -119,7 +137,14 @@ function ModelsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {q.data.map((c) => (
+              {byName(q.data, search).length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
+                    Nenhum modelo com “{search.trim()}”.
+                  </TableCell>
+                </TableRow>
+              )}
+              {byName(q.data, search).map((c) => (
                 <TableRow key={c.id}>
                   <TableCell className="pl-4">
                     <Link to={`/email-marketing/${c.id}`} className="font-medium hover:underline">
@@ -135,7 +160,14 @@ function ModelsTab() {
                       <DuplicateMenu id={c.id} name={c.name} />
                     )}
                     {can('email_marketing', 'delete') && (
-                      <Button size="icon" variant="ghost" aria-label="Excluir modelo" onClick={() => confirm(`Excluir o modelo "${c.name}"?`) && remove.mutate(c.id)}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label={`Excluir o modelo ${c.name}`}
+                        onClick={async () => {
+                          if (await confirm({ title: `Excluir o modelo “${c.name}”?`, description: 'O modelo some da lista e as automações que o usam deixam de enviar este e-mail. Não dá para desfazer.', confirmLabel: 'Excluir modelo' })) remove.mutate(c.id)
+                        }}
+                      >
                         <Trash2Icon />
                       </Button>
                     )}
@@ -145,6 +177,7 @@ function ModelsTab() {
             </TableBody>
           </Table>
         </Card>
+        </>
       )}
     </div>
   )
@@ -157,6 +190,8 @@ function CampaignsTab() {
   const { can } = useAuth()
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const confirm = useConfirm()
+  const [search, setSearch] = useState('')
   const create = useMutation({
     mutationFn: () => api.post<Campaign>('/email/campanhas', { name: 'Nova campanha', subject: '', blocks: [newBlock('titulo'), newBlock('texto')] }),
     onSuccess: (c) => navigate(`/email-marketing/${c.id}`),
@@ -174,7 +209,8 @@ function CampaignsTab() {
   if (!q.data) return <TableSkeleton rows={4} />
   return (
     <>
-      <div className="mb-3 flex justify-end">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        {q.data.length > 0 ? <SearchBox value={search} onChange={setSearch} label="Buscar campanha pelo nome" /> : <span />}
         {can('email_marketing', 'create') && (
           <Button onClick={() => create.mutate()} disabled={create.isPending}>
             {create.isPending ? <Loader2Icon className="animate-spin" /> : <PlusIcon />} Nova campanha
@@ -197,7 +233,14 @@ function CampaignsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {q.data.map((c) => (
+              {byName(q.data, search).length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-6 text-center text-sm text-muted-foreground">
+                    Nenhuma campanha com “{search.trim()}”.
+                  </TableCell>
+                </TableRow>
+              )}
+              {byName(q.data, search).map((c) => (
                 <TableRow key={c.id}>
                   <TableCell className="pl-4">
                     <Link to={`/email-marketing/${c.id}`} className="font-medium hover:underline">
@@ -216,7 +259,7 @@ function CampaignsTab() {
                   <TableCell className="text-right tabular-nums">{c.sent ? pct(c.opens, c.sent) : '—'}</TableCell>
                   <TableCell className="text-right tabular-nums">{c.sent ? pct(c.clicks, c.sent) : '—'}</TableCell>
                   <TableCell className="pr-4 text-right whitespace-nowrap">
-                    <Button size="sm" variant="ghost" asChild aria-label={`Abrir ${c.name}`}>
+                    <Button size="sm" variant="ghost" asChild aria-label={`Abrir a campanha ${c.name}`}>
                       <Link to={`/email-marketing/${c.id}`}>
                         <PencilIcon />
                       </Link>
@@ -225,7 +268,14 @@ function CampaignsTab() {
                       <DuplicateMenu id={c.id} name={c.name} />
                     )}
                     {c.status === 'RASCUNHO' && can('email_marketing', 'delete') && (
-                      <Button size="sm" variant="ghost" onClick={() => confirm(`Excluir o rascunho "${c.name}"?`) && remove.mutate(c.id)} aria-label={`Excluir ${c.name}`}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={async () => {
+                          if (await confirm({ title: `Excluir o rascunho “${c.name}”?`, description: 'A campanha ainda não foi enviada e será excluída com o conteúdo montado. Não dá para desfazer.', confirmLabel: 'Excluir rascunho' })) remove.mutate(c.id)
+                        }}
+                        aria-label={`Excluir o rascunho ${c.name}`}
+                      >
                         <Trash2Icon />
                       </Button>
                     )}
@@ -247,6 +297,8 @@ function SegmentsTab() {
   const { can } = useAuth()
   const qc = useQueryClient()
   const [open, setOpen] = useState<Segment | 'new' | null>(null)
+  const confirm = useConfirm()
+  const [search, setSearch] = useState('')
   const regions = useMutation({
     mutationFn: () => api.post<{ created: string[] }>('/email/segmentos/regioes'),
     onSuccess: (r) => {
@@ -283,6 +335,10 @@ function SegmentsTab() {
       {q.data.length === 0 ? (
         <EmptyState icon={UsersRoundIcon} title="Nenhum segmento ainda" description="Ex.: Revenda do Sul, Clientes com nota A, Carrinho abandonado (tag)." />
       ) : (
+        <>
+        <div className="mb-3">
+          <SearchBox value={search} onChange={setSearch} label="Buscar segmento pelo nome" />
+        </div>
         <Card className="overflow-hidden py-0">
           <Table>
             <TableHeader>
@@ -293,7 +349,14 @@ function SegmentsTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {q.data.map((s) => (
+              {byName(q.data, search).length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={3} className="py-6 text-center text-sm text-muted-foreground">
+                    Nenhum segmento com “{search.trim()}”.
+                  </TableCell>
+                </TableRow>
+              )}
+              {byName(q.data, search).map((s) => (
                 <TableRow key={s.id}>
                   <TableCell className="pl-4">
                     <p className="font-medium">{s.name}</p>
@@ -302,12 +365,19 @@ function SegmentsTab() {
                   <TableCell className="text-right tabular-nums">{int.format(s.eligible)}</TableCell>
                   <TableCell className="pr-4 text-right whitespace-nowrap">
                     {can('email_marketing', 'edit') && (
-                      <Button size="sm" variant="ghost" onClick={() => setOpen(s)} aria-label={`Editar ${s.name}`}>
+                      <Button size="sm" variant="ghost" onClick={() => setOpen(s)} aria-label={`Editar o segmento ${s.name}`}>
                         <PencilIcon />
                       </Button>
                     )}
                     {can('email_marketing', 'delete') && (
-                      <Button size="sm" variant="ghost" onClick={() => confirm(`Excluir o segmento "${s.name}"?`) && remove.mutate(s.id)} aria-label={`Excluir ${s.name}`}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={async () => {
+                          if (await confirm({ title: `Excluir o segmento “${s.name}”?`, description: 'Campanhas e automações que usam este segmento ficam sem destinatários definidos. Os leads não são afetados. Não dá para desfazer.', confirmLabel: 'Excluir segmento' })) remove.mutate(s.id)
+                        }}
+                        aria-label={`Excluir o segmento ${s.name}`}
+                      >
                         <Trash2Icon />
                       </Button>
                     )}
@@ -317,6 +387,7 @@ function SegmentsTab() {
             </TableBody>
           </Table>
         </Card>
+        </>
       )}
       {open && <SegmentDialog segment={open === 'new' ? null : open} onClose={() => setOpen(null)} />}
     </>
@@ -364,6 +435,8 @@ function SegmentDialog({ segment, onClose }: { segment: Segment | null; onClose:
   const [count, setCount] = useState<{ eligible: number; total: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const set = <K extends keyof SegmentFilters>(k: K, v: SegmentFilters[K]) => setF((x) => ({ ...x, [k]: v }))
+  const [initial] = useState(() => ({ name: segment?.name ?? '', f: segment?.filters ?? {} }))
+  const guard = useCloseGuard(isDirty(initial, { name, f }), onClose, 'o segmento')
 
   // Contagem ao vivo de quem pode receber com estes filtros.
   useEffect(() => {
@@ -387,7 +460,7 @@ function SegmentDialog({ segment, onClose }: { segment: Segment | null; onClose:
   })
   const o = options.data
   return (
-    <Dialog open onOpenChange={(v) => !v && onClose()}>
+    <Dialog open onOpenChange={(v) => !v && void guard()}>
       <DialogContent className="sm:max-w-xl">
         <form
           onSubmit={(e: FormEvent) => {
@@ -402,8 +475,10 @@ function SegmentDialog({ segment, onClose }: { segment: Segment | null; onClose:
             <DialogDescription>Os filtros são aplicados na hora do envio: leads novos que se encaixarem entram automaticamente.</DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
-            <Label htmlFor="sg-name">Nome</Label>
-            <Input id="sg-name" required maxLength={80} placeholder="Ex.: Revenda do Sul" value={name} onChange={(e) => setName(e.target.value)} />
+            <Label htmlFor="sg-name" required>
+              Nome
+            </Label>
+            <Input id="sg-name" autoFocus required maxLength={80} placeholder="Ex.: Revenda do Sul" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <Pick label="Estágio" id="sg-stage" value={f.stage} onChange={(v) => set('stage', v)} items={STAGES.map((s) => ({ id: s.id, name: s.label }))} />
@@ -458,8 +533,9 @@ function SegmentDialog({ segment, onClose }: { segment: Segment | null; onClose:
             )}
           </p>
           <FormError message={error} />
+          {name.trim().length < 2 && <p className="text-xs text-muted-foreground">Dê um nome ao segmento (2 letras ou mais) para salvar.</p>}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button type="submit" disabled={save.isPending || name.trim().length < 2}>
@@ -601,6 +677,7 @@ function AiCard() {
     },
     onError: (err) => setError(errorMessage(err)),
   })
+  const confirm = useConfirm()
   const test = useMutation({
     mutationFn: () => api.post<{ ok: boolean; message: string }>('/email/ia/testar'),
     onSuccess: (r) => toast.success(r.message),
@@ -668,8 +745,15 @@ function AiCard() {
                   {test.isPending && <Loader2Icon className="animate-spin" />}
                   Testar conexão
                 </Button>
-                <Button type="button" variant="ghost" onClick={() => save.mutate(true)} disabled={save.isPending}>
-                  Remover chave
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={async () => {
+                    if (await confirm({ title: 'Remover a chave do Gemini?', description: 'O assistente de texto (IA) para de funcionar no editor de e-mails até alguém cadastrar uma chave de novo.', confirmLabel: 'Remover chave' })) save.mutate(true)
+                  }}
+                  disabled={save.isPending}
+                >
+                  Remover chave do Gemini
                 </Button>
               </>
             )}
@@ -698,6 +782,7 @@ function LogoCard({ settings }: { settings: EmailSettings }) {
     onError: (err) => toast.error(errorMessage(err)),
   })
   const remove = useMutation({ mutationFn: () => api.post<EmailSettings>('/email/configuracoes/logo/remover'), onSuccess: done, onError: (err) => toast.error(errorMessage(err)) })
+  const confirm = useConfirm()
   return (
     <Card className="h-fit">
       <CardHeader>
@@ -716,7 +801,15 @@ function LogoCard({ settings }: { settings: EmailSettings }) {
               {upload.isPending ? <Loader2Icon className="animate-spin" /> : <UploadIcon />} Enviar logo
             </Button>
             {settings.ownLogo && (
-              <Button type="button" size="sm" variant="ghost" onClick={() => remove.mutate()} disabled={remove.isPending}>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={async () => {
+                  if (await confirm({ title: 'Remover o logo próprio dos e-mails?', description: 'Os e-mails passam a usar o logo do sistema (Configurações → Identidade da empresa). Para voltar ao atual, será preciso enviá-lo de novo.', confirmLabel: 'Remover logo' })) remove.mutate()
+                }}
+                disabled={remove.isPending}
+              >
                 Usar o do sistema
               </Button>
             )}
@@ -744,7 +837,7 @@ function DuplicateMenu({ id, name }: { id: string; name: string }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button size="icon" variant="ghost" aria-label={`Duplicar ${name}`} title="Duplicar" disabled={run.isPending}>
+        <Button size="icon" variant="ghost" aria-label={`Duplicar ${name}`} disabled={run.isPending}>
           {run.isPending ? <Loader2Icon className="animate-spin" /> : <CopyIcon />}
         </Button>
       </DropdownMenuTrigger>

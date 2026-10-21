@@ -76,7 +76,7 @@ function stageTone(s: { kind: string; saleStatus: string; followStatus: string |
 /** Selo na lista de conversas. */
 export function StageBadge({ stage }: { stage: StageInfo }) {
   return (
-    <span className={cn('inline-flex items-center gap-1 rounded px-1.5 text-[11px] leading-[18px] font-medium', stageTone(stage))}>
+    <span className={cn('inline-flex items-center gap-1 rounded px-1.5 text-xs leading-[18px] font-medium', stageTone(stage))}>
       {stage.kind === 'POS_VENDAS' ? 'Pós' : 'Pré'} · {stageText(stage)}
     </span>
   )
@@ -113,15 +113,15 @@ export function ServiceButtons({ service, contact, prefill }: { service: ChatSer
         <Button size="sm" variant="outline" onClick={() => void show('PRE_VENDAS', pre)} title={pre ? `Pré-venda de ${dateFmt.format(new Date(pre.leadAt))}${pre.sellerName ? ` · ${pre.sellerName}` : ''}` : 'Abrir uma pré-venda para este contato'}>
           {loading === 'PRE_VENDAS' ? <Loader2Icon className="animate-spin" /> : <HeadsetIcon />}
           Pré-Vendas
-          {pre && <span className={cn('rounded px-1 text-[11px] font-medium', stageTone({ kind: 'PRE_VENDAS', ...pre }))}>{stageText({ kind: 'PRE_VENDAS', ...pre })}</span>}
-          {!pre && <span className="text-[11px] text-muted-foreground">abrir</span>}
+          {pre && <span className={cn('rounded px-1 text-xs font-medium', stageTone({ kind: 'PRE_VENDAS', ...pre }))}>{stageText({ kind: 'PRE_VENDAS', ...pre })}</span>}
+          {!pre && <span className="text-xs text-muted-foreground">abrir</span>}
         </Button>
       )}
       {pos && can('pos_vendas') && (
         <Button size="sm" variant="outline" onClick={() => void show('POS_VENDAS', pos)} title={`Pós-venda de ${dateFmt.format(new Date(pos.leadAt))}${pos.sellerName ? ` · ${pos.sellerName}` : ''}`}>
           {loading === 'POS_VENDAS' ? <Loader2Icon className="animate-spin" /> : <ClipboardListIcon />}
           Pós-Vendas
-          <span className={cn('rounded px-1 text-[11px] font-medium', stageTone({ kind: 'POS_VENDAS', ...pos }))}>{stageText({ kind: 'POS_VENDAS', ...pos })}</span>
+          <span className={cn('rounded px-1 text-xs font-medium', stageTone({ kind: 'POS_VENDAS', ...pos }))}>{stageText({ kind: 'POS_VENDAS', ...pos })}</span>
         </Button>
       )}
       {open && <RecordSheet kind={open.kind} record={open.record} onClose={close} prefill={open.record ? undefined : (prefill?.() ?? { name: contact.name, phone: contact.phone, email: contact.email ?? null })} />}

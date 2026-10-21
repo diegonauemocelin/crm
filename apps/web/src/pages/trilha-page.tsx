@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronDownIcon } from 'lucide-react'
 import { useState } from 'react'
 import { LessonCard, ModuleIntro, useTrailProgress } from '@/components/trilha'
-import { PageHeader } from '@/components/page'
+import { InlineError, PageHeader } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -17,6 +17,8 @@ import { cn } from '@/lib/utils'
 export function TrilhaPage() {
   const { can, me } = useAuth()
   const progress = useTrailProgress()
+  // Mesma consulta do progresso (cache compartilhado): só para mostrar o erro quando não carrega.
+  const progressQ = useQuery({ queryKey: ['trilha'], queryFn: () => api.get<{ done: string[] }>('/me/trilha'), staleTime: 60_000 })
   const [scope, setScope] = useState<'meu' | 'tudo'>('meu')
   const mine = trailFor((m) => can(m))
   const modules = scope === 'meu' ? mine : TRAIL
@@ -38,6 +40,7 @@ export function TrilhaPage() {
             <div className="h-2.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={Math.round(share * 100)} aria-valuemin={0} aria-valuemax={100} aria-label="Progresso na trilha">
               <div className="h-full rounded-full bg-[var(--chart-1)] transition-all" style={{ width: `${Math.round(share * 100)}%` }} />
             </div>
+            {progressQ.error && <InlineError error={progressQ.error} onRetry={() => void progressQ.refetch()} />}
             <p className="text-xs text-muted-foreground">Dica: em qualquer tela, o botão “?” no topo abre o passo a passo dela.</p>
           </CardContent>
         </Card>
@@ -98,6 +101,18 @@ export function TrilhaPage() {
 function TeamProgress() {
   const q = useQuery({ queryKey: ['trilha-equipe'], queryFn: () => api.get<{ id: string; name: string; role: string; done: string[] }[]>('/me/trilha/equipe') })
   const valid = new Set(ALL_LESSONS.map((l) => l.id))
+  if (q.error) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Progresso da equipe</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <InlineError error={q.error} onRetry={() => void q.refetch()} />
+        </CardContent>
+      </Card>
+    )
+  }
   if (!q.data?.length) return null
   return (
     <Card>

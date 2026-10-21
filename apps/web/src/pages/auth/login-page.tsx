@@ -1,7 +1,7 @@
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { Loader2Icon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
-import { Link, Navigate, useNavigate } from 'react-router'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { ClockWarning } from '@/components/clock-warning'
 import { InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot } from '@/components/ui/input-otp'
@@ -18,6 +18,9 @@ export function LoginPage() {
   const b = useBranding()
   const { me, refresh } = useAuth()
   const navigate = useNavigate()
+  // Volta para a tela em que a pessoa estava quando a sessão acabou (só endereços internos).
+  const from = (useLocation().state as { from?: string } | null)?.from
+  const target = from && from.startsWith('/') && !from.startsWith('//') && !from.startsWith('/login') ? from : '/'
   const [step, setStep] = useState<Step>('credentials')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -25,15 +28,16 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  if (me) return <Navigate to="/" replace />
+  if (me) return <Navigate to={target} replace />
 
   const finish = async () => {
     await refresh()
-    navigate('/', { replace: true })
+    navigate(target, { replace: true })
   }
 
   const submitCredentials = async (e: FormEvent) => {
     e.preventDefault()
+    if (!email.trim() || !password) return setError('Informe e-mail e senha.')
     setBusy(true)
     setError(null)
     try {
@@ -71,12 +75,14 @@ export function LoginPage() {
       <AuthLayout title={b.loginTitle} subtitle={b.loginSubtitle}>
         <form onSubmit={submitCredentials} className="space-y-4" noValidate>
           <div className="space-y-2">
-            <Label htmlFor="email">E-mail</Label>
+            <Label htmlFor="email" required>E-mail</Label>
             <Input id="email" type="email" autoComplete="username" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="password">Senha</Label>
+              <Label htmlFor="password" required>
+                Senha
+              </Label>
               <Link to="/esqueci-senha" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
                 Esqueci minha senha
               </Link>
@@ -91,7 +97,7 @@ export function LoginPage() {
             />
           </div>
           <FormError message={error} />
-          <Button type="submit" className="w-full" disabled={busy || !email || !password}>
+          <Button type="submit" className="w-full" disabled={busy}>
             {busy && <Loader2Icon className="animate-spin" />}
             Entrar
           </Button>
@@ -142,8 +148,11 @@ export function LoginPage() {
             }}
             className="space-y-3"
           >
-            <Label htmlFor="recovery">Código de recuperação</Label>
+            <Label htmlFor="recovery" required>
+              Código de recuperação
+            </Label>
             <Input id="recovery" autoComplete="one-time-code" autoFocus value={code} onChange={(e) => setCode(e.target.value.trim())} />
+            {code.length < 10 && <p className="text-xs text-muted-foreground">Digite o código completo, com pelo menos 10 caracteres.</p>}
             <Button type="submit" className="w-full" disabled={busy || code.length < 10}>
               {busy && <Loader2Icon className="animate-spin" />}
               Verificar

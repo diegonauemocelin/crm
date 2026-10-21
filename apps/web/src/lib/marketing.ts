@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { api } from './api'
+import { dayBr, money, moneyShort, num, pct, todaySP } from './format'
 
 /** Marketing Inteligente: tipos e utilidades das telas (as contas ficam na API, em marketing/metricas.ts). */
 
@@ -105,9 +106,7 @@ export interface Options {
 export const FILTER_KEYS = ['plataforma', 'campanha', 'marca', 'tipoPeca', 'estado', 'regiao', 'filial', 'vendedor', 'origem', 'tipoCliente', 'status', 'cliente'] as const
 export type FilterKey = (typeof FILTER_KEYS)[number]
 
-export function todayLocal(offset = 0) {
-  return new Date(Date.now() - 3 * 3_600_000 + offset * 86_400_000).toISOString().slice(0, 10)
-}
+export const todayLocal = todaySP
 
 export const PRESETS = [
   { id: '7', label: '7 dias', range: () => [todayLocal(-6), todayLocal()] },
@@ -154,14 +153,7 @@ export function useMktOptions() {
 
 // ---------- Formatos ----------
 
-const brlFmt = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
-const brlShort = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact', maximumFractionDigits: 1 })
-const intFmt = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 })
-export const money = (v: number | null | undefined) => (v === null || v === undefined ? '—' : brlFmt.format(v))
-export const moneyShort = (v: number) => brlShort.format(v)
-export const num = (v: number | null | undefined) => (v === null || v === undefined ? '—' : intFmt.format(v))
-/** Valores que a API já manda em % (12,5 = 12,5%). */
-export const pct = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`)
+export { money, moneyShort, num, pct }
 export const times = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}x`)
 export const hours = (v: number | null | undefined) => {
   if (v === null || v === undefined) return '—'
@@ -169,7 +161,7 @@ export const hours = (v: number | null | undefined) => {
   if (v < 48) return `${v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} h`
   return `${(v / 24).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} dias`
 }
-export const dayBr = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`
+export { dayBr }
 
 export const PLATFORM_LABEL: Record<Platform, string> = { google: 'Google Ads', meta: 'Meta Ads', tiktok: 'TikTok Ads', outros: 'Outros canais' }
 

@@ -2,10 +2,13 @@ import * as React from "react"
 import { cn } from "cn"
 import { Label as LabelPrimitive } from "radix-ui"
 
+/** `required`: marca o campo como obrigatório (asterisco visível e "obrigatório" para leitor de tela). */
 function Label({
   className,
+  required,
+  children,
   ...props
-}: React.ComponentProps<typeof LabelPrimitive.Root>) {
+}: React.ComponentProps<typeof LabelPrimitive.Root> & { required?: boolean }) {
   return (
     <LabelPrimitive.Root
       data-slot="label"
@@ -14,7 +17,15 @@ function Label({
         className
       )}
       {...props}
-    />
+    >
+      {children}
+      {required && (
+        <span className="-ml-1.5 text-destructive" aria-hidden>
+          *
+        </span>
+      )}
+      {required && <span className="sr-only">(obrigatório)</span>}
+    </LabelPrimitive.Root>
   )
 }
 

@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CameraIcon, Loader2Icon, MonitorIcon, MoonIcon, ShieldCheckIcon, SunIcon } from 'lucide-react'
 import { type FormEvent, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useConfirm } from '@/components/confirm'
 import { LayoutPicker } from '@/components/layout-picker'
 import { UserAvatar } from '@/components/layout/user-menu'
 import { ErrorState, PageHeader, TableSkeleton } from '@/components/page'
@@ -143,7 +144,7 @@ function ProfileCard({ me }: { me: Me }) {
             <input ref={file} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => e.target.files?.[0] && uploadAvatar(e.target.files[0])} />
           </div>
           <div className="flex-1 space-y-2">
-            <Label htmlFor="p-name">Nome</Label>
+            <Label htmlFor="p-name" required>Nome</Label>
             <Input id="p-name" value={name} onChange={(e) => setName(e.target.value)} minLength={2} maxLength={120} required />
           </div>
           <Button type="submit" disabled={busy || name.trim() === me.name}>
@@ -240,15 +241,15 @@ function PasswordCard() {
         </CardHeader>
         <CardContent className="mt-4 grid gap-4 sm:grid-cols-3">
           <div className="space-y-2">
-            <Label htmlFor="pw-current">Senha atual</Label>
+            <Label htmlFor="pw-current" required>Senha atual</Label>
             <Input id="pw-current" type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="pw-next">Nova senha</Label>
+            <Label htmlFor="pw-next" required>Nova senha</Label>
             <Input id="pw-next" type="password" autoComplete="new-password" required value={next} onChange={(e) => setNext(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="pw-confirm">Confirme a nova senha</Label>
+            <Label htmlFor="pw-confirm" required>Confirme a nova senha</Label>
             <Input id="pw-confirm" type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
           </div>
           <div className="sm:col-span-3">
@@ -392,7 +393,7 @@ function TwoFactorCard({ me }: { me: Me }) {
               <DialogTitle>Desativar 2FA</DialogTitle>
               <DialogDescription>Sua conta ficará protegida apenas pela senha. Confirme com sua senha.</DialogDescription>
             </DialogHeader>
-            <Input type="password" autoComplete="current-password" aria-label="Senha" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <Input type="password" autoComplete="current-password" aria-label="Senha" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus />
             <FormError message={error} />
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDisableOpen(false)}>
@@ -414,7 +415,14 @@ function SessionsCard() {
   const qc = useQueryClient()
   const q = useQuery({ queryKey: ['me-sessoes'], queryFn: () => api.get<Session[]>('/me/sessoes') })
   const [busy, setBusy] = useState<string | null>(null)
+  const confirm = useConfirm()
   const revoke = async (s: Session) => {
+    const ok = await confirm({
+      title: `Desconectar ${s.device}?`,
+      description: 'A conta sai desse aparelho na hora. Para voltar a usar o sistema nele, será preciso entrar de novo com e-mail e senha.',
+      confirmLabel: 'Desconectar aparelho',
+    })
+    if (!ok) return
     setBusy(s.id)
     try {
       await api.delete(`/me/sessoes/${s.id}`)
@@ -427,6 +435,12 @@ function SessionsCard() {
     }
   }
   const revokeOthers = async () => {
+    const ok = await confirm({
+      title: `Desconectar ${others} outro(s) aparelho(s)?`,
+      description: 'A conta sai de todos os aparelhos, menos deste. Em cada um deles, será preciso entrar de novo com e-mail e senha.',
+      confirmLabel: 'Desconectar outros aparelhos',
+    })
+    if (!ok) return
     setBusy('outros')
     try {
       await api.post('/me/sessoes/encerrar-outras')

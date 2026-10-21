@@ -13,22 +13,13 @@ import {
   ShieldAlertIcon,
   XIcon,
 } from 'lucide-react'
-import { type FormEvent, type KeyboardEvent, type ReactNode, useState } from 'react'
+import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { MultiSelect } from '@/components/multi-select'
 import { LeadConversations, StartDialog } from '@/pages/chat-page'
 import { ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { isDirty, useConfirm, useUnsavedChangesPrompt } from '@/components/confirm'
 import { LeadProductsSeen } from '@/components/catalogo/produtos-vistos'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -42,6 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, errorMessage } from '@/lib/api'
 import { brl, formatPhone, KIND_INFO, type Kind, maskPhone, namesOf, SALE_LABEL, type SaleStatus, UF_LIST, UF_NAMES, useOptions, whatsappLink } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
+import { usePageTitle } from '@/lib/page-title'
 import { type CustomField, type Lead, type LeadStage, STAGE_LABEL, STAGES, useCustomFields, type LeadOrigin } from '@/lib/leads'
 import { CONTACT_LABEL, DEVICE_LABEL, type LeadShop, type LeadSite, pathOf, SHOP_LABEL, touchLabel } from '@/lib/rastreamento'
 import { FormError } from './auth/auth-layout'
@@ -193,7 +185,8 @@ function LeadView({ lead }: { lead: Lead | null }) {
   const { can } = useAuth()
   const options = useOptions()
   const fields = useCustomFields()
-  const [form, setForm] = useState<Form>(() => toForm(lead))
+  const [start] = useState<Form>(() => toForm(lead))
+  const [form, setForm] = useState<Form>(start)
   const [error, setError] = useState<string | null>(null)
   const o = options.data
   const editable = lead ? can('leads', 'edit') && !lead.anonymizedAt : can('leads', 'create')
@@ -223,12 +216,19 @@ function LeadView({ lead }: { lead: Lead | null }) {
       void qc.invalidateQueries({ queryKey: ['lead', saved.id] })
       void qc.invalidateQueries({ queryKey: ['lead-timeline', saved.id] })
       toast.success(lead ? 'Lead atualizado.' : 'Lead cadastrado.')
-      if (!lead) navigate(`/leads/${saved.id}`, { replace: true })
     },
     onError: (err) => setError(errorMessage(err)),
   })
+  // Sair pelo menu com alterações não salvas pergunta antes. Salvo, libera (e o lead novo vai para a ficha dele).
+  const dirty = editable && !save.isSuccess && isDirty(start, form)
+  useUnsavedChangesPrompt(dirty, 'o lead')
+  const savedId = save.data?.id
+  useEffect(() => {
+    if (!lead && savedId) navigate(`/leads/${savedId}`, { replace: true })
+  }, [lead, savedId, navigate])
 
   const title = lead ? (lead.anonymizedAt ? 'Dados removidos (LGPD)' : (lead.name ?? lead.email ?? formatPhone(lead.phone))) : 'Novo lead'
+  usePageTitle(lead ? title : null)
   const wa = whatsappLink(lead?.phone ?? null)
 
   return (
@@ -749,7 +749,7 @@ function Privacy({ lead }: { lead: Lead }) {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const { can } = useAuth()
-  const [confirm, setConfirm] = useState(false)
+  const confirm = useConfirm()
   const tl = useQuery({ queryKey: ['lead-timeline', lead.id], queryFn: () => api.get<TimelineData>(`/leads/${lead.id}/linha-do-tempo`) })
 
   const consent = useMutation({
@@ -773,11 +773,20 @@ function Privacy({ lead }: { lead: Lead }) {
   })
 
   const download = async () => {
-    const res = await fetch(`/api/leads/${lead.id}/lgpd/exportar`, { credentials: 'same-origin' })
-    if (!res.ok) return toast.error('Falha ao exportar.')
-    const url = URL.createObjectURL(await res.blob())
-    Object.assign(document.createElement('a'), { href: url, download: `dados-titular-${lead.id.slice(0, 8)}.json` }).click()
-    URL.revokeObjectURL(url)
+    try {
+      await api.download(`/leads/${lead.id}/lgpd/exportar`, `dados-titular-${lead.id.slice(0, 8)}.json`)
+    } catch (err) {
+      toast.error(errorMessage(err))
+    }
+  }
+
+  const askAnonymize = async () => {
+    const ok = await confirm({
+      title: 'Apagar os dados pessoais deste lead?',
+      description: 'Nome, e-mail, telefone, campos personalizados e histórico serão apagados, inclusive nos atendimentos vinculados. Esta ação é registrada na auditoria e não pode ser desfeita.',
+      confirmLabel: 'Apagar dados pessoais',
+    })
+    if (ok) anonymize.mutate()
   }
 
   return (
@@ -839,34 +848,12 @@ function Privacy({ lead }: { lead: Lead }) {
             </Button>
           )}
           {can('leads', 'delete') && (
-            <Button variant="destructive" size="sm" onClick={() => setConfirm(true)} disabled={!!lead.anonymizedAt}>
-              <ShieldAlertIcon /> Apagar dados pessoais
+            <Button variant="destructive" size="sm" onClick={() => void askAnonymize()} disabled={!!lead.anonymizedAt || anonymize.isPending}>
+              {anonymize.isPending ? <Loader2Icon className="animate-spin" /> : <ShieldAlertIcon />} Apagar dados pessoais
             </Button>
           )}
         </CardFooter>
       </Card>
-      <AlertDialog open={confirm} onOpenChange={setConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Apagar os dados pessoais deste lead?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Nome, e-mail, telefone, campos personalizados e histórico serão apagados, inclusive nos atendimentos vinculados. Esta ação é registrada na auditoria e não pode ser desfeita.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault()
-                anonymize.mutate()
-              }}
-            >
-              {anonymize.isPending && <Loader2Icon className="animate-spin" />}
-              Apagar definitivamente
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }

@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { type Analysis, type BreakdownRow, dayBr, downloadCsv, type FilterKey, money, num, pct, PRESETS, times, useMktFilters, useMktOptions } from '@/lib/marketing'
 import { cn } from '@/lib/utils'
@@ -361,16 +362,7 @@ export function BreakdownTable({ title, description, rows, columns, onPick, expo
 
 /** Baixa o relatório (PDF ou Excel) com o período e os filtros da tela. */
 export async function downloadReport(query: string, format: 'pdf' | 'xlsx', sections: string[]) {
-  const res = await fetch(`/api/marketing/exportar?${query}&formato=${format}&secoes=${sections.join(',')}`, { credentials: 'include' })
-  if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? 'Não foi possível gerar o arquivo.')
-  const blob = await res.blob()
-  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? `relatorio.${format}`
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  await api.download(`/marketing/exportar?${query}&formato=${format}&secoes=${sections.join(',')}`, `relatorio.${format}`)
 }
 
 export function ExportButtons({ sections }: { sections: string[] }) {
@@ -383,7 +375,7 @@ export function ExportButtons({ sections }: { sections: string[] }) {
     try {
       await downloadReport(f.query, format, sections)
     } catch (err) {
-      toast.error((err as Error).message)
+      toast.error(errorMessage(err))
     } finally {
       setBusy(null)
     }

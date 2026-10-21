@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { ImageIcon, LightbulbIcon, Loader2Icon, MessageSquareReplyIcon, PlusIcon, SearchIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useCloseGuard } from '@/components/confirm'
 import { EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -178,8 +179,8 @@ function SuggestionCard({ s, manager }: { s: Suggestion; manager: boolean }) {
         </div>
         <div className="flex items-center gap-2">
           {!manager && s.unread && <Badge>Novidade</Badge>}
-          <Badge variant="outline" className={STATUS[s.status].className}>
-            {STATUS[s.status].label}
+          <Badge variant="outline" className={(STATUS[s.status] ?? STATUS.NOVA).className}>
+            {(STATUS[s.status] ?? { label: s.status }).label}
           </Badge>
         </div>
       </CardHeader>
@@ -240,6 +241,7 @@ function NewSuggestion({ onClose }: { onClose: () => void }) {
   const [image, setImage] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
   const file = useRef<HTMLInputElement>(null)
+  const guard = useCloseGuard(!!(title.trim() || description.trim() || area || image), onClose, 'a sugestão')
   const save = useMutation({
     mutationFn: () => {
       const form = new FormData()
@@ -258,7 +260,7 @@ function NewSuggestion({ onClose }: { onClose: () => void }) {
     onError: (err) => setError(errorMessage(err)),
   })
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent>
         <form
           className="space-y-4"
@@ -273,7 +275,7 @@ function NewSuggestion({ onClose }: { onClose: () => void }) {
             <DialogDescription>Conte o que mudaria e por quê. Quanto mais concreto, mais fácil de aplicar.</DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
-            <Label htmlFor="sg-title">Título</Label>
+            <Label htmlFor="sg-title" required>Título</Label>
             <Input id="sg-title" required minLength={3} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex.: Filtrar leads pela marca da máquina" autoFocus />
           </div>
           <div className="space-y-1.5">
@@ -293,7 +295,7 @@ function NewSuggestion({ onClose }: { onClose: () => void }) {
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="sg-desc">Descrição</Label>
+            <Label htmlFor="sg-desc" required>Descrição</Label>
             <Textarea id="sg-desc" required minLength={5} maxLength={4000} rows={5} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="O que acontece hoje, o que você gostaria e como isso ajuda no dia a dia." />
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -304,7 +306,7 @@ function NewSuggestion({ onClose }: { onClose: () => void }) {
             {image && (
               <span className="truncate text-xs text-muted-foreground">
                 {image.name}{' '}
-                <button type="button" className="underline" onClick={() => setImage(null)}>
+                <button type="button" className="underline" onClick={() => setImage(null)} aria-label={`Remover imagem ${image.name}`}>
                   remover
                 </button>
               </span>
@@ -313,7 +315,7 @@ function NewSuggestion({ onClose }: { onClose: () => void }) {
           <p className="text-xs text-muted-foreground">Não coloque dados de clientes (CPF, telefone) na sugestão nem no print.</p>
           <FormError message={error} />
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose}>
+            <Button type="button" variant="ghost" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button type="submit" disabled={save.isPending}>

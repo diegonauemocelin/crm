@@ -2,19 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { KeyRoundIcon, Loader2Icon, LockOpenIcon, MailIcon, MonitorSmartphoneIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, PowerIcon, SearchIcon, ShieldOffIcon, UsersIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { type ConfirmOptions, isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
 import { UserAvatar } from '@/components/layout/user-menu'
 import { type Session, SessionsList } from '@/components/sessions-list'
 import { Can, EmptyState, ErrorState, formatDateTime, PageHeader, TableSkeleton } from '@/components/page'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -31,8 +22,6 @@ import { useAuth } from '@/lib/auth'
 import type { UserRow } from '@/lib/types'
 import { FormError } from './auth/auth-layout'
 
-type Confirm = { title: string; description: string; label: string; run: () => Promise<unknown> } | null
-
 export function UsersContent() {
   const qc = useQueryClient()
   const { me, can } = useAuth()
@@ -41,7 +30,7 @@ export function UsersContent() {
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all')
   const [editing, setEditing] = useState<UserRow | 'new' | null>(null)
   const [devicesOf, setDevicesOf] = useState<UserRow | null>(null)
-  const [confirm, setConfirm] = useState<Confirm>(null)
+  const confirm = useConfirm()
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 300)
@@ -54,16 +43,17 @@ export function UsersContent() {
   const users = useQuery({ queryKey: ['users', debounced, status], queryFn: () => api.get<UserRow[]>(`/users?${params}`) })
 
   const action = useMutation({
-    mutationFn: (c: NonNullable<Confirm>) => c.run(),
-    onSuccess: () => {
+    mutationFn: (c: { run: () => Promise<unknown>; success: string }) => c.run(),
+    onSuccess: (_r, c) => {
       void qc.invalidateQueries({ queryKey: ['users'] })
-      setConfirm(null)
+      toast.success(c.success)
     },
     onError: (err) => toast.error(errorMessage(err)),
   })
 
-  const ask = (title: string, description: string, label: string, run: () => Promise<unknown>, success: string) =>
-    setConfirm({ title, description, label, run: async () => (await run(), toast.success(success)) })
+  const ask = async (title: string, description: string, confirmLabel: string, run: () => Promise<unknown>, success: string, destructive: ConfirmOptions['destructive'] = false) => {
+    if (await confirm({ title, description, confirmLabel, destructive })) action.mutate({ run, success })
+  }
 
   return (
     <>
@@ -161,17 +151,17 @@ export function UsersContent() {
                           </DropdownMenuItem>
                           {u.locked && (
                             <DropdownMenuItem
-                              onSelect={() => ask('Desbloquear usuário?', `${u.name} poderá tentar entrar novamente.`, 'Desbloquear', () => api.post(`/users/${u.id}/unlock`), 'Usuário desbloqueado.')}
+                              onSelect={() => void ask(`Desbloquear ${u.name}?`, `${u.name} poderá tentar entrar novamente.`, 'Desbloquear usuário', () => api.post(`/users/${u.id}/unlock`), 'Usuário desbloqueado.')}
                             >
                               <LockOpenIcon /> Desbloquear
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem
                             onSelect={() =>
-                              ask(
-                                'Enviar link de senha?',
+                              void ask(
+                                `Enviar link de senha para ${u.name}?`,
                                 `${u.name} receberá por e-mail um link (válido por 72 h) para criar uma nova senha.`,
-                                'Enviar',
+                                'Enviar link de senha',
                                 () => api.post(`/users/${u.id}/send-password-link`),
                                 'Link enviado.',
                               )
@@ -185,12 +175,13 @@ export function UsersContent() {
                           {u.totpEnabled && (
                             <DropdownMenuItem
                               onSelect={() =>
-                                ask(
-                                  'Zerar o 2FA?',
+                                void ask(
+                                  `Zerar o 2FA de ${u.name}?`,
                                   `Use quando ${u.name} perder o celular. As sessões abertas serão encerradas e o 2FA precisará ser configurado de novo.`,
                                   'Zerar 2FA',
                                   () => api.post(`/users/${u.id}/reset-2fa`),
                                   '2FA zerado.',
+                                  true,
                                 )
                               }
                             >
@@ -203,14 +194,15 @@ export function UsersContent() {
                               <DropdownMenuItem
                                 variant={u.active ? 'destructive' : 'default'}
                                 onSelect={() =>
-                                  ask(
-                                    u.active ? 'Desativar usuário?' : 'Reativar usuário?',
+                                  void ask(
+                                    u.active ? `Desativar ${u.name}?` : `Reativar ${u.name}?`,
                                     u.active
                                       ? `${u.name} perde o acesso imediatamente e as sessões abertas são encerradas. O histórico é mantido.`
                                       : `${u.name} volta a ter acesso com o perfil ${u.role.name}.`,
-                                    u.active ? 'Desativar' : 'Reativar',
+                                    u.active ? 'Desativar usuário' : 'Reativar usuário',
                                     () => api.patch(`/users/${u.id}`, { active: !u.active }),
                                     u.active ? 'Usuário desativado.' : 'Usuário reativado.',
+                                    u.active,
                                   )
                                 }
                               >
@@ -231,27 +223,6 @@ export function UsersContent() {
 
       {editing && <UserDialog user={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
 
-      <AlertDialog open={!!confirm} onOpenChange={(o) => !o && setConfirm(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirm?.title}</AlertDialogTitle>
-            <AlertDialogDescription>{confirm?.description}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={action.isPending}
-              onClick={(e) => {
-                e.preventDefault()
-                if (confirm) action.mutate(confirm)
-              }}
-            >
-              {action.isPending && <Loader2Icon className="animate-spin" />}
-              {confirm?.label}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       {devicesOf && <DevicesDialog user={devicesOf} onClose={() => setDevicesOf(null)} />}
     </>
   )
@@ -260,6 +231,7 @@ export function UsersContent() {
 /** Aparelhos em que o usuário está conectado; o administrador pode desconectá-lo de todos (ex.: celular perdido). */
 function DevicesDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
   const { can } = useAuth()
+  const confirm = useConfirm()
   const q = useQuery({ queryKey: ['user-sessoes', user.id], queryFn: () => api.get<Session[]>(`/users/${user.id}/sessoes`) })
   const revoke = useMutation({
     mutationFn: () => api.post<{ sessions: number }>(`/users/${user.id}/encerrar-sessoes`),
@@ -282,7 +254,20 @@ function DevicesDialog({ user, onClose }: { user: UserRow; onClose: () => void }
             Fechar
           </Button>
           {can('usuarios', 'edit') && !!q.data?.length && (
-            <Button variant="destructive" onClick={() => revoke.mutate()} disabled={revoke.isPending}>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                if (
+                  await confirm({
+                    title: `Desconectar ${user.name} de todos os aparelhos?`,
+                    description: 'A conta sai de todos os aparelhos na hora. Para voltar, será preciso entrar de novo com senha e 2FA.',
+                    confirmLabel: 'Desconectar de todos',
+                  })
+                )
+                  revoke.mutate()
+              }}
+              disabled={revoke.isPending}
+            >
               {revoke.isPending && <Loader2Icon className="animate-spin" />}
               Desconectar de todos
             </Button>
@@ -305,6 +290,8 @@ function UserDialog({ user, onClose }: { user: UserRow | null; onClose: () => vo
   const [sendInvite, setSendInvite] = useState(true)
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [initial] = useState(() => ({ name, email, roleId, unitId, sendInvite, password }))
+  const guard = useCloseGuard(isDirty(initial, { name, email, roleId, unitId, sendInvite, password }), onClose, 'os dados do usuário')
 
   const save = useMutation({
     mutationFn: () =>
@@ -328,7 +315,7 @@ function UserDialog({ user, onClose }: { user: UserRow | null; onClose: () => vo
   const isSelf = user?.id === me?.id
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="sm:max-w-md">
         <form onSubmit={submit} className="space-y-4">
           <DialogHeader>
@@ -338,15 +325,15 @@ function UserDialog({ user, onClose }: { user: UserRow | null; onClose: () => vo
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="u-name">Nome</Label>
+            <Label htmlFor="u-name" required>Nome</Label>
             <Input id="u-name" required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="u-email">E-mail</Label>
+            <Label htmlFor="u-email" required>E-mail</Label>
             <Input id="u-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="u-role">Perfil de acesso</Label>
+            <Label htmlFor="u-role" required>Perfil de acesso</Label>
             <Select value={roleId} onValueChange={setRoleId} disabled={isSelf}>
               <SelectTrigger id="u-role" className="w-full">
                 <SelectValue placeholder={roles.isLoading ? 'Carregando…' : 'Selecione'} />
@@ -389,7 +376,7 @@ function UserDialog({ user, onClose }: { user: UserRow | null; onClose: () => vo
               </label>
               {!sendInvite && (
                 <div className="space-y-2">
-                  <Label htmlFor="u-pass">Senha provisória</Label>
+                  <Label htmlFor="u-pass" required>Senha provisória</Label>
                   <Input id="u-pass" type="text" autoComplete="off" required minLength={12} value={password} onChange={(e) => setPassword(e.target.value)} />
                   <p className="flex items-center gap-1 text-xs text-muted-foreground">
                     <KeyRoundIcon className="size-3" /> Mínimo de 12 caracteres. A troca é obrigatória no primeiro acesso.
@@ -400,7 +387,7 @@ function UserDialog({ user, onClose }: { user: UserRow | null; onClose: () => vo
           )}
           <FormError message={error} />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button type="submit" disabled={save.isPending || !name || !email || !roleId}>

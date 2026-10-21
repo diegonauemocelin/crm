@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangleIcon, CopyIcon, KeyRoundIcon, Loader2Icon, RefreshCwIcon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { toast } from 'sonner'
+import { useConfirm } from '@/components/confirm'
 import { ErrorState, formatDateTime, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -54,6 +55,7 @@ export function TcarTab() {
 
 function TcarEditor({ initial }: { initial: TcarConfig }) {
   const { can } = useAuth()
+  const confirm = useConfirm()
   const canEdit = can('configuracoes', 'edit')
   const qc = useQueryClient()
   const [enabled, setEnabled] = useState(initial.enabled)
@@ -131,7 +133,23 @@ APIKey=${key ?? '<chave gerada no CRM>'}`
               ) : (
                 <p className="text-xs text-muted-foreground">{initial.hasKey ? 'Chave já gerada (guardada só como resumo). Gerar outra invalida a anterior.' : 'Gere a chave e coloque no arquivo de configuração da Tcar.'}</p>
               )}
-              <Button type="button" size="sm" variant={initial.hasKey ? 'outline' : 'default'} onClick={() => newKey.mutate()} disabled={newKey.isPending}>
+              <Button
+                type="button"
+                size="sm"
+                variant={initial.hasKey ? 'outline' : 'default'}
+                onClick={async () => {
+                  if (
+                    !initial.hasKey ||
+                    (await confirm({
+                      title: 'Gerar nova chave da Tcar?',
+                      description: 'A chave atual para de funcionar na hora e a integração com a Tcar fica parada até a nova chave ser colocada no arquivo tcarwebserver.ini do servidor da Tcar (APIKey).',
+                      confirmLabel: 'Gerar nova chave',
+                    }))
+                  )
+                    newKey.mutate()
+                }}
+                disabled={newKey.isPending}
+              >
                 {newKey.isPending && <Loader2Icon className="animate-spin" />} {initial.hasKey ? 'Gerar nova chave' : 'Gerar chave'}
               </Button>
             </div>
@@ -140,7 +158,7 @@ APIKey=${key ?? '<chave gerada no CRM>'}`
               <p className="text-xs text-muted-foreground">
                 No arquivo <code>config/tcarwebserver.ini</code>, preencher a seção <code>[ServerIdentity]</code> (CompanyID, BranchID, APIKey, Version, ActionUserName e ActionPassword de um usuário Tcar só de consulta) e incluir:
               </p>
-              <pre className="overflow-x-auto rounded bg-muted p-2 text-[11px] leading-relaxed">{ini}</pre>
+              <pre className="overflow-x-auto rounded bg-muted p-2 text-xs leading-relaxed">{ini}</pre>
               <Button type="button" size="sm" variant="outline" onClick={() => copy(ini, 'Trecho')}>
                 <CopyIcon /> Copiar trecho
               </Button>

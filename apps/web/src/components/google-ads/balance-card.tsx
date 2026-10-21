@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangleIcon, BellIcon, PlusIcon, Trash2Icon, WalletIcon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { toast } from 'sonner'
+import { isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
 import { formatDateTime } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -131,11 +132,12 @@ function Item({ k, v }: { k: string; v: string }) {
 
 function DepositRow({ d, editable }: { d: Balance['deposits'][number]; editable: boolean }) {
   const qc = useQueryClient()
+  const confirm = useConfirm()
   const del = useMutation({
     mutationFn: () => api.delete(`/integracoes/google-ads/saldo/recargas/${d.id}`),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['google-ads-painel'] })
-      toast.success('Recarga removida.')
+      toast.success('Recarga excluída.')
     },
     onError: (err) => toast.error(errorMessage(err)),
   })
@@ -148,7 +150,23 @@ function DepositRow({ d, editable }: { d: Balance['deposits'][number]; editable:
         {d.note ? ` · ${d.note}` : ''}
       </span>
       {editable && (
-        <Button size="icon" variant="ghost" className="size-7" disabled={del.isPending} onClick={() => del.mutate()} aria-label={`Remover recarga de ${brl.format(d.amount)}`}>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-7"
+          disabled={del.isPending}
+          onClick={async () => {
+            if (
+              await confirm({
+                title: `Excluir a recarga de ${brl.format(d.amount)}?`,
+                description: 'O valor deixa de ser somado ao saldo estimado. Se a recarga aconteceu de fato, será preciso registrá-la de novo.',
+                confirmLabel: 'Excluir recarga',
+              })
+            )
+              del.mutate()
+          }}
+          aria-label={`Excluir recarga de ${brl.format(d.amount)}`}
+        >
           <Trash2Icon />
         </Button>
       )}
@@ -163,6 +181,8 @@ function BalanceDialog({ mode, balance, onClose }: { mode: Exclude<Mode, null>; 
   const [days, setDays] = useState(String(balance.alertDays))
   const [emails, setEmails] = useState(balance.alertEmails.join(', '))
   const [error, setError] = useState<string | null>(null)
+  const [initial] = useState(() => ({ amount: '', note: '', days: String(balance.alertDays), emails: balance.alertEmails.join(', ') }))
+  const guard = useCloseGuard(isDirty(initial, { amount, note, days, emails }), onClose)
   const save = useMutation({
     mutationFn: () => {
       if (mode === 'aviso') return api.put('/integracoes/google-ads/saldo/aviso', { days: Number(days), emails: emails.split(/[,;\s]+/).filter(Boolean) })
@@ -179,7 +199,7 @@ function BalanceDialog({ mode, balance, onClose }: { mode: Exclude<Mode, null>; 
   })
   const title = mode === 'saldo' ? 'Informar saldo atual' : mode === 'recarga' ? 'Registrar recarga' : 'Aviso de saldo baixo'
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent>
         <form
           onSubmit={(ev: FormEvent) => {
@@ -200,7 +220,7 @@ function BalanceDialog({ mode, balance, onClose }: { mode: Exclude<Mode, null>; 
           {mode !== 'aviso' ? (
             <>
               <div className="space-y-1.5">
-                <Label htmlFor="bal-amount">Valor (R$)</Label>
+                <Label htmlFor="bal-amount" required>Valor (R$)</Label>
                 <Input id="bal-amount" inputMode="decimal" placeholder="1.500,00" autoFocus required value={amount} onChange={(e) => setAmount(e.target.value)} />
               </div>
               {mode === 'recarga' && (
@@ -213,7 +233,7 @@ function BalanceDialog({ mode, balance, onClose }: { mode: Exclude<Mode, null>; 
           ) : (
             <>
               <div className="space-y-1.5">
-                <Label htmlFor="bal-days">Avisar quando durar menos de (dias)</Label>
+                <Label htmlFor="bal-days" required>Avisar quando durar menos de (dias)</Label>
                 <Input id="bal-days" type="number" min={1} max={60} required value={days} onChange={(e) => setDays(e.target.value)} className="w-28" />
               </div>
               <div className="space-y-1.5">
@@ -224,7 +244,7 @@ function BalanceDialog({ mode, balance, onClose }: { mode: Exclude<Mode, null>; 
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button type="submit" disabled={save.isPending}>

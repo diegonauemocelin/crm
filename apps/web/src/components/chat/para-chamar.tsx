@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api } from '@/lib/api'
 import { formatPhone } from '@/lib/atendimento'
+import { todaySP } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { StartDialog } from '@/pages/chat-page'
 
@@ -34,7 +35,7 @@ interface ToCallData {
 }
 
 /** Data de hoje (ou de N dias atrás) em Brasília, AAAA-MM-DD. */
-const spDay = (back = 0) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(Date.now() - back * 86_400_000))
+const spDay = (back = 0) => todaySP(-back)
 
 const VIA_STYLE: Record<ToCallItem['via']['kind'], { icon: typeof FileTextIcon; tone: string }> = {
   formulario: { icon: FileTextIcon, tone: 'bg-sky-100 text-sky-800 dark:bg-sky-500/20 dark:text-sky-300' },

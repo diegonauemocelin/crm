@@ -233,6 +233,17 @@ function useLiveStock(d: SearchData | undefined) {
 function ProductRow({ p, usedIn, updating }: { p: Product; usedIn: boolean; updating: boolean }) {
   const qc = useQueryClient()
   const [busy, setBusy] = useState(false)
+  // Segundos de espera da consulta manual (a Tcar pode levar até 1 minuto): mostrados ao lado do estoque.
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (!busy) return
+    const t0 = Date.now()
+    const timer = setInterval(() => setElapsed(Math.round((Date.now() - t0) / 1000)), 1000)
+    return () => {
+      clearInterval(timer)
+      setElapsed(0)
+    }
+  }, [busy])
   // "Atualizar": a Tcar responde no próximo contato (alguns segundos); acompanha até 1 minuto.
   const refresh = async () => {
     setBusy(true)
@@ -277,7 +288,7 @@ function ProductRow({ p, usedIn, updating }: { p: Product; usedIn: boolean; upda
           {p.refs.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {p.refs.map((r) => (
-                <Badge key={r} variant="secondary" className="font-mono text-[11px] font-normal">
+                <Badge key={r} variant="secondary" className="font-mono text-xs font-normal">
                   {r}
                 </Badge>
               ))}
@@ -309,8 +320,12 @@ function ProductRow({ p, usedIn, updating }: { p: Product; usedIn: boolean; upda
             {qty(p.stock)} {p.unit ?? ''}
           </span>
         )}
-        <p className="text-[11px] text-muted-foreground">
-          {updating ? (
+        <p className="text-xs text-muted-foreground" aria-live="polite">
+          {busy ? (
+            <span className="inline-flex items-center gap-1 whitespace-normal">
+              <Loader2Icon className="size-3 animate-spin" /> Consultando a Tcar… {elapsed}s · pode levar até 1 minuto
+            </span>
+          ) : updating ? (
             <span className="inline-flex items-center gap-1">
               <Loader2Icon className="size-3 animate-spin" /> atualizando…
             </span>

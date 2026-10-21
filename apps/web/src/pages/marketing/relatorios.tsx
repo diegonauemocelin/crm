@@ -3,8 +3,8 @@ import { CalendarClockIcon, EyeIcon, Loader2Icon, MailIcon, PencilIcon, PlusIcon
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
-import { EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
+import { EmptyState, ErrorState, formatDateTime, InlineError, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -82,7 +82,7 @@ function Relatorios() {
   const qc = useQueryClient()
   const q = useQuery({ queryKey: ['mkt-relatorios'], queryFn: () => api.get<ReportsView>('/marketing/relatorios') })
   const [editing, setEditing] = useState<Partial<Schedule> | null>(null)
-  const [removing, setRemoving] = useState<Schedule | null>(null)
+  const confirm = useConfirm()
   const refresh = () => qc.invalidateQueries({ queryKey: ['mkt-relatorios'] })
   const send = useMutation({
     mutationFn: (id: string) => api.post<{ message: string }>(`/marketing/relatorios/${id}/enviar`),
@@ -91,7 +91,7 @@ function Relatorios() {
   })
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/marketing/relatorios/${id}`),
-    onSuccess: () => (toast.success('Relatório removido.'), setRemoving(null), refresh()),
+    onSuccess: () => (toast.success('Relatório excluído.'), refresh()),
     onError: (err) => toast.error(errorMessage(err)),
   })
   const toggle = useMutation({
@@ -166,16 +166,23 @@ function Relatorios() {
                       <TableCell className="pr-6 text-right whitespace-nowrap">
                         {can('mi_relatorios', 'edit') && (
                           <>
-                            <Button size="sm" variant="ghost" onClick={() => send.mutate(s.id)} disabled={send.isPending || !d.smtpReady} title="Enviar agora">
+                            <Button size="icon-sm" variant="ghost" onClick={() => send.mutate(s.id)} disabled={send.isPending || !d.smtpReady} aria-label={`Enviar agora o relatório ${s.name}`}>
                               {send.isPending && send.variables === s.id ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
                             </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setEditing(s)} title="Editar">
+                            <Button size="icon-sm" variant="ghost" onClick={() => setEditing(s)} aria-label={`Editar relatório ${s.name}`}>
                               <PencilIcon />
                             </Button>
                           </>
                         )}
                         {can('mi_relatorios', 'delete') && (
-                          <Button size="sm" variant="ghost" onClick={() => setRemoving(s)} title="Remover">
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            aria-label={`Excluir relatório ${s.name}`}
+                            onClick={async () => {
+                              if (await confirm({ title: `Excluir o relatório “${s.name}”?`, description: 'O relatório para de ser enviado e não pode ser recuperado. Os envios já feitos continuam no histórico.', confirmLabel: 'Excluir relatório' })) remove.mutate(s.id)
+                            }}
+                          >
                             <Trash2Icon />
                           </Button>
                         )}
@@ -203,18 +210,6 @@ function Relatorios() {
         )}
       </div>
       {editing && d && <ScheduleDialog initial={editing} view={d} onClose={() => setEditing(null)} onSaved={() => (setEditing(null), refresh())} />}
-      <AlertDialog open={!!removing} onOpenChange={(o) => !o && setRemoving(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remover “{removing?.name}”?</AlertDialogTitle>
-            <AlertDialogDescription>O relatório para de ser enviado. Os envios já feitos continuam no histórico.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => removing && remove.mutate(removing.id)}>Remover</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }
@@ -236,18 +231,28 @@ function ScheduleDialog({ initial, view, onClose, onSaved }: { initial: Partial<
     onError: (err) => toast.error(errorMessage(err), { duration: 8000 }),
   })
   const set = (patch: Partial<Schedule>) => setS((x) => ({ ...x, ...patch }))
+  const guard = useCloseGuard(isDirty(initial, s) || emails !== (initial.emails ?? []).join('\n'), onClose, 'o relatório')
   const toggleSection = (k: string, on: boolean) => set({ sections: on ? [...(s.sections ?? []), k] : (s.sections ?? []).filter((x) => x !== k) })
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{s.id ? 'Editar relatório' : 'Novo relatório'}</DialogTitle>
           <DialogDescription>O e-mail sai no horário de Brasília, com o período escolhido e só as informações marcadas.</DialogDescription>
         </DialogHeader>
+        <form
+          className="grid gap-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            save.mutate()
+          }}
+        >
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="rep-name">Nome</Label>
-            <Input id="rep-name" maxLength={80} placeholder="Ex.: Resumo semanal da diretoria" value={s.name ?? ''} onChange={(e) => set({ name: e.target.value })} />
+            <Label htmlFor="rep-name" required>
+              Nome
+            </Label>
+            <Input id="rep-name" autoFocus maxLength={80} placeholder="Ex.: Resumo semanal da diretoria" value={s.name ?? ''} onChange={(e) => set({ name: e.target.value })} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="rep-emails">
@@ -419,13 +424,17 @@ function ScheduleDialog({ initial, view, onClose, onSaved }: { initial: Partial<
           )}
         </div>
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => prev.mutate()} disabled={prev.isPending}>
+          <Button type="button" variant="ghost" onClick={() => void guard()}>
+            Cancelar
+          </Button>
+          <Button type="button" variant="outline" onClick={() => prev.mutate()} disabled={prev.isPending}>
             {prev.isPending ? <Loader2Icon className="animate-spin" /> : <EyeIcon />} Prévia
           </Button>
-          <Button onClick={() => save.mutate()} disabled={save.isPending}>
+          <Button type="submit" disabled={save.isPending}>
             {save.isPending && <Loader2Icon className="animate-spin" />} Salvar
           </Button>
         </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )
@@ -458,6 +467,7 @@ function Baixar() {
         <MktFilters />
         <fieldset className="grid gap-2 sm:grid-cols-2">
           <legend className="mb-1 text-sm font-medium">O que vai no arquivo</legend>
+          {q.error && <InlineError error={q.error} onRetry={() => q.refetch()} />}
           {(q.data?.sections ?? []).map((x) => (
             <label key={x.key} className="flex items-start gap-2 text-sm">
               <Checkbox checked={sections.includes(x.key)} onCheckedChange={(v) => setSections((cur) => (v ? [...cur, x.key] : cur.filter((k) => k !== x.key)))} className="mt-0.5" />
@@ -473,6 +483,7 @@ function Baixar() {
             {busy === 'xlsx' && <Loader2Icon className="animate-spin" />} Baixar Excel
           </Button>
         </div>
+        {!sections.length && <p className="text-xs text-muted-foreground">Marque ao menos uma informação para baixar o arquivo.</p>}
         <p className="text-xs text-muted-foreground">Usa o período e os filtros escolhidos acima. O arquivo traz o período, a data da atualização, as fontes e o modelo de atribuição.</p>
       </CardContent>
     </Card>
@@ -501,6 +512,7 @@ function Alertas() {
   const qc = useQueryClient()
   const q = useQuery({ queryKey: ['mkt-alertas'], queryFn: () => api.get<AlertsView>('/marketing/alertas') })
   const [edit, setEdit] = useState<Partial<AlertRule> | null>(null)
+  const confirm = useConfirm()
   const [results, setResults] = useState<Record<string, { fired: boolean; message: string; limitation: string | null }> | null>(null)
   const refresh = () => qc.invalidateQueries({ queryKey: ['mkt-alertas'] })
   const test = useMutation({
@@ -510,7 +522,7 @@ function Alertas() {
   })
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/marketing/alertas/${id}`),
-    onSuccess: () => (toast.success('Alerta removido.'), refresh()),
+    onSuccess: () => (toast.success('Alerta excluído.'), refresh()),
     onError: (err) => toast.error(errorMessage(err)),
   })
   const toggle = useMutation({
@@ -535,6 +547,7 @@ function Alertas() {
         )}
       </div>
       {q.isLoading && <TableSkeleton rows={3} />}
+      {q.error && <ErrorState error={q.error} onRetry={() => q.refetch()} />}
       {d && d.rules.length === 0 && <EmptyState title="Nenhum alerta" description="Crie alertas para gasto perto do limite, campanha sem leads, alta do CPL, queda de leads ou faturamento, leads sem atendimento, metas atrasadas, perda de UTM e dados desatualizados." />}
       {d && d.rules.length > 0 && (
         <Card>
@@ -566,16 +579,24 @@ function Alertas() {
                     </TableCell>
                     <TableCell>{r.lastFiredAt ? formatDateTime(r.lastFiredAt) : '—'}</TableCell>
                     <TableCell>
-                      <Switch checked={r.active} onCheckedChange={() => toggle.mutate(r)} disabled={!can('mi_relatorios', 'edit')} aria-label="Ligar alerta" />
+                      <Switch checked={r.active} onCheckedChange={() => toggle.mutate(r)} disabled={!can('mi_relatorios', 'edit')} aria-label={`Ligar alerta ${label(r.type)?.label ?? ''}`.trim()} />
                     </TableCell>
                     <TableCell className="pr-6 text-right whitespace-nowrap">
                       {can('mi_relatorios', 'edit') && (
-                        <Button size="icon" variant="ghost" className="size-8" onClick={() => setEdit(r)} title="Editar">
+                        <Button size="icon" variant="ghost" className="size-8" onClick={() => setEdit(r)} aria-label={`Editar alerta ${label(r.type)?.label ?? ''}`.trim()}>
                           <PencilIcon />
                         </Button>
                       )}
                       {can('mi_relatorios', 'delete') && (
-                        <Button size="icon" variant="ghost" className="size-8" onClick={() => remove.mutate(r.id)} title="Remover">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-8"
+                          aria-label={`Excluir alerta ${label(r.type)?.label ?? ''}`.trim()}
+                          onClick={async () => {
+                            if (await confirm({ title: `Excluir o alerta “${label(r.type)?.label ?? 'sem nome'}”?`, description: 'O alerta deixa de ser conferido e ninguém mais recebe este aviso. Os avisos já disparados continuam no histórico.', confirmLabel: 'Excluir alerta' })) remove.mutate(r.id)
+                          }}
+                        >
                           <Trash2Icon />
                         </Button>
                       )}
@@ -612,6 +633,7 @@ function AlertDialogForm({ initial, types, onClose, onSaved }: { initial: Partia
   const [r, setR] = useState(initial)
   const [emails, setEmails] = useState((initial.emails ?? []).join('\n'))
   const type = types.find((t) => t.key === r.type)
+  const guard = useCloseGuard(isDirty(initial, r) || emails !== (initial.emails ?? []).join('\n'), onClose, 'o alerta')
   const save = useMutation({
     mutationFn: () => {
       const body = { ...r, emails: emails.split(/[\s,;]+/).filter(Boolean) }
@@ -621,12 +643,19 @@ function AlertDialogForm({ initial, types, onClose, onSaved }: { initial: Partia
     onError: (err) => toast.error(errorMessage(err), { duration: 8000 }),
   })
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{r.id ? 'Editar alerta' : 'Novo alerta'}</DialogTitle>
           <DialogDescription>Avisa por e-mail quando a condição acontecer no período avaliado (comparado com o anterior do mesmo tamanho).</DialogDescription>
         </DialogHeader>
+        <form
+          className="grid gap-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            save.mutate()
+          }}
+        >
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label>Tipo</Label>
@@ -645,8 +674,10 @@ function AlertDialogForm({ initial, types, onClose, onSaved }: { initial: Partia
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="al-th">Limite ({type?.unit})</Label>
-              <Input id="al-th" type="number" min={0} value={r.threshold ?? ''} onChange={(e) => setR({ ...r, threshold: Number(e.target.value) })} />
+              <Label htmlFor="al-th" required>
+                Limite ({type?.unit})
+              </Label>
+              <Input id="al-th" autoFocus type="number" min={0} value={r.threshold ?? ''} onChange={(e) => setR({ ...r, threshold: Number(e.target.value) })} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="al-win">Período avaliado (dias)</Label>
@@ -660,10 +691,14 @@ function AlertDialogForm({ initial, types, onClose, onSaved }: { initial: Partia
           </div>
         </div>
         <DialogFooter>
-          <Button onClick={() => save.mutate()} disabled={save.isPending}>
+          <Button type="button" variant="ghost" onClick={() => void guard()}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={save.isPending}>
             {save.isPending && <Loader2Icon className="animate-spin" />} Salvar
           </Button>
         </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )

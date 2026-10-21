@@ -9,6 +9,7 @@ import { json, raw, text } from 'express'
 import helmet from 'helmet'
 import { Logger } from 'nestjs-pino'
 import { AppModule } from './app.module'
+import { validationExceptionFactory } from './common/validacao'
 import { env } from './config/env'
 
 async function bootstrap() {
@@ -44,6 +45,8 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
       transform: true,
       stopAtFirstError: true,
+      // Mensagens em português, dizendo o campo e o que corrigir.
+      exceptionFactory: validationExceptionFactory,
     }),
   )
   app.enableShutdownHooks()

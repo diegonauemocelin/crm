@@ -40,7 +40,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain groups={visibleNavigation(can)} />
+        <NavMain groups={visibleNavigation(can, !!me?.role.isSystem)} />
       </SidebarContent>
       <SidebarFooter>
         <NavUser />

@@ -1,10 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDownIcon, ArrowLeftIcon, ArrowUpIcon, CopyIcon, LayoutTemplateIcon, Loader2Icon, MonitorIcon, PlusIcon, RotateCcwIcon, SaveIcon, SmartphoneIcon, Trash2Icon, UploadIcon } from 'lucide-react'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useBlocker, useParams } from 'react-router'
+import { Link, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { useConfirm, useUnsavedChangesPrompt } from '@/components/confirm'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
+import { usePageTitle } from '@/lib/page-title'
 import {
   type Align,
   type Block,
@@ -71,9 +72,10 @@ function Editor({ data, param }: { data: EditorData; param: string }) {
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop')
   const [busy, setBusy] = useState<'save' | 'reset' | null>(null)
   const [templatesOpen, setTemplatesOpen] = useState(false)
-  const [resetOpen, setResetOpen] = useState(false)
   const dirty = JSON.stringify(design) !== saved
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty && currentLocation.pathname !== nextLocation.pathname)
+  const confirm = useConfirm()
+  useUnsavedChangesPrompt(dirty, 'o layout')
+  usePageTitle(data.name)
 
   const setBox = (patch: Partial<Box>) => setDesign((d) => ({ ...d, box: { ...d.box, ...patch } }))
   const setMobile = (patch: Partial<Mobile>) => setDesign((d) => ({ ...d, mobile: { ...d.mobile, ...patch } }))
@@ -142,9 +144,24 @@ function Editor({ data, param }: { data: EditorData; param: string }) {
       toast.error(errorMessage(err))
     } finally {
       setBusy(null)
-      setResetOpen(false)
     }
   }
+
+  // Ctrl+S (Cmd+S no Mac) salva o layout sem sair do teclado.
+  const saveRef = useRef(save)
+  useEffect(() => {
+    saveRef.current = save
+  })
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        if (canEdit && dirty && busy === null) void saveRef.current()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [canEdit, dirty, busy])
 
   const onPreviewSelect = useCallback((id: string) => {
     setSelected(id)
@@ -177,11 +194,17 @@ function Editor({ data, param }: { data: EditorData; param: string }) {
                   <LayoutTemplateIcon /> Modelos prontos
                 </Button>
                 {data.design && (
-                  <Button variant="outline" onClick={() => setResetOpen(true)}>
+                  <Button
+                    variant="outline"
+                    disabled={busy !== null}
+                    onClick={async () => {
+                      if (await confirm({ title: 'Voltar ao layout simples?', description: `O site volta a mostrar o ${data.kind === 'popup' ? 'pop-up' : 'formulário'} no modelo simples. O layout do editor é descartado.`, confirmLabel: 'Voltar ao layout simples' })) void resetToSimple()
+                    }}
+                  >
                     <RotateCcwIcon /> Voltar ao simples
                   </Button>
                 )}
-                <Button onClick={() => void save()} disabled={busy !== null || !dirty}>
+                <Button onClick={() => void save()} disabled={busy !== null || !dirty} title={dirty ? 'Salvar (Ctrl+S)' : 'Nada para salvar: o layout já está salvo.'}>
                   {busy === 'save' ? <Loader2Icon className="animate-spin" /> : <SaveIcon />}
                   {dirty ? 'Salvar' : 'Salvo'}
                 </Button>
@@ -268,34 +291,6 @@ function Editor({ data, param }: { data: EditorData; param: string }) {
           setTab('blocos')
         }}
       />
-
-      <AlertDialog open={resetOpen} onOpenChange={setResetOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Voltar ao layout simples?</AlertDialogTitle>
-            <AlertDialogDescription>O site volta a mostrar o {data.kind === 'popup' ? 'pop-up' : 'formulário'} no modelo simples. O layout do editor é descartado.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void resetToSimple()} disabled={busy !== null}>
-              Voltar ao simples
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={blocker.state === 'blocked'}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Sair sem salvar?</AlertDialogTitle>
-            <AlertDialogDescription>As mudanças no layout ainda não foram salvas.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => blocker.reset?.()}>Continuar editando</AlertDialogCancel>
-            <AlertDialogAction onClick={() => blocker.proceed?.()}>Sair sem salvar</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   )
 }
@@ -424,18 +419,18 @@ function BlockList({
               </button>
               {!disabled && (
                 <span className="flex shrink-0">
-                  <Button variant="ghost" size="icon" className="size-7" disabled={i === 0} onClick={() => onMove(b.id, -1)} aria-label="Subir">
+                  <Button variant="ghost" size="icon" className="size-7" disabled={i === 0} onClick={() => onMove(b.id, -1)} aria-label="Subir bloco">
                     <ArrowUpIcon />
                   </Button>
-                  <Button variant="ghost" size="icon" className="size-7" disabled={i === design.blocks.length - 1} onClick={() => onMove(b.id, 1)} aria-label="Descer">
+                  <Button variant="ghost" size="icon" className="size-7" disabled={i === design.blocks.length - 1} onClick={() => onMove(b.id, 1)} aria-label="Descer bloco">
                     <ArrowDownIcon />
                   </Button>
                   {b.type !== 'formulario' && (
                     <>
-                      <Button variant="ghost" size="icon" className="size-7" onClick={() => onDuplicate(b.id)} aria-label="Duplicar">
+                      <Button variant="ghost" size="icon" className="size-7" onClick={() => onDuplicate(b.id)} aria-label="Duplicar bloco">
                         <CopyIcon />
                       </Button>
-                      <Button variant="ghost" size="icon" className="size-7" onClick={() => onRemove(b.id)} aria-label="Remover">
+                      <Button variant="ghost" size="icon" className="size-7" onClick={() => onRemove(b.id)} aria-label="Remover bloco">
                         <Trash2Icon />
                       </Button>
                     </>

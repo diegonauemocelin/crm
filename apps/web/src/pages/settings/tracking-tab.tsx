@@ -180,7 +180,9 @@ function TrackingEditor({ initial }: { initial: TrackingConfig }) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void rotate()}>Trocar chave</AlertDialogAction>
+            <AlertDialogAction variant="destructive" onClick={() => void rotate()}>
+              Trocar chave do site
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

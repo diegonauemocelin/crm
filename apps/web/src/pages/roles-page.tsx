@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2Icon, LockIcon, PencilIcon, PlusIcon, ShieldCheckIcon, Trash2Icon } from 'lucide-react'
 import { type FormEvent, Fragment, useState } from 'react'
 import { toast } from 'sonner'
+import { isDirty, useCloseGuard } from '@/components/confirm'
 import { Can, EmptyState, ErrorState, PageHeader, TableSkeleton } from '@/components/page'
 import {
   AlertDialog,
@@ -147,13 +148,15 @@ export function RolesContent() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
+              disabled={remove.isPending}
               onClick={(e) => {
                 e.preventDefault()
                 if (removing) remove.mutate(removing.id)
               }}
             >
               {remove.isPending && <Loader2Icon className="animate-spin" />}
-              Excluir
+              Excluir perfil
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -172,6 +175,8 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
     Object.fromEntries(modules.map((m) => [m.key, { ...EMPTY, ...role?.permissions.find((p) => p.module === m.key) }])),
   )
   const [error, setError] = useState<string | null>(null)
+  const [initial] = useState(() => ({ name, description, require2fa, active, perms }))
+  const guard = useCloseGuard(isDirty(initial, { name, description, require2fa, active, perms }), onClose, 'o perfil')
 
   const toggle = (module: string, action: ActionKey, value: boolean) =>
     setPerms((prev) => {
@@ -210,7 +215,7 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
   const groups = [...new Set(modules.map((m) => m.group))]
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="max-h-[92svh] overflow-y-auto sm:max-w-4xl">
         <form
           onSubmit={(e: FormEvent) => {
@@ -227,7 +232,7 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="r-name">Nome</Label>
+              <Label htmlFor="r-name" required>Nome</Label>
               <Input id="r-name" required maxLength={60} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
             </div>
             <div className="space-y-3 sm:pt-6">
@@ -264,7 +269,7 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
                 {groups.map((group) => (
                   <Fragment key={group}>
                     <TableRow className="bg-muted/50 hover:bg-muted/50">
-                      <TableCell colSpan={ACTIONS.length + 3} className="py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <TableCell colSpan={ACTIONS.length + 3} className="py-1.5 text-xs font-semibold tracking-wide uppercase text-muted-foreground">
                         {group}
                       </TableCell>
                     </TableRow>
@@ -321,8 +326,9 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
           </div>
 
           <FormError message={error} />
+          {name.trim().length < 2 && <p className="text-right text-xs text-muted-foreground">Informe o nome do perfil (mínimo 2 caracteres).</p>}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button type="submit" disabled={save.isPending || name.trim().length < 2}>

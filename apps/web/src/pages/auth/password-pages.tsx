@@ -42,7 +42,7 @@ export function ForgotPasswordPage() {
       ) : (
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">E-mail</Label>
+            <Label htmlFor="email" required>E-mail</Label>
             <Input id="email" type="email" autoComplete="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <FormError message={error} />
@@ -121,11 +121,11 @@ export function ResetPasswordPage() {
       ) : (
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="password">Nova senha</Label>
+            <Label htmlFor="password" required>Nova senha</Label>
             <Input id="password" type="password" autoComplete="new-password" required autoFocus value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="confirm">Confirme a nova senha</Label>
+            <Label htmlFor="confirm" required>Confirme a nova senha</Label>
             <Input id="confirm" type="password" autoComplete="new-password" required value={confirm} onChange={(e) => setConfirm(e.target.value)} />
           </div>
           <PasswordRules />

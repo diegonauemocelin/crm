@@ -268,7 +268,7 @@ function StateMap({ data }: { data: Group[] }) {
             <div
               key={i}
               title={`${UF_NAMES[uf]}: ${int.format(leads)} atendimento(s), ${int.format(byUf.get(uf)?.sales ?? 0)} venda(s)`}
-              className="flex aspect-square flex-col items-center justify-center rounded-md text-[11px] leading-tight"
+              className="flex aspect-square flex-col items-center justify-center rounded-md text-xs leading-tight"
               style={{
                 background: step ? `var(--seq-${step})` : 'var(--muted)',
                 color: step === 0 ? 'var(--muted-foreground)' : step <= 3 ? 'var(--seq-ink-light)' : step === 4 ? '#ffffff' : 'var(--seq-ink-dark)',

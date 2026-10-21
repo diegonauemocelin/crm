@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { BreakdownTable, CrmOnlyNotice, Kpi, MEDIA_COLS, MktFilters, PendingIntegration, TrendChart, UpdatedLine } from '@/components/marketing/ui'
+import { isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
 import { EmptyState, ErrorState, formatDate, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -207,7 +208,7 @@ function SearchTerms({ g }: { g: GoogleDetail }) {
         {t.review ? (
           <>
             <Badge variant={t.review.status === 'negativar' ? 'destructive' : 'secondary'}>{t.review.status === 'negativar' ? 'Negativar' : 'Manter'}</Badge>
-            <Button size="icon" variant="ghost" className="size-7" title="Desfazer" onClick={() => review.mutate({ term: t.term, status: null })}>
+            <Button size="icon" variant="ghost" className="size-7" aria-label={`Desfazer revisão do termo “${t.term}”`} onClick={() => review.mutate({ term: t.term, status: null })}>
               <Undo2Icon />
             </Button>
           </>
@@ -439,7 +440,7 @@ function PaidPlatform({ platform, title }: { platform: 'meta' | 'tiktok'; title:
                             <p className="line-clamp-1 font-medium">{r.name}</p>
                             {r.creative?.title && <p className="line-clamp-1 text-xs">{r.creative.title}</p>}
                             {r.creative?.body && <p className="line-clamp-2 text-xs text-muted-foreground">{r.creative.body}</p>}
-                            {r.creative?.cta && <Badge variant="outline" className="mt-0.5 text-[10px]">{r.creative.cta}</Badge>}
+                            {r.creative?.cta && <Badge variant="outline" className="mt-0.5 text-xs">{r.creative.cta}</Badge>}
                           </div>
                         </div>
                       ),
@@ -640,12 +641,14 @@ function Editorial() {
   const qc = useQueryClient()
   const q = useQuery({ queryKey: ['mkt-editorial', f.from, f.to], queryFn: () => api.get<{ items: EditorialItem[]; owners: { id: string; name: string }[]; statuses: string[]; networks: string[] }>(`/marketing/editorial?de=${f.from}&ate=${f.to}`) })
   const [edit, setEdit] = useState<Partial<EditorialItem> | null>(null)
+  const confirm = useConfirm()
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/marketing/editorial/${id}`),
-    onSuccess: () => (toast.success('Publicação removida do calendário.'), qc.invalidateQueries({ queryKey: ['mkt-editorial'] })),
+    onSuccess: () => (toast.success('Publicação excluída do calendário.'), qc.invalidateQueries({ queryKey: ['mkt-editorial'] })),
     onError: (err) => toast.error(errorMessage(err)),
   })
   const d = q.data
+  const startNew = () => setEdit({ network: 'instagram', format: 'Imagem', status: 'ideia', plannedAt: new Date(Date.now() + 86_400_000).toISOString().slice(0, 16) })
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-2">
@@ -654,14 +657,28 @@ function Editorial() {
           <CardDescription>Planejamento das publicações do período: rede, formato, tema, responsável, data, situação e o link quando publicado.</CardDescription>
         </div>
         {can('mi_social', 'create') && (
-          <Button size="sm" onClick={() => setEdit({ network: 'instagram', format: 'Imagem', status: 'ideia', plannedAt: new Date(Date.now() + 86_400_000).toISOString().slice(0, 16) })}>
+          <Button size="sm" onClick={startNew}>
             <CalendarPlusIcon /> Nova publicação
           </Button>
         )}
       </CardHeader>
       <CardContent className="px-0">
         {q.isLoading && <TableSkeleton rows={4} />}
-        {d && d.items.length === 0 && <EmptyState title="Nada planejado no período" description="Cadastre as publicações para acompanhar o que vai sair, quem faz e o resultado." />}
+        {q.error && <ErrorState error={q.error} onRetry={() => q.refetch()} />}
+        {d && d.items.length === 0 && (
+          <EmptyState
+            icon={CalendarPlusIcon}
+            title="Nada planejado no período"
+            description="Cadastre as publicações para acompanhar o que vai sair, quem faz e o resultado."
+            action={
+              can('mi_social', 'create') ? (
+                <Button size="sm" onClick={startNew}>
+                  <CalendarPlusIcon /> Nova publicação
+                </Button>
+              ) : undefined
+            }
+          />
+        )}
         {d && d.items.length > 0 && (
           <Table>
             <TableHeader>
@@ -695,12 +712,20 @@ function Editorial() {
                   </TableCell>
                   <TableCell className="pr-6 text-right whitespace-nowrap">
                     {can('mi_social', 'edit') && (
-                      <Button size="icon" variant="ghost" className="size-8" title="Editar" onClick={() => setEdit({ ...i, plannedAt: new Date(new Date(i.plannedAt).getTime() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16) })}>
+                      <Button size="icon" variant="ghost" className="size-8" aria-label={`Editar publicação ${i.title}`} onClick={() => setEdit({ ...i, plannedAt: new Date(new Date(i.plannedAt).getTime() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16) })}>
                         <PencilIcon />
                       </Button>
                     )}
                     {can('mi_social', 'delete') && (
-                      <Button size="icon" variant="ghost" className="size-8" title="Remover" onClick={() => remove.mutate(i.id)}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-8"
+                        aria-label={`Excluir publicação ${i.title}`}
+                        onClick={async () => {
+                          if (await confirm({ title: `Excluir a publicação “${i.title}”?`, description: 'Ela sai do calendário editorial e não pode ser recuperada. Se já foi publicada, continua na rede social.', confirmLabel: 'Excluir publicação' })) remove.mutate(i.id)
+                        }}
+                      >
                         <Trash2Icon />
                       </Button>
                     )}
@@ -728,17 +753,27 @@ function EditorialDialog({ initial, owners, statuses, networks, onClose }: { ini
     onError: (err) => toast.error(errorMessage(err), { duration: 8000 }),
   })
   const set = (p: Partial<EditorialItem>) => setX((v) => ({ ...v, ...p }))
+  const guard = useCloseGuard(isDirty(initial, x), onClose, 'a publicação')
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{x.id ? 'Editar publicação' : 'Nova publicação'}</DialogTitle>
           <DialogDescription>O calendário só organiza o planejamento: a publicação continua sendo feita na rede social.</DialogDescription>
         </DialogHeader>
+        <form
+          className="grid gap-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            save.mutate()
+          }}
+        >
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label htmlFor="ed-title">Título</Label>
-            <Input id="ed-title" maxLength={200} value={x.title ?? ''} onChange={(e) => set({ title: e.target.value })} placeholder="Ex.: Reels: troca de filtros da JCB 3CX" />
+            <Label htmlFor="ed-title" required>
+              Título
+            </Label>
+            <Input id="ed-title" autoFocus maxLength={200} value={x.title ?? ''} onChange={(e) => set({ title: e.target.value })} placeholder="Ex.: Reels: troca de filtros da JCB 3CX" />
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
@@ -778,7 +813,9 @@ function EditorialDialog({ initial, owners, statuses, networks, onClose }: { ini
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label htmlFor="ed-date">Data e hora</Label>
+              <Label htmlFor="ed-date" required>
+                Data e hora
+              </Label>
               <Input id="ed-date" type="datetime-local" value={x.plannedAt ?? ''} onChange={(e) => set({ plannedAt: e.target.value })} />
             </div>
             <div className="space-y-1.5">
@@ -812,10 +849,14 @@ function EditorialDialog({ initial, owners, statuses, networks, onClose }: { ini
           </div>
         </div>
         <DialogFooter>
-          <Button onClick={() => save.mutate()} disabled={save.isPending}>
+          <Button type="button" variant="ghost" onClick={() => void guard()}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={save.isPending}>
             {save.isPending && <Loader2Icon className="animate-spin" />} Salvar
           </Button>
         </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )

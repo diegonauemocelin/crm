@@ -281,7 +281,7 @@ function EmailMkt() {
               </CardHeader>
               <CardContent className="px-0">
                 {d.campaigns.length === 0 ? (
-                  <p className="px-6 text-sm text-muted-foreground">Nenhum envio no período.</p>
+                  <EmptyState title="Nenhum envio no período" description="As campanhas de e-mail aparecem aqui assim que houver envios no período escolhido." />
                 ) : (
                   <Table>
                     <TableHeader>

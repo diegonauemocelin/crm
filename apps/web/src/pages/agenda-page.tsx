@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRightLeftIcon, BookUserIcon, MessageCircleIcon, ChevronDownIcon, ContactIcon, FileUpIcon, Loader2Icon, PlusIcon, SmartphoneIcon, Trash2Icon, UsersIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
+import { EmptyState, ErrorState, InlineError, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -129,6 +130,11 @@ function Agenda() {
     onSuccess: refresh,
     onError: (err) => toast.error(errorMessage(err)),
   })
+  const confirm = useConfirm()
+  const remove = async (c: { id: string; name: string | null; phone: string | null }) => {
+    const who = c.name ?? (c.phone ? formatPhone(c.phone) : 'este contato')
+    if (await confirm({ title: `Remover “${who}” da agenda?`, description: `O contato sai da agenda ${currentName} e as conversas dele voltam a seguir a regra de contato comum.`, confirmLabel: 'Remover contato' })) del.mutate(c.id)
+  }
   const fileRun = useMutation({
     mutationFn: (text: string) => api.post<Preview>('/whatsapp/contatos/previa', { text, agenda: current }),
     onSuccess: (data) => setPreview({ source: 'arquivo', data }),
@@ -226,6 +232,15 @@ function Agenda() {
           icon={BookUserIcon}
           title={q || cat ? 'Nenhum contato com esses filtros' : `Agenda vazia (${currentName})`}
           description={q || cat ? undefined : 'Importe os contatos do Google Contatos (CSV), do celular (arquivo .vcf) ou do WhatsApp conectado e escolha o tipo de cada um.'}
+          action={
+            editable &&
+            !q &&
+            !cat && (
+              <Button onClick={() => setAdding(true)}>
+                <PlusIcon /> Novo contato
+              </Button>
+            )
+          }
         />
       ) : (
         <Card>
@@ -268,7 +283,7 @@ function Agenda() {
                     </DropdownMenu>
                   )}
                   {editable && (
-                    <Button size="sm" variant="ghost" onClick={() => del.mutate(c.id)} aria-label={`Remover ${c.name ?? c.phone}`} title="Remover da agenda (volta a valer a regra de contato comum)">
+                    <Button size="sm" variant="ghost" onClick={() => void remove(c)} disabled={del.isPending} aria-label={`Remover ${c.name ?? c.phone} da agenda`} title="Remover da agenda (volta a valer a regra de contato comum)">
                       <Trash2Icon />
                     </Button>
                   )}
@@ -374,6 +389,7 @@ function AddDialog({ scope, agendaName, onClose }: { scope: string; agendaName: 
   const [phone, setPhone] = useState('')
   const [category, setCategory] = useState<Cat>('COLEGA')
   const [error, setError] = useState<string | null>(null)
+  const guard = useCloseGuard(!!(name.trim() || phone.trim()), onClose, 'o contato')
   const save = useMutation({
     mutationFn: () => api.post('/whatsapp/contatos/salvar', { rows: [{ name, phone, category }], agenda: scope }),
     onSuccess: (r) => {
@@ -385,7 +401,7 @@ function AddDialog({ scope, agendaName, onClose }: { scope: string; agendaName: 
     onError: (err) => setError(errorMessage(err)),
   })
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent>
         <form
           className="space-y-4"
@@ -404,7 +420,7 @@ function AddDialog({ scope, agendaName, onClose }: { scope: string; agendaName: 
             <Input id="ag-name" maxLength={120} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="ag-phone">Telefone</Label>
+            <Label htmlFor="ag-phone" required>Telefone</Label>
             <Input id="ag-phone" required inputMode="tel" placeholder="(49) 99999-9999" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
           <div className="space-y-1.5">
@@ -413,7 +429,7 @@ function AddDialog({ scope, agendaName, onClose }: { scope: string; agendaName: 
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button type="submit" disabled={save.isPending || !phone.trim()}>
@@ -445,6 +461,8 @@ function WhatsappSourceDialog({ initial, onClose, onPreview }: { initial: string
         </DialogHeader>
         {numbers.isLoading ? (
           <TableSkeleton rows={2} />
+        ) : numbers.error ? (
+          <InlineError error={numbers.error} onRetry={() => void numbers.refetch()} />
         ) : connected.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nenhum número conectado. Conecte em Configurações → Números de WhatsApp.</p>
         ) : (
@@ -490,6 +508,9 @@ function ReviewDialog({ source, data, scope, agendaName, onSaved, onClose }: { s
   const [filter, setFilter] = useState<ReviewFilter>('todos')
   const [search, setSearch] = useState('')
   const [limit, setLimit] = useState(PAGE)
+  // Tipos já escolhidos e não salvos: pergunta antes de fechar.
+  const [initialCats] = useState(() => [...cats])
+  const guard = useCloseGuard(isDirty(initialCats, [...cats]), onClose, 'os tipos escolhidos')
   const visible = useMemo(() => {
     const s = search.trim().toLowerCase()
     const digits = s.replace(/\D/g, '')
@@ -524,7 +545,7 @@ function ReviewDialog({ source, data, scope, agendaName, onSaved, onClose }: { s
     onError: (err) => toast.error(errorMessage(err)),
   })
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
@@ -597,8 +618,8 @@ function ReviewDialog({ source, data, scope, agendaName, onSaved, onClose }: { s
                 </div>
                 <CatSelect id={`rv-${r.phone}`} value={c} onChange={(v) => setCat(r.phone, v)} className="w-36" allowNone />
                 {c && (
-                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setCat(r.phone, null)} title="Não importar este contato">
-                    Tirar
+                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setCat(r.phone, null)} aria-label={`Não importar ${r.name ?? formatPhone(r.phone)}`}>
+                    Não importar
                   </Button>
                 )}
               </li>
@@ -618,7 +639,7 @@ function ReviewDialog({ source, data, scope, agendaName, onSaved, onClose }: { s
             {toSave.length} para salvar · {unclassified} sem tipo (não entram)
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button onClick={() => save.mutate()} disabled={!toSave.length || save.isPending}>

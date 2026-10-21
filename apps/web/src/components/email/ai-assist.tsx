@@ -87,7 +87,7 @@ export function AiAssist({ html, onApply, disabled }: { html: string; onApply: (
           </div>
         </div>
       )}
-      <p className="text-[11px] text-muted-foreground">Confira sempre: a IA pode errar. Não escreva dados de clientes aqui.</p>
+      <p className="text-xs text-muted-foreground">Confira sempre: a IA pode errar. Não escreva dados de clientes aqui.</p>
     </div>
   )
 }

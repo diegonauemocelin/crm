@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckIcon, Loader2Icon, PaperclipIcon, PencilIcon, PlusIcon, SettingsIcon, TagIcon, Trash2Icon } from 'lucide-react'
 import { type FormEvent, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
+import { InlineError } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -66,8 +68,8 @@ export function ReplyFileField({ current, picked, removed, onPick, onRemove }: {
           <span className="min-w-0 max-w-56 truncate text-xs text-muted-foreground" title={name}>
             {name}
           </span>
-          <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={() => (onPick(null), onRemove(true))}>
-            Tirar
+          <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={() => (onPick(null), onRemove(true))} aria-label={`Remover o arquivo ${name}`}>
+            Remover
           </Button>
         </>
       )}
@@ -98,7 +100,7 @@ const LABEL_STYLE: Record<string, { chip: string; dot: string; name: string }> =
 const styleOf = (c: string) => LABEL_STYLE[c] ?? LABEL_STYLE.cinza!
 
 export function LabelChip({ label, className }: { label: Pick<ChatLabel, 'name' | 'color'>; className?: string }) {
-  return <span className={cn('inline-flex max-w-full items-center truncate rounded px-1.5 text-[11px] leading-[18px] font-medium', styleOf(label.color).chip, className)}>{label.name}</span>
+  return <span className={cn('inline-flex max-w-full items-center truncate rounded px-1.5 text-xs leading-[18px] font-medium', styleOf(label.color).chip, className)}>{label.name}</span>
 }
 
 export function useLabels() {
@@ -127,11 +129,16 @@ export function LabelPicker({ conversationId, value }: { conversationId: string;
         <PopoverTrigger asChild>
           <Button size="sm" variant="outline" title="Etiquetas da conversa" aria-label="Etiquetas">
             <TagIcon /> <span className="hidden @4xl/head:inline">Etiquetas</span>
-            {value.length > 0 && <span className="rounded bg-muted px-1 text-[11px] tabular-nums">{value.length}</span>}
+            {value.length > 0 && <span className="rounded bg-muted px-1 text-xs tabular-nums">{value.length}</span>}
           </Button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-64 p-1">
-          {(labels.data ?? []).length === 0 && <p className="px-2 py-2 text-xs text-muted-foreground">Nenhuma etiqueta ainda. Crie as suas em “Gerenciar etiquetas”.</p>}
+          {labels.error && !labels.data && (
+            <div className="px-2 py-2">
+              <InlineError error={labels.error} onRetry={() => void labels.refetch()} />
+            </div>
+          )}
+          {labels.data?.length === 0 && <p className="px-2 py-2 text-xs text-muted-foreground">Nenhuma etiqueta ainda. Crie as suas em “Gerenciar etiquetas”.</p>}
           <ul className="max-h-72 overflow-y-auto">
             {labels.data?.map((l) => (
               <li key={l.id}>
@@ -145,7 +152,7 @@ export function LabelPicker({ conversationId, value }: { conversationId: string;
                   <span className={cn('flex size-4 shrink-0 items-center justify-center rounded border', selected.has(l.id) && 'border-primary bg-primary text-primary-foreground')}>{selected.has(l.id) && <CheckIcon className="size-3" />}</span>
                   <span className={cn('size-2.5 shrink-0 rounded-full', styleOf(l.color).dot)} />
                   <span className="min-w-0 flex-1 truncate">{l.name}</span>
-                  {l.standard && <span className="text-[10px] text-muted-foreground">padrão</span>}
+                  {l.standard && <span className="text-xs text-muted-foreground">padrão</span>}
                 </button>
               </li>
             ))}
@@ -234,7 +241,11 @@ export function LabelsManager() {
     onSuccess: refresh,
     onError: (err) => toast.error(errorMessage(err)),
   })
+  const confirm = useConfirm()
   const canEdit = (l: ChatLabel) => (l.standard ? admin : l.mine)
+  const remove = async (l: ChatLabel) => {
+    if (await confirm({ title: `Excluir a etiqueta “${l.name}”?`, description: 'Ela sai de todas as conversas. Não dá para desfazer.', confirmLabel: 'Excluir etiqueta' })) del.mutate(l.id)
+  }
   return (
     <div className="max-w-xl space-y-3">
       <form
@@ -245,7 +256,7 @@ export function LabelsManager() {
         }}
       >
         <div className="space-y-1.5">
-          <Label htmlFor="lb-name">{editing ? 'Editar etiqueta' : 'Nova etiqueta'}</Label>
+          <Label htmlFor="lb-name" required>{editing ? 'Editar etiqueta' : 'Nova etiqueta'}</Label>
           <Input id="lb-name" maxLength={30} placeholder="Ex.: Orçamento enviado" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <ColorPicker value={color} onChange={setColor} />
@@ -272,17 +283,22 @@ export function LabelsManager() {
         {name.trim() && <LabelChip label={{ name: name.trim(), color }} />}
       </form>
       <ul className="max-h-72 divide-y overflow-y-auto rounded-md border">
-        {(labels.data ?? []).length === 0 && <li className="p-4 text-center text-sm text-muted-foreground">Nenhuma etiqueta ainda.</li>}
+        {labels.error && !labels.data && (
+          <li className="p-4">
+            <InlineError error={labels.error} onRetry={() => void labels.refetch()} />
+          </li>
+        )}
+        {labels.data?.length === 0 && <li className="p-4 text-center text-sm text-muted-foreground">Nenhuma etiqueta ainda.</li>}
         {labels.data?.map((l) => (
           <li key={l.id} className="flex items-center gap-2 px-3 py-2 text-sm">
             <LabelChip label={l} />
             <span className="flex-1 text-xs text-muted-foreground">{l.standard ? 'Padrão (todos)' : 'Pessoal'}</span>
             {canEdit(l) && (
               <>
-                <Button size="icon" variant="ghost" className="size-7" onClick={() => (setEditing(l), setName(l.name), setColor(l.color))} aria-label={`Editar ${l.name}`}>
+                <Button size="icon" variant="ghost" className="size-7" onClick={() => (setEditing(l), setName(l.name), setColor(l.color))} aria-label={`Editar etiqueta ${l.name}`}>
                   <PencilIcon />
                 </Button>
-                <Button size="icon" variant="ghost" className="size-7" onClick={() => del.mutate(l.id)} aria-label={`Excluir ${l.name}`} title="Excluir (sai de todas as conversas)">
+                <Button size="icon" variant="ghost" className="size-7" onClick={() => void remove(l)} disabled={del.isPending} aria-label={`Excluir etiqueta ${l.name}`}>
                   <Trash2Icon />
                 </Button>
               </>
@@ -329,9 +345,16 @@ export function ManageRepliesDialog({ onClose }: { onClose: () => void }) {
     onSuccess: refresh,
     onError: (err) => toast.error(errorMessage(err)),
   })
+  const confirm = useConfirm()
   const canEdit = (r: QuickReply) => (r.standard ? admin : r.mine)
+  const remove = async (r: QuickReply) => {
+    if (await confirm({ title: `Excluir a resposta rápida “${r.title}”?`, description: 'Ela some da lista de respostas de todos que a usam. Não dá para desfazer.', confirmLabel: 'Excluir resposta rápida' })) del.mutate(r.id)
+  }
+  // Texto digitado e ainda não salvo: pergunta antes de fechar a janela.
+  const dirty = editing ? isDirty({ t: editing.title, x: editing.text }, { t: title, x: text }) || !!picked || removed : !!(title.trim() || text.trim() || picked)
+  const guard = useCloseGuard(dirty, onClose, 'a resposta')
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Respostas rápidas</DialogTitle>
@@ -347,8 +370,8 @@ export function ManageRepliesDialog({ onClose }: { onClose: () => void }) {
           }}
         >
           <div className="space-y-1.5">
-            <Label htmlFor="qr-title">{editing ? 'Editar resposta' : 'Nova resposta'}</Label>
-            <Input id="qr-title" maxLength={60} placeholder="Título (ex.: Saudação)" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <Label htmlFor="qr-title" required>{editing ? 'Editar resposta' : 'Nova resposta'}</Label>
+            <Input id="qr-title" autoFocus maxLength={60} placeholder="Título (ex.: Saudação)" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
           <Textarea aria-label="Texto da resposta" rows={4} maxLength={2000} placeholder="Olá {nome}, aqui é {vendedor}. Como posso ajudar?" value={text} onChange={(e) => setText(e.target.value)} />
           <ReplyFileField current={editing?.fileName} picked={picked} removed={removed} onPick={setPicked} onRemove={setRemoved} />
@@ -372,9 +395,15 @@ export function ManageRepliesDialog({ onClose }: { onClose: () => void }) {
               </Button>
             </div>
           </div>
+          {!title.trim() !== !text.trim() && <p className="text-xs text-muted-foreground">Preencha o título e o texto para salvar.</p>}
         </form>
         <ul className="max-h-80 divide-y overflow-y-auto rounded-md border">
-          {(list.data ?? []).length === 0 && <li className="p-4 text-center text-sm text-muted-foreground">Nenhuma resposta ainda.</li>}
+          {list.error && !list.data && (
+            <li className="p-4">
+              <InlineError error={list.error} onRetry={() => void list.refetch()} />
+            </li>
+          )}
+          {list.data?.length === 0 && <li className="p-4 text-center text-sm text-muted-foreground">Nenhuma resposta ainda.</li>}
           {list.data?.map((r) => (
             <li key={r.id} className="flex items-start gap-2 px-3 py-2 text-sm">
               <div className="min-w-0 flex-1">
@@ -393,10 +422,10 @@ export function ManageRepliesDialog({ onClose }: { onClose: () => void }) {
               </div>
               {canEdit(r) && (
                 <>
-                  <Button size="icon" variant="ghost" className="size-7" onClick={() => (setEditing(r), setTitle(r.title), setText(r.text), setPicked(null), setRemoved(false))} aria-label={`Editar ${r.title}`}>
+                  <Button size="icon" variant="ghost" className="size-7" onClick={() => (setEditing(r), setTitle(r.title), setText(r.text), setPicked(null), setRemoved(false))} aria-label={`Editar resposta rápida ${r.title}`}>
                     <PencilIcon />
                   </Button>
-                  <Button size="icon" variant="ghost" className="size-7" onClick={() => del.mutate(r.id)} aria-label={`Excluir ${r.title}`}>
+                  <Button size="icon" variant="ghost" className="size-7" onClick={() => void remove(r)} disabled={del.isPending} aria-label={`Excluir resposta rápida ${r.title}`}>
                     <Trash2Icon />
                   </Button>
                 </>
@@ -405,7 +434,7 @@ export function ManageRepliesDialog({ onClose }: { onClose: () => void }) {
           ))}
         </ul>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" onClick={() => void guard()}>
             Fechar
           </Button>
         </DialogFooter>

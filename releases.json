@@ -2,6 +2,24 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.77.0",
+      "date": "2026-10-21",
+      "title": "Ergonomia: menos risco de perder trabalho, mensagens claras e o sistema mais fácil de usar",
+      "changes": [
+        { "type": "melhoria", "area": "Sistema", "text": "Toda exclusão e ação difícil de desfazer (etiqueta, resposta rápida, regra de pontuação, contato da agenda, alerta, chave do Gemini, nova chave da Tcar, desconectar aparelhos...) agora pergunta antes, sempre na mesma janela, com o botão em vermelho e o nome do que vai ser feito (\"Excluir modelo\", não \"OK\")." },
+        { "type": "melhoria", "area": "Sistema", "text": "Fechar uma janela ou a ficha de atendimento com dados não salvos (clicando fora, Esc ou X) pergunta \"Descartar alterações?\". Os editores de e-mail, automação e captura também perguntam antes de sair pelo menu." },
+        { "type": "melhoria", "area": "Sistema", "text": "Sessão expirada no meio do trabalho: o login abre por cima da tela, sem perder o que foi digitado, e o que falhou é refeito depois de entrar. Quem cai na tela de login volta para a página em que estava." },
+        { "type": "melhoria", "area": "Sistema", "text": "Mensagens de erro em português e dizendo o que fazer: o campo e o que corrigir (em vez de textos em inglês), falta de permissão, registro excluído por outra pessoa ou sistema reiniciando. Mensagens de erro ficam mais tempo na tela." },
+        { "type": "correcao", "area": "Sistema", "text": "Exportações (leads, carrinhos, catálogo, atendimentos, relatórios e Marketing) não falham mais com \"Unauthorized\" depois de um tempo parado: renovam o acesso sozinhas." },
+        { "type": "melhoria", "area": "Sistema", "text": "Formulários: campos obrigatórios marcados com *, erro mostrado embaixo do campo certo (com o cursor indo até ele), botões que ficam cinza explicam o que falta, Enter salva e o cursor já começa no primeiro campo." },
+        { "type": "melhoria", "area": "Sistema", "text": "Todo botão só com ícone mostra o nome ao passar o mouse; botões maiores no celular e no tablet; letra mínima de 12 px; textos que estavam em inglês traduzidos (Fechar, Menu, Recolher o menu)." },
+        { "type": "correcao", "area": "Sistema", "text": "A busca Ctrl+K fechava a tela com erro ao digitar. Agora funciona." },
+        { "type": "novo", "area": "Sistema", "text": "Busca Ctrl+K encontra leads e clientes por nome, empresa, e-mail, cidade ou telefone, além das telas. Tecla ? abre a ajuda da tela, com a lista de atalhos de teclado." },
+        { "type": "melhoria", "area": "Sistema", "text": "Caminho no topo clicável e com o nome do registro aberto (ex.: Base de leads › João Silva), também no título da aba do navegador. As listas lembram o último filtro usado neste navegador. Datas e valores no mesmo formato em todas as telas, sempre no horário de Brasília." },
+        { "type": "melhoria", "area": "Sistema", "text": "Itens \"Em breve\" do menu só aparecem para o administrador." }
+      ]
+    },
+    {
       "version": "0.76.0",
       "date": "2026-10-21",
       "title": "Instagram no Marketing Inteligente: perfis da empresa e dos vendedores, melhores horários e concorrentes",

@@ -38,7 +38,7 @@ export function SessionsList({ sessions, onRevoke, busyId }: { sessions: Session
             </p>
           </div>
           {onRevoke && !s.current && (
-            <Button variant="outline" size="sm" onClick={() => onRevoke(s)} disabled={busyId === s.id}>
+            <Button variant="outline" size="sm" onClick={() => onRevoke(s)} disabled={busyId === s.id} aria-label={`Desconectar ${s.device}`}>
               Desconectar
             </Button>
           )}

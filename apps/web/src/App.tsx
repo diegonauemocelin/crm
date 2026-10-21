@@ -5,6 +5,7 @@ import { RouterProvider } from 'react-router/dom'
 import { ClassicLayout } from '@/components/layout/classic-layout'
 import { ModernLayout } from '@/components/layout/modern-layout'
 import { useAuth } from '@/lib/auth'
+import { ReauthDialog } from '@/components/reauth-dialog'
 import { NAVIGATION } from '@/lib/navigation'
 import { LoginPage } from '@/pages/auth/login-page'
 
@@ -157,9 +158,14 @@ function Protected() {
   const location = useLocation()
   if (unavailable) return <Unavailable />
   if (loading) return <Loader fullscreen />
-  if (!me) return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  if (!me) return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
   if (me.mustChangePassword || me.pending2faSetup) return <Navigate to="/configurar-conta" replace />
-  return <Outlet />
+  return (
+    <>
+      <Outlet />
+      <ReauthDialog />
+    </>
+  )
 }
 
 /** Layout escolhido pelo usuário (ou o padrão definido pelo administrador). */

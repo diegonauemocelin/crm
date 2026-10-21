@@ -4,7 +4,7 @@ import { type ReactNode, useState } from 'react'
 import { Link } from 'react-router'
 import { useAttendanceAlerts } from '@/components/layout/alerts-bell'
 import { RecordSheet } from '@/components/atendimento/record-sheet'
-import { PageHeader } from '@/components/page'
+import { InlineError, PageHeader } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -81,8 +81,12 @@ function Counter({ value, label, hint, to, alert }: { value: number | undefined;
 
 export function MinhaFila() {
   const { me, can } = useAuth()
-  const chat = useChatAlerts().data
-  const att = useAttendanceAlerts().data
+  const chatQ = useChatAlerts()
+  const attQ = useAttendanceAlerts()
+  const chat = chatQ.data
+  const att = attQ.data
+  // Sem os avisos, a fila vazia não quer dizer "tudo em dia": mostra o erro.
+  const alertsError = (!chat && chatQ.error) || (!att && attQ.error) || null
   const [filter, setFilter] = useState<Filter>('tudo')
   const [creating, setCreating] = useState(false)
   const toCall = useQuery({
@@ -254,7 +258,18 @@ export function MinhaFila() {
                 ))}
             </div>
           </div>
-          {shown.length === 0 ? (
+          {alertsError && (
+            <div className="border-b px-4 py-3">
+              <InlineError
+                error={alertsError}
+                onRetry={() => {
+                  void chatQ.refetch()
+                  void attQ.refetch()
+                }}
+              />
+            </div>
+          )}
+          {shown.length === 0 && alertsError ? null : shown.length === 0 ? (
             <div className="px-6 py-12 text-center">
               <p className="font-medium">Tudo em dia por aqui.</p>
               <p className="mt-1 text-sm text-muted-foreground">Quando um cliente esperar resposta ou chegar uma pré-venda, ela aparece nesta lista.</p>
@@ -294,6 +309,7 @@ export function MinhaFila() {
                     <p className="truncate text-xs text-muted-foreground">{l.via.label}</p>
                   </div>
                 ))}
+                {toCall.error && <InlineError error={toCall.error} onRetry={() => void toCall.refetch()} />}
                 {toCall.data && toCall.data.total === 0 && <p className="text-sm text-muted-foreground">Ninguém para chamar agora.</p>}
                 <Button asChild variant="outline" size="sm" className="w-full">
                   <Link to="/chat?aba=chamar">

@@ -17,6 +17,7 @@ import { api, errorMessage } from '@/lib/api'
 import { brl, int, useOptions } from '@/lib/atendimento'
 import type { ScriptStatus } from '@/lib/google-ads'
 import { useAuth } from '@/lib/auth'
+import { dayBr } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { FormError } from '../auth/auth-layout'
 
@@ -142,7 +143,7 @@ function Editor({ initial }: { initial: Config }) {
     setBusy('send')
     try {
       const r = await api.post<{ since: string; considered: number; matched: number; registered: number; sent: number; failed: number; ignored: number; paused: string | null }>('/integracoes/google-ads/enviar')
-      const desde = r.since.split('-').reverse().join('/')
+      const desde = dayBr(r.since)
       // Explica o resultado: quantos atendimentos olhou, quantos entraram nas regras e por que ficou zero.
       const resumo = `${int.format(r.considered)} atendimento(s) do Pré-Vendas desde ${desde}; ${int.format(r.matched)} vieram de anúncio ou de origem marcada.`
       if (r.considered === 0) toast.info(`Nenhum atendimento do Pré-Vendas desde ${desde}. Volte a data de “Atendimentos a partir de” (até 60 dias).`, { duration: 10_000 })
@@ -320,7 +321,7 @@ function Editor({ initial }: { initial: Config }) {
                   <Input className="h-8 w-40 font-mono" inputMode="numeric" placeholder="Número" value={c.id} onChange={(e) => setCampaign(i, { id: e.target.value.replace(/\D/g, '') })} disabled={!canEdit} aria-label="Número da campanha" />
                   <Input className="h-8 min-w-0 flex-1" placeholder="Nome da campanha" maxLength={120} value={c.name} onChange={(e) => setCampaign(i, { name: e.target.value })} disabled={!canEdit} aria-label="Nome da campanha" />
                   {canEdit && (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setCampaigns((list) => list.filter((_, j) => j !== i))}>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setCampaigns((list) => list.filter((_, j) => j !== i))} aria-label={`Remover campanha ${c.name || c.id || i + 1} da lista`}>
                       Remover
                     </Button>
                   )}

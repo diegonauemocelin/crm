@@ -72,7 +72,7 @@ export function BestTimes({ title = 'Melhores horários para postar', network, c
           <div className="space-y-1.5">
             <p className="text-sm font-medium">Quando os seguidores estão online</p>
             <div className="overflow-x-auto">
-              <table className="text-[10px] text-muted-foreground">
+              <table className="text-xs text-muted-foreground">
                 <thead>
                   <tr>
                     <th />

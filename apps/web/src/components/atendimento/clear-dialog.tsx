@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { api, errorMessage } from '@/lib/api'
 import { int } from '@/lib/atendimento'
+import { todaySP } from '@/lib/format'
 import { FormError } from '@/pages/auth/auth-layout'
 
 const PHRASE = 'APAGAR ATENDIMENTOS'
@@ -21,12 +22,8 @@ interface Preview {
   leads: number
 }
 
-async function downloadKind(kind: 'PRE_VENDAS' | 'POS_VENDAS') {
-  const res = await fetch(`/api/atendimentos/exportar?kind=${kind}`, { credentials: 'same-origin' })
-  if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? 'Falha ao baixar a cópia.')
-  const url = URL.createObjectURL(await res.blob())
-  Object.assign(document.createElement('a'), { href: url, download: `copia-${kind === 'PRE_VENDAS' ? 'pre-vendas' : 'pos-vendas'}-${new Date().toISOString().slice(0, 10)}.csv` }).click()
-  URL.revokeObjectURL(url)
+function downloadKind(kind: 'PRE_VENDAS' | 'POS_VENDAS') {
+  return api.download(`/atendimentos/exportar?kind=${kind}`, `copia-${kind === 'PRE_VENDAS' ? 'pre-vendas' : 'pos-vendas'}-${todaySP()}.csv`)
 }
 
 /**
@@ -47,6 +44,17 @@ export function ClearDialog({ onClose, onImport }: { onClose: () => void; onImpo
 
   const p = preview.data
   const total = p ? p.pre + (includePostSale ? p.pos : 0) : 0
+  // O que ainda falta para liberar o botão (mesmas condições de antes, explicadas).
+  const missing =
+    total === 0
+      ? 'Não há atendimentos para excluir.'
+      : !copied
+        ? 'Baixe uma cópia e marque "Já tenho uma cópia".'
+        : confirmation.trim().toUpperCase() !== PHRASE
+          ? `Digite ${PHRASE} para confirmar.`
+          : !password
+            ? 'Digite sua senha.'
+            : null
 
   const download = async () => {
     setDownloading(true)
@@ -82,7 +90,7 @@ export function ClearDialog({ onClose, onImport }: { onClose: () => void; onImpo
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Limpar atendimentos e recomeçar</DialogTitle>
-          <DialogDescription>Apaga os atendimentos para começar do zero com a importação da planilha.</DialogDescription>
+          <DialogDescription>Exclui os atendimentos para começar do zero com a importação da planilha.</DialogDescription>
         </DialogHeader>
 
         {preview.error ? (
@@ -92,7 +100,7 @@ export function ClearDialog({ onClose, onImport }: { onClose: () => void; onImpo
         ) : done !== null ? (
           <div className="space-y-4">
             <p className="text-sm">
-              <strong>{int.format(done)}</strong> atendimento(s) apagado(s). Agora importe a planilha: os atendimentos vão se ligar de novo aos mesmos contatos da base de leads, sem duplicar.
+              <strong>{int.format(done)}</strong> atendimento(s) excluído(s). Agora importe a planilha: os atendimentos vão se ligar de novo aos mesmos contatos da base de leads, sem duplicar.
             </p>
             <DialogFooter>
               <Button variant="outline" onClick={onClose}>
@@ -109,7 +117,7 @@ export function ClearDialog({ onClose, onImport }: { onClose: () => void; onImpo
               <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
               <div className="space-y-1">
                 <p>
-                  Vai apagar <strong>de vez</strong> {int.format(p.pre)} atendimento(s) de Pré-Vendas ({int.format(p.sales)} com venda)
+                  Vai excluir <strong>de vez</strong> {int.format(p.pre)} atendimento(s) de Pré-Vendas ({int.format(p.sales)} com venda)
                   {includePostSale ? ` e ${int.format(p.pos)} de Pós-Vendas` : ''}, com o histórico de alterações. Não dá para desfazer pelo sistema.
                 </p>
                 <p className="text-muted-foreground">
@@ -121,8 +129,8 @@ export function ClearDialog({ onClose, onImport }: { onClose: () => void; onImpo
             <label className="flex items-start gap-2 text-sm">
               <Checkbox checked={includePostSale} onCheckedChange={(v) => setIncludePostSale(v === true)} className="mt-0.5" />
               <span>
-                Apagar também os {int.format(p.pos)} atendimento(s) de Pós-Vendas
-                <span className="block text-xs text-muted-foreground">Sem marcar, os Pós-Vendas ficam, só sem o vínculo com a pré-venda apagada.</span>
+                Excluir também os {int.format(p.pos)} atendimento(s) de Pós-Vendas
+                <span className="block text-xs text-muted-foreground">Sem marcar, os Pós-Vendas ficam, só sem o vínculo com a pré-venda excluída.</span>
               </span>
             </label>
 
@@ -141,25 +149,28 @@ export function ClearDialog({ onClose, onImport }: { onClose: () => void; onImpo
             <div className="space-y-3 rounded-md border p-3">
               <p className="text-sm font-medium">2. Confirme</p>
               <div className="space-y-1">
-                <Label htmlFor="clear-phrase">
+                <Label htmlFor="clear-phrase" required>
                   Digite <span className="font-mono">{PHRASE}</span>
                 </Label>
                 <Input id="clear-phrase" autoComplete="off" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="clear-password">Sua senha</Label>
+                <Label htmlFor="clear-password" required>
+                  Sua senha
+                </Label>
                 <Input id="clear-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
               </div>
             </div>
 
             <FormError message={error} />
+            {!busy && missing && <p className="text-right text-xs text-muted-foreground">{missing}</p>}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
                 Cancelar
               </Button>
-              <Button type="submit" variant="destructive" disabled={busy || !copied || !password || confirmation.trim().toUpperCase() !== PHRASE || total === 0}>
+              <Button type="submit" variant="destructive" disabled={busy || !!missing}>
                 {busy && <Loader2Icon className="animate-spin" />}
-                Apagar {int.format(total)} atendimento(s)
+                Excluir {int.format(total)} atendimento(s)
               </Button>
             </DialogFooter>
           </form>

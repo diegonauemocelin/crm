@@ -53,14 +53,15 @@ export function CompanyRenameCard() {
       <CardContent className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="rn-from">Nome antigo</Label>
+            <Label htmlFor="rn-from" required>Nome antigo</Label>
             <Input id="rn-from" placeholder="ex.: USA Parts" maxLength={80} value={from} onChange={(e) => (setFrom(e.target.value), setPreview(null))} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="rn-to">Nome novo</Label>
+            <Label htmlFor="rn-to" required>Nome novo</Label>
             <Input id="rn-to" placeholder="ex.: Usaparts" maxLength={80} value={to} onChange={(e) => (setTo(e.target.value), setPreview(null))} />
           </div>
         </div>
+        {!ready && <p className="text-xs text-muted-foreground">Preencha o nome antigo (mínimo 3 caracteres) e o novo para ver o que muda.</p>}
         <p className="text-xs text-muted-foreground">Não diferencia maiúsculas e aceita espaço ou hífen no meio (“USA Parts”, “USA-PARTS”). O nome escrito todo em maiúsculas vira o novo em maiúsculas.</p>
         {preview && (
           <div className="rounded-md border bg-muted/40 p-3 text-sm">

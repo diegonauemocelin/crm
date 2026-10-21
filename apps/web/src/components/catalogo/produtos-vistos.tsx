@@ -1,9 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { EyeIcon, ImageOffIcon } from 'lucide-react'
+import { InlineError } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { api } from '@/lib/api'
 import { brl } from '@/lib/atendimento'
+import { dateShort } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 export type SeenStatus = 'viu' | 'carrinho' | 'comprou'
@@ -45,12 +47,23 @@ interface Item {
   status: SeenStatus
 }
 
-const date = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
-
 /** Produtos da loja que o lead viu no site (aba "Site" da ficha): ajuda o vendedor a saber o que oferecer. */
 export function LeadProductsSeen({ leadId, className }: { leadId: string; className?: string }) {
   const q = useQuery({ queryKey: ['lead-produtos-vistos', leadId], queryFn: () => api.get<{ items: Item[] }>(`/catalogo/vistos/leads/${leadId}`) })
   const items = q.data?.items ?? []
+  if (q.isError)
+    return (
+      <Card className={className}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <EyeIcon className="size-4 text-muted-foreground" /> Produtos que viu na loja
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <InlineError error={q.error} onRetry={() => void q.refetch()} />
+        </CardContent>
+      </Card>
+    )
   if (!items.length) return null
   return (
     <Card className={className}>
@@ -74,7 +87,7 @@ export function LeadProductsSeen({ leadId, className }: { leadId: string; classN
                   <p className="truncate text-sm font-medium">{p.name}</p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  {p.views === 1 ? 'Viu 1 vez' : `Viu ${p.views} vezes`} · última em {date(p.lastAt)}
+                  {p.views === 1 ? 'Viu 1 vez' : `Viu ${p.views} vezes`} · última em {dateShort(p.lastAt)}
                   {p.price !== null ? ` · ${brl.format(p.price)}` : ''}
                   {p.stock !== null && p.stock <= 0 ? ' · sem estoque' : ''}
                   {!p.active ? ' · fora da loja' : ''}

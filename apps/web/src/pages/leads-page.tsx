@@ -18,6 +18,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { api, errorMessage } from '@/lib/api'
 import { formatDay, formatPhone, int, namesOf, UF_LIST, UF_NAMES, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
+import { todaySP } from '@/lib/format'
+import { usePersistedSearch } from '@/lib/persisted-search'
 import { GRADE_CLASS, type Lead, type LeadStage, STAGE_LABEL, STAGES, useTags } from '@/lib/leads'
 import { cn } from '@/lib/utils'
 
@@ -69,6 +71,8 @@ export function LeadsPage() {
   )
 }
 
+const PERSIST_IGNORE = ['page', 'sort', 'visao']
+
 function LeadsContent() {
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -76,8 +80,17 @@ function LeadsContent() {
   const options = useOptions()
   const tags = useTags()
   const names = useMemo(() => namesOf(options.data), [options.data])
+  // Voltando pelo menu, reaplica os filtros da última visita (página e ordem não).
+  usePersistedSearch('leads', PERSIST_IGNORE)
   const [params, setParams] = useSearchParams()
   const [searchText, setSearchText] = useState(params.get('search') ?? '')
+  // Busca reaplicada de fora (filtro lembrado, visão salva): o campo acompanha.
+  const searchParam = params.get('search') ?? ''
+  const [lastSearchParam, setLastSearchParam] = useState(searchParam)
+  if (searchParam !== lastSearchParam) {
+    setLastSearchParam(searchParam)
+    if (searchParam !== searchText.trim()) setSearchText(searchParam)
+  }
   const [selected, setSelected] = useState<Set<string>>(new Set())
   // "Todos do filtro": a ação vale para todos os leads que o filtro encontra, não só os da página.
   const [allFiltered, setAllFiltered] = useState(false)
@@ -122,12 +135,10 @@ function LeadsContent() {
     for (const k of ['page', 'pageSize', 'sort']) q.delete(k)
     setExporting(true)
     try {
-      const res = await fetch(`/api/leads/exportar?${q}`, { credentials: 'same-origin' })
-      if (!res.ok) return toast.error(((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? 'Falha ao exportar.')
-      const url = URL.createObjectURL(await res.blob())
-      Object.assign(document.createElement('a'), { href: url, download: `leads-${new Date().toISOString().slice(0, 10)}.csv` }).click()
-      URL.revokeObjectURL(url)
+      await api.download(`/leads/exportar?${q}`, `leads-${todaySP()}.csv`)
       toast.success('Arquivo gerado. Abra no Excel ou no Google Planilhas.')
+    } catch (err) {
+      toast.error(errorMessage(err))
     } finally {
       setExporting(false)
     }
@@ -277,6 +288,15 @@ function LeadsContent() {
           icon={UsersRoundIcon}
           title={active ? 'Nenhum lead com esses filtros' : 'Base de leads vazia'}
           description={active ? 'Ajuste ou limpe os filtros.' : 'Importe a base do RD Station ou cadastre o primeiro lead.'}
+          action={
+            !active && can('leads', 'create') ? (
+              <Button asChild size="sm">
+                <Link to="/leads/novo">
+                  <PlusIcon /> Novo lead
+                </Link>
+              </Button>
+            ) : undefined
+          }
         />
       )}
 
@@ -445,7 +465,9 @@ function BulkDialog({
           </DialogHeader>
           {kind === 'addTag' && (
             <div className="space-y-2">
-              <Label htmlFor="bulk-tag">Tag</Label>
+              <Label htmlFor="bulk-tag" required>
+                Tag
+              </Label>
               <Input id="bulk-tag" list="bulk-tags" value={value} maxLength={60} onChange={(e) => setValue(e.target.value)} autoFocus placeholder="ex.: vip, feira-2026" />
               <datalist id="bulk-tags">
                 {tags.data?.map((t) => <option key={t.tag} value={t.tag} />)}
@@ -501,9 +523,10 @@ function BulkDialog({
             </Button>
             <Button type="submit" disabled={!value || run.isPending}>
               {run.isPending && <Loader2Icon className="animate-spin" />}
-              Aplicar
+              {title}
             </Button>
           </DialogFooter>
+          {!value && <p className="text-right text-xs text-muted-foreground">{{ addTag: 'Digite a tag.', removeTag: 'Escolha a tag.', stage: 'Escolha o estágio.', owner: 'Escolha o responsável.' }[kind]}</p>}
         </form>
       </DialogContent>
     </Dialog>

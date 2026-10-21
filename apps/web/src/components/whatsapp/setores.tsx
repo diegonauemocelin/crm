@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { EyeIcon, Loader2Icon, PencilIcon, PlusIcon, Trash2Icon, UsersIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
 import { MultiSelect } from '@/components/multi-select'
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
@@ -128,7 +129,10 @@ function SectorDialog({ sector, data, onClose }: { sector: Sector | null; data: 
     managerIds: sector?.managerIds ?? [],
     visibility: sector?.visibility ?? ('PROPRIAS' as Visibility),
   }))
-  const [confirmRemove, setConfirmRemove] = useState(false)
+  const [initial] = useState(f)
+  const confirm = useConfirm()
+  const guard = useCloseGuard(isDirty(initial, f), onClose, 'o setor')
+  const canSave = f.name.trim().length >= 2
   const done = (msg: string) => {
     void qc.invalidateQueries({ queryKey: KEY })
     void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
@@ -145,21 +149,32 @@ function SectorDialog({ sector, data, onClose }: { sector: Sector | null; data: 
   })
   const remove = useMutation({
     mutationFn: () => api.delete(`/whatsapp/setores/${sector!.id}`),
-    onSuccess: () => done('Setor removido. As conversas na fila dele voltaram para a fila geral.'),
+    onSuccess: () => done('Setor excluído. As conversas na fila dele voltaram para a fila geral.'),
     onError: (err) => toast.error(errorMessage(err)),
   })
   const people = data.users.map((u) => ({ id: u.id, name: u.name }))
+  const askRemove = async () => {
+    if (await confirm({ title: `Excluir o setor “${sector!.name}”?`, description: 'As conversas na fila dele voltam para a fila geral. Não dá para desfazer.', confirmLabel: 'Excluir setor' })) remove.mutate()
+  }
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{sector ? `Setor ${sector.name}` : 'Novo setor'}</DialogTitle>
           <DialogDescription>Quem atende, quem gerencia e o que cada um vê das conversas do setor.</DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
+        <form
+          id="sector-form"
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (canSave && !save.isPending) save.mutate()
+          }}
+        >
           <div className="space-y-1.5">
-            <Label htmlFor="sec-name">Nome</Label>
+            <Label htmlFor="sec-name" required>Nome</Label>
             <Input id="sec-name" maxLength={40} placeholder="Ex.: Vendas" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus />
+            {!canSave && <p className="text-xs text-muted-foreground">Mínimo 2 caracteres.</p>}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="sec-desc">Descrição (opcional)</Label>
@@ -193,27 +208,20 @@ function SectorDialog({ sector, data, onClose }: { sector: Sector | null; data: 
               ))}
             </RadioGroup>
           </div>
-        </div>
+        </form>
         <DialogFooter className="gap-2 sm:justify-between">
           {sector ? (
-            confirmRemove ? (
-              <Button variant="destructive" onClick={() => remove.mutate()} disabled={remove.isPending}>
-                {remove.isPending && <Loader2Icon className="animate-spin" />}
-                Confirmar remoção
-              </Button>
-            ) : (
-              <Button variant="ghost" className="text-destructive" onClick={() => setConfirmRemove(true)}>
-                <Trash2Icon /> Remover setor
-              </Button>
-            )
+            <Button type="button" variant="ghost" className="text-destructive" onClick={() => void askRemove()} disabled={remove.isPending}>
+              {remove.isPending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />} Excluir setor
+            </Button>
           ) : (
             <span />
           )}
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
-            <Button onClick={() => save.mutate()} disabled={save.isPending || f.name.trim().length < 2}>
+            <Button type="submit" form="sector-form" disabled={save.isPending || !canSave}>
               {save.isPending && <Loader2Icon className="animate-spin" />}
               Salvar
             </Button>

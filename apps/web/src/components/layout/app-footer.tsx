@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ArrowUpCircleIcon, CheckCircle2Icon } from 'lucide-react'
 import { Link } from 'react-router'
+import { InlineError } from '@/components/page'
 import { api } from '@/lib/api'
 import type { VersionInfo } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -15,7 +16,7 @@ export function useVersion() {
 
 /** Rodapé fixo de todas as telas. O crédito de desenvolvimento não é configurável pelo whitelabel. */
 export function AppFooter({ className, linkToUpdates = true }: { className?: string; linkToUpdates?: boolean }) {
-  const { data } = useVersion()
+  const { data, error, refetch } = useVersion()
   const version = data ? `v${data.version}` : ''
 
   const status = data?.updateAvailable ? (
@@ -40,6 +41,7 @@ export function AppFooter({ className, linkToUpdates = true }: { className?: str
       <p>
         Desenvolvido e mantido por <span className="font-medium text-foreground">Diego Naue Mocelin</span>
       </p>
+      {error && !data && <InlineError error={error} onRetry={() => void refetch()} />}
       {data && (
         <p className="flex items-center gap-2">
           {linkToUpdates ? (

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CombineIcon, FileSpreadsheetIcon, Loader2Icon, PencilIcon, PlusIcon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { toast } from 'sonner'
+import { isDirty, useCloseGuard } from '@/components/confirm'
 import { ImportDialog } from '@/components/atendimento/import-dialog'
 import { MultiSelect } from '@/components/multi-select'
 import { Can, EmptyState, ErrorState, TableSkeleton } from '@/components/page'
@@ -139,8 +140,9 @@ export function LookupTab({ type, title, single }: { type: string; title: string
 
 function RenameDialog({ name, busy, onClose, onSave }: { name: string; busy: boolean; onClose: () => void; onSave: (n: string) => void }) {
   const [value, setValue] = useState(name)
+  const guard = useCloseGuard(value.trim() !== name.trim(), onClose, 'o novo nome')
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="sm:max-w-sm">
         <form
           onSubmit={(e) => {
@@ -155,7 +157,7 @@ function RenameDialog({ name, busy, onClose, onSave }: { name: string; busy: boo
           </DialogHeader>
           <Input value={value} maxLength={80} onChange={(e) => setValue(e.target.value)} autoFocus aria-label="Nome" />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button type="submit" disabled={busy || !value.trim()}>
@@ -219,7 +221,7 @@ export function SellersTab() {
                 <TableCell className="pr-6">
                   {can('cadastros', 'edit') && (
                     <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon" className="size-8" onClick={() => setEditing(s)} aria-label={`Editar ${s.name}`}>
+                      <Button variant="ghost" size="icon" className="size-8" onClick={() => setEditing(s)} aria-label={`Editar vendedor ${s.name}`}>
                         <PencilIcon />
                       </Button>
                       <Button variant="ghost" size="icon" className="size-8" onClick={() => setMerging(s)} aria-label={`Mesclar ${s.name} com outro vendedor`}>
@@ -263,6 +265,8 @@ function SellerDialog({ seller, onClose }: { seller: SellerRow | null; onClose: 
   const [userId, setUserId] = useState<string | null>(seller?.userId ?? null)
   const [active, setActive] = useState(seller?.active ?? true)
   const [error, setError] = useState<string | null>(null)
+  const [initial] = useState(() => ({ name, unitId, email, phone, userId, active }))
+  const guard = useCloseGuard(isDirty(initial, { name, unitId, email, phone, userId, active }), onClose, 'os dados do vendedor')
 
   const save = useMutation({
     mutationFn: (): Promise<unknown> => {
@@ -280,7 +284,7 @@ function SellerDialog({ seller, onClose }: { seller: SellerRow | null; onClose: 
   })
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="sm:max-w-md">
         <form
           onSubmit={(e: FormEvent) => {
@@ -294,7 +298,7 @@ function SellerDialog({ seller, onClose }: { seller: SellerRow | null; onClose: 
             <DialogTitle>{seller ? 'Editar vendedor' : 'Novo vendedor'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="s-name">Nome</Label>
+            <Label htmlFor="s-name" required>Nome</Label>
             <Input id="s-name" required minLength={2} maxLength={80} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -345,8 +349,9 @@ function SellerDialog({ seller, onClose }: { seller: SellerRow | null; onClose: 
             <Switch checked={active} onCheckedChange={setActive} />
           </label>
           <FormError message={error} />
+          {name.trim().length < 2 && <p className="text-right text-xs text-muted-foreground">Informe o nome (mínimo 2 caracteres).</p>}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button type="submit" disabled={save.isPending || name.trim().length < 2}>
@@ -468,7 +473,7 @@ export function UnitsTab() {
                 <TableCell>{u.active ? <Badge variant="outline">Ativa</Badge> : <Badge variant="secondary">Inativa</Badge>}</TableCell>
                 <TableCell className="pr-6">
                   {can('cadastros', 'edit') && (
-                    <Button variant="ghost" size="icon" className="size-8" onClick={() => setEditing(u)} aria-label={`Editar ${u.name}`}>
+                    <Button variant="ghost" size="icon" className="size-8" onClick={() => setEditing(u)} aria-label={`Editar unidade ${u.name}`}>
                       <PencilIcon />
                     </Button>
                   )}
@@ -491,6 +496,8 @@ function UnitDialog({ unit, onClose }: { unit: UnitRow | null; onClose: () => vo
   const [hq, setHq] = useState(unit?.isHeadquarters ?? false)
   const [active, setActive] = useState(unit?.active ?? true)
   const [error, setError] = useState<string | null>(null)
+  const [initial] = useState(() => ({ name, city, state, hq, active }))
+  const guard = useCloseGuard(isDirty(initial, { name, city, state, hq, active }), onClose, 'os dados da unidade')
 
   const save = useMutation({
     mutationFn: () => {
@@ -506,7 +513,7 @@ function UnitDialog({ unit, onClose }: { unit: UnitRow | null; onClose: () => vo
   })
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="sm:max-w-md">
         <form
           onSubmit={(e: FormEvent) => {
@@ -520,7 +527,7 @@ function UnitDialog({ unit, onClose }: { unit: UnitRow | null; onClose: () => vo
             <DialogTitle>{unit ? 'Editar unidade' : 'Nova unidade'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
-            <Label htmlFor="u-name">Nome</Label>
+            <Label htmlFor="u-name" required>Nome</Label>
             <Input id="u-name" required minLength={2} maxLength={80} placeholder="Ex.: Filial Cascavel" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </div>
           <div className="grid gap-3 sm:grid-cols-[1fr_9rem]">
@@ -554,8 +561,9 @@ function UnitDialog({ unit, onClose }: { unit: UnitRow | null; onClose: () => vo
             <Switch checked={active} onCheckedChange={setActive} />
           </label>
           <FormError message={error} />
+          {name.trim().length < 2 && <p className="text-right text-xs text-muted-foreground">Informe o nome (mínimo 2 caracteres).</p>}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button type="submit" disabled={save.isPending || name.trim().length < 2}>

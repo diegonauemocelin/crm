@@ -194,7 +194,7 @@ function Body({ d, min, setMin }: { d: Seen; min: string; setMin: (v: string) =>
                 <Num className="hidden md:table-cell">{int.format(p.leads)}</Num>
                 <Num>
                   {int.format(p.carts)}
-                  {p.cartRate !== null && p.carts > 0 && <span className="block text-[11px] text-muted-foreground">{pctFmt.format(p.cartRate)} de quem viu</span>}
+                  {p.cartRate !== null && p.carts > 0 && <span className="block text-xs text-muted-foreground">{pctFmt.format(p.cartRate)} de quem viu</span>}
                 </Num>
                 <Num>{int.format(p.bought)}</Num>
                 <Num className="hidden lg:table-cell">{p.stock === null ? '—' : p.stock <= 0 ? <span className="text-destructive">sem estoque</span> : int.format(p.stock)}</Num>

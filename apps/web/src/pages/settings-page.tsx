@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2Icon, ImageIcon, Loader2Icon, PlugZapIcon, SendIcon, Trash2Icon, UploadIcon, XCircleIcon } from 'lucide-react'
 import { type FormEvent, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useConfirm } from '@/components/confirm'
 import { LayoutPicker, type ModelChoice } from '@/components/layout-picker'
 import { ErrorState, TableSkeleton } from '@/components/page'
 import { Button } from '@/components/ui/button'
@@ -63,6 +64,7 @@ function ColorField({ id, label, value, onChange, disabled }: { id: string; labe
 function ImageSlot({ slot, label, hint, url, onSaved, disabled }: { slot: string; label: string; hint: string; url: string | null; onSaved: (b: Branding) => void; disabled: boolean }) {
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
+  const confirm = useConfirm()
 
   const upload = async (file: File) => {
     if (file.size > 1024 * 1024) {
@@ -84,6 +86,12 @@ function ImageSlot({ slot, label, hint, url, onSaved, disabled }: { slot: string
   }
 
   const remove = async () => {
+    const ok = await confirm({
+      title: `Remover ${label.toLowerCase()}?`,
+      description: 'A imagem sai do sistema para todos os usuários. Para voltar a usá-la, será preciso enviar o arquivo de novo.',
+      confirmLabel: `Remover ${label.toLowerCase()}`,
+    })
+    if (!ok) return
     setBusy(true)
     try {
       onSaved(await api.post<Branding>(`/settings/branding/${slot}/remove`))
@@ -115,7 +123,7 @@ function ImageSlot({ slot, label, hint, url, onSaved, disabled }: { slot: string
         Enviar
       </Button>
       {url && (
-        <Button type="button" variant="ghost" size="icon" className="size-8" disabled={busy || disabled} onClick={remove} aria-label={`Remover ${label}`}>
+        <Button type="button" variant="ghost" size="icon" className="size-8" disabled={busy || disabled} onClick={() => void remove()} aria-label={`Remover ${label.toLowerCase()}`}>
           <Trash2Icon />
         </Button>
       )}
@@ -162,11 +170,11 @@ function BrandingEditor({ data }: { data: Branding }) {
           </CardHeader>
           <CardContent className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="b-name">Nome do sistema</Label>
+              <Label htmlFor="b-name" required>Nome do sistema</Label>
               <Input id="b-name" required maxLength={60} value={form.appName} onChange={(e) => set('appName', e.target.value)} disabled={!canEdit} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="b-short">Nome curto</Label>
+              <Label htmlFor="b-short" required>Nome curto</Label>
               <Input id="b-short" required maxLength={30} value={form.shortName} onChange={(e) => set('shortName', e.target.value)} disabled={!canEdit} />
             </div>
             <ColorField id="b-primary" label="Cor principal (botões e destaques)" value={form.primaryColor} onChange={(v) => set('primaryColor', v)} disabled={!canEdit} />
@@ -354,11 +362,11 @@ function SmtpEditor({ initial }: { initial: SmtpView }) {
             )}
             <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_7rem_10rem]">
               <div className="space-y-2">
-                <Label htmlFor="s-host">Servidor</Label>
+                <Label htmlFor="s-host" required>Servidor</Label>
                 <Input id="s-host" required placeholder="email-ssl.com.br" value={form.host} onChange={(e) => set('host', e.target.value.trim())} disabled={!canEdit} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="s-port">Porta</Label>
+                <Label htmlFor="s-port" required>Porta</Label>
                 <Input id="s-port" type="number" required min={1} max={65535} value={form.port} onChange={(e) => set('port', Number(e.target.value))} disabled={!canEdit} />
               </div>
               <div className="space-y-2">
@@ -398,7 +406,7 @@ function SmtpEditor({ initial }: { initial: SmtpView }) {
                 <Input id="s-fromname" placeholder="Nome da empresa" value={form.fromName} onChange={(e) => set('fromName', e.target.value)} disabled={!canEdit} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="s-from">E-mail do remetente</Label>
+                <Label htmlFor="s-from" required>E-mail do remetente</Label>
                 <Input id="s-from" type="email" required value={form.fromEmail} onChange={(e) => set('fromEmail', e.target.value.trim())} disabled={!canEdit} />
               </div>
               <div className="space-y-2">

@@ -88,11 +88,19 @@ export function ImportDialog({ kind, onClose }: { kind: Kind; onClose: () => voi
         </DialogHeader>
 
         {!summary && (
-          <div className="space-y-4">
+          <form
+            id="imp-form"
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (!busy && (url.trim() || csv)) void run(true)
+            }}
+          >
             <div className="space-y-2">
               <Label htmlFor="imp-url">Link do Google Planilhas</Label>
               <Input
                 id="imp-url"
+                autoFocus
                 placeholder="https://docs.google.com/spreadsheets/d/…"
                 value={url}
                 disabled={!!csv}
@@ -124,13 +132,14 @@ export function ImportDialog({ kind, onClose }: { kind: Kind; onClose: () => voi
               {csv && (
                 <span className="text-sm">
                   {csv.name}{' '}
-                  <button type="button" className="text-muted-foreground underline" onClick={() => setCsv(null)}>
+                  <button type="button" className="text-muted-foreground underline" aria-label={`Remover o arquivo ${csv.name}`} onClick={() => setCsv(null)}>
                     remover
                   </button>
                 </span>
               )}
             </div>
-          </div>
+            {!url.trim() && !csv && <p className="text-xs text-muted-foreground">Cole o link da planilha ou envie um arquivo CSV para analisar.</p>}
+          </form>
         )}
 
         {summary && (
@@ -200,7 +209,7 @@ export function ImportDialog({ kind, onClose }: { kind: Kind; onClose: () => voi
             <Button onClick={onClose}>Concluir</Button>
           ) : (
             <>
-              <Button variant="outline" onClick={summary ? () => setSummary(null) : onClose} disabled={busy}>
+              <Button type="button" variant="outline" onClick={summary ? () => setSummary(null) : onClose} disabled={busy}>
                 {summary ? 'Voltar' : 'Cancelar'}
               </Button>
               {summary ? (
@@ -209,7 +218,7 @@ export function ImportDialog({ kind, onClose }: { kind: Kind; onClose: () => voi
                   {summary.toImport === 0 ? (summary.toFinish ? `Finalizar ${int.format(summary.toFinish)} atendimento(s)` : 'Nada novo para importar') : `Importar ${int.format(summary.toImport)} atendimento(s)`}
                 </Button>
               ) : (
-                <Button onClick={() => run(true)} disabled={busy || (!url.trim() && !csv)}>
+                <Button type="submit" form="imp-form" disabled={busy || (!url.trim() && !csv)}>
                   {busy ? <Loader2Icon className="animate-spin" /> : <SearchCheckIcon />}
                   Analisar planilha
                 </Button>

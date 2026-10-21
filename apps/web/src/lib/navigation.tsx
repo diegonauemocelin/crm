@@ -148,8 +148,9 @@ export const NAVIGATION: NavGroup[] = [
   },
 ]
 
-export function visibleNavigation(can: (module: string, action?: Action) => boolean): NavGroup[] {
-  const allowed = (i: NavItem) => (i.anyOf ? i.anyOf.some((m) => can(m, 'view')) : !i.module || can(i.module, i.action ?? 'view'))
+/** Telas "Em breve" só aparecem para o administrador do sistema: para os outros, seriam um clique sem resultado. */
+export function visibleNavigation(can: (module: string, action?: Action) => boolean, isAdmin = false): NavGroup[] {
+  const allowed = (i: NavItem) => (!i.phase || isAdmin) && (i.anyOf ? i.anyOf.some((m) => can(m, 'view')) : !i.module || can(i.module, i.action ?? 'view'))
   return NAVIGATION.map((g) => ({ ...g, items: g.items.filter(allowed) })).filter(
     (g) => g.items.length > 0,
   )

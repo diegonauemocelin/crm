@@ -9,7 +9,8 @@ import { ContactBubble, ShareContactButton } from '@/components/chat/compartilha
 import { ForwardDialog } from '@/components/chat/encaminhar'
 import { ToCallPanel } from '@/components/chat/para-chamar'
 import { type ChatLabel, LabelChip, LabelPicker, ManageRepliesDialog, useLabels } from '@/components/chat/organizar'
-import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
+import { ErrorState, InlineError, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -24,6 +25,7 @@ import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { api, errorMessage } from '@/lib/api'
 import { formatPhone, maskPhone, useOptions } from '@/lib/atendimento'
+import { dateShort, dateTime, time } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { setSoundOn, soundOn, useChatAlerts } from '@/lib/chat-alerts'
 import { splitLinks, splitPhones } from '@/lib/links'
@@ -133,9 +135,7 @@ export type ContactCategory = 'CLIENTE' | 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
 export const CATEGORY_LABEL: Record<ContactCategory, string> = { CLIENTE: 'Cliente / lead', COLEGA: 'Colega de trabalho', FORNECEDOR: 'Fornecedor', OUTRO: 'Outro (não é venda)' }
 /** Com a regra "A classificar", o contato novo fica assim até alguém marcar. */
 const categoryLabel = (c: string | undefined) => (c === 'NOVO' ? 'A classificar' : c === 'GRUPO' ? 'Grupo' : (CATEGORY_LABEL[c as ContactCategory] ?? c ?? ''))
-const time = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })
-const day = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' })
-const dayKey = (iso: string) => day.format(new Date(iso))
+const dayKey = (iso: string) => dateShort(iso)
 
 /** Iniciais e cor fixa por contato, como a foto vazia do WhatsApp. */
 const AVATAR_COLORS = ['bg-emerald-600', 'bg-sky-600', 'bg-violet-600', 'bg-amber-600', 'bg-rose-600', 'bg-teal-600', 'bg-indigo-600', 'bg-orange-600']
@@ -153,8 +153,8 @@ function Avatar({ name, group, className }: { name: string | null; group?: boole
 /** Etiqueta do dia no meio da conversa: Hoje, Ontem ou a data. */
 function dayLabel(iso: string) {
   const k = dayKey(iso)
-  if (k === day.format(new Date())) return 'Hoje'
-  if (k === day.format(new Date(Date.now() - 86_400_000))) return 'Ontem'
+  if (k === dateShort(new Date())) return 'Hoje'
+  if (k === dateShort(new Date(Date.now() - 86_400_000))) return 'Ontem'
   return k
 }
 
@@ -210,7 +210,7 @@ function byNumber(items: ConvItem[], numbers: NumberRef[]) {
 
 function when(iso: string | null) {
   if (!iso) return ''
-  return dayKey(iso) === day.format(new Date()) ? time.format(new Date(iso)) : day.format(new Date(iso)).slice(0, 5)
+  return dayKey(iso) === dateShort(new Date()) ? time(iso) : dateShort(iso).slice(0, 5)
 }
 
 /** Telas novas: painel do cliente, pré-venda rápida e "/" nas respostas; no layout Moderno, também as cores de espera. */
@@ -475,12 +475,12 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                           {c.lastPreview}
                         </span>
                         {c.reminderAt && (
-                          <span className={cn('inline-flex shrink-0 items-center gap-0.5 text-[11px] tabular-nums', new Date(c.reminderAt) <= new Date() ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-muted-foreground')} title="Lembrete de retorno">
+                          <span className={cn('inline-flex shrink-0 items-center gap-0.5 text-xs tabular-nums', new Date(c.reminderAt) <= new Date() ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-muted-foreground')} title="Lembrete de retorno">
                             <AlarmClockIcon className="size-3" /> {when(c.reminderAt)}
                           </span>
                         )}
                         {c.noteUnread && !monitor && (
-                          <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-100 px-1 text-[11px] font-medium text-amber-800 dark:bg-amber-500/20 dark:text-amber-300" title="Nota interna nova da gestão">
+                          <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-100 px-1 text-xs font-medium text-amber-800 dark:bg-amber-500/20 dark:text-amber-300" title="Nota interna nova da gestão">
                             <StickyNoteIcon className="size-3" /> Nota
                           </span>
                         )}
@@ -495,7 +495,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                         </span>
                       )}
                       {(list.data.numbers.length > 1 || (c.category && c.category !== 'CLIENTE') || monitor || numbers.get(c.numberId)?.splitAttendance) && (
-                        <span className="block truncate text-[11px] text-muted-foreground">
+                        <span className="block truncate text-xs text-muted-foreground">
                           {[
                             numbers.get(c.numberId)?.splitAttendance && (!c.category || c.category === 'CLIENTE') ? (c.assignedUserName ? `com ${c.assignedUserName}` : 'Na fila') : null,
                             monitor && !numbers.get(c.numberId)?.splitAttendance ? c.attendant || 'sem vendedor' : null, list.data.numbers.length > 1 ? numbers.get(c.numberId)?.name : null, c.category && c.category !== 'CLIENTE' ? categoryLabel(c.category) : null].filter(Boolean).join(' · ')}
@@ -685,13 +685,13 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
               )}
               {m.internal ? (
                 <div className="mx-auto my-1 max-w-[90%] rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 sm:max-w-[75%] dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
-                  <p className="mb-0.5 flex items-center gap-1 text-[11px] font-semibold tracking-wide uppercase">
+                  <p className="mb-0.5 flex items-center gap-1 text-xs font-semibold tracking-wide uppercase">
                     <LockIcon className="size-3" /> Nota interna · o cliente não vê
                   </p>
                   <p className="break-words whitespace-pre-wrap">{waFormat(m.text ?? '')}</p>
-                  <p className="mt-0.5 text-right text-[11px] tabular-nums opacity-70">
+                  <p className="mt-0.5 text-right text-xs tabular-nums opacity-70">
                     {m.sentByName ? `${m.sentByName} · ` : ''}
-                    {time.format(new Date(m.sentAt))}
+                    {time(m.sentAt)}
                   </p>
                 </div>
               ) : (
@@ -715,10 +715,10 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
                   <Bubble m={m} />
                   {!m.fromMe && m.type === 'texto' && canAct(m) && <MenuButtons m={m} conversationId={d.conversation.id} category={d.conversation.category} />}
                   {!!m.reactions?.length && <Reactions list={m.reactions} />}
-                  <p className={cn('mt-0.5 text-right text-[11px] tabular-nums', m.fromMe ? 'opacity-70' : 'text-muted-foreground')}>
+                  <p className={cn('mt-0.5 text-right text-xs tabular-nums', m.fromMe ? 'opacity-70' : 'text-muted-foreground')}>
                     {m.fromMe && (m.sentByName ? `${m.sentByName} · ` : 'pelo celular · ')}
-                    {m.editedAt && !m.deleted && <span title={`Corrigida em ${new Date(m.editedAt).toLocaleString('pt-BR')}`}>Editada · </span>}
-                    {time.format(new Date(m.sentAt))}
+                    {m.editedAt && !m.deleted && <span title={`Corrigida em ${dateTime(m.editedAt)}`}>Editada · </span>}
+                    {time(m.sentAt)}
                     {m.fromMe && <Receipt status={m.status} />}
                   </p>
                 </div>
@@ -799,6 +799,8 @@ const SIGNATURE = /^\*[^*\n]{1,40}:\*\n/
 function EditMessageDialog({ m, onClose }: { m: Message; onClose: () => void }) {
   const qc = useQueryClient()
   const [text, setText] = useState(() => (m.text ?? '').replace(SIGNATURE, ''))
+  const [initial] = useState(text)
+  const guard = useCloseGuard(isDirty(initial, text), onClose, 'a correção')
   const save = useMutation({
     mutationFn: () => api.patch(`/chat/mensagens/${m.id}`, { text: text.trim() }),
     onSuccess: () => {
@@ -810,7 +812,7 @@ function EditMessageDialog({ m, onClose }: { m: Message; onClose: () => void }) 
     onError: (err) => toast.error(errorMessage(err)),
   })
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Corrigir mensagem</DialogTitle>
@@ -818,7 +820,7 @@ function EditMessageDialog({ m, onClose }: { m: Message; onClose: () => void }) 
         </DialogHeader>
         <Textarea rows={5} maxLength={4000} value={text} onChange={(e) => setText(e.target.value)} aria-label="Texto da mensagem" autoFocus />
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={() => void guard()}>
             Cancelar
           </Button>
           <Button type="button" onClick={() => save.mutate()} disabled={save.isPending || !text.trim()}>
@@ -831,61 +833,49 @@ function EditMessageDialog({ m, onClose }: { m: Message; onClose: () => void }) 
   )
 }
 
-/** Apagar para todos: some do WhatsApp do cliente e no CRM fica "Mensagem apagada". */
-function DeleteMessageDialog({ m, onClose }: { m: Message; onClose: () => void }) {
-  const qc = useQueryClient()
-  const remove = useMutation({
-    mutationFn: () => api.delete(`/chat/mensagens/${m.id}`),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['chat-conversa'] })
-      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
-      toast.success('Mensagem apagada para todos.')
-      onClose()
-    },
-    onError: (err) => toast.error(errorMessage(err)),
-  })
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Apagar para todos?</DialogTitle>
-          <DialogDescription>A mensagem some do WhatsApp do cliente e, aqui, fica “Mensagem apagada”. Não dá para desfazer. O WhatsApp só deixa apagar até 2 dias depois do envio.</DialogDescription>
-        </DialogHeader>
-        {m.text && <p className="line-clamp-4 rounded-md border bg-muted/40 p-2 text-sm whitespace-pre-wrap">{m.text}</p>}
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button type="button" variant="destructive" onClick={() => remove.mutate()} disabled={remove.isPending}>
-            {remove.isPending && <Loader2Icon className="animate-spin" />}
-            Apagar para todos
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 /** Ações ao lado da mensagem (aparecem ao passar o mouse; no celular ficam à vista, mais claras): responder, reagir, encaminhar, corrigir e apagar. */
 function MessageActions({ m, canForward, onReply, onForward }: { m: Message; canForward: boolean; onReply: () => void; onForward: () => void }) {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
-  const [change, setChange] = useState<'editar' | 'apagar' | null>(null)
+  const [change, setChange] = useState<'editar' | null>(null)
+  const confirm = useConfirm()
   const mine = m.reactions?.find((r) => r.by === 'me')?.emoji ?? ''
   const react = useMutation({
     mutationFn: (emoji: string) => api.post(`/chat/mensagens/${m.id}/reacao`, { emoji }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['chat-conversa'] }),
     onError: (err) => toast.error(errorMessage(err)),
   })
+  // Apagar para todos: some do WhatsApp do cliente e no CRM fica "Mensagem apagada".
+  const remove = useMutation({
+    mutationFn: () => api.delete(`/chat/mensagens/${m.id}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['chat-conversa'] })
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+      toast.success('Mensagem apagada para todos.')
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const askRemove = async () => {
+    const ok = await confirm({
+      title: 'Apagar a mensagem para todos?',
+      description: (
+        <>
+          <span className="block">A mensagem some do WhatsApp do cliente e, aqui, fica “Mensagem apagada”. Não dá para desfazer. O WhatsApp só deixa apagar até 2 dias depois do envio.</span>
+          {m.text && <span className="mt-2 line-clamp-4 block rounded-md border bg-muted/40 p-2 whitespace-pre-wrap text-foreground">{m.text}</span>}
+        </>
+      ),
+      confirmLabel: 'Apagar para todos',
+    })
+    if (ok) remove.mutate()
+  }
   const cls = 'size-7 shrink-0 opacity-50 group-hover/msg:opacity-100 focus-visible:opacity-100 md:opacity-0'
   return (
     <span className={cn('flex shrink-0 items-center', m.fromMe ? 'flex-row' : 'flex-row-reverse')}>
       {change === 'editar' && <EditMessageDialog m={m} onClose={() => setChange(null)} />}
-      {change === 'apagar' && <DeleteMessageDialog m={m} onClose={() => setChange(null)} />}
       {(m.canEdit || m.canDelete) && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" size="icon" variant="ghost" className={cls} aria-label="Corrigir ou apagar mensagem" title="Corrigir ou apagar">
+            <Button type="button" size="icon" variant="ghost" className={cls} aria-label="Corrigir ou apagar mensagem">
               <EllipsisVerticalIcon className="size-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -896,7 +886,7 @@ function MessageActions({ m, canForward, onReply, onForward }: { m: Message; can
               </DropdownMenuItem>
             )}
             {m.canDelete && (
-              <DropdownMenuItem variant="destructive" onSelect={() => setChange('apagar')}>
+              <DropdownMenuItem variant="destructive" disabled={remove.isPending} onSelect={() => void askRemove()}>
                 <Trash2Icon /> Apagar para todos
               </DropdownMenuItem>
             )}
@@ -904,13 +894,13 @@ function MessageActions({ m, canForward, onReply, onForward }: { m: Message; can
         </DropdownMenu>
       )}
       {canForward && (
-        <Button type="button" size="icon" variant="ghost" className={cls} onClick={onForward} aria-label="Encaminhar mensagem" title="Encaminhar">
+        <Button type="button" size="icon" variant="ghost" className={cls} onClick={onForward} aria-label="Encaminhar mensagem">
           <ForwardIcon className="size-4" />
         </Button>
       )}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button type="button" size="icon" variant="ghost" className={cn(cls, open && 'opacity-100')} aria-label="Reagir à mensagem" title="Reagir">
+          <Button type="button" size="icon" variant="ghost" className={cn(cls, open && 'opacity-100')} aria-label="Reagir à mensagem">
             <SmilePlusIcon className="size-4" />
           </Button>
         </PopoverTrigger>
@@ -931,7 +921,7 @@ function MessageActions({ m, canForward, onReply, onForward }: { m: Message; can
           ))}
         </PopoverContent>
       </Popover>
-      <Button type="button" size="icon" variant="ghost" className={cls} onClick={onReply} aria-label="Responder mensagem" title="Responder">
+      <Button type="button" size="icon" variant="ghost" className={cls} onClick={onReply} aria-label="Responder mensagem">
         <ReplyIcon className="size-4" />
       </Button>
     </span>
@@ -1199,7 +1189,7 @@ function SaveContactButton({ thread }: { thread: Thread }) {
             {formatPhone(thread.conversation.phone)} · agenda do número {thread.number?.name}. Telefone já salvo é atualizado, não duplica.
           </p>
           <div className="space-y-1">
-            <Label htmlFor="sc-name">Nome</Label>
+            <Label htmlFor="sc-name" required>Nome</Label>
             <Input id="sc-name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} autoFocus />
           </div>
           <div className="space-y-1">
@@ -1423,8 +1413,8 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { t
           <PaperclipIcon className="size-3.5" />
           <span className="min-w-0 flex-1 truncate">{replyFile.fileName}</span>
           <span className="text-muted-foreground">resposta rápida</span>
-          <Button type="button" size="sm" variant="ghost" className="h-6 px-2" onClick={() => (setReplyFile(null), setText(''))}>
-            Tirar
+          <Button type="button" size="sm" variant="ghost" className="h-6 px-2" onClick={() => (setReplyFile(null), setText(''))} aria-label="Remover a resposta rápida com arquivo">
+            Remover
           </Button>
         </div>
       )}
@@ -1433,8 +1423,8 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { t
           {preview ? <img src={preview} alt="Prévia da imagem" className="size-12 rounded object-cover" /> : <PaperclipIcon className="size-3.5" />}
           <span className="min-w-0 flex-1 truncate">{file.name}</span>
           <span className="text-muted-foreground tabular-nums">{(file.size / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB</span>
-          <Button type="button" size="sm" variant="ghost" className="h-6 px-2" onClick={() => setFile(null)}>
-            Tirar
+          <Button type="button" size="sm" variant="ghost" className="h-6 px-2" onClick={() => setFile(null)} aria-label={`Remover o anexo ${file.name}`}>
+            Remover
           </Button>
         </div>
       )}
@@ -1451,12 +1441,12 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { t
             setFile(f)
           }}
         />
-        <Button type="button" size="icon" variant="ghost" onClick={() => input.current?.click()} aria-label="Anexar arquivo" title="Anexar foto, vídeo, áudio ou documento">
+        <Button type="button" size="icon" variant="ghost" onClick={() => input.current?.click()} aria-label="Anexar foto, vídeo, áudio ou documento">
           <PaperclipIcon />
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" size="icon" variant="ghost" aria-label="Respostas rápidas" title="Respostas rápidas">
+            <Button type="button" size="icon" variant="ghost" aria-label="Respostas rápidas">
               <ZapIcon />
             </Button>
           </DropdownMenuTrigger>
@@ -1498,19 +1488,19 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { t
             <span className="flex items-center gap-1.5 text-sm tabular-nums text-destructive" aria-live="polite">
               <span className="size-2 animate-pulse rounded-full bg-destructive" /> {voice.elapsed}
             </span>
-            <Button type="button" size="icon" variant="ghost" onClick={voice.cancel} aria-label="Descartar áudio" title="Descartar">
+            <Button type="button" size="icon" variant="ghost" onClick={voice.cancel} aria-label="Descartar áudio">
               <Trash2Icon />
             </Button>
-            <Button type="button" size="icon" onClick={voice.stop} aria-label="Enviar áudio" title="Enviar áudio">
+            <Button type="button" size="icon" onClick={voice.stop} aria-label="Enviar áudio">
               <SendIcon />
             </Button>
           </div>
         ) : !text.trim() && !file ? (
-          <Button type="button" size="icon" onClick={() => void voice.start()} disabled={voice.sending} aria-label="Gravar áudio" title="Gravar mensagem de voz">
+          <Button type="button" size="icon" onClick={() => void voice.start()} disabled={voice.sending} aria-label="Gravar mensagem de voz">
             {voice.sending ? <Loader2Icon className="animate-spin" /> : <MicIcon />}
           </Button>
         ) : (
-          <Button type="submit" size="icon" disabled={send.isPending} aria-label="Enviar">
+          <Button type="submit" size="icon" disabled={send.isPending} aria-label="Enviar mensagem">
             {send.isPending ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
           </Button>
         )}
@@ -1626,6 +1616,7 @@ export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, e
   const [numberId, setNumberId] = useState<string | null>(null)
   const [phone, setPhone] = useState(initialPhone ? (initialPhone.startsWith('+55') ? formatPhone(initialPhone) : initialPhone) : '')
   const [error, setError] = useState<string | null>(null)
+  const [initialTyped] = useState(phone)
   // Agenda: o número da agenda do contato vem escolhido (se estiver conectado).
   const chosen = numberId ?? (initialNumber && connected.some((n) => n.id === initialNumber) ? initialNumber : null) ?? connected[0]?.id ?? null
   // Busca pelo nome: na agenda do número escolhido (e na geral), nos vendedores e nos leads.
@@ -1666,6 +1657,8 @@ export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, e
     onSuccess: (r) => onStarted(r.id),
     onError: (err) => setError(errorMessage(err)),
   })
+  // Nome ou telefone digitado: pergunta antes de fechar.
+  const guard = useCloseGuard(!!query.trim() || isDirty(initialTyped, phone), onClose, 'o contato digitado')
   const tried = useRef(false)
   // Abre direto só com um número conectado e, vindo da agenda de um número, se for esse mesmo número.
   // Telefone clicado numa conversa (sameNumber): direto pelo número da conversa, se o usuário pode usá-lo.
@@ -1678,7 +1671,7 @@ export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, e
   }, [direct, chosen, start])
   if (direct && !error) return null
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent>
         <form
           className="space-y-4"
@@ -1694,6 +1687,8 @@ export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, e
           </DialogHeader>
           {numbers.isLoading ? (
             <TableSkeleton rows={2} />
+          ) : numbers.error ? (
+            <InlineError error={numbers.error} onRetry={() => void numbers.refetch()} />
           ) : connected.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               Nenhum número seu está conectado agora.
@@ -1725,7 +1720,7 @@ export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, e
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="chat-start-phone">Nome ou WhatsApp do cliente</Label>
+                <Label htmlFor="chat-start-phone" required>Nome ou WhatsApp do cliente</Label>
                 <Input
                   id="chat-start-phone"
                   required={!query}
@@ -1752,7 +1747,7 @@ export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, e
                             <span className="block truncate font-medium">{o.name}</span>
                             <span className="block text-xs text-muted-foreground">{o.phone.startsWith('+55') ? formatPhone(o.phone) : o.phone}</span>
                           </span>
-                          <span className="shrink-0 rounded bg-muted px-1.5 text-[11px] text-muted-foreground">{o.source}</span>
+                          <span className="shrink-0 rounded bg-muted px-1.5 text-xs text-muted-foreground">{o.source}</span>
                         </button>
                       </li>
                     ))}
@@ -1763,7 +1758,7 @@ export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, e
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button type="submit" disabled={!chosen || start.isPending || (!phone && !leadId)}>
@@ -1904,7 +1899,7 @@ function Transcript({ m }: { m: Message }) {
   if (shown) {
     return (
       <p className="max-w-80 border-l-2 border-current/30 pl-2 text-[13px] break-words whitespace-pre-wrap opacity-90">
-        <span className="mb-0.5 block text-[10px] font-semibold tracking-wide uppercase opacity-60">Transcrição</span>
+        <span className="mb-0.5 block text-xs font-semibold tracking-wide uppercase">Transcrição</span>
         {shown}
       </p>
     )
@@ -2093,7 +2088,7 @@ function CategoryPicker({ thread }: { thread: Thread }) {
                 Cancelar
               </Button>
               <Button disabled={save.isPending} onClick={() => save.mutate({ category: pending, removeAuto })}>
-                Confirmar
+                Marcar como {CATEGORY_LABEL[pending].toLowerCase()}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -2266,7 +2261,6 @@ function preset(kind: '1h' | 'amanha' | '3d') {
   return d
 }
 const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
-const dateTime = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })
 
 function ReminderButton({ conversationId }: { conversationId: string }) {
   const qc = useQueryClient()
@@ -2274,13 +2268,15 @@ function ReminderButton({ conversationId }: { conversationId: string }) {
   const [due, setDue] = useState(() => localInput(preset('amanha')))
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // Observação digitada e não salva: pergunta antes de fechar.
+  const guard = useCloseGuard(!!note.trim(), () => setOpen(false), 'o lembrete')
   const save = useMutation({
     mutationFn: () => api.post(`/chat/conversas/${conversationId}/lembretes`, { dueAt: new Date(due).toISOString(), note: note || undefined }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['chat-lembretes', conversationId] })
       void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
       void qc.invalidateQueries({ queryKey: ['chat-alertas'] })
-      toast.success(`Lembrete para ${dateTime.format(new Date(due))}.`)
+      toast.success(`Lembrete para ${dateTime(due)}.`)
       setOpen(false)
       setNote('')
     },
@@ -2288,11 +2284,11 @@ function ReminderButton({ conversationId }: { conversationId: string }) {
   })
   return (
     <>
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)} title="Lembrete de retorno" aria-label="Lembrete">
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)} title="Lembrete de retorno" aria-label="Criar lembrete de retorno">
         <AlarmClockIcon /> <span className="hidden @4xl/head:inline">Lembrete</span>
       </Button>
       {open && (
-        <Dialog open onOpenChange={(o) => !o && setOpen(false)}>
+        <Dialog open onOpenChange={(o) => !o && void guard()}>
           <DialogContent>
             <form
               className="space-y-4"
@@ -2314,16 +2310,16 @@ function ReminderButton({ conversationId }: { conversationId: string }) {
                 ))}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="rem-due">Data e hora</Label>
+                <Label htmlFor="rem-due" required>Data e hora</Label>
                 <Input id="rem-due" type="datetime-local" required value={due} onChange={(e) => setDue(e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="rem-note">Observação (opcional)</Label>
-                <Input id="rem-note" maxLength={500} placeholder="Ex.: confirmar se aprovou o orçamento" value={note} onChange={(e) => setNote(e.target.value)} />
+                <Input id="rem-note" autoFocus maxLength={500} placeholder="Ex.: confirmar se aprovou o orçamento" value={note} onChange={(e) => setNote(e.target.value)} />
               </div>
               {error && <p className="text-sm text-destructive">{error}</p>}
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => void guard()}>
                   Cancelar
                 </Button>
                 <Button type="submit" disabled={save.isPending}>
@@ -2351,6 +2347,12 @@ function ReminderBar({ conversationId }: { conversationId: string }) {
     },
     onError: (err) => toast.error(errorMessage(err)),
   })
+  if (q.error && !q.data)
+    return (
+      <div className="border-b px-3 py-2">
+        <InlineError error={q.error} onRetry={() => void q.refetch()} />
+      </div>
+    )
   if (!q.data?.length) return null
   return (
     <ul className="space-y-1 border-b bg-amber-500/5 px-3 py-2">
@@ -2359,7 +2361,7 @@ function ReminderBar({ conversationId }: { conversationId: string }) {
         return (
           <li key={r.id} className="flex items-center gap-2 text-xs">
             <AlarmClockIcon className={cn('size-3.5 shrink-0', late ? 'text-amber-600' : 'text-muted-foreground')} />
-            <span className={cn('tabular-nums', late && 'font-medium text-amber-800 dark:text-amber-300')}>{dateTime.format(new Date(r.dueAt))}</span>
+            <span className={cn('tabular-nums', late && 'font-medium text-amber-800 dark:text-amber-300')}>{dateTime(r.dueAt)}</span>
             <span className="min-w-0 flex-1 truncate text-muted-foreground">
               {r.note ?? 'Retornar a conversa'}
               {!r.mine ? ` · de ${r.userName}` : ''}

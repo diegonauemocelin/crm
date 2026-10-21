@@ -3,6 +3,7 @@ import { ArrowDownIcon, ArrowUpIcon, CodeIcon, InboxIcon, Loader2Icon, Megaphone
 import { type FormEvent, type ReactNode, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
+import { isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
 import { CopyField } from '@/components/copy-field'
 import { MultiSelect } from '@/components/multi-select'
 import { Can, EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -85,10 +86,12 @@ function InstallHint() {
   )
 }
 
-function Field({ label, htmlFor, children, hint, className }: { label: string; htmlFor?: string; children: ReactNode; hint?: string; className?: string }) {
+function Field({ label, htmlFor, children, hint, className, required }: { label: string; htmlFor?: string; children: ReactNode; hint?: string; className?: string; required?: boolean }) {
   return (
     <div className={className ?? 'space-y-1.5'}>
-      <Label htmlFor={htmlFor}>{label}</Label>
+      <Label htmlFor={htmlFor} required={required}>
+        {label}
+      </Label>
       {children}
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
@@ -280,6 +283,8 @@ function FormEditor({ form, onClose }: { form: CaptureForm | null; onClose: () =
   const [f, setF] = useState(() => (form ? { ...form } : { ...NEW_FORM(company) }))
   const [tags, setTags] = useState((form?.tags ?? []).join(', '))
   const [error, setError] = useState<string | null>(null)
+  const [initial] = useState(() => ({ f, tags }))
+  const guard = useCloseGuard(isDirty(initial, { f, tags }), onClose, 'o formulário')
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }))
   const setField = (i: number, patch: Partial<FormField>) => set('fields', f.fields.map((x, j) => (j === i ? { ...x, ...patch } : x)))
   const move = (i: number, dir: -1 | 1) => {
@@ -319,7 +324,7 @@ function FormEditor({ form, onClose }: { form: CaptureForm | null; onClose: () =
   })
 
   return (
-    <Sheet open onOpenChange={(o) => !o && onClose()}>
+    <Sheet open onOpenChange={(o) => !o && void guard()}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
         <SheetHeader className="border-b">
           <SheetTitle>{form ? `Editar: ${form.name}` : 'Novo formulário'}</SheetTitle>
@@ -333,8 +338,8 @@ function FormEditor({ form, onClose }: { form: CaptureForm | null; onClose: () =
             save.mutate()
           }}
         >
-          <Field label="Nome interno" htmlFor="cf-name">
-            <Input id="cf-name" required maxLength={80} placeholder="Ex.: Orçamento de peças" value={f.name} onChange={(e) => set('name', e.target.value)} />
+          <Field label="Nome interno" htmlFor="cf-name" required>
+            <Input id="cf-name" autoFocus required maxLength={80} placeholder="Ex.: Orçamento de peças" value={f.name} onChange={(e) => set('name', e.target.value)} />
           </Field>
 
           <section className="space-y-2">
@@ -347,13 +352,13 @@ function FormEditor({ form, onClose }: { form: CaptureForm | null; onClose: () =
                   <label className="flex items-center gap-1.5 text-xs">
                     <Switch checked={x.required} onCheckedChange={(c) => setField(i, { required: c })} /> Obrigatório
                   </label>
-                  <Button type="button" size="icon" variant="ghost" className="size-7" disabled={i === 0} onClick={() => move(i, -1)} aria-label="Subir">
+                  <Button type="button" size="icon" variant="ghost" className="size-7" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Subir o campo ${x.label || x.key}`}>
                     <ArrowUpIcon />
                   </Button>
-                  <Button type="button" size="icon" variant="ghost" className="size-7" disabled={i === f.fields.length - 1} onClick={() => move(i, 1)} aria-label="Descer">
+                  <Button type="button" size="icon" variant="ghost" className="size-7" disabled={i === f.fields.length - 1} onClick={() => move(i, 1)} aria-label={`Descer o campo ${x.label || x.key}`}>
                     <ArrowDownIcon />
                   </Button>
-                  <Button type="button" size="icon" variant="ghost" className="size-7" onClick={() => set('fields', f.fields.filter((_, j) => j !== i))} aria-label="Remover campo">
+                  <Button type="button" size="icon" variant="ghost" className="size-7" onClick={() => set('fields', f.fields.filter((_, j) => j !== i))} aria-label={`Remover o campo ${x.label || x.key} do formulário`}>
                     <XIcon />
                   </Button>
                 </li>
@@ -437,7 +442,7 @@ function FormEditor({ form, onClose }: { form: CaptureForm | null; onClose: () =
               {save.isPending && <Loader2Icon className="animate-spin" />}
               Salvar
             </Button>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
           </div>
@@ -455,6 +460,7 @@ function PopupsTab() {
   const { can } = useAuth()
   const qc = useQueryClient()
   const [open, setOpen] = useState<CapturePopup | 'new' | null>(null)
+  const confirm = useConfirm()
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/captura/popups/${id}`),
     onSuccess: () => {
@@ -468,7 +474,8 @@ function PopupsTab() {
   const formName = (id: string) => forms.data?.find((f) => f.id === id)?.name ?? '—'
   return (
     <>
-      <div className="mb-3 flex justify-end">
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+        {can('captura', 'create') && forms.data && !forms.data.length && <span className="text-xs text-muted-foreground">Crie primeiro um formulário (aba Formulários).</span>}
         {can('captura', 'create') && (
           <Button onClick={() => setOpen('new')} disabled={!forms.data?.length}>
             <PlusIcon /> Novo pop-up
@@ -516,13 +523,20 @@ function PopupsTab() {
                             <PaletteIcon /> Editor visual
                           </Link>
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setOpen(p)} aria-label={`Configurações de ${p.name}`}>
+                        <Button size="sm" variant="ghost" onClick={() => setOpen(p)} aria-label={`Configurações do pop-up ${p.name}`}>
                           <PencilIcon />
                         </Button>
                       </>
                     )}
                     {can('captura', 'delete') && (
-                      <Button size="sm" variant="ghost" onClick={() => confirm(`Excluir o pop-up "${p.name}"?`) && remove.mutate(p.id)} aria-label={`Excluir ${p.name}`}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={async () => {
+                          if (await confirm({ title: `Excluir o pop-up “${p.name}”?`, description: 'Ele sai do site na hora, com o layout do editor visual. Os leads e envios já recebidos continuam. Não dá para desfazer.', confirmLabel: 'Excluir pop-up' })) remove.mutate(p.id)
+                        }}
+                        aria-label={`Excluir o pop-up ${p.name}`}
+                      >
                         <Trash2Icon />
                       </Button>
                     )}
@@ -567,6 +581,8 @@ function PopupEditor({ popup, forms, onClose }: { popup: CapturePopup | null; fo
   const [include, setInclude] = useState(p.include.join('\n'))
   const [exclude, setExclude] = useState(p.exclude.join('\n'))
   const [error, setError] = useState<string | null>(null)
+  const [initial] = useState(() => ({ p, include, exclude }))
+  const guard = useCloseGuard(isDirty(initial, { p, include, exclude }), onClose, 'o pop-up')
   const set = <K extends keyof typeof p>(k: K, v: (typeof p)[K]) => setP((x) => ({ ...x, [k]: v }))
   const save = useMutation({
     mutationFn: () => {
@@ -599,7 +615,7 @@ function PopupEditor({ popup, forms, onClose }: { popup: CapturePopup | null; fo
     onError: (err) => setError(errorMessage(err)),
   })
   return (
-    <Sheet open onOpenChange={(o) => !o && onClose()}>
+    <Sheet open onOpenChange={(o) => !o && void guard()}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
         <SheetHeader className="border-b">
           <SheetTitle>{popup ? `Editar: ${popup.name}` : 'Novo pop-up'}</SheetTitle>
@@ -613,8 +629,8 @@ function PopupEditor({ popup, forms, onClose }: { popup: CapturePopup | null; fo
             save.mutate()
           }}
         >
-          <Field label="Nome interno" htmlFor="pp-name">
-            <Input id="pp-name" required maxLength={80} placeholder="Ex.: Orçamento — páginas de produto" value={p.name} onChange={(e) => set('name', e.target.value)} />
+          <Field label="Nome interno" htmlFor="pp-name" required>
+            <Input id="pp-name" autoFocus required maxLength={80} placeholder="Ex.: Orçamento — páginas de produto" value={p.name} onChange={(e) => set('name', e.target.value)} />
           </Field>
           <Field label="Formulário" htmlFor="pp-form">
             <Select value={p.formId} onValueChange={(v) => set('formId', v)}>
@@ -631,7 +647,7 @@ function PopupEditor({ popup, forms, onClose }: { popup: CapturePopup | null; fo
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Título" htmlFor="pp-title">
+          <Field label="Título" htmlFor="pp-title" required>
             <Input id="pp-title" required maxLength={120} value={p.title} onChange={(e) => set('title', e.target.value)} />
           </Field>
           <Field label="Texto" htmlFor="pp-text">
@@ -722,7 +738,7 @@ function PopupEditor({ popup, forms, onClose }: { popup: CapturePopup | null; fo
               {save.isPending && <Loader2Icon className="animate-spin" />}
               Salvar
             </Button>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
           </div>
@@ -739,6 +755,7 @@ function WhatsappTab() {
   const { can } = useAuth()
   const qc = useQueryClient()
   const [open, setOpen] = useState<WhatsappButton | 'new' | null>(null)
+  const confirm = useConfirm()
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/captura/whatsapps/${id}`),
     onSuccess: () => {
@@ -791,12 +808,19 @@ function WhatsappTab() {
                   <TableCell className="text-right tabular-nums">{int.format(w.submissions)}</TableCell>
                   <TableCell className="pr-4 text-right whitespace-nowrap">
                     {can('captura', 'edit') && (
-                      <Button size="sm" variant="ghost" onClick={() => setOpen(w)} aria-label={`Editar ${w.name}`}>
+                      <Button size="sm" variant="ghost" onClick={() => setOpen(w)} aria-label={`Editar o botão ${w.name}`}>
                         <PencilIcon />
                       </Button>
                     )}
                     {can('captura', 'delete') && (
-                      <Button size="sm" variant="ghost" onClick={() => confirm(`Excluir o botão "${w.name}"?`) && remove.mutate(w.id)} aria-label={`Excluir ${w.name}`}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={async () => {
+                          if (await confirm({ title: `Excluir o botão “${w.name}”?`, description: 'Ele sai do site na hora. Os leads que já chegaram por ele continuam. Não dá para desfazer.', confirmLabel: 'Excluir botão' })) remove.mutate(w.id)
+                        }}
+                        aria-label={`Excluir o botão de WhatsApp ${w.name}`}
+                      >
                         <Trash2Icon />
                       </Button>
                     )}
@@ -953,6 +977,8 @@ function WhatsappEditor({ button, onClose }: { button: WhatsappButton | null; on
   const [exclude, setExclude] = useState(w.exclude.join('\n'))
   const [tags, setTags] = useState(w.tags.join(', '))
   const [error, setError] = useState<string | null>(null)
+  const [initial] = useState(() => ({ w, include, exclude, tags }))
+  const guard = useCloseGuard(isDirty(initial, { w, include, exclude, tags }), onClose, 'o botão')
   const set = <K extends keyof typeof w>(k: K, v: (typeof w)[K]) => setW((x) => ({ ...x, [k]: v }))
   const save = useMutation({
     mutationFn: () => {
@@ -991,7 +1017,7 @@ function WhatsappEditor({ button, onClose }: { button: WhatsappButton | null; on
     onError: (err) => setError(errorMessage(err)),
   })
   return (
-    <Sheet open onOpenChange={(o) => !o && onClose()}>
+    <Sheet open onOpenChange={(o) => !o && void guard()}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
         <SheetHeader className="border-b">
           <SheetTitle>{button ? `Editar: ${button.name}` : 'Novo botão de WhatsApp'}</SheetTitle>
@@ -1006,10 +1032,10 @@ function WhatsappEditor({ button, onClose }: { button: WhatsappButton | null; on
           }}
         >
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Nome interno" htmlFor="wa-name" className="space-y-1.5 sm:col-span-2">
-              <Input id="wa-name" required maxLength={80} placeholder="Ex.: LPs de revenda" value={w.name} onChange={(e) => set('name', e.target.value)} />
+            <Field label="Nome interno" htmlFor="wa-name" className="space-y-1.5 sm:col-span-2" required>
+              <Input id="wa-name" autoFocus required maxLength={80} placeholder="Ex.: LPs de revenda" value={w.name} onChange={(e) => set('name', e.target.value)} />
             </Field>
-            <Field label="Número do WhatsApp" htmlFor="wa-phone">
+            <Field label="Número do WhatsApp" htmlFor="wa-phone" required>
               <Input id="wa-phone" required inputMode="tel" placeholder="(49) 99999-9999" value={w.phone} onChange={(e) => set('phone', e.target.value)} />
             </Field>
             <Field label="Texto do botão" htmlFor="wa-btn">
@@ -1105,7 +1131,7 @@ function WhatsappEditor({ button, onClose }: { button: WhatsappButton | null; on
               {save.isPending && <Loader2Icon className="animate-spin" />}
               Salvar
             </Button>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
           </div>

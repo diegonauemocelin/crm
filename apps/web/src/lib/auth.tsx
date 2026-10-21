@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, type ReactNode, useCallback, useContext, useEffect } from 'react'
-import { api, ApiError } from './api'
+import { api, ApiError, recoverSession } from './api'
 import { useTheme } from './theme'
 import type { Action, Me } from './types'
 
@@ -25,7 +25,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         return await api.get<Me>('/auth/me')
       } catch (err) {
-        if (err instanceof ApiError && err.status === 401) return null
+        if (err instanceof ApiError && err.status === 401) {
+          // Já estava logado (tela aberta): renova ou abre o login por cima, sem perder a tela.
+          if (qc.getQueryData(['me']) && (await recoverSession())) return await api.get<Me>('/auth/me')
+          return null
+        }
         throw err
       }
     },

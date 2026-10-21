@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { api, errorMessage } from '@/lib/api'
+import { money } from '@/lib/format'
 import { formatDay, namesOf, type ServiceRecord, todaySP, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
@@ -234,7 +235,7 @@ export function PreVendasKanban() {
                       >
                         <span className="flex items-baseline gap-2">
                           <span className="truncate text-sm font-medium">{r.name}</span>
-                          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{formatDay(r.leadAt)}</span>
+                          <span className="ml-auto shrink-0 text-xs text-muted-foreground">{formatDay(r.leadAt)}</span>
                         </span>
                         {parts && <span className="truncate text-xs text-muted-foreground">{parts}</span>}
                         <span className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -249,7 +250,7 @@ export function PreVendasKanban() {
                             </span>
                           )}
                           {col.id === 'vendida' && r.saleValue !== null && (
-                            <span className="ml-auto font-medium text-green-700 dark:text-green-400">{Number(r.saleValue).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                            <span className="ml-auto font-medium text-green-700 dark:text-green-400">{money(Number(r.saleValue))}</span>
                           )}
                         </span>
                       </button>

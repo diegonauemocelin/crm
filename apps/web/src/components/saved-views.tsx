@@ -3,6 +3,7 @@ import { BookmarkPlusIcon, Loader2Icon, XIcon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
+import { useConfirm } from '@/components/confirm'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -35,6 +36,7 @@ function normalize(query: string) {
 export function SavedViews({ screen, builtIn = [] }: { screen: 'leads' | 'pre-vendas'; builtIn?: { name: string; query: string }[] }) {
   const qc = useQueryClient()
   const [params, setParams] = useSearchParams()
+  const confirm = useConfirm()
   const [naming, setNaming] = useState(false)
   const [name, setName] = useState('')
   const key = ['visoes', screen]
@@ -65,6 +67,14 @@ export function SavedViews({ screen, builtIn = [] }: { screen: 'leads' | 'pre-ve
       },
     })
   }
+  const remove = async (v: View) => {
+    const ok = await confirm({
+      title: `Excluir a visão "${v.name}"?`,
+      description: 'A aba some da lista. Os leads e filtros continuam como estão; dá para salvar a visão de novo depois.',
+      confirmLabel: 'Excluir visão',
+    })
+    if (ok) save.mutate(saved.filter((s) => s.id !== v.id), { onSuccess: () => toast.success('Visão excluída.') })
+  }
   return (
     <div className="mb-3 flex items-center gap-1 overflow-x-auto border-b" role="tablist" aria-label="Visões salvas">
       {all.map((v) => {
@@ -79,9 +89,9 @@ export function SavedViews({ screen, builtIn = [] }: { screen: 'leads' | 'pre-ve
               <button
                 type="button"
                 className="-ml-1.5 mr-1 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label={`Apagar a visão ${v.name}`}
-                title="Apagar esta visão"
-                onClick={() => save.mutate(saved.filter((s) => s.id !== v.id), { onSuccess: () => toast.success('Visão apagada.') })}
+                aria-label={`Excluir a visão ${v.name}`}
+                title={`Excluir a visão ${v.name}`}
+                onClick={() => void remove(v as View)}
               >
                 <XIcon className="size-3.5" />
               </button>
@@ -98,12 +108,15 @@ export function SavedViews({ screen, builtIn = [] }: { screen: 'leads' | 'pre-ve
           </PopoverTrigger>
           <PopoverContent align="start" className="w-72">
             <form onSubmit={add} className="space-y-2">
-              <Label htmlFor={`visao-${screen}`}>Nome da visão</Label>
+              <Label htmlFor={`visao-${screen}`} required>
+                Nome da visão
+              </Label>
               <Input id={`visao-${screen}`} value={name} maxLength={40} onChange={(e) => setName(e.target.value)} placeholder="ex.: Paraná · Hyundai" autoFocus />
               <p className="text-xs text-muted-foreground">Guarda os filtros que estão aplicados agora. Só você vê.</p>
               <Button type="submit" size="sm" className="w-full" disabled={!name.trim() || save.isPending}>
-                {save.isPending && <Loader2Icon className="animate-spin" />} Salvar
+                {save.isPending && <Loader2Icon className="animate-spin" />} Salvar visão
               </Button>
+              {!name.trim() && <p className="text-center text-xs text-muted-foreground">Dê um nome à visão para salvar.</p>}
             </form>
           </PopoverContent>
         </Popover>

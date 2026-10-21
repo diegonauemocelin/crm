@@ -330,7 +330,7 @@ function FunnelCard({ f }: { f: Funnel }) {
             <div key={label} className="flex items-center gap-3 text-sm">
               <span className="w-32 shrink-0 text-muted-foreground">
                 {label}
-                {note && <span className="block text-[11px]">{note}</span>}
+                {note && <span className="block text-xs">{note}</span>}
               </span>
               <div className="h-3 flex-1 overflow-hidden rounded-full bg-muted" role="presentation">
                 <div className="h-full rounded-full bg-[var(--chart-1)]" style={{ width: `${Math.max(n ? 1 : 0, Math.round(share * 100))}%` }} />
@@ -373,7 +373,7 @@ function Mini({ label, value, hint }: { label: string; value: string; hint?: str
     <div className="rounded-md border p-2.5">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="text-lg font-semibold tabular-nums">{value}</p>
-      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   )
 }
@@ -425,7 +425,7 @@ function Heatmap({ heat, best }: { heat: number[][]; best: Dash['bestSlot'] }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="overflow-x-auto">
-        <table className="w-full min-w-[640px] border-separate border-spacing-[2px] text-[11px]">
+        <table className="w-full min-w-[640px] border-separate border-spacing-[2px] text-xs">
           <thead>
             <tr>
               <th className="w-10" />

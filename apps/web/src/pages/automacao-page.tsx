@@ -28,9 +28,11 @@ import {
   XIcon,
   ZapIcon,
 } from 'lucide-react'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
+import { useConfirm, useUnsavedChangesPrompt } from '@/components/confirm'
 import { MultiSelect } from '@/components/multi-select'
 import { ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
@@ -50,6 +52,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { int, type Options, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
+import { money } from '@/lib/format'
+import { usePageTitle } from '@/lib/page-title'
 import {
   type Automation,
   type AutomationOptions,
@@ -81,7 +85,6 @@ import { STAGES } from '@/lib/leads'
 import { cn } from '@/lib/utils'
 
 const ANY = '__any__'
-const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
 const stageLabel = (s?: string) => STAGES.find((x) => x.id === s)?.label ?? s ?? '—'
 
 export function AutomacaoPage() {
@@ -138,12 +141,9 @@ function FlowEditor({ initial }: { initial: Automation }) {
   const [enrollOpen, setEnrollOpen] = useState(false)
   const ctx: Ctx = { options: options.data, lists: lists.data }
 
-  useEffect(() => {
-    if (!dirty) return
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
-    window.addEventListener('beforeunload', warn)
-    return () => window.removeEventListener('beforeunload', warn)
-  }, [dirty])
+  const confirm = useConfirm()
+  useUnsavedChangesPrompt(dirty, 'a automação')
+  usePageTitle(a.name)
 
   const patch = (p: Partial<Automation>) => {
     setA((x) => ({ ...x, ...p }))
@@ -178,7 +178,8 @@ function FlowEditor({ initial }: { initial: Automation }) {
   const remove = useMutation({
     mutationFn: () => api.delete(`/automacoes/${a.id}`),
     onSuccess: () => {
-      setDirty(false)
+      // Já foi excluído: sai sem perguntar "Sair sem salvar?".
+      flushSync(() => setDirty(false))
       void qc.invalidateQueries({ queryKey: ['automacoes'] })
       navigate('/automacoes')
     },
@@ -215,7 +216,7 @@ function FlowEditor({ initial }: { initial: Automation }) {
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" aria-label="Mais ações">
+                    <Button variant="ghost" size="icon" aria-label="Mais ações do fluxo">
                       <MoreHorizontalIcon />
                     </Button>
                   </DropdownMenuTrigger>
@@ -231,8 +232,14 @@ function FlowEditor({ initial }: { initial: Automation }) {
                     {can('automacoes', 'delete') && (
                       <>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem variant="destructive" disabled={a.active} onSelect={() => confirm(`Excluir o fluxo "${a.name}" e o histórico dele?`) && remove.mutate()}>
-                          <Trash2Icon /> Excluir
+                        <DropdownMenuItem
+                          variant="destructive"
+                          disabled={a.active}
+                          onSelect={async () => {
+                            if (await confirm({ title: `Excluir o fluxo “${a.name}”?`, description: 'O fluxo e todo o histórico dele (quem entrou, o que recebeu) são excluídos. Não dá para desfazer.', confirmLabel: 'Excluir fluxo' })) remove.mutate()
+                          }}
+                        >
+                          <Trash2Icon /> Excluir fluxo
                         </DropdownMenuItem>
                       </>
                     )}
@@ -426,6 +433,7 @@ function StepList(props: {
   onRemove: (id: string) => void
 }) {
   const { steps, where } = props
+  const confirm = useConfirm()
   return (
     <>
       {steps.map((s, i) => {
@@ -449,29 +457,34 @@ function StepList(props: {
                   <span className="mt-1 flex flex-wrap gap-1">
                     {s.type === 'condicao' ? (
                       <>
-                        <Badge variant="outline" className="text-[10px]">Sim: {int.format(c.sim ?? 0)}</Badge>
-                        <Badge variant="outline" className="text-[10px]">Não: {int.format(c.nao ?? 0)}</Badge>
+                        <Badge variant="outline" className="text-xs">Sim: {int.format(c.sim ?? 0)}</Badge>
+                        <Badge variant="outline" className="text-xs">Não: {int.format(c.nao ?? 0)}</Badge>
                       </>
                     ) : (
-                      <Badge variant="outline" className="text-[10px]">{int.format(passed)} passaram</Badge>
+                      <Badge variant="outline" className="text-xs">{int.format(passed)} passaram</Badge>
                     )}
-                    {(c.erro ?? 0) > 0 && <Badge variant="outline" className={cn('text-[10px]', RUN_STATUS.ERRO.tone)}>{int.format(c.erro!)} com erro</Badge>}
+                    {(c.erro ?? 0) > 0 && <Badge variant="outline" className={cn('text-xs', RUN_STATUS.ERRO.tone)}>{int.format(c.erro!)} com erro</Badge>}
                   </span>
                 )
               }
               tools={
                 props.canEdit && (
                   <span className="absolute top-1.5 right-1.5 hidden gap-0.5 rounded-md bg-card group-hover:flex" onClick={(e) => e.stopPropagation()}>
-                    <MiniButton label="Subir" disabled={i === 0} onClick={() => props.onMove(s.id, -1)}>
+                    <MiniButton label="Subir passo" disabled={i === 0} onClick={() => props.onMove(s.id, -1)}>
                       <ArrowUpIcon />
                     </MiniButton>
-                    <MiniButton label="Descer" disabled={i === steps.length - 1} onClick={() => props.onMove(s.id, 1)}>
+                    <MiniButton label="Descer passo" disabled={i === steps.length - 1} onClick={() => props.onMove(s.id, 1)}>
                       <ArrowDownIcon />
                     </MiniButton>
-                    <MiniButton label="Duplicar" onClick={() => props.onDuplicate(s, where, i)}>
+                    <MiniButton label="Duplicar passo" onClick={() => props.onDuplicate(s, where, i)}>
                       <CopyIcon />
                     </MiniButton>
-                    <MiniButton label="Remover" onClick={() => (s.type !== 'condicao' || (!s.yes.length && !s.no.length) || confirm('Remover a condição e os passos dos caminhos Sim e Não?')) && props.onRemove(s.id)}>
+                    <MiniButton
+                      label="Remover passo"
+                      onClick={async () => {
+                        if (s.type !== 'condicao' || (!s.yes.length && !s.no.length) || (await confirm({ title: 'Remover a condição?', description: 'Os passos dos caminhos Sim e Não saem do fluxo junto com ela. Só vale depois de salvar.', confirmLabel: 'Remover condição e passos' }))) props.onRemove(s.id)
+                      }}
+                    >
                       <XIcon />
                     </MiniButton>
                   </span>
@@ -487,7 +500,7 @@ function StepList(props: {
                       <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', b === 'yes' ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300' : 'bg-rose-500/15 text-rose-800 dark:text-rose-300')}>{b === 'yes' ? 'Sim' : 'Não'}</span>
                       <StepList {...props} steps={b === 'yes' ? s.yes : s.no} where={{ parent: s.id, branch: b }} />
                       <AddButton disabled={!props.canEdit} onPick={(t) => props.onInsert({ parent: s.id, branch: b }, (b === 'yes' ? s.yes : s.no).length, t)} />
-                      <span className="text-[11px] text-muted-foreground">{(b === 'yes' ? s.yes : s.no).length ? 'depois segue o fluxo' : 'segue o fluxo'}</span>
+                      <span className="text-xs text-muted-foreground">{(b === 'yes' ? s.yes : s.no).length ? 'depois segue o fluxo' : 'segue o fluxo'}</span>
                     </div>
                   </div>
                 ))}
@@ -501,7 +514,7 @@ function StepList(props: {
   )
 }
 
-function MiniButton({ label, children, onClick, disabled }: { label: string; children: ReactNode; onClick: () => void; disabled?: boolean }) {
+function MiniButton({ label, children, onClick, disabled }: { label: string; children: ReactNode; onClick: () => void | Promise<void>; disabled?: boolean }) {
   return (
     <Button type="button" size="icon" variant="ghost" className="size-6 [&_svg]:size-3.5" aria-label={label} title={label} disabled={disabled} onClick={onClick}>
       {children}
@@ -590,10 +603,12 @@ function describeStep(s: Step, ctx: Ctx): { text: string; warn?: boolean } {
 
 // ---------- Painel de configuração ----------
 
-function Field({ label, htmlFor, hint, children }: { label: string; htmlFor?: string; hint?: string; children: ReactNode }) {
+function Field({ label, htmlFor, hint, children, required }: { label: string; htmlFor?: string; hint?: string; children: ReactNode; required?: boolean }) {
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={htmlFor}>{label}</Label>
+      <Label htmlFor={htmlFor} required={required}>
+        {label}
+      </Label>
       {children}
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
@@ -756,7 +771,7 @@ function TriggerEditor({ trigger: t, ctx, disabled, onChange }: { trigger: Trigg
 function FlowSettings({ a, disabled, onChange }: { a: Automation; disabled: boolean; onChange: (p: Partial<Automation>) => void }) {
   return (
     <>
-      <Field label="Nome" htmlFor="f-name">
+      <Field label="Nome" htmlFor="f-name" required>
         <Input id="f-name" maxLength={120} value={a.name} onChange={(e) => onChange({ name: e.target.value })} disabled={disabled} />
       </Field>
       <Field label="Descrição (opcional)" htmlFor="f-desc">
@@ -813,7 +828,7 @@ function RuleEditor({ rule: r, ctx, disabled, onChange, onRemove }: { rule: Rule
             ])}
           </SelectContent>
         </Select>
-        <MiniButton label="Tirar regra" onClick={onRemove} disabled={disabled}>
+        <MiniButton label="Remover regra" onClick={onRemove} disabled={disabled}>
           <XIcon />
         </MiniButton>
       </div>
@@ -1021,6 +1036,7 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 function ReportView({ a, report: r, error, onRetry }: { a: Automation; report: AutomationReport | undefined; error: unknown; onRetry: () => void }) {
   const qc = useQueryClient()
   const { can } = useAuth()
+  const confirm = useConfirm()
   const [run, setRun] = useState<AutomationReport['runs'][number] | null>(null)
   const names = useMemo(() => {
     const m = new Map<string, string>()
@@ -1046,7 +1062,7 @@ function ReportView({ a, report: r, error, onRetry }: { a: Automation; report: A
         <Stat label="Entraram" value={int.format(r.entered)} hint={`${int.format(r.running)} no fluxo agora`} />
         <Stat label="Concluíram" value={int.format(r.completed)} hint={`${int.format(r.exited)} saíram antes · ${int.format(r.errors)} com erro`} />
         <Stat label="E-mails enviados" value={int.format(r.emails.sent)} hint={`${pct(r.emails.opened, r.emails.sent)} abriram · ${pct(r.emails.clicked, r.emails.sent)} clicaram`} />
-        <Stat label="Vendas" value={brl.format(r.sales.revenue)} hint={`${int.format(r.sales.orders)} pedido(s) pago(s) até ${r.sales.days} dias depois de entrar`} />
+        <Stat label="Vendas" value={money(r.sales.revenue)} hint={`${int.format(r.sales.orders)} pedido(s) pago(s) até ${r.sales.days} dias depois de entrar`} />
       </div>
       <Card className="overflow-hidden py-0">
         <CardHeader className="pt-6">
@@ -1119,8 +1135,14 @@ function ReportView({ a, report: r, error, onRetry }: { a: Automation; report: A
               </Button>
             )}
             {run?.status === 'ATIVO' && can('automacoes', 'edit') && (
-              <Button variant="ghost" onClick={() => confirm('Tirar este lead do fluxo? Ele não recebe mais nenhum passo.') && removeRun.mutate(run.id)} disabled={removeRun.isPending}>
-                Tirar do fluxo
+              <Button
+                variant="ghost"
+                onClick={async () => {
+                  if (await confirm({ title: `Remover ${run.lead.name ?? run.lead.email ?? 'este lead'} do fluxo?`, description: 'Ele não recebe mais nenhum passo deste fluxo. O lead continua no CRM.', confirmLabel: 'Remover do fluxo' })) removeRun.mutate(run.id)
+                }}
+                disabled={removeRun.isPending}
+              >
+                Remover do fluxo
               </Button>
             )}
           </DialogFooter>

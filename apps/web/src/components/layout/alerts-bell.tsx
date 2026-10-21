@@ -3,6 +3,7 @@ import { AlertTriangleIcon, BellIcon, ClockAlertIcon, HeadsetIcon, PhoneCallIcon
 import { useEffect, useRef } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
+import { InlineError } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { api } from '@/lib/api'
@@ -101,7 +102,7 @@ export function AlertsBell({ className }: { className?: string }) {
         <Button variant="ghost" size="icon" className={cn('relative size-8', className)} aria-label={total ? `${total} alerta(s) de retorno pendente` : 'Notificações'}>
           <BellIcon />
           {total > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white">
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold text-white">
               {total > 99 ? '99+' : total}
             </span>
           )}
@@ -112,7 +113,11 @@ export function AlertsBell({ className }: { className?: string }) {
           <p className="font-medium">Notificações</p>
           <p className="text-xs text-muted-foreground">Pré-vendas aguardando, cliente a chamar, retorno do vendedor e pós-venda fora do prazo</p>
         </div>
-        {total === 0 ? (
+        {q.error && !q.data ? (
+          <div className="px-4 py-6">
+            <InlineError error={q.error} onRetry={() => void q.refetch()} />
+          </div>
+        ) : total === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nenhum atendimento fora do prazo.</p>
         ) : (
           <ul className="max-h-[70vh] divide-y overflow-y-auto">

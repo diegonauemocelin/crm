@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BotIcon, Loader2Icon, MailIcon, PlusIcon } from 'lucide-react'
+import { BotIcon, Loader2Icon, MailIcon, PlusIcon, SearchIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
+import { useCloseGuard } from '@/components/confirm'
 import { EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,6 +17,10 @@ import { api, errorMessage } from '@/lib/api'
 import { int } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import { type AutomationListItem, TRIGGER_LABEL } from '@/lib/automacoes'
+
+/** Busca simples pelo nome (sem acento e sem diferenciar maiúsculas). */
+const norm = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+const byName = <T extends { name: string }>(items: T[], term: string) => (term.trim() ? items.filter((i) => norm(i.name).includes(norm(term.trim()))) : items)
 
 export function AutomacoesPage() {
   return (
@@ -31,6 +36,12 @@ function AutomationList() {
   const { can } = useAuth()
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
+  const [search, setSearch] = useState('')
+  const closeDialog = () => {
+    setOpen(false)
+    setName('')
+  }
+  const guard = useCloseGuard(name.trim().length > 0, closeDialog, 'o novo fluxo')
   const q = useQuery({ queryKey: ['automacoes'], queryFn: () => api.get<AutomationListItem[]>('/automacoes'), refetchInterval: 30_000 })
   const create = useMutation({
     mutationFn: () => api.post<{ id: string }>('/automacoes', { name: name.trim() }),
@@ -74,6 +85,11 @@ function AutomationList() {
           description="Exemplo: carrinho abandonado → esperar 2 horas → se ainda não comprou, enviar e-mail com cupom → esperar 2 dias → se não abriu, criar atendimento no Pré-Vendas."
         />
       ) : (
+        <>
+        <div className="relative mb-3 w-full max-w-xs">
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+          <Input type="search" className="pl-8" placeholder="Buscar…" aria-label="Buscar fluxo pelo nome" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
         <Card className="overflow-hidden py-0">
           <Table>
             <TableHeader>
@@ -87,7 +103,14 @@ function AutomationList() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {q.data.map((a) => (
+              {byName(q.data, search).length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-6 text-center text-sm text-muted-foreground">
+                    Nenhum fluxo com “{search.trim()}”.
+                  </TableCell>
+                </TableRow>
+              )}
+              {byName(q.data, search).map((a) => (
                 <TableRow key={a.id}>
                   <TableCell className="pl-4">
                     <Link to={`/automacoes/${a.id}`} className="font-medium hover:underline">
@@ -102,16 +125,17 @@ function AutomationList() {
                   <TableCell className="text-right tabular-nums">{int.format(a.running)}</TableCell>
                   <TableCell className="text-right tabular-nums">{int.format(a.entered)}</TableCell>
                   <TableCell className="pr-4">
-                    <Switch checked={a.active} disabled={!can('automacoes', 'edit') || toggle.isPending} onCheckedChange={(active) => toggle.mutate({ id: a.id, active })} aria-label={`Ligar ${a.name}`} />
+                    <Switch checked={a.active} disabled={!can('automacoes', 'edit') || toggle.isPending} onCheckedChange={(active) => toggle.mutate({ id: a.id, active })} aria-label={`Ligar o fluxo ${a.name}`} />
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </Card>
+        </>
       )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(o) => (o ? setOpen(true) : void guard())}>
         <DialogContent>
           <form
             onSubmit={(e) => {
@@ -125,10 +149,16 @@ function AutomationList() {
               <DialogDescription>Dê um nome; o gatilho e os passos você monta na próxima tela. O fluxo começa desligado.</DialogDescription>
             </DialogHeader>
             <div className="space-y-1.5">
-              <Label htmlFor="a-name">Nome</Label>
+              <Label htmlFor="a-name" required>
+                Nome
+              </Label>
               <Input id="a-name" autoFocus minLength={2} maxLength={120} placeholder="Ex.: Recuperar carrinho abandonado" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
+            {name.trim().length < 2 && <p className="text-xs text-muted-foreground">Dê um nome ao fluxo (2 letras ou mais) para criar.</p>}
             <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => void guard()}>
+                Cancelar
+              </Button>
               <Button type="submit" disabled={create.isPending || name.trim().length < 2}>
                 {create.isPending && <Loader2Icon className="animate-spin" />}
                 Criar e montar

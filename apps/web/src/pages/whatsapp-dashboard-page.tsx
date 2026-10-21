@@ -216,7 +216,7 @@ function Body({ d }: { d: Dash }) {
               ).map(([k, v], i) => (
                 <div key={k} className={cn('rounded-md border p-2', i === 3 && v > 0 && 'border-amber-500/50 bg-amber-500/10')}>
                   <p className="text-lg font-semibold tabular-nums">{v}</p>
-                  <p className="text-[11px] text-muted-foreground">{k}</p>
+                  <p className="text-xs text-muted-foreground">{k}</p>
                 </div>
               ))}
             </div>
@@ -388,7 +388,7 @@ function Mini({ label, value, hint }: { label: string; value: string; hint?: str
     <div className="rounded-md border p-2.5">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="text-lg font-semibold tabular-nums">{value}</p>
-      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   )
 }
@@ -427,7 +427,7 @@ function Heatmap({ heat }: { heat: number[][] }) {
         <CardDescription>Mensagens recebidas por dia da semana e hora (horário de Brasília). Mais escuro = mais mensagens; ajuda a escalar a equipe.</CardDescription>
       </CardHeader>
       <CardContent className="overflow-x-auto">
-        <table className="w-full min-w-[640px] border-separate border-spacing-[2px] text-[11px]">
+        <table className="w-full min-w-[640px] border-separate border-spacing-[2px] text-xs">
           <thead>
             <tr>
               <th className="w-10" />

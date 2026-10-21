@@ -4,9 +4,9 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { ReplyFileField, saveReplyFile } from '@/components/chat/organizar'
+import { isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
 import { MultiSelect } from '@/components/multi-select'
-import { ErrorState, formatDateTime, PageHeader, TableSkeleton } from '@/components/page'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { EmptyState, ErrorState, formatDateTime, InlineError, PageHeader, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -68,7 +68,32 @@ export function Numbers() {
   const names = namesOf(options.data)
   const [editing, setEditing] = useState<WaNumber | 'novo' | null>(null)
   const [connecting, setConnecting] = useState<WaNumber | null>(null)
-  const [confirm, setConfirm] = useState<{ n: WaNumber; kind: 'desconectar' | 'excluir' } | null>(null)
+  const confirm = useConfirm()
+  const qc = useQueryClient()
+  const run = useMutation({
+    mutationFn: ({ n, kind }: { n: WaNumber; kind: 'desconectar' | 'excluir' }) => (kind === 'desconectar' ? api.post(`/whatsapp/numeros/${n.id}/desconectar`) : api.delete(`/whatsapp/numeros/${n.id}`)),
+    onSuccess: (_r, { kind }) => {
+      void qc.invalidateQueries({ queryKey: ['whatsapp-numeros'] })
+      toast.success(kind === 'desconectar' ? 'Número desconectado. A vaga de conexão foi liberada.' : 'Número excluído.')
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const ask = async (n: WaNumber, kind: 'desconectar' | 'excluir') => {
+    const ok = await confirm(
+      kind === 'desconectar'
+        ? {
+            title: `Desconectar o número “${n.name}”?`,
+            description: 'O CRM para de receber e enviar mensagens por este número. Para voltar, será preciso ler o QR Code de novo. O WhatsApp no celular continua funcionando normalmente.',
+            confirmLabel: 'Desconectar número',
+          }
+        : {
+            title: `Excluir o número “${n.name}”?`,
+            description: 'O número sai do CRM e a conexão com o celular é encerrada. Para usar de novo, cadastre e conecte outra vez. Não dá para desfazer.',
+            confirmLabel: 'Excluir número',
+          },
+    )
+    if (ok) run.mutate({ n, kind })
+  }
   const d = q.data
   const full = !!d && d.limits.registered >= d.limits.maxNumbers
   const slotsFull = !!d && d.limits.connected >= d.limits.maxConnected
@@ -100,9 +125,18 @@ export function Numbers() {
             <Count label="Serviço" value={d.service.online ? `Ativo${d.service.version ? ` · v${d.service.version}` : ''}` : d.service.configured ? 'Sem resposta' : 'Desligado'} />
           </div>
           {d.numbers.length === 0 ? (
-            <Card>
-              <CardContent className="py-10 text-center text-sm text-muted-foreground">Nenhum número cadastrado. Cadastre um por vendedor ou setor (ex.: Vendas Paraná).</CardContent>
-            </Card>
+            <EmptyState
+              icon={SmartphoneIcon}
+              title="Nenhum número cadastrado"
+              description="Cadastre um por vendedor ou setor (ex.: Vendas Paraná)."
+              action={
+                can('whatsapp', 'create') && (
+                  <Button onClick={() => setEditing('novo')} disabled={full}>
+                    <PlusIcon /> Cadastrar número
+                  </Button>
+                )
+              }
+            />
           ) : (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {d.numbers.map((n) => (
@@ -140,7 +174,7 @@ export function Numbers() {
                     {can('whatsapp', 'edit') && (
                       <div className="flex flex-wrap gap-2">
                         {n.status === 'CONECTADO' ? (
-                          <Button size="sm" variant="outline" onClick={() => setConfirm({ n, kind: 'desconectar' })}>
+                          <Button size="sm" variant="outline" onClick={() => void ask(n, 'desconectar')} disabled={run.isPending}>
                             <UnplugIcon /> Desconectar
                           </Button>
                         ) : (
@@ -157,7 +191,7 @@ export function Numbers() {
                           <PencilIcon /> Editar
                         </Button>
                         {can('whatsapp', 'delete') && (
-                          <Button size="sm" variant="ghost" onClick={() => setConfirm({ n, kind: 'excluir' })} aria-label={`Excluir ${n.name}`}>
+                          <Button size="sm" variant="ghost" onClick={() => void ask(n, 'excluir')} disabled={run.isPending} aria-label={`Excluir número ${n.name}`}>
                             <Trash2Icon />
                           </Button>
                         )}
@@ -176,7 +210,6 @@ export function Numbers() {
       )}
       {editing && <NumberDialog number={editing === 'novo' ? null : editing} users={d?.users ?? []} onClose={() => setEditing(null)} />}
       {connecting && <ConnectDialog number={connecting} onClose={() => setConnecting(null)} />}
-      {confirm && <ConfirmDialog {...confirm} onClose={() => setConfirm(null)} />}
     </div>
   )
 }
@@ -214,6 +247,9 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
   const [createRecords, setCreateRecords] = useState(number?.createRecords ?? true)
   const [signMessages, setSignMessages] = useState(number?.signMessages ?? true)
   const [error, setError] = useState<string | null>(null)
+  const current = { name, unitId, sellerIds, userIds, split, defaultUserId, createRecords, signMessages }
+  const [initial] = useState(current)
+  const guard = useCloseGuard(isDirty(initial, current), onClose, 'o número')
   const save = useMutation({
     mutationFn: () => {
       const body = { name, unitId, sellerIds, userIds, splitAttendance: split, defaultUserId: split && defaultUserId && userIds.includes(defaultUserId) ? defaultUserId : null, createRecords, signMessages }
@@ -227,7 +263,7 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
     onError: (err) => setError(errorMessage(err)),
   })
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent>
         <form
           className="space-y-4"
@@ -242,7 +278,7 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
             <DialogDescription>O número do WhatsApp é preenchido sozinho quando o celular ler o QR Code.</DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
-            <Label htmlFor="wa-n-name">Nome</Label>
+            <Label htmlFor="wa-n-name" required>Nome</Label>
             <Input id="wa-n-name" required minLength={2} maxLength={80} placeholder="Ex.: Vendas Paraná" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </div>
           <div className="space-y-1.5">
@@ -328,7 +364,7 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
           </label>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button type="submit" disabled={save.isPending}>
@@ -402,45 +438,6 @@ function ConnectDialog({ number, onClose }: { number: WaNumber; onClose: () => v
   )
 }
 
-function ConfirmDialog({ n, kind, onClose }: { n: WaNumber; kind: 'desconectar' | 'excluir'; onClose: () => void }) {
-  const qc = useQueryClient()
-  const run = useMutation({
-    mutationFn: () => (kind === 'desconectar' ? api.post(`/whatsapp/numeros/${n.id}/desconectar`) : api.delete(`/whatsapp/numeros/${n.id}`)),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['whatsapp-numeros'] })
-      toast.success(kind === 'desconectar' ? 'Número desconectado. A vaga de conexão foi liberada.' : 'Número excluído.')
-      onClose()
-    },
-    onError: (err) => toast.error(errorMessage(err)),
-  })
-  return (
-    <AlertDialog open onOpenChange={(o) => !o && onClose()}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{kind === 'desconectar' ? `Desconectar ${n.name}?` : `Excluir ${n.name}?`}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {kind === 'desconectar'
-              ? 'O CRM para de receber e enviar mensagens por este número. Para voltar, será preciso ler o QR Code de novo. O WhatsApp no celular continua funcionando normalmente.'
-              : 'O número sai do CRM e a conexão com o celular é encerrada. Para usar de novo, cadastre e conecte outra vez.'}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancelar</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={(e) => {
-              e.preventDefault()
-              run.mutate()
-            }}
-            disabled={run.isPending}
-          >
-            {kind === 'desconectar' ? 'Desconectar' : 'Excluir'}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  )
-}
-
 interface QuickReply {
   id: string
   title: string
@@ -454,6 +451,10 @@ export function QuickReplies({ editable }: { editable: boolean }) {
   // Aqui ficam só as padrão da empresa; as pessoais cada usuário cria no próprio chat.
   const list = useQuery({ queryKey: ['chat-respostas-admin'], queryFn: () => api.get<(QuickReply & { standard?: boolean })[]>('/chat/respostas').then((r) => r.filter((x) => x.standard !== false)) })
   const [editing, setEditing] = useState<QuickReply | 'nova' | null>(null)
+  const confirm = useConfirm()
+  const remove = async (r: QuickReply) => {
+    if (await confirm({ title: `Excluir a resposta rápida “${r.title}”?`, description: 'Ela some do chat de todos. Não dá para desfazer.', confirmLabel: 'Excluir resposta rápida' })) del.mutate(r.id)
+  }
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/chat/respostas/${id}`),
     onSuccess: () => {
@@ -476,7 +477,9 @@ export function QuickReplies({ editable }: { editable: boolean }) {
         )}
       </CardHeader>
       <CardContent>
-        {(list.data ?? []).length === 0 ? (
+        {list.error && !list.data ? (
+          <InlineError error={list.error} onRetry={() => void list.refetch()} />
+        ) : (list.data ?? []).length === 0 ? (
           <p className="text-sm text-muted-foreground">Nenhuma resposta cadastrada.</p>
         ) : (
           <ul className="divide-y rounded-md border">
@@ -489,10 +492,10 @@ export function QuickReplies({ editable }: { editable: boolean }) {
                 </div>
                 {editable && (
                   <>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing(r)} aria-label={`Editar ${r.title}`}>
+                    <Button size="sm" variant="ghost" onClick={() => setEditing(r)} aria-label={`Editar resposta rápida ${r.title}`}>
                       <PencilIcon />
                     </Button>
-                    <Button size="sm" variant="ghost" onClick={() => del.mutate(r.id)} aria-label={`Excluir ${r.title}`}>
+                    <Button size="sm" variant="ghost" onClick={() => void remove(r)} disabled={del.isPending} aria-label={`Excluir resposta rápida ${r.title}`}>
                       <Trash2Icon />
                     </Button>
                   </>
@@ -514,6 +517,8 @@ function QuickReplyDialog({ reply, onClose }: { reply: QuickReply | null; onClos
   const [error, setError] = useState<string | null>(null)
   const [picked, setPicked] = useState<File | null>(null)
   const [removed, setRemoved] = useState(false)
+  const [initial] = useState({ title, text })
+  const guard = useCloseGuard(isDirty(initial, { title, text }) || !!picked || removed, onClose, 'a resposta')
   const save = useMutation({
     mutationFn: async () => {
       const saved = await (reply ? api.put<{ id: string }>(`/chat/respostas/${reply.id}`, { title, text }) : api.post<{ id: string }>('/chat/respostas', { title, text, standard: true }))
@@ -528,7 +533,7 @@ function QuickReplyDialog({ reply, onClose }: { reply: QuickReply | null; onClos
     onError: (err) => setError(errorMessage(err)),
   })
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent>
         <form
           className="space-y-4"
@@ -543,11 +548,11 @@ function QuickReplyDialog({ reply, onClose }: { reply: QuickReply | null; onClos
             <DialogDescription>Ex.: Olá {'{nome}'}, aqui é o {'{vendedor}'}. Como posso ajudar?</DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
-            <Label htmlFor="qr-title">Título</Label>
+            <Label htmlFor="qr-title" required>Título</Label>
             <Input id="qr-title" required maxLength={60} value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="qr-text">Texto</Label>
+            <Label htmlFor="qr-text" required>Texto</Label>
             <Textarea id="qr-text" required rows={5} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)} />
           </div>
           <div className="space-y-1.5">
@@ -557,7 +562,7 @@ function QuickReplyDialog({ reply, onClose }: { reply: QuickReply | null; onClos
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={() => void guard()}>
               Cancelar
             </Button>
             <Button type="submit" disabled={save.isPending}>
@@ -722,7 +727,7 @@ export function Rules({ editable }: { editable: boolean }) {
     },
     onError: (err) => toast.error(errorMessage(err)),
   })
-  if (!form) return null
+  if (!form) return q.error ? <ErrorState error={q.error} onRetry={() => void q.refetch()} /> : null
   const set = <K extends keyof WaRules>(k: K, v: WaRules[K]) => setForm((f) => (f ? { ...f, [k]: v } : f))
   return (
     <Card>

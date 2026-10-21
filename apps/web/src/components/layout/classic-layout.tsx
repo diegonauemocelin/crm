@@ -37,7 +37,7 @@ export function ClassicLayout() {
   const { can, me } = useAuth()
   const branding = useBranding()
   const { pathname, search } = useLocation()
-  const groups = visibleNavigation(can)
+  const groups = visibleNavigation(can, !!me?.role.isSystem)
   const crumbs = useBreadcrumb()
   const activeGroup = findNavItem(pathname, search)?.group.title
   const activeItem = findNavItem(pathname, search)?.item.to
@@ -160,12 +160,24 @@ export function ClassicLayout() {
 
       <div className="border-b bg-background">
         <div className="mx-auto flex h-11 max-w-[1400px] items-center gap-1.5 px-4 text-sm text-muted-foreground">
-          {crumbs.map((c, i) => (
-            <span key={c.title} className="flex items-center gap-1.5">
-              {i > 0 && <span aria-hidden>/</span>}
-              <span className={i === crumbs.length - 1 ? 'font-medium text-foreground' : undefined}>{c.title}</span>
-            </span>
-          ))}
+          <nav aria-label="Caminho da página" className="flex min-w-0 items-center gap-1.5">
+            {crumbs.map((c, i) => (
+              <span key={`${i}-${c.title}`} className="flex min-w-0 items-center gap-1.5">
+                {i > 0 && <span aria-hidden>/</span>}
+                {i === crumbs.length - 1 ? (
+                  <span aria-current="page" className="truncate font-medium text-foreground">
+                    {c.title}
+                  </span>
+                ) : c.to ? (
+                  <Link to={c.to} className="hover:text-foreground hover:underline">
+                    {c.title}
+                  </Link>
+                ) : (
+                  <span>{c.title}</span>
+                )}
+              </span>
+            ))}
+          </nav>
         </div>
       </div>
 
