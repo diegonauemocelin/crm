@@ -989,9 +989,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   /**
    * Mensagem enviada pelo próprio CRM, sem usuário (ex.: a do dia seguinte da pré-venda): usa a conversa do cliente
    * neste número ou abre uma, e fica registrada nela como mensagem automática. Não conta como atendimento.
-   * Devolve null quando o número está no limite de envio (tentar no próximo minuto).
+   * Devolve null quando o número está no limite de envio (tentar no próximo minuto). Com arquivo (doc), vai um
+   * documento com o texto na legenda.
    */
-  async sendAutomatic(n: WhatsappNumber, phone: string, text: string, label: string, link: { leadId: string | null; recordId: string | null; name: string | null; colleague?: boolean }) {
+  async sendAutomatic(n: WhatsappNumber, phone: string, text: string, label: string, link: { leadId: string | null; recordId: string | null; name: string | null; colleague?: boolean }, doc?: { content: Buffer; fileName: string; mime: string }) {
     const client = this.clientOf()
     if (!client) throw new Error('O WhatsApp não está ativo no servidor.')
     if (n.status !== 'CONECTADO') throw new Error(`O número ${n.name} está desconectado.`)
@@ -1007,16 +1008,20 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       (await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, phone: { in: phoneVariants(phone) } } })) ??
       (await this.prisma.whatsappConversation.create({ data: { tenantId: n.tenantId, numberId: n.id, jid, phone, name: link.name, leadId: link.leadId, recordId: link.recordId, ...(link.colleague ? { category: 'COLEGA' } : {}) } }))
     const target = conv.jid.endsWith('@s.whatsapp.net') ? conv.jid.split('@')[0]! : conv.jid
-    const r = await client.sendText(n.instanceName, target, text)
-    const data = { sentByName: label, status: 'ENVIADA' }
+    const r = doc
+      ? await client.sendMedia(n.instanceName, target, { mediatype: 'document', mimetype: doc.mime, base64: doc.content.toString('base64'), fileName: doc.fileName, caption: text })
+      : await client.sendText(n.instanceName, target, text)
+    const type = doc ? 'documento' : 'texto'
+    const file = doc ? await this.files.saveBuffer(n.tenantId, 'whatsapp', doc.content, doc.mime, extOf(doc.mime)) : null
+    const data = { sentByName: label, status: 'ENVIADA', ...(file && doc ? { fileId: file.id, fileName: doc.fileName, mime: doc.mime, mediaStatus: 'OK' } : {}) }
     await this.prisma.whatsappMessage.upsert({
       where: { conversationId_waId: { conversationId: conv.id, waId: r.waId } },
-      create: { tenantId: n.tenantId, conversationId: conv.id, waId: r.waId, fromMe: true, type: 'texto', text, sentAt: r.at, ...data },
+      create: { tenantId: n.tenantId, conversationId: conv.id, waId: r.waId, fromMe: true, type, text, sentAt: r.at, ...data },
       update: data,
     })
     await this.prisma.whatsappConversation.update({
       where: { id: conv.id },
-      data: { lastMessageAt: r.at, lastPreview: previewOf({ type: 'texto', text }), lastFromMe: true, ...(link.recordId && !conv.recordId ? { recordId: link.recordId } : {}), ...(link.leadId && !conv.leadId ? { leadId: link.leadId } : {}) },
+      data: { lastMessageAt: r.at, lastPreview: previewOf({ type, text }), lastFromMe: true, ...(link.recordId && !conv.recordId ? { recordId: link.recordId } : {}), ...(link.leadId && !conv.leadId ? { leadId: link.leadId } : {}) },
     })
     return { conversationId: conv.id }
   }

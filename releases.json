@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.79.0",
+      "date": "2026-10-21",
+      "title": "Relatórios do marketing também pelo WhatsApp",
+      "changes": [
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Relatórios agendados podem ir também (ou só) pelo WhatsApp: informe os celulares e escolha por qual número da empresa sai. Cada pessoa recebe um resumo com os principais números (investimento, leads, vendas, faturamento, custo por lead e ROAS, mais o resumo da IA) e o PDF completo." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Proteção contra bloqueio do número: os celulares recebem um de cada vez, com pausa sorteada entre 40 segundos e 2 minutos, respeitando o limite de mensagens por minuto e por hora do número. O histórico mostra para quem foi e para quem não foi (ex.: celular sem WhatsApp ou número desconectado)." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "O relatório aparece na conversa de cada pessoa marcado como \"Relatório automático\", com o PDF para abrir; quem recebe fica como colega na agenda, e a resposta dela não vira lead." }
+      ]
+    },
+    {
       "version": "0.78.2",
       "date": "2026-10-21",
       "title": "Instagram: dados dos concorrentes buscados na hora",

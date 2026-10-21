@@ -2,6 +2,7 @@
  * Configurações do Marketing Inteligente (Configurações › Marketing Inteligente) e dos relatórios automáticos.
  * Funções puras: valores padrão, limpeza do que a tela manda e o próximo horário de envio de cada relatório.
  */
+import { normalizePhone } from '../atendimento/br'
 import { type AttributionModel, DAY_MS, type Filters, type QualifiedRule } from './metricas'
 
 export const GRAPH = 'https://graph.facebook.com/v23.0'
@@ -149,6 +150,10 @@ export interface ReportSchedule {
   name: string
   active: boolean
   emails: string[]
+  /** Celulares que recebem pelo WhatsApp (+55...): resumo em texto com o PDF. */
+  whatsapp: string[]
+  /** Número de WhatsApp da empresa que envia (vazio = o primeiro conectado). */
+  whatsappNumberId: string | null
   frequency: Frequency
   /** 0 = domingo … 6 = sábado (semanal). */
   weekday: number
@@ -183,16 +188,27 @@ export interface ReportsState {
 export const DEFAULT_REPORTS: ReportsState = { schedules: [], runs: [] }
 export const MAX_SCHEDULES = 30
 
+/** Pausa entre um celular e outro no envio pelo WhatsApp: sorteada entre 40 s e 2 min (intervalo fixo parece robô). */
+export function whatsappGap(random = Math.random) {
+  return 40_000 + Math.floor(random() * 80_000)
+}
+
 const EMAIL = /^[^\s@<>"']{1,64}@[^\s@<>"']{1,190}\.[a-z]{2,}$/i
 
 export function cleanSchedule(input: Partial<ReportSchedule>, prev: ReportSchedule | null, id: string, by: string | null): ReportSchedule | { error: string } {
   const name = String(input.name ?? prev?.name ?? '').trim().slice(0, 80)
   if (!name) return { error: 'Dê um nome ao relatório.' }
   const emails = [...new Set((input.emails ?? prev?.emails ?? []).map((e) => String(e).trim().toLowerCase()).filter(Boolean))]
-  if (!emails.length) return { error: 'Cadastre ao menos um e-mail para receber o relatório.' }
   if (emails.length > 20) return { error: 'No máximo 20 e-mails por relatório.' }
   const bad = emails.find((e) => !EMAIL.test(e))
   if (bad) return { error: `E-mail inválido: ${bad}` }
+  const rawPhones = (input.whatsapp ?? prev?.whatsapp ?? []).map((x) => String(x).trim()).filter(Boolean)
+  const badPhone = rawPhones.find((x) => !normalizePhone(x))
+  if (badPhone) return { error: `Celular inválido para WhatsApp: ${badPhone} (use DDD + número, ex.: (49) 98863-2548).` }
+  const whatsapp = [...new Set(rawPhones.map((x) => normalizePhone(x)!))]
+  if (whatsapp.length > 20) return { error: 'No máximo 20 celulares por relatório.' }
+  if (!emails.length && !whatsapp.length) return { error: 'Cadastre ao menos um e-mail ou um celular de WhatsApp para receber o relatório.' }
+  const numberId = input.whatsappNumberId !== undefined ? input.whatsappNumberId : (prev?.whatsappNumberId ?? null)
   const frequency: Frequency = input.frequency === 'semanal' || input.frequency === 'mensal' ? input.frequency : 'diario'
   const int = (v: unknown, d: number, min: number, max: number) => {
     const n = Number(v ?? d)
@@ -206,6 +222,8 @@ export function cleanSchedule(input: Partial<ReportSchedule>, prev: ReportSchedu
     name,
     active: input.active ?? prev?.active ?? true,
     emails,
+    whatsapp,
+    whatsappNumberId: typeof numberId === 'string' && /^[0-9a-f-]{36}$/.test(numberId) ? numberId : null,
     frequency,
     weekday: int(input.weekday, prev?.weekday ?? 1, 0, 6),
     monthDay: int(input.monthDay, prev?.monthDay ?? 1, 1, 28),

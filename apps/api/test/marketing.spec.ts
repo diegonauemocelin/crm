@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanConfig, cleanFilters, cleanMetaAccount, cleanSchedule, cleanSiteUrl, DEFAULT_CONFIG, describeFrequency, isDue, nextRun, reportPeriod, type ReportSchedule } from '../src/marketing/config'
+import { cleanConfig, cleanFilters, cleanMetaAccount, cleanSchedule, cleanSiteUrl, DEFAULT_CONFIG, describeFrequency, isDue, nextRun, reportPeriod, type ReportSchedule, whatsappGap } from '../src/marketing/config'
 import {
   applyFilters,
   attributedCampaign,
@@ -20,7 +20,7 @@ import {
   sumRecords,
 } from '../src/marketing/metricas'
 import { recommendations } from '../src/marketing/recomendacoes'
-import { reportHtml } from '../src/marketing/relatorio-email'
+import { reportHtml, reportWhatsapp } from '../src/marketing/relatorio-email'
 
 const rules: Rules = { qualified: 'repassado_retorno', marginPct: 30, fixedMonthly: 0, marketingOriginIds: [] }
 let n = 0
@@ -149,13 +149,24 @@ describe('Marketing Inteligente: configurações e relatórios agendados', () =>
   })
 
   it('valida o agendamento: e-mails, conteúdo e horário', () => {
-    expect(cleanSchedule({ name: 'Diretoria', emails: [], sections: ['kpis'] }, null, 'x', null)).toEqual({ error: 'Cadastre ao menos um e-mail para receber o relatório.' })
+    expect(cleanSchedule({ name: 'Diretoria', emails: [], sections: ['kpis'] }, null, 'x', null)).toEqual({ error: 'Cadastre ao menos um e-mail ou um celular de WhatsApp para receber o relatório.' })
     expect(cleanSchedule({ name: 'Diretoria', emails: ['a@b'], sections: ['kpis'] }, null, 'x', null)).toEqual({ error: 'E-mail inválido: a@b' })
     expect(cleanSchedule({ name: 'Diretoria', emails: ['dir@usaparts.com.br'], sections: [] }, null, 'x', null)).toEqual({ error: 'Escolha ao menos uma informação para ir no relatório.' })
     const s = cleanSchedule({ name: 'Diretoria', emails: ['DIR@usaparts.com.br', 'dir@usaparts.com.br'], frequency: 'semanal', weekday: 1, hour: 7, sections: ['kpis', 'inventada' as never] }, null, 'x', 'u') as ReportSchedule
     expect(s).toMatchObject({ emails: ['dir@usaparts.com.br'], sections: ['kpis'], period: 'semana_anterior', hour: 7, active: true })
     expect(describeFrequency(s)).toBe('Toda segunda às 07h')
     expect(describeFrequency({ ...s, weekday: 6 })).toBe('Todo sábado às 07h')
+  })
+
+  it('agendamento pelo WhatsApp: celulares com DDD, sem e-mail obrigatório, pausa sorteada', () => {
+    const s = cleanSchedule({ name: 'Diretoria', emails: [], whatsapp: ['(49) 98863-2548', '49988632548', '+55 49 99999-0000'], sections: ['kpis'] }, null, 'x', 'u') as ReportSchedule
+    expect(s).toMatchObject({ emails: [], whatsapp: ['+5549988632548', '+5549999990000'], whatsappNumberId: null })
+    expect(cleanSchedule({ name: 'D', whatsapp: ['1234'], sections: ['kpis'] }, null, 'x', null)).toEqual({ error: 'Celular inválido para WhatsApp: 1234 (use DDD + número, ex.: (49) 98863-2548).' })
+    expect(cleanSchedule({ name: 'D', whatsapp: Array.from({ length: 21 }, (_, i) => `4999999${String(i).padStart(4, '0')}`), sections: ['kpis'] }, null, 'x', null)).toEqual({ error: 'No máximo 20 celulares por relatório.' })
+    // Edição sem mandar os celulares mantém os de antes.
+    expect((cleanSchedule({ name: 'Outro nome' }, s, 'x', 'u') as ReportSchedule).whatsapp).toEqual(s.whatsapp)
+    expect(whatsappGap(() => 0)).toBe(40_000)
+    expect(whatsappGap(() => 0.999)).toBeLessThan(120_000)
   })
 
   it('calcula o próximo envio e quando está na hora (horário de Brasília)', () => {
@@ -221,5 +232,10 @@ describe('Marketing Inteligente: recomendações e e-mail do relatório', () => 
     expect(html).not.toContain('<script>')
     expect(html).toContain('&lt;script&gt;')
     expect(html).toContain('ROI estimado com margem de 30%')
+    const wa = reportWhatsapp({ schedule: { name: 'Diário', sections: ['kpis', 'resumo_ia'] }, periodLabel: 'Ontem', data, email: null, health: null, branding: { appName: 'CRM Usaparts', primaryColor: '#5747cb' }, link: 'https://crm/x', ai: 'x'.repeat(900) })
+    expect(wa).toContain('*Diário*')
+    expect(wa).toContain('Leads gerados')
+    expect(wa).toContain('Ver tudo no sistema: https://crm/x')
+    expect(wa.length).toBeLessThanOrEqual(1024)
   })
 })

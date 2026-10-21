@@ -162,3 +162,19 @@ export function reportText(x: ReportInput) {
   lines.push('', `Ver tudo no sistema: ${x.link}`)
   return lines.join('\n')
 }
+
+const WA_KPIS: K[] = ['mediaCost', 'leads', 'sales', 'revenue', 'cpl', 'roas']
+
+/** Mensagem do WhatsApp: curta (vai como legenda do PDF), com os principais números e o resumo da IA. */
+export function reportWhatsapp(x: ReportInput) {
+  const d = x.data
+  const lines = [`*${x.schedule.name}*`, `${x.periodLabel}: ${day(d.period.from)}${d.period.from === d.period.to ? '' : ` a ${day(d.period.to)}`}`, '']
+  for (const key of WA_KPIS) {
+    const k = KPIS.find((y) => y.key === key)!
+    lines.push(`${k.label}: *${k.fmt(d.now[k.key] as number | null)}* (antes: ${k.fmt(d.before[k.key] as number | null)})`)
+  }
+  if (x.ai && (x.schedule.sections as string[]).includes('resumo_ia')) lines.push('', x.ai.length > 600 ? `${x.ai.slice(0, 597).trimEnd()}...` : x.ai)
+  lines.push('', `Ver tudo no sistema: ${x.link}`)
+  // A legenda de documento no WhatsApp aceita até 1.024 caracteres.
+  return lines.join('\n').slice(0, 1024)
+}

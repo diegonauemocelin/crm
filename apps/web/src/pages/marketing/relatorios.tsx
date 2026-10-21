@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarClockIcon, EyeIcon, Loader2Icon, MailIcon, PencilIcon, PlusIcon, SendIcon, Trash2Icon } from 'lucide-react'
+import { CalendarClockIcon, EyeIcon, Loader2Icon, MailIcon, MessageCircleIcon, PencilIcon, PlusIcon, SendIcon, Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -27,6 +27,9 @@ interface Schedule {
   name: string
   active: boolean
   emails: string[]
+  /** Celulares que recebem pelo WhatsApp (resumo + PDF). */
+  whatsapp: string[]
+  whatsappNumberId: string | null
   frequency: Frequency
   weekday: number
   monthDay: number
@@ -46,6 +49,7 @@ interface ReportsView {
   sections: { key: string; label: string }[]
   periods: { key: string; label: string }[]
   smtpReady: boolean
+  whatsappNumbers: { id: string; name: string; status: string }[]
 }
 
 const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
@@ -105,7 +109,7 @@ function Relatorios() {
       <div className="space-y-4">
         {can('mi_relatorios', 'create') && (
           <div className="flex justify-end">
-            <Button onClick={() => setEditing({ frequency: 'semanal', weekday: 1, monthDay: 1, hour: 8, period: 'semana_anterior', sections: DEFAULT_SECTIONS, active: true, emails: [], filters: {}, attach: 'pdf' })}>
+            <Button onClick={() => setEditing({ frequency: 'semanal', weekday: 1, monthDay: 1, hour: 8, period: 'semana_anterior', sections: DEFAULT_SECTIONS, active: true, emails: [], whatsapp: [], whatsappNumberId: null, filters: {}, attach: 'pdf' })}>
               <PlusIcon /> Novo relatório
             </Button>
           </div>
@@ -155,6 +159,11 @@ function Relatorios() {
                         <p className="truncate text-sm" title={s.emails.join(', ')}>
                           {s.emails.join(', ')}
                         </p>
+                        {(s.whatsapp ?? []).length > 0 && (
+                          <p className="flex items-center gap-1 text-xs text-muted-foreground" title={s.whatsapp.join(', ')}>
+                            <MessageCircleIcon className="size-3" /> WhatsApp: {s.whatsapp.length} celular(es)
+                          </p>
+                        )}
                       </TableCell>
                       <TableCell>
                         {s.lastSentAt ? formatDateTime(s.lastSentAt) : '—'}
@@ -166,7 +175,7 @@ function Relatorios() {
                       <TableCell className="pr-6 text-right whitespace-nowrap">
                         {can('mi_relatorios', 'edit') && (
                           <>
-                            <Button size="icon-sm" variant="ghost" onClick={() => send.mutate(s.id)} disabled={send.isPending || !d.smtpReady} aria-label={`Enviar agora o relatório ${s.name}`}>
+                            <Button size="icon-sm" variant="ghost" onClick={() => send.mutate(s.id)} disabled={send.isPending || (!d.smtpReady && !(s.whatsapp ?? []).length)} aria-label={`Enviar agora o relatório ${s.name}`}>
                               {send.isPending && send.variables === s.id ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
                             </Button>
                             <Button size="icon-sm" variant="ghost" onClick={() => setEditing(s)} aria-label={`Editar relatório ${s.name}`}>
@@ -218,8 +227,9 @@ function ScheduleDialog({ initial, view, onClose, onSaved }: { initial: Partial<
   const opts = useMktOptions()
   const [s, setS] = useState<Partial<Schedule>>(initial)
   const [emails, setEmails] = useState((initial.emails ?? []).join('\n'))
+  const [phones, setPhones] = useState((initial.whatsapp ?? []).join('\n'))
   const [preview, setPreview] = useState<string | null>(null)
-  const body = () => ({ ...s, emails: emails.split(/[\s,;]+/).filter(Boolean) })
+  const body = () => ({ ...s, emails: emails.split(/[\s,;]+/).filter(Boolean), whatsapp: phones.split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean) })
   const save = useMutation({
     mutationFn: () => (s.id ? api.put(`/marketing/relatorios/${s.id}`, body()) : api.post('/marketing/relatorios', body())),
     onSuccess: () => (toast.success('Relatório salvo.'), onSaved()),
@@ -231,14 +241,14 @@ function ScheduleDialog({ initial, view, onClose, onSaved }: { initial: Partial<
     onError: (err) => toast.error(errorMessage(err), { duration: 8000 }),
   })
   const set = (patch: Partial<Schedule>) => setS((x) => ({ ...x, ...patch }))
-  const guard = useCloseGuard(isDirty(initial, s) || emails !== (initial.emails ?? []).join('\n'), onClose, 'o relatório')
+  const guard = useCloseGuard(isDirty(initial, s) || emails !== (initial.emails ?? []).join('\n') || phones !== (initial.whatsapp ?? []).join('\n'), onClose, 'o relatório')
   const toggleSection = (k: string, on: boolean) => set({ sections: on ? [...(s.sections ?? []), k] : (s.sections ?? []).filter((x) => x !== k) })
   return (
     <Dialog open onOpenChange={(o) => !o && void guard()}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{s.id ? 'Editar relatório' : 'Novo relatório'}</DialogTitle>
-          <DialogDescription>O e-mail sai no horário de Brasília, com o período escolhido e só as informações marcadas.</DialogDescription>
+          <DialogDescription>O envio sai no horário de Brasília, com o período escolhido e só as informações marcadas.</DialogDescription>
         </DialogHeader>
         <form
           className="grid gap-4"
@@ -260,6 +270,34 @@ function ScheduleDialog({ initial, view, onClose, onSaved }: { initial: Partial<
             </Label>
             <Textarea id="rep-emails" rows={3} placeholder={'diretoria@usaparts.com.br\nmarketing@usaparts.com.br'} value={emails} onChange={(e) => setEmails(e.target.value)} />
             <p className="text-xs text-muted-foreground">Um por linha (ou separados por vírgula). Até 20.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="rep-whatsapp">
+              <MessageCircleIcon className="size-4" /> WhatsApp que recebem
+            </Label>
+            <Textarea id="rep-whatsapp" rows={2} placeholder={'(49) 98863-2548\n(49) 99999-0000'} value={phones} onChange={(e) => setPhones(e.target.value)} />
+            <p className="text-xs text-muted-foreground">
+              Um celular por linha, com DDD. Até 20. Vai um resumo com os principais números e o PDF. Os celulares recebem um de cada vez, com uma pausa sorteada entre 40 s e 2 min, para não bloquear o número.
+            </p>
+            {phones.trim() && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Label className="text-sm font-normal text-muted-foreground">Enviar pelo número</Label>
+                <Select value={s.whatsappNumberId ?? 'auto'} onValueChange={(v) => set({ whatsappNumberId: v === 'auto' ? null : v })}>
+                  <SelectTrigger className="w-full sm:w-72">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">O primeiro conectado</SelectItem>
+                    {view.whatsappNumbers.map((n) => (
+                      <SelectItem key={n.id} value={n.id}>
+                        {n.name}
+                        {n.status !== 'CONECTADO' ? ' (desconectado)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">

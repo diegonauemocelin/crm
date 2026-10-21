@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 import { EmailModule } from '../email/email.module'
+import { WhatsappModule } from '../whatsapp/whatsapp.module'
 import { MarketingManagementService } from './gestao.service'
 import { MarketingInstagramService } from './instagram.service'
 import { MarketingController } from './marketing.controller'
@@ -10,7 +11,7 @@ import { MarketingSyncService } from './sync.service'
 
 /** Marketing Inteligente: análises de marketing e vendas sobre os dados do CRM, sem alterar os módulos atuais. */
 @Module({
-  imports: [EmailModule],
+  imports: [EmailModule, WhatsappModule],
   controllers: [MarketingController],
   providers: [MarketingService, MarketingReportsService, MarketingPlatformsService, MarketingManagementService, MarketingSyncService, MarketingInstagramService],
 })
