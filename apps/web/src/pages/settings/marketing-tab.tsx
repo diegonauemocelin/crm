@@ -172,7 +172,8 @@ function IntegrationsCards({ initial, sync }: { initial: Integrations; sync: Syn
           <ol className="list-decimal space-y-0.5 pl-5">
             <li>No Business Manager da Usaparts: Configurações do negócio › Usuários do sistema › Adicionar (função Administrador ou Funcionário).</li>
             <li>Atribua as contas de anúncio ao usuário do sistema (permissão “Ver desempenho”).</li>
-            <li>Gerar token: escolha o app da empresa e marque ads_read e read_insights. Cole o token aqui com o número de cada conta (Gerenciador de Anúncios, no topo: act_…).</li>
+            <li>No app da empresa (developers.facebook.com › Casos de uso › API de Marketing › Personalizar), adicione a permissão ads_read.</li>
+            <li>Gerar token no usuário do sistema: escolha o app, validade “Nunca” e marque ads_read. Cole o token aqui com o número de cada conta (Gerenciador de Anúncios, no topo: act_…).</li>
           </ol>
         }
       />
@@ -189,7 +190,7 @@ function IntegrationsCards({ initial, sync }: { initial: Integrations; sync: Syn
           { key: 'pageId', label: 'ID da página do Facebook', placeholder: 'Só números' },
           { key: 'instagramId', label: 'ID da conta profissional do Instagram', placeholder: 'Só números' },
         ]}
-        help={<p>O token da Meta precisa também de pages_read_engagement, instagram_basic e instagram_manage_insights. O Instagram deve ser conta profissional ligada à página.</p>}
+        help={<p>Adicione ao app os casos de uso da Página (pages_show_list, pages_read_engagement, read_insights) e do Instagram (instagram_basic, instagram_manage_insights) e gere o token do usuário do sistema de novo com essas permissões. O Instagram deve ser conta profissional ligada à página.</p>}
       />
       <Integration
         k="tiktok"

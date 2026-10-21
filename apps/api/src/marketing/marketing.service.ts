@@ -181,7 +181,7 @@ export class MarketingService {
     const metaError = (b: Record<string, unknown> | null, status: number) => {
       const e = (b?.error ?? {}) as { message?: string; code?: number }
       if (e.code === 190) return 'Token da Meta vencido ou inválido: gere um novo token do usuário do sistema.'
-      if (e.code === 10 || e.code === 200) return `Sem permissão: o token precisa de ads_read/read_insights. (${e.message ?? status})`
+      if (e.code === 10 || e.code === 200) return `Sem permissão: ${key === 'metaAds' ? 'o token precisa de ads_read e a conta de anúncios atribuída ao usuário do sistema' : 'o token precisa de pages_read_engagement, instagram_basic e instagram_manage_insights, e a página/Instagram atribuídos ao usuário do sistema'}. (${e.message ?? status})`
       return `A Meta recusou (${status}): ${e.message ?? 'sem detalhe'}`
     }
     if (key === 'metaAds' || key === 'metaOrganic') {
