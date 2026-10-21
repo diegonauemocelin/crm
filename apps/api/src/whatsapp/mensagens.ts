@@ -25,6 +25,8 @@ export interface ParsedMessage {
 
 type Obj = Record<string, unknown>
 
+export const UNKNOWN_TEXT = 'Mensagem de um tipo que o CRM ainda não mostra (veja no celular).'
+
 const WRAPPERS = ['ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2', 'viewOnceMessageV2Extension', 'documentWithCaptionMessage', 'editedMessage']
 
 const str = (v: unknown, n = 4096) => (typeof v === 'string' && v.trim() ? v.slice(0, n) : null)
@@ -123,7 +125,7 @@ export function parseMessage(data: unknown): ParsedMessage | null {
   if (!keys.length || keys.some((k) => ['reactionMessage', 'protocolMessage', 'senderKeyDistributionMessage', 'pollUpdateMessage', 'keepInChatMessage'].includes(k))) return null
   const found = anyText(m)
   if (found) return { ...base, type: 'texto', text: found, media: null }
-  return { ...base, type: 'outro', text: 'Mensagem de um tipo que o CRM ainda não mostra (veja no celular).', media: null }
+  return { ...base, type: 'outro', text: UNKNOWN_TEXT, media: null }
 }
 
 const obj = (v: unknown) => (v && typeof v === 'object' ? (v as Obj) : null)
@@ -311,18 +313,64 @@ export interface ParsedRevision {
  */
 export function parseRevision(data: unknown): ParsedRevision | null {
   const d = data as { key?: Obj; message?: Obj } | null
-  const p = unwrap(d?.message)?.protocolMessage as { key?: Obj; type?: unknown; editedMessage?: Obj } | undefined
+  if (!d?.key) return null
+  return revisionOf(unwrap(d.message)?.protocolMessage)
+}
+
+/** protocolMessage de edição ou de "apagar para todos": a chave é a da mensagem original. */
+function revisionOf(raw: unknown): ParsedRevision | null {
+  const p = obj(raw) as { key?: Obj; type?: unknown; editedMessage?: Obj } | null
   const target = str(p?.key?.id, 120)
-  if (!d?.key || !p || !target) return null
+  if (!p || !target) return null
   if (p.type === 'REVOKE' || p.type === 0) return { targetWaId: target, kind: 'apagada', text: null }
   if (p.type === 'MESSAGE_EDIT' || p.type === 14) {
-    const m = unwrap(p.editedMessage)
-    const ext = m?.extendedTextMessage as Obj | undefined
-    const media = ['imageMessage', 'videoMessage', 'documentMessage'].map((k) => m?.[k] as Obj | undefined).find((x) => !!x)
-    const text = str(m?.conversation) ?? str(ext?.text) ?? str(media?.caption)
+    const text = editedText(p.editedMessage)
     return text ? { targetWaId: target, kind: 'editada', text } : null
   }
   return null
+}
+
+function editedText(raw: unknown): string | null {
+  const m = unwrap(obj(raw))
+  const ext = m?.extendedTextMessage as Obj | undefined
+  const media = ['imageMessage', 'videoMessage', 'documentMessage'].map((k) => m?.[k] as Obj | undefined).find((x) => !!x)
+  return str(m?.conversation) ?? str(ext?.text) ?? str(media?.caption)
+}
+
+/**
+ * Evolution 2.3: edição e "apagar para todos" não chegam como mensagem. A edição vem no evento MESSAGES_EDITED
+ * (o próprio protocolMessage) e também no MESSAGES_UPDATE (keyId + message.editedMessage); a exclusão vem no
+ * MESSAGES_DELETE (a chave da mensagem apagada).
+ */
+export function parseRevisionEvent(event: string, data: unknown): ParsedRevision[] {
+  const out: ParsedRevision[] = []
+  for (const raw of (Array.isArray(data) ? data : [data]).slice(0, 50)) {
+    const d = obj(raw)
+    if (!d) continue
+    if (event === 'messages.edited') {
+      const r = revisionOf(d.protocolMessage ?? d)
+      if (r) out.push(r)
+    } else if (event === 'messages.delete') {
+      const id = str(d.id, 120) ?? str(obj(d.key)?.id, 120) ?? str(d.keyId, 120)
+      if (id) out.push({ targetWaId: id, kind: 'apagada', text: null })
+    } else if (event === 'messages.update') {
+      const id = str(d.keyId, 120) ?? str(obj(d.key)?.id, 120)
+      const edited = obj(obj(d.message)?.editedMessage) ?? obj(obj(obj(d.update)?.message)?.editedMessage)
+      // Edição embalada num protocolMessage (formato antigo) ou o conteúdo novo direto.
+      const inner = obj(edited?.message)
+      const r = inner?.protocolMessage ? revisionOf(inner.protocolMessage) : null
+      const text = r ? null : editedText(inner ?? edited)
+      if (r) out.push(r)
+      else if (id && text) out.push({ targetWaId: id, kind: 'editada', text })
+    }
+  }
+  return out
+}
+
+/** Chaves de uma mensagem que o CRM não soube ler (para o registro do servidor; sem o conteúdo). */
+export function unknownKeys(data: unknown): string {
+  const m = obj(obj(data)?.message)
+  return m ? Object.keys(m).slice(0, 10).join(', ') : '(sem conteúdo)'
 }
 
 export interface Reaction {

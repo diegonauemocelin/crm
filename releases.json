@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.78.0",
+      "date": "2026-10-21",
+      "title": "Chat: mensagem editada e apagada como no celular, e despedida não conta como espera",
+      "changes": [
+        { "type": "correcao", "area": "Chat WhatsApp", "text": "Mensagem editada pelo cliente passa a aparecer com o texto novo (marcada como editada), e mensagem apagada para todos some do chat, como no celular. A versão atual da Evolution manda esses avisos em eventos separados, que o CRM passou a receber." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Quando o cliente só agradece ou se despede depois da última fala da empresa (\"Muito obrigada!\", \"ok 👍\", figurinha), a conversa não conta mais como cliente esperando resposta: some a faixa laranja, a cor de atraso na lista e o aviso de \"sem resposta\". Se o atendimento já estava finalizado, o agradecimento não abre um atendimento novo nem manda mensagem de ausência." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Botão \"Não precisa responder\" na faixa \"Cliente esperando resposta\": para quando a conversa já terminou e o CRM não tem como saber sozinho (ex.: áudio de despedida). Se o cliente escrever de novo, a conversa volta a contar." }
+      ]
+    },
+    {
       "version": "0.77.4",
       "date": "2026-10-21",
       "title": "Miniaturas das publicações aparecem (o Instagram bloqueava exibir direto)",

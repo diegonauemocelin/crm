@@ -244,6 +244,41 @@ export function receiptUpgrades(current: string | null, next: ReceiptStatus) {
   return (RECEIPT_RANK[next] ?? 0) > (RECEIPT_RANK[current ?? ''] ?? 0) || current === 'ERRO'
 }
 
+// Agradecimento / despedida do cliente: depois da última fala da empresa, não pede resposta.
+const CLOSING_WORDS = [
+  'muito obrigado', 'muito obrigada', 'obrigado', 'obrigada', 'obrigados', 'obrigadas', 'obrigadao', 'obrigadinho', 'obrigadinha', 'brigado', 'brigada', 'obg', 'obgd', 'obgda', 'obgdo',
+  'grato', 'grata', 'agradeco', 'agradecido', 'agradecida', 'valeu', 'vlw', 'ok', 'okay', 'okey', 'blz', 'beleza', 'certo', 'ta certo', 'perfeito', 'show', 'top', 'otimo', 'combinado',
+  'fechado', 'tmj', 'tamo junto', 'de nada', 'ate mais', 'ate logo', 'ate breve', 'ate a proxima', 'abraco', 'abracos', 'abs', 'entendi', 'entendido', 'joia', 'tranquilo', 'tranquila',
+  'igualmente', 'deus abencoe', 'amem', 'disponha',
+]
+// Palavras que acompanham o agradecimento, mas sozinhas não encerram ("bom dia" sozinho costuma abrir um pedido).
+const CLOSING_FILLER = [
+  'muito', 'mto', 'mt', 'muitissimo', 'mesmo', 'pela atencao', 'pela ajuda', 'pelo atendimento', 'por tudo', 'entao', 'e', 'sim', 'tudo', 'ai', 'bom dia', 'boa tarde', 'boa noite',
+  'bom fim de semana', 'otimo dia', 'boa semana', 'bom trabalho', 'pra voce tambem', 'para voce tambem', 'voce tambem', 'vc tambem', 'tambem', 'amigo', 'amiga', 'sr', 'sra', 'senhor',
+  'senhora', 'kkk', 'kkkk', 'rs', 'ta', 'bem', 'demais',
+]
+const PHRASES = [...CLOSING_WORDS.map((w) => ({ w: w.split(' '), closing: true })), ...CLOSING_FILLER.map((w) => ({ w: w.split(' '), closing: false }))].sort((a, b) => b.w.length - a.w.length)
+
+/** A mensagem do cliente só agradece ou se despede ("Muito obrigada!", "ok 👍", figurinha), sem pedir nada. */
+export function isClosingMessage(m: { type: string; text: string | null }): boolean {
+  if (m.type === 'figurinha') return true
+  if (m.type !== 'texto') return false
+  const raw = (m.text ?? '').trim()
+  if (!raw || raw.length > 80) return false
+  const plain = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  // Só emoji (👍🙏): também é encerramento.
+  if (!/[\p{L}\p{N}]/u.test(plain)) return true
+  const words = plain.replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(' ').map((w) => (/^k{3,}$/.test(w) ? 'kkk' : w.replace(/(.)\1{2,}$/, '$1')))
+  let closing = false
+  for (let i = 0; i < words.length; ) {
+    const hit = PHRASES.find((p) => p.w.every((x, j) => words[i + j] === x))
+    if (!hit) return false
+    closing ||= hit.closing
+    i += hit.w.length
+  }
+  return closing
+}
+
 /** Cor do atraso de resposta: só quando a última mensagem é do cliente. */
 export function responseColor(lastFromMe: boolean, lastMessageAt: Date | null, r: Pick<WaRules, 'yellowMinutes' | 'redMinutes'>, now = Date.now()): 'verde' | 'amarelo' | 'vermelho' | null {
   if (lastFromMe || !lastMessageAt) return null

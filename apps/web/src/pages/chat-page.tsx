@@ -59,6 +59,8 @@ interface ConvItem {
   lastMessageAt: string | null
   lastPreview: string | null
   lastFromMe: boolean
+  /** O cliente só agradeceu ou se despediu (ou alguém marcou "Não precisa responder"): não conta como esperando. */
+  noReplyNeeded?: boolean
   category?: ContactCategory | 'GRUPO'
   status?: string
   reminderAt?: string | null
@@ -112,7 +114,7 @@ interface Message {
   transcript?: string | null
 }
 interface Thread {
-  conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; helpers?: { id: string; name: string }[]; sectorId?: string | null; category: ContactCategory | 'GRUPO'; labels?: ChatLabel[] }
+  conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; helpers?: { id: string; name: string }[]; sectorId?: string | null; category: ContactCategory | 'GRUPO'; labels?: ChatLabel[]; noReplyNeeded?: boolean }
   /** Contato salvo na agenda do número (ou na geral). */
   agenda?: { name: string | null; category: string; general: boolean } | null
   number: NumberRef | null
@@ -185,8 +187,8 @@ const WAIT_COLOR = {
   amarelo: { dot: 'bg-[#eab308]', text: 'text-[#a16207] dark:text-[#facc15]', label: 'atenção' },
   vermelho: { dot: 'bg-[#dc2626]', text: 'text-[#b91c1c] dark:text-[#f87171]', label: 'atrasada' },
 } as const
-function waitColor(c: { lastFromMe: boolean; lastMessageAt: string | null; status?: string }, r: ListData['responseColors']) {
-  if (!r || c.lastFromMe || !c.lastMessageAt || c.status === 'ARQUIVADA') return null
+function waitColor(c: { lastFromMe: boolean; noReplyNeeded?: boolean; lastMessageAt: string | null; status?: string }, r: ListData['responseColors']) {
+  if (!r || c.lastFromMe || c.noReplyNeeded || !c.lastMessageAt || c.status === 'ARQUIVADA') return null
   const min = Math.max(0, Math.floor((Date.now() - Date.parse(c.lastMessageAt)) / 60_000))
   const k = min < r.yellowMinutes ? 'verde' : min < r.redMinutes ? 'amarelo' : 'vermelho'
   return { ...WAIT_COLOR[k], min }
@@ -730,7 +732,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
         })}
         <div ref={end} />
       </div>
-      {colors && !monitor && d.conversation.category === 'CLIENTE' && <WaitingBar messages={messages} yellowMinutes={alerts?.waiting?.yellowMinutes} />}
+      {colors && !monitor && d.conversation.category === 'CLIENTE' && d.conversation.status !== 'ARQUIVADA' && !d.conversation.noReplyNeeded && <WaitingBar id={d.conversation.id} messages={messages} yellowMinutes={alerts?.waiting?.yellowMinutes} />}
       {monitor ? (
         <p className="flex items-center gap-2 border-t bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
           <EyeIcon className="size-4 shrink-0" /> Monitoramento: só leitura. O vendedor e o cliente não são avisados, e a conversa continua como não lida para quem atende.
@@ -765,16 +767,33 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
   )
 }
 
-/** Telas novas (Moderno): faixa laranja quando a última mensagem é do cliente e já passou do prazo amarelo. */
-function WaitingBar({ messages, yellowMinutes = 10 }: { messages: Message[]; yellowMinutes?: number }) {
+/**
+ * Telas novas (Moderno): faixa laranja quando a última mensagem é do cliente e já passou do prazo amarelo.
+ * "Não precisa responder" tira o aviso quando a conversa já terminou (ex.: áudio de despedida).
+ */
+function WaitingBar({ id, messages, yellowMinutes = 10 }: { id: string; messages: Message[]; yellowMinutes?: number }) {
+  const qc = useQueryClient()
+  const dismiss = useMutation({
+    mutationFn: () => api.post(`/chat/conversas/${id}/sem-resposta`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['chat-conversa', id] })
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+      void qc.invalidateQueries({ queryKey: ['chat-alertas'] })
+      toast.success('Pronto: esta conversa saiu dos avisos. Se o cliente escrever de novo, ela volta.')
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
   const last = [...messages].reverse().find((m) => !m.internal)
   if (!last || last.fromMe) return null
   const min = Math.floor((Date.now() - Date.parse(last.sentAt)) / 60_000)
   if (min < yellowMinutes || min > 7 * 1440) return null
   return (
-    <p className="flex items-center gap-2 border-t border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-800 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300" role="status">
+    <div className="flex flex-wrap items-center gap-2 border-t border-orange-200 bg-orange-50 px-3 py-1 text-xs font-medium text-orange-800 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300" role="status">
       <AlarmClockIcon className="size-3.5" /> Cliente esperando resposta há {waitText(min)}
-    </p>
+      <Button size="sm" variant="ghost" className="ml-auto h-7 text-orange-800 hover:bg-orange-100 dark:text-orange-300 dark:hover:bg-orange-500/20" disabled={dismiss.isPending} onClick={() => dismiss.mutate()} title="A conversa já terminou (o cliente só se despediu): para de contar o tempo até ele escrever de novo">
+        {dismiss.isPending ? <Loader2Icon className="animate-spin" /> : <CheckIcon />} Não precisa responder
+      </Button>
+    </div>
   )
 }
 

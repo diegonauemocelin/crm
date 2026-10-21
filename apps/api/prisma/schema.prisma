@@ -1420,6 +1420,8 @@ model WhatsappConversation {
   lastMessageAt    DateTime?
   lastPreview      String?
   lastFromMe       Boolean   @default(false)
+  /// Cliente não espera resposta: agradeceu depois da despedida (ou o atendente marcou). Volta a esperar na próxima mensagem dele.
+  noReplyNeeded    Boolean   @default(false)
   /// Nota interna nova, ainda não vista por quem atende.
   noteUnread       Boolean   @default(false)
   /// Última mensagem de ausência enviada (fora do horário comercial), para não repetir a cada mensagem.

@@ -15,10 +15,10 @@ import { normalizePhone } from '../atendimento/br'
 import { callHoursOf, DEFAULT_ATENDIMENTO } from '../atendimento/service-records.service'
 import { type EvolutionClient, EvolutionError } from './evolution'
 import { type Sector, servesNumber, splitWhere, teamOf, teamWhere } from './atendentes'
-import { type AgendaCategory, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
+import { type AgendaCategory, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isClosingMessage, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
 import { parseCsv } from '../atendimento/planilha'
 import { answersNote, type BotOutcome, botStateOf, chooseFlow, continueFlow, flowOf, startFlow } from './fluxo'
-import { extOf, INLINE_MEDIA_MAX_BYTES, MEDIA_MAX_BYTES, parseCalls, parseMessage, parseReaction, parseRevision, type ParsedMessage, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, whatsappOf, withReaction } from './mensagens'
+import { extOf, INLINE_MEDIA_MAX_BYTES, MEDIA_MAX_BYTES, parseCalls, parseMessage, parseReaction, parseRevision, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, whatsappOf, withReaction } from './mensagens'
 
 const PAGE = 60
 /** Nome que aparece nas mensagens e notas do chatbot. */
@@ -114,6 +114,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       const v = parseRevision(data)
       return v ? this.applyRevision(n, v).catch((err: unknown) => this.logger.warn(`Edição de mensagem não gravada (${n.name}): ${(err as Error).message}`)) : Promise.resolve()
     }
+    // Tipo novo do WhatsApp: fica o aviso na conversa e o formato no registro do servidor (para o CRM aprender a ler).
+    if (p.type === 'outro' && p.text === UNKNOWN_TEXT) this.logger.warn(`Mensagem de tipo desconhecido (${n.name}): ${unknownKeys(data)}`)
     // Mesma fila para as duas formas do celular (com e sem o 9).
     const key = `${n.id}:${phoneFromDigits(p.phoneDigits) ?? p.jid}`
     const run = (this.queues.get(key) ?? Promise.resolve())
@@ -139,6 +141,11 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     await this.prisma.whatsappMessage.update({ where: { id: m.id }, data: { reactions: reactions as unknown as Prisma.InputJsonValue } })
   }
 
+  /** Edição e "apagar para todos" nos eventos próprios da Evolution 2.3 (messages.edited, messages.delete, messages.update). */
+  async ingestRevisions(n: WhatsappNumber, event: string, data: unknown) {
+    for (const v of parseRevisionEvent(event, data)) await this.applyRevision(n, v)
+  }
+
   /** Mensagem apagada para todos ou editada no WhatsApp (pelo cliente, pelo celular da empresa ou a volta do envio do CRM). */
   private async applyRevision(n: WhatsappNumber, v: ParsedRevision) {
     const m = await this.prisma.whatsappMessage.findFirst({ where: { tenantId: n.tenantId, waId: v.targetWaId, conversation: { numberId: n.id } }, select: { id: true, conversationId: true, sentAt: true, type: true, deletedAt: true } })
@@ -149,8 +156,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       await this.prisma.whatsappConversation.updateMany({ where: { id: m.conversationId, lastMessageAt: m.sentAt }, data: { lastPreview: 'Mensagem apagada' } })
       return
     }
-    await this.prisma.whatsappMessage.update({ where: { id: m.id }, data: { editedAt: at, text: v.text } })
-    await this.prisma.whatsappConversation.updateMany({ where: { id: m.conversationId, lastMessageAt: m.sentAt }, data: { lastPreview: previewOf({ type: m.type as ParsedMessage['type'], text: v.text }) } })
+    // Chegou como tipo desconhecido e depois foi editada: o texto novo é o que vale.
+    const type = (m.type === 'outro' ? 'texto' : m.type) as ParsedMessage['type']
+    await this.prisma.whatsappMessage.update({ where: { id: m.id }, data: { editedAt: at, text: v.text, type } })
+    await this.prisma.whatsappConversation.updateMany({ where: { id: m.conversationId, lastMessageAt: m.sentAt }, data: { lastPreview: previewOf({ type, text: v.text }) } })
   }
 
   private async storeGroup(n: WhatsappNumber, p: ParsedMessage, client: EvolutionClient | null) {
@@ -204,8 +213,12 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       (await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: n.id, jid: p.jid } } })) ??
       (phone ? await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, phone } }) : null)
     const rules = await this.rules(n.tenantId)
+    // "Muito obrigada!", "ok 👍" depois da última fala da empresa: o cliente não espera resposta.
+    const goodbye = !p.fromMe && !!conv && (conv.lastFromMe || conv.noReplyNeeded) && isClosingMessage(p)
+    // Agradeceu logo depois de finalizado: o atendimento continua finalizado (não abre outro nem volta para a fila).
+    const staysClosed = goodbye && !!conv?.closedAt && p.at.getTime() - conv.closedAt.getTime() < 2 * 86_400_000
     // Atendimento finalizado conta como conversa nova: a próxima mensagem do cliente abre outro atendimento.
-    const idle = !conv?.lastMessageAt || !!conv.closedAt || p.at.getTime() - conv.lastMessageAt.getTime() > rules.reopenDays * 86_400_000
+    const idle = !staysClosed && (!conv?.lastMessageAt || !!conv.closedAt || p.at.getTime() - conv.lastMessageAt.getTime() > rules.reopenDays * 86_400_000)
     // Contato da empresa (lista do administrador) ou marcado no chat: vale para todos os números.
     const contact = await this.agendaContact(n.tenantId, n.id, phone ?? p.jid)
     conv ??= await this.prisma.whatsappConversation.create({ data: { tenantId: n.tenantId, numberId: n.id, jid: p.jid, phone, name: p.pushName, category: contact?.category ?? 'CLIENTE' } })
@@ -277,9 +290,9 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         ...(toDefault ? { assignedUserId: n.defaultUserId } : {}),
         ...(phone && !conv.phone ? { phone } : {}),
         ...(p.pushName && !conv.name ? { name: p.pushName } : {}),
-        ...(later ? { lastMessageAt: p.at, lastPreview: previewOf(p), lastFromMe: p.fromMe } : {}),
+        ...(later ? { lastMessageAt: p.at, lastPreview: previewOf(p), lastFromMe: p.fromMe, noReplyNeeded: goodbye } : {}),
         // Resposta pelo celular zera as não lidas (alguém já está atendendo).
-        ...(p.fromMe ? { unread: 0 } : { unread: { increment: 1 }, status: 'ABERTA', closedAt: null, closedByName: null }),
+        ...(p.fromMe ? { unread: 0 } : staysClosed ? {} : { unread: { increment: 1 }, status: 'ABERTA', closedAt: null, closedByName: null }),
       },
     })
     if (p.media && !tooBig && client) void this.downloadMedia(n, saved[0]!.id, p, client)
@@ -287,10 +300,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (p.fromMe && conv.botFlowId) await this.prisma.whatsappConversation.update({ where: { id: conv.id }, data: { botFlowId: null, botState: Prisma.DbNull } })
     // Chatbot: continua o fluxo ou começa um (cliente sem atendente). Com o robô atendendo, não vai a mensagem de ausência.
     const botHandled =
-      !p.fromMe && category === 'CLIENTE' && client && n.status === 'CONECTADO' && Date.now() - p.at.getTime() < 10 * 60_000
+      !p.fromMe && !goodbye && category === 'CLIENTE' && client && n.status === 'CONECTADO' && Date.now() - p.at.getTime() < 10 * 60_000
         ? await this.runBot(n, { ...conv, assignedUserId: toDefault ? n.defaultUserId : conv.assignedUserId }, p, rules, idle, client).catch((err: unknown) => (this.logger.warn(`Chatbot (${n.name}): ${(err as Error).message}`), false))
         : false
-    if (!botHandled && !p.fromMe && category === 'CLIENTE' && client) void this.sendAway(n, conv, p, rules, client).catch((err: unknown) => this.logger.warn(`Mensagem de ausência não enviada (${n.name}): ${(err as Error).message}`))
+    if (!botHandled && !p.fromMe && !goodbye && category === 'CLIENTE' && client) void this.sendAway(n, conv, p, rules, client).catch((err: unknown) => this.logger.warn(`Mensagem de ausência não enviada (${n.name}): ${(err as Error).message}`))
   }
 
   // ---------- Chatbot de atendimento ----------
@@ -398,7 +411,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       if (!saved.count) continue
       await this.prisma.whatsappConversation.update({
         where: { id: conv.id },
-        data: { lastMessageAt: c.at, lastPreview: c.isVideo ? 'Ligação de vídeo recebida' : 'Ligação de voz recebida', lastFromMe: false, unread: { increment: 1 }, status: 'ABERTA' },
+        data: { lastMessageAt: c.at, lastPreview: c.isVideo ? 'Ligação de vídeo recebida' : 'Ligação de voz recebida', lastFromMe: false, noReplyNeeded: false, unread: { increment: 1 }, status: 'ABERTA' },
       })
     }
   }
@@ -582,7 +595,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (q.labelId) and.push({ labels: { some: { labelId: q.labelId, label: this.ownedWhere(user) } } })
     if (q.monitor && q.sellerId) and.push(await this.sellerWhere(user.tenantId, q.sellerId))
     // Aguardando resposta: a última mensagem é do contato.
-    if (q.awaiting) and.push({ lastFromMe: false })
+    if (q.awaiting) and.push({ lastFromMe: false, noReplyNeeded: false })
     // Fila do atendimento dividido: clientes ainda sem atendente.
     if (q.queue) {
       const split = await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, splitAttendance: true }, select: { id: true } })
@@ -651,6 +664,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         lastMessageAt: r.lastMessageAt,
         lastPreview: r.lastPreview,
         lastFromMe: r.lastFromMe,
+        noReplyNeeded: r.noReplyNeeded,
         category: r.category,
         status: r.status,
         reminderAt: reminders.get(r.id) ?? null,
@@ -723,7 +737,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     // Mensagem respondida que está no CRM: se era da empresa e o id dela (para ir até ela na conversa).
     const quotedRows = new Map((quotedIds.length ? await this.prisma.whatsappMessage.findMany({ where: { conversationId: conv.id, waId: { in: quotedIds } }, select: { id: true, waId: true, fromMe: true } }) : []).map((q) => [q.waId, { id: q.id, fromMe: q.fromMe }]))
     return {
-      conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, assignedUserId: conv.assignedUserId, assignedUserName: attendants.find((a) => a.id === conv.assignedUserId)?.name ?? null, helpers: attendants.filter((a) => conv.helperUserIds.includes(a.id)).map((a) => ({ id: a.id, name: a.name })), sectorId: conv.sectorId, category: conv.category, unread: conv.unread, labels: (await this.labelsOf(user, [conv.id])).get(conv.id) ?? [] },
+      conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, assignedUserId: conv.assignedUserId, assignedUserName: attendants.find((a) => a.id === conv.assignedUserId)?.name ?? null, helpers: attendants.filter((a) => conv.helperUserIds.includes(a.id)).map((a) => ({ id: a.id, name: a.name })), sectorId: conv.sectorId, category: conv.category, unread: conv.unread, noReplyNeeded: conv.noReplyNeeded, labels: (await this.labelsOf(user, [conv.id])).get(conv.id) ?? [] },
       /** Contato na agenda do número (ou na geral): nome e tipo salvos. */
       agenda: conv.category !== 'GRUPO' ? await this.agendaContact(user.tenantId, conv.numberId, conv.phone ?? conv.jid).then((c) => (c ? { name: c.name, category: c.category, general: c.scope === '' } : null)) : null,
       attendance: number ? { split: number.splitAttendance, sectors: numberSectors.map((x) => ({ id: x.id, name: x.name })), attendants: attendants.filter((a) => a.active).map((a) => ({ id: a.id, name: a.name })) } : null,
@@ -1349,13 +1363,27 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const now = new Date()
     await this.prisma.whatsappConversation.update({
       where: { id },
-      data: { status: 'ARQUIVADA', assignedUserId: null, sectorId: null, helperUserIds: [], botFlowId: null, botState: Prisma.DbNull, unread: 0, closedAt: now, closedByName: user.name.slice(0, 120) },
+      data: { status: 'ARQUIVADA', assignedUserId: null, sectorId: null, helperUserIds: [], botFlowId: null, botState: Prisma.DbNull, unread: 0, noReplyNeeded: true, closedAt: now, closedByName: user.name.slice(0, 120) },
     })
     await this.prisma.whatsappMessage.create({
       data: { tenantId: user.tenantId, conversationId: id, waId: `nota:${randomUUID()}`, fromMe: true, type: 'nota', text: `Atendimento finalizado por ${user.name}${sent ? ' (mensagem de encerramento enviada)' : ''}.`, internal: true, sentById: user.id, sentByName: user.name.slice(0, 120), status: 'NOTA', sentAt: now },
     })
     await this.audit.byUser(user, ctx, 'chat.finalizada', 'whatsapp_conversation', id, { contato: conv.name ?? conv.phone ?? null, mensagem: sent })
     return { id, status: 'ARQUIVADA', closedAt: now }
+  }
+
+  /**
+   * "Não precisa responder": a conversa já terminou (ex.: o cliente mandou um áudio de despedida). Sai dos avisos de
+   * cliente esperando até ele mandar outra mensagem.
+   */
+  async noReply(user: AuthUser, id: string, ctx: RequestCtx) {
+    this.assertAction(user, 'chat', 'create')
+    const conv = await this.load(user, id)
+    if (conv.lastFromMe || conv.noReplyNeeded) return { id, noReplyNeeded: true }
+    // Só se nada novo chegou desde que a tela abriu.
+    await this.prisma.whatsappConversation.updateMany({ where: { id, lastMessageAt: conv.lastMessageAt }, data: { noReplyNeeded: true } })
+    await this.audit.byUser(user, ctx, 'chat.sem_resposta', 'whatsapp_conversation', id, { contato: conv.name ?? conv.phone ?? null })
+    return { id, noReplyNeeded: true }
   }
 
   /**
@@ -1956,7 +1984,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const rules = await this.rules(user.tenantId)
     const now = Date.now()
     const waitWhere = {
-      AND: [scope, { status: 'ABERTA', lastFromMe: false, category: 'CLIENTE' }, { lastMessageAt: { lte: new Date(now - rules.yellowMinutes * 60_000), gte: new Date(now - 24 * 3_600_000) } }],
+      AND: [scope, { status: 'ABERTA', lastFromMe: false, noReplyNeeded: false, category: 'CLIENTE' }, { lastMessageAt: { lte: new Date(now - rules.yellowMinutes * 60_000), gte: new Date(now - 24 * 3_600_000) } }],
     }
     // Fora do horário comercial ninguém é cobrado: o aviso de "sem resposta" volta quando abrir.
     const open = isOpen(rules.businessHours)

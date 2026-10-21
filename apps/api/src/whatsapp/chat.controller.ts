@@ -311,6 +311,13 @@ export class ChatController {
     return this.chat.finish(user, id, dto.enviarMensagem, ctx)
   }
 
+  /** Não precisa responder: o cliente só se despediu; a conversa sai dos avisos de "cliente esperando". */
+  @Post('conversas/:id/sem-resposta')
+  @HttpCode(200)
+  noReply(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    return this.chat.noReply(user, id, ctx)
+  }
+
   /** O que a pessoa pode monitorar: TODOS (permissão de monitoramento), EQUIPE (é gestora) ou nada. */
   @Get('monitoramento')
   monitorAccess(@CurrentUser() user: AuthUser) {

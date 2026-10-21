@@ -305,9 +305,15 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
       for (const item of list.slice(0, 50)) void this.chat.ingest(n, item, this.client)
       return true
     }
-    // Confirmação de entrega e leitura (os tracinhos do WhatsApp).
+    // Confirmação de entrega e leitura (os tracinhos do WhatsApp); a edição de uma mensagem também vem aqui.
     if (event === 'messages.update') {
       void this.chat.applyReceipts(n, b.data).catch((err: unknown) => this.logger.warn(`Confirmação de leitura não gravada: ${(err as Error).message}`))
+      void this.chat.ingestRevisions(n, event, b.data).catch((err: unknown) => this.logger.warn(`Edição de mensagem não gravada: ${(err as Error).message}`))
+      return true
+    }
+    // Mensagem editada ou apagada para todos (Evolution 2.3: eventos próprios, fora do messages.upsert).
+    if (event === 'messages.edited' || event === 'messages.delete') {
+      void this.chat.ingestRevisions(n, event, b.data).catch((err: unknown) => this.logger.warn(`Edição ou exclusão de mensagem não gravada: ${(err as Error).message}`))
       return true
     }
     if (event === 'call') {
