@@ -9,6 +9,7 @@ import { MailService } from '../settings/mail.service'
 import { SettingsService } from '../settings/settings.service'
 import { cleanSchedule, DEFAULT_REPORTS, describeFrequency, isDue, MAX_SCHEDULES, nextRun, REPORT_PERIODS, REPORT_SECTIONS, type ReportSchedule, type ReportsState, REPORTS_KEY, reportPeriod } from './config'
 import { reportHtml, reportText } from './relatorio-email'
+import { MarketingManagementService } from './gestao.service'
 import { MarketingService } from './marketing.service'
 
 const TICK_MS = 5 * 60_000
@@ -27,6 +28,7 @@ export class MarketingReportsService implements OnApplicationBootstrap, OnModule
     private readonly mail: MailService,
     private readonly audit: AuditService,
     private readonly marketing: MarketingService,
+    private readonly management: MarketingManagementService,
   ) {}
 
   onApplicationBootstrap() {
@@ -108,16 +110,21 @@ export class MarketingReportsService implements OnApplicationBootstrap, OnModule
 
   private async build(tenantId: string, sch: ReportSchedule, now: number) {
     const period = reportPeriod(sch.period, now)
-    const [data, email, health, branding] = await Promise.all([
+    const [data, email, health, branding, ai] = await Promise.all([
       this.marketing.analyze(tenantId, { ...period, filters: sch.filters }, now),
       sch.sections.includes('email') ? this.marketing.email(tenantId, period) : Promise.resolve(null),
       sch.sections.includes('saude') ? this.marketing.health(tenantId) : Promise.resolve(null),
       this.settings.branding(tenantId),
+      sch.sections.includes('resumo_ia') ? this.management.aiSummary(tenantId, { ...period, filters: sch.filters }).then((r) => r.text).catch(() => null) : Promise.resolve(null),
     ])
     const periodLabel = REPORT_PERIODS.find((p) => p.key === sch.period)?.label ?? ''
     const link = `${env.appUrl}/marketing/executivo?de=${period.from}&ate=${period.to}`
-    const input = { schedule: sch, periodLabel, data, email, health, branding, link }
-    return { html: reportHtml(input), text: reportText(input), subject: `${sch.name}: ${fmt(period.from)}${period.from === period.to ? '' : ` a ${fmt(period.to)}`}` }
+    const input = { schedule: sch, periodLabel, data, email, health, branding, link, ai }
+    const attachments =
+      sch.attach === 'pdf' || sch.attach === 'xlsx'
+        ? [await this.management.file(tenantId, sch.attach, { ...period, filters: sch.filters, sections: sch.sections.filter((x) => x !== 'resumo_ia'), title: sch.name })]
+        : []
+    return { html: reportHtml(input), text: reportText(input), subject: `${sch.name}: ${fmt(period.from)}${period.from === period.to ? '' : ` a ${fmt(period.to)}`}`, attachments }
   }
 
   private async send(tenantId: string, sch: ReportSchedule, now: number, manual: boolean) {
@@ -128,7 +135,7 @@ export class MarketingReportsService implements OnApplicationBootstrap, OnModule
       const b = await this.build(tenantId, sch, now)
       for (const to of sch.emails) {
         try {
-          await this.mail.send(tenantId, { to, subject: b.subject, html: b.html, text: b.text })
+          await this.mail.send(tenantId, { to, subject: b.subject, html: b.html, text: b.text, attachments: b.attachments })
           sentTo++
         } catch (err) {
           ok = false

@@ -14,10 +14,12 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
-import { useMktOptions } from '@/lib/marketing'
+import { downloadReport, MktFilters } from '@/components/marketing/ui'
+import { useMktFilters, useMktOptions } from '@/lib/marketing'
 
 type Frequency = 'diario' | 'semanal' | 'mensal'
 interface Schedule {
@@ -32,6 +34,7 @@ interface Schedule {
   period: string
   sections: string[]
   filters: Record<string, string>
+  attach: 'none' | 'pdf' | 'xlsx'
   lastSentAt: string | null
   lastError: string | null
   when: string
@@ -51,7 +54,25 @@ const DEFAULT_SECTIONS = ['kpis', 'plataformas', 'campanhas', 'funil', 'recomend
 export function RelatoriosMktPage() {
   return (
     <RequirePermission module="mi_relatorios">
-      <Relatorios />
+      <div>
+        <PageHeader title="Relatórios e alertas" description="Relatórios por e-mail (quem recebe, quando e o quê), arquivos em PDF e Excel na hora e alertas automáticos." />
+        <Tabs defaultValue="agendados">
+          <TabsList className="mb-4">
+            <TabsTrigger value="agendados">Relatórios agendados</TabsTrigger>
+            <TabsTrigger value="baixar">Baixar agora (PDF ou Excel)</TabsTrigger>
+            <TabsTrigger value="alertas">Alertas</TabsTrigger>
+          </TabsList>
+          <TabsContent value="agendados">
+            <Relatorios />
+          </TabsContent>
+          <TabsContent value="baixar">
+            <Baixar />
+          </TabsContent>
+          <TabsContent value="alertas">
+            <Alertas />
+          </TabsContent>
+        </Tabs>
+      </div>
     </RequirePermission>
   )
 }
@@ -81,18 +102,14 @@ function Relatorios() {
   const d = q.data
   return (
     <div>
-      <PageHeader
-        title="Relatórios automáticos"
-        description="Relatórios por e-mail: quem recebe, em que dia e horário, de qual período e com quais informações."
-        actions={
-          can('mi_relatorios', 'create') && (
-            <Button onClick={() => setEditing({ frequency: 'semanal', weekday: 1, monthDay: 1, hour: 8, period: 'semana_anterior', sections: DEFAULT_SECTIONS, active: true, emails: [], filters: {} })}>
+      <div className="space-y-4">
+        {can('mi_relatorios', 'create') && (
+          <div className="flex justify-end">
+            <Button onClick={() => setEditing({ frequency: 'semanal', weekday: 1, monthDay: 1, hour: 8, period: 'semana_anterior', sections: DEFAULT_SECTIONS, active: true, emails: [], filters: {}, attach: 'pdf' })}>
               <PlusIcon /> Novo relatório
             </Button>
-          )
-        }
-      />
-      <div className="space-y-4">
+          </div>
+        )}
         {q.isLoading && <TableSkeleton rows={4} />}
         {q.error && <ErrorState error={q.error} onRetry={() => q.refetch()} />}
         {d && !d.smtpReady && (
@@ -368,6 +385,19 @@ function ScheduleDialog({ initial, view, onClose, onSaved }: { initial: Partial<
               </Select>
             </div>
           </div>
+          <div className="space-y-1.5">
+            <Label>Anexo no e-mail</Label>
+            <Select value={s.attach ?? 'none'} onValueChange={(v) => set({ attach: v as Schedule['attach'] })}>
+              <SelectTrigger className="w-full sm:w-72">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sem anexo (só o e-mail)</SelectItem>
+                <SelectItem value="pdf">PDF com as mesmas informações</SelectItem>
+                <SelectItem value="xlsx">Excel com as mesmas informações</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">O que vai no relatório</legend>
             {view.sections.map((x) => (
@@ -401,3 +431,240 @@ function ScheduleDialog({ initial, view, onClose, onSaved }: { initial: Partial<
   )
 }
 
+
+// ---------- Baixar agora ----------
+
+function Baixar() {
+  const f = useMktFilters()
+  const q = useQuery({ queryKey: ['mkt-relatorios'], queryFn: () => api.get<ReportsView>('/marketing/relatorios') })
+  const [sections, setSections] = useState<string[]>(['kpis', 'plataformas', 'campanhas', 'funil', 'vendedores', 'regioes', 'recomendacoes'])
+  const [busy, setBusy] = useState<'pdf' | 'xlsx' | null>(null)
+  const download = async (format: 'pdf' | 'xlsx') => {
+    setBusy(format)
+    try {
+      await downloadReport(f.query, format, sections)
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Gerar o relatório agora</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <MktFilters />
+        <fieldset className="grid gap-2 sm:grid-cols-2">
+          <legend className="mb-1 text-sm font-medium">O que vai no arquivo</legend>
+          {(q.data?.sections ?? []).map((x) => (
+            <label key={x.key} className="flex items-start gap-2 text-sm">
+              <Checkbox checked={sections.includes(x.key)} onCheckedChange={(v) => setSections((cur) => (v ? [...cur, x.key] : cur.filter((k) => k !== x.key)))} className="mt-0.5" />
+              {x.label}
+            </label>
+          ))}
+        </fieldset>
+        <div className="flex gap-2">
+          <Button onClick={() => download('pdf')} disabled={!!busy || !sections.length}>
+            {busy === 'pdf' && <Loader2Icon className="animate-spin" />} Baixar PDF
+          </Button>
+          <Button variant="outline" onClick={() => download('xlsx')} disabled={!!busy || !sections.length}>
+            {busy === 'xlsx' && <Loader2Icon className="animate-spin" />} Baixar Excel
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">Usa o período e os filtros escolhidos acima. O arquivo traz o período, a data da atualização, as fontes e o modelo de atribuição.</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------- Alertas ----------
+
+interface AlertRule {
+  id: string
+  type: string
+  threshold: number
+  windowDays: number
+  emails: string[]
+  active: boolean
+  lastFiredAt: string | null
+}
+interface AlertsView {
+  rules: AlertRule[]
+  events: { at: string; ruleId: string; type: string; message: string; limitation: string | null }[]
+  types: { key: string; label: string; unit: string; default: number }[]
+}
+
+function Alertas() {
+  const { can } = useAuth()
+  const qc = useQueryClient()
+  const q = useQuery({ queryKey: ['mkt-alertas'], queryFn: () => api.get<AlertsView>('/marketing/alertas') })
+  const [edit, setEdit] = useState<Partial<AlertRule> | null>(null)
+  const [results, setResults] = useState<Record<string, { fired: boolean; message: string; limitation: string | null }> | null>(null)
+  const refresh = () => qc.invalidateQueries({ queryKey: ['mkt-alertas'] })
+  const test = useMutation({
+    mutationFn: () => api.post<{ id: string; fired: boolean; message: string; limitation: string | null }[]>('/marketing/alertas/testar'),
+    onSuccess: (r) => setResults(Object.fromEntries(r.map((x) => [x.id, x]))),
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/marketing/alertas/${id}`),
+    onSuccess: () => (toast.success('Alerta removido.'), refresh()),
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const toggle = useMutation({
+    mutationFn: (r: AlertRule) => api.put(`/marketing/alertas/${r.id}`, { ...r, active: !r.active }),
+    onSuccess: refresh,
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const d = q.data
+  const label = (t: string) => d?.types.find((x) => x.key === t)
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap justify-end gap-2">
+        {d && d.rules.length > 0 && (
+          <Button variant="outline" onClick={() => test.mutate()} disabled={test.isPending}>
+            {test.isPending && <Loader2Icon className="animate-spin" />} Testar agora (sem enviar)
+          </Button>
+        )}
+        {can('mi_relatorios', 'create') && d && (
+          <Button onClick={() => setEdit({ type: d.types[0]!.key, threshold: d.types[0]!.default, windowDays: 7, emails: [], active: true })}>
+            <PlusIcon /> Novo alerta
+          </Button>
+        )}
+      </div>
+      {q.isLoading && <TableSkeleton rows={3} />}
+      {d && d.rules.length === 0 && <EmptyState title="Nenhum alerta" description="Crie alertas para gasto perto do limite, campanha sem leads, alta do CPL, queda de leads ou faturamento, leads sem atendimento, metas atrasadas, perda de UTM e dados desatualizados." />}
+      {d && d.rules.length > 0 && (
+        <Card>
+          <CardContent className="px-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="pl-6">Alerta</TableHead>
+                  <TableHead>Período</TableHead>
+                  <TableHead>Avisa</TableHead>
+                  <TableHead>Último aviso</TableHead>
+                  <TableHead>Ativo</TableHead>
+                  <TableHead className="pr-6 text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {d.rules.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="max-w-96 pl-6">
+                      <p className="font-medium">{label(r.type)?.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Limite: {r.threshold.toLocaleString('pt-BR')} ({label(r.type)?.unit})
+                      </p>
+                      {results?.[r.id] && <p className={`text-xs ${results[r.id]!.fired ? 'text-red-600' : 'text-[#006300] dark:text-[#0ca30c]'}`}>{results[r.id]!.fired ? results[r.id]!.message : 'Hoje não dispararia.'}</p>}
+                    </TableCell>
+                    <TableCell>{r.windowDays} dia(s)</TableCell>
+                    <TableCell className="max-w-56 truncate text-sm" title={r.emails.join(', ')}>
+                      {r.emails.length ? r.emails.join(', ') : 'Só na tela'}
+                    </TableCell>
+                    <TableCell>{r.lastFiredAt ? formatDateTime(r.lastFiredAt) : '—'}</TableCell>
+                    <TableCell>
+                      <Switch checked={r.active} onCheckedChange={() => toggle.mutate(r)} disabled={!can('mi_relatorios', 'edit')} aria-label="Ligar alerta" />
+                    </TableCell>
+                    <TableCell className="pr-6 text-right whitespace-nowrap">
+                      {can('mi_relatorios', 'edit') && (
+                        <Button size="icon" variant="ghost" className="size-8" onClick={() => setEdit(r)} title="Editar">
+                          <PencilIcon />
+                        </Button>
+                      )}
+                      {can('mi_relatorios', 'delete') && (
+                        <Button size="icon" variant="ghost" className="size-8" onClick={() => remove.mutate(r.id)} title="Remover">
+                          <Trash2Icon />
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+      {d && d.events.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Últimos avisos</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            {d.events.slice(0, 20).map((e) => (
+              <p key={`${e.at}-${e.ruleId}`}>
+                <span className="text-muted-foreground">{formatDateTime(e.at)}</span> · {e.message}
+                {e.limitation && <span className="text-xs text-muted-foreground"> ({e.limitation})</span>}
+              </p>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+      <p className="text-xs text-muted-foreground">Os alertas são conferidos de hora em hora e avisam no máximo uma vez por dia cada um. Com amostra pequena (menos de 10 leads), os de variação não disparam.</p>
+      {edit && d && <AlertDialogForm initial={edit} types={d.types} onClose={() => setEdit(null)} onSaved={() => (setEdit(null), refresh())} />}
+    </div>
+  )
+}
+
+function AlertDialogForm({ initial, types, onClose, onSaved }: { initial: Partial<AlertRule>; types: AlertsView['types']; onClose: () => void; onSaved: () => void }) {
+  const [r, setR] = useState(initial)
+  const [emails, setEmails] = useState((initial.emails ?? []).join('\n'))
+  const type = types.find((t) => t.key === r.type)
+  const save = useMutation({
+    mutationFn: () => {
+      const body = { ...r, emails: emails.split(/[\s,;]+/).filter(Boolean) }
+      return r.id ? api.put(`/marketing/alertas/${r.id}`, body) : api.post('/marketing/alertas', body)
+    },
+    onSuccess: () => (toast.success('Alerta salvo.'), onSaved()),
+    onError: (err) => toast.error(errorMessage(err), { duration: 8000 }),
+  })
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{r.id ? 'Editar alerta' : 'Novo alerta'}</DialogTitle>
+          <DialogDescription>Avisa por e-mail quando a condição acontecer no período avaliado (comparado com o anterior do mesmo tamanho).</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Tipo</Label>
+            <Select value={r.type} onValueChange={(v) => setR({ ...r, type: v, threshold: types.find((t) => t.key === v)?.default ?? r.threshold })}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {types.map((t) => (
+                  <SelectItem key={t.key} value={t.key}>
+                    {t.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="al-th">Limite ({type?.unit})</Label>
+              <Input id="al-th" type="number" min={0} value={r.threshold ?? ''} onChange={(e) => setR({ ...r, threshold: Number(e.target.value) })} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="al-win">Período avaliado (dias)</Label>
+              <Input id="al-win" type="number" min={1} max={90} value={r.windowDays ?? 7} onChange={(e) => setR({ ...r, windowDays: Number(e.target.value) })} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="al-emails">E-mails que recebem o aviso</Label>
+            <Textarea id="al-emails" rows={3} value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="marketing@usaparts.com.br" />
+            <p className="text-xs text-muted-foreground">Vazio: o aviso só aparece na tela (Últimos avisos e Visão geral).</p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={() => save.mutate()} disabled={save.isPending}>
+            {save.isPending && <Loader2Icon className="animate-spin" />} Salvar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}

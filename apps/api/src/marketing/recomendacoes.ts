@@ -46,6 +46,10 @@ export interface RecInput {
   forwardMedianHours: number | null
   forwardSample: number
   costStaleHours: number | null
+  /** Termos de pesquisa sugeridos para negativar (custo somado e quantos). */
+  negativeTerms?: { count: number; cost: number; examples: string[] }
+  /** Anúncios (Meta/TikTok) com sinais de cansaço. */
+  fatigued?: { name: string; reasons: string[] }[]
 }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 2 })
@@ -236,6 +240,41 @@ export function recommendations(x: RecInput): Recommendation[] {
       metric: 'Data da última atualização do investimento',
       validate: 'O aviso some quando o investimento volta a atualizar.',
       source: 'Configurações › Google Ads',
+    })
+  }
+
+  // 11. Termos de pesquisa com gasto e sem conversão (sugestão de negativas, para revisão).
+  const nt = x.negativeTerms
+  if (nt && nt.count >= 3 && nt.cost >= 50) {
+    out.push({
+      id: 'termos-negativos',
+      area: 'Mídia paga',
+      priority: nt.cost >= x.now.mediaCost * 0.1 ? 'alta' : 'media',
+      confidence: nt.count >= 10 ? 'media' : 'baixa',
+      problem: `${nt.count} termos de pesquisa gastaram ${brl(nt.cost)} sem conversão.`,
+      evidence: [`Exemplos: ${nt.examples.slice(0, 5).join(', ')}`, `Investimento em mídia no período: ${brl(x.now.mediaCost)}`],
+      impact: 'Verba indo para buscas que não viram contato. Negativar o que não é cliente libera investimento para os termos que trazem venda.',
+      action: 'Revisar a lista em Marketing Inteligente › Google Ads › Termos de pesquisa, marcar o que negativar e aplicar no Google Ads (o CRM não altera a conta).',
+      metric: 'Custo dos termos sem conversão',
+      validate: 'Comparar o gasto em termos sem conversão e o CPL nas 2 semanas seguintes.',
+      source: 'Google Ads (script ampliado)',
+    })
+  }
+
+  // 12. Anúncios cansados (CTR caindo, custo subindo ou frequência alta).
+  for (const f of (x.fatigued ?? []).slice(0, 5)) {
+    out.push({
+      id: `anuncio-cansado-${f.name}`,
+      area: 'Mídia paga',
+      priority: 'media',
+      confidence: 'media',
+      problem: `O anúncio “${f.name}” mostra sinais de cansaço.`,
+      evidence: f.reasons,
+      impact: 'Quando o público já viu muitas vezes, o anúncio rende menos e o custo sobe.',
+      action: 'Testar um criativo novo (imagem, vídeo ou texto) ou ampliar o público; manter o atual até o novo provar resultado.',
+      metric: 'CTR e custo por resultado do anúncio',
+      validate: 'Comparar o criativo novo com o atual por 7 dias, com o mesmo orçamento.',
+      source: 'Meta/TikTok Ads (sincronizado)',
     })
   }
 

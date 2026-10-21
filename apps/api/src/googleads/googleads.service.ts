@@ -8,6 +8,7 @@ import type { Prisma } from '../generated/prisma/client'
 import { OrigemAdsService } from '../leads/origem-ads.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { cleanStats, adsScript } from './painel'
+import { cleanDetail, cleanTerms } from './detalhes'
 import { GoogleAdsPanelService } from './painel.service'
 import { GA_TOKEN_URL, parseKeyFile, signJwt } from '../relatorios/ga4'
 import { SettingsService } from '../settings/settings.service'
@@ -191,7 +192,8 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
   private async storeFromScript(tenantId: string, body: unknown) {
     const row = { tenantId }
     const b = (body ?? {}) as { campaigns?: unknown; stats?: unknown }
-    if (b.campaigns === undefined && b.stats === undefined) throw new BadRequestException('Nada para receber.')
+    const bb = b as { detail?: unknown; terms?: unknown }
+    if (b.campaigns === undefined && b.stats === undefined && bb.detail === undefined && bb.terms === undefined) throw new BadRequestException('Nada para receber.')
     const out: Record<string, unknown> = { ok: true }
     if (b.campaigns !== undefined) {
       const r = cleanCampaignList(body)
@@ -199,6 +201,17 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
       const s = await this.config(row.tenantId)
       await this.settings.set(row.tenantId, 'google_ads', { ...s, campaigns: { ...s.campaigns, ...r.campaigns }, campaignsSyncedAt: new Date().toISOString() })
       out.campanhas = r.count
+    }
+    // Detalhes para o Marketing Inteligente (script ampliado): recortes e termos de pesquisa.
+    if (bb.detail !== undefined && this.panel) {
+      const d = cleanDetail(body)
+      if ('error' in d) throw new BadRequestException(d.error)
+      Object.assign(out, await this.panel.storeDetail(row.tenantId, d))
+    }
+    if (bb.terms !== undefined && this.panel) {
+      const t = cleanTerms(body)
+      if ('error' in t) throw new BadRequestException(t.error)
+      Object.assign(out, await this.panel.storeTerms(row.tenantId, t))
     }
     // Investimento por dia, campanha e palavra-chave (script novo), para o painel do Google Ads.
     if (b.stats !== undefined && this.panel) {

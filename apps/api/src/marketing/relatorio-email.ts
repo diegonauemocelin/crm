@@ -18,6 +18,8 @@ export interface ReportInput {
   health: Health | null
   branding: Pick<BrandingSettings, 'appName' | 'primaryColor'>
   link: string
+  /** Resumo escrito pela IA (só com a parte "resumo_ia" marcada e a chave do Gemini cadastrada). */
+  ai?: string | null
 }
 
 const esc = (s: unknown) =>
@@ -85,6 +87,14 @@ export function reportHtml(x: ReportInput) {
   if (d.crmOnlyFilters.length) notes.push('Com filtro de marca, estado, vendedor ou outro dado só do CRM, o investimento não tem esse recorte e as contas de custo ficam de fora.')
   if (!d.updatedAt.googleAdsCost) notes.push('Investimento do Google Ads ainda não recebido.')
 
+  if (has('resumo_ia')) {
+    parts.push(h2('Resumo do período', color))
+    parts.push(
+      x.ai
+        ? `<tr><td style="font-size:13px;line-height:20px">${x.ai.split('\n').filter(Boolean).map((l) => esc(l)).join('<br>')}<br><span style="font-size:11px;color:#6b7280">Texto da IA (Gemini) a partir dos números agregados do período. Confira os números abaixo.</span></td></tr>`
+        : '<tr><td style="font-size:13px;color:#6b7280">Resumo pela IA indisponível (cadastre a chave do Gemini em Configurações › E-mail marketing).</td></tr>',
+    )
+  }
   if (has('kpis')) {
     parts.push(h2('Indicadores principais', color))
     const rows = KPIS.map((k) => `<tr>${td(esc(k.label))}${td(`<b>${k.fmt(d.now[k.key] as number | null)}</b>`, true)}${td(k.fmt(d.before[k.key] as number | null), true)}${td(arrow(d.deltas[k.key] ?? null, k.goodUp ?? true), true)}</tr>`).join('')
@@ -146,6 +156,7 @@ ${parts.join('\n')}
 export function reportText(x: ReportInput) {
   const d = x.data
   const lines = [`${x.schedule.name}`, `${x.periodLabel}: ${day(d.period.from)} a ${day(d.period.to)}`, '']
+  if (x.ai && (x.schedule.sections as string[]).includes('resumo_ia')) lines.push(x.ai, '')
   if ((x.schedule.sections as string[]).includes('kpis')) for (const k of KPIS) lines.push(`${k.label}: ${k.fmt(d.now[k.key] as number | null)} (anterior: ${k.fmt(d.before[k.key] as number | null)})`)
   if ((x.schedule.sections as string[]).includes('recomendacoes')) for (const r of d.recommendations.slice(0, 8)) lines.push('', `• ${r.problem}`, `  ${r.evidence.join(' · ')}`, `  Ação: ${r.action}`)
   lines.push('', `Ver tudo no sistema: ${x.link}`)

@@ -150,6 +150,15 @@ export class EmailAiService {
     throw new BadRequestException('Nenhum modelo do Gemini disponível para esta chave agora. Confira a chave no Google AI Studio ou tente mais tarde.')
   }
 
+  /**
+   * Texto livre com a mesma chave do Gemini (ex.: resumo do Marketing Inteligente). Quem chama manda só dados agregados,
+   * nunca dados pessoais de leads.
+   */
+  async complete(tenantId: string, system: string, prompt: string, maxOutputTokens = 1024) {
+    const s = await this.config(tenantId)
+    return (await this.call(s, system, prompt, 0.3, [], maxOutputTokens)).text
+  }
+
   /** Há chave do Gemini cadastrada (Configurações → E-mail marketing)? */
   async available(tenantId: string) {
     return !!(await this.config(tenantId)).apiKeyEnc

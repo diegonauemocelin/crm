@@ -1668,3 +1668,182 @@ model TcarAction {
   @@index([tenantId, status, createdAt])
   @@map("tcar_actions")
 }
+
+// ---------- Marketing Inteligente (tabelas próprias do módulo; só acréscimos, nada dos módulos atuais muda) ----------
+
+/// Google Ads por dia e campanha em recortes: dispositivo, rede, região, página de destino, anúncio, grupo e tipo de campanha (script do Google Ads).
+model GoogleAdsDetailDay {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @db.Uuid
+  date            DateTime @db.Date
+  campaignId      String
+  /// device, network, region, landing, ad, adgroup, type
+  dimension       String
+  key             String
+  label           String
+  cost            Decimal  @db.Decimal(14, 2)
+  clicks          Int
+  impressions     Int
+  conversions     Decimal  @db.Decimal(12, 2)
+  conversionValue Decimal  @default(0) @db.Decimal(14, 2)
+  /// Parcela de impressões na pesquisa (0 a 1), quando o Google informa.
+  impressionShare Decimal? @db.Decimal(6, 4)
+  updatedAt       DateTime @updatedAt
+
+  @@unique([tenantId, date, campaignId, dimension, key])
+  @@index([tenantId, dimension, date])
+  @@map("google_ads_detail_days")
+}
+
+/// Termos de pesquisa (o que a pessoa digitou) por dia, campanha e grupo de anúncios.
+model GoogleAdsSearchTermDay {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  date        DateTime @db.Date
+  campaignId  String
+  adGroupId   String
+  term        String
+  cost        Decimal  @db.Decimal(14, 2)
+  clicks      Int
+  impressions Int
+  conversions Decimal  @db.Decimal(12, 2)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, date, adGroupId, term])
+  @@index([tenantId, date])
+  @@map("google_ads_search_term_days")
+}
+
+/// Meta Ads e TikTok Ads por dia: campanha, conjunto/grupo e anúncio (somente leitura das plataformas).
+model MktAdDay {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  /// meta ou tiktok
+  platform      String
+  /// campaign, adset ou ad
+  level         String
+  entityId      String
+  name          String
+  campaignId    String
+  campaignName  String
+  parentId      String?
+  objective     String?
+  date          DateTime @db.Date
+  spend         Decimal  @db.Decimal(14, 2)
+  impressions   Int
+  reach         Int?
+  clicks        Int
+  leads         Int      @default(0)
+  conversations Int      @default(0)
+  conversions   Decimal  @default(0) @db.Decimal(12, 2)
+  videoViews    Int?
+  creative      Json?
+  updatedAt     DateTime @updatedAt
+
+  @@unique([tenantId, platform, level, entityId, date])
+  @@index([tenantId, platform, level, date])
+  @@map("mkt_ad_days")
+}
+
+/// Meta Ads e TikTok Ads por dia em recortes: posicionamento, dispositivo, região, idade e gênero.
+model MktAdBreakdownDay {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  platform    String
+  date        DateTime @db.Date
+  campaignId  String
+  dimension   String
+  key         String
+  spend       Decimal  @db.Decimal(14, 2)
+  impressions Int
+  clicks      Int
+  leads       Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, platform, date, campaignId, dimension, key])
+  @@index([tenantId, platform, dimension, date])
+  @@map("mkt_ad_breakdown_days")
+}
+
+/// Perfis das redes (Instagram, Facebook) por dia: seguidores, alcance, impressões, visitas e cliques no link.
+model MktSocialProfileDay {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  network       String
+  profileId     String
+  date          DateTime @db.Date
+  followers     Int?
+  reach         Int?
+  impressions   Int?
+  profileViews  Int?
+  websiteClicks Int?
+  updatedAt     DateTime @updatedAt
+
+  @@unique([tenantId, network, profileId, date])
+  @@map("mkt_social_profile_days")
+}
+
+/// Publicações orgânicas com os números mais recentes.
+model MktSocialPost {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  network     String
+  postId      String
+  publishedAt DateTime
+  format      String
+  caption     String
+  permalink   String?
+  likes       Int?
+  comments    Int?
+  shares      Int?
+  saves       Int?
+  reach       Int?
+  impressions Int?
+  videoViews  Int?
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, network, postId])
+  @@index([tenantId, publishedAt])
+  @@map("mkt_social_posts")
+}
+
+/// Search Console por dia: totais, consultas e páginas (as mais relevantes de cada dia).
+model MktSeoDay {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  date        DateTime @db.Date
+  /// total, query ou page
+  kind        String
+  key         String
+  clicks      Int
+  impressions Int
+  /// Posição média ponderada pelas impressões.
+  position    Decimal  @db.Decimal(8, 2)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, date, kind, key])
+  @@index([tenantId, kind, date])
+  @@map("mkt_seo_days")
+}
+
+/// Calendário editorial das redes sociais.
+model MktEditorialItem {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  title       String
+  network     String
+  format      String
+  theme       String?
+  ownerId     String?   @db.Uuid
+  plannedAt   DateTime
+  status      String
+  postUrl     String?
+  notes       String?
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@index([tenantId, plannedAt])
+  @@map("mkt_editorial_items")
+}

@@ -1,4 +1,5 @@
-import { AlertTriangleIcon, ArrowDownIcon, ArrowDownRightIcon, ArrowUpDownIcon, ArrowUpIcon, ArrowUpRightIcon, DownloadIcon, FilterIcon, MinusIcon, PlugZapIcon, XIcon } from 'lucide-react'
+import { toast } from 'sonner'
+import { AlertTriangleIcon, ArrowDownIcon, Loader2Icon, ArrowDownRightIcon, ArrowUpDownIcon, ArrowUpIcon, ArrowUpRightIcon, DownloadIcon, FilterIcon, MinusIcon, PlugZapIcon, XIcon } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { Link } from 'react-router'
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts'
@@ -355,6 +356,47 @@ export function BreakdownTable({ title, description, rows, columns, onPick, expo
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/** Baixa o relatório (PDF ou Excel) com o período e os filtros da tela. */
+export async function downloadReport(query: string, format: 'pdf' | 'xlsx', sections: string[]) {
+  const res = await fetch(`/api/marketing/exportar?${query}&formato=${format}&secoes=${sections.join(',')}`, { credentials: 'include' })
+  if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { message?: string } | null)?.message ?? 'Não foi possível gerar o arquivo.')
+  const blob = await res.blob()
+  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? `relatorio.${format}`
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+export function ExportButtons({ sections }: { sections: string[] }) {
+  const f = useMktFilters()
+  const { can } = useAuth()
+  const [busy, setBusy] = useState<'pdf' | 'xlsx' | null>(null)
+  if (!can('mi_executivo', 'export') && !can('mi_relatorios')) return null
+  const go = async (format: 'pdf' | 'xlsx') => {
+    setBusy(format)
+    try {
+      await downloadReport(f.query, format, sections)
+    } catch (err) {
+      toast.error((err as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <div className="flex gap-2">
+      <Button size="sm" variant="outline" onClick={() => go('pdf')} disabled={!!busy}>
+        {busy === 'pdf' ? <Loader2Icon className="animate-spin" /> : <DownloadIcon />} PDF
+      </Button>
+      <Button size="sm" variant="outline" onClick={() => go('xlsx')} disabled={!!busy}>
+        {busy === 'xlsx' ? <Loader2Icon className="animate-spin" /> : <DownloadIcon />} Excel
+      </Button>
+    </div>
   )
 }
 

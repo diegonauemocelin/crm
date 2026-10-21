@@ -29,8 +29,10 @@ interface MktConfig {
   fixedNote: string
   marketingOriginIds: string[]
   attribution: { model: 'ultimo' | 'primeiro'; windowDays: number }
+  negativeWords: string[] | null
   updatedAt: string | null
 }
+type SyncStates = Partial<Record<keyof Integrations, { lastRunAt?: string; lastOkAt?: string; lastError?: string | null; rows?: number; running?: boolean }>>
 interface Integrations {
   metaAds: { enabled: boolean; adAccountIds: string[]; hasToken: boolean; lastTest: Test | null }
   metaOrganic: { enabled: boolean; pageId: string; instagramId: string; hasToken: boolean; lastTest: Test | null }
@@ -40,25 +42,30 @@ interface Integrations {
 
 /** Configurações › Marketing Inteligente: regras das contas e as contas das plataformas (somente leitura). */
 export function MarketingSettingsTab() {
-  const q = useQuery({ queryKey: ['mkt-config'], queryFn: () => api.get<{ config: MktConfig; integrations: Integrations }>('/marketing/configuracoes') })
+  const q = useQuery({ queryKey: ['mkt-config'], queryFn: () => api.get<{ config: MktConfig; integrations: Integrations; sync: SyncStates; defaultNegativeWords: string[] }>('/marketing/configuracoes') })
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />
   if (!q.data) return <TableSkeleton rows={6} />
   return (
     <div className="space-y-4">
-      <RulesCard initial={q.data.config} />
-      <IntegrationsCards initial={q.data.integrations} />
+      <RulesCard initial={q.data.config} defaultWords={q.data.defaultNegativeWords} />
+      <IntegrationsCards initial={q.data.integrations} sync={q.data.sync} />
     </div>
   )
 }
 
-function RulesCard({ initial }: { initial: MktConfig }) {
+function RulesCard({ initial, defaultWords }: { initial: MktConfig; defaultWords: string[] }) {
   const { can } = useAuth()
   const canEdit = can('mi_config', 'edit')
   const qc = useQueryClient()
   const opts = useMktOptions()
   const [c, setC] = useState(initial)
+  const [words, setWords] = useState((initial.negativeWords ?? defaultWords).join(', '))
   const save = useMutation({
-    mutationFn: () => api.put<MktConfig>('/marketing/configuracoes', { ...c }),
+    mutationFn: () => {
+      const list = words.split(/[,;\n]+/).map((w) => w.trim()).filter(Boolean)
+      const same = list.length === defaultWords.length && list.every((w, i) => w === defaultWords[i])
+      return api.put<MktConfig>('/marketing/configuracoes', { ...c, negativeWords: same ? null : list })
+    },
     onSuccess: (saved) => {
       setC(saved)
       toast.success('Regras do Marketing Inteligente salvas.')
@@ -126,6 +133,11 @@ function RulesCard({ initial }: { initial: MktConfig }) {
             <p className="text-xs text-muted-foreground">Clique no anúncio mais antigo que isso, antes do contato, não é atribuído à campanha.</p>
           </div>
         </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="mkt-words">Palavras de alerta nos termos de pesquisa (Google Ads)</Label>
+          <Textarea id="mkt-words" rows={3} value={words} onChange={(e) => setWords(e.target.value)} disabled={!canEdit} />
+          <p className="text-xs text-muted-foreground">Separadas por vírgula. Termo pesquisado com uma delas e algum custo entra nas sugestões de palavras negativas (só sugestão, para revisar).</p>
+        </div>
         <p className="text-xs text-muted-foreground">Faturamento: valor da venda registrado no Pré-Vendas (a integração com o ERP fica para uma etapa futura).</p>
       </CardContent>
       {canEdit && (
@@ -140,12 +152,13 @@ function RulesCard({ initial }: { initial: MktConfig }) {
   )
 }
 
-function IntegrationsCards({ initial }: { initial: Integrations }) {
+function IntegrationsCards({ initial, sync }: { initial: Integrations; sync: SyncStates }) {
   const [i, setI] = useState(initial)
   return (
     <>
       <Integration
         k="metaAds"
+        sync={sync.metaAds ?? null}
         title="Meta Ads (Facebook e Instagram)"
         description="Investimento, alcance, frequência, cliques, leads e conversas por campanha, conjunto, anúncio e criativo. Só leitura."
         enabled={i.metaAds.enabled}
@@ -165,6 +178,7 @@ function IntegrationsCards({ initial }: { initial: Integrations }) {
       />
       <Integration
         k="metaOrganic"
+        sync={sync.metaOrganic ?? null}
         title="Instagram e Facebook orgânicos"
         description="Seguidores, alcance, engajamento e publicações. Usa o mesmo token da Meta Ads."
         enabled={i.metaOrganic.enabled}
@@ -179,6 +193,7 @@ function IntegrationsCards({ initial }: { initial: Integrations }) {
       />
       <Integration
         k="tiktok"
+        sync={sync.tiktok ?? null}
         title="TikTok Ads"
         description="Campanhas, grupos, anúncios, investimento, cliques, vídeo e conversões. Só leitura."
         enabled={i.tiktok.enabled}
@@ -192,6 +207,7 @@ function IntegrationsCards({ initial }: { initial: Integrations }) {
       />
       <Integration
         k="searchConsole"
+        sync={sync.searchConsole ?? null}
         title="Google Search Console"
         description="Cliques e impressões orgânicas, CTR, posição média, consultas e páginas. Usa a conta de serviço do Google Analytics."
         enabled={i.searchConsole.enabled}
@@ -205,8 +221,9 @@ function IntegrationsCards({ initial }: { initial: Integrations }) {
   )
 }
 
-function Integration({ k, title, description, enabled, lastTest, initialValues, fields, hasToken, tokenLabel, help, onSaved }: {
+function Integration({ k, title, description, enabled, lastTest, initialValues, fields, hasToken, tokenLabel, help, onSaved, sync }: {
   k: keyof Integrations
+  sync: SyncStates[keyof Integrations] | null
   title: string
   description: string
   enabled: boolean
@@ -228,6 +245,12 @@ function Integration({ k, title, description, enabled, lastTest, initialValues, 
     mutationFn: () => api.put<Integrations>(`/marketing/integracoes/${k}`, { enabled: on, ...values, ...(token ? { token } : {}) }),
     onSuccess: (v) => (onSaved(v), setToken(''), toast.success(`${title}: salvo.`)),
     onError: (err) => toast.error(errorMessage(err), { duration: 8000 }),
+  })
+  const qc = useQueryClient()
+  const syncNow = useMutation({
+    mutationFn: () => api.post<{ message: string }>(`/marketing/integracoes/${k}/sincronizar`),
+    onSuccess: (r) => (toast.success(r.message), setTimeout(() => void qc.invalidateQueries({ queryKey: ['mkt-config'] }), 20_000)),
+    onError: (err) => toast.error(errorMessage(err)),
   })
   const probe = useMutation({
     mutationFn: () => api.post<Test>(`/marketing/integracoes/${k}/testar`),
@@ -266,6 +289,12 @@ function Integration({ k, title, description, enabled, lastTest, initialValues, 
           </div>
         ))}
         <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">{help}</div>
+        {(sync?.lastOkAt || sync?.lastError) && (
+          <p className={`text-xs ${sync.lastError ? 'text-red-600' : 'text-muted-foreground'}`}>
+            {sync.lastOkAt ? `Última sincronização: ${formatDateTime(sync.lastOkAt)} (${sync.rows ?? 0} linha(s)).` : ''}
+            {sync.lastError ? ` Última tentativa falhou: ${sync.lastError}` : ''}
+          </p>
+        )}
         {test && (
           <p className={`flex items-start gap-2 text-sm ${test.ok ? 'text-[#006300] dark:text-[#0ca30c]' : 'text-red-600'}`}>
             {test.ok ? <CheckCircle2Icon className="mt-0.5 size-4 shrink-0" /> : <XCircleIcon className="mt-0.5 size-4 shrink-0" />}
@@ -277,6 +306,11 @@ function Integration({ k, title, description, enabled, lastTest, initialValues, 
       </CardContent>
       {canEdit && (
         <CardFooter className="justify-end gap-2">
+          {enabled && (
+            <Button variant="outline" onClick={() => syncNow.mutate()} disabled={syncNow.isPending || save.isPending}>
+              {syncNow.isPending && <Loader2Icon className="animate-spin" />} Sincronizar agora
+            </Button>
+          )}
           <Button variant="outline" onClick={() => probe.mutate()} disabled={probe.isPending || save.isPending}>
             {probe.isPending && <Loader2Icon className="animate-spin" />} Testar conexão
           </Button>

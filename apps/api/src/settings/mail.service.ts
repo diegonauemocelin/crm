@@ -11,6 +11,8 @@ export interface MailMessage {
   subject: string
   text: string
   html: string
+  /** Anexos (opcional): ex.: relatório em PDF ou Excel do Marketing Inteligente. */
+  attachments?: { filename: string; content: Buffer; contentType: string }[]
 }
 
 /** Bloqueia apontar o SMTP para a rede interna (proteção contra SSRF / varredura de portas internas). */

@@ -1,10 +1,17 @@
-import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common'
+import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, Res } from '@nestjs/common'
+import type { Response } from 'express'
 import { ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
-import { INTEGRATION_KEYS, type IntegrationKey, integrationsView, type MarketingConfig, type ReportSchedule } from './config'
+import { can } from '../common/permissions'
+import { DEFAULT_ALERT_WORDS } from '../googleads/detalhes'
+import { INTEGRATION_KEYS, type IntegrationKey, integrationsView, type MarketingConfig, REPORT_SECTIONS, type ReportSchedule, type ReportSection } from './config'
+import { MarketingManagementService } from './gestao.service'
+import type { AlertRule, MonthPlan } from './planejamento'
+import { MarketingPlatformsService } from './plataformas.service'
+import { MarketingSyncService } from './sync.service'
 import { MarketingService } from './marketing.service'
 import { MarketingReportsService } from './relatorios.service'
 
@@ -13,6 +20,11 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/
 class PeriodDto {
   @IsOptional() @Matches(DATE) de?: string
   @IsOptional() @Matches(DATE) ate?: string
+}
+
+class TermDto {
+  @IsString() @MaxLength(300) term!: string
+  @IsOptional() @IsIn(['negativar', 'manter', null]) status?: 'negativar' | 'manter' | null
 }
 
 class AnalysisDto extends PeriodDto {
@@ -29,6 +41,11 @@ class AnalysisDto extends PeriodDto {
   @IsOptional() @IsString() @MaxLength(40) tipoCliente?: string
   @IsOptional() @IsString() @MaxLength(12) status?: string
   @IsOptional() @IsString() @MaxLength(12) cliente?: string
+}
+
+class ExportDto extends AnalysisDto {
+  @IsOptional() @IsIn(['pdf', 'xlsx']) formato?: string
+  @IsOptional() @IsString() @MaxLength(300) secoes?: string
 }
 
 /** Filtros da tela (nomes em português na URL) → filtros das contas. Valores inválidos são descartados depois. */
@@ -57,6 +74,9 @@ export class MarketingController {
   constructor(
     private readonly mkt: MarketingService,
     private readonly reports: MarketingReportsService,
+    private readonly platforms: MarketingPlatformsService,
+    private readonly management: MarketingManagementService,
+    private readonly sync: MarketingSyncService,
   ) {}
 
   /** Módulos do Marketing Inteligente que podem usar os dados de análise (cada tela pede o seu). */
@@ -105,8 +125,8 @@ export class MarketingController {
   @Get('configuracoes')
   async getConfig(@CurrentUser() user: AuthUser) {
     this.mkt.assertCan(user, 'mi_config')
-    const [config, integrations] = await Promise.all([this.mkt.config(user.tenantId), this.mkt.integrations(user.tenantId)])
-    return { config, integrations: integrationsView(integrations) }
+    const [config, integrations, sync] = await Promise.all([this.mkt.config(user.tenantId), this.mkt.integrations(user.tenantId), this.sync.states(user.tenantId)])
+    return { config, integrations: integrationsView(integrations), sync, defaultNegativeWords: DEFAULT_ALERT_WORDS }
   }
 
   @Put('configuracoes')
@@ -127,6 +147,143 @@ export class MarketingController {
   testIntegration(@CurrentUser() user: AuthUser, @Param('key') key: string) {
     this.mkt.assertCan(user, 'mi_config', 'edit')
     return this.mkt.testIntegration(user, this.integrationKey(key))
+  }
+
+  @Post('integracoes/:key/sincronizar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
+  syncNow(@CurrentUser() user: AuthUser, @Param('key') key: string) {
+    this.mkt.assertCan(user, 'mi_config', 'edit')
+    return this.sync.syncNow(user, this.integrationKey(key))
+  }
+
+  // ---------- Plataformas ----------
+
+  @Get('google')
+  google(@CurrentUser() user: AuthUser, @Query() q: AnalysisDto) {
+    this.mkt.assertCan(user, 'mi_midia')
+    return this.platforms.google(user.tenantId, { from: q.de, to: q.ate, campaignId: q.campanha })
+  }
+
+  @Put('google/termos')
+  reviewTerm(@CurrentUser() user: AuthUser, @Body() body: TermDto, @ReqContext() ctx: RequestCtx) {
+    this.mkt.assertCan(user, 'mi_midia', 'edit')
+    return this.platforms.reviewTerm(user, body.term, body.status ?? null, ctx)
+  }
+
+  @Get('plataforma/:p')
+  ads(@CurrentUser() user: AuthUser, @Param('p') p: string, @Query() q: AnalysisDto) {
+    this.mkt.assertCan(user, 'mi_midia')
+    if (p !== 'meta' && p !== 'tiktok') throw new NotFoundException()
+    return this.platforms.ads(user.tenantId, p, { from: q.de, to: q.ate, campaignId: q.campanha })
+  }
+
+  @Get('seo')
+  seo(@CurrentUser() user: AuthUser, @Query() q: PeriodDto) {
+    this.mkt.assertCan(user, 'mi_seo')
+    return this.platforms.seo(user.tenantId, { from: q.de, to: q.ate })
+  }
+
+  @Get('social')
+  social(@CurrentUser() user: AuthUser, @Query() q: PeriodDto) {
+    this.mkt.assertCan(user, 'mi_social')
+    return this.platforms.social(user.tenantId, { from: q.de, to: q.ate })
+  }
+
+  @Get('editorial')
+  editorial(@CurrentUser() user: AuthUser, @Query() q: PeriodDto) {
+    this.mkt.assertCan(user, 'mi_social')
+    return this.platforms.editorial(user.tenantId, { from: q.de, to: q.ate })
+  }
+
+  @Post('editorial')
+  createEditorial(@CurrentUser() user: AuthUser, @Body() body: Record<string, unknown>, @ReqContext() ctx: RequestCtx) {
+    this.mkt.assertCan(user, 'mi_social', 'create')
+    return this.platforms.saveEditorial(user, null, body ?? {}, ctx)
+  }
+
+  @Put('editorial/:id')
+  updateEditorial(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: Record<string, unknown>, @ReqContext() ctx: RequestCtx) {
+    this.mkt.assertCan(user, 'mi_social', 'edit')
+    return this.platforms.saveEditorial(user, id, body ?? {}, ctx)
+  }
+
+  @Delete('editorial/:id')
+  removeEditorial(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    this.mkt.assertCan(user, 'mi_social', 'delete')
+    return this.platforms.removeEditorial(user, id, ctx)
+  }
+
+  // ---------- Planejamento ----------
+
+  @Get('planejamento/:mes')
+  plan(@CurrentUser() user: AuthUser, @Param('mes') month: string) {
+    this.mkt.assertCan(user, 'mi_orcamento')
+    return this.management.planView(user.tenantId, month)
+  }
+
+  @Put('planejamento/:mes')
+  savePlan(@CurrentUser() user: AuthUser, @Param('mes') month: string, @Body() body: Partial<MonthPlan>, @ReqContext() ctx: RequestCtx) {
+    this.mkt.assertCan(user, 'mi_orcamento', 'edit')
+    return this.management.savePlan(user, month, body ?? {}, ctx)
+  }
+
+  // ---------- Alertas ----------
+
+  @Get('alertas')
+  alerts(@CurrentUser() user: AuthUser) {
+    this.mkt.assertCan(user, 'mi_relatorios')
+    return this.management.alertsView(user.tenantId)
+  }
+
+  @Post('alertas')
+  createAlert(@CurrentUser() user: AuthUser, @Body() body: Partial<AlertRule>, @ReqContext() ctx: RequestCtx) {
+    this.mkt.assertCan(user, 'mi_relatorios', 'create')
+    return this.management.saveRule(user, null, body ?? {}, ctx)
+  }
+
+  @Post('alertas/testar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  testAlerts(@CurrentUser() user: AuthUser) {
+    this.mkt.assertCan(user, 'mi_relatorios')
+    return this.management.evaluateNow(user.tenantId)
+  }
+
+  @Put('alertas/:id')
+  updateAlert(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: Partial<AlertRule>, @ReqContext() ctx: RequestCtx) {
+    this.mkt.assertCan(user, 'mi_relatorios', 'edit')
+    return this.management.saveRule(user, id, body ?? {}, ctx)
+  }
+
+  @Delete('alertas/:id')
+  removeAlert(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    this.mkt.assertCan(user, 'mi_relatorios', 'delete')
+    return this.management.removeRule(user, id, ctx)
+  }
+
+  // ---------- IA e arquivos ----------
+
+  @Post('ia/resumo')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
+  aiSummary(@CurrentUser() user: AuthUser, @Query() q: AnalysisDto) {
+    this.mkt.assertCan(user, 'mi_ia')
+    return this.management.aiSummary(user.tenantId, { from: q.de, to: q.ate, filters: filtersOf(q) })
+  }
+
+  @Get('exportar')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async exportFile(@CurrentUser() user: AuthUser, @Query() q: ExportDto, @Res() res: Response) {
+    if (!can(user.permissions, user.role.isSystem, 'mi_executivo', 'export') && !can(user.permissions, user.role.isSystem, 'mi_relatorios', 'view')) {
+      throw new ForbiddenException('Seu perfil não pode exportar o Marketing Inteligente (Exportar em Dashboard executivo ou acesso aos Relatórios).')
+    }
+    const sections = (q.secoes ?? 'kpis,plataformas,campanhas,funil,vendedores,regioes,marcas,categorias,origens,recomendacoes').split(',').filter((x) => REPORT_SECTIONS.some((s) => s.key === x)) as ReportSection[]
+    const f = await this.management.file(user.tenantId, q.formato === 'xlsx' ? 'xlsx' : 'pdf', { from: q.de, to: q.ate, filters: filtersOf(q), sections: sections.length ? sections : ['kpis'], title: 'Relatório de marketing' })
+    res.setHeader('Content-Type', f.contentType)
+    res.setHeader('Content-Disposition', `attachment; filename="${f.filename}"`)
+    res.setHeader('Cache-Control', 'no-store')
+    res.send(f.content)
   }
 
   private integrationKey(key: string): IntegrationKey {

@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
-import { ArrowRightIcon, CheckCircle2Icon, CircleAlertIcon, CirclePauseIcon, LightbulbIcon, XCircleIcon } from 'lucide-react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { ArrowRightIcon, BellRingIcon, CheckCircle2Icon, Loader2Icon, SparklesIcon, CircleAlertIcon, CirclePauseIcon, LightbulbIcon, XCircleIcon } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { Link } from 'react-router'
-import { BreakdownTable, COLS, COMMERCIAL_COLS, CrmOnlyNotice, FunnelView, Kpi, MEDIA_COLS, MktFilters, PendingIntegration, TrendChart, UpdatedLine } from '@/components/marketing/ui'
+import { BreakdownTable, COLS, COMMERCIAL_COLS, CrmOnlyNotice, ExportButtons, FunnelView, Kpi, MEDIA_COLS, MktFilters, TrendChart, UpdatedLine } from '@/components/marketing/ui'
 import { EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -10,13 +10,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { api } from '@/lib/api'
+import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { type Analysis, type BreakdownRow, downloadCsv, hours, money, moneyShort, num, pct, type Recommendation, times, useAnalysis, useMktFilters } from '@/lib/marketing'
 import { cn } from '@/lib/utils'
 
 /** Estrutura comum: cabeçalho, filtros, avisos e o conteúdo quando os dados chegam. */
-function Screen({ title, description, filters = 'all', extra, children }: { title: string; description: string; filters?: 'all' | 'period' | 'none'; extra?: Record<string, string>; children: (d: Analysis) => ReactNode }) {
+export function Screen({ title, description, filters = 'all', extra, children }: { title: string; description: string; filters?: 'all' | 'period' | 'none'; extra?: Record<string, string>; children: (d: Analysis) => ReactNode }) {
   const f = useMktFilters()
   const q = new URLSearchParams(f.query)
   for (const [k, v] of Object.entries(extra ?? {})) q.set(k, v)
@@ -40,9 +40,9 @@ function Screen({ title, description, filters = 'all', extra, children }: { titl
   )
 }
 
-const spark = (d: Analysis, k: keyof Analysis['series'][number]) => d.series.map((s) => Number(s[k] ?? 0))
+export const spark = (d: Analysis, k: keyof Analysis['series'][number]) => d.series.map((s) => Number(s[k] ?? 0))
 
-function useDrill() {
+export function useDrill() {
   const f = useMktFilters()
   return (key: string) => (r: BreakdownRow) => f.set({ [key]: r.key })
 }
@@ -67,7 +67,7 @@ const SCREENS = [
   { to: '/marketing/leads', title: 'CRM e leads de marketing', text: 'Atendimento, tempo de resposta, vendedores e regiões.', module: 'mi_comercial' },
   { to: '/marketing/email', title: 'E-mail marketing', text: 'Envios, cliques e vendas de quem clicou.', module: 'mi_comercial' },
   { to: '/marketing/recomendacoes', title: 'Recomendações', text: 'Diagnósticos com os números que os sustentam.', module: 'mi_ia' },
-  { to: '/marketing/relatorios', title: 'Relatórios automáticos', text: 'Relatórios por e-mail, no horário que você escolher.', module: 'mi_relatorios' },
+  { to: '/marketing/relatorios', title: 'Relatórios e alertas', text: 'Relatórios por e-mail, PDF e Excel na hora e alertas automáticos.', module: 'mi_relatorios' },
 ]
 
 function VisaoGeral({ d }: { d: Analysis }) {
@@ -83,6 +83,7 @@ function VisaoGeral({ d }: { d: Analysis }) {
         <Kpi label="Custo por lead" value={money(n.cpl)} delta={d.deltas.cpl} lowerIsBetter />
         <Kpi label="ROAS" value={times(n.roas)} delta={d.deltas.roas} hint="faturamento atribuído ÷ mídia" />
       </div>
+      {can('mi_relatorios') && <RecentAlerts />}
       <div className="grid gap-4 lg:grid-cols-2">
         <RecList recs={d.recommendations.slice(0, 4)} more={can('mi_ia') && d.recommendations.length > 4 ? d.recommendations.length - 4 : 0} />
         <HealthCard compact />
@@ -101,13 +102,51 @@ function VisaoGeral({ d }: { d: Analysis }) {
   )
 }
 
+/** Alertas disparados nos últimos 3 dias (configurados em Relatórios e alertas). */
+function RecentAlerts() {
+  const q = useQuery({
+    queryKey: ['mkt-alertas'],
+    queryFn: () => api.get<{ events: { at: string; ruleId: string; message: string }[] }>('/marketing/alertas'),
+    staleTime: 60_000,
+    select: (d) => ({ ...d, recent: d.events.filter((e) => Date.now() - Date.parse(e.at) < 3 * 86_400_000) }),
+  })
+  const recent = q.data?.recent ?? []
+  if (!recent.length) return null
+  return (
+    <Card className="border-red-500/40">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <BellRingIcon className="size-4 text-red-600" /> Alertas recentes
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-1 text-sm">
+        {recent.slice(0, 6).map((e) => (
+          <p key={`${e.at}-${e.ruleId}`}>
+            <span className="text-muted-foreground">{formatDateTime(e.at)}</span> · {e.message}
+          </p>
+        ))}
+        <Link to="/marketing/relatorios" className="text-xs underline">
+          Ver e configurar alertas
+        </Link>
+      </CardContent>
+    </Card>
+  )
+}
+
 // ---------- 2. Dashboard executivo ----------
 
 export function ExecutivoPage() {
   return (
     <RequirePermission module="mi_executivo">
       <Screen title="Dashboard executivo" description="Investimento, leads, vendas e retorno de todos os canais, com comparação ao período anterior.">
-        {(d) => <Executivo d={d} />}
+        {(d) => (
+          <>
+            <div className="flex justify-end">
+              <ExportButtons sections={['kpis', 'plataformas', 'campanhas', 'funil', 'vendedores', 'regioes', 'marcas', 'categorias', 'origens', 'recomendacoes']} />
+            </div>
+            <Executivo d={d} />
+          </>
+        )}
       </Screen>
     </RequirePermission>
   )
@@ -156,152 +195,6 @@ function Executivo({ d }: { d: Analysis }) {
       </div>
       <p className="text-xs text-muted-foreground">Clique numa linha para filtrar a tela por ela. Faturamento = valor da venda no Pré-Vendas (integração com o ERP prevista para depois).</p>
     </>
-  )
-}
-
-// ---------- 3 a 5. Mídia paga ----------
-
-export function GoogleAdsMktPage() {
-  const { can } = useAuth()
-  return (
-    <RequirePermission module="mi_midia">
-      <Screen title="Google Ads" description="Investimento das campanhas do Google cruzado com os leads, as vendas e o faturamento do CRM." extra={{ plataforma: 'google' }}>
-        {(d) => (
-          <>
-            <MediaKpis d={d} />
-            <TrendChart title="Investimento e leads" kind="bar" data={d.series} series={[{ key: 'mediaCost', label: 'Investimento', color: 'var(--chart-2)' }]} format={moneyShort} />
-            <BreakdownTable title="Campanhas" rows={d.byCampaign} columns={MEDIA_COLS} exportName="google-ads-campanhas" />
-            <Card>
-              <CardContent className="space-y-2 pt-6 text-sm text-muted-foreground">
-                <p>
-                  “Conversões no Google” é o que o Google conta (inclui as que o CRM devolve); “Vendas” é o que o Pré-Vendas confirmou. Os dois não são somados.
-                </p>
-                <p>Termos de pesquisa (com sugestão de palavras negativas para revisar), dispositivo, região, anúncios e páginas de destino chegam com o script ampliado do Google Ads, na próxima etapa.</p>
-                {can('google_ads') && (
-                  <Button asChild size="sm" variant="outline">
-                    <Link to="/google-ads">Palavras-chave e saldo no painel do Google Ads</Link>
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          </>
-        )}
-      </Screen>
-    </RequirePermission>
-  )
-}
-
-function MediaKpis({ d }: { d: Analysis }) {
-  const n = d.now
-  return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-      <Kpi label="Investimento" value={money(n.mediaCost)} delta={d.deltas.mediaCost} lowerIsBetter spark={spark(d, 'mediaCost')} />
-      <Kpi label="Cliques" value={num(n.clicks)} delta={d.deltas.clicks} hint={`CTR ${pct(n.ctr)} · ${num(n.impressions)} impressões`} />
-      <Kpi label="CPC médio" value={money(n.cpc)} delta={d.deltas.cpc} lowerIsBetter hint={`CPM ${money(n.cpm)}`} />
-      <Kpi label="Leads (CRM)" value={num(n.leads)} delta={d.deltas.leads} hint={`CPL ${money(n.cpl)}`} />
-      <Kpi label="Vendas (CRM)" value={num(n.sales)} delta={d.deltas.sales} hint={`ROAS ${times(n.roas)} · conversões no Google: ${num(n.platformConversions)}`} />
-    </div>
-  )
-}
-
-function CrmSideOfPlatform({ d, name }: { d: Analysis; name: string }) {
-  const n = d.now
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">O que o CRM já sabe de {name}</CardTitle>
-        <CardDescription>Leads cuja origem ou fonte (utm_source) é {name}, com atendimento e vendas do Pré-Vendas. O investimento entra quando a conta for conectada.</CardDescription>
-      </CardHeader>
-      <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Kpi label="Leads" value={num(n.leads)} delta={d.deltas.leads} />
-        <Kpi label="Qualificados" value={num(n.qualified)} delta={d.deltas.qualified} />
-        <Kpi label="Vendas" value={num(n.sales)} delta={d.deltas.sales} />
-        <Kpi label="Faturamento" value={money(n.revenue)} delta={d.deltas.revenue} />
-      </CardContent>
-    </Card>
-  )
-}
-
-export function MetaAdsPage() {
-  return (
-    <RequirePermission module="mi_midia">
-      <Screen title="Meta Ads: Facebook e Instagram" description="Campanhas, conjuntos, anúncios e criativos da Meta cruzados com os leads e as vendas do CRM." filters="period" extra={{ plataforma: 'meta' }}>
-        {(d) => (
-          <>
-            <CrmSideOfPlatform d={d} name="Facebook e Instagram" />
-            <PendingIntegration
-              title="Meta Marketing API"
-              what={['Investimento, alcance, impressões, frequência, CPM, cliques, CTR e CPC', 'Leads, conversas iniciadas e conversões por campanha, conjunto e anúncio', 'Desempenho de cada criativo, posicionamento, público, dispositivo e região', 'Alertas de anúncio com custo crescente, baixa conversão ou frequência alta']}
-              steps={<p>No Business Manager da Usaparts: crie um usuário do sistema com acesso às contas de anúncio (permissões ads_read e read_insights), gere o token e cole em Configurações › Marketing Inteligente, com o número das contas (act_…).</p>}
-            />
-          </>
-        )}
-      </Screen>
-    </RequirePermission>
-  )
-}
-
-export function TikTokAdsPage() {
-  return (
-    <RequirePermission module="mi_midia">
-      <Screen title="TikTok Ads" description="Campanhas e anúncios do TikTok comparados com Google, Meta e os resultados do CRM." filters="period" extra={{ plataforma: 'tiktok' }}>
-        {(d) => (
-          <>
-            <CrmSideOfPlatform d={d} name="TikTok" />
-            <PendingIntegration
-              title="TikTok Business API"
-              what={['Campanhas, grupos de anúncios, anúncios e criativos', 'Investimento, impressões, alcance, cliques, CPM, CPC e CTR', 'Visualizações de vídeo, leads, conversões e custo por resultado', 'Métrica que a API não liberar aparece como “Não disponível”']}
-              steps={<p>No TikTok for Business: crie o app no TikTok for Developers (Marketing API), autorize a conta de anúncios e cole o token e o ID do anunciante em Configurações › Marketing Inteligente.</p>}
-            />
-          </>
-        )}
-      </Screen>
-    </RequirePermission>
-  )
-}
-
-// ---------- 6 e 7. Redes sociais e SEO ----------
-
-export function SocialPage() {
-  return (
-    <RequirePermission module="mi_social">
-      <div>
-        <PageHeader title="Redes sociais orgânicas" description="Instagram, Facebook e TikTok: crescimento, alcance, engajamento e as publicações que mais geram negócio." />
-        <PendingIntegration
-          title="Instagram e Facebook (Graph API)"
-          what={['Seguidores, alcance, impressões, visitas ao perfil e cliques no link', 'Curtidas, comentários, compartilhamentos e salvamentos por publicação', 'Ranking das melhores e piores publicações e desempenho por formato e tema', 'Calendário editorial com responsável, data, situação e resultado']}
-          steps={<p>Usa o mesmo token da Meta (Meta Ads), com as permissões pages_read_engagement, instagram_basic e instagram_manage_insights. Informe o ID da página e da conta profissional do Instagram em Configurações › Marketing Inteligente.</p>}
-        />
-      </div>
-    </RequirePermission>
-  )
-}
-
-export function SeoPage() {
-  const { can } = useAuth()
-  return (
-    <RequirePermission module="mi_seo">
-      <div>
-        <PageHeader title="SEO e tráfego do site" description="Google Analytics, Search Console e loja virtual: de onde vêm as visitas, o que buscam e o que vira lead e venda." />
-        <div className="space-y-4">
-          <PendingIntegration
-            title="Google Search Console"
-            what={['Cliques e impressões orgânicas, CTR e posição média', 'Consultas e páginas com mais potencial (muitas impressões, CTR baixo)', 'Páginas de marcas, máquinas e categorias de peças', 'Relação entre páginas de entrada, leads e vendas do CRM']}
-            steps={<p>No Search Console, em Configurações › Usuários e permissões, adicione a conta de serviço do Google Analytics (o e-mail que termina em .iam.gserviceaccount.com) e informe a propriedade em Configurações › Marketing Inteligente.</p>}
-          />
-          {can('relatorios') && (
-            <Card>
-              <CardContent className="flex flex-wrap items-center justify-between gap-2 pt-6 text-sm">
-                <span className="text-muted-foreground">Sessões, usuários, origem e mídia do Google Analytics 4 já estão nos relatórios.</span>
-                <Button asChild size="sm" variant="outline">
-                  <Link to="/relatorios">Abrir Relatórios (GA4)</Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
-    </RequirePermission>
   )
 }
 
@@ -729,6 +622,7 @@ export function RecomendacoesPage() {
       <Screen title="Recomendações" description="Diagnósticos calculados com os números do período e do anterior. Nada é alterado nas plataformas: cada ação é decisão de uma pessoa.">
         {(d) => (
           <>
+            <AiSummary />
             {d.recommendations.length === 0 ? (
               <EmptyState icon={LightbulbIcon} title="Nenhum ponto de atenção" description="Com os filtros e o período escolhidos, nenhuma regra encontrou um problema com amostra suficiente." />
             ) : (
@@ -745,6 +639,40 @@ export function RecomendacoesPage() {
         )}
       </Screen>
     </RequirePermission>
+  )
+}
+
+/** Resumo escrito pela IA (Gemini) com os números agregados do período e dos filtros. */
+function AiSummary() {
+  const f = useMktFilters()
+  const ai = useMutation({ mutationFn: () => api.post<{ text: string; generatedAt: string; note: string }>(`/marketing/ia/resumo?${f.query}`) })
+  return (
+    <Card>
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2">
+        <div className="space-y-1.5">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <SparklesIcon className="size-4" /> Resumo pela IA
+          </CardTitle>
+          <CardDescription>A IA recebe só números agregados (plataformas, campanhas, regiões, marcas): nunca dados de clientes ou vendedores. Ela não altera nada.</CardDescription>
+        </div>
+        <Button size="sm" variant="outline" onClick={() => ai.mutate()} disabled={ai.isPending}>
+          {ai.isPending ? <Loader2Icon className="animate-spin" /> : <SparklesIcon />} {ai.data ? 'Gerar de novo' : 'Gerar resumo'}
+        </Button>
+      </CardHeader>
+      {(ai.data || ai.error) && (
+        <CardContent className="space-y-2 text-sm">
+          {ai.error && <p className="text-red-600">{errorMessage(ai.error)}</p>}
+          {ai.data && (
+            <>
+              <div className="whitespace-pre-wrap">{ai.data.text}</div>
+              <p className="text-xs text-muted-foreground">
+                {ai.data.note} Gerado em {formatDateTime(ai.data.generatedAt)}.
+              </p>
+            </>
+          )}
+        </CardContent>
+      )}
+    </Card>
   )
 }
 
@@ -809,32 +737,6 @@ function RecList({ recs, more }: { recs: Recommendation[]; more: number }) {
   )
 }
 
-// ---------- 13. Planejamento (próxima etapa) ----------
-
-export function PlanejamentoPage() {
-  return (
-    <RequirePermission module="mi_orcamento">
-      <div>
-        <PageHeader title="Planejamento e orçamento" description="Orçamento por mês, plataforma e campanha, metas e projeções." />
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Chega na próxima etapa</CardTitle>
-            <CardDescription>Esta tela entra na etapa de orçamento, metas e alertas do Marketing Inteligente.</CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            <ul className="list-disc space-y-0.5 pl-5">
-              <li>Orçamento mensal por plataforma e campanha, realizado, saldo e percentual consumido</li>
-              <li>Projeção de gasto até o fim do mês (com a premissa escrita)</li>
-              <li>Metas de leads, CPL, vendas e faturamento, com realizado x meta</li>
-              <li>Simulação de cenários com faixa de incerteza (sem supor que mais investimento traz vendas na mesma proporção)</li>
-            </ul>
-          </CardContent>
-        </Card>
-      </div>
-    </RequirePermission>
-  )
-}
-
 // ---------- 15. Integrações e saúde dos dados ----------
 
 interface Health {
@@ -848,7 +750,7 @@ const STATUS = {
   desligado: { label: 'Não conectado', icon: CirclePauseIcon, cls: 'text-muted-foreground' },
 }
 
-function HealthCard({ compact }: { compact?: boolean }) {
+export function HealthCard({ compact }: { compact?: boolean }) {
   const q = useQuery({ queryKey: ['mkt-saude'], queryFn: () => api.get<Health>('/marketing/saude'), staleTime: 60_000 })
   return (
     <Card>

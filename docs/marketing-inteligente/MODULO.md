@@ -1,10 +1,21 @@
 # Marketing Inteligente: documentação técnica
 
-Primeira entrega: versão 0.74.0 (etapas E1 e E2 do [levantamento](LEVANTAMENTO.md), com recomendações, relatórios automáticos e a tela de integrações).
+Primeira entrega: versão 0.74.0 (etapas E1 e E2 do [levantamento](LEVANTAMENTO.md)). Versão 0.75.0: o restante do projeto (Google Ads detalhado, Meta, TikTok, redes sociais, SEO, planejamento, alertas, PDF/Excel e resumo pela IA).
 
 ## O que não muda
 
-O módulo **só lê** o CRM. Não altera telas, menus, tabelas, permissões nem regras dos módulos atuais, e não tem migração de banco.
+O módulo **só lê** o CRM. Não altera telas, menus, tabelas, permissões nem regras dos módulos atuais. A 0.75.0 tem uma migração que **só cria** 8 tabelas novas, sem ligação com as tabelas atuais (`20261021100000_marketing_inteligente`).
+
+| Tabela | Conteúdo | Origem |
+|---|---|---|
+| `google_ads_detail_days` | Google Ads por tipo de campanha, dispositivo, rede, região, página de destino, anúncio e grupo | Script do Google Ads |
+| `google_ads_search_term_days` | Termos de pesquisa | Script do Google Ads |
+| `mkt_ad_days` | Meta e TikTok por campanha, conjunto e anúncio (com o criativo) | Sincronização |
+| `mkt_ad_breakdown_days` | Meta por idade, gênero, região e posicionamento | Sincronização |
+| `mkt_social_profile_days` | Seguidores, alcance e visitas do Instagram e Facebook por dia | Sincronização |
+| `mkt_social_posts` | Publicações com alcance, interações e salvamentos | Sincronização |
+| `mkt_seo_days` | Search Console: total, consultas e páginas por dia | Sincronização |
+| `mkt_editorial_items` | Calendário editorial | Tela Redes sociais |
 
 As configurações ficam em `tenant_settings`, em chaves próprias:
 
@@ -13,6 +24,11 @@ As configurações ficam em `tenant_settings`, em chaves próprias:
 | `mkt_config` | Regras das análises |
 | `mkt_integracoes` | Contas de Meta, TikTok e Search Console, com os tokens criptografados |
 | `mkt_relatorios` | Agendamentos e histórico de envios |
+| `mkt_planejamento` | Orçamento e metas por mês |
+| `mkt_alertas` | Regras de alerta e último aviso |
+| `mkt_termos` | Decisão sobre termos de pesquisa (negativar ou manter) |
+| `mkt_sync` | Situação da última sincronização de cada integração |
+| `google_ads_detalhes` | Data do último envio do detalhamento pelo script |
 
 ## Código
 
@@ -27,7 +43,13 @@ As configurações ficam em `tenant_settings`, em chaves próprias:
 | Rotas | `marketing.controller.ts` (`/api/marketing/...`) |
 | Telas | `apps/web/src/pages/marketing/` e `apps/web/src/components/marketing/ui.tsx` |
 | Configurações | `apps/web/src/pages/settings/marketing-tab.tsx` (Configurações › Marketing Inteligente) |
-| Testes | `apps/api/test/marketing.spec.ts` |
+| Google Ads detalhado | `apps/api/src/googleads/detalhes.ts` (limpeza e sugestão de negativas) e o script em `googleads/painel.ts` |
+| Sincronização | `sync.ts` (leitura das respostas, funções puras) e `sync.service.ts` (rotina a cada 30 min) |
+| Plataformas, SEO e redes | `plataformas.ts` e `plataformas.service.ts` |
+| Planejamento e alertas | `planejamento.ts` e `gestao.service.ts` (alertas de hora em hora) |
+| PDF e Excel | `arquivos.ts` |
+| IA | `ia.ts` |
+| Testes | `apps/api/test/marketing.spec.ts` e `marketing-plataformas.spec.ts` |
 
 ## Permissões (Configurações › Perfis de acesso › grupo Marketing Inteligente)
 
@@ -122,12 +144,20 @@ As regras ficam em `recomendacoes.ts`. Cada uma tem amostra mínima (10 leads) e
 
 Nada é aplicado nas plataformas.
 
-## Relatórios automáticos
+## Relatórios e alertas
 
-- **O que se configura:** nome, e-mails (até 20), frequência (diária, semanal ou mensal), dia, hora de Brasília, período, filtros e conteúdo (12 partes à escolha).
+- **O que se configura:** nome, e-mails (até 20), frequência (diária, semanal ou mensal), dia, hora de Brasília, período, filtros, conteúdo (13 partes à escolha, com o resumo da IA) e anexo (nenhum, PDF ou Excel).
 - **Envio:** a rotina confere a cada 5 minutos o que está na hora e envia pelo SMTP configurado. Se o servidor ficar fora, o horário perdido é enviado até 2 horas depois. Um relatório criado depois do horário do dia só sai no próximo.
 - **Prévia e Enviar agora:** usam o mesmo e-mail do envio agendado.
 - **Histórico:** ficam os últimos 50 envios, com o erro de cada um.
+- **Baixar agora:** PDF ou Excel (`GET /api/marketing/exportar?formato=pdf|xlsx&secoes=...`) com os filtros da tela. Precisa de Exportar no Dashboard executivo ou de Ver em Relatórios.
+- **Alertas:** 9 tipos (gasto perto do limite do orçamento, campanha com investimento e sem leads, aumento do CPL, queda de leads, queda do faturamento, leads sem atendimento, meta abaixo do ritmo, leads de anúncio sem UTM, dados desatualizados ou falha de integração). A rotina confere de hora em hora e avisa no máximo uma vez a cada 20 h por alerta, na tela e, se houver e-mails, por e-mail. Os de variação não disparam com menos de 10 leads. **Testar agora** avalia sem enviar.
+
+## Google Ads detalhado
+
+O script do Google Ads (Configurações › Google Ads) passa a mandar também o detalhamento e os termos de pesquisa, em partes de até 3.000 linhas. Cada consulta extra roda isolada: se uma falhar, as outras seguem. **É preciso colar o script novo** no Google Ads.
+
+Sugestão de negativas: termo com palavra de alerta (lista padrão em `DEFAULT_ALERT_WORDS`, editável em Configurações › Marketing Inteligente) ou com gasto e cliques sem nenhuma conversão. A decisão (negativar ou manter) fica no CRM e a lista aprovada sai em arquivo para colar no Google Ads. O CRM não altera a conta.
 
 ## Integrações (só leitura)
 
@@ -135,22 +165,29 @@ Nada é aplicado nas plataformas.
 - **TikTok:** token e anunciante; o teste lê `advertiser/info`.
 - **Search Console:** a conta de serviço do GA4; o teste lê `sites.get`.
 - **Segurança:** os tokens ficam criptografados (`APP_ENCRYPTION_KEY`), nunca voltam para a tela e a auditoria registra as mudanças.
-- **Sincronização** dos dados dessas plataformas: na próxima etapa.
+- **Sincronização:** rotina a cada 30 min; Meta Ads e TikTok a cada 3 h, Instagram/Facebook e Search Console a cada 6 h. O histórico de até 90 dias é buscado aos poucos; depois relê só os dias recentes (o Search Console tem 2 a 3 dias de atraso). **Sincronizar agora** em Configurações. Os custos de Meta e TikTok entram no investimento; o lead entra na campanha pelo `utm_campaign`.
+
+## Planejamento
+
+Orçamento do mês (total, por plataforma e por campanha) e metas (leads, CPL, vendas, faturamento). Projeção pelo ritmo médio por dia, com faixa pela variação diária (≈80%). Cenários de ±15% e ±30%: o otimista mantém o CPL; o conservador supõe retorno decrescente (leads ∝ investimento^0,6). Conversão e ticket ficam iguais. São estimativas, não promessas.
+
+## IA (Gemini)
+
+Resumo em Recomendações e, se marcado, no relatório por e-mail. A IA recebe só números agregados (plataformas, campanhas, regiões, marcas, tipos de peça, funil e diagnósticos), nunca nomes, telefones, e-mails ou vendedores. Usa a chave do Gemini já cadastrada no E-mail marketing; sem chave, a tela avisa. Nada é aplicado automaticamente.
 
 ## Plano de reversão
 
-1. Voltar para a versão anterior (tag `v0.73.1`) com o deploy normal. O módulo some do menu e nada dos módulos atuais é afetado.
-2. Opcional, para apagar as configurações do módulo:
+1. Voltar para a versão anterior com o deploy normal (tag `v0.74.0` desfaz só a 0.75.0; `v0.73.1` tira o módulo inteiro). Nada dos módulos atuais é afetado.
+2. As tabelas novas não atrapalham a versão anterior e podem ficar. Para apagá-las:
    ```sql
-   DELETE FROM tenant_settings WHERE key IN ('mkt_config', 'mkt_integracoes', 'mkt_relatorios')
+   DROP TABLE IF EXISTS google_ads_detail_days, google_ads_search_term_days, mkt_ad_days, mkt_ad_breakdown_days, mkt_social_profile_days, mkt_social_posts, mkt_seo_days, mkt_editorial_items;
+   DELETE FROM _prisma_migrations WHERE migration_name = '20261021100000_marketing_inteligente';
    ```
-3. Não há tabela nova nesta versão. As próximas etapas que criarem tabelas trarão o `DROP TABLE` correspondente neste documento.
+3. Opcional, para apagar as configurações do módulo:
+   ```sql
+   DELETE FROM tenant_settings WHERE key IN ('mkt_config', 'mkt_integracoes', 'mkt_relatorios', 'mkt_planejamento', 'mkt_alertas', 'mkt_termos', 'mkt_sync', 'google_ads_detalhes')
+   ```
 
-## Próximas etapas
+## Etapas
 
-1. Script ampliado do Google Ads: termos de pesquisa com sugestão de negativas, dispositivo, região, anúncios e páginas de destino.
-2. Search Console e SEO.
-3. Planejamento: orçamento, metas, projeção e cenários; alertas configuráveis.
-4. Sincronização de Meta Ads, Instagram e Facebook.
-5. TikTok.
-6. Relatórios em PDF e Excel, e o texto das recomendações pela IA (Gemini, só com números agregados).
+Todas as etapas do levantamento foram entregues (0.74.0 e 0.75.0). Fica para o futuro a integração do faturamento com o ERP (hoje a fonte é a Pré-Vendas).

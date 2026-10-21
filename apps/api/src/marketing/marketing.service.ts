@@ -9,6 +9,9 @@ import { PrismaService } from '../prisma/prisma.service'
 import { DEFAULT_GA4, type Ga4Settings, GA_TOKEN_URL, signJwt } from '../relatorios/ga4'
 import { SettingsService } from '../settings/settings.service'
 import {
+  GRAPH,
+  SC_SCOPE,
+  TIKTOK_API,
   CONFIG_KEY,
   type ConnectionTest,
   cleanConfig,
@@ -48,12 +51,22 @@ import {
   type Rules,
   series,
 } from './metricas'
+import { DEFAULT_ALERT_WORDS, negativeSuggestions } from '../googleads/detalhes'
+import { fatigue } from './plataformas'
 import { recommendations } from './recomendacoes'
+import { SYNC_KEY, type SyncStates } from './sync.service'
 
-export const GRAPH = 'https://graph.facebook.com/v23.0'
-export const TIKTOK_API = 'https://business-api.tiktok.com/open_api/v1.3'
-export const SC_SCOPE = 'https://www.googleapis.com/auth/webmasters.readonly'
 const STATES = Object.keys(REGIONS).sort()
+
+/** Campanha de Meta/TikTok pelo link do anúncio (utm_campaign com o número, utm_source da plataforma), dentro da janela. */
+export function touchCampaign(leadAt: Date, touch: unknown, at: Date | null | undefined, platform: 'meta' | 'tiktok', windowDays: number) {
+  const t = (touch ?? {}) as { source?: string; campaign?: string; campaignId?: string }
+  const src = String(t.source ?? '').toLowerCase()
+  const same = platform === 'tiktok' ? /tik ?tok/.test(src) : /facebook|instagram|\bmeta\b|\bfb\b|\big\b/.test(src)
+  if (!same || !t.campaignId) return { id: null, name: null }
+  if (at && leadAt.getTime() - at.getTime() > windowDays * 86_400_000) return { id: null, name: null }
+  return { id: t.campaignId, name: t.campaign ?? null }
+}
 
 export interface AnalysisQuery {
   from?: string
@@ -262,7 +275,7 @@ export class MarketingService {
         firstActionAt: true, state: true, country: true, unitId: true, sellerId: true, originId: true, customerTypeId: true, brandIds: true, partTypeIds: true,
         adsVia: true, adsCampaignId: true, adsCampaign: true, adsTouchAt: true,
         origin: { select: { name: true } },
-        lead: { select: { adsFirstCampaignId: true, adsFirstCampaign: true, adsFirstAt: true, lastConversion: true } },
+        lead: { select: { adsFirstCampaignId: true, adsFirstCampaign: true, adsFirstAt: true, lastConversion: true, lastConversionAt: true, firstConversion: true, firstConversionAt: true } },
       },
     })
     const leadIds = [...new Set(list.map((r) => r.leadId).filter((x): x is string => !!x))]
@@ -297,7 +310,9 @@ export class MarketingService {
               cfg.attribution.model,
               cfg.attribution.windowDays,
             )
-          : { id: null, name: null }
+          : platform === 'meta' || platform === 'tiktok'
+            ? touchCampaign(r.leadAt, cfg.attribution.model === 'primeiro' ? r.lead?.firstConversion : r.lead?.lastConversion, cfg.attribution.model === 'primeiro' ? r.lead?.firstConversionAt : r.lead?.lastConversionAt, platform, cfg.attribution.windowDays)
+            : { id: null, name: null }
       return {
         id: r.id,
         leadId: r.leadId,
@@ -326,13 +341,25 @@ export class MarketingService {
     })
   }
 
-  /** Investimento por dia e campanha (Google Ads pelo script; Meta e TikTok entram aqui quando conectados). */
+  /** Investimento por dia e campanha: Google Ads (script) + Meta Ads e TikTok Ads (sincronizados). */
   async loadCosts(tenantId: string, from: string, to: string, campaignNames: Record<string, string>): Promise<CostRow[]> {
-    const rows = await this.prisma.googleAdsCampaignDay.findMany({
-      where: { tenantId, date: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) } },
-      select: { date: true, campaignId: true, campaignName: true, cost: true, clicks: true, impressions: true, conversions: true },
-    })
-    return rows.map((r) => ({
+    const range = { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) }
+    const [rows, other] = await Promise.all([
+      this.prisma.googleAdsCampaignDay.findMany({ where: { tenantId, date: range }, select: { date: true, campaignId: true, campaignName: true, cost: true, clicks: true, impressions: true, conversions: true } }),
+      this.prisma.mktAdDay.findMany({ where: { tenantId, level: 'campaign', date: range }, select: { platform: true, date: true, campaignId: true, campaignName: true, spend: true, clicks: true, impressions: true, conversions: true } }),
+    ])
+    const paid: CostRow[] = other.map((r) => ({
+      date: r.date.toISOString().slice(0, 10),
+      platform: r.platform === 'tiktok' ? 'tiktok' : 'meta',
+      campaignId: r.campaignId,
+      campaignName: r.campaignName,
+      cost: Number(r.spend),
+      clicks: r.clicks,
+      impressions: r.impressions,
+      // Conversões da plataforma = compras/conversões que ela conta; leads e conversas aparecem à parte na tela da plataforma.
+      conversions: Number(r.conversions),
+    }))
+    return [...paid, ...rows.map((r): CostRow => ({
       date: r.date.toISOString().slice(0, 10),
       platform: 'google',
       campaignId: r.campaignId,
@@ -341,7 +368,7 @@ export class MarketingService {
       clicks: r.clicks,
       impressions: r.impressions,
       conversions: Number(r.conversions),
-    }))
+    }))]
   }
 
   /** Tudo o que as telas do módulo mostram, para o período e os filtros (e o período anterior, para comparar). */
@@ -390,6 +417,7 @@ export class MarketingService {
     const byState = by('state')
     const bySeller = by('seller')
     const googleRows = rows.filter((r) => r.platform === 'google')
+    const extra: Awaited<ReturnType<MarketingService['recommendationExtras']>> | Record<string, undefined> = crmOnly.length ? {} : await this.recommendationExtras(tenantId, p.from, p.to, cfg, filters)
     const costStaleHours = costSync.syncedAt ? (now - Date.parse(costSync.syncedAt)) / 3_600_000 : null
     return {
       period: { from: p.from, to: p.to, days: p.days, prevFrom: p.prevFrom, prevTo: p.prevTo },
@@ -425,6 +453,8 @@ export class MarketingService {
         forwardMedianHours: f.times.toForwardMedianHours,
         forwardSample: rows.filter((r) => r.forwardedAt).length,
         costStaleHours: crmOnly.length ? null : costStaleHours,
+        negativeTerms: extra.negativeTerms,
+        fatigued: extra.fatigued,
       }),
       quality: {
         records: rows.length,
@@ -438,6 +468,33 @@ export class MarketingService {
         duplicates: rows.length - new Set(rows.map((r) => `${r.dedupeKey}|${localDay(r.leadAt)}`)).size,
         regionsKnown: rows.filter((r) => regionOf(r.state, r.country) !== 'Sem estado').length,
       },
+    }
+  }
+
+  /** Dados das plataformas para as recomendações: termos de pesquisa para negativar e anúncios cansados. */
+  private async recommendationExtras(tenantId: string, from: string, to: string, cfg: MarketingConfig, filters: Filters) {
+    const range = { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) }
+    const camp = filters.campaignId && filters.campaignId !== '-' ? { campaignId: filters.campaignId } : {}
+    const wantGoogle = !filters.platform || filters.platform === 'google'
+    const wantPaid = !filters.platform || filters.platform === 'meta' || filters.platform === 'tiktok'
+    const [terms, ads] = await Promise.all([
+      wantGoogle
+        ? this.prisma.googleAdsSearchTermDay.groupBy({ by: ['term'], where: { tenantId, date: range, ...camp }, _sum: { cost: true, clicks: true, impressions: true, conversions: true }, orderBy: { _sum: { cost: 'desc' } }, take: 2000 })
+        : Promise.resolve([]),
+      wantPaid
+        ? this.prisma.mktAdDay.findMany({ where: { tenantId, level: 'ad', ...(filters.platform ? { platform: filters.platform } : {}), date: { gte: new Date(Date.parse(`${to}T00:00:00Z`) - 14 * 86_400_000), lte: range.lte }, ...camp } })
+        : Promise.resolve([]),
+    ])
+    const summary = terms.map((t) => ({ term: t.term, campaignIds: [], cost: Number(t._sum.cost ?? 0), clicks: Number(t._sum.clicks ?? 0), impressions: Number(t._sum.impressions ?? 0), conversions: Number(t._sum.conversions ?? 0) }))
+    const total = summary.reduce((a, t) => a + t.cost, 0)
+    const sug = negativeSuggestions(summary, cfg.negativeWords ?? DEFAULT_ALERT_WORDS, { minCost: Math.max(20, total * 0.01), minClicks: 5 })
+    const tired = fatigue(
+      ads.map((r) => ({ entityId: r.entityId, name: r.name, campaignId: r.campaignId, campaignName: r.campaignName, parentId: r.parentId, objective: r.objective, date: r.date.toISOString().slice(0, 10), spend: Number(r.spend), impressions: r.impressions, reach: r.reach, clicks: r.clicks, leads: r.leads, conversations: r.conversations, conversions: Number(r.conversions), videoViews: r.videoViews })),
+      to,
+    )
+    return {
+      negativeTerms: sug.length ? { count: sug.length, cost: Math.round(sug.reduce((a, t) => a + t.cost, 0) * 100) / 100, examples: sug.map((t) => t.term) } : undefined,
+      fatigued: tired,
     }
   }
 
@@ -486,7 +543,7 @@ export class MarketingService {
   /** Saúde das integrações: o que está conectado, quando atualizou e o que falta. */
   async health(tenantId: string) {
     const T = tenantId
-    const [costSync, script, ads, ga4, magazord, magState, meta, integ, lastRecord, lastEmail] = await Promise.all([
+    const [costSync, script, ads, ga4, magazord, magState, meta, integ, lastRecord, lastEmail, sync, detail] = await Promise.all([
       this.settings.get<{ syncedAt?: string }>(T, 'google_ads_custos', {}),
       this.settings.get<ScriptState>(T, SCRIPT_KEY, {}),
       this.settings.get<GoogleAdsSettings>(T, 'google_ads', DEFAULT_GOOGLE_ADS),
@@ -497,24 +554,39 @@ export class MarketingService {
       this.integrations(T),
       this.prisma.serviceRecord.findFirst({ where: { tenantId: T, kind: 'PRE_VENDAS', deletedAt: null }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
       this.prisma.emailCampaign.findFirst({ where: { tenantId: T, startedAt: { not: null } }, orderBy: { startedAt: 'desc' }, select: { startedAt: true } }),
+      this.settings.get<SyncStates>(T, SYNC_KEY, {}),
+      this.settings.get<{ syncedAt?: string }>(T, 'google_ads_detalhes', {}),
     ])
     const c = { ...DEFAULT_INTEGRATIONS, ...integ }
     const stale = (iso: string | null | undefined, hours: number) => !iso || Date.now() - Date.parse(iso) > hours * 3_600_000
     type Status = 'ok' | 'atencao' | 'erro' | 'desligado'
     const src = (key: string, name: string, status: Status, lastAt: string | null | undefined, detail: string, metrics: string) => ({ key, name, status, lastAt: lastAt ?? null, detail, metrics })
     const tested = (t: ConnectionTest | null, enabled: boolean): Status => (!enabled ? 'desligado' : t?.ok ? 'ok' : t ? 'erro' : 'atencao')
+    /** Integração sincronizada: ok quando a última sincronização deu certo e é recente; erro quando falhou. */
+    const synced = (key: IntegrationKey, enabled: boolean, hours: number): { status: Status; at: string | null | undefined; detail: string | null } => {
+      const st = sync[key]
+      if (!enabled) return { status: 'desligado', at: st?.lastOkAt, detail: null }
+      if (st?.lastError) return { status: 'erro', at: st.lastOkAt, detail: `Última sincronização falhou: ${st.lastError}` }
+      if (!st?.lastOkAt) return { status: 'atencao', at: null, detail: 'Ligado; a primeira sincronização roda em até 30 minutos (ou clique em Sincronizar agora).' }
+      return { status: stale(st.lastOkAt, hours) ? 'atencao' : 'ok', at: st.lastOkAt, detail: `${st.rows ?? 0} linha(s) na última sincronização.` }
+    }
+    const metaAds = synced('metaAds', c.metaAds.enabled, 12)
+    const metaOrg = synced('metaOrganic', c.metaOrganic.enabled, 24)
+    const tiktok = synced('tiktok', c.tiktok.enabled, 12)
+    const sc = synced('searchConsole', c.searchConsole.enabled, 48)
     return {
       sources: [
         src('crm', 'Pré-Vendas (CRM)', 'ok', lastRecord?.createdAt.toISOString(), 'Fonte da verdade comercial: leads, atendimento, vendas e faturamento (valor da venda do Pré-Vendas).', 'Leads, atendimento, oportunidades, vendas, faturamento'),
         src('google_ads_custo', 'Google Ads: investimento (script)', costSync.syncedAt ? (stale(costSync.syncedAt, 36) ? 'erro' : 'ok') : 'atencao', costSync.syncedAt, script.lastError ? `Último envio recusado: ${script.lastError}` : script.lastCallAt ? `Último contato do script: ${new Date(script.lastCallAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}.` : 'Cole o script de Configurações › Google Ads e programe para rodar.', 'Investimento, cliques, impressões e conversões por campanha e palavra-chave'),
+        src('google_ads_detalhe', 'Google Ads: detalhes (script ampliado)', detail.syncedAt ? (stale(detail.syncedAt, 36) ? 'atencao' : 'ok') : 'atencao', detail.syncedAt, detail.syncedAt ? 'Termos de pesquisa, dispositivo, rede, região, anúncios e páginas de destino.' : 'Cole o script novo de Configurações › Google Ads para trazer os detalhes.', 'Termos de pesquisa, dispositivo, rede, região, anúncios, grupos, páginas de destino e tipo de campanha'),
         src('google_ads_conv', 'Google Ads: conversões enviadas', ads.enabled ? 'ok' : 'desligado', null, ads.enabled ? 'Vendas, perdas e retornos do Pré-Vendas voltam para o Google a cada 2 horas.' : 'Desligado em Configurações › Google Ads.', 'Conversões offline'),
         src('ga4', 'Google Analytics 4', ga4.enabled ? 'ok' : 'desligado', ga4.updatedAt, ga4.enabled ? 'Relatórios de tráfego do site.' : 'Desligado em Configurações › Google Analytics.', 'Sessões, usuários, origem/mídia, páginas'),
         src('magazord', 'Loja virtual (Magazord)', !magazord.enabled ? 'desligado' : magState.lastError ? 'erro' : stale(magState.lastOkAt, 24) ? 'atencao' : 'ok', magState.lastOkAt, magState.lastError ? `Erro: ${magState.lastError}` : 'Pedidos, carrinhos e catálogo.', 'Pedidos, carrinhos, produtos'),
         src('meta_leads', 'Meta Lead Ads (formulários)', meta.enabled ? 'ok' : 'desligado', null, meta.enabled ? 'Leads dos formulários do Facebook/Instagram entram no CRM.' : 'Desligado em Configurações › Meta Lead Ads.', 'Leads de formulário'),
-        src('meta_ads', 'Meta Ads (investimento)', tested(c.metaAds.lastTest, c.metaAds.enabled), c.metaAds.lastTest?.at, c.metaAds.lastTest?.message ?? 'Conta pronta para configurar em Configurações › Marketing Inteligente.', 'Investimento, alcance, frequência, cliques, leads e conversas por campanha e anúncio'),
-        src('meta_organico', 'Instagram e Facebook orgânicos', tested(c.metaOrganic.lastTest, c.metaOrganic.enabled), c.metaOrganic.lastTest?.at, c.metaOrganic.lastTest?.message ?? 'Pronto para configurar em Configurações › Marketing Inteligente.', 'Seguidores, alcance, engajamento e publicações'),
-        src('tiktok', 'TikTok Ads', tested(c.tiktok.lastTest, c.tiktok.enabled), c.tiktok.lastTest?.at, c.tiktok.lastTest?.message ?? 'Pronto para configurar em Configurações › Marketing Inteligente.', 'Investimento, impressões, cliques, vídeo e conversões'),
-        src('search_console', 'Google Search Console', tested(c.searchConsole.lastTest, c.searchConsole.enabled), c.searchConsole.lastTest?.at, c.searchConsole.lastTest?.message ?? 'Pronto para configurar em Configurações › Marketing Inteligente.', 'Cliques e impressões orgânicas, CTR, posição, consultas e páginas'),
+        src('meta_ads', 'Meta Ads (investimento)', metaAds.status, metaAds.at, metaAds.detail ?? c.metaAds.lastTest?.message ?? 'Conta pronta para configurar em Configurações › Marketing Inteligente.', 'Investimento, alcance, frequência, cliques, leads e conversas por campanha e anúncio'),
+        src('meta_organico', 'Instagram e Facebook orgânicos', metaOrg.status, metaOrg.at, metaOrg.detail ?? c.metaOrganic.lastTest?.message ?? 'Pronto para configurar em Configurações › Marketing Inteligente.', 'Seguidores, alcance, engajamento e publicações'),
+        src('tiktok', 'TikTok Ads', tiktok.status, tiktok.at, tiktok.detail ?? c.tiktok.lastTest?.message ?? 'Pronto para configurar em Configurações › Marketing Inteligente.', 'Investimento, impressões, cliques, vídeo e conversões'),
+        src('search_console', 'Google Search Console', sc.status, sc.at, sc.detail ?? c.searchConsole.lastTest?.message ?? 'Pronto para configurar em Configurações › Marketing Inteligente.', 'Cliques e impressões orgânicas, CTR, posição, consultas e páginas'),
         src('email', 'E-mail marketing (CRM)', 'ok', lastEmail?.startedAt?.toISOString(), 'Envios, aberturas registradas, cliques e descadastros das campanhas do CRM.', 'Envios, aberturas, cliques, descadastros, vendas de quem clicou'),
       ],
     }

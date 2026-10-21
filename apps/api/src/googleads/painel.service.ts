@@ -8,6 +8,7 @@ import { MailService } from '../settings/mail.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { campaignLabel, DEFAULT_GOOGLE_ADS, type GoogleAdsSettings, normalizeEmail, SCRIPT_KEY, type ScriptState } from './googleads'
+import { type DetailRow, type SearchTermRow } from './detalhes'
 import { type BalanceState, type CampaignDayRow, DEFAULT_BALANCE, estimateBalance, keywordKey, type KeywordDayRow, panelPeriod, ratios } from './painel'
 
 const toNum = (v: unknown) => (v === null || v === undefined ? 0 : Number(v))
@@ -150,6 +151,37 @@ export class GoogleAdsPanelService {
     await this.settings.set(tenantId, 'google_ads_custos', { syncedAt: new Date().toISOString() })
     void this.checkAlert(tenantId).catch((err: unknown) => this.logger.warn(`Aviso de saldo: ${(err as Error).message}`))
     return { dias: c.length, palavras: k.length }
+  }
+
+  /** Detalhes do script (dispositivo, rede, região, anúncio...): grava por dia, substituindo o que já existia. */
+  async storeDetail(tenantId: string, rows: DetailRow[]) {
+    if (rows.length) {
+      await this.prisma.$executeRaw`
+        INSERT INTO google_ads_detail_days (id, "tenantId", date, "campaignId", dimension, key, label, cost, clicks, impressions, conversions, "conversionValue", "impressionShare", "updatedAt")
+        SELECT gen_random_uuid(), ${tenantId}::uuid, x.d::date, x.c, x.dim, x.k, x.l, x.cost::numeric, x.cl::int, x.im::int, x.cv::numeric, x.val::numeric, nullif(x.sh, '')::numeric, now()
+        FROM unnest(${rows.map((r) => r.date)}::text[], ${rows.map((r) => r.campaignId)}::text[], ${rows.map((r) => r.dimension)}::text[], ${rows.map((r) => r.key)}::text[],
+          ${rows.map((r) => r.label)}::text[], ${rows.map((r) => String(r.cost))}::text[], ${rows.map((r) => String(r.clicks))}::text[], ${rows.map((r) => String(r.impressions))}::text[],
+          ${rows.map((r) => String(r.conversions))}::text[], ${rows.map((r) => String(r.conversionValue))}::text[], ${rows.map((r) => (r.impressionShare === null ? '' : String(r.impressionShare)))}::text[])
+          AS x(d, c, dim, k, l, cost, cl, im, cv, val, sh)
+        ON CONFLICT ("tenantId", date, "campaignId", dimension, key) DO UPDATE SET label = EXCLUDED.label, cost = EXCLUDED.cost, clicks = EXCLUDED.clicks,
+          impressions = EXCLUDED.impressions, conversions = EXCLUDED.conversions, "conversionValue" = EXCLUDED."conversionValue", "impressionShare" = EXCLUDED."impressionShare", "updatedAt" = now()`
+    }
+    await this.settings.set(tenantId, 'google_ads_detalhes', { syncedAt: new Date().toISOString() })
+    return { detalhes: rows.length }
+  }
+
+  async storeTerms(tenantId: string, rows: SearchTermRow[]) {
+    if (rows.length) {
+      await this.prisma.$executeRaw`
+        INSERT INTO google_ads_search_term_days (id, "tenantId", date, "campaignId", "adGroupId", term, cost, clicks, impressions, conversions, "updatedAt")
+        SELECT gen_random_uuid(), ${tenantId}::uuid, x.d::date, x.c, x.g, x.t, x.cost::numeric, x.cl::int, x.im::int, x.cv::numeric, now()
+        FROM unnest(${rows.map((r) => r.date)}::text[], ${rows.map((r) => r.campaignId)}::text[], ${rows.map((r) => r.adGroupId)}::text[], ${rows.map((r) => r.term)}::text[],
+          ${rows.map((r) => String(r.cost))}::text[], ${rows.map((r) => String(r.clicks))}::text[], ${rows.map((r) => String(r.impressions))}::text[], ${rows.map((r) => String(r.conversions))}::text[])
+          AS x(d, c, g, t, cost, cl, im, cv)
+        ON CONFLICT ("tenantId", date, "adGroupId", term) DO UPDATE SET "campaignId" = EXCLUDED."campaignId", cost = EXCLUDED.cost, clicks = EXCLUDED.clicks,
+          impressions = EXCLUDED.impressions, conversions = EXCLUDED.conversions, "updatedAt" = now()`
+    }
+    return { termos: rows.length }
   }
 
   async panel(user: AuthUser, q: { from?: string; to?: string }) {

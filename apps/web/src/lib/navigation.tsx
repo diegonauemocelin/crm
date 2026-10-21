@@ -118,7 +118,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Análise de campanhas', to: '/marketing/campanhas', icon: ScanSearchIcon, module: 'mi_executivo' },
       { title: 'Recomendações', to: '/marketing/recomendacoes', icon: BrainCircuitIcon, module: 'mi_ia' },
       { title: 'Planejamento', to: '/marketing/planejamento', icon: CalendarRangeIcon, module: 'mi_orcamento' },
-      { title: 'Relatórios automáticos', to: '/marketing/relatorios', icon: FileBarChartIcon, module: 'mi_relatorios' },
+      { title: 'Relatórios e alertas', to: '/marketing/relatorios', icon: FileBarChartIcon, module: 'mi_relatorios' },
       { title: 'Integrações', to: '/marketing/integracoes', icon: PlugIcon, module: 'mi_config' },
     ],
   },

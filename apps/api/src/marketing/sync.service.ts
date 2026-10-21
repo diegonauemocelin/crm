@@ -1,0 +1,392 @@
+import { BadRequestException, Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
+import { decrypt } from '../common/crypto'
+import type { AuthUser } from '../common/types'
+import { PrismaService } from '../prisma/prisma.service'
+import { DEFAULT_GA4, type Ga4Settings, GA_TOKEN_URL, signJwt } from '../relatorios/ga4'
+import { SettingsService } from '../settings/settings.service'
+import { DEFAULT_INTEGRATIONS, GRAPH, INTEGRATIONS_KEY, type IntegrationKey, type IntegrationsConfig, SC_SCOPE, TIKTOK_API } from './config'
+import {
+  type AdDayRow,
+  type BreakdownDayRow,
+  daysToSync,
+  metaError,
+  parseDailyInsights,
+  parseFbPost,
+  parseIgMedia,
+  parseMetaBreakdown,
+  parseMetaCreative,
+  parseMetaInsights,
+  parsePostInsights,
+  parseSearchAnalytics,
+  parseTikTokReport,
+  type SeoRow,
+  type SocialPostRow,
+} from './sync'
+
+export const SYNC_KEY = 'mkt_sync'
+const TICK_MS = 30 * 60_000
+const HOURS: Record<IntegrationKey, number> = { metaAds: 3, metaOrganic: 6, tiktok: 3, searchConsole: 6 }
+const BACKFILL_DAYS = 90
+
+export interface SyncState {
+  lastRunAt?: string
+  lastOkAt?: string
+  lastError?: string | null
+  rows?: number
+  /** Próximo dia do histórico a buscar (de trás para frente) e se o histórico terminou. */
+  backfillFrom?: string | null
+  backfillDone?: boolean
+  running?: boolean
+}
+export type SyncStates = Partial<Record<IntegrationKey, SyncState>>
+
+const today = () => new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)
+const addDays = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/** Sincroniza Meta Ads, Instagram/Facebook, TikTok e Search Console (só leitura), de tempos em tempos e sob pedido. */
+@Injectable()
+export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDestroy {
+  private readonly logger = new Logger(MarketingSyncService.name)
+  private timer: NodeJS.Timeout | null = null
+  private busy = false
+  /** Intervalo entre chamadas às APIs (respeita os limites das plataformas); zerado nos testes. */
+  gapMs = 300
+  fetcher: typeof fetch = (...a) => fetch(...a)
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settings: SettingsService,
+  ) {}
+
+  onApplicationBootstrap() {
+    this.timer = setInterval(() => void this.tick(), TICK_MS)
+    this.timer.unref()
+  }
+
+  onModuleDestroy() {
+    if (this.timer) clearInterval(this.timer)
+  }
+
+  states(tenantId: string) {
+    return this.settings.get<SyncStates>(tenantId, SYNC_KEY, {})
+  }
+
+  private async setState(tenantId: string, key: IntegrationKey, patch: SyncState) {
+    const all = await this.states(tenantId)
+    await this.settings.set(tenantId, SYNC_KEY, { ...all, [key]: { ...(all[key] ?? {}), ...patch } })
+  }
+
+  /** A cada 30 minutos: roda cada integração ligada quando passou o intervalo dela. Uma de cada vez. */
+  async tick(now = Date.now()) {
+    if (this.busy) return
+    this.busy = true
+    try {
+      const rows = await this.prisma.tenantSetting.findMany({ where: { key: INTEGRATIONS_KEY }, select: { tenantId: true, value: true } })
+      for (const row of rows) {
+        const c = { ...DEFAULT_INTEGRATIONS, ...((row.value as Partial<IntegrationsConfig> | null) ?? {}) }
+        const st = await this.states(row.tenantId)
+        for (const key of Object.keys(HOURS) as IntegrationKey[]) {
+          if (!c[key].enabled) continue
+          const last = st[key]?.lastRunAt ? Date.parse(st[key]!.lastRunAt!) : 0
+          if (now - last < HOURS[key] * 3_600_000) continue
+          await this.run(row.tenantId, key, c)
+        }
+      }
+    } catch (err) {
+      this.logger.error(`Sincronização do marketing: ${(err as Error).message}`)
+    } finally {
+      this.busy = false
+    }
+  }
+
+  /** "Sincronizar agora" em Configurações. */
+  async syncNow(user: AuthUser, key: IntegrationKey) {
+    const c = { ...DEFAULT_INTEGRATIONS, ...(await this.settings.get<IntegrationsConfig>(user.tenantId, INTEGRATIONS_KEY, DEFAULT_INTEGRATIONS)) }
+    if (!c[key].enabled) throw new BadRequestException('Ligue e salve a integração antes de sincronizar.')
+    const st = (await this.states(user.tenantId))[key]
+    if (st?.running && st.lastRunAt && Date.now() - Date.parse(st.lastRunAt) < 30 * 60_000) throw new BadRequestException('A sincronização já está rodando. Aguarde alguns minutos.')
+    void this.run(user.tenantId, key, c)
+    return { ok: true, message: 'Sincronização iniciada. Os dados aparecem em alguns minutos.' }
+  }
+
+  async run(tenantId: string, key: IntegrationKey, c: IntegrationsConfig) {
+    const st = (await this.states(tenantId))[key] ?? {}
+    await this.setState(tenantId, key, { lastRunAt: new Date().toISOString(), running: true })
+    try {
+      const r =
+        key === 'metaAds' ? await this.syncMetaAds(tenantId, c, st) : key === 'metaOrganic' ? await this.syncMetaOrganic(tenantId, c) : key === 'tiktok' ? await this.syncTikTok(tenantId, c, st) : await this.syncSearchConsole(tenantId, c, st)
+      await this.setState(tenantId, key, { running: false, lastOkAt: new Date().toISOString(), lastError: null, rows: r.rows, ...(r.backfill ?? {}) })
+      return r
+    } catch (err) {
+      const message = ((err as Error).message || 'falha').slice(0, 300)
+      this.logger.warn(`Marketing (${key}): ${message}`)
+      await this.setState(tenantId, key, { running: false, lastError: message })
+      return { rows: 0, error: message }
+    }
+  }
+
+  private async getJson(url: string, init: RequestInit = {}, onError: (status: number, body: unknown) => string = (s) => `Erro ${s}`) {
+    await sleep(this.gapMs)
+    const res = await this.fetcher(url, { ...init, signal: AbortSignal.timeout(30_000), redirect: 'error' })
+    const body = (await res.json().catch(() => null)) as unknown
+    if (!res.ok) throw new Error(onError(res.status, body))
+    return body as Record<string, unknown>
+  }
+
+  /** Lista com paginação da Graph API (segue o "next" até 40 páginas). */
+  private async graphAll(url: string, token: string) {
+    const out: Record<string, unknown>[] = []
+    let next: string | null = url
+    for (let page = 0; next && page < 40; page++) {
+      const body = await this.getJson(next, { headers: { Authorization: `Bearer ${token}` } }, metaError)
+      out.push(...((body.data as Record<string, unknown>[] | undefined) ?? []))
+      const n = (body.paging as { next?: string } | undefined)?.next
+      next = n && n.startsWith(GRAPH.replace(/\/v[\d.]+$/, '')) ? n : null
+    }
+    return out
+  }
+
+  // ---------- Meta Ads ----------
+
+  private async syncMetaAds(tenantId: string, c: IntegrationsConfig, st: SyncState) {
+    const token = decrypt(c.metaAds.tokenEnc!)
+    const until = today()
+    // 1ª vez: últimos 90 dias (em 3 partes de 30); depois: os últimos 7 dias (a Meta ainda ajusta a atribuição).
+    const ranges: { since: string; until: string }[] = []
+    if (!st.backfillDone) for (let i = 0; i < 3; i++) ranges.push({ since: addDays(until, -(i + 1) * 30 + 1), until: addDays(until, -i * 30) })
+    else ranges.push({ since: addDays(until, -7), until })
+    let rows = 0
+    const fields = 'campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,objective,spend,impressions,reach,clicks,inline_link_clicks,actions'
+    for (const act of c.metaAds.adAccountIds) {
+      for (const r of ranges) {
+        const tr = encodeURIComponent(JSON.stringify(r))
+        for (const level of ['campaign', 'adset', 'ad'] as const) {
+          const data = await this.graphAll(`${GRAPH}/${act}/insights?level=${level}&time_increment=1&time_range=${tr}&fields=${fields}&limit=500`, token)
+          rows += await this.storeAdDays(tenantId, parseMetaInsights(data, level))
+        }
+        for (const [dimension, keys] of [['placement', ['publisher_platform', 'platform_position']], ['device', ['device_platform']], ['region', ['region']], ['age_gender', ['age', 'gender']]] as const) {
+          try {
+            const data = await this.graphAll(`${GRAPH}/${act}/insights?level=campaign&time_increment=1&time_range=${tr}&breakdowns=${keys.join(',')}&fields=campaign_id,spend,impressions,clicks,inline_link_clicks,actions&limit=500`, token)
+            rows += await this.storeBreakdowns(tenantId, parseMetaBreakdown(data, dimension, [...keys]))
+          } catch (err) {
+            this.logger.warn(`Meta (${dimension}): ${(err as Error).message}`)
+          }
+        }
+      }
+      // Criativos dos anúncios (título, texto, chamada, imagem), para comparar.
+      try {
+        const ads = await this.graphAll(`${GRAPH}/${act}/ads?fields=id,creative{title,body,image_url,thumbnail_url,object_type,call_to_action_type}&limit=200`, token)
+        for (const ad of ads) {
+          const id = String(ad.id ?? '')
+          if (!/^\d{1,30}$/.test(id)) continue
+          await this.prisma.mktAdDay.updateMany({ where: { tenantId, platform: 'meta', level: 'ad', entityId: id }, data: { creative: parseMetaCreative(ad) } })
+        }
+      } catch (err) {
+        this.logger.warn(`Meta (criativos): ${(err as Error).message}`)
+      }
+    }
+    return { rows, backfill: { backfillDone: true } }
+  }
+
+  private async storeAdDays(tenantId: string, rows: AdDayRow[]) {
+    if (!rows.length) return 0
+    const col = <K extends keyof AdDayRow>(k: K) => rows.map((r) => (r[k] === null || r[k] === undefined ? '' : String(r[k])))
+    await this.prisma.$executeRaw`
+      INSERT INTO mkt_ad_days (id, "tenantId", platform, level, "entityId", name, "campaignId", "campaignName", "parentId", objective, date, spend, impressions, reach, clicks, leads, conversations, conversions, "videoViews", "updatedAt")
+      SELECT gen_random_uuid(), ${tenantId}::uuid, x.p, x.lv, x.e, x.n, x.c, x.cn, nullif(x.pa, ''), nullif(x.o, ''), x.d::date, x.s::numeric, x.im::int, nullif(x.re, '')::int, x.cl::int, x.le::int, x.co::int, x.cv::numeric, nullif(x.vv, '')::int, now()
+      FROM unnest(${col('platform')}::text[], ${col('level')}::text[], ${col('entityId')}::text[], ${col('name')}::text[], ${col('campaignId')}::text[], ${col('campaignName')}::text[], ${col('parentId')}::text[],
+        ${col('objective')}::text[], ${col('date')}::text[], ${col('spend')}::text[], ${col('impressions')}::text[], ${col('reach')}::text[], ${col('clicks')}::text[], ${col('leads')}::text[],
+        ${col('conversations')}::text[], ${col('conversions')}::text[], ${col('videoViews')}::text[])
+        AS x(p, lv, e, n, c, cn, pa, o, d, s, im, re, cl, le, co, cv, vv)
+      ON CONFLICT ("tenantId", platform, level, "entityId", date) DO UPDATE SET name = EXCLUDED.name, "campaignId" = EXCLUDED."campaignId", "campaignName" = EXCLUDED."campaignName",
+        "parentId" = EXCLUDED."parentId", objective = EXCLUDED.objective, spend = EXCLUDED.spend, impressions = EXCLUDED.impressions, reach = EXCLUDED.reach, clicks = EXCLUDED.clicks,
+        leads = EXCLUDED.leads, conversations = EXCLUDED.conversations, conversions = EXCLUDED.conversions, "videoViews" = EXCLUDED."videoViews", "updatedAt" = now()`
+    return rows.length
+  }
+
+  private async storeBreakdowns(tenantId: string, list: BreakdownDayRow[]) {
+    const rows = [...new Map(list.map((r) => [`${r.platform}|${r.date}|${r.campaignId}|${r.dimension}|${r.key}`, r])).values()]
+    if (!rows.length) return 0
+    const col = <K extends keyof BreakdownDayRow>(k: K) => rows.map((r) => String(r[k]))
+    await this.prisma.$executeRaw`
+      INSERT INTO mkt_ad_breakdown_days (id, "tenantId", platform, date, "campaignId", dimension, key, spend, impressions, clicks, leads, "updatedAt")
+      SELECT gen_random_uuid(), ${tenantId}::uuid, x.p, x.d::date, x.c, x.dim, x.k, x.s::numeric, x.im::int, x.cl::int, x.le::int, now()
+      FROM unnest(${col('platform')}::text[], ${col('date')}::text[], ${col('campaignId')}::text[], ${col('dimension')}::text[], ${col('key')}::text[], ${col('spend')}::text[], ${col('impressions')}::text[], ${col('clicks')}::text[], ${col('leads')}::text[])
+        AS x(p, d, c, dim, k, s, im, cl, le)
+      ON CONFLICT ("tenantId", platform, date, "campaignId", dimension, key) DO UPDATE SET spend = EXCLUDED.spend, impressions = EXCLUDED.impressions, clicks = EXCLUDED.clicks, leads = EXCLUDED.leads, "updatedAt" = now()`
+    return rows.length
+  }
+
+  // ---------- Instagram e Facebook orgânicos ----------
+
+  private async syncMetaOrganic(tenantId: string, c: IntegrationsConfig) {
+    const token = decrypt(c.metaAds.tokenEnc!)
+    const auth = { headers: { Authorization: `Bearer ${token}` } }
+    const until = Math.floor(Date.now() / 1000)
+    const since = until - 28 * 86_400
+    const day = today()
+    let rows = 0
+    const posts: SocialPostRow[] = []
+    const errors: string[] = []
+    const ig = c.metaOrganic.instagramId
+    if (ig) {
+      try {
+        const profile = await this.getJson(`${GRAPH}/${ig}?fields=followers_count,media_count`, auth, metaError)
+        const daily = new Map<string, Record<string, number>>()
+        for (const metric of ['reach', 'profile_views', 'website_clicks']) {
+          try {
+            const r = await this.getJson(`${GRAPH}/${ig}/insights?metric=${metric}&period=day&since=${since}&until=${until}`, auth, metaError)
+            for (const [d, v] of parseDailyInsights(r.data)) daily.set(d, { ...(daily.get(d) ?? {}), ...v })
+          } catch {
+            // Métrica que a conta ou a versão da API não oferece: fica "Não disponível".
+          }
+        }
+        daily.set(day, { ...(daily.get(day) ?? {}), followers: Number(profile.followers_count ?? 0) })
+        rows += await this.storeProfileDays(tenantId, 'instagram', ig, daily, { reach: 'reach', profileViews: 'profile_views', websiteClicks: 'website_clicks' })
+        const media = (await this.graphAll(`${GRAPH}/${ig}/media?fields=id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count&limit=50`, token)).slice(0, 100)
+        for (const m of media) {
+          if (Date.parse(String(m.timestamp ?? '')) < Date.now() - 120 * 86_400_000) continue
+          let insights: Record<string, number> = {}
+          for (const metrics of ['reach,saved,shares,views', 'reach,saved']) {
+            try {
+              insights = parsePostInsights((await this.getJson(`${GRAPH}/${m.id}/insights?metric=${metrics}`, auth, metaError)).data)
+              break
+            } catch {
+              // tenta a lista menor (publicações antigas não têm "views").
+            }
+          }
+          const p = parseIgMedia(m, insights)
+          if (p) posts.push(p)
+        }
+      } catch (err) {
+        errors.push(`Instagram: ${(err as Error).message}`)
+      }
+    }
+    const page = c.metaOrganic.pageId
+    if (page) {
+      try {
+        const info = await this.getJson(`${GRAPH}/${page}?fields=access_token,followers_count,fan_count`, auth, metaError)
+        const pageToken = String(info.access_token ?? '') || token
+        const pAuth = { headers: { Authorization: `Bearer ${pageToken}` } }
+        const daily = new Map<string, Record<string, number>>()
+        for (const metric of ['page_impressions_unique', 'page_views_total', 'page_post_engagements']) {
+          try {
+            const r = await this.getJson(`${GRAPH}/${page}/insights?metric=${metric}&period=day&since=${since}&until=${until}`, pAuth, metaError)
+            for (const [d, v] of parseDailyInsights(r.data)) daily.set(d, { ...(daily.get(d) ?? {}), ...v })
+          } catch {
+            // idem: métrica indisponível.
+          }
+        }
+        daily.set(day, { ...(daily.get(day) ?? {}), followers: Number(info.followers_count ?? info.fan_count ?? 0) })
+        rows += await this.storeProfileDays(tenantId, 'facebook', page, daily, { reach: 'page_impressions_unique', profileViews: 'page_views_total' })
+        const list = (await this.graphAll(`${GRAPH}/${page}/posts?fields=id,message,created_time,permalink_url,status_type,shares,reactions.summary(true).limit(0),comments.summary(true).limit(0)&limit=50`, pageToken)).slice(0, 100)
+        for (const p of list) {
+          const row = parseFbPost(p)
+          if (row) posts.push(row)
+        }
+      } catch (err) {
+        errors.push(`Facebook: ${(err as Error).message}`)
+      }
+    }
+    for (const p of posts) {
+      const data = { publishedAt: p.publishedAt, format: p.format, caption: p.caption, permalink: p.permalink, likes: p.likes, comments: p.comments, shares: p.shares, saves: p.saves, reach: p.reach, impressions: p.impressions, videoViews: p.videoViews }
+      await this.prisma.mktSocialPost.upsert({ where: { tenantId_network_postId: { tenantId, network: p.network, postId: p.postId } }, create: { tenantId, network: p.network, postId: p.postId, ...data }, update: data })
+    }
+    rows += posts.length
+    if (errors.length && !rows) throw new Error(errors.join(' · '))
+    return { rows, backfill: undefined as SyncState | undefined }
+  }
+
+  private async storeProfileDays(tenantId: string, network: string, profileId: string, daily: Map<string, Record<string, number>>, map: { reach?: string; profileViews?: string; websiteClicks?: string }) {
+    let n = 0
+    for (const [date, v] of daily) {
+      const pick = (k?: string) => (k && v[k] !== undefined ? Math.round(v[k]!) : undefined)
+      const data = { followers: pick('followers'), reach: pick(map.reach), profileViews: pick(map.profileViews), websiteClicks: pick(map.websiteClicks) }
+      const clean = Object.fromEntries(Object.entries(data).filter(([, x]) => x !== undefined))
+      await this.prisma.mktSocialProfileDay.upsert({ where: { tenantId_network_profileId_date: { tenantId, network, profileId, date: new Date(`${date}T00:00:00Z`) } }, create: { tenantId, network, profileId, date: new Date(`${date}T00:00:00Z`), ...clean }, update: clean })
+      n++
+    }
+    return n
+  }
+
+  // ---------- TikTok ----------
+
+  private async syncTikTok(tenantId: string, c: IntegrationsConfig, st: SyncState) {
+    const token = decrypt(c.tiktok.tokenEnc!)
+    const end = today()
+    const ranges: { start: string; end: string }[] = []
+    // O relatório diário do TikTok aceita até 30 dias por pedido.
+    if (!st.backfillDone) for (let i = 0; i < 3; i++) ranges.push({ start: addDays(end, -(i + 1) * 30 + 1), end: addDays(end, -i * 30) })
+    else ranges.push({ start: addDays(end, -7), end })
+    let rows = 0
+    const levels = [
+      { level: 'campaign' as const, data: 'AUCTION_CAMPAIGN', dim: 'campaign_id', attrs: ['campaign_name', 'objective_type'] },
+      { level: 'adset' as const, data: 'AUCTION_ADGROUP', dim: 'adgroup_id', attrs: ['adgroup_name', 'campaign_id', 'campaign_name'] },
+      { level: 'ad' as const, data: 'AUCTION_AD', dim: 'ad_id', attrs: ['ad_name', 'adgroup_id', 'campaign_id', 'campaign_name'] },
+    ]
+    for (const adv of c.tiktok.advertiserIds) {
+      for (const r of ranges) {
+        for (const l of levels) {
+          for (let page = 1; page <= 20; page++) {
+            const q = new URLSearchParams({
+              advertiser_id: adv,
+              report_type: 'BASIC',
+              data_level: l.data,
+              dimensions: JSON.stringify([l.dim, 'stat_time_day']),
+              metrics: JSON.stringify(['spend', 'impressions', 'reach', 'clicks', 'conversion', 'video_play_actions', ...l.attrs]),
+              start_date: r.start,
+              end_date: r.end,
+              page: String(page),
+              page_size: '1000',
+            })
+            const body = (await this.getJson(`${TIKTOK_API}/report/integrated/get/?${q}`, { headers: { 'Access-Token': token } })) as { code?: number; message?: string; data?: { page_info?: { total_page?: number } } }
+            if (body.code !== 0) throw new Error(`O TikTok recusou: ${body.message ?? body.code}`)
+            rows += await this.storeAdDays(tenantId, parseTikTokReport(body.data, l.level))
+            if ((body.data?.page_info?.total_page ?? 1) <= page) break
+          }
+        }
+      }
+    }
+    return { rows, backfill: { backfillDone: true } }
+  }
+
+  // ---------- Search Console ----------
+
+  private async scToken(tenantId: string) {
+    const ga = await this.settings.get<Ga4Settings>(tenantId, 'ga4', DEFAULT_GA4)
+    if (!ga.privateKeyEnc || !ga.clientEmail) throw new Error('Envie a conta de serviço em Configurações › Google Analytics.')
+    const body = await this.getJson(GA_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: signJwt(ga.clientEmail, decrypt(ga.privateKeyEnc), Date.now(), SC_SCOPE) }),
+    }, () => 'O Google recusou a conta de serviço.')
+    return String(body.access_token)
+  }
+
+  private async syncSearchConsole(tenantId: string, c: IntegrationsConfig, st: SyncState) {
+    const token = await this.scToken(tenantId)
+    const site = encodeURIComponent(c.searchConsole.siteUrl)
+    // O Search Console tem atraso de 2 a 3 dias: pede os 4 dias recentes e, aos poucos, os últimos 90.
+    const plan = daysToSync(today(), st.backfillDone ? null : (st.backfillFrom ?? null), BACKFILL_DAYS, 4, st.backfillDone ? 0 : 15)
+    let rows = 0
+    for (const date of plan.days) {
+      const all: SeoRow[] = []
+      for (const [kind, dims, limit] of [['total', [], 1], ['query', ['query'], 500], ['page', ['page'], 500]] as const) {
+        const body = await this.getJson(`https://www.googleapis.com/webmasters/v3/sites/${site}/searchAnalytics/query`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ startDate: date, endDate: date, dimensions: dims, rowLimit: limit }),
+        }, (s) => (s === 403 ? 'Sem acesso à propriedade do Search Console: adicione a conta de serviço como usuário.' : `O Search Console recusou (${s}).`))
+        all.push(...parseSearchAnalytics(body, date, kind))
+      }
+      // Troca o dia inteiro: consultas que saíram do topo não ficam com números antigos.
+      await this.prisma.$transaction([
+        this.prisma.mktSeoDay.deleteMany({ where: { tenantId, date: new Date(`${date}T00:00:00Z`) } }),
+        this.prisma.mktSeoDay.createMany({ data: all.map((r) => ({ tenantId, date: new Date(`${r.date}T00:00:00Z`), kind: r.kind, key: r.key, clicks: r.clicks, impressions: r.impressions, position: r.position })), skipDuplicates: true }),
+      ])
+      rows += all.length
+    }
+    return { rows, backfill: { backfillFrom: plan.nextBackfill, backfillDone: st.backfillDone || plan.done } }
+  }
+}

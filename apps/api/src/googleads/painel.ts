@@ -115,8 +115,9 @@ export function panelPeriod(from?: string, to?: string) {
  * manda ao CRM o número e o nome das campanhas e o investimento dos últimos 35 dias por dia, campanha e palavra-chave.
  */
 export function adsScript(url: string) {
-  return `/** CRM Usaparts: envia ao CRM as campanhas (número e nome) e o investimento por dia, campanha e palavra-chave
- *  dos últimos 35 dias. Programe para rodar 1 vez por dia (Frequência: Diariamente). Só lê a conta; não altera nada. */
+  return `/** CRM Usaparts: envia ao CRM as campanhas (número e nome), o investimento por dia, campanha e palavra-chave e os
+ *  detalhes (termos de pesquisa, dispositivo, rede, região, anúncios, grupos, páginas de destino e tipo de campanha)
+ *  dos últimos 35 dias. Programe para rodar 1 vez por dia ou de hora em hora. Só lê a conta; não altera nada. */
 var CRM = '${url}';
 function main() {
   var lista = [];
@@ -147,6 +148,40 @@ function main() {
     while (rk.hasNext()) { var k = rk.next(); var y = m(k); y.d = k.segments.date; y.c = String(k.campaign.id); y.g = String(k.adGroup.id); y.k = String(k.adGroupCriterion.criterionId); y.t = k.adGroupCriterion.keyword.text; y.m = k.adGroupCriterion.keyword.matchType; kw.push(y); }
   } catch (e) { Logger.log('Sem palavras-chave: ' + e); }
   partes(kw, function (p) { return { stats: { from: de, to: ate, keywords: p } }; }, 'dias de palavra-chave');
+
+  // Detalhes para o Marketing Inteligente (cada consulta separada: se uma não existir na conta, as outras seguem).
+  var det = [];
+  var pega = function (nome, gaql, linha) {
+    try {
+      var it = AdsApp.search(gaql + periodo);
+      while (it.hasNext()) { var r = it.next(); var x = m(r); x.d = r.segments.date; x.c = String(r.campaign.id); x.val = Number(r.metrics.conversionsValue || 0); linha(r, x); det.push(x); }
+    } catch (e) { Logger.log('Sem ' + nome + ': ' + e); }
+  };
+  var mv = ', metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions, metrics.conversions_value';
+  pega('tipo de campanha', 'SELECT segments.date, campaign.id, campaign.advertising_channel_type, metrics.search_impression_share' + mv + ' FROM campaign', function (r, x) { x.dim = 'type'; x.k = String(r.campaign.advertisingChannelType); x.l = x.k; var s = Number(r.metrics.searchImpressionShare); if (s > 0 && s <= 1) x.is = s; });
+  pega('dispositivo', 'SELECT segments.date, campaign.id, segments.device' + mv + ' FROM campaign', function (r, x) { x.dim = 'device'; x.k = String(r.segments.device); x.l = x.k; });
+  pega('rede', 'SELECT segments.date, campaign.id, segments.ad_network_type' + mv + ' FROM campaign', function (r, x) { x.dim = 'network'; x.k = String(r.segments.adNetworkType); x.l = x.k; });
+  pega('grupo de anúncios', 'SELECT segments.date, campaign.id, ad_group.id, ad_group.name' + mv + ' FROM ad_group', function (r, x) { x.dim = 'adgroup'; x.k = String(r.adGroup.id); x.l = r.adGroup.name; });
+  pega('anúncio', 'SELECT segments.date, campaign.id, ad_group_ad.ad.id, ad_group_ad.ad.name, ad_group_ad.ad.type, ad_group.name' + mv + ' FROM ad_group_ad', function (r, x) { x.dim = 'ad'; x.k = String(r.adGroupAd.ad.id); x.l = (r.adGroupAd.ad.name || r.adGroup.name + ' · ' + r.adGroupAd.ad.type); });
+  pega('página de destino', 'SELECT segments.date, campaign.id, landing_page_view.unexpanded_final_url' + mv + ' FROM landing_page_view', function (r, x) { x.dim = 'landing'; x.k = String(r.landingPageView.unexpandedFinalUrl); x.l = x.k; });
+  var regioes = [];
+  pega('região', 'SELECT segments.date, campaign.id, segments.geo_target_region' + mv + ' FROM geographic_view', function (r, x) { x.dim = 'region'; x.k = String(r.segments.geoTargetRegion || '').replace('geoTargetConstants/', ''); x.l = x.k; if (x.k && regioes.indexOf(x.k) < 0) regioes.push(x.k); });
+  if (regioes.length) {
+    try {
+      var nomes = {};
+      var rg = AdsApp.search('SELECT geo_target_constant.id, geo_target_constant.name FROM geo_target_constant WHERE geo_target_constant.id IN (' + regioes.slice(0, 500).join(',') + ')');
+      while (rg.hasNext()) { var g = rg.next(); nomes[String(g.geoTargetConstant.id)] = g.geoTargetConstant.name; }
+      for (var j = 0; j < det.length; j++) if (det[j].dim === 'region' && nomes[det[j].k]) det[j].l = nomes[det[j].k];
+    } catch (e) { Logger.log('Sem nomes das regiões: ' + e); }
+  }
+  partes(det, function (p) { return { detail: { from: de, to: ate, rows: p } }; }, 'linhas de detalhe');
+
+  var termos = [];
+  try {
+    var rt = AdsApp.search('SELECT segments.date, campaign.id, ad_group.id, search_term_view.search_term, metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.conversions FROM search_term_view' + periodo + ' AND metrics.clicks > 0');
+    while (rt.hasNext()) { var t = rt.next(); var z = m(t); z.d = t.segments.date; z.c = String(t.campaign.id); z.g = String(t.adGroup.id); z.t = t.searchTermView.searchTerm; termos.push(z); }
+  } catch (e) { Logger.log('Sem termos de pesquisa: ' + e); }
+  partes(termos, function (p) { return { terms: { from: de, to: ate, rows: p } }; }, 'termos de pesquisa');
 }
 function partes(linhas, corpo, nome) {
   for (var i = 0; i < linhas.length; i += 3000) { enviar(corpo(linhas.slice(i, i + 3000)), Math.min(3000, linhas.length - i) + ' ' + nome); Utilities.sleep(4000); }

@@ -2,6 +2,22 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.75.0",
+      "date": "2026-10-21",
+      "title": "Marketing Inteligente completo: Google Ads detalhado, Meta, TikTok, redes sociais, SEO, planejamento, alertas, PDF/Excel e IA",
+      "changes": [
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Google Ads detalhado: termos de pesquisa, tipo de campanha (com parcela de impressões), dispositivo, rede, região, anúncios, grupos e páginas de destino. Sugestão de palavras negativas (termos com palavra de alerta como emprego, curso, grátis, ou com gasto sem conversão): você decide Negativar ou Manter e baixa a lista para colar no Google Ads. O CRM não altera a conta." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Meta Ads e TikTok Ads: investimento, alcance, cliques, leads e conversas por campanha, conjunto e anúncio, com o criativo, aviso de anúncio cansado e, na Meta, idade, gênero, região e posicionamento. Os custos entram no investimento e no ROAS, e o lead entra na campanha pelo utm_campaign." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Redes sociais (Instagram e Facebook): seguidores, alcance, publicações com melhor desempenho, formatos e temas, e calendário editorial para planejar os conteúdos. SEO pelo Search Console: cliques, impressões, posição, consultas, páginas e oportunidades." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Planejamento: orçamento do mês por plataforma e por campanha, metas de leads, CPL, vendas e faturamento, projeção até o fim do mês e cenários de investimento (estimativas, não promessas)." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Alertas configuráveis (9 tipos: gasto perto do limite, campanha sem leads, alta do CPL, queda de leads ou faturamento, leads sem atendimento, meta abaixo do ritmo, leads sem UTM e dados desatualizados), conferidos de hora em hora, avisando na tela e por e-mail. Com Testar agora." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Relatórios em PDF e Excel para baixar na hora (também no Dashboard executivo) e como anexo dos relatórios por e-mail." },
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Resumo escrito pela IA (Gemini) em Recomendações e, se escolhido, no relatório por e-mail. A IA recebe só números agregados, nunca nomes, telefones ou vendedores, e nada é aplicado automaticamente." },
+        { "type": "melhoria", "area": "Configurações", "text": "Configurações › Marketing Inteligente mostra a última sincronização de cada integração, com Sincronizar agora, e a lista de palavras de alerta das negativas. As integrações sincronizam sozinhas (Meta e TikTok a cada 3 h, redes e Search Console a cada 6 h)." },
+        { "type": "melhoria", "area": "Google Ads", "text": "Script novo do Google Ads com o detalhamento e os termos de pesquisa: cole a versão nova que está em Configurações › Google Ads." }
+      ]
+    },
+    {
       "version": "0.74.0",
       "date": "2026-10-20",
       "title": "Marketing Inteligente: dashboard executivo, funil, campanhas, recomendações e relatórios automáticos",

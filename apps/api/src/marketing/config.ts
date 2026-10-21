@@ -4,6 +4,10 @@
  */
 import { type AttributionModel, DAY_MS, type Filters, type QualifiedRule } from './metricas'
 
+export const GRAPH = 'https://graph.facebook.com/v23.0'
+export const TIKTOK_API = 'https://business-api.tiktok.com/open_api/v1.3'
+export const SC_SCOPE = 'https://www.googleapis.com/auth/webmasters.readonly'
+
 export const CONFIG_KEY = 'mkt_config'
 export const INTEGRATIONS_KEY = 'mkt_integracoes'
 export const REPORTS_KEY = 'mkt_relatorios'
@@ -15,6 +19,8 @@ export interface MarketingConfig {
   fixedNote: string
   marketingOriginIds: string[]
   attribution: { model: AttributionModel; windowDays: number }
+  /** Palavras que levam um termo de pesquisa à lista de sugestões de negativas (null = lista padrão). */
+  negativeWords: string[] | null
   updatedAt: string | null
 }
 export const DEFAULT_CONFIG: MarketingConfig = {
@@ -24,6 +30,7 @@ export const DEFAULT_CONFIG: MarketingConfig = {
   fixedNote: '',
   marketingOriginIds: [],
   attribution: { model: 'ultimo', windowDays: 90 },
+  negativeWords: null,
   updatedAt: null,
 }
 
@@ -41,6 +48,12 @@ export function cleanConfig(input: Partial<MarketingConfig>, current: MarketingC
     fixedNote: String(input.fixedNote ?? current.fixedNote).slice(0, 200),
     marketingOriginIds: [...new Set((input.marketingOriginIds ?? current.marketingOriginIds).filter((id) => validOrigins.has(id)))].slice(0, 100),
     attribution: { model: input.attribution?.model === 'primeiro' ? 'primeiro' : 'ultimo', windowDays: window },
+    negativeWords:
+      input.negativeWords === undefined
+        ? current.negativeWords
+        : input.negativeWords === null
+          ? null
+          : [...new Set(input.negativeWords.map((w) => String(w).trim().toLowerCase().slice(0, 40)).filter(Boolean))].slice(0, 200),
     updatedAt: new Date().toISOString(),
   }
 }
@@ -102,6 +115,7 @@ export function integrationsView(c: IntegrationsConfig) {
 // ---------- Relatórios automáticos ----------
 
 export const REPORT_SECTIONS = [
+  { key: 'resumo_ia', label: 'Resumo do período escrito pela IA (Gemini), a partir dos números agregados' },
   { key: 'kpis', label: 'Indicadores principais (investimento, leads, vendas, faturamento, CPL, ROAS, ROI)' },
   { key: 'plataformas', label: 'Resultado por plataforma' },
   { key: 'campanhas', label: 'Campanhas (as 15 com mais investimento ou faturamento)' },
@@ -145,6 +159,8 @@ export interface ReportSchedule {
   period: ReportPeriod
   sections: ReportSection[]
   filters: Filters
+  /** Anexo do e-mail: nenhum, PDF ou Excel. */
+  attach: 'none' | 'pdf' | 'xlsx'
   createdBy: string | null
   /** Criado (ou reativado) em: não manda os envios de antes disso. */
   createdAt: string
@@ -197,6 +213,7 @@ export function cleanSchedule(input: Partial<ReportSchedule>, prev: ReportSchedu
     period,
     sections,
     filters: cleanFilters(input.filters ?? prev?.filters ?? {}),
+    attach: input.attach === 'pdf' || input.attach === 'xlsx' ? input.attach : input.attach === 'none' ? 'none' : (prev?.attach ?? 'none'),
     createdBy: prev?.createdBy ?? by,
     createdAt: prev && (prev.active || !(input.active ?? prev.active)) ? prev.createdAt : new Date().toISOString(),
     lastSentAt: prev?.lastSentAt ?? null,
