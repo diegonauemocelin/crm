@@ -645,16 +645,9 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
           {!monitor && <ReminderButton conversationId={d.conversation.id} />}
           {can('monitoramento', 'create') && <NoteButton conversationId={d.conversation.id} monitor={monitor} />}
           {d.conversation.phone && (
-            <Button asChild size="sm" variant="outline" title="Ligar pelo telefone (linha comum)" aria-label="Ligar">
+            <Button asChild size="sm" variant="outline" title="Ligar (pelo telefone; a ligação pelo WhatsApp é atendida no celular)" aria-label="Ligar">
               <a href={`tel:${d.conversation.phone}`}>
                 <PhoneIcon /> <span className="hidden @4xl/head:inline">Ligar</span>
-              </a>
-            </Button>
-          )}
-          {d.conversation.phone && d.conversation.category !== 'GRUPO' && (
-            <Button asChild size="sm" variant="outline" title="Ligar pelo WhatsApp: abre esta conversa no WhatsApp do computador (o mesmo número conectado ao CRM); lá, clique no ícone do telefone" aria-label="Ligar pelo WhatsApp">
-              <a href={`whatsapp://send?phone=${d.conversation.phone.replace(/\D/g, '')}`}>
-                <PhoneOutgoingIcon /> <span className="hidden @4xl/head:inline">WhatsApp</span>
               </a>
             </Button>
           )}

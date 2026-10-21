@@ -2,14 +2,6 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
-      "version": "0.78.2",
-      "date": "2026-10-21",
-      "title": "Chat: ligar pelo WhatsApp a partir da conversa",
-      "changes": [
-        { "type": "novo", "area": "Chat WhatsApp", "text": "Botão \"WhatsApp\" ao lado de \"Ligar\" na conversa: abre o mesmo contato no WhatsApp do computador (instalado e conectado ao número da empresa), onde o atendente clica no telefone para fazer a ligação de voz ou vídeo. O botão \"Ligar\" continua para a linha telefônica comum." }
-      ]
-    },
-    {
       "version": "0.78.1",
       "date": "2026-10-21",
       "title": "Chat: ligação de número escondido mostra o cliente",
