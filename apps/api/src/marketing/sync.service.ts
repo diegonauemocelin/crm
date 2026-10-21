@@ -279,7 +279,18 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
         }
         daily.set(day, { ...(daily.get(day) ?? {}), followers: Number(info.followers_count ?? info.fan_count ?? 0) })
         rows += await this.storeProfileDays(tenantId, 'facebook', page, daily, { reach: 'page_impressions_unique', profileViews: 'page_views_total' })
-        const list = (await this.graphAll(`${GRAPH}/${page}/posts?fields=id,message,created_time,permalink_url,status_type,shares,reactions.summary(true).limit(0),comments.summary(true).limit(0)&limit=50`, pageToken)).slice(0, 100)
+        // Publicações da própria página: published_posts pede só pages_read_engagement; posts pede também pages_read_user_content.
+        const postFields = 'id,message,created_time,permalink_url,status_type,shares,reactions.summary(true).limit(0),comments.summary(true).limit(0)&limit=50'
+        let list: Record<string, unknown>[] = []
+        try {
+          list = (await this.graphAll(`${GRAPH}/${page}/published_posts?fields=${postFields}`, pageToken)).slice(0, 100)
+        } catch {
+          try {
+            list = (await this.graphAll(`${GRAPH}/${page}/posts?fields=${postFields}`, pageToken)).slice(0, 100)
+          } catch (err) {
+            errors.push(`Facebook: publicações da página não lidas (${/pages_read_user_content|#10\b/.test((err as Error).message) ? 'adicione a permissão pages_read_user_content no app e gere o token de novo' : (err as Error).message}). Seguidores da página foram atualizados.`)
+          }
+        }
         for (const p of list) {
           const row = parseFbPost(p)
           if (row) posts.push({ ...row, profileId: page })

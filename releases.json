@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.77.2",
+      "date": "2026-10-21",
+      "title": "Facebook: publicações da página sem pedir permissão extra",
+      "changes": [
+        { "type": "correcao", "area": "Marketing Inteligente", "text": "As publicações da página do Facebook passam a ser lidas pelo endereço das publicações da própria página, que só pede pages_read_engagement. Se a Meta recusar, os seguidores da página continuam atualizados e o aviso diz qual permissão acrescentar (pages_read_user_content)." }
+      ]
+    },
+    {
       "version": "0.77.1",
       "date": "2026-10-21",
       "title": "Instagram: sincroniza o que a permissão permite e diz o que falta no token da Meta",
