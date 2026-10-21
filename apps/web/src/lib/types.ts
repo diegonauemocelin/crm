@@ -55,6 +55,8 @@ export interface Branding {
   allowLayoutChoice: boolean
   defaultScreens?: ScreenModel
   supportEmail: string
+  /** Cor da marca (logo sem imagem, relatórios e e-mails); vazio = a cor de ação (primaryColor). */
+  brandColor?: string
   companyInfo?: string
   logoUrl: string | null
   logoDarkUrl: string | null

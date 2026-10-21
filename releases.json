@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.81.0",
+      "date": "2026-10-21",
+      "title": "Cores separadas para a marca e para os botões, com prévia e paletas prontas",
+      "changes": [
+        { "type": "novo", "area": "Configurações", "text": "Em Configurações › Marca, as cores ficam separadas: cor da marca (logo sem imagem, faixa e cartões dos relatórios em PDF e e-mail, e-mails do sistema), cor de ação (botões, caixas de marcação, chaves liga/desliga, opções escolhidas e links) e cor do menu. Assim a marca pode ser escura e os botões continuam se destacando." },
+        { "type": "novo", "area": "Configurações", "text": "Prévia ao vivo mostrando menu, botões, caixa marcada, chave, link e a faixa do relatório com as cores escolhidas; paletas prontas para aplicar com um clique; aviso quando uma cor fica difícil de ler; e botão para restaurar o padrão." },
+        { "type": "melhoria", "area": "Configurações", "text": "Quem já tinha uma cor salva continua igual: a cor da marca começa igual à cor de ação até alguém trocar." }
+      ]
+    },
+    {
       "version": "0.80.0",
       "date": "2026-10-21",
       "title": "Relatórios no padrão da marca e loja virtual (Magazord) no relatório",

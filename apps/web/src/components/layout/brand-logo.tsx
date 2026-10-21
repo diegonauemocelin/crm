@@ -16,7 +16,7 @@ export function BrandMark({ className, onDark = false }: { className?: string; o
   return (
     <div
       className={cn('flex size-8 items-center justify-center rounded-md text-sm font-bold', className)}
-      style={{ background: 'var(--brand)', color: 'var(--brand-foreground)' }}
+      style={{ background: 'var(--brand-identity, var(--brand))', color: 'var(--brand-identity-foreground, var(--brand-foreground))' }}
       aria-hidden
     >
       {initials}

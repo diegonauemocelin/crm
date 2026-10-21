@@ -107,7 +107,8 @@ export class MailService {
     branding: BrandingSettings,
     c: { title: string; greeting: string; body: string; buttonLabel?: string; buttonUrl?: string; footnote?: string },
   ) {
-    const color = /^#[0-9a-f]{6}$/i.test(branding.primaryColor) ? branding.primaryColor : '#1d4ed8'
+    const brand = branding.brandColor || branding.primaryColor
+    const color = /^#[0-9a-f]{6}$/i.test(brand) ? brand : '#1d4ed8'
     const button =
       c.buttonLabel && c.buttonUrl
         ? `<tr><td style="padding:8px 0 24px"><a href="${escapeHtml(c.buttonUrl)}" style="background:${color};color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;display:inline-block;font-weight:600">${escapeHtml(c.buttonLabel)}</a></td></tr>`

@@ -134,7 +134,7 @@ export class MarketingReportsService implements OnApplicationBootstrap, OnModule
     const link = `${env.appUrl}/marketing/executivo?de=${period.from}&ate=${period.to}`
     // Logo pelo endereço público do CRM (o e-mail não carrega imagem anexada em todos os programas).
     const logoUrl = branding.logoFileId ? `${env.appUrl}/api/files/public/${branding.logoFileId}` : null
-    const input = { schedule: sch, periodLabel, data, email, health, branding: { ...branding, logoUrl }, link, ai, store }
+    const input = { schedule: sch, periodLabel, data, email, health, branding: { ...branding, primaryColor: branding.brandColor || branding.primaryColor, logoUrl }, link, ai, store }
     const file = (format: 'pdf' | 'xlsx') => this.management.file(tenantId, format, { ...period, filters: sch.filters, sections: sch.sections.filter((x) => x !== 'resumo_ia'), title: sch.name })
     const attachments = sch.emails.length && (sch.attach === 'pdf' || sch.attach === 'xlsx') ? [await file(sch.attach)] : []
     // WhatsApp: sempre com o PDF (o resumo vai na legenda).

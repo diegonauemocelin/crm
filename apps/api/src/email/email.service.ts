@@ -348,7 +348,7 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     const [b, cfg] = await Promise.all([this.settings.branding(tenantId), this.config(tenantId)])
     const pub = publicBranding(b)
     const logoUrl = cfg.logoFileId ? fileUrl(cfg.logoFileId) : pub.logoUrl ? `${env.appUrl}${pub.logoUrl}` : null
-    return { appName: b.appName, color: b.primaryColor, logoUrl, footerText: cfg.footerText, social: cfg.social ?? {}, socialInFooter: cfg.socialInFooter ?? true, iconBase: `${env.appUrl}/api/public/e/icones` }
+    return { appName: b.appName, color: b.brandColor || b.primaryColor, logoUrl, footerText: cfg.footerText, social: cfg.social ?? {}, socialInFooter: cfg.socialInFooter ?? true, iconBase: `${env.appUrl}/api/public/e/icones` }
   }
 
   /** Pré-visualização com os dados de quem está editando (nada é rastreado). */

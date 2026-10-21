@@ -314,7 +314,7 @@ export class MarketingManagementService implements OnApplicationBootstrap, OnMod
       subtitle,
       sheets,
       footer,
-      color: branding.primaryColor,
+      color: branding.brandColor || branding.primaryColor,
       brandName: branding.shortName || branding.appName,
       logo: await this.logo(branding.logoFileId),
       info: branding.companyInfo || undefined,

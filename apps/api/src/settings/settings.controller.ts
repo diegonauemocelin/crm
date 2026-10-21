@@ -32,6 +32,7 @@ class BrandingDto {
   @ApiProperty() @IsString() @MaxLength(30) shortName!: string
   @ApiProperty() @Matches(HEX, { message: 'Cor inválida. Use o formato #RRGGBB.' }) primaryColor!: string
   @ApiProperty() @Matches(HEX, { message: 'Cor inválida. Use o formato #RRGGBB.' }) sidebarColor!: string
+  @ApiPropertyOptional() @IsOptional() @Matches(/^(#[0-9a-fA-F]{6})?$/, { message: 'Cor da marca inválida. Use o formato #RRGGBB.' }) brandColor?: string
   @ApiProperty() @IsString() @MaxLength(80) loginTitle!: string
   @ApiProperty() @IsString() @MaxLength(160) loginSubtitle!: string
   @ApiProperty({ enum: ['MODERN', 'CLASSIC'] }) @IsIn(['MODERN', 'CLASSIC']) defaultLayout!: 'MODERN' | 'CLASSIC'

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2Icon, ImageIcon, Loader2Icon, PlugZapIcon, SendIcon, Trash2Icon, UploadIcon, XCircleIcon } from 'lucide-react'
 import { type FormEvent, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { ColorsPreview, ColorWarnings, PalettePicker } from '@/components/branding-colors'
 import { useConfirm } from '@/components/confirm'
 import { LayoutPicker, type ModelChoice } from '@/components/layout-picker'
 import { ErrorState, TableSkeleton } from '@/components/page'
@@ -42,10 +43,11 @@ function useSaveBranding() {
   }
 }
 
-function ColorField({ id, label, value, onChange, disabled }: { id: string; label: string; value: string; onChange: (v: string) => void; disabled?: boolean }) {
+function ColorField({ id, label, hint, value, onChange, disabled }: { id: string; label: string; hint?: string; value: string; onChange: (v: string) => void; disabled?: boolean }) {
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       <div className="flex gap-2">
         <input
           type="color"
@@ -153,6 +155,7 @@ function BrandingEditor({ data }: { data: Branding }) {
   })
 
   const set = <K extends keyof BrandingForm>(k: K, v: BrandingForm[K]) => setForm({ ...form, [k]: v })
+  const colors = { brand: form.brandColor || form.primaryColor, action: form.primaryColor, nav: form.sidebarColor }
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -177,8 +180,27 @@ function BrandingEditor({ data }: { data: Branding }) {
               <Label htmlFor="b-short" required>Nome curto</Label>
               <Input id="b-short" required maxLength={30} value={form.shortName} onChange={(e) => set('shortName', e.target.value)} disabled={!canEdit} />
             </div>
-            <ColorField id="b-primary" label="Cor principal (botões e destaques)" value={form.primaryColor} onChange={(v) => set('primaryColor', v)} disabled={!canEdit} />
-            <ColorField id="b-nav" label="Cor do menu (layout Clássico e login)" value={form.sidebarColor} onChange={(v) => set('sidebarColor', v)} disabled={!canEdit} />
+            <div className="space-y-3 rounded-lg border p-3 sm:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium">Cores</p>
+                  <p className="text-xs text-muted-foreground">Escolha uma paleta pronta ou ajuste cada cor. A prévia mostra onde cada uma aparece.</p>
+                </div>
+                {canEdit && (
+                  <Button type="button" size="sm" variant="ghost" onClick={() => setForm({ ...form, primaryColor: '#1d4ed8', brandColor: '', sidebarColor: '#0f1e3d' })}>
+                    Restaurar o padrão
+                  </Button>
+                )}
+              </div>
+              <PalettePicker value={colors} onPick={(c) => setForm({ ...form, brandColor: c.brand, primaryColor: c.action, sidebarColor: c.nav })} disabled={!canEdit} />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <ColorField id="b-brand" label="Cor da marca" hint="Logo sem imagem, faixa e cartões dos relatórios (PDF e e-mail) e e-mails do sistema." value={form.brandColor || form.primaryColor} onChange={(v) => set('brandColor', v)} disabled={!canEdit} />
+                <ColorField id="b-primary" label="Cor de ação" hint="Botões, caixas de marcação, chaves liga/desliga, opções escolhidas, links e item selecionado." value={form.primaryColor} onChange={(v) => set('primaryColor', v)} disabled={!canEdit} />
+                <ColorField id="b-nav" label="Cor do menu" hint="Fundo do menu lateral (layout Clássico) e da tela de login." value={form.sidebarColor} onChange={(v) => set('sidebarColor', v)} disabled={!canEdit} />
+              </div>
+              <ColorWarnings colors={colors} />
+              <ColorsPreview colors={colors} appName={form.shortName || form.appName} />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="b-title">Título da tela de login</Label>
               <Input id="b-title" maxLength={80} value={form.loginTitle} onChange={(e) => set('loginTitle', e.target.value)} disabled={!canEdit} />
@@ -194,7 +216,7 @@ function BrandingEditor({ data }: { data: Branding }) {
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="b-info">Dados da empresa nos relatórios (opcional)</Label>
               <Input id="b-info" maxLength={200} placeholder="Ex.: usaparts.com.br · (49) 3664-0888 · Maravilha/SC" value={form.companyInfo ?? ''} onChange={(e) => set('companyInfo', e.target.value)} disabled={!canEdit} />
-              <p className="text-xs text-muted-foreground">Vai no rodapé do PDF e do e-mail dos relatórios, junto com o logo e a cor principal desta tela.</p>
+              <p className="text-xs text-muted-foreground">Vai no rodapé do PDF e do e-mail dos relatórios, junto com o logo e a cor da marca.</p>
             </div>
             <div className="sm:col-span-2">
               <FormError message={error} />

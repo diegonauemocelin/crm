@@ -5,7 +5,10 @@ import { PrismaService } from '../prisma/prisma.service'
 export interface BrandingSettings {
   appName: string
   shortName: string
+  /** Cor de ação: botões, caixas de marcação, chaves, links e foco. */
   primaryColor: string
+  /** Cor da marca (identidade): logo sem imagem e relatórios em PDF e e-mail. Vazio = a cor de ação. */
+  brandColor: string
   sidebarColor: string
   logoFileId: string | null
   logoDarkFileId: string | null
@@ -41,6 +44,7 @@ export const DEFAULT_BRANDING: BrandingSettings = {
   appName: 'CRM',
   shortName: '',
   primaryColor: '#1d4ed8',
+  brandColor: '',
   sidebarColor: '#0f1e3d',
   logoFileId: null,
   logoDarkFileId: null,
