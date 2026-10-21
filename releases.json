@@ -7,6 +7,7 @@
       "title": "Instagram: sincroniza o que a permissão permite e diz o que falta no token da Meta",
       "changes": [
         { "type": "correcao", "area": "Marketing Inteligente", "text": "Quando o token da Meta não tem todas as permissões do Instagram, os seguidores e o público são gravados assim mesmo (antes a conta inteira dava erro) e o aviso diz exatamente o que falta: instagram_basic para as publicações e instagram_manage_insights para alcance, interações e stories." },
+        { "type": "novo", "area": "Configurações", "text": "Botão Buscar página e Instagram no cartão Instagram e Facebook orgânicos: lista as páginas que o token da Meta alcança (as atribuídas ao usuário do sistema e as do Gerenciador de Negócios) com o Instagram ligado a cada uma, e preenche os IDs com um clique." },
         { "type": "melhoria", "area": "Configurações", "text": "A ajuda da Meta Ads em Configurações › Marketing Inteligente pede só ads_read para os anúncios; read_insights é da Página e fica no cartão do Instagram e Facebook. O erro de permissão no Testar conexão diz o que acrescentar." }
       ]
     },

@@ -171,6 +171,14 @@ export class MarketingController {
     return this.mkt.testIntegration(user, this.integrationKey(key))
   }
 
+  @Post('integracoes/metaOrganic/buscar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  metaAssets(@CurrentUser() user: AuthUser) {
+    this.mkt.assertCan(user, 'mi_config', 'edit')
+    return this.instagramSvc.metaAssets(user)
+  }
+
   @Post('integracoes/:key/sincronizar')
   @HttpCode(200)
   @Throttle({ default: { limit: 6, ttl: 60_000 } })

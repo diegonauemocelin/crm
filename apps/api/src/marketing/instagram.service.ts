@@ -327,19 +327,60 @@ export class MarketingInstagramService {
     return { list }
   }
 
-  /** Contas do Instagram que o token da empresa alcança (páginas do Gerenciador de Negócios com Instagram ligado). */
-  async discover(user: AuthUser, fetcher: typeof fetch = fetch) {
+  /**
+   * Páginas do Facebook e o Instagram ligado a cada uma que o token da empresa alcança: as atribuídas ao usuário do
+   * sistema (me/accounts) e as do Gerenciador de Negócios (páginas próprias e de clientes). Serve para achar os IDs.
+   */
+  async metaAssets(user: AuthUser, fetcher: typeof fetch = fetch) {
     const integ = { ...DEFAULT_INTEGRATIONS, ...(await this.settings.get<IntegrationsConfig>(user.tenantId, INTEGRATIONS_KEY, DEFAULT_INTEGRATIONS)) }
-    if (!integ.metaAds.tokenEnc) throw new BadRequestException('Cadastre o token da Meta em Configurações › Marketing Inteligente.')
+    if (!integ.metaAds.tokenEnc) throw new BadRequestException('Cadastre e salve o token da Meta no cartão Meta Ads antes de buscar.')
     const token = decrypt(integ.metaAds.tokenEnc)
-    const res = await fetcher(`${GRAPH}/me/accounts?fields=name,instagram_business_account{id,username,name}&limit=100`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000), redirect: 'error' })
-    const body = (await res.json().catch(() => null)) as { data?: { name?: string; instagram_business_account?: { id?: string; username?: string; name?: string } }[] } | null
-    if (!res.ok) throw new BadRequestException(metaError(res.status, body))
+    type PageRow = { id?: string; name?: string; instagram_business_account?: { id?: string; username?: string } }
+    const get = async <T>(path: string) => {
+      const res = await fetcher(`${GRAPH}/${path}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000), redirect: 'error' })
+      const body = (await res.json().catch(() => null)) as T & { error?: unknown }
+      if (!res.ok) throw new BadRequestException(metaError(res.status, body))
+      return body
+    }
+    const fields = 'id,name,instagram_business_account{id,username}'
+    const pages = new Map<string, { id: string; name: string; instagram: { id: string; username: string } | null }>()
+    const add = (list: PageRow[] | undefined) => {
+      for (const pg of list ?? []) {
+        if (!pg.id || !/^\d{5,30}$/.test(pg.id) || pages.has(pg.id)) continue
+        const ig = pg.instagram_business_account
+        pages.set(pg.id, { id: pg.id, name: String(pg.name ?? '').slice(0, 120), instagram: ig?.id && /^\d{5,30}$/.test(ig.id) ? { id: ig.id, username: cleanUsername(ig.username) ?? '' } : null })
+      }
+    }
+    let firstError: unknown = null
+    try {
+      add((await get<{ data?: PageRow[] }>(`me/accounts?fields=${encodeURIComponent(fields)}&limit=100`)).data)
+    } catch (err) {
+      firstError = err
+    }
+    // Páginas do Gerenciador que não foram atribuídas uma a uma ao usuário do sistema.
+    try {
+      const biz = (await get<{ data?: { id?: string }[] }>('me/businesses?fields=id,name&limit=25')).data ?? []
+      for (const b of biz.filter((x) => x.id && /^\d{5,30}$/.test(x.id))) {
+        for (const edge of ['owned_pages', 'client_pages']) {
+          try {
+            add((await get<{ data?: PageRow[] }>(`${b.id}/${edge}?fields=${encodeURIComponent(fields)}&limit=100`)).data)
+          } catch {
+            // o token pode não ter acesso a uma das listas
+          }
+        }
+      }
+    } catch (err) {
+      firstError ??= err
+    }
+    if (!pages.size && firstError) throw firstError
+    return { pages: [...pages.values()].sort((x, y) => x.name.localeCompare(y.name, 'pt-BR')) }
+  }
+
+  /** Contas do Instagram que o token da empresa alcança (para adicionar perfis com dados completos). */
+  async discover(user: AuthUser, fetcher: typeof fetch = fetch) {
+    const { pages } = await this.metaAssets(user, fetcher)
     return {
-      accounts: (body?.data ?? [])
-        .map((pg) => pg.instagram_business_account)
-        .filter((x): x is { id: string; username?: string; name?: string } => !!x?.id && /^\d{5,30}$/.test(x.id))
-        .map((x) => ({ id: x.id, username: cleanUsername(x.username) ?? '', name: String(x.name ?? '').slice(0, 120) })),
+      accounts: pages.filter((p) => p.instagram).map((p) => ({ id: p.instagram!.id, username: p.instagram!.username, name: p.name })),
     }
   }
 

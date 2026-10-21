@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2Icon, Loader2Icon, PlugZapIcon, XCircleIcon } from 'lucide-react'
+import { CheckCircle2Icon, Loader2Icon, PlugZapIcon, SearchIcon, XCircleIcon } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { toast } from 'sonner'
 import { MultiSelect } from '@/components/multi-select'
@@ -190,6 +190,7 @@ function IntegrationsCards({ initial, sync }: { initial: Integrations; sync: Syn
           { key: 'pageId', label: 'ID da página do Facebook', placeholder: 'Só números' },
           { key: 'instagramId', label: 'ID da conta profissional do Instagram', placeholder: 'Só números' },
         ]}
+        finder={(fill) => <MetaFinder fill={fill} />}
         help={<p>Adicione ao app os casos de uso da Página (pages_show_list, pages_read_engagement, read_insights) e do Instagram (instagram_basic, instagram_manage_insights) e gere o token do usuário do sistema de novo com essas permissões. O Instagram deve ser conta profissional ligada à página.</p>}
       />
       <Integration
@@ -222,7 +223,7 @@ function IntegrationsCards({ initial, sync }: { initial: Integrations; sync: Syn
   )
 }
 
-function Integration({ k, title, description, enabled, lastTest, initialValues, fields, hasToken, tokenLabel, help, onSaved, sync }: {
+function Integration({ k, title, description, enabled, lastTest, initialValues, fields, hasToken, tokenLabel, help, onSaved, sync, finder }: {
   k: keyof Integrations
   sync: SyncStates[keyof Integrations] | null
   title: string
@@ -235,6 +236,8 @@ function Integration({ k, title, description, enabled, lastTest, initialValues, 
   tokenLabel?: string
   help: ReactNode
   onSaved: (v: Integrations) => void
+  /** Ajuda para achar os IDs: recebe uma função que preenche os campos. */
+  finder?: (fill: (v: Record<string, string>) => void) => ReactNode
 }) {
   const { can } = useAuth()
   const canEdit = can('mi_config', 'edit')
@@ -289,6 +292,7 @@ function Integration({ k, title, description, enabled, lastTest, initialValues, 
             )}
           </div>
         ))}
+        {finder && canEdit && finder((v) => setValues((cur) => ({ ...cur, ...v })))}
         <div className="rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">{help}</div>
         {(sync?.lastOkAt || sync?.lastError) && (
           <p className={`text-xs ${sync.lastError ? 'text-red-600' : 'text-muted-foreground'}`}>
@@ -321,5 +325,41 @@ function Integration({ k, title, description, enabled, lastTest, initialValues, 
         </CardFooter>
       )}
     </Card>
+  )
+}
+
+/** Busca as páginas do Facebook e o Instagram ligado a cada uma (pelo token da Meta) e preenche os IDs com um clique. */
+function MetaFinder({ fill }: { fill: (v: Record<string, string>) => void }) {
+  const find = useMutation({
+    mutationFn: () => api.post<{ pages: { id: string; name: string; instagram: { id: string; username: string } | null }[] }>('/marketing/integracoes/metaOrganic/buscar'),
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const pages = find.data?.pages
+  return (
+    <div className="space-y-2">
+      <Button type="button" variant="outline" size="sm" onClick={() => find.mutate()} disabled={find.isPending}>
+        {find.isPending ? <Loader2Icon className="animate-spin" /> : <SearchIcon />} Buscar página e Instagram
+      </Button>
+      {pages && pages.length === 0 && (
+        <p className="text-xs text-muted-foreground">Nenhuma página encontrada. No Gerenciador de Negócios, atribua a página da Usaparts ao usuário do sistema (Atribuir ativos › Páginas) e busque de novo.</p>
+      )}
+      {pages && pages.length > 0 && (
+        <ul className="divide-y rounded-md border text-sm">
+          {pages.map((p) => (
+            <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+              <div className="min-w-0">
+                <p className="font-medium">{p.name || 'Página sem nome'}</p>
+                <p className="text-xs text-muted-foreground">
+                  Página {p.id} · {p.instagram ? `Instagram @${p.instagram.username || p.instagram.id} (${p.instagram.id})` : 'sem Instagram profissional ligado'}
+                </p>
+              </div>
+              <Button type="button" size="sm" variant="secondary" onClick={() => (fill({ pageId: p.id, instagramId: p.instagram?.id ?? '' }), toast.success('IDs preenchidos. Clique em Salvar.'))}>
+                Usar esta
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
