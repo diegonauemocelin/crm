@@ -271,10 +271,44 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
     const s = await this.config(tenantId)
     if (!s.enabled) throw new MagazordError('Integração com a Magazord desligada.')
     const storeId = s.storeId || 1
-    const d = await this.get<MzProductDetail>(s, `/v3/produtos/derivacao/${encodeURIComponent(derivationCode)}/detail`)
-    if (!d?.codigoProduto) throw new MagazordError(`Produto da derivação ${derivationCode} não encontrado.`)
-    const pages = this.page<MzPage>(await this.get(s, '/v2/site/paginas', { codigoDerivacao: derivationCode, id_loja: storeId, limit: 5 }))
+    let code = derivationCode
+    let d = await this.detail(s, code)
+    // O catálogo pode trazer o código do produto pai (na Usaparts, o da derivação seguido de "P"): busca as
+    // derivações dele e lê a primeira.
+    const parents = /p$/i.test(derivationCode) ? [derivationCode] : [`${derivationCode}P`, derivationCode]
+    for (const parent of parents) {
+      if (d) break
+      const ders = await this.get<{ codigo?: string | null; ativo?: boolean | null }[] | { codigo?: string | null }>(s, `/v2/site/produto/${encodeURIComponent(parent)}/derivacao`).catch(() => null)
+      const list = (Array.isArray(ders) ? ders : ders ? [ders] : []) as { codigo?: string | null; ativo?: boolean | null }[]
+      const first = list.find((x) => x?.codigo && x.ativo !== false) ?? list.find((x) => x?.codigo)
+      if (first?.codigo && first.codigo !== code) {
+        code = first.codigo
+        d = await this.detail(s, code)
+      }
+    }
+    if (!d) throw new MagazordError(`Produto ${derivationCode} não encontrado na consulta detalhada da Magazord (resposta: ${this.lastDetailShape || 'vazia'}).`)
+    const pages = this.page<MzPage>(await this.get(s, '/v2/site/paginas', { codigoDerivacao: code, id_loja: storeId, limit: 5 }))
     return { storeId, ...seoFromMagazord(d, pages.items[0] ?? null, storeId) }
+  }
+
+  private lastDetailShape = ''
+
+  /** GET /v3/produtos/derivacao/{codigo}/detail; aceita a resposta direta, em { data } ou em lista. */
+  private async detail(s: MagazordSettings, code: string): Promise<MzProductDetail | null> {
+    let raw: unknown
+    try {
+      raw = await this.get<unknown>(s, `/v3/produtos/derivacao/${encodeURIComponent(code)}/detail`)
+    } catch (err) {
+      this.lastDetailShape = (err as Error).message.slice(0, 120)
+      return null
+    }
+    let d = Array.isArray(raw) ? raw[0] : raw
+    if (d && typeof d === 'object' && !('codigoProduto' in d) && 'data' in d) d = (d as { data: unknown }).data
+    if (Array.isArray(d)) d = d[0]
+    if (d && typeof d === 'object' && (d as MzProductDetail).codigoProduto) return d as MzProductDetail
+    // Para o aviso de erro: só os nomes dos campos que vieram, sem os valores.
+    this.lastDetailShape = d && typeof d === 'object' ? `campos ${Object.keys(d).slice(0, 12).join(', ') || 'nenhum'}` : JSON.stringify(raw ?? null).slice(0, 60)
+    return null
   }
 
   /** Grava os textos: página (aba SEO) e produto x loja (Descrição Geral); só os campos informados. */

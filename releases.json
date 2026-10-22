@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.86.3",
+      "date": "2026-10-22",
+      "title": "SEO dos produtos: leitura pelo código do produto pai e aviso de erro mais claro",
+      "changes": [
+        { "type": "correcao", "area": "SEO do e-commerce", "text": "Quando a consulta detalhada não acha o produto pelo código do catálogo, o CRM procura o produto pai (código com P no fim) e lê pela derivação dele." },
+        { "type": "melhoria", "area": "SEO do e-commerce", "text": "Se ainda assim não achar, o aviso mostra o que a Magazord respondeu (código do erro ou os campos que vieram), para facilitar o ajuste." }
+      ]
+    },
+    {
       "version": "0.86.2",
       "date": "2026-10-22",
       "title": "SEO dos produtos: análise do catálogo corrigida",
