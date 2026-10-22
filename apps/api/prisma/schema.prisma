@@ -2019,3 +2019,35 @@ model MarketplaceAdDay {
   @@index([tenantId, marketplace, product, level, date])
   @@map("marketplace_ad_days")
 }
+
+/// Pergunta de frete feita num anúncio do marketplace, com a cotação da Magazord e a resposta (sugerida ou enviada).
+model MarketplaceQuestion {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  marketplace   String
+  questionId    String
+  itemId        String
+  itemTitle     String?
+  itemPermalink String?
+  sku           String?
+  buyerId       String?
+  text          String
+  cep           String?
+  /// frete, frete_sem_cep ou misto (frete e outro assunto: uma pessoa responde)
+  kind          String
+  /// sugerida, revisar, respondida, ignorada, erro ou encerrada (respondida ou apagada direto no marketplace)
+  status        String
+  answer        String?
+  options       Json?
+  error         String?
+  askedAt       DateTime
+  answeredAt    DateTime?
+  /// "automático" ou o nome de quem enviou pelo CRM
+  answeredBy    String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([tenantId, marketplace, questionId])
+  @@index([tenantId, status, askedAt])
+  @@map("marketplace_questions")
+}

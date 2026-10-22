@@ -761,7 +761,7 @@ export const TRAIL: TrailModule[] = [
     routes: ['/marketplaces'],
     purpose: 'Acompanhar a publicidade e as vendas nos marketplaces: hoje o Mercado Livre (Product Ads e Display Ads); depois, a Shopee.',
     howItWorks:
-      'O CRM lê as campanhas do Mercado Livre a cada 6 horas, só leitura: nunca altera anúncio, preço ou orçamento. A receita é a que o Mercado Livre atribui aos anúncios (até 14 dias depois do clique), por isso os últimos 15 dias são refeitos a cada sincronização. O histórico mais antigo veio do Usaparts BI. A Visão geral junta a publicidade com as vendas por canal da loja virtual (Magazord).',
+      'O CRM lê as campanhas do Mercado Livre a cada 6 horas, só leitura: nunca altera anúncio, preço ou orçamento. A receita é a que o Mercado Livre atribui aos anúncios (até 14 dias depois do clique), por isso os últimos 15 dias são refeitos a cada sincronização. O histórico mais antigo veio do sistema anterior de Marketplaces. A Visão geral junta a publicidade com as vendas por canal da loja virtual (Magazord).',
     lessons: [
       {
         id: 'mktp.painel',
@@ -782,27 +782,39 @@ export const TRAIL: TrailModule[] = [
           'Clique em Conectar o Mercado Livre, entre com a conta da empresa e autorize. Escolha o anunciante do Product Ads, se houver mais de um.',
           'Clique em Sincronizar agora. Na primeira vez vêm os últimos 90 dias (limite do Mercado Livre).',
         ],
-        tip: 'Quando o CRM conecta, a sincronização do Usaparts BI para: o Mercado Livre aceita uma conexão por aplicativo.',
+        tip: 'Quando o CRM conecta, a sincronização do sistema anterior para: o Mercado Livre aceita uma conexão por aplicativo.',
+      },
+      {
+        id: 'mktp.perguntas',
+        title: 'Responder perguntas de frete do Mercado Livre',
+        steps: [
+          'Abra Marketplaces → Perguntas de frete. Ligue a leitura das perguntas e deixe em Só sugerir para começar.',
+          'Em Testar cotação, informe um anúncio (MLB...) ou um SKU e um CEP para ver as opções que a Magazord calcula.',
+          'Na fila Para responder, confira a resposta pronta, ajuste se quiser e clique em Enviar resposta. Sem CEP, a resposta pede o CEP ao cliente.',
+          'Frete junto com outro assunto (ex.: serve no carro? qual o frete?) sempre espera alguém: complete a resposta antes de enviar.',
+          'Quando as respostas estiverem boas, passe para Responder sozinho: as perguntas só de frete são respondidas na hora.',
+        ],
+        tip: 'O frete vem da Magazord pelo SKU do anúncio (peso, medidas e tabelas de frete da loja). Anúncio sem SKU ou produto sem frete calculado fica em Precisa de atenção.',
       },
     ],
   },
   {
     key: 'bi-historico',
-    title: 'Histórico do Usaparts BI',
+    title: 'Histórico de Marketplaces',
     module: 'bi_historico',
-    routes: ['/marketplaces/historico-bi'],
-    purpose: 'Consultar tudo o que estava no Usaparts BI: leads das planilhas, investimentos, Google Ads e as demais tabelas.',
+    routes: ['/marketplaces/historico'],
+    purpose: 'Consultar tudo o que estava no sistema anterior de Marketplaces: leads das planilhas, investimentos, Google Ads e as demais tabelas.',
     howItWorks:
-      'O banco inteiro do BI foi copiado para dentro do CRM, sem alteração. Aqui é só consulta: os leads do BI não se misturam com a Base de leads do CRM. Cada tabela pode ser baixada em planilha, sem senhas nem tokens.',
+      'O banco inteiro do sistema anterior foi copiado para dentro do CRM, sem alteração. Aqui é só consulta: os leads do sistema anterior não se misturam com a Base de leads do CRM. Cada tabela pode ser baixada em planilha, sem senhas nem tokens.',
     lessons: [
       {
         id: 'bi.consultar',
-        title: 'Consultar e baixar os dados do BI',
+        title: 'Consultar e baixar os dados do sistema anterior',
         steps: [
-          'Abra Marketplaces → Histórico do BI.',
+          'Abra Marketplaces → Histórico de Marketplaces.',
           'Em Leads das planilhas, busque pelo cliente, vendedor ou campanha e filtre por planilha, situação, pré/pós-venda e período.',
-          'Investimentos e Google Ads mostram o que o BI tinha lançado e sincronizado.',
-          'Em Tudo o que foi guardado, cada tabela do BI aparece com a quantidade de registros e o botão Baixar planilha.',
+          'Investimentos e Google Ads mostram o que o sistema anterior tinha lançado e sincronizado.',
+          'Em Tudo o que foi guardado, cada tabela do sistema anterior aparece com a quantidade de registros e o botão Baixar planilha.',
         ],
       },
     ],

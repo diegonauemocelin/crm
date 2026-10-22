@@ -195,7 +195,7 @@ export class MercadoLivreService implements OnApplicationBootstrap, OnModuleDest
     return p
   }
 
-  private async apiGet<T>(tenantId: string, path: string, params: Record<string, string | number> = {}, apiVersion?: string, counter?: { calls: number }): Promise<T> {
+  async apiGet<T>(tenantId: string, path: string, params: Record<string, string | number> = {}, apiVersion?: string, counter?: { calls: number }): Promise<T> {
     const url = new URL(ML_API + path)
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v))
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -221,6 +221,30 @@ export class MercadoLivreService implements OnApplicationBootstrap, OnModuleDest
       throw new MlError(`O Mercado Livre respondeu ${res.status} em ${path}: ${msg}`, res.status)
     }
     throw new MlError(`Mercado Livre indisponível ou limite de requisições atingido em ${path}. Tente de novo mais tarde.`, 429)
+  }
+
+  /** POST na API (ex.: responder pergunta). Sem repetir em erro de servidor: a resposta pode ter sido gravada. */
+  async apiPost<T>(tenantId: string, path: string, body: unknown): Promise<T> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const token = await this.accessToken(tenantId)
+      const res = await this.fetcher(ML_API + path, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30_000),
+        redirect: 'error',
+      })
+      if (res.ok) return (await res.json().catch(() => ({}))) as T
+      if (res.status === 401 && attempt === 0) {
+        await this.patch(tenantId, { tokenExpiresAt: new Date(0).toISOString() })
+        continue
+      }
+      const b = (await res.json().catch(() => ({}))) as { message?: string; error?: string }
+      const msg = b.message ?? b.error ?? res.statusText
+      if (res.status === 403) throw new MlError(`O Mercado Livre não deixou responder (${msg}). Confira se o aplicativo tem permissão de escrita em Perguntas e respostas e reconecte.`, 403)
+      throw new MlError(`O Mercado Livre respondeu ${res.status} em ${path}: ${msg}`, res.status)
+    }
+    throw new MlError('O Mercado Livre recusou o acesso. Reconecte a conta.', 401, true)
   }
 
   async listAdvertisers(tenantId: string, product: 'PADS' | 'DISPLAY' = 'PADS', counter?: { calls: number }) {

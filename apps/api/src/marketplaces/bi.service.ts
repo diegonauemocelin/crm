@@ -5,8 +5,8 @@ import { MARKETPLACE } from './mercadolivre'
 import { MercadoLivreService } from './mercadolivre.service'
 
 /**
- * Cópia do Usaparts BI dentro do banco do CRM (esquema "bi"), trazida pelo deploy/importar-bi.sh sem alterar nada.
- * O Mercado Livre Ads vai para as telas de Marketplaces; o resto fica guardado e aparece em "Histórico do BI".
+ * Cópia do sistema anterior de Marketplaces dentro do banco do CRM (esquema "bi"), trazida pelo deploy/importar-bi.sh sem alterar nada.
+ * O Mercado Livre Ads vai para as telas de Marketplaces; o resto fica guardado e aparece em "Histórico de Marketplaces".
  * Só a empresa marcada na importação (bi._crm_importacao) enxerga esses dados.
  */
 
@@ -33,14 +33,14 @@ const LABELS: Record<string, string> = {
   MlDisplayDaily: 'Mercado Livre Display: números por dia',
   Integration: 'Integrações conectadas (sem os tokens)',
   SyncRun: 'Histórico de sincronizações',
-  User: 'Usuários do BI (sem as senhas)',
-  Profile: 'Perfis de acesso do BI',
+  User: 'Usuários do sistema anterior (sem as senhas)',
+  Profile: 'Perfis de acesso do sistema anterior',
   Suggestion: 'Sugestões de melhoria',
   Notification: 'Notificações',
   AccessLog: 'Registro de acessos',
-  AuditLog: 'Auditoria do BI',
-  Setting: 'Configurações do BI (sem segredos)',
-  VersionInstall: 'Versões instaladas do BI',
+  AuditLog: 'Auditoria do sistema anterior',
+  Setting: 'Configurações do sistema anterior (sem segredos)',
+  VersionInstall: 'Versões instaladas do sistema anterior',
   Session: 'Sessões de login',
   PasswordReset: 'Pedidos de troca de senha',
   OAuthState: 'Autorizações em andamento',
@@ -90,7 +90,7 @@ export class BiArchiveService implements OnApplicationBootstrap, OnModuleDestroy
 
   private async owned(tenantId: string) {
     const m = await this.meta()
-    if (!m || m.tenantId !== tenantId) throw new NotFoundException('Os dados do Usaparts BI ainda não foram trazidos para esta empresa. Rode o deploy/importar-bi.sh na VPS (docs/DEPLOY.md).')
+    if (!m || m.tenantId !== tenantId) throw new NotFoundException('Os dados do sistema anterior de Marketplaces ainda não foram trazidos para esta empresa. Rode o deploy/importar-bi.sh na VPS (docs/DEPLOY.md).')
     return m
   }
 
@@ -121,9 +121,9 @@ export class BiArchiveService implements OnApplicationBootstrap, OnModuleDestroy
       const st = await this.ml.syncState(m.tenantId)
       if (st.biImportedAt === m.importedAt) return
       const r = await this.importMarketplace(m.tenantId)
-      this.logger.log(`Usaparts BI: ${r.rows} registros do Mercado Livre trazidos`)
+      this.logger.log(`sistema anterior de Marketplaces: ${r.rows} registros do Mercado Livre trazidos`)
     } catch (err) {
-      this.logger.warn(`Usaparts BI: ${(err as Error).message}`)
+      this.logger.warn(`sistema anterior de Marketplaces: ${(err as Error).message}`)
     } finally {
       this.busy = false
     }
@@ -183,7 +183,7 @@ export class BiArchiveService implements OnApplicationBootstrap, OnModuleDestroy
     })
     await this.prefillConfig(tenantId)
     await this.ml.setSyncState(tenantId, { biImportedAt: m.importedAt, biRows: rows })
-    return { ok: true, rows, message: rows ? `${rows.toLocaleString('pt-BR')} registros do Mercado Livre trazidos do BI.` : 'Os dados do Mercado Livre do BI já estavam no CRM.' }
+    return { ok: true, rows, message: rows ? `${rows.toLocaleString('pt-BR')} registros do Mercado Livre trazidos do sistema anterior.` : 'Os dados do Mercado Livre do sistema anterior já estavam no CRM.' }
   }
 
   /** Anunciante e Client ID que o BI usava, para conectar com um clique (o segredo e os tokens não vêm: ficam criptografados no BI). */
@@ -274,7 +274,7 @@ export class BiArchiveService implements OnApplicationBootstrap, OnModuleDestroy
   /** Planilha (CSV com ";", para o Excel em português) de uma tabela guardada, sem colunas com segredo. */
   async exportTable(tenantId: string, table: string) {
     await this.owned(tenantId)
-    if (HIDDEN_TABLES.has(table) || !(await this.tables()).includes(table)) throw new NotFoundException('Tabela não encontrada no histórico do BI.')
+    if (HIDDEN_TABLES.has(table) || !(await this.tables()).includes(table)) throw new NotFoundException('Tabela não encontrada no Histórico de Marketplaces.')
     const cols = (await this.prisma.$queryRaw<{ name: string }[]>`SELECT column_name AS name FROM information_schema.columns WHERE table_schema = 'bi' AND table_name = ${table} ORDER BY ordinal_position`)
       .map((c) => c.name)
       .filter((c) => !HIDDEN_COLUMN.test(c))

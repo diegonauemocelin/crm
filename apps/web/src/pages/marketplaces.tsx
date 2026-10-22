@@ -111,7 +111,7 @@ function SyncInfo({ sync, coverage }: { sync: SyncState; coverage?: MlPanel['cov
     <p className={cn('text-xs', sync.lastError ? 'text-red-600' : 'text-muted-foreground')}>
       {coverage ? (coverage.from ? `Dados de ${dayBr(coverage.from)} a ${dayBr(coverage.to!)} · ` : 'Ainda sem dados · ') : ''}Mercado Livre{' '}
       {sync.running ? 'sincronizando agora' : sync.lastOkAt ? `sincronizado em ${formatDateTime(sync.lastOkAt)}` : 'ainda não sincronizado pelo CRM'}
-      {sync.biImportedAt ? ` · histórico do Usaparts BI trazido em ${formatDateTime(sync.biImportedAt)}` : ''}
+      {sync.biImportedAt ? ` · histórico do sistema anterior trazido em ${formatDateTime(sync.biImportedAt)}` : ''}
       {sync.lastError ? ` · última tentativa falhou: ${sync.lastError}` : ''}
     </p>
   )
@@ -155,7 +155,7 @@ function Visao() {
                   <div className="space-y-1.5">
                     <CardTitle className="flex items-center gap-2 text-base">
                       <ShoppingBagIcon className="size-4" /> Mercado Livre Ads
-                      <Badge variant={ml.connected ? 'default' : 'secondary'}>{ml.connected ? `Conectado${ml.nickname ? `: ${ml.nickname}` : ''}` : ml.cost || ml.revenue ? 'Histórico do BI' : 'Não conectado'}</Badge>
+                      <Badge variant={ml.connected ? 'default' : 'secondary'}>{ml.connected ? `Conectado${ml.nickname ? `: ${ml.nickname}` : ''}` : ml.cost || ml.revenue ? 'Histórico de Marketplaces' : 'Não conectado'}</Badge>
                     </CardTitle>
                     <CardDescription>
                       {dayBr(d.period.from)} a {dayBr(d.period.to)}, comparado com {dayBr(d.period.prevFrom)} a {dayBr(d.period.prevTo)}. Receita atribuída pelo Mercado Livre (até 14 dias depois do clique).
@@ -301,7 +301,7 @@ function MercadoLivre() {
               <EmptyState
                 icon={ShoppingBagIcon}
                 title="Mercado Livre ainda não conectado"
-                description="Conecte a conta do Mercado Livre (ou traga o histórico do Usaparts BI) para ver investimento, vendas atribuídas, campanhas e anúncios."
+                description="Conecte a conta do Mercado Livre (ou traga o histórico do sistema anterior) para ver investimento, vendas atribuídas, campanhas e anúncios."
                 action={
                   can('marketplaces', 'edit') && (
                     <Button asChild size="sm">
@@ -541,7 +541,7 @@ function Integracoes() {
   const badge = c.connected ? (c.status === 'ERRO' ? <Badge variant="destructive">Precisa reconectar</Badge> : <Badge>Conectado</Badge>) : <Badge variant="secondary">Não conectado</Badge>
   return (
     <div>
-      <PageHeader title="Conexões dos marketplaces" description="Contas dos marketplaces e os dados trazidos do Usaparts BI. As integrações só leem: o CRM não altera anúncios, preços nem campanhas." />
+      <PageHeader title="Conexões dos marketplaces" description="Contas dos marketplaces e os dados trazidos do sistema anterior de Marketplaces. O CRM não altera anúncios, preços nem campanhas: só lê os números e, se ligado em Perguntas de frete, responde perguntas de frete." />
       <div className="space-y-4">
         <Card>
           <CardHeader>
@@ -551,7 +551,7 @@ function Integracoes() {
             <CardDescription>
               {c.connected
                 ? `Conta ${c.nickname ?? c.userId ?? ''}${c.connectedBy ? `, conectada por ${c.connectedBy}` : ''}${c.connectedAt ? ` em ${formatDateTime(c.connectedAt)}` : ''}. Sincroniza sozinho a cada 6 horas (os últimos 15 dias, porque o Mercado Livre atribui vendas até 14 dias depois do clique).`
-                : 'Conecte a conta do Mercado Livre para o CRM buscar as campanhas de Product Ads e Display Ads. Na primeira vez, vêm os últimos 90 dias (limite do Mercado Livre); o que for mais antigo vem do Usaparts BI.'}
+                : 'Conecte a conta do Mercado Livre para o CRM buscar as campanhas de Product Ads e Display Ads. Na primeira vez, vêm os últimos 90 dias (limite do Mercado Livre); o que for mais antigo vem do sistema anterior de Marketplaces.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5 text-sm">
@@ -564,7 +564,7 @@ function Integracoes() {
                 <a className="underline" href="https://developers.mercadolivre.com.br/devcenter" target="_blank" rel="noreferrer">
                   developers.mercadolivre.com.br <ExternalLinkIcon className="inline size-3" />
                 </a>
-                , abra o aplicativo que o BI usava (ou crie um) e acrescente esta URI de redirecionamento. Permissões: leitura de publicidade e de usuários.
+                , abra o aplicativo que o sistema anterior usava (ou crie um) e acrescente esta URI de redirecionamento. Permissões: publicidade e usuários (leitura) e Perguntas e respostas (leitura e escrita, para responder as perguntas de frete).
               </p>
               <CopyField value={c.redirectUri} />
             </section>
@@ -589,7 +589,7 @@ function Integracoes() {
             {edit && (
               <section className="space-y-2">
                 <p className="font-medium">3. Autorizar a conta</p>
-                <p className="text-muted-foreground">Abre o Mercado Livre para entrar com a conta da Usaparts e autorizar. Quando o CRM conectar, a sincronização do Usaparts BI para (o Mercado Livre aceita uma conexão por aplicativo).</p>
+                <p className="text-muted-foreground">Abre o Mercado Livre para entrar com a conta da Usaparts e autorizar. Quando o CRM conectar, a sincronização do sistema anterior para (o Mercado Livre aceita uma conexão por aplicativo).</p>
                 <Button size="sm" onClick={() => connect.mutate()} disabled={connect.isPending || !c.hasSecret || !c.clientId}>
                   {connect.isPending ? <Loader2Icon className="animate-spin" /> : <PlugIcon />} {c.connected ? 'Reconectar' : 'Conectar o Mercado Livre'}
                 </Button>
@@ -678,12 +678,12 @@ function BiCard({ config, onDone }: { config: ConfigResponse; onDone: () => void
     <Card>
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-          <ArchiveIcon className="size-4" /> Dados do Usaparts BI <Badge variant={config.biAvailable ? 'default' : 'secondary'}>{config.biAvailable ? 'Trazidos' : 'Ainda não trazidos'}</Badge>
+          <ArchiveIcon className="size-4" /> Dados do sistema anterior de Marketplaces <Badge variant={config.biAvailable ? 'default' : 'secondary'}>{config.biAvailable ? 'Trazidos' : 'Ainda não trazidos'}</Badge>
         </CardTitle>
         <CardDescription>
           {config.biAvailable
-            ? `Cópia do BI de ${formatDateTime(config.biImportedAt)}. O histórico do Mercado Livre ${config.sync.biImportedAt ? `entrou nas telas em ${formatDateTime(config.sync.biImportedAt)} (${num(config.sync.biRows ?? 0)} registros novos)` : 'entra nas telas em alguns minutos'}. Leads, investimentos, Google Ads e as demais tabelas ficam em Histórico do BI.`
-            : 'O banco do BI é copiado inteiro para o CRM, sem alterar o BI, pelo comando abaixo na VPS (veja docs/DEPLOY.md, "Trazer o Usaparts BI"). Depois, esta tela mostra a cópia.'}
+            ? `Cópia do sistema anterior de ${formatDateTime(config.biImportedAt)}. O histórico do Mercado Livre ${config.sync.biImportedAt ? `entrou nas telas em ${formatDateTime(config.sync.biImportedAt)} (${num(config.sync.biRows ?? 0)} registros novos)` : 'entra nas telas em alguns minutos'}. Leads, investimentos, Google Ads e as demais tabelas ficam em Histórico de Marketplaces.`
+            : 'O banco do sistema anterior é copiado inteiro para o CRM, sem alterar nada nele, pelo comando abaixo na VPS (veja docs/DEPLOY.md, "Trazer o sistema anterior de Marketplaces"). Depois, esta tela mostra a cópia.'}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
@@ -691,13 +691,13 @@ function BiCard({ config, onDone }: { config: ConfigResponse; onDone: () => void
         <div className="flex flex-wrap gap-2">
           {config.biAvailable && can('marketplaces', 'edit') && (
             <Button size="sm" variant="outline" onClick={() => void again()} disabled={busy}>
-              {busy ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />} Trazer o Mercado Livre do BI de novo
+              {busy ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />} Trazer o Mercado Livre do sistema anterior de novo
             </Button>
           )}
           {config.biAvailable && can('bi_historico') && (
             <Button asChild size="sm" variant="outline">
-              <Link to="/marketplaces/historico-bi">
-                <ArchiveIcon /> Abrir o Histórico do BI
+              <Link to="/marketplaces/historico">
+                <ArchiveIcon /> Abrir o Histórico de Marketplaces
               </Link>
             </Button>
           )}
@@ -707,7 +707,7 @@ function BiCard({ config, onDone }: { config: ConfigResponse; onDone: () => void
   )
 }
 
-// ---------- Histórico do Usaparts BI ----------
+// ---------- Histórico de Marketplaces ----------
 
 interface BiStatus {
   available: boolean
@@ -756,17 +756,17 @@ function HistoricoBi() {
   const d = q.data
   return (
     <div>
-      <PageHeader title="Histórico do Usaparts BI" description="Tudo o que estava no Usaparts BI, copiado para dentro do CRM sem alterar nada. Só consulta: os leads do CRM não são tocados." />
+      <PageHeader title="Histórico de Marketplaces" description="Tudo o que estava no sistema anterior de Marketplaces, copiado para dentro do CRM sem alterar nada. Só consulta: os leads do CRM não são tocados." />
       {q.isLoading && <TableSkeleton rows={5} />}
       {q.error && <ErrorState error={q.error} onRetry={() => q.refetch()} />}
       {d && !d.available && (
-        <EmptyState icon={ArchiveIcon} title="Os dados do BI ainda não foram trazidos" description="Rode na VPS o comando abaixo (docs/DEPLOY.md, “Trazer o Usaparts BI”). Ele copia o banco inteiro do BI para o CRM, com o BI no ar." action={<CopyField value="sudo bash /opt/usaparts-crm/deploy/importar-bi.sh" className="w-96 max-w-full" />} />
+        <EmptyState icon={ArchiveIcon} title="Os dados do sistema anterior ainda não foram trazidos" description="Rode na VPS o comando abaixo (docs/DEPLOY.md, “Trazer o sistema anterior de Marketplaces”). Ele copia o banco inteiro do sistema anterior para o CRM, com ele no ar." action={<CopyField value="sudo bash /opt/usaparts-crm/deploy/importar-bi.sh" className="w-96 max-w-full" />} />
       )}
       {d?.available && (
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">
             Cópia de {formatDateTime(d.importedAt)}
-            {d.biVersion ? ` (BI versão ${d.biVersion})` : ''} · {num(d.tables?.reduce((s, t) => s + t.rows, 0) ?? 0)} registros em {d.tables?.length ?? 0} tabelas · o Mercado Livre está em Marketplaces › Mercado Livre Ads.
+            {d.biVersion ? ` (versão ${d.biVersion})` : ''} · {num(d.tables?.reduce((s, t) => s + t.rows, 0) ?? 0)} registros em {d.tables?.length ?? 0} tabelas · o Mercado Livre está em Marketplaces › Mercado Livre Ads.
           </p>
           <Tabs defaultValue="leads">
             <TabsList className="flex-wrap">
@@ -969,13 +969,13 @@ function BiSpendTab() {
   const total = rows.reduce((s, r) => s + r.amount, 0)
   return (
     <SimpleTable
-      title="Investimentos do BI"
-      description={`${num(rows.length)} lançamentos, ${money(total)} no total. “À mão” foi digitado no BI; “Integração” veio do Google Ads ou do Mercado Livre.`}
+      title="Investimentos do sistema anterior"
+      description={`${num(rows.length)} lançamentos, ${money(total)} no total. “À mão” foi digitado no sistema anterior; “Integração” veio do Google Ads ou do Mercado Livre.`}
       rows={rows}
       rowKey={(r) => r.id}
       exportName="bi-investimentos"
       exportModule="bi_historico"
-      empty="Nenhum investimento no BI."
+      empty="Nenhum investimento no sistema anterior."
       limit={100}
       cols={[
         { label: 'Período', value: (r) => (r.periodStart === r.periodEnd ? dayBr(r.periodStart) : `${dayBr(r.periodStart)} a ${dayBr(r.periodEnd)}`), csv: (r) => `${r.periodStart} a ${r.periodEnd}` },
@@ -1003,12 +1003,12 @@ function BiGoogleTab() {
   return (
     <div className="space-y-4">
       <SimpleTable
-        title="Google Ads por mês (BI)"
+        title="Google Ads por mês (sistema anterior)"
         rows={d.months}
         rowKey={(r) => r.month}
         exportName="bi-google-ads-meses"
         exportModule="bi_historico"
-        empty="O BI não tinha dados do Google Ads."
+        empty="O sistema anterior não tinha dados do Google Ads."
         cols={[
           { label: 'Mês', value: (r) => month(r.month), csv: (r) => r.month },
           { label: 'Investido', value: (r) => money(r.cost), right: true, csv: (r) => r.cost },
@@ -1019,7 +1019,7 @@ function BiGoogleTab() {
         ]}
       />
       <SimpleTable
-        title="Campanhas do Google Ads (BI)"
+        title="Campanhas do Google Ads (sistema anterior)"
         rows={d.campaigns}
         rowKey={(r) => r.id}
         exportName="bi-google-ads-campanhas"
@@ -1067,7 +1067,7 @@ function BiTablesTab({ tables }: { tables: NonNullable<BiStatus['tables']> }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Tudo o que foi guardado</CardTitle>
-        <CardDescription>Cada tabela do BI, com a quantidade de registros. A planilha sai sem senhas nem tokens. Sessões de login e pedidos de troca de senha ficam guardados, mas não saem em planilha.</CardDescription>
+        <CardDescription>Cada tabela do sistema anterior, com a quantidade de registros. A planilha sai sem senhas nem tokens. Sessões de login e pedidos de troca de senha ficam guardados, mas não saem em planilha.</CardDescription>
       </CardHeader>
       <CardContent className="px-0">
         <Table>

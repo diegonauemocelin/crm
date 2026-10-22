@@ -38,6 +38,7 @@ import {
   ArchiveIcon,
   ShoppingBagIcon,
   StoreIcon,
+  MessageCircleQuestionIcon,
 } from 'lucide-react'
 import type { Action } from './types'
 
@@ -134,7 +135,8 @@ export const NAVIGATION: NavGroup[] = [
     items: [
       { title: 'Visão geral', to: '/marketplaces', icon: StoreIcon, module: 'marketplaces' },
       { title: 'Mercado Livre Ads', to: '/marketplaces/mercado-livre', icon: ShoppingBagIcon, module: 'marketplaces' },
-      { title: 'Histórico do BI', to: '/marketplaces/historico-bi', icon: ArchiveIcon, module: 'bi_historico' },
+      { title: 'Perguntas de frete', to: '/marketplaces/perguntas', icon: MessageCircleQuestionIcon, module: 'marketplaces' },
+      { title: 'Histórico de Marketplaces', to: '/marketplaces/historico', icon: ArchiveIcon, module: 'bi_historico' },
       { title: 'Conexões', to: '/marketplaces/integracoes', icon: PlugIcon, module: 'marketplaces' },
     ],
   },

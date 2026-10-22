@@ -1,8 +1,8 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Param, Post, Put, Query, Res } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Res } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
-import { IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator'
+import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator'
 import type { Response } from 'express'
 import { AuditService } from '../audit/audit.service'
 import { CurrentUser, ReqContext, type RequestCtx, RequirePermission } from '../common/decorators'
@@ -11,6 +11,7 @@ import { BiArchiveService } from './bi.service'
 import { MarketplacesService } from './marketplaces.service'
 import { mlView, todayBr } from './mercadolivre'
 import { MercadoLivreService } from './mercadolivre.service'
+import { MlQuestionsService } from './perguntas.service'
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -46,6 +47,35 @@ class BiLeadsDto extends PeriodDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(10) @Max(100) pageSize = 50
 }
 
+class QuestionsListDto {
+  @IsOptional() @IsIn(['abertas', 'respondidas', 'todas']) filtro: 'abertas' | 'respondidas' | 'todas' = 'abertas'
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1
+}
+
+class QuestionsConfigDto {
+  @IsBoolean() enabled!: boolean
+  @IsIn(['sugerir', 'automatico']) mode!: 'sugerir' | 'automatico'
+  @IsBoolean() askCep!: boolean
+  @IsString() @MaxLength(300) intro!: string
+  @IsString() @MaxLength(500) outro!: string
+  @IsString() @MaxLength(800) askCepText!: string
+}
+
+class TestQuoteDto {
+  @IsOptional() @Matches(/^[A-Za-z]{3}\d{5,15}$/, { message: 'Anúncio no formato MLB1234567890.' }) itemId?: string
+  @IsOptional() @IsString() @MaxLength(80) sku?: string
+  @IsString() @MaxLength(12) cep!: string
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) price?: number
+}
+
+class AnswerDto {
+  @IsString() @MaxLength(2000) text!: string
+}
+
+class RequoteDto {
+  @IsOptional() @IsString() @MaxLength(12) cep?: string
+}
+
 /** Período padrão: últimos 30 dias até ontem (o Mercado Livre fecha o dia seguinte). */
 function period(q: PeriodDto) {
   const to = q.ate ?? todayBr()
@@ -62,6 +92,7 @@ export class MarketplacesController {
     private readonly panels: MarketplacesService,
     private readonly ml: MercadoLivreService,
     private readonly bi: BiArchiveService,
+    private readonly questionsSvc: MlQuestionsService,
     private readonly audit: AuditService,
   ) {}
 
@@ -150,7 +181,63 @@ export class MarketplacesController {
     return mlView(c)
   }
 
-  // ---------- Histórico do Usaparts BI ----------
+  // ---------- Perguntas de frete do Mercado Livre ----------
+
+  @Get('mercado-livre/perguntas')
+  @RequirePermission('marketplaces', 'view')
+  async questions(@CurrentUser() user: AuthUser, @Query() q: QuestionsListDto) {
+    const [list, config] = await Promise.all([this.questionsSvc.list(user.tenantId, q.filtro, q.page), this.questionsSvc.config(user.tenantId)])
+    return { ...list, config }
+  }
+
+  @Put('mercado-livre/perguntas/config')
+  @RequirePermission('marketplaces', 'edit')
+  async questionsConfig(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx, @Body() dto: QuestionsConfigDto) {
+    const c = await this.questionsSvc.saveConfig(user.tenantId, dto)
+    await this.audit.byUser(user, ctx, 'marketplaces.ml_questions_config', 'settings', 'marketplace_ml_perguntas', { ligado: c.enabled, modo: c.mode, pedirCep: c.askCep })
+    return c
+  }
+
+  @Post('mercado-livre/perguntas/verificar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @RequirePermission('marketplaces', 'edit')
+  checkQuestions(@CurrentUser() user: AuthUser) {
+    return this.questionsSvc.check(user.tenantId)
+  }
+
+  @Post('mercado-livre/perguntas/testar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @RequirePermission('marketplaces', 'edit')
+  testQuote(@CurrentUser() user: AuthUser, @Body() dto: TestQuoteDto) {
+    return this.questionsSvc.test(user.tenantId, dto)
+  }
+
+  @Post('mercado-livre/perguntas/:id/enviar')
+  @HttpCode(200)
+  @RequirePermission('marketplaces', 'edit')
+  async sendAnswer(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AnswerDto) {
+    const r = await this.questionsSvc.send(user, id, dto.text)
+    await this.audit.byUser(user, ctx, 'marketplaces.ml_question_answered', 'marketplace_question', id, { pergunta: r.questionId })
+    return r
+  }
+
+  @Post('mercado-livre/perguntas/:id/recalcular')
+  @HttpCode(200)
+  @RequirePermission('marketplaces', 'edit')
+  requote(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RequoteDto) {
+    return this.questionsSvc.requote(user.tenantId, id, dto.cep)
+  }
+
+  @Post('mercado-livre/perguntas/:id/ignorar')
+  @HttpCode(200)
+  @RequirePermission('marketplaces', 'edit')
+  ignoreQuestion(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.questionsSvc.ignore(user.tenantId, id)
+  }
+
+  // ---------- Histórico do sistema anterior ----------
 
   @Get('bi')
   @RequirePermission('bi_historico', 'view')

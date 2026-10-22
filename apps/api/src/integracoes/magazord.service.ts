@@ -218,6 +218,30 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
     return body.data as T
   }
 
+  /**
+   * Simulação de frete da loja (POST /v2/site/transporte/simulacao): usa o peso e as medidas cadastrados na Magazord
+   * e as tabelas de frete da loja. Só consulta, não cria pedido. Devolve a resposta da Magazord como veio.
+   */
+  async simulateFreight(tenantId: string, cep: string, items: { sku: string; quantity: number; price: number }[]) {
+    const s = await this.config(tenantId)
+    if (!s.enabled) throw new MagazordError('Ligue a integração com a Magazord em Configurações › Loja virtual (Magazord).')
+    const base = cleanBaseUrl(s.baseUrl)
+    if (!base || !s.tokenEnc || !s.passwordEnc) throw new MagazordError('Integração com a Magazord sem endereço, token ou senha.')
+    const auth = Buffer.from(`${decrypt(s.tokenEnc)}:${decrypt(s.passwordEnc)}`).toString('base64')
+    const body = { cep: cep.replace(/\D/g, ''), consideraRegraFrete: true, loja: s.storeId || 1, produtos: items.map((i) => ({ sku: i.sku, quantidade: i.quantity, valor: i.price })) }
+    const res = await fetch(`${base}/api/v2/site/transporte/simulacao`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Basic ${auth}` },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
+      redirect: 'error',
+    })
+    const json = (await res.json().catch(() => null)) as { status?: string; data?: unknown; message?: string } | null
+    if (res.status === 401 || res.status === 403) throw new MagazordError('A Magazord recusou o token/senha ou o usuário não tem permissão para simular frete.')
+    if (!res.ok || !json || json.status === 'error') throw new MagazordError(`A Magazord não calculou o frete (${res.status}${json?.message ? `: ${json.message}` : ''}).`)
+    return json.data ?? json
+  }
+
   private page<T>(data: unknown): Page<T> {
     const d = data as { items?: T[] | T; has_more?: boolean } | null
     const items = Array.isArray(d?.items) ? d.items : d?.items ? [d.items] : []

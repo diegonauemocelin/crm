@@ -249,7 +249,7 @@ bash /opt/usaparts-crm/deploy/backup-servidor.sh --drive gdrive:Backups-VPS
 Para restaurar, baixe a pasta do Drive para o computador ou para a VPS nova e siga o `COMO-REINSTALAR.txt`. A chave
 privada (`chave-backup-crm.txt`) é necessária para abrir as partes: guarde em lugar seguro e fora do Drive.
 
-## Trazer o Usaparts BI (Marketplaces)
+## Trazer o sistema anterior de Marketplaces (antigo Usaparts BI)
 
 O Usaparts BI (`/opt/usaparts-bi`) passa a fazer parte do CRM, no menu **Marketplaces**. O comando abaixo copia o banco **inteiro** do BI para dentro do banco do CRM (esquema `bi`), sem alterar nada no BI e com os dois sistemas no ar:
 
@@ -259,12 +259,12 @@ sudo bash /opt/usaparts-crm/deploy/importar-bi.sh
 
 - Antes, faz o backup do CRM e guarda uma cópia criptografada do banco e dos arquivos do BI na pasta de backups do CRM (`bi-db-*.dump.age` e `bi-arquivos-*.tar.gz.age`, mesma chave dos backups do CRM). Essas cópias não são apagadas pela limpeza automática.
 - O histórico do **Mercado Livre Ads** (inclusive o que tem mais de 90 dias, que o Mercado Livre não entrega de novo) entra nas telas de Marketplaces em até 30 minutos. Nada é sobrescrito: o que o CRM já sincronizou fica como está.
-- **Leads das planilhas, investimentos, Google Ads, usuários, sugestões e as demais tabelas** ficam guardados e aparecem em **Marketplaces › Histórico do BI**, com download de cada tabela em planilha (sem senhas nem tokens). Os leads do CRM não são tocados.
+- **Leads das planilhas, investimentos, Google Ads, usuários, sugestões e as demais tabelas** ficam guardados e aparecem em **Marketplaces › Histórico de Marketplaces**, com download de cada tabela em planilha (sem senhas nem tokens). Os leads do CRM não são tocados.
 - A partir desta versão o backup diário do CRM já inclui o esquema `bi`.
 - Pode rodar de novo quando quiser (por exemplo, logo antes de desligar o BI): troca a cópia pela mais nova, sem duplicar.
-- Libere as permissões **Marketplaces** e **Histórico do Usaparts BI** nos perfis de acesso de quem vai usar (o histórico tem dados de clientes).
+- Libere as permissões **Marketplaces** e **Histórico de Marketplaces** nos perfis de acesso de quem vai usar (o histórico tem dados de clientes).
 
-Depois, em **Marketplaces › Conexões**, conecte o Mercado Livre no CRM. Use o mesmo aplicativo do Mercado Livre que o BI usava: o Client ID já vem preenchido, mas o Client Secret precisa ser digitado de novo, porque no BI ele fica criptografado com outra chave. Acrescente no aplicativo a URI de redirecionamento que a tela mostra. Quando o CRM conectar, a sincronização do BI para, porque o Mercado Livre aceita uma conexão por aplicativo. O BI continua aberto para consulta até você desligá-lo:
+Depois, em **Marketplaces › Conexões**, conecte o Mercado Livre no CRM. Use o mesmo aplicativo do Mercado Livre que o BI usava: o Client ID já vem preenchido, mas o Client Secret precisa ser digitado de novo, porque no BI ele fica criptografado com outra chave. Acrescente no aplicativo a URI de redirecionamento que a tela mostra e, para responder as perguntas de frete, a permissão de leitura e escrita em Perguntas e respostas. Quando o CRM conectar, a sincronização do BI para, porque o Mercado Livre aceita uma conexão por aplicativo. O BI continua aberto para consulta até você desligá-lo:
 
 ```bash
 cd /opt/usaparts-bi && sudo docker compose stop app worker
