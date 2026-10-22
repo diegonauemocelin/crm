@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, AlertCircleIcon, BanIcon, CircleCheckBigIcon, FileTextIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ReplyIcon, SmilePlusIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, AlertCircleIcon, BanIcon, CircleCheckBigIcon, FileTextIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ListChecksIcon, ReplyIcon, SmilePlusIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
 import { createContext, Fragment, type FormEvent, type KeyboardEvent, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -262,7 +262,14 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
   const canWatch = !!monitorAccess.data?.scope
   const [starting, setStarting] = useState(false)
   const { can } = useAuth()
+  const qc = useQueryClient()
+  const confirm = useConfirm()
   const { novo, colors } = useScreens()
+  // Finalizar vários: escolher conversas na lista e encerrar todas de uma vez, sem a mensagem de encerramento.
+  const [picked, setPicked] = useState<Set<string> | null>(null)
+  const [finishing, setFinishing] = useState(false)
+  const canPick = !monitor && !archived && can('chat', 'create')
+  const picking = canPick && !!picked
   const [fill, fillHeight] = useFillHeight<HTMLDivElement>()
   const [search, setSearch] = useState('')
   const [q, setQ] = useState('')
@@ -294,6 +301,37 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
     else n.delete('monitorar')
     return n
   })
+  const togglePick = (id: string) =>
+    setPicked((cur) => {
+      const n = new Set(cur)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  const finishPicked = async () => {
+    if (!picked?.size) return
+    const n = picked.size
+    const ok = await confirm({
+      title: `Finalizar ${n} ${n === 1 ? 'atendimento' : 'atendimentos'}?`,
+      description: 'As conversas saem do atendente e da fila e vão para as arquivadas. Nenhuma mensagem é enviada aos contatos. Se o cliente chamar de novo, é um atendimento novo.',
+      confirmLabel: `Finalizar ${n}`,
+      destructive: false,
+    })
+    if (!ok) return
+    setFinishing(true)
+    try {
+      const r = await api.post<{ done: number; failed: { id: string; error: string }[] }>('/chat/conversas/finalizar-varias', { ids: [...picked] })
+      if (r.failed.length) toast.warning(`${r.done} finalizado(s). ${r.failed.length} não: ${r.failed[0]!.error}`)
+      else toast.success(`${r.done} ${r.done === 1 ? 'atendimento finalizado' : 'atendimentos finalizados'}, sem mensagem de encerramento.`)
+      if (openId && picked.has(openId)) open(null)
+      setPicked(null)
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setFinishing(false)
+    }
+  }
   return (
     <div>
       <PageHeader
@@ -426,14 +464,37 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                   </label>
                 )}
                 <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                  <Switch checked={archived} onCheckedChange={setArchived} aria-label="Ver arquivadas" /> Arquivadas
+                  <Switch checked={archived} onCheckedChange={(v) => (setArchived(v), setPicked(null))} aria-label="Ver arquivadas" /> Arquivadas
                 </label>
                 <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
                   <Switch checked={unread} onCheckedChange={setUnread} aria-label="Só não lidas" /> Não lidas
                   {list.data.unreadConversations > 0 && <Badge className="h-5 px-1.5 tabular-nums">{list.data.unreadConversations}</Badge>}
                 </label>
+                {canPick && !picked && list.data.items.length > 0 && (
+                  <Button size="sm" variant="ghost" className="ml-auto h-6 px-1.5 text-xs" onClick={() => setPicked(new Set())} title="Escolher várias conversas para finalizar de uma vez, sem mensagem de encerramento">
+                    <ListChecksIcon /> Selecionar
+                  </Button>
+                )}
               </div>
             </div>
+            {picking && (
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-muted/50 px-3 py-2 text-xs">
+                <span className="font-medium">
+                  {picked!.size} {picked!.size === 1 ? 'selecionada' : 'selecionadas'}
+                </span>
+                <button type="button" className="text-muted-foreground underline-offset-2 hover:underline" onClick={() => setPicked(picked!.size === list.data.items.length ? new Set() : new Set(list.data.items.map((c) => c.id)))}>
+                  {picked!.size === list.data.items.length ? 'Limpar' : 'Todas da lista'}
+                </button>
+                <span className="ml-auto flex gap-1">
+                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setPicked(null)}>
+                    Cancelar
+                  </Button>
+                  <Button size="sm" className="h-7 px-2 text-xs" disabled={!picked!.size || finishing} onClick={finishPicked}>
+                    {finishing ? <Loader2Icon className="animate-spin" /> : <CircleCheckBigIcon />} Finalizar sem mensagem
+                  </Button>
+                </span>
+              </div>
+            )}
             <ul className="min-h-0 flex-1 overflow-y-auto">
               {list.data.items.length === 0 && waitingSeller && !q && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa aguardando vendedor. Quando a pré-venda for marcada como repassada ao vendedor, a conversa vem para cá até ele retornar.</li>}
               {list.data.items.length === 0 && groups && !q && <li className="p-6 text-center text-sm text-muted-foreground">Nenhum grupo ainda. As mensagens dos grupos do WhatsApp aparecem aqui, separadas das conversas com clientes.</li>}
@@ -452,17 +513,25 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                   )}
                   <button
                     type="button"
-                    onClick={() => open(c.id)}
+                    onClick={() => (picking ? togglePick(c.id) : open(c.id))}
+                    aria-pressed={picking ? picked!.has(c.id) : undefined}
                     className={cn(
                       'flex w-full items-start gap-3 border-b px-3 py-2.5 text-left hover:bg-muted/50',
-                      openId === c.id && 'bg-[#f0f2f5] dark:bg-[#2a3942]',
+                      openId === c.id && !picking && 'bg-[#f0f2f5] dark:bg-[#2a3942]',
+                      picking && picked!.has(c.id) && 'bg-primary/5',
                       colors && openId !== c.id && wc?.label === 'atrasada' && 'bg-orange-50 dark:bg-orange-500/10',
                       colors && openId !== c.id && wc?.label === 'atenção' && 'bg-amber-50/70 dark:bg-amber-500/5',
                     )}
                   >
                     <span className="relative mt-0.5 shrink-0">
-                      <Avatar name={c.name} group={c.category === 'GRUPO'} />
-                      {wc && <span className={cn('absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-background', wc.dot)} aria-label={`Sem resposta há ${waitText(wc.min)} (${wc.label})`} />}
+                      {picking ? (
+                        <span className={cn('flex size-10 items-center justify-center rounded-full border-2', picked!.has(c.id) ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/40')} aria-hidden>
+                          <CheckIcon className={cn('size-5', !picked!.has(c.id) && 'invisible')} />
+                        </span>
+                      ) : (
+                        <Avatar name={c.name} group={c.category === 'GRUPO'} />
+                      )}
+                      {wc && !picking && <span className={cn('absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-background', wc.dot)} aria-label={`Sem resposta há ${waitText(wc.min)} (${wc.label})`} />}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-baseline justify-between gap-2">

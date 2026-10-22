@@ -40,6 +40,10 @@ class FinishDto {
   @IsBoolean() enviarMensagem!: boolean
 }
 
+class FinishManyDto {
+  @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) ids!: string[]
+}
+
 class EditTextDto {
   @IsString() @Length(1, 4000) text!: string
 }
@@ -309,6 +313,14 @@ export class ChatController {
   @HttpCode(200)
   finish(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: FinishDto, @ReqContext() ctx: RequestCtx) {
     return this.chat.finish(user, id, dto.enviarMensagem, ctx)
+  }
+
+  /** Finalizar vários atendimentos de uma vez, sem mensagem de encerramento. */
+  @Post('conversas/finalizar-varias')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  finishMany(@CurrentUser() user: AuthUser, @Body() dto: FinishManyDto, @ReqContext() ctx: RequestCtx) {
+    return this.chat.finishMany(user, dto.ids, ctx)
   }
 
   /** Não precisa responder: o cliente só se despediu; a conversa sai dos avisos de "cliente esperando". */

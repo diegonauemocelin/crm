@@ -1396,6 +1396,22 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     return { id, status: 'ARQUIVADA', closedAt: now }
   }
 
+  /** Finaliza várias conversas sem mensagem de encerramento (cada uma com as mesmas regras de uma só). */
+  async finishMany(user: AuthUser, ids: string[], ctx: RequestCtx) {
+    this.assertAction(user, 'chat', 'create')
+    const failed: { id: string; error: string }[] = []
+    let done = 0
+    for (const id of [...new Set(ids)]) {
+      try {
+        await this.finish(user, id, false, ctx)
+        done++
+      } catch (e) {
+        failed.push({ id, error: (e as Error).message })
+      }
+    }
+    return { done, failed }
+  }
+
   /**
    * "Não precisa responder": a conversa já terminou (ex.: o cliente mandou um áudio de despedida). Sai dos avisos de
    * cliente esperando até ele mandar outra mensagem.

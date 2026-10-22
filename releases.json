@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.84.0",
+      "date": "2026-10-22",
+      "title": "Finalizar vários atendimentos do WhatsApp de uma vez",
+      "changes": [
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Finalizar vários atendimentos de uma vez: na lista de conversas, Selecionar, marque as conversas (ou Todas da lista) e Finalizar sem mensagem. As conversas saem do atendente e da fila e vão para as arquivadas, sem enviar a mensagem de encerramento. Cada uma segue as mesmas regras do Finalizar de uma conversa (conversa de outro atendente só com a permissão Editar do chat)." }
+      ]
+    },
+    {
       "version": "0.83.0",
       "date": "2026-10-22",
       "title": "Assistente das perguntas do Mercado Livre (o painel.usaparts.com.br) dentro do CRM",

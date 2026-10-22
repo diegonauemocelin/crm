@@ -263,6 +263,7 @@ export const TRAIL: TrailModule[] = [
           'Terminou de atender? Clique em Finalizar no topo da conversa.',
           'O sistema pode mandar a mensagem de encerramento (configurada em Regras e horário), tira a conversa de você e arquiva.',
           'Se o cliente chamar de novo, começa um atendimento novo (fila ou robô).',
+          'Vários de uma vez: na lista de conversas, clique em Selecionar, marque as conversas (ou Todas da lista) e clique em Finalizar sem mensagem. Nenhuma mensagem é enviada aos contatos.',
         ],
       },
       {
