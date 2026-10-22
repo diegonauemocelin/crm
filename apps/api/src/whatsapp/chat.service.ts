@@ -18,7 +18,7 @@ import { type Sector, servesNumber, splitWhere, teamOf, teamWhere } from './aten
 import { type AgendaCategory, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isClosingMessage, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
 import { parseCsv } from '../atendimento/planilha'
 import { answersNote, type BotOutcome, botStateOf, chooseFlow, continueFlow, flowOf, startFlow } from './fluxo'
-import { extOf, INLINE_MEDIA_MAX_BYTES, MEDIA_MAX_BYTES, parseCalls, parseMessage, parseReaction, parseRevision, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, whatsappOf, withReaction } from './mensagens'
+import { extOf, INLINE_MEDIA_MAX_BYTES, MEDIA_MAX_BYTES, decryptSecretEdit, parseCalls, parseMessage, parseReaction, parseRevision, parseSecretEdit, type ParsedSecretEdit, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, whatsappOf, withReaction } from './mensagens'
 
 const PAGE = 60
 /** Nome que aparece nas mensagens e notas do chatbot. */
@@ -116,7 +116,9 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       const r = parseReaction(data)
       if (r) return this.applyReaction(n, r).catch((err: unknown) => this.logger.warn(`Reação não gravada (${n.name}): ${(err as Error).message}`))
       const v = parseRevision(data)
-      return v ? this.applyRevision(n, v).catch((err: unknown) => this.logger.warn(`Edição de mensagem não gravada (${n.name}): ${(err as Error).message}`)) : Promise.resolve()
+      if (v) return this.applyRevision(n, v).catch((err: unknown) => this.logger.warn(`Edição de mensagem não gravada (${n.name}): ${(err as Error).message}`))
+      const e = parseSecretEdit(data)
+      return e ? this.applySecretEdit(n, e).catch((err: unknown) => this.logger.warn(`Edição de mensagem não gravada (${n.name}): ${(err as Error).message}`)) : Promise.resolve()
     }
     // Tipo novo do WhatsApp: fica o aviso na conversa e o formato no registro do servidor (para o CRM aprender a ler).
     if (p.type === 'outro' && p.text === UNKNOWN_TEXT) this.logger.warn(`Mensagem de tipo desconhecido (${n.name}): ${unknownKeys(data)}`)
@@ -160,10 +162,29 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       await this.prisma.whatsappConversation.updateMany({ where: { id: m.conversationId, lastMessageAt: m.sentAt }, data: { lastPreview: 'Mensagem apagada' } })
       return
     }
+    // Edição que não deu para abrir (sem a chave da original): fica marcada como editada, com o texto que tinha.
+    if (v.text === null) {
+      await this.prisma.whatsappMessage.update({ where: { id: m.id }, data: { editedAt: at } })
+      return
+    }
     // Chegou como tipo desconhecido e depois foi editada: o texto novo é o que vale.
     const type = (m.type === 'outro' ? 'texto' : m.type) as ParsedMessage['type']
     await this.prisma.whatsappMessage.update({ where: { id: m.id }, data: { editedAt: at, text: v.text, type } })
     await this.prisma.whatsappConversation.updateMany({ where: { id: m.conversationId, lastMessageAt: m.sentAt }, data: { lastPreview: previewOf({ type, text: v.text }) } })
+  }
+
+  /**
+   * Edição criptografada (WhatsApp novo): abre com a chave guardada da mensagem original. Mensagem de antes de o CRM
+   * guardar as chaves fica só marcada como editada.
+   */
+  private async applySecretEdit(n: WhatsappNumber, e: ParsedSecretEdit) {
+    const m = await this.prisma.whatsappMessage.findFirst({ where: { tenantId: n.tenantId, waId: e.targetWaId, conversation: { numberId: n.id } }, select: { secret: true, conversation: { select: { jid: true } } } })
+    if (!m) return
+    const own = n.phone ? `${n.phone.replace(/\D/g, '')}@s.whatsapp.net` : null
+    const senders = (e.fromMe ? [own] : [...e.senders, m.conversation.jid]).filter((x): x is string => !!x)
+    const text = m.secret ? decryptSecretEdit(m.secret, e.targetWaId, senders, e.encPayload, e.encIv) : null
+    if (!text) this.logger.warn(`Edição criptografada não aberta (${n.name}): ${m.secret ? 'a chave da mensagem original não abriu' : 'mensagem original sem a chave'}`)
+    await this.applyRevision(n, { targetWaId: e.targetWaId, kind: 'editada', text })
   }
 
   /**
@@ -206,6 +227,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
           mediaStatus: p.media ? (tooBig ? 'GRANDE' : 'PENDENTE') : null,
           quotedWaId: p.quoted?.waId ?? null,
           quotedText: p.quoted?.text ?? null,
+          secret: p.secret ?? null,
           // Quem escreveu no grupo (o celular da empresa, quando é ela).
           sentByName: p.fromMe ? null : (p.pushName ?? 'Participante'),
           sentAt: p.at,
@@ -261,13 +283,17 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
           mediaStatus: p.media ? (tooBig ? 'GRANDE' : 'PENDENTE') : null,
           quotedWaId: p.quoted?.waId ?? null,
           quotedText: p.quoted?.text ?? null,
+          secret: p.secret ?? null,
           sentAt: p.at,
         },
       ],
       skipDuplicates: true,
     })
-    // A Evolution pode mandar o mesmo evento de novo: grava uma vez só.
-    if (!saved.length) return
+    // A Evolution pode mandar o mesmo evento de novo: grava uma vez só. A volta do envio do CRM (já gravado) só traz a chave.
+    if (!saved.length) {
+      if (p.secret) await this.prisma.whatsappMessage.updateMany({ where: { conversationId: conv.id, waId: p.waId, secret: null }, data: { secret: p.secret } })
+      return
+    }
     // A própria mensagem de ausência voltando como evento: não conta como resposta (o cliente continua esperando).
     if (p.fromMe && conv.awaySentAt && Math.abs(p.at.getTime() - conv.awaySentAt.getTime()) < 5 * 60_000 && (p.text ?? '').trim() === rules.away.text.trim()) {
       await this.prisma.whatsappMessage.update({ where: { id: saved[0]!.id }, data: { sentByName: 'Mensagem automática (fora do horário)', status: 'ENVIADA' } })

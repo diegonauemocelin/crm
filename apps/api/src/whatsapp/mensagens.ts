@@ -1,4 +1,5 @@
 /** Leitura das mensagens que a Evolution manda (evento MESSAGES_UPSERT), sem depender do banco. */
+import { createDecipheriv, hkdfSync } from 'node:crypto'
 
 export type MessageType = 'texto' | 'imagem' | 'audio' | 'video' | 'documento' | 'figurinha' | 'localizacao' | 'contato' | 'chamada' | 'outro'
 
@@ -23,6 +24,8 @@ export interface ParsedMessage {
   lid?: string | null
   /** Mensagem crua (chave + conteúdo) para pedir a mídia à Evolution. */
   raw: { key: unknown; message: unknown }
+  /** Chave da mensagem (messageSecret, em base64): abre as edições que o WhatsApp manda criptografadas. */
+  secret?: string | null
 }
 
 type Obj = Record<string, unknown>
@@ -83,6 +86,7 @@ export function parseMessage(data: unknown): ParsedMessage | null {
     at: ts ? new Date(ts * 1000) : new Date(),
     raw: { key, message: d.message },
     quoted: quotedOf(m, d.contextInfo),
+    secret: bytesOf(obj(obj(d.message)?.messageContextInfo)?.messageSecret)?.toString('base64') ?? null,
   }
   const media = (o: Obj, fileName?: unknown) => ({ mime: str(o.mimetype, 120)?.split(';')[0]?.trim() || null, fileName: str(fileName, 200), size: num(o.fileLength) })
   const o = (k: string) => (m[k] && typeof m[k] === 'object' ? (m[k] as Obj) : null)
@@ -125,7 +129,7 @@ export function parseMessage(data: unknown): ParsedMessage | null {
   if (poll) return { ...base, type: 'outro', text: `Enquete: ${str(poll.name, 300) ?? ''}`, media: null }
   // Reações, avisos do sistema e chaves de criptografia não viram mensagem na conversa.
   const keys = Object.keys(m).filter((k) => k !== 'messageContextInfo')
-  if (!keys.length || keys.some((k) => ['reactionMessage', 'protocolMessage', 'senderKeyDistributionMessage', 'pollUpdateMessage', 'keepInChatMessage'].includes(k))) return null
+  if (!keys.length || keys.some((k) => ['reactionMessage', 'protocolMessage', 'senderKeyDistributionMessage', 'pollUpdateMessage', 'keepInChatMessage', 'secretEncryptedMessage'].includes(k))) return null
   const found = anyText(m)
   if (found) return { ...base, type: 'texto', text: found, media: null }
   return { ...base, type: 'outro', text: UNKNOWN_TEXT, media: null }
@@ -504,4 +508,164 @@ export function parseCalls(data: unknown): ParsedCall[] {
     out.push({ callId: c.id.slice(0, 100), jid: digits ? `${digits}@s.whatsapp.net` : jid, phoneDigits: digits, isVideo: c.isVideo === true, at: Number.isFinite(ts) ? new Date(ts) : new Date() })
   }
   return out
+}
+
+// ---------- Edição criptografada (secretEncryptedMessage) ----------
+
+/** Bytes vindos no JSON da Evolution: base64, { type: 'Buffer', data: [...] } ou { "0": 12, "1": 34, ... }. */
+export function bytesOf(v: unknown): Buffer | null {
+  if (typeof v === 'string') return v ? Buffer.from(v, 'base64') : null
+  const o = obj(v)
+  if (!o) return null
+  if (Array.isArray(o.data)) return Buffer.from(o.data as number[])
+  const keys = Object.keys(o)
+  if (!keys.length || !keys.every((k) => /^\d+$/.test(k))) return null
+  return Buffer.from(keys.sort((a, b) => Number(a) - Number(b)).map((k) => Number(o[k]) & 0xff))
+}
+
+export interface ParsedSecretEdit {
+  /** Mensagem editada (id no WhatsApp). */
+  targetWaId: string
+  fromMe: boolean
+  encPayload: Buffer
+  encIv: Buffer
+  /** Quem editou (e escreveu a original): as formas do contato que vieram no evento (telefone e @lid). */
+  senders: string[]
+}
+
+/**
+ * Edição que o WhatsApp novo manda criptografada (secretEncryptedMessage, MESSAGE_EDIT). Só abre com a chave da
+ * mensagem original (messageSecret), que o CRM guarda quando a mensagem chega.
+ */
+export function parseSecretEdit(data: unknown): ParsedSecretEdit | null {
+  const d = obj(data)
+  const key = obj(d?.key)
+  const sem = obj(unwrap(obj(d?.message))?.secretEncryptedMessage)
+  if (!key || !sem) return null
+  const type = sem.secretEncType
+  if (type !== undefined && type !== 2 && type !== 'MESSAGE_EDIT') return null
+  const target = str(obj(sem.targetMessageKey)?.id, 120)
+  const encPayload = bytesOf(sem.encPayload)
+  const encIv = bytesOf(sem.encIv ?? sem.encIV)
+  if (!target || !encPayload || !encIv || encPayload.length < 17) return null
+  const senders = [key.participant, key.participantAlt, key.remoteJid, key.remoteJidAlt, key.senderPn, key.senderLid].map((v) => str(v, 120)).filter((v): v is string => !!v && !v.endsWith('@g.us'))
+  return { targetWaId: target, fromMe: key.fromMe === true, encPayload, encIv, senders: [...new Set(senders)] }
+}
+
+/** JID sem o aparelho ("5511999999999:12@s.whatsapp.net" → "5511999999999@s.whatsapp.net"). */
+const plainJid = (j: string) => j.replace(/:\d+@/, '@')
+
+/**
+ * Abre a edição: chave = HKDF-SHA256(messageSecret, info = id da original + quem escreveu + quem editou + tipo),
+ * AES-256-GCM com o IV do evento (o mesmo esquema dos votos de enquete do WhatsApp). Tenta as formas do contato
+ * (telefone e @lid); a autenticação do GCM garante que só a combinação certa abre. Devolve o texto novo ou null.
+ */
+export function decryptSecretEdit(secretB64: string, targetWaId: string, senders: string[], encPayload: Buffer, encIv: Buffer): string | null {
+  const secret = Buffer.from(secretB64, 'base64')
+  if (secret.length !== 32) return null
+  const jids = [...new Set(senders.map(plainJid))]
+  const data = encPayload.subarray(0, encPayload.length - 16)
+  const tag = encPayload.subarray(encPayload.length - 16)
+  for (const kind of ['Message Edit', 'Edit Message']) {
+    for (const orig of jids) {
+      for (const editor of jids) {
+        const info = Buffer.from(`${targetWaId}${orig}${editor}${kind}`)
+        const key = Buffer.from(hkdfSync('sha256', secret, Buffer.alloc(32), info, 32))
+        for (const aad of [null, Buffer.from(`${targetWaId}\u0000${editor}`)]) {
+          try {
+            const d = createDecipheriv('aes-256-gcm', key, encIv)
+            if (aad) d.setAAD(aad)
+            d.setAuthTag(tag)
+            const plain = Buffer.concat([d.update(data), d.final()])
+            return protoMessageText(plain)
+          } catch {
+            // Combinação errada: a autenticação do GCM falha; tenta a próxima.
+          }
+        }
+      }
+    }
+  }
+  return null
+}
+
+type ProtoField = { no: number; wire: number; bytes: Buffer | null }
+
+/** Leitor mínimo de protobuf: só os campos de primeiro nível (os de tamanho variável vêm com os bytes). */
+function protoFields(buf: Buffer): ProtoField[] {
+  const out: ProtoField[] = []
+  let i = 0
+  const varint = () => {
+    let v = 0
+    let shift = 0
+    for (;;) {
+      if (i >= buf.length) throw new Error('fim')
+      const b = buf[i++]!
+      v += (b & 0x7f) * 2 ** shift
+      if (b < 0x80) return v
+      shift += 7
+      if (shift > 49) throw new Error('varint')
+    }
+  }
+  while (i < buf.length) {
+    const tag = varint()
+    const no = Math.floor(tag / 8)
+    const wire = tag % 8
+    if (wire === 0) varint()
+    else if (wire === 1) i += 8
+    else if (wire === 5) i += 4
+    else if (wire === 2) {
+      const len = varint()
+      if (i + len > buf.length) throw new Error('tamanho')
+      out.push({ no, wire, bytes: buf.subarray(i, i + len) })
+      i += len
+      continue
+    } else throw new Error('wire')
+    out.push({ no, wire, bytes: null })
+  }
+  return out
+}
+
+/**
+ * Texto de uma Message do WhatsApp em protobuf: conversation (1), extendedTextMessage.text (6.1), legenda de foto
+ * (3.3) ou vídeo (9.7), ou o editedMessage (14) de um protocolMessage (12); embalagens (editedMessage 58,
+ * ephemeralMessage 40) são abertas.
+ */
+export function protoMessageText(buf: Buffer, depth = 0): string | null {
+  if (depth > 4) return null
+  let fields: ProtoField[]
+  try {
+    fields = protoFields(buf)
+  } catch {
+    return null
+  }
+  const get = (no: number, list = fields) => list.find((f) => f.no === no && f.bytes)?.bytes ?? null
+  const sub = (b: Buffer | null) => {
+    if (!b) return null
+    try {
+      return protoFields(b)
+    } catch {
+      return null
+    }
+  }
+  const text = (b: Buffer | null) => (b && b.length ? str(b.toString('utf8')) : null)
+  const conv = text(get(1))
+  if (conv) return conv
+  const ext = sub(get(6))
+  if (ext && text(get(1, ext))) return text(get(1, ext))
+  const img = sub(get(3))
+  if (img && text(get(3, img))) return text(get(3, img))
+  const vid = sub(get(9))
+  if (vid && text(get(7, vid))) return text(get(7, vid))
+  const proto = sub(get(12))
+  const edited = proto ? get(14, proto) : null
+  if (edited) return protoMessageText(edited, depth + 1)
+  for (const wrap of [58, 40, 37, 55]) {
+    const w = sub(get(wrap))
+    const inner = w ? get(1, w) : null
+    if (inner) {
+      const t = protoMessageText(inner, depth + 1)
+      if (t) return t
+    }
+  }
+  return null
 }

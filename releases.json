@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.88.1",
+      "date": "2026-10-22",
+      "title": "Chat: mensagens editadas no WhatsApp novo aparecem com o texto corrigido",
+      "changes": [
+        { "type": "correcao", "area": "Chat WhatsApp", "text": "Mensagem editada pelo cliente (ou pelo celular da empresa) no WhatsApp novo aparecia como \"Mensagem de um tipo que o CRM ainda não mostra (veja no celular)\". Agora a mensagem original ganha o texto corrigido e a marca \"Editada\"." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "O WhatsApp manda essas edições criptografadas com uma chave da mensagem original: o CRM passa a guardar essa chave quando a mensagem chega. Edição de mensagem recebida antes desta versão fica só marcada como \"Editada\" (o texto novo aparece no celular)." }
+      ]
+    },
+    {
       "version": "0.88.0",
       "date": "2026-10-22",
       "title": "Chat: emojis, figurinhas e o tempo de aguardando retorno até o atendente marcar",

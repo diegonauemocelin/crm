@@ -1507,6 +1507,8 @@ model WhatsappMessage {
   deletedAt      DateTime?
   /// Áudio transcrito pelo Gemini (quando alguém pediu "Transcrever").
   transcript     String?
+  /// Chave da mensagem no WhatsApp (messageSecret, base64): abre as edições que chegam criptografadas.
+  secret         String?
   createdAt      DateTime @default(now())
 
   conversation WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
