@@ -64,10 +64,21 @@ export interface Rule {
   ownerId?: string | null
 }
 
+/** Cupom do e-mail de carrinho abandonado ({cupom} no texto do modelo). Sem o campo = o cupom da loja. */
+export interface CouponConfig {
+  mode: 'nenhum' | 'loja' | 'fixo' | 'unico'
+  code?: string
+  kind?: 'percentual' | 'valor'
+  value?: number
+  days?: number
+  minOrder?: number
+  onlyCartProducts?: boolean
+}
+
 export type Step =
   | { id: string; type: 'esperar'; amount: number; unit: 'minutos' | 'horas' | 'dias' }
   | { id: string; type: 'condicao'; match: 'todas' | 'qualquer'; rules: Rule[]; yes: Step[]; no: Step[] }
-  | { id: string; type: 'enviar_email'; templateId: string }
+  | { id: string; type: 'enviar_email'; templateId: string; coupon?: CouponConfig }
   | { id: string; type: 'adicionar_tag'; tags: string[] }
   | { id: string; type: 'remover_tag'; tags: string[] }
   | { id: string; type: 'alterar_vendedor'; ownerId: string }

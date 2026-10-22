@@ -82,6 +82,8 @@ export type Block = (
   /** Linha com 2 a 4 colunas; cada coluna tem os seus blocos. */
   | { type: 'linha'; cols: Block[][]; valign?: 'top' | 'middle' }
   | { type: 'produtos'; items: ProductItem[]; columns?: 2 | 3 }
+  /** Produtos do carrinho do cliente: preenchido no envio pela automação de carrinho abandonado. */
+  | { type: 'carrinho'; columns?: 2 | 3; buttonText?: string; buttonColor?: string; showPrices?: boolean }
   | { type: 'divisor' }
   | { type: 'redes'; links: SocialLinks; style?: 'cor' | 'cinza'; align?: Align }
   | { type: 'espaco'; height?: number }
@@ -119,6 +121,7 @@ export const BLOCK_LABEL: Record<BlockType, string> = {
   botao: 'Botão',
   whatsapp: 'WhatsApp',
   produtos: 'Produtos',
+  carrinho: 'Produtos do carrinho',
   redes: 'Redes sociais',
   divisor: 'Linha divisória',
   espaco: 'Espaço',
@@ -155,6 +158,8 @@ export function newBlock(type: BlockType, whatsappPhone = '', social: SocialLink
       return { type, text: 'Falar no WhatsApp', phone: whatsappPhone, message: 'Olá! Vim pelo e-mail e quero saber mais.', align: 'center' }
     case 'produtos':
       return { type, columns: 3, items: [] }
+    case 'carrinho':
+      return { type, columns: 2, buttonText: 'Finalizar minha compra' }
     case 'redes':
       return { type, links: { ...social }, style: 'cor', align: 'center' }
     case 'espaco':

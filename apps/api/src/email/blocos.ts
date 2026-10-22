@@ -71,6 +71,8 @@ export type Block = (
   /** Linha com 2 a 4 colunas; cada coluna tem os seus blocos (texto, título, botão, WhatsApp, imagem, vídeo, espaço, linha). */
   | { type: 'linha'; cols: Block[][]; valign?: 'top' | 'middle' }
   | { type: 'produtos'; items: ProductItem[]; columns?: 2 | 3 }
+  /** Produtos do carrinho do cliente: preenchido no envio da automação (carrinho abandonado). */
+  | { type: 'carrinho'; columns?: 2 | 3; buttonText?: string; buttonColor?: string; showPrices?: boolean }
   | { type: 'divisor' }
   | { type: 'redes'; links: SocialLinks; style?: SocialStyle; align?: Align }
   | { type: 'espaco'; height?: number }
@@ -83,7 +85,7 @@ export type Block = (
   lineHeight?: number
 }
 
-export const BLOCK_TYPES = ['titulo', 'texto', 'colunas', 'imagem', 'video', 'botao', 'whatsapp', 'produtos', 'redes', 'divisor', 'espaco', 'linha'] as const
+export const BLOCK_TYPES = ['titulo', 'texto', 'colunas', 'imagem', 'video', 'botao', 'whatsapp', 'produtos', 'carrinho', 'redes', 'divisor', 'espaco', 'linha'] as const
 /** Blocos que cabem dentro de uma coluna. */
 export const COLUMN_BLOCKS = ['titulo', 'texto', 'imagem', 'video', 'botao', 'whatsapp', 'espaco', 'divisor'] as const
 
@@ -141,6 +143,18 @@ export interface Brand {
 export interface Person {
   name: string | null
   email: string
+  /** Variáveis do envio: {cupom}, {cupom_desconto}, {cupom_validade} e {link_carrinho} (vazias quando não há). */
+  vars?: Partial<Record<CartVar, string>>
+}
+
+/** Variáveis do carrinho abandonado (automação). Fora dela, somem do texto. */
+export const CART_VARS = ['cupom', 'cupom_desconto', 'cupom_validade', 'link_carrinho'] as const
+export type CartVar = (typeof CART_VARS)[number]
+
+/** Carrinho do destinatário para o bloco "Produtos do carrinho": itens e o link de volta para o carrinho. */
+export interface CartContent {
+  items: ProductItem[]
+  url: string | null
 }
 
 export interface RenderOptions {
@@ -156,6 +170,19 @@ export interface RenderOptions {
   openPixelUrl?: string | null
   /** Lista fixa de links (modelos de automação: o índice de um link nunca muda depois de enviado). */
   linkList?: string[]
+  /**
+   * Bloco "Produtos do carrinho": o carrinho do cliente (automação), 'exemplo' na pré-visualização e no teste, ou
+   * nada (campanha comum: o bloco não aparece). Os links do carrinho vão direto, sem contagem de clique.
+   */
+  cart?: CartContent | 'exemplo' | null
+}
+
+const SAMPLE_CART: CartContent = {
+  items: [
+    { name: 'Produto do carrinho do cliente', price: 'R$ 289,90' },
+    { name: 'Outro produto do carrinho', price: 'R$ 129,00', oldPrice: 'R$ 149,00' },
+  ],
+  url: null,
 }
 
 export const escape = (v: string) => v.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
@@ -185,6 +212,7 @@ export function personalize(text: string, p: Person, esc: (v: string) => string 
     .replace(/,?\s*\{primeiro_nome\}/g, (m) => (first ? m.replace('{primeiro_nome}', esc(first)) : ''))
     .replace(/,?\s*\{nome\}/g, (m) => (p.name?.trim() ? m.replace('{nome}', esc(p.name.trim())) : ''))
     .replaceAll('{email}', esc(p.email))
+    .replace(/{(cupom|cupom_desconto|cupom_validade|link_carrinho)}/g, (_m, k: CartVar) => esc(p.vars?.[k] ?? ''))
 }
 
 // ---------- Texto formatado ----------
@@ -432,7 +460,10 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
     const i = links.indexOf(u)
     return i >= 0 ? o.trackLink(u, i) : u
   }
+  const cart = o.cart === 'exemplo' ? SAMPLE_CART : (o.cart ?? null)
   const href = (raw: string | undefined | null, allowMail = false) => {
+    // Link do carrinho do cliente: muda a cada destinatário, vai direto (sem contagem de clique).
+    if ((raw ?? '').trim() === '{link_carrinho}') return safeUrl(o.person.vars?.link_carrinho ?? (o.cart === 'exemplo' ? 'https://www.exemplo.com.br/carrinho' : null))
     const u = safeUrl(raw, allowMail)
     return u ? track(u) : null
   }
@@ -447,6 +478,29 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
     const icon = s.icon && (EMAIL_ICONS as readonly string[]).includes(s.icon) ? `${s.icon} ` : ''
     const width = s.full ? 'display:block;text-align:center' : 'display:inline-block'
     return `<tr><td align="${align}" style="padding:${space}px ${px}px"><a href="${escape(link)}" target="_blank" style="background:${bg};color:${fg};text-decoration:none;padding:${size.pad};border-radius:${radius}px;${width};font-weight:700;font-size:${size.font}px;font-family:${font}">${icon}${escape(label)}</a></td></tr>`
+  }
+
+  /** Grade de produtos (bloco Produtos e Produtos do carrinho). Links do carrinho vão direto (sem contagem). */
+  const grid = (out: string[], items: ProductItem[], cols: 2 | 3, tracked: boolean) => {
+    const link0 = (u: string | undefined) => (tracked ? href(u) : safeUrl(u))
+    const width = cols === 2 ? '50%' : '33%'
+    const cells = items.map((p) => {
+      const link = link0(p.url)
+      const src = safeUrl(p.image)
+      const img = src ? `<img src="${escape(src)}" alt="" width="${cols === 2 ? 240 : 160}" style="display:block;width:100%;max-width:${cols === 2 ? 240 : 160}px;height:auto;border:0;margin:0 auto 8px">` : ''
+      const name = `<div style="font-size:14px;line-height:19px;color:#111827;font-weight:600">${escape(p.name)}</div>`
+      const old = p.oldPrice ? `<div style="font-size:12px;color:#9ca3af;text-decoration:line-through;padding-top:4px">${escape(p.oldPrice)}</div>` : ''
+      const price = p.price ? `<div style="font-size:15px;color:${color};font-weight:700;padding-top:${old ? 0 : 4}px">${escape(p.price)}</div>` : ''
+      const inner = `${img}${name}${old}${price}`
+      return `<td valign="top" width="${width}" style="padding:8px;text-align:center">${link ? `<a href="${escape(link)}" target="_blank" style="text-decoration:none">${inner}</a>` : inner}</td>`
+    })
+    for (let i = 0; i < cells.length; i += cols) {
+      const row = cells.slice(i, i + cols)
+      while (row.length < cols) row.push(`<td width="${width}"></td>`)
+      out.push(`<tr><td style="padding:4px 24px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${row.join('')}</tr></table></td></tr>`)
+    }
+    for (const p of items) text.push(`- ${p.name}${p.price ? ` — ${p.price}` : ''}${safeUrl(p.url) ? ` (${safeUrl(p.url)})` : ''}`)
+    text.push('')
   }
 
   /** Desenha um bloco; L = margem lateral (px) e largura útil (px) de onde ele está (o e-mail inteiro ou uma coluna). */
@@ -547,27 +601,18 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
         text.push(`${b.title ? `${P(b.title)} ` : ''}Vídeo: ${watch}`, '')
         break
       }
-      case 'produtos': {
-        const items = b.items.slice(0, 12)
-        const cols = b.columns === 2 ? 2 : 3
-        const width = cols === 2 ? '50%' : '33%'
-        const cells = items.map((p) => {
-          const link = href(p.url)
-          const src = safeUrl(p.image)
-          const img = src ? `<img src="${escape(src)}" alt="" width="${cols === 2 ? 240 : 160}" style="display:block;width:100%;max-width:${cols === 2 ? 240 : 160}px;height:auto;border:0;margin:0 auto 8px">` : ''
-          const name = `<div style="font-size:14px;line-height:19px;color:#111827;font-weight:600">${escape(p.name)}</div>`
-          const old = p.oldPrice ? `<div style="font-size:12px;color:#9ca3af;text-decoration:line-through;padding-top:4px">${escape(p.oldPrice)}</div>` : ''
-          const price = p.price ? `<div style="font-size:15px;color:${color};font-weight:700;padding-top:${old ? 0 : 4}px">${escape(p.price)}</div>` : ''
-          const inner = `${img}${name}${old}${price}`
-          return `<td valign="top" width="${width}" style="padding:8px;text-align:center">${link ? `<a href="${escape(link)}" target="_blank" style="text-decoration:none">${inner}</a>` : inner}</td>`
-        })
-        for (let i = 0; i < cells.length; i += cols) {
-          const row = cells.slice(i, i + cols)
-          while (row.length < cols) row.push(`<td width="${width}"></td>`)
-          rows.push(`<tr><td style="padding:4px 24px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${row.join('')}</tr></table></td></tr>`)
+      case 'carrinho': {
+        if (!cart?.items.length) break
+        grid(rows, cart.items.slice(0, 12).map((i) => (b.showPrices === false ? { ...i, price: undefined, oldPrice: undefined } : i)), b.columns === 2 ? 2 : 3, false)
+        const link = safeUrl(cart.url) ?? (o.cart === 'exemplo' ? 'https://www.exemplo.com.br/carrinho' : null)
+        if (link) {
+          rows.push(button(link, b.buttonText || 'Finalizar minha compra', hex(b.buttonColor, color), '#ffffff', 'center', sp(b, 16), {}, L.px))
+          text.push(`${b.buttonText || 'Finalizar minha compra'}: ${link}`, '')
         }
-        for (const p of items) text.push(`- ${p.name}${p.price ? ` — ${p.price}` : ''}${safeUrl(p.url) ? ` (${safeUrl(p.url)})` : ''}`)
-        text.push('')
+        break
+      }
+      case 'produtos': {
+        grid(rows, b.items.slice(0, 12), b.columns === 2 ? 2 : 3, true)
         break
       }
       case 'redes': {
@@ -708,7 +753,7 @@ export function cleanBlocks(raw: unknown): { blocks: Block[] } | { error: string
         out.push({ type: 'imagem', url: str(b.url, 500), alt: str(b.alt, 200), link: str(b.link, 500) || undefined, width: b.width === undefined ? undefined : clamp(b.width, 20, 100, 100) })
         break
       case 'botao':
-        if (!safeUrl(String(b.url ?? ''), true)) return { error: `Botão "${str(b.text, 40)}" sem um link válido (https://...).` }
+        if (String(b.url ?? '').trim() !== '{link_carrinho}' && !safeUrl(String(b.url ?? ''), true)) return { error: `Botão "${str(b.text, 40)}" sem um link válido (https://... ou {link_carrinho}).` }
         out.push({ type: 'botao', text: str(b.text, 60) || 'Saiba mais', url: str(b.url, 500), color: optHex(b.color), textColor: optHex(b.textColor), align: alignOf(b.align, 'center'), ...cleanButtonStyle(b) })
         break
       case 'whatsapp':
@@ -730,6 +775,9 @@ export function cleanBlocks(raw: unknown): { blocks: Block[] } | { error: string
         })
         break
       }
+      case 'carrinho':
+        out.push({ type: 'carrinho', columns: b.columns === 2 ? 2 : 3, buttonText: str(b.buttonText, 60) || undefined, buttonColor: optHex(b.buttonColor), showPrices: b.showPrices === false ? false : undefined })
+        break
       case 'redes': {
         const links = (b.links ?? {}) as Record<string, unknown>
         for (const n of SOCIAL_NETWORKS) {

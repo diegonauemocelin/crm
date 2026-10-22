@@ -2,6 +2,17 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.89.0",
+      "date": "2026-10-22",
+      "title": "E-mail de carrinho abandonado com os produtos do cliente e cupom personalizado",
+      "changes": [
+        { "type": "novo", "area": "Email marketing", "text": "Novo bloco Produtos do carrinho no editor de e-mail: no envio pela automação, cada cliente recebe os produtos do carrinho dele (foto, nome, preço e preço de antes, do catálogo da loja) e o botão para finalizar a compra, com o texto e a cor que você escolher. Na pré-visualização e no e-mail de teste aparece um carrinho de exemplo." },
+        { "type": "novo", "area": "Email marketing", "text": "Variáveis {cupom}, {cupom_desconto}, {cupom_validade} e {link_carrinho} nos textos e botões (botão de cupom na barra do texto). Fora do e-mail de carrinho, elas somem do texto." },
+        { "type": "novo", "area": "Automações", "text": "Cupom no passo Enviar e-mail: o cupom da loja (Configurações › Loja virtual), um código que você informa ou um cupom único criado na Magazord só para o cliente, com desconto em % ou R$, validade em dias, pedido mínimo e, se quiser, só para os produtos do carrinho. Criado uma vez por cliente em cada passagem pelo fluxo e registrado no histórico." },
+        { "type": "melhoria", "area": "Automações", "text": "O e-mail de carrinho não vai quando o cliente já finalizou a compra, quando não há carrinho com produtos ou quando o cupom pedido não pôde ser criado; o motivo fica no histórico do fluxo." }
+      ]
+    },
+    {
       "version": "0.88.3",
       "date": "2026-10-22",
       "title": "Chat: edição de mensagem com diagnóstico e mais formatos de chave",

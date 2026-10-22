@@ -38,6 +38,8 @@ import {
   SendIcon,
   Share2Icon,
   ShoppingBagIcon,
+  ShoppingCartIcon,
+  TicketIcon,
   SmartphoneIcon,
   StrikethroughIcon,
   Trash2Icon,
@@ -149,6 +151,7 @@ const BLOCK_ICON: Record<BlockType, typeof TypeIcon> = {
   botao: MousePointerClickIcon,
   whatsapp: MessageCircleIcon,
   produtos: ShoppingBagIcon,
+  carrinho: ShoppingCartIcon,
   redes: Share2Icon,
   divisor: MinusIcon,
   espaco: MoveVerticalIcon,
@@ -1152,6 +1155,40 @@ function BlockView({ block: b, brand, editing, onChange }: { block: Block; brand
         </div>
       )
     }
+    case 'carrinho': {
+      const cols = b.columns === 2 ? 2 : 3
+      const sample = [
+        { name: 'Produto do carrinho do cliente', price: 'R$ 289,90' },
+        { name: 'Outro produto do carrinho', price: 'R$ 129,00' },
+      ]
+      return (
+        <div className="px-6 py-1">
+          <p className="mb-1 flex items-center justify-center gap-1.5 text-xs text-[#6b7280]">
+            <ShoppingCartIcon className="size-3.5" /> No envio entram os produtos do carrinho de cada cliente
+          </p>
+          <div className="grid rounded-md border-2 border-dashed border-[#d1d5db]" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+            {sample.map((p, i) => (
+              <div key={i} className="p-3 text-center">
+                <div className="mx-auto mb-2 flex aspect-square w-full items-center justify-center rounded bg-[#f3f4f6] text-[#9ca3af]" style={{ maxWidth: cols === 2 ? 160 : 110 }}>
+                  <ShoppingBagIcon className="size-6" />
+                </div>
+                <div className="text-sm leading-[19px] font-semibold text-[#111827]">{p.name}</div>
+                {b.showPrices !== false && (
+                  <div className="pt-1 text-[15px] font-bold" style={{ color: brand }}>
+                    {p.price}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-center py-3">
+            <span className="rounded-md px-7 py-3 text-[15px] font-bold text-white" style={{ background: b.buttonColor || brand }}>
+              {b.buttonText || 'Finalizar minha compra'}
+            </span>
+          </div>
+        </div>
+      )
+    }
     case 'produtos': {
       const cols = b.columns === 2 ? 2 : 3
       if (!b.items.length)
@@ -1366,6 +1403,9 @@ function FormatBar({ active }: { active: boolean }) {
       </ToolButton>
       <ToolButton label="Inserir primeiro nome do lead" onClick={() => exec('insertText', '{primeiro_nome}')}>
         <UserIcon />
+      </ToolButton>
+      <ToolButton label="Inserir o cupom (e-mail de carrinho abandonado)" onClick={() => exec('insertText', '{cupom}')}>
+        <TicketIcon />
       </ToolButton>
       <Popover>
         <PopoverTrigger asChild>
@@ -2093,6 +2133,40 @@ function InspectorFields({ block: b, numbers, disabled, onChange, onPickImage, o
         </div>
       )
     }
+    case 'carrinho':
+      return (
+        <div className="space-y-3">
+          {head}
+          <p className="text-xs text-muted-foreground">
+            Só para o e-mail de carrinho abandonado (passo Enviar e-mail da automação): cada cliente recebe os produtos do carrinho dele, com foto e preço da loja, e o botão de volta para o carrinho. Se o cliente não tem carrinho com produtos ou já comprou, o e-mail não é enviado.
+          </p>
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-sm font-normal">Por linha</Label>
+            <Select value={String(b.columns ?? 2)} onValueChange={(v) => onChange({ ...b, columns: v === '3' ? 3 : 2 })} disabled={disabled}>
+              <SelectTrigger size="sm" className="w-28">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="2">2 produtos</SelectItem>
+                <SelectItem value="3">3 produtos</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="cart-prices" className="text-sm font-normal">
+              Mostrar preços
+            </Label>
+            <Switch id="cart-prices" checked={b.showPrices !== false} onCheckedChange={(v) => onChange({ ...b, showPrices: v ? undefined : false })} disabled={disabled} />
+          </div>
+          <Field label="Texto do botão" htmlFor="cart-btn">
+            <Input id="cart-btn" maxLength={60} value={b.buttonText ?? ''} placeholder="Finalizar minha compra" onChange={(e) => onChange({ ...b, buttonText: e.target.value })} disabled={disabled} />
+          </Field>
+          <ColorField label="Cor do botão" value={b.buttonColor} fallback="#1d4ed8" onChange={(buttonColor) => onChange({ ...b, buttonColor })} disabled={disabled} clearable />
+          <p className="text-xs text-muted-foreground">
+            Nos textos: {'{cupom}'} (o código), {'{cupom_desconto}'} (ex.: 10%) e {'{cupom_validade}'} (ex.: 31/10) vêm do cupom escolhido no passo da automação. Num botão comum, use {'{link_carrinho}'} como link.
+          </p>
+        </div>
+      )
     case 'produtos': {
       const setItem = (i: number, patch: Partial<ProductItem>) => onChange({ ...b, items: b.items.map((x, j) => (j === i ? { ...x, ...patch } : x)) })
       const moveItem = (i: number, d: -1 | 1) => {

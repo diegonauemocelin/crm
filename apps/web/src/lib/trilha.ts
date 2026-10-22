@@ -673,6 +673,17 @@ export const TRAIL: TrailModule[] = [
           'Sem isso, deixe o fluxo desligado: mensagem automática para quem não pediu contato pode bloquear o número.',
         ],
       },
+      {
+        id: 'automacoes.carrinho',
+        title: 'E-mail de carrinho abandonado com os produtos e cupom',
+        steps: [
+          'Em Email marketing → Modelos, monte o e-mail e arraste o bloco Produtos do carrinho: no envio, cada cliente recebe os produtos do carrinho dele, com foto, preço e o botão para finalizar a compra.',
+          'No texto, use o botão de cupom da barra (ou escreva {cupom}, {cupom_desconto} e {cupom_validade}) junto com a sua mensagem.',
+          'No fluxo com o gatilho Abandonou o carrinho, coloque um passo Enviar e-mail com esse modelo e escolha o cupom: o da loja, um código seu ou um cupom único criado na Magazord só para o cliente (desconto, validade e, se quiser, só para os produtos do carrinho).',
+          'Se o cliente já comprou ou o carrinho está vazio, o e-mail não vai. O cupom único é criado uma vez por cliente em cada passagem pelo fluxo.',
+        ],
+        tip: 'Para o cupom único, o usuário da API da Magazord precisa da permissão de cupons de desconto. Faça um teste com o seu próprio cadastro antes de ligar o fluxo.',
+      },
     ],
   },
   {

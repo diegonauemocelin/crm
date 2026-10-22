@@ -403,3 +403,96 @@ export function seoToMagazord(f: Partial<Record<string, string>>, storeId: numbe
   if (f.searchKeywords !== undefined) product.palavraChave = f.searchKeywords
   return { page: Object.keys(page).length ? { loja: storeId, ...page } : null, product: Object.keys(product).length ? product : null }
 }
+
+// ---------- Carrinho abandonado no e-mail (automação) ----------
+
+/** Cupom do e-mail de carrinho abandonado (passo "Enviar e-mail" da automação). */
+export interface CouponConfig {
+  /** nenhum; loja = o cupom de Configurações › Loja virtual; fixo = o código digitado; unico = criado na Magazord só para o cliente. */
+  mode: 'nenhum' | 'loja' | 'fixo' | 'unico'
+  code?: string
+  kind?: 'percentual' | 'valor'
+  value?: number
+  /** Validade do cupom único, em dias. */
+  days?: number
+  minOrder?: number
+  /** Cupom único vale só para os produtos do carrinho. */
+  onlyCartProducts?: boolean
+}
+
+export const COUPON_DEFAULT: CouponConfig = { mode: 'loja' }
+
+/** Confere e limpa a configuração (vinda da tela). Devolve o texto do erro quando não dá para usar. */
+export function cleanCoupon(raw: unknown): CouponConfig | string {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  const mode = ['nenhum', 'loja', 'fixo', 'unico'].includes(r.mode as string) ? (r.mode as CouponConfig['mode']) : 'loja'
+  if (mode === 'fixo') {
+    const code = String(r.code ?? '').trim().toUpperCase()
+    if (!/^[A-Z0-9_-]{3,32}$/.test(code)) return 'Cupom fixo: use de 3 a 32 letras, números, hífen ou sublinhado.'
+    return { mode, code }
+  }
+  if (mode !== 'unico') return { mode }
+  const kind = r.kind === 'valor' ? 'valor' : 'percentual'
+  const value = Math.round(Number(r.value) * 100) / 100
+  if (!Number.isFinite(value) || value <= 0 || (kind === 'percentual' && value > 90) || value > 100_000) return kind === 'percentual' ? 'Cupom único: desconto de 1% a 90%.' : 'Cupom único: informe o valor do desconto em reais.'
+  const days = Math.round(Number(r.days ?? 7))
+  if (!Number.isFinite(days) || days < 1 || days > 60) return 'Cupom único: validade de 1 a 60 dias.'
+  const minOrder = Number(r.minOrder)
+  return { mode, kind, value, days, minOrder: Number.isFinite(minOrder) && minOrder > 0 ? Math.round(minOrder * 100) / 100 : undefined, onlyCartProducts: r.onlyCartProducts === true }
+}
+
+/** Código do cupom único: VOLTE + 6 letras/números sem os que confundem (0/O, 1/I). */
+export function couponCode(random: () => number = Math.random) {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let out = 'VOLTE'
+  for (let i = 0; i < 6; i++) out += chars[Math.floor(random() * chars.length)]
+  return out
+}
+
+/** Corpo do POST /v2/site/cupomDesconto: uso único, só para o cliente (quando ele tem cadastro na loja). */
+export function couponBody(c: CouponConfig, o: { code: string; storeId: number; customerId: string | null; productCodes: string[]; who: string; now?: Date }) {
+  const now = o.now ?? new Date()
+  const until = new Date(now.getTime() + (c.days ?? 7) * 86_400_000)
+  const person = o.customerId && /^\d+$/.test(o.customerId) ? Number(o.customerId) : null
+  const codes = [...new Set(o.productCodes.filter(Boolean))]
+  return {
+    codigo: o.code,
+    descricao: `Carrinho abandonado: ${o.who}`.slice(0, 100),
+    loja: o.storeId,
+    observacaoCliente: 'Cupom exclusivo para você finalizar a sua compra.',
+    ...(person ? { pessoa: person } : {}),
+    tipoDesconto: c.kind === 'valor' ? 1 : 2,
+    valorDesconto: c.value ?? 0,
+    validoDe: now.toISOString(),
+    validoAte: until.toISOString(),
+    // Único por cliente quando o cupom é dele; sem cadastro na loja, uso único geral (o código só vai neste e-mail).
+    tipoLimite: person ? 2 : 3,
+    ...(c.minOrder ? { valorMinimoPedido: c.minOrder } : {}),
+    ...(c.onlyCartProducts && codes.length ? { restricaoTipo: 1, restricaoProdutos: codes } : { restricaoTipo: 0 }),
+  }
+}
+
+/** Texto do desconto e da validade, para {cupom_desconto} e {cupom_validade}. */
+export function couponTexts(c: CouponConfig, now = new Date()) {
+  if (c.mode !== 'unico') return { discount: '', until: '' }
+  const discount = c.kind === 'valor' ? `R$ ${(c.value ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `${(c.value ?? 0).toLocaleString('pt-BR')}%`
+  const until = new Date(now.getTime() + (c.days ?? 7) * 86_400_000).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' })
+  return { discount, until }
+}
+
+const brl = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+/** Itens do carrinho para o bloco do e-mail: nome, foto, preço e link do catálogo da loja quando o produto está nele. */
+export function cartEmailItems(items: CartItem[], catalog: Map<string, { name: string; image: string | null; url: string | null; price: number | null; priceFrom: number | null }>) {
+  return items.slice(0, 12).map((i) => {
+    const p = catalog.get(i.code)
+    const name = p?.name || i.name
+    return {
+      name: i.qty > 1 ? `${name} (${i.qty} un.)` : name,
+      image: p?.image ?? i.image ?? undefined,
+      url: p?.url ?? i.url ?? undefined,
+      price: p?.price ? brl(p.price) : undefined,
+      oldPrice: p?.priceFrom && p.price && p.priceFrom > p.price ? brl(p.priceFrom) : undefined,
+    }
+  })
+}

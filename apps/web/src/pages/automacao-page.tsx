@@ -58,6 +58,7 @@ import {
   type Automation,
   type AutomationOptions,
   type AutomationReport,
+  type CouponConfig,
   cloneStep,
   findStep,
   insertStep,
@@ -615,6 +616,66 @@ function Field({ label, htmlFor, hint, children, required }: { label: string; ht
   )
 }
 
+/** Cupom do e-mail de carrinho abandonado: vale quando o modelo usa {cupom} no texto. */
+function CouponFields({ value: c, onChange, disabled }: { value: CouponConfig; onChange: (c: CouponConfig) => void; disabled?: boolean }) {
+  const num = (v: string) => (v.trim() === '' ? undefined : Number(v.replace(',', '.')))
+  return (
+    <div className="space-y-3 rounded-md border p-3">
+      <Field label="Cupom do e-mail" htmlFor="s-coupon" hint="Vale quando o modelo usa {cupom}, {cupom_desconto} ou {cupom_validade} no texto (e-mail de carrinho abandonado).">
+        <SimpleSelect
+          id="s-coupon"
+          value={c.mode}
+          onChange={(mode) => onChange(mode === 'unico' ? { mode, kind: 'percentual', value: 10, days: 7, onlyCartProducts: false } : mode === 'fixo' ? { mode, code: c.code ?? '' } : { mode: mode as CouponConfig['mode'] })}
+          items={[
+            { id: 'loja', name: 'O cupom da loja (Configurações › Loja virtual)' },
+            { id: 'unico', name: 'Cupom único criado para o cliente' },
+            { id: 'fixo', name: 'Um código que eu informo' },
+            { id: 'nenhum', name: 'Sem cupom' },
+          ]}
+          disabled={disabled}
+        />
+      </Field>
+      {c.mode === 'fixo' && (
+        <Field label="Código do cupom" htmlFor="s-coupon-code" hint="O cupom precisa existir na Magazord.">
+          <Input id="s-coupon-code" maxLength={32} value={c.code ?? ''} onChange={(e) => onChange({ ...c, code: e.target.value.toUpperCase() })} disabled={disabled} />
+        </Field>
+      )}
+      {c.mode === 'unico' && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Desconto" htmlFor="s-coupon-value">
+              <div className="flex gap-1">
+                <Input id="s-coupon-value" inputMode="decimal" value={c.value ?? ''} onChange={(e) => onChange({ ...c, value: num(e.target.value) })} disabled={disabled} />
+                <Select value={c.kind ?? 'percentual'} onValueChange={(kind) => onChange({ ...c, kind: kind as 'percentual' | 'valor' })} disabled={disabled}>
+                  <SelectTrigger className="w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="percentual">%</SelectItem>
+                    <SelectItem value="valor">R$</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </Field>
+            <Field label="Validade (dias)" htmlFor="s-coupon-days">
+              <Input id="s-coupon-days" inputMode="numeric" value={c.days ?? ''} onChange={(e) => onChange({ ...c, days: num(e.target.value) })} disabled={disabled} />
+            </Field>
+          </div>
+          <Field label="Pedido mínimo (R$, opcional)" htmlFor="s-coupon-min">
+            <Input id="s-coupon-min" inputMode="decimal" value={c.minOrder ?? ''} onChange={(e) => onChange({ ...c, minOrder: num(e.target.value) })} disabled={disabled} />
+          </Field>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={!!c.onlyCartProducts} onCheckedChange={(v) => onChange({ ...c, onlyCartProducts: v === true })} disabled={disabled} /> Vale só para os produtos do carrinho
+          </label>
+          <p className="text-xs text-muted-foreground">
+            O CRM cria o cupom na Magazord na hora do envio, um por cliente: uso único, só para ele (quando tem cadastro na loja). Se a Magazord recusar (o usuário da API precisa da permissão de cupons), o e-mail não é enviado e o motivo fica no histórico do fluxo.
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
 function SimpleSelect({ id, value, onChange, items, disabled, placeholder }: { id?: string; value: string; onChange: (v: string) => void; items: { id: string; name: string }[]; disabled?: boolean; placeholder?: string }) {
   return (
     <Select value={value} onValueChange={onChange} disabled={disabled}>
@@ -939,6 +1000,7 @@ function StepEditor({ step: s, ctx, disabled, onChange }: { step: Step; ctx: Ctx
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">Só vai para quem autorizou receber e-mails (LGPD). Quem não autorizou passa direto para o próximo passo. Depois de criar um modelo em outra aba, recarregue esta página para ele aparecer.</p>
+          <CouponFields value={s.coupon ?? { mode: 'loja' }} onChange={(coupon) => onChange({ ...s, coupon })} disabled={disabled} />
         </>
       )
     }

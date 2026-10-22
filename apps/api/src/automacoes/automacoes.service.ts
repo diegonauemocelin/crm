@@ -5,7 +5,10 @@ import type { RequestCtx } from '../common/decorators'
 import { type Action, can } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import { env } from '../config/env'
+import type { CartContent, CartVar } from '../email/blocos'
 import { EmailService } from '../email/email.service'
+import { COUPON_DEFAULT, couponTexts } from '../integracoes/magazord'
+import { MagazordService } from '../integracoes/magazord.service'
 import type { Automation, AutomationRun, Prisma } from '../generated/prisma/client'
 import { LeadConfigService } from '../leads/lead-config.service'
 import { type LeadFilters, LeadsService } from '../leads/leads.service'
@@ -79,6 +82,7 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
     private readonly tracking: RastreamentoService,
     private readonly mail: MailService,
     private readonly audit: AuditService,
+    private readonly magazord: MagazordService,
     private readonly chat?: ChatService,
   ) {}
 
@@ -434,6 +438,44 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
   }
 
   /** Lead entra no fluxo (se ainda não está nele e se as regras de reentrada deixam). */
+  /**
+   * E-mail de carrinho abandonado: o carrinho do lead (o do gatilho ou o mais recente), o link de volta e o cupom.
+   * Não envia quando o cliente já comprou, quando o modelo mostra o carrinho e não há produtos, ou quando o cupom
+   * pedido não pôde ser criado. O cupom único é criado uma vez por passagem pelo fluxo (fica no contexto).
+   */
+  private async cartEmail(run: AutomationRun, s: Extract<Step, { type: 'enviar_email' }>, ctx: Record<string, unknown>): Promise<{ stop?: { kind: 'pulado' | 'erro'; message: string }; cart?: CartContent | null; vars?: Partial<Record<CartVar, string>> }> {
+    const uses = await this.email.templateUses(run.tenantId, s.templateId)
+    if (!uses.cart && !uses.coupon && !uses.link) return {}
+    const info = await this.magazord.cartForEmail(run.tenantId, run.leadId, typeof ctx.carrinho === 'string' ? ctx.carrinho : null).catch(() => null)
+    if (info?.purchased) return { stop: { kind: 'pulado', message: 'O cliente já finalizou a compra deste carrinho: e-mail não enviado.' } }
+    if ((uses.cart || uses.link) && !info?.content.items.length) return { stop: { kind: 'pulado', message: 'Sem carrinho com produtos para mostrar: e-mail não enviado.' } }
+    const vars: Partial<Record<CartVar, string>> = { link_carrinho: info?.content.url ?? '' }
+    if (uses.coupon) {
+      const c = s.coupon ?? COUPON_DEFAULT
+      const saved = ctx.cupom as { code: string; discount: string; until: string } | undefined
+      if (c.mode === 'loja') {
+        vars.cupom = await this.magazord.storeCoupon(run.tenantId)
+        if (!vars.cupom) return { stop: { kind: 'erro', message: 'O modelo usa {cupom}, mas não há cupom em Configurações › Loja virtual (Magazord). Cadastre o cupom ou escolha outro no passo "Enviar e-mail".' } }
+      } else if (c.mode === 'fixo') vars.cupom = c.code ?? ''
+      else if (c.mode === 'unico') {
+        if (saved?.code) Object.assign(vars, { cupom: saved.code, cupom_desconto: saved.discount, cupom_validade: saved.until })
+        else {
+          const lead = await this.prisma.lead.findUnique({ where: { id: run.leadId }, select: { name: true, email: true } })
+          try {
+            const code = await this.magazord.createCoupon(run.tenantId, c, { customerId: info?.customerId ?? null, productCodes: info?.productCodes ?? [], who: lead?.name ?? lead?.email ?? 'cliente' })
+            const t = couponTexts(c)
+            ctx.cupom = { code, discount: t.discount, until: t.until }
+            Object.assign(vars, { cupom: code, cupom_desconto: t.discount, cupom_validade: t.until })
+            await this.log(run, s.id, 'cupom', `Cupom ${code} criado na Magazord (${t.discount}, válido até ${t.until}).`)
+          } catch (err) {
+            return { stop: { kind: 'erro', message: `${(err as Error).message} O e-mail não foi enviado.` } }
+          }
+        }
+      }
+    }
+    return { cart: info?.content ?? null, vars }
+  }
+
   async enroll(a: Automation, leadId: string, context: Record<string, unknown>) {
     const lead = await this.prisma.lead.findFirst({ where: { id: leadId, tenantId: a.tenantId, deletedAt: null, anonymizedAt: null }, select: { id: true } })
     if (!lead) return false
@@ -517,7 +559,14 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
             return
           }
           this.emailBudget--
-          const r = await this.email.sendAutomationEmail({ tenantId: run.tenantId, templateId: s.templateId, leadId: run.leadId, runId: run.id, automationId: a.id, automationName: a.name })
+          // Carrinho abandonado: produtos do carrinho do cliente, link de volta e o cupom (quando o modelo usa).
+          const prep = await this.cartEmail(run, s, ctx)
+          if (prep.stop) {
+            await this.log(run, s.id, prep.stop.kind, prep.stop.message)
+            stepId = node.next
+            break
+          }
+          const r = await this.email.sendAutomationEmail({ tenantId: run.tenantId, templateId: s.templateId, leadId: run.leadId, runId: run.id, automationId: a.id, automationName: a.name, cart: prep.cart, vars: prep.vars })
           if (r.status === 'tentar_depois') {
             await this.prisma.automationRun.update({ where: { id: run.id }, data: { stepId, nextRunAt: new Date(Date.now() + 5 * 60_000), context: ctx as Prisma.InputJsonValue } })
             await this.log(run, s.id, 'aviso', `${r.message} Nova tentativa em 5 minutos.`)

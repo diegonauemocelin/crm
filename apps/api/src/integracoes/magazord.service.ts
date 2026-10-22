@@ -11,7 +11,7 @@ import { env } from '../config/env'
 import { MailService } from '../settings/mail.service'
 import { SettingsService } from '../settings/settings.service'
 import type { SeoFields } from './seo'
-import { cartItems, cleanBaseUrl, cleanHttpsBase, type CustomerData, customerFrom, DEFAULT_CART_MESSAGE, type MagazordPessoa, type MzSiteProduct, mzDateTime, orderGroup, parseMzDate, PRODUCTS_MAX_ATTEMPTS, orderChannel, orderLines, productFrom, seoFromMagazord, seoToMagazord, type MzPage, type MzProductDetail, productsDue, shrinkError, spDay } from './magazord'
+import { type CartItem, cartEmailItems, cartItems, cleanBaseUrl, couponBody, couponCode, type CouponConfig, cleanHttpsBase, type CustomerData, customerFrom, DEFAULT_CART_MESSAGE, type MagazordPessoa, type MzSiteProduct, mzDateTime, orderGroup, parseMzDate, PRODUCTS_MAX_ATTEMPTS, orderChannel, orderLines, productFrom, seoFromMagazord, seoToMagazord, type MzPage, type MzProductDetail, productsDue, shrinkError, spDay } from './magazord'
 
 export interface MagazordSettings {
   enabled: boolean
@@ -245,7 +245,7 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
   }
 
   /** Alteração na Magazord (PATCH), com a mesma autenticação e o mesmo cuidado com o limite de requisições. */
-  private async send<T>(s: MagazordSettings, method: 'PATCH' | 'PUT', path: string, body: unknown, attempt = 0): Promise<T> {
+  private async send<T>(s: MagazordSettings, method: 'PATCH' | 'PUT' | 'POST', path: string, body: unknown, attempt = 0): Promise<T> {
     const base = cleanBaseUrl(s.baseUrl)
     if (!base || !s.tokenEnc || !s.passwordEnc) throw new MagazordError('Integração sem endereço, token ou senha.')
     const auth = Buffer.from(`${decrypt(s.tokenEnc)}:${decrypt(s.passwordEnc)}`).toString('base64')
@@ -259,6 +259,53 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
     if (!res.ok || out?.status === 'error') throw new MagazordError(`Magazord respondeu ${res.status}${out?.message ? `: ${out.message}` : ''}`)
     await new Promise((r) => setTimeout(r, 250))
     return out?.data as T
+  }
+
+  // ---------- Carrinho abandonado no e-mail (automação) ----------
+
+  /**
+   * Carrinho do lead para o e-mail: o do gatilho (quando a automação começou por um carrinho) ou o mais recente com
+   * produtos. Itens com foto, preço e link do catálogo; link de volta para o carrinho (ou o site).
+   */
+  async cartForEmail(tenantId: string, leadId: string, externalId?: string | null) {
+    const cart =
+      (externalId ? await this.prisma.ecommerceCart.findFirst({ where: { tenantId, leadId, externalId } }) : null) ??
+      (await this.prisma.ecommerceCart.findFirst({ where: { tenantId, leadId, itemCount: { gt: 0 } }, orderBy: [{ lastActivityAt: 'desc' }, { createdAt: 'desc' }] }))
+    if (!cart) return null
+    const items = (cart.items as unknown as CartItem[]) ?? []
+    const codes = [...new Set(items.map((i) => i.code).filter(Boolean))]
+    const products = codes.length ? await this.prisma.storeProduct.findMany({ where: { tenantId, code: { in: codes } }, orderBy: { active: 'asc' }, select: { code: true, name: true, image: true, url: true, price: true, priceFrom: true } }) : []
+    // Ativos por último: sobrescrevem os inativos do mesmo código.
+    const catalog = new Map(products.map((x) => [x.code, { name: x.name, image: x.image, url: x.url, price: x.price === null ? null : Number(x.price), priceFrom: x.priceFrom === null ? null : Number(x.priceFrom) }]))
+    const s = await this.config(tenantId)
+    const site = cleanHttpsBase(s.siteUrl) ?? (await this.productContext(tenantId, s)).siteUrl
+    return {
+      externalId: cart.externalId,
+      purchased: cart.status === 3 || !!cart.orderCode,
+      customerId: cart.customerId,
+      productCodes: codes,
+      content: { items: cartEmailItems(items, catalog), url: cart.checkoutUrl ?? site ?? null },
+    }
+  }
+
+  /** Cupom de Configurações › Loja virtual (o mesmo da mensagem de WhatsApp do carrinho). */
+  async storeCoupon(tenantId: string) {
+    return ((await this.config(tenantId)).coupon ?? '').trim()
+  }
+
+  /** Cria na Magazord o cupom único do cliente (POST /v2/site/cupomDesconto) e devolve o código. */
+  async createCoupon(tenantId: string, c: CouponConfig, o: { customerId: string | null; productCodes: string[]; who: string }) {
+    const s = await this.config(tenantId)
+    if (!s.enabled) throw new MagazordError('Integração com a Magazord desligada (Configurações › Loja virtual).')
+    const code = couponCode()
+    const body = couponBody(c, { code, storeId: s.storeId || 1, customerId: o.customerId, productCodes: o.productCodes, who: o.who })
+    try {
+      const r = await this.send<{ codigo?: string } | null>(s, 'POST', '/v2/site/cupomDesconto', body)
+      return (r && typeof r === 'object' && typeof r.codigo === 'string' && r.codigo) || code
+    } catch (err) {
+      const msg = (err as Error).message
+      throw new MagazordError(/permiss|recusou/i.test(msg) ? 'A Magazord recusou criar o cupom: o usuário da API precisa da permissão de Cupons de desconto.' : `A Magazord não criou o cupom (${msg}).`)
+    }
   }
 
   // ---------- SEO do e-commerce ----------
