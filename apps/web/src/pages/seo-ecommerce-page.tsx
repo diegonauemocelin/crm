@@ -20,7 +20,7 @@ import { useAuth } from '@/lib/auth'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
 
-type FieldKey = 'pageTitle' | 'seoTitle' | 'metaDescription' | 'url' | 'title' | 'subtitle' | 'description' | 'summary' | 'searchKeywords'
+type FieldKey = 'pageTitle' | 'seoTitle' | 'metaDescription' | 'url' | 'title' | 'description' | 'summary' | 'searchKeywords'
 type Fields = Record<FieldKey, string>
 interface FieldDef {
   key: FieldKey
@@ -466,7 +466,6 @@ function seoScoreOf(f: Partial<Fields>) {
   else if (d.length < 300) n -= 15
   else if (d.length < 600) n -= 5
   if (!(f.summary ?? '').trim()) n -= 5
-  if (!(f.subtitle ?? '').trim()) n -= 3
   return Math.max(0, n)
 }
 

@@ -29,6 +29,15 @@ describe('SEO do e-commerce: Magazord', () => {
     expect(seoToMagazord({ description: '<p>x</p>', searchKeywords: 'pino, bucha' }, 1)).toEqual({ page: null, product: { produtoLoja: [{ loja: 1, descricao: '<p>x</p>' }], palavraChave: 'pino, bucha' } })
     expect(seoToMagazord({}, 1)).toEqual({ page: null, product: null })
   })
+
+  it('o Subtítulo (tituloComplemento) fica como está na loja: não é lido, sugerido nem enviado', () => {
+    const r = seoFromMagazord({ ...detail, produtoLoja: [{ loja: 1, titulo: 'T', tituloComplemento: '<strong>Part Number: </strong>73156667' }] }, page, 1)
+    expect(JSON.stringify(r)).not.toContain('Part Number')
+    expect(seoToMagazord({ subtitle: 'novo', title: 'T2' }, 1)).toEqual({ page: null, product: { produtoLoja: [{ loja: 1, titulo: 'T2' }] } })
+    expect(seoToMagazord({ subtitle: 'novo' }, 1)).toEqual({ page: null, product: null })
+    expect(cleanSeoFields({ subtitle: 'x', title: 'y' } as never)).toEqual({ title: 'y' })
+    expect(seoPrompt({ name: 'P', code: 'C', brand: null, categories: [], attributes: [], ean: null }, {})).not.toMatch(/subt[ií]tulo|subtitle/i)
+  })
 })
 
 describe('SEO do e-commerce: regras', () => {
@@ -41,7 +50,7 @@ describe('SEO do e-commerce: regras', () => {
     const fraco = seoScore(seoFromMagazord(detail, page, 1).fields)
     expect(fraco.score).toBeLessThan(60)
     expect(fraco.issues.map((i) => i.field)).toEqual(expect.arrayContaining(['seoTitle', 'metaDescription', 'description']))
-    const bom = seoScore({ seoTitle: 'Kit Pinos e Bucha para Komatsu PC200 | Usaparts', metaDescription: 'Kit de pinos e buchas para a Komatsu PC200 com importação direta e suporte técnico. Peça seu orçamento e receba em todo o Brasil.', description: `<p>${'Texto completo do produto. '.repeat(30)}</p>`, summary: 'Resumo', subtitle: 'Para Komatsu PC200' })
+    const bom = seoScore({ seoTitle: 'Kit Pinos e Bucha para Komatsu PC200 | Usaparts', metaDescription: 'Kit de pinos e buchas para a Komatsu PC200 com importação direta e suporte técnico. Peça seu orçamento e receba em todo o Brasil.', description: `<p>${'Texto completo do produto. '.repeat(30)}</p>`, summary: 'Resumo' })
     expect(bom.score).toBe(100)
     expect(seoScore({ seoTitle: 'Kit Pinos e Bucha para Komatsu PC200 | Usaparts' }, true).issues.some((i) => i.text.includes('igual'))).toBe(true)
   })

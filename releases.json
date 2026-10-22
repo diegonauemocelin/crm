@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.88.2",
+      "date": "2026-10-22",
+      "title": "SEO dos produtos não mexe mais no Subtítulo da loja",
+      "changes": [
+        { "type": "correcao", "area": "SEO do e-commerce", "text": "O Subtítulo (Descrição Geral) saiu do SEO dos produtos: o CRM não lê, não sugere com a IA, não conta na nota e nunca envia para a Magazord. O que está cadastrado na loja fica como está. Sugestões antigas que tinham subtítulo também não enviam esse campo." }
+      ]
+    },
+    {
       "version": "0.88.1",
       "date": "2026-10-22",
       "title": "Chat: mensagens editadas no WhatsApp novo aparecem com o texto corrigido",

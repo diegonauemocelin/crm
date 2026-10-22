@@ -380,7 +380,6 @@ export function seoFromMagazord(d: MzProductDetail, page: MzPage | null, storeId
       metaDescription: txt(page?.metaDescription, 1000),
       url: txt(page?.url_pagina, 300).replace(/^https?:\/\/[^/]+/, '').replace(/^\/+/, ''),
       title: txt(pl.titulo, 300),
-      subtitle: txt(pl.tituloComplemento, 300),
       description: txt(pl.descricao, 20_000),
       summary: txt(pl.descricaoResumida, 2000),
       searchKeywords: '',
@@ -397,7 +396,6 @@ export function seoToMagazord(f: Partial<Record<string, string>>, storeId: numbe
   if (f.url !== undefined) page.url = f.url
   const loja: Record<string, unknown> = { loja: storeId }
   if (f.title !== undefined) loja.titulo = f.title
-  if (f.subtitle !== undefined) loja.tituloComplemento = f.subtitle
   if (f.description !== undefined) loja.descricao = f.description
   if (f.summary !== undefined) loja.descricaoResumida = f.summary
   const product: Record<string, unknown> = {}

@@ -6,8 +6,9 @@
  *  - Aba SEO do produto (Páginas, /v2/site/paginas/{id}): title (Título página de produto), titleSeo (Título SEO),
  *    metaDescription (Meta-Description, até 160) e url (Url da página). As palavras-chave da página só são lidas:
  *    o PATCH da página não aceita metaKeywords.
- *  - Aba Descrição Geral (produto x loja, PATCH /v2/site/produto/{código}): titulo, tituloComplemento (Subtítulo),
- *    descricao (texto com formatação) e descricaoResumida. E palavraChave (palavras de busca da loja).
+ *  - Aba Descrição Geral (produto x loja, PATCH /v2/site/produto/{código}): titulo, descricao (texto com formatação) e
+ *    descricaoResumida. E palavraChave (palavras de busca da loja).
+ *  - O Subtítulo (tituloComplemento) fica como está na loja: o CRM não lê, não sugere e não envia.
  */
 
 export interface SeoFields {
@@ -21,8 +22,6 @@ export interface SeoFields {
   url: string
   /** Descrição Geral › Título. */
   title: string
-  /** Descrição Geral › Subtítulo. */
-  subtitle: string
   /** Descrição Geral › descrição (HTML). */
   description: string
   /** Descrição resumida (vitrines). */
@@ -38,7 +37,6 @@ export const SEO_FIELDS: { key: SeoField; label: string; group: 'seo' | 'descric
   { key: 'pageTitle', label: 'Título página de produto', group: 'seo', max: 150, hint: 'Título da página do produto na loja.' },
   { key: 'url', label: 'Url da página', group: 'seo', max: 250, hint: 'Mudar a URL de um produto que já tem visitas pode perder posição no Google. Só altere se a atual estiver ruim.' },
   { key: 'title', label: 'Título (Descrição Geral)', group: 'descricao', max: 150, hint: 'Título exibido na página do produto.' },
-  { key: 'subtitle', label: 'Subtítulo', group: 'descricao', max: 150, hint: 'Complemento do título (aplicação, modelo).' },
   { key: 'description', label: 'Descrição', group: 'descricao', max: 8000, hint: 'Texto completo da página do produto, com parágrafos e listas.' },
   { key: 'summary', label: 'Descrição resumida', group: 'descricao', max: 400, hint: 'Resumo usado nas vitrines e listagens.' },
   { key: 'searchKeywords', label: 'Palavras de busca da loja', group: 'descricao', max: 1500, hint: 'A Magazord não informa as atuais: enviar substitui as que existem.' },
@@ -139,7 +137,6 @@ export function seoScore(f: Partial<SeoFields>, duplicateTitle = false): { score
   else if (desc.length < 300) add('description', 15, `Descrição curta (${desc.length} caracteres; o ideal é passar de 600).`)
   else if (desc.length < 600) add('description', 5, `Descrição pode ser mais completa (${desc.length} caracteres).`)
   if (!(f.summary ?? '').trim()) add('summary', 5, 'Sem descrição resumida.')
-  if (!(f.subtitle ?? '').trim()) add('subtitle', 3, 'Sem subtítulo.')
   const score = Math.max(0, 100 - issues.reduce((a, i) => a + i.points, 0))
   return { score, issues }
 }
@@ -184,7 +181,6 @@ export function seoPrompt(p: ProductFacts, current: Partial<SeoFields>, instruct
     `Título SEO atual: ${current.seoTitle || '(vazio)'}`,
     `Meta-description atual: ${current.metaDescription || '(vazia)'}`,
     `Título atual: ${current.title || '(vazio)'}`,
-    `Subtítulo atual: ${current.subtitle || '(vazio)'}`,
     `Descrição atual: ${plainText(current.description ?? '').slice(0, 2500) || '(vazia)'}`,
   ].join('\n')
   return `${facts}
@@ -197,12 +193,11 @@ ${instruction ? `Pedido de quem está revisando: ${instruction}\n\n` : ''}Escrev
 - metaDescription: 130 a 155 caracteres, com o benefício e um convite (ex.: "Peça seu orçamento").
 - pageTitle: título da página do produto, até 120 caracteres.
 - title: título da Descrição Geral (pode ser igual ao pageTitle).
-- subtitle: até 100 caracteres, complemento útil (aplicação, linha).
 - summary: até 300 caracteres.
 - description: HTML simples só com <p>, <h3>, <ul>, <li> e <strong>; 600 a 1500 caracteres; seções: o que é, características (das informadas), aplicação (só se informada) e por que comprar na loja (importação direta, estoque, suporte técnico, envio para todo o Brasil).
 - searchKeywords: termos que o cliente digita (nome da peça, sinônimos, modelo, código), separados por vírgula.
 - url: só o final da URL, em minúsculas com hífens.
-Formato: {"seoTitle":"","metaDescription":"","pageTitle":"","title":"","subtitle":"","summary":"","description":"","searchKeywords":"","url":""}`
+Formato: {"seoTitle":"","metaDescription":"","pageTitle":"","title":"","summary":"","description":"","searchKeywords":"","url":""}`
 }
 
 export function parseSeoAnswer(text: string): Partial<SeoFields> | null {
