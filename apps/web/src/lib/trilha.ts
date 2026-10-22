@@ -755,6 +755,59 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'marketplaces',
+    title: 'Marketplaces: Mercado Livre Ads',
+    module: 'marketplaces',
+    routes: ['/marketplaces'],
+    purpose: 'Acompanhar a publicidade e as vendas nos marketplaces: hoje o Mercado Livre (Product Ads e Display Ads); depois, a Shopee.',
+    howItWorks:
+      'O CRM lê as campanhas do Mercado Livre a cada 6 horas, só leitura: nunca altera anúncio, preço ou orçamento. A receita é a que o Mercado Livre atribui aos anúncios (até 14 dias depois do clique), por isso os últimos 15 dias são refeitos a cada sincronização. O histórico mais antigo veio do Usaparts BI. A Visão geral junta a publicidade com as vendas por canal da loja virtual (Magazord).',
+    lessons: [
+      {
+        id: 'mktp.painel',
+        title: 'Ler o painel do Mercado Livre Ads',
+        steps: [
+          'Abra Marketplaces → Mercado Livre Ads (ou Dashboards → Mercado Livre Ads) e escolha o período.',
+          'Investimento e receita atribuída vêm comparados com o período anterior. ROAS = receita ÷ investimento (não é lucro); ACOS = investimento ÷ receita (quanto menor, melhor).',
+          'Escolha uma campanha no seletor para ver só ela. As abas mostram as campanhas, os anúncios com mais investimento e o Display Ads.',
+          'Baixe qualquer tabela em CSV pelo botão no canto (precisa da permissão Exportar).',
+        ],
+      },
+      {
+        id: 'mktp.conectar',
+        title: 'Conectar o Mercado Livre',
+        steps: [
+          'Abra Marketplaces → Conexões. Copie a URI de redirecionamento e acrescente no aplicativo do Mercado Livre (developers.mercadolivre.com.br).',
+          'Digite o Client ID e o Client Secret do aplicativo e clique em Salvar credenciais.',
+          'Clique em Conectar o Mercado Livre, entre com a conta da empresa e autorize. Escolha o anunciante do Product Ads, se houver mais de um.',
+          'Clique em Sincronizar agora. Na primeira vez vêm os últimos 90 dias (limite do Mercado Livre).',
+        ],
+        tip: 'Quando o CRM conecta, a sincronização do Usaparts BI para: o Mercado Livre aceita uma conexão por aplicativo.',
+      },
+    ],
+  },
+  {
+    key: 'bi-historico',
+    title: 'Histórico do Usaparts BI',
+    module: 'bi_historico',
+    routes: ['/marketplaces/historico-bi'],
+    purpose: 'Consultar tudo o que estava no Usaparts BI: leads das planilhas, investimentos, Google Ads e as demais tabelas.',
+    howItWorks:
+      'O banco inteiro do BI foi copiado para dentro do CRM, sem alteração. Aqui é só consulta: os leads do BI não se misturam com a Base de leads do CRM. Cada tabela pode ser baixada em planilha, sem senhas nem tokens.',
+    lessons: [
+      {
+        id: 'bi.consultar',
+        title: 'Consultar e baixar os dados do BI',
+        steps: [
+          'Abra Marketplaces → Histórico do BI.',
+          'Em Leads das planilhas, busque pelo cliente, vendedor ou campanha e filtre por planilha, situação, pré/pós-venda e período.',
+          'Investimentos e Google Ads mostram o que o BI tinha lançado e sincronizado.',
+          'Em Tudo o que foi guardado, cada tabela do BI aparece com a quantidade de registros e o botão Baixar planilha.',
+        ],
+      },
+    ],
+  },
+  {
     key: 'whatsapp-dash',
     title: 'Atendimento WhatsApp (painel)',
     module: 'chat',

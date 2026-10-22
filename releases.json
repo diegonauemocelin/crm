@@ -2,6 +2,20 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.82.0",
+      "date": "2026-10-22",
+      "title": "Marketplaces: Mercado Livre Ads dentro do CRM e o Usaparts BI trazido inteiro",
+      "changes": [
+        { "type": "novo", "area": "Marketplaces", "text": "Novo grupo Marketplaces no menu. Visão geral: publicidade do Mercado Livre (investimento, receita atribuída, ROAS e ACOS, comparados com o período anterior) e as vendas por canal da loja virtual (Magazord), com os marketplaces marcados. A Shopee entra aqui na próxima etapa." },
+        { "type": "novo", "area": "Marketplaces", "text": "Painel Mercado Livre Ads (também em Dashboards): Product Ads e Display Ads com investimento, receita atribuída direta e indireta, ROAS, ACOS, cliques, CTR, CPC e vendas pelos anúncios; gráficos por dia ou por mês; campanhas, os 200 anúncios com mais investimento (com a foto) e campanhas de Display, com filtro por campanha e CSV." },
+        { "type": "novo", "area": "Marketplaces", "text": "Conexão com o Mercado Livre em Marketplaces › Conexões: Client ID e Client Secret do aplicativo (o segredo fica criptografado), autorização da conta, escolha do anunciante, Testar conexão, Sincronizar agora e Desconectar. Sincroniza sozinho a cada 6 horas, refazendo os últimos 15 dias (o Mercado Livre atribui vendas até 14 dias depois do clique). Só leitura: o CRM não altera nada na conta." },
+        { "type": "novo", "area": "Marketplaces", "text": "Usaparts BI dentro do CRM: o banco inteiro do BI é copiado para o CRM sem alterar o BI (deploy/importar-bi.sh). O histórico do Mercado Livre, inclusive o que tem mais de 90 dias, entra nos painéis sem duplicar e sem sobrescrever o que o CRM já sincronizou." },
+        { "type": "novo", "area": "Marketplaces", "text": "Histórico do BI: leads das planilhas (com busca e filtros por planilha, situação, pré/pós-venda e período), investimentos, Google Ads por mês e por campanha, e a lista de todas as tabelas guardadas, cada uma com download em planilha (sem senhas nem tokens). Os leads do CRM não são tocados." },
+        { "type": "novo", "area": "Perfis de acesso", "text": "Duas permissões novas no grupo Marketplaces: Marketplaces e Histórico do Usaparts BI (este tem dados de clientes). Os perfis existentes começam sem acesso." },
+        { "type": "infra", "area": "Servidor", "text": "deploy/importar-bi.sh: faz o backup do CRM, guarda uma cópia criptografada do banco e dos arquivos do BI na pasta de backups e coloca o BI no esquema bi do banco do CRM. Pode rodar de novo para trocar pela cópia mais nova. O backup diário do CRM passa a levar esse esquema." }
+      ]
+    },
+    {
       "version": "0.81.0",
       "date": "2026-10-21",
       "title": "Cores separadas para a marca e para os botões, com prévia e paletas prontas",

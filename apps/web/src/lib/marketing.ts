@@ -147,8 +147,8 @@ export function useAnalysis(query: string, enabled = true) {
   return useQuery({ queryKey: ['mkt-analise', query], queryFn: () => api.get<Analysis>(`/marketing/analise?${query}`), placeholderData: keepPreviousData, enabled, staleTime: 60_000 })
 }
 
-export function useMktOptions() {
-  return useQuery({ queryKey: ['mkt-opcoes'], queryFn: () => api.get<Options>('/marketing/opcoes'), staleTime: 5 * 60_000 })
+export function useMktOptions(enabled = true) {
+  return useQuery({ queryKey: ['mkt-opcoes'], queryFn: () => api.get<Options>('/marketing/opcoes'), staleTime: 5 * 60_000, enabled })
 }
 
 // ---------- Formatos ----------

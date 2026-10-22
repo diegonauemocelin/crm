@@ -1937,3 +1937,85 @@ model MktCompetitorNote {
   @@index([tenantId, username, date])
   @@map("mkt_competitor_notes")
 }
+
+// ---------- Marketplaces (Mercado Livre; depois Shopee) ----------
+
+/// Campanha de publicidade de um marketplace (Mercado Livre: Product Ads e Display Ads).
+model MarketplaceCampaign {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  /// mercadolivre (depois shopee)
+  marketplace String
+  /// product_ads ou display
+  product     String
+  campaignId  String
+  name        String
+  status      String?
+  strategy    String?
+  budget      Decimal?  @db.Decimal(14, 2)
+  roasTarget  Decimal?  @db.Decimal(10, 2)
+  acosTarget  Decimal?  @db.Decimal(10, 2)
+  startDate   DateTime? @db.Date
+  endDate     DateTime? @db.Date
+  extra       Json?
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, marketplace, product, campaignId])
+  @@map("marketplace_campaigns")
+}
+
+/// Anúncio do marketplace (no Mercado Livre, o grupo de anúncios: item, família ou produto de catálogo).
+model MarketplaceAd {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  marketplace String
+  adId        String
+  campaignId  String?
+  externalId  String?
+  type        String?
+  title       String?
+  thumbnail   String?
+  status      String?
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, marketplace, adId])
+  @@map("marketplace_ads")
+}
+
+/// Números do dia por campanha (level campaign) ou por anúncio (level ad). Receita = vendas atribuídas pelo marketplace.
+model MarketplaceAdDay {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @db.Uuid
+  marketplace     String
+  product         String
+  level           String
+  entityId        String
+  campaignId      String
+  date            DateTime @db.Date
+  impressions     Int      @default(0)
+  clicks          Int      @default(0)
+  cost            Decimal  @default(0) @db.Decimal(14, 2)
+  /// receita atribuída total (direta + indireta)
+  revenue         Decimal  @default(0) @db.Decimal(14, 2)
+  directRevenue   Decimal  @default(0) @db.Decimal(14, 2)
+  indirectRevenue Decimal  @default(0) @db.Decimal(14, 2)
+  units           Int      @default(0)
+  directUnits     Int      @default(0)
+  indirectUnits   Int      @default(0)
+  /// itens anunciados vendidos
+  items           Int      @default(0)
+  organicUnits    Int      @default(0)
+  organicRevenue  Decimal  @default(0) @db.Decimal(14, 2)
+  pageViews       Int      @default(0)
+  addToCart       Int      @default(0)
+  checkouts       Int      @default(0)
+  /// Display: vendas pela data do evento (a receita padrão é pelo ponto de contato)
+  eventRevenue    Decimal  @default(0) @db.Decimal(14, 2)
+  /// api (sincronizado pelo CRM) ou bi (trazido do Usaparts BI)
+  source          String   @default("api")
+  updatedAt       DateTime @updatedAt
+
+  @@unique([tenantId, marketplace, product, level, entityId, date])
+  @@index([tenantId, marketplace, product, level, date])
+  @@map("marketplace_ad_days")
+}

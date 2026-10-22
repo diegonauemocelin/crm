@@ -22,7 +22,8 @@ const ALL = '__todos'
 /** Filtros globais: valem para todos os cards, gráficos e tabelas da tela (e ficam no endereço da página). */
 export function MktFilters({ show = 'all' }: { show?: 'all' | 'period' }) {
   const f = useMktFilters()
-  const opts = useMktOptions()
+  // Só período (ex.: Marketplaces): as opções dos filtros do CRM não são usadas.
+  const opts = useMktOptions(show === 'all')
   const o = opts.data
   const [more, setMore] = useState(f.active.length > 0)
   const preset = PRESETS.find((p) => {

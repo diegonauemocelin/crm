@@ -35,6 +35,9 @@ import {
   CameraIcon,
   UsersIcon,
   FileBarChartIcon,
+  ArchiveIcon,
+  ShoppingBagIcon,
+  StoreIcon,
 } from 'lucide-react'
 import type { Action } from './types'
 
@@ -67,6 +70,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Atendimento WhatsApp', to: '/whatsapp/dashboard', icon: MessageCircleIcon, module: 'chat' },
       { title: 'Resultados do e-mail', to: '/email-marketing/dashboard', icon: MailIcon, module: 'email_marketing' },
       { title: 'Google Ads', to: '/google-ads', icon: TargetIcon, module: 'google_ads' },
+      { title: 'Mercado Livre Ads', to: '/marketplaces/mercado-livre', icon: ShoppingBagIcon, module: 'marketplaces' },
     ],
   },
   {
@@ -122,6 +126,16 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Planejamento', to: '/marketing/planejamento', icon: CalendarRangeIcon, module: 'mi_orcamento' },
       { title: 'Relatórios e alertas', to: '/marketing/relatorios', icon: FileBarChartIcon, module: 'mi_relatorios' },
       { title: 'Integrações', to: '/marketing/integracoes', icon: PlugIcon, module: 'mi_config' },
+    ],
+  },
+  {
+    // Mercado Livre agora; a Shopee entra aqui depois.
+    title: 'Marketplaces',
+    items: [
+      { title: 'Visão geral', to: '/marketplaces', icon: StoreIcon, module: 'marketplaces' },
+      { title: 'Mercado Livre Ads', to: '/marketplaces/mercado-livre', icon: ShoppingBagIcon, module: 'marketplaces' },
+      { title: 'Histórico do BI', to: '/marketplaces/historico-bi', icon: ArchiveIcon, module: 'bi_historico' },
+      { title: 'Conexões', to: '/marketplaces/integracoes', icon: PlugIcon, module: 'marketplaces' },
     ],
   },
   {

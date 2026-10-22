@@ -15,11 +15,11 @@ export interface Col<T> {
   right?: boolean
   csv?: (r: T) => string | number | null
 }
-export function SimpleTable<T>({ title, description, rows, cols, rowKey, exportName, empty = 'Sem dados no período.', limit = 50 }: { title: string; description?: ReactNode; rows: T[]; cols: Col<T>[]; rowKey: (r: T) => string; exportName?: string; empty?: string; limit?: number }) {
+export function SimpleTable<T>({ title, description, rows, cols, rowKey, exportName, exportModule, empty = 'Sem dados no período.', limit = 50 }: { title: string; description?: ReactNode; rows: T[]; cols: Col<T>[]; rowKey: (r: T) => string; exportName?: string; /** Módulo que libera o CSV (padrão: mídia paga ou executivo do Marketing Inteligente). */ exportModule?: string; empty?: string; limit?: number }) {
   const { can } = useAuth()
   const [all, setAll] = useState(false)
   const shown = all ? rows : rows.slice(0, limit)
-  const canExport = exportName && (can('mi_midia', 'export') || can('mi_executivo', 'export'))
+  const canExport = exportName && (exportModule ? can(exportModule, 'export') : can('mi_midia', 'export') || can('mi_executivo', 'export'))
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-2">
