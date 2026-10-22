@@ -32,7 +32,7 @@ export class WhatsappDashboardService {
     const scope = await this.chat.where(user)
     const convWhere: Prisma.WhatsappConversationWhereInput = { AND: [scope, q.all ? { category: { not: 'GRUPO' } } : { category: 'CLIENTE' }, q.numberId ? { numberId: q.numberId } : {}] }
     const [convs, numbers] = await Promise.all([
-      this.prisma.whatsappConversation.findMany({ where: convWhere, select: { id: true, numberId: true, name: true, phone: true, leadId: true, status: true, lastFromMe: true, lastMessageAt: true } }),
+      this.prisma.whatsappConversation.findMany({ where: convWhere, select: { id: true, numberId: true, name: true, phone: true, leadId: true, status: true, lastMessageAt: true, lastInboundAt: true, noReplyNeeded: true } }),
       this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, deletedAt: null }, select: { id: true, name: true } }),
     ])
     const convIds = convs.map((c) => c.id)
@@ -69,15 +69,15 @@ export class WhatsappDashboardService {
 
     // ---------- Situação agora ----------
     const now = Date.now()
-    const awaiting = convs.filter((c) => c.status === 'ABERTA' && !c.lastFromMe && c.lastMessageAt)
-    const waitMs = awaiting.map((c) => now - c.lastMessageAt!.getTime())
+    const awaiting = convs.filter((c) => c.status === 'ABERTA' && !c.noReplyNeeded && c.lastInboundAt)
+    const waitMs = awaiting.map((c) => now - c.lastInboundAt!.getTime())
     const leadNames = new Map(
       (await this.prisma.lead.findMany({ where: { id: { in: awaiting.map((c) => c.leadId).filter((x): x is string => !!x) } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]),
     )
     const oldest = [...awaiting]
-      .sort((a, b) => a.lastMessageAt!.getTime() - b.lastMessageAt!.getTime())
+      .sort((a, b) => a.lastInboundAt!.getTime() - b.lastInboundAt!.getTime())
       .slice(0, 10)
-      .map((c) => ({ conversationId: c.id, name: (c.leadId && leadNames.get(c.leadId)) || c.name || c.phone || 'Contato', number: numbers.find((n) => n.id === c.numberId)?.name ?? null, since: c.lastMessageAt }))
+      .map((c) => ({ conversationId: c.id, name: (c.leadId && leadNames.get(c.leadId)) || c.name || c.phone || 'Contato', number: numbers.find((n) => n.id === c.numberId)?.name ?? null, since: c.lastInboundAt }))
 
     // ---------- Por dia e mapa de calor ----------
     const dayMap = new Map<string, { received: number; initiated: number; messagesIn: number; frt: number[] }>()

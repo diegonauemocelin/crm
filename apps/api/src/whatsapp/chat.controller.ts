@@ -440,6 +440,51 @@ export class ChatController {
     return this.chat.sendFile(user, id, file, dto.legenda)
   }
 
+  /** Figurinhas salvas pela pessoa (cada atendente tem as suas). */
+  @Get('figurinhas')
+  stickers(@CurrentUser() user: AuthUser) {
+    return this.chat.stickers(user)
+  }
+
+  @Get('figurinhas/:id/imagem')
+  async stickerImage(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Res() res: Response) {
+    const s = await this.chat.stickerImage(user, id)
+    res.setHeader('Content-Type', s.mime)
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox")
+    res.setHeader('Cache-Control', 'private, max-age=86400')
+    res.send(s.content)
+  }
+
+  /** Figurinha nova a partir de uma imagem do computador (PNG, JPG, WEBP ou GIF, até 1 MB). */
+  @Post('figurinhas')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 1024 * 1024, files: 1 } }))
+  addSticker(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File | undefined) {
+    return this.chat.addSticker(user, file)
+  }
+
+  @Delete('figurinhas/:id')
+  removeSticker(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.chat.removeSticker(user, id)
+  }
+
+  /** Salva nas figurinhas da pessoa uma figurinha da conversa. */
+  @Post('mensagens/:id/salvar-figurinha')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  saveSticker(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.chat.saveSticker(user, id)
+  }
+
+  @Post('conversas/:id/figurinhas/:figurinha')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  sendSticker(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Param('figurinha', ParseUUIDPipe) figurinha: string) {
+    return this.chat.sendSticker(user, id, figurinha)
+  }
+
   /** Mensagem de voz gravada no navegador (vai como áudio de voz do WhatsApp). */
   @Post('conversas/:id/audio')
   @HttpCode(200)

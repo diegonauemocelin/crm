@@ -1447,6 +1447,8 @@ model WhatsappConversation {
   lastFromMe       Boolean   @default(false)
   /// Cliente não espera resposta: agradeceu depois da despedida (ou o atendente marcou). Volta a esperar na próxima mensagem dele.
   noReplyNeeded    Boolean   @default(false)
+  /// Última mensagem do cliente: o tempo de "aguardando retorno" conta daqui até alguém marcar "Não precisa responder" (ou finalizar).
+  lastInboundAt    DateTime?
   /// Nota interna nova, ainda não vista por quem atende.
   noteUnread       Boolean   @default(false)
   /// Última mensagem de ausência enviada (fora do horário comercial), para não repetir a cada mensagem.
@@ -2450,4 +2452,21 @@ model SeoChange {
   @@index([tenantId, status, createdAt])
   @@index([seoProductId])
   @@map("seo_changes")
+}
+
+/// Figurinhas salvas por cada atendente (recebidas no chat ou enviadas do computador), para mandar nas conversas.
+model WhatsappSticker {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  userId    String   @db.Uuid
+  /// Imagem guardada no CRM (FileAsset, tipo "figurinha").
+  fileId    String   @db.Uuid
+  /// SHA-256 da imagem: a mesma figurinha não entra duas vezes para a mesma pessoa.
+  hash      String
+  mime      String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, hash])
+  @@index([tenantId, userId, createdAt])
+  @@map("whatsapp_stickers")
 }

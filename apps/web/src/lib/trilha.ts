@@ -213,6 +213,8 @@ export const TRAIL: TrailModule[] = [
           'Escreva e aperte Enter para enviar (Shift + Enter quebra a linha).',
           'Use o clipe para enviar foto ou arquivo e o microfone para gravar áudio.',
           'Passe o mouse na mensagem: Responder (cita a mensagem), reagir com emoji, encaminhar e, nas suas, Corrigir ou apagar.',
+          'No botão de carinha, ao lado da caixa de texto: emojis e as suas figurinhas. Figurinha recebida: menu ⋮ → Salvar figurinha.',
+          'O tempo de “aguardando retorno” conta da última mensagem do cliente. Quando não houver mais o que responder, clique em Não precisa responder; se o cliente escrever de novo, volta a contar.',
         ],
         tip: 'Você também pode responder pelo celular: a conversa aparece igual no CRM.',
         media: { src: '/trilha/chat-responder.webm', alt: 'Respondendo uma conversa no chat', kind: 'video' },

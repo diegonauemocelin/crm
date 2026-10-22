@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import { CapturaService } from '../captura/captura.service'
@@ -6,7 +6,7 @@ import type { RequestCtx } from '../common/decorators'
 import { can, type Scope } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import { EmailAiService } from '../email/ia.service'
-import { FilesService } from '../files/files.service'
+import { detectImage, FilesService } from '../files/files.service'
 import { Prisma, type WhatsappNumber } from '../generated/prisma/client'
 import { LeadCaptureService } from '../leads/lead-capture.service'
 import { PrismaService } from '../prisma/prisma.service'
@@ -28,6 +28,10 @@ const BOT_NAME = 'Robô de atendimento'
  * Conversas do WhatsApp: grava o que chega pela Evolution (ligando ao lead e ao Pré-Vendas) e entrega para a tela,
  * respeitando quem pode ver o quê (permissão "Chat WhatsApp": próprios, unidade ou todos).
  */
+/** Figurinhas salvas por pessoa e o tamanho máximo de cada uma. */
+const STICKER_MAX = 300
+const STICKER_MAX_BYTES = 1024 * 1024
+
 @Injectable()
 export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger('WhatsAppChat')
@@ -176,7 +180,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     await this.prisma.whatsappConversation.delete({ where: { id: hidden.id } })
     return this.prisma.whatsappConversation.update({
       where: { id: conv.id },
-      data: { unread: { increment: hidden.unread }, ...(later ? { lastMessageAt: hidden.lastMessageAt, lastPreview: hidden.lastPreview, lastFromMe: hidden.lastFromMe, status: hidden.status === 'ABERTA' ? 'ABERTA' : conv.status } : {}) },
+      data: { unread: { increment: hidden.unread }, ...(hidden.lastInboundAt && (!conv.lastInboundAt || hidden.lastInboundAt > conv.lastInboundAt) ? { lastInboundAt: hidden.lastInboundAt } : {}), ...(later ? { lastMessageAt: hidden.lastMessageAt, lastPreview: hidden.lastPreview, lastFromMe: hidden.lastFromMe, status: hidden.status === 'ABERTA' ? 'ABERTA' : conv.status } : {}) },
     })
   }
 
@@ -232,7 +236,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       (phone ? await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, phone } }) : null)
     if (p.lid) conv = await this.adoptHidden(n, p.lid, p.jid, phone, conv)
     const rules = await this.rules(n.tenantId)
-    // "Muito obrigada!", "ok 👍" depois da última fala da empresa: o cliente não espera resposta.
+    // "Muito obrigada!", "ok 👍" depois da última fala da empresa (só para não reabrir um atendimento recém-finalizado).
     const goodbye = !p.fromMe && !!conv && (conv.lastFromMe || conv.noReplyNeeded) && isClosingMessage(p)
     // Agradeceu logo depois de finalizado: o atendimento continua finalizado (não abre outro nem volta para a fila).
     const staysClosed = goodbye && !!conv?.closedAt && p.at.getTime() - conv.closedAt.getTime() < 2 * 86_400_000
@@ -309,7 +313,9 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         ...(toDefault ? { assignedUserId: n.defaultUserId } : {}),
         ...(phone && !conv.phone ? { phone } : {}),
         ...(p.pushName && !conv.name ? { name: p.pushName } : {}),
-        ...(later ? { lastMessageAt: p.at, lastPreview: previewOf(p), lastFromMe: p.fromMe, noReplyNeeded: goodbye } : {}),
+        // Mensagem da empresa não para o tempo de "aguardando retorno": só "Não precisa responder" ou finalizar.
+        // Mensagem do cliente (inclusive "obrigado") volta a contar o tempo: só o atendente decide quando não precisa responder.
+        ...(later ? { lastMessageAt: p.at, lastPreview: previewOf(p), lastFromMe: p.fromMe, ...(p.fromMe ? {} : { noReplyNeeded: false, lastInboundAt: p.at }) } : {}),
         // Resposta pelo celular zera as não lidas (alguém já está atendendo).
         ...(p.fromMe ? { unread: 0 } : staysClosed ? {} : { unread: { increment: 1 }, status: 'ABERTA', closedAt: null, closedByName: null }),
       },
@@ -430,7 +436,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       if (!saved.count) continue
       await this.prisma.whatsappConversation.update({
         where: { id: conv.id },
-        data: { lastMessageAt: c.at, lastPreview: c.isVideo ? 'Ligação de vídeo recebida' : 'Ligação de voz recebida', lastFromMe: false, noReplyNeeded: false, unread: { increment: 1 }, status: 'ABERTA' },
+        data: { lastMessageAt: c.at, lastPreview: c.isVideo ? 'Ligação de vídeo recebida' : 'Ligação de voz recebida', lastFromMe: false, noReplyNeeded: false, lastInboundAt: c.at, unread: { increment: 1 }, status: 'ABERTA' },
       })
     }
   }
@@ -613,8 +619,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (q.reminders) and.push({ reminders: { some: { userId: user.id, doneAt: null } } })
     if (q.labelId) and.push({ labels: { some: { labelId: q.labelId, label: this.ownedWhere(user) } } })
     if (q.monitor && q.sellerId) and.push(await this.sellerWhere(user.tenantId, q.sellerId))
-    // Aguardando resposta: a última mensagem é do contato.
-    if (q.awaiting) and.push({ lastFromMe: false, noReplyNeeded: false })
+    // Aguardando resposta: o contato escreveu e ninguém marcou "Não precisa responder" (resposta da empresa não tira).
+    if (q.awaiting) and.push({ lastInboundAt: { not: null }, noReplyNeeded: false })
     // Fila do atendimento dividido: clientes ainda sem atendente.
     if (q.queue) {
       const split = await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, splitAttendance: true }, select: { id: true } })
@@ -684,6 +690,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         lastPreview: r.lastPreview,
         lastFromMe: r.lastFromMe,
         noReplyNeeded: r.noReplyNeeded,
+        lastInboundAt: r.lastInboundAt,
         category: r.category,
         status: r.status,
         reminderAt: reminders.get(r.id) ?? null,
@@ -756,7 +763,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     // Mensagem respondida que está no CRM: se era da empresa e o id dela (para ir até ela na conversa).
     const quotedRows = new Map((quotedIds.length ? await this.prisma.whatsappMessage.findMany({ where: { conversationId: conv.id, waId: { in: quotedIds } }, select: { id: true, waId: true, fromMe: true } }) : []).map((q) => [q.waId, { id: q.id, fromMe: q.fromMe }]))
     return {
-      conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, assignedUserId: conv.assignedUserId, assignedUserName: attendants.find((a) => a.id === conv.assignedUserId)?.name ?? null, helpers: attendants.filter((a) => conv.helperUserIds.includes(a.id)).map((a) => ({ id: a.id, name: a.name })), sectorId: conv.sectorId, category: conv.category, unread: conv.unread, noReplyNeeded: conv.noReplyNeeded, labels: (await this.labelsOf(user, [conv.id])).get(conv.id) ?? [] },
+      conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, assignedUserId: conv.assignedUserId, assignedUserName: attendants.find((a) => a.id === conv.assignedUserId)?.name ?? null, helpers: attendants.filter((a) => conv.helperUserIds.includes(a.id)).map((a) => ({ id: a.id, name: a.name })), sectorId: conv.sectorId, category: conv.category, unread: conv.unread, noReplyNeeded: conv.noReplyNeeded, lastInboundAt: conv.lastInboundAt, labels: (await this.labelsOf(user, [conv.id])).get(conv.id) ?? [] },
       /** Contato na agenda do número (ou na geral): nome e tipo salvos. */
       agenda: conv.category !== 'GRUPO' ? await this.agendaContact(user.tenantId, conv.numberId, conv.phone ?? conv.jid).then((c) => (c ? { name: c.name, category: c.category, general: c.scope === '' } : null)) : null,
       attendance: number ? { split: number.splitAttendance, sectors: numberSectors.map((x) => ({ id: x.id, name: x.name })), attendants: attendants.filter((a) => a.active).map((a) => ({ id: a.id, name: a.name })) } : null,
@@ -1229,6 +1236,75 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     return out.filter((x) => !seen.has(x.phone) && seen.add(x.phone)).slice(0, 20)
   }
 
+  // ---------- Figurinhas (de cada atendente) ----------
+
+  /** Figurinhas salvas pela pessoa, as mais novas primeiro. */
+  async stickers(user: AuthUser) {
+    this.assertAction(user, 'chat', 'create')
+    return this.prisma.whatsappSticker.findMany({ where: { tenantId: user.tenantId, userId: user.id }, orderBy: { createdAt: 'desc' }, take: STICKER_MAX, select: { id: true } })
+  }
+
+  /** Imagem de uma figurinha da própria pessoa. */
+  async stickerImage(user: AuthUser, id: string) {
+    const st = await this.prisma.whatsappSticker.findFirst({ where: { id, tenantId: user.tenantId, userId: user.id } })
+    if (!st) throw new NotFoundException()
+    const { content } = await this.files.read(st.fileId)
+    return { mime: st.mime, content }
+  }
+
+  /** Guarda uma imagem (já conferida) como figurinha da pessoa; a mesma imagem não entra duas vezes. */
+  private async keepSticker(user: AuthUser, buffer: Buffer) {
+    const type = detectImage(buffer)
+    if (!type || !['png', 'jpg', 'webp', 'gif'].includes(type.ext)) throw new BadRequestException('Formato não suportado. Use PNG, JPG, WEBP ou GIF.')
+    if (buffer.length > STICKER_MAX_BYTES) throw new BadRequestException('Imagem maior que 1 MB. Diminua a imagem e tente de novo.')
+    const hash = createHash('sha256').update(buffer).digest('hex')
+    const found = await this.prisma.whatsappSticker.findUnique({ where: { userId_hash: { userId: user.id, hash } }, select: { id: true } })
+    if (found) return { id: found.id, message: 'Esta figurinha já está salva.' }
+    if ((await this.prisma.whatsappSticker.count({ where: { userId: user.id } })) >= STICKER_MAX) throw new BadRequestException(`Você já tem ${STICKER_MAX} figurinhas salvas. Apague algumas para salvar outras.`)
+    const asset = await this.files.saveBuffer(user.tenantId, 'figurinha', buffer, type.mime, type.ext)
+    const st = await this.prisma.whatsappSticker.create({ data: { tenantId: user.tenantId, userId: user.id, fileId: asset.id, hash, mime: type.mime } })
+    return { id: st.id, message: 'Figurinha salva. Ela aparece no botão de emojis e figurinhas da conversa.' }
+  }
+
+  /** "Salvar figurinha" numa figurinha recebida ou enviada na conversa. */
+  async saveSticker(user: AuthUser, messageId: string) {
+    this.assertAction(user, 'chat', 'create')
+    const m = await this.prisma.whatsappMessage.findFirst({ where: { id: messageId, tenantId: user.tenantId } })
+    if (!m) throw new NotFoundException('Mensagem não encontrada.')
+    await this.load(user, m.conversationId)
+    if (m.type !== 'figurinha' || m.deletedAt) throw new BadRequestException('Só figurinhas podem ser salvas.')
+    if (!m.fileId) throw new BadRequestException('A figurinha ainda não foi baixada (ou passou do prazo de guarda).')
+    const { content } = await this.files.read(m.fileId)
+    return this.keepSticker(user, content)
+  }
+
+  /** Figurinha nova a partir de uma imagem do computador. */
+  async addSticker(user: AuthUser, file: Express.Multer.File | undefined) {
+    this.assertAction(user, 'chat', 'create')
+    if (!file?.buffer?.length) throw new BadRequestException('Escolha uma imagem.')
+    return this.keepSticker(user, file.buffer)
+  }
+
+  async removeSticker(user: AuthUser, id: string) {
+    const st = await this.prisma.whatsappSticker.findFirst({ where: { id, tenantId: user.tenantId, userId: user.id } })
+    if (!st) throw new NotFoundException('Figurinha não encontrada.')
+    await this.prisma.whatsappSticker.delete({ where: { id: st.id } })
+    await this.files.remove(st.fileId)
+    return { ok: true }
+  }
+
+  /** Manda uma figurinha salva na conversa. A mensagem guarda uma cópia (a figurinha pode ser apagada depois). */
+  async sendSticker(user: AuthUser, conversationId: string, stickerId: string) {
+    const st = await this.prisma.whatsappSticker.findFirst({ where: { id: stickerId, tenantId: user.tenantId, userId: user.id } })
+    if (!st) throw new NotFoundException('Figurinha não encontrada.')
+    const c = await this.sendContext(user, conversationId)
+    const { content } = await this.files.read(st.fileId)
+    const r = await c.client.sendSticker(c.number.instanceName, c.target, content.toString('base64')).catch((e: unknown) => this.fail(e))
+    const ext = st.mime.split('/')[1] === 'jpeg' ? 'jpg' : (st.mime.split('/')[1] ?? 'webp')
+    const asset = await this.files.saveBuffer(c.conv.tenantId, 'whatsapp', content, st.mime, ext)
+    return this.recordSent(user, c, r, { type: 'figurinha', text: null, fileId: asset.id, fileName: `figurinha.${ext}`, mime: st.mime })
+  }
+
   async sendFile(user: AuthUser, id: string, file: Express.Multer.File | undefined, caption?: string, voice = false) {
     if (!file?.buffer?.length) throw new BadRequestException('Escolha um arquivo.')
     return this.sendBuffer(user, id, { buffer: file.buffer, size: file.size, originalname: file.originalname ?? '' }, caption, voice)
@@ -1419,9 +1495,9 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   async noReply(user: AuthUser, id: string, ctx: RequestCtx) {
     this.assertAction(user, 'chat', 'create')
     const conv = await this.load(user, id)
-    if (conv.lastFromMe || conv.noReplyNeeded) return { id, noReplyNeeded: true }
-    // Só se nada novo chegou desde que a tela abriu.
-    await this.prisma.whatsappConversation.updateMany({ where: { id, lastMessageAt: conv.lastMessageAt }, data: { noReplyNeeded: true } })
+    if (conv.noReplyNeeded) return { id, noReplyNeeded: true }
+    // Só se o cliente não escreveu de novo nesse meio tempo.
+    await this.prisma.whatsappConversation.updateMany({ where: { id, lastInboundAt: conv.lastInboundAt }, data: { noReplyNeeded: true } })
     await this.audit.byUser(user, ctx, 'chat.sem_resposta', 'whatsapp_conversation', id, { contato: conv.name ?? conv.phone ?? null })
     return { id, noReplyNeeded: true }
   }
@@ -2024,14 +2100,14 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const rules = await this.rules(user.tenantId)
     const now = Date.now()
     const waitWhere = {
-      AND: [scope, { status: 'ABERTA', lastFromMe: false, noReplyNeeded: false, category: 'CLIENTE' }, { lastMessageAt: { lte: new Date(now - rules.yellowMinutes * 60_000), gte: new Date(now - 24 * 3_600_000) } }],
+      AND: [scope, { status: 'ABERTA', noReplyNeeded: false, category: 'CLIENTE' }, { lastInboundAt: { lte: new Date(now - rules.yellowMinutes * 60_000), gte: new Date(now - 24 * 3_600_000) } }],
     }
     // Fora do horário comercial ninguém é cobrado: o aviso de "sem resposta" volta quando abrir.
     const open = isOpen(rules.businessHours)
     const [waitCount, redCount, waitList] = !open ? [0, 0, []] : await Promise.all([
       this.prisma.whatsappConversation.count({ where: waitWhere }),
-      this.prisma.whatsappConversation.count({ where: { AND: [waitWhere, { lastMessageAt: { lte: new Date(now - rules.redMinutes * 60_000) } }] } }),
-      this.prisma.whatsappConversation.findMany({ where: waitWhere, orderBy: { lastMessageAt: 'asc' }, take: 10, select: { id: true, name: true, phone: true, lastPreview: true, lastMessageAt: true, leadId: true } }),
+      this.prisma.whatsappConversation.count({ where: { AND: [waitWhere, { lastInboundAt: { lte: new Date(now - rules.redMinutes * 60_000) } }] } }),
+      this.prisma.whatsappConversation.findMany({ where: waitWhere, orderBy: { lastInboundAt: 'asc' }, take: 10, select: { id: true, name: true, phone: true, lastPreview: true, lastInboundAt: true, leadId: true } }),
     ])
     const leadIds = [latest?.leadId, ...due.map((r) => r.conversation.leadId), ...waitList.map((c) => c.leadId)].filter((x): x is string => !!x)
     const names = new Map((await this.prisma.lead.findMany({ where: { id: { in: leadIds } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]))
@@ -2048,7 +2124,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         closed: !open,
         count: waitCount,
         red: redCount,
-        items: waitList.map((c) => ({ conversationId: c.id, name: nameOf(c), preview: c.lastPreview, since: c.lastMessageAt })),
+        items: waitList.map((c) => ({ conversationId: c.id, name: nameOf(c), preview: c.lastPreview, since: c.lastInboundAt })),
       },
     }
   }

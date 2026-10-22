@@ -280,6 +280,11 @@ export class EvolutionClient {
     )
   }
 
+  /** Figurinha (a Evolution converte a imagem para WEBP, o formato de figurinha do WhatsApp). */
+  async sendSticker(instanceName: string, number: string, base64: string) {
+    return this.sent(await this.send(instanceName, `/message/sendSticker/${encodeURIComponent(instanceName)}`, { number, sticker: base64 }, 60_000))
+  }
+
   /** Áudio de voz (a Evolution converte para o formato do WhatsApp). */
   async sendAudio(instanceName: string, number: string, base64: string) {
     return this.sent(await this.send(instanceName, `/message/sendWhatsAppAudio/${encodeURIComponent(instanceName)}`, { number, audio: base64 }, 90_000))

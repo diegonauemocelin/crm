@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.88.0",
+      "date": "2026-10-22",
+      "title": "Chat: emojis, figurinhas e o tempo de aguardando retorno até o atendente marcar",
+      "changes": [
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Botão de emojis e figurinhas ao lado da caixa de texto: o emoji entra onde está o cursor (os usados por último ficam no topo); a figurinha vai na hora para o cliente." },
+        { "type": "novo", "area": "Chat WhatsApp", "text": "Minhas figurinhas: cada atendente salva as figurinhas que chegam nas conversas (menu ⋮ → Salvar figurinha) ou cria uma a partir de uma imagem do computador (PNG, JPG, WEBP ou GIF, até 1 MB)." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Reagir com qualquer emoji: o botão de carinha nas reações abre a lista completa." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "O tempo de aguardando retorno conta da última mensagem do cliente e não para quando o atendente responde (ex.: \"Só um momento, vou verificar\"). Só para em Não precisa responder ou Finalizar; se o cliente escrever de novo, volta a contar." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "O CRM não marca mais sozinho que o cliente não precisa de resposta (\"obrigado\", \"ok\", figurinha): quem decide é o atendente." }
+      ]
+    },
+    {
       "version": "0.87.0",
       "date": "2026-10-22",
       "title": "SEO dos produtos: mais vendidos e mais vistos primeiro, e IA em lote durante a análise",

@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, AlertCircleIcon, BanIcon, CircleCheckBigIcon, FileTextIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ListChecksIcon, ReplyIcon, SmilePlusIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, AlertCircleIcon, BanIcon, CircleCheckBigIcon, FileTextIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ListChecksIcon, ReplyIcon, SmilePlusIcon, SmileIcon, StickerIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
 import { createContext, Fragment, type FormEvent, type KeyboardEvent, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -17,6 +17,7 @@ import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
+import { EmojiGrid, EmojiStickerPanel } from '@/components/chat/emojis'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -61,6 +62,8 @@ interface ConvItem {
   lastFromMe: boolean
   /** O cliente só agradeceu ou se despediu (ou alguém marcou "Não precisa responder"): não conta como esperando. */
   noReplyNeeded?: boolean
+  /** Última mensagem do cliente: o tempo de "aguardando retorno" conta daqui. */
+  lastInboundAt?: string | null
   category?: ContactCategory | 'GRUPO'
   status?: string
   reminderAt?: string | null
@@ -114,7 +117,7 @@ interface Message {
   transcript?: string | null
 }
 interface Thread {
-  conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; helpers?: { id: string; name: string }[]; sectorId?: string | null; category: ContactCategory | 'GRUPO'; labels?: ChatLabel[]; noReplyNeeded?: boolean }
+  conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; helpers?: { id: string; name: string }[]; sectorId?: string | null; category: ContactCategory | 'GRUPO'; labels?: ChatLabel[]; noReplyNeeded?: boolean; lastInboundAt?: string | null }
   /** Contato salvo na agenda do número (ou na geral). */
   agenda?: { name: string | null; category: string; general: boolean } | null
   number: NumberRef | null
@@ -181,15 +184,15 @@ function useFillHeight<T extends HTMLElement>() {
 }
 
 /** Hora se for hoje; senão, a data. */
-/** Cor do atraso de resposta: só quando a última mensagem é do cliente (verde, amarelo, vermelho). */
+/** Cor do atraso de resposta (verde, amarelo, vermelho): conta da última mensagem do cliente até o atendente marcar "Não precisa responder". */
 const WAIT_COLOR = {
   verde: { dot: 'bg-[#16a34a]', text: 'text-[#15803d] dark:text-[#4ade80]', label: 'dentro do prazo' },
   amarelo: { dot: 'bg-[#eab308]', text: 'text-[#a16207] dark:text-[#facc15]', label: 'atenção' },
   vermelho: { dot: 'bg-[#dc2626]', text: 'text-[#b91c1c] dark:text-[#f87171]', label: 'atrasada' },
 } as const
-function waitColor(c: { lastFromMe: boolean; noReplyNeeded?: boolean; lastMessageAt: string | null; status?: string }, r: ListData['responseColors']) {
-  if (!r || c.lastFromMe || c.noReplyNeeded || !c.lastMessageAt || c.status === 'ARQUIVADA') return null
-  const min = Math.max(0, Math.floor((Date.now() - Date.parse(c.lastMessageAt)) / 60_000))
+function waitColor(c: { noReplyNeeded?: boolean; lastInboundAt?: string | null; status?: string }, r: ListData['responseColors']) {
+  if (!r || c.noReplyNeeded || !c.lastInboundAt || c.status === 'ARQUIVADA') return null
+  const min = Math.max(0, Math.floor((Date.now() - Date.parse(c.lastInboundAt)) / 60_000))
   const k = min < r.yellowMinutes ? 'verde' : min < r.redMinutes ? 'amarelo' : 'vermelho'
   return { ...WAIT_COLOR[k], min }
 }
@@ -801,7 +804,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
         })}
         <div ref={end} />
       </div>
-      {colors && !monitor && d.conversation.category === 'CLIENTE' && d.conversation.status !== 'ARQUIVADA' && !d.conversation.noReplyNeeded && <WaitingBar id={d.conversation.id} messages={messages} yellowMinutes={alerts?.waiting?.yellowMinutes} />}
+      {colors && !monitor && d.conversation.category === 'CLIENTE' && d.conversation.status !== 'ARQUIVADA' && !d.conversation.noReplyNeeded && <WaitingBar id={d.conversation.id} since={d.conversation.lastInboundAt ?? null} answered={!!messages.findLast((m) => !m.internal)?.fromMe} yellowMinutes={alerts?.waiting?.yellowMinutes} />}
       {monitor ? (
         <p className="flex items-center gap-2 border-t bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
           <EyeIcon className="size-4 shrink-0" /> Monitoramento: só leitura. O vendedor e o cliente não são avisados, e a conversa continua como não lida para quem atende.
@@ -840,7 +843,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
  * Telas novas (Moderno): faixa laranja quando a última mensagem é do cliente e já passou do prazo amarelo.
  * "Não precisa responder" tira o aviso quando a conversa já terminou (ex.: áudio de despedida).
  */
-function WaitingBar({ id, messages, yellowMinutes = 10 }: { id: string; messages: Message[]; yellowMinutes?: number }) {
+function WaitingBar({ id, since, answered, yellowMinutes = 10 }: { id: string; since: string | null; answered: boolean; yellowMinutes?: number }) {
   const qc = useQueryClient()
   const dismiss = useMutation({
     mutationFn: () => api.post(`/chat/conversas/${id}/sem-resposta`),
@@ -848,18 +851,17 @@ function WaitingBar({ id, messages, yellowMinutes = 10 }: { id: string; messages
       void qc.invalidateQueries({ queryKey: ['chat-conversa', id] })
       void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
       void qc.invalidateQueries({ queryKey: ['chat-alertas'] })
-      toast.success('Pronto: esta conversa saiu dos avisos. Se o cliente escrever de novo, ela volta.')
+      toast.success('Pronto: o tempo parou. Se o cliente escrever de novo, volta a contar.')
     },
     onError: (err) => toast.error(errorMessage(err)),
   })
-  const last = [...messages].reverse().find((m) => !m.internal)
-  if (!last || last.fromMe) return null
-  const min = Math.floor((Date.now() - Date.parse(last.sentAt)) / 60_000)
+  if (!since) return null
+  const min = Math.floor((Date.now() - Date.parse(since)) / 60_000)
   if (min < yellowMinutes || min > 7 * 1440) return null
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-orange-200 bg-orange-50 px-3 py-1 text-xs font-medium text-orange-800 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300" role="status">
-      <AlarmClockIcon className="size-3.5" /> Cliente esperando resposta há {waitText(min)}
-      <Button size="sm" variant="ghost" className="ml-auto h-7 text-orange-800 hover:bg-orange-100 dark:text-orange-300 dark:hover:bg-orange-500/20" disabled={dismiss.isPending} onClick={() => dismiss.mutate()} title="A conversa já terminou (o cliente só se despediu): para de contar o tempo até ele escrever de novo">
+      <AlarmClockIcon className="size-3.5" /> {answered ? `Cliente aguardando retorno há ${waitText(min)}` : `Cliente esperando resposta há ${waitText(min)}`}
+      <Button size="sm" variant="ghost" className="ml-auto h-7 text-orange-800 hover:bg-orange-100 dark:text-orange-300 dark:hover:bg-orange-500/20" disabled={dismiss.isPending} onClick={() => dismiss.mutate()} title="Não há mais o que responder ao cliente: para de contar o tempo até ele escrever de novo">
         {dismiss.isPending ? <Loader2Icon className="animate-spin" /> : <CheckIcon />} Não precisa responder
       </Button>
     </div>
@@ -926,7 +928,15 @@ function MessageActions({ m, canForward, onReply, onForward }: { m: Message; can
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const [change, setChange] = useState<'editar' | null>(null)
+  const [moreEmojis, setMoreEmojis] = useState(false)
   const confirm = useConfirm()
+  const { can } = useAuth()
+  const canSaveSticker = m.type === 'figurinha' && m.hasFile && !m.deleted && can('chat', 'create')
+  const saveSticker = useMutation({
+    mutationFn: () => api.post<{ message: string }>(`/chat/mensagens/${m.id}/salvar-figurinha`),
+    onSuccess: (r) => (toast.success(r.message), void qc.invalidateQueries({ queryKey: ['chat-figurinhas'] })),
+    onError: (err) => toast.error(errorMessage(err)),
+  })
   const mine = m.reactions?.find((r) => r.by === 'me')?.emoji ?? ''
   const react = useMutation({
     mutationFn: (emoji: string) => api.post(`/chat/mensagens/${m.id}/reacao`, { emoji }),
@@ -960,14 +970,19 @@ function MessageActions({ m, canForward, onReply, onForward }: { m: Message; can
   return (
     <span className={cn('flex shrink-0 items-center', m.fromMe ? 'flex-row' : 'flex-row-reverse')}>
       {change === 'editar' && <EditMessageDialog m={m} onClose={() => setChange(null)} />}
-      {(m.canEdit || m.canDelete) && (
+      {(m.canEdit || m.canDelete || canSaveSticker) && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" size="icon" variant="ghost" className={cls} aria-label="Corrigir ou apagar mensagem">
+            <Button type="button" size="icon" variant="ghost" className={cls} aria-label="Mais ações da mensagem">
               <EllipsisVerticalIcon className="size-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align={m.fromMe ? 'end' : 'start'}>
+            {canSaveSticker && (
+              <DropdownMenuItem disabled={saveSticker.isPending} onSelect={() => saveSticker.mutate()}>
+                <StickerIcon /> Salvar figurinha
+              </DropdownMenuItem>
+            )}
             {m.canEdit && (
               <DropdownMenuItem onSelect={() => setChange('editar')}>
                 <PencilIcon /> Corrigir mensagem
@@ -986,27 +1001,42 @@ function MessageActions({ m, canForward, onReply, onForward }: { m: Message; can
           <ForwardIcon className="size-4" />
         </Button>
       )}
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={(v) => (setOpen(v), v || setMoreEmojis(false))}>
         <PopoverTrigger asChild>
           <Button type="button" size="icon" variant="ghost" className={cn(cls, open && 'opacity-100')} aria-label="Reagir à mensagem">
             <SmilePlusIcon className="size-4" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent side="top" className="flex w-auto gap-1 p-1.5">
-          {REACTIONS.map((e) => (
-            <button
-              key={e}
-              type="button"
-              className={cn('rounded-full px-1.5 py-0.5 text-xl transition-transform hover:scale-125', mine === e && 'bg-[color:var(--brand)]/15')}
-              onClick={() => {
+        <PopoverContent side="top" className={cn('p-1.5', moreEmojis ? 'w-80' : 'flex w-auto gap-1')}>
+          {moreEmojis ? (
+            <EmojiGrid
+              onPick={(e) => {
                 setOpen(false)
+                setMoreEmojis(false)
                 react.mutate(mine === e ? '' : e)
               }}
-              aria-label={mine === e ? `Tirar a reação ${e}` : `Reagir com ${e}`}
-            >
-              {e}
-            </button>
-          ))}
+            />
+          ) : (
+            <>
+              {REACTIONS.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  className={cn('rounded-full px-1.5 py-0.5 text-xl transition-transform hover:scale-125', mine === e && 'bg-[color:var(--brand)]/15')}
+                  onClick={() => {
+                    setOpen(false)
+                    react.mutate(mine === e ? '' : e)
+                  }}
+                  aria-label={mine === e ? `Tirar a reação ${e}` : `Reagir com ${e}`}
+                >
+                  {e}
+                </button>
+              ))}
+              <button type="button" className="rounded-full px-1.5 py-0.5 text-muted-foreground hover:bg-muted" onClick={() => setMoreEmojis(true)} aria-label="Mais emojis" title="Mais emojis">
+                <SmilePlusIcon className="size-5" />
+              </button>
+            </>
+          )}
         </PopoverContent>
       </Popover>
       <Button type="button" size="icon" variant="ghost" className={cls} onClick={onReply} aria-label="Responder mensagem">
@@ -1422,6 +1452,28 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { t
     },
     onError: (err) => toast.error(errorMessage(err)),
   })
+  const box = useRef<HTMLTextAreaElement>(null)
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  /** Emoji entra onde está o cursor (ou no fim), e o cursor fica depois dele. */
+  const insertEmoji = (emoji: string) => {
+    const el = box.current
+    const start = el?.selectionStart ?? text.length
+    const end = el?.selectionEnd ?? text.length
+    setText((t) => t.slice(0, start) + emoji + t.slice(end))
+    requestAnimationFrame(() => {
+      el?.focus()
+      el?.setSelectionRange(start + emoji.length, start + emoji.length)
+    })
+  }
+  const sticker = useMutation({
+    mutationFn: (stickerId: string) => api.post(`/chat/conversas/${id}/figurinhas/${stickerId}`),
+    onSuccess: () => {
+      setEmojiOpen(false)
+      void qc.invalidateQueries({ queryKey: ['chat-conversa', id] })
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
   if (!can('chat', 'create')) return <p className="border-t px-3 py-2 text-xs text-muted-foreground">Seu perfil só permite ler as conversas.</p>
   if (thread.number?.status !== 'CONECTADO') {
     return <p className="border-t px-3 py-2 text-xs text-muted-foreground">O número {thread.number?.name} está desconectado: conecte de novo em Configurações → Números de WhatsApp para responder por aqui.</p>
@@ -1555,8 +1607,19 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { t
             <DropdownMenuItem onSelect={() => setManaging(true)}>Gerenciar respostas</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
+          <PopoverTrigger asChild>
+            <Button type="button" size="icon" variant="ghost" aria-label="Emojis e figurinhas">
+              <SmileIcon />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent side="top" align="start" className="w-80 p-2" onCloseAutoFocus={(e) => e.preventDefault()}>
+            <EmojiStickerPanel onEmoji={insertEmoji} onSticker={(sid) => sticker.mutate(sid)} sending={sticker.isPending} />
+          </PopoverContent>
+        </Popover>
         <ShareContactButton conversationId={id} disabled={!!file} />
         <Textarea
+          ref={box}
           value={text}
           onChange={(e) => (setText(e.target.value), setPick(0))}
           onKeyDown={onKey}
