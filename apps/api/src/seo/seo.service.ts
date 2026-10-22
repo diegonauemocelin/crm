@@ -15,7 +15,10 @@ type Job = { kind: 'analise' | 'ia' | 'envio'; total: number; done: number; erro
 const TICK_MS = 30 * 60_000
 /** Produto analisado há mais que isso é lido de novo (os textos podem ter mudado no painel da Magazord). */
 const STALE_MS = 7 * 86_400_000
-const ANALYZE_PER_RUN = 150
+/** Produtos lidos por rodada automática (o botão Analisar catálogo lê todos os pendentes). */
+const ANALYZE_PER_RUN = 300
+/** Produto que deu erro na leitura só é tentado de novo depois deste tempo, para não travar a fila. */
+const RETRY_FAILED_MS = 86_400_000
 const MAX_BATCH = 50
 /** Pausa entre as chamadas da IA gratuita (Gemini tem limite de pedidos por minuto). */
 const AI_GAP_MS = 4_500
@@ -32,6 +35,8 @@ export class SeoService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(SeoService.name)
   private timer: NodeJS.Timeout | null = null
   private readonly jobs = new Map<string, Job>()
+  /** Derivações que deram erro na leitura, por empresa (código → quando falhou). */
+  private readonly failed = new Map<string, Map<string, number>>()
 
   constructor(
     private readonly prisma: PrismaService,
@@ -101,13 +106,17 @@ export class SeoService implements OnApplicationBootstrap, OnModuleDestroy {
    * Análise do catálogo: lê na Magazord os produtos ainda não analisados (ou analisados há mais de 7 dias), um por
    * vez. Cada produto pai entra uma vez, mesmo com várias derivações.
    */
-  async analyze(tenantId: string, by: string | null) {
+  async analyze(tenantId: string, by: string | null, all = false) {
     if (this.jobs.get(tenantId)) return this.jobs.get(tenantId)!
     const fresh = new Date(Date.now() - STALE_MS)
     const known = await this.prisma.seoProduct.findMany({ where: { tenantId, checkedAt: { gte: fresh } }, select: { derivations: true } })
     const done = new Set(known.flatMap((k) => k.derivations))
     const catalog = await this.prisma.storeProduct.findMany({ where: { tenantId, active: true, code: { not: '' } }, orderBy: { name: 'asc' }, select: { code: true } })
-    const todo = [...new Set(catalog.map((c) => c.code))].filter((c) => !done.has(c)).slice(0, ANALYZE_PER_RUN)
+    const failed = this.failed.get(tenantId) ?? new Map<string, number>()
+    this.failed.set(tenantId, failed)
+    const retryBefore = Date.now() - RETRY_FAILED_MS
+    const pending = [...new Set(catalog.map((c) => c.code))].filter((c) => !done.has(c) && !((failed.get(c) ?? 0) > retryBefore))
+    const todo = all ? pending : pending.slice(0, ANALYZE_PER_RUN)
     const job: Job = { kind: 'analise', total: todo.length, done: 0, errors: 0, startedAt: new Date().toISOString(), by, lastError: null }
     if (!todo.length) return job
     this.jobs.set(tenantId, job)
@@ -121,7 +130,9 @@ export class SeoService implements OnApplicationBootstrap, OnModuleDestroy {
           try {
             const p = await this.read(tenantId, code)
             for (const d of p.derivations) done.add(d)
+            failed.delete(code)
           } catch (err) {
+            failed.set(code, Date.now())
             job.errors++
             job.lastError = `${code}: ${(err as Error).message}`.slice(0, 300)
           }
@@ -138,7 +149,7 @@ export class SeoService implements OnApplicationBootstrap, OnModuleDestroy {
     this.assertCan(user, 'view')
     const s = await this.store(user.tenantId)
     if (!s.enabled) throw new BadRequestException('Ligue a integração com a Magazord em Configurações › Loja virtual (Magazord).')
-    const job = await this.analyze(user.tenantId, user.name)
+    const job = await this.analyze(user.tenantId, user.name, true)
     return { job, message: job.total ? `Analisando ${job.total} produto(s) da loja. Os resultados aparecem conforme ficam prontos.` : 'Todos os produtos do catálogo já foram analisados nos últimos 7 dias.' }
   }
 

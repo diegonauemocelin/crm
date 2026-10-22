@@ -216,7 +216,8 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
     if (!res.ok || !body || body.status === 'error') throw new MagazordError(`Magazord respondeu ${res.status}${body?.message ? `: ${body.message}` : ''}`)
     // Pausa curta entre chamadas, para não sobrecarregar a loja.
     await new Promise((r) => setTimeout(r, 250))
-    return body.data as T
+    // As consultas v2 vêm em { status, data }; as v3 devolvem o objeto direto.
+    return ('data' in body ? body.data : body) as T
   }
 
   /**

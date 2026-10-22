@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.86.2",
+      "date": "2026-10-22",
+      "title": "SEO dos produtos: análise do catálogo corrigida",
+      "changes": [
+        { "type": "correcao", "area": "SEO do e-commerce", "text": "A análise do catálogo dava \"Produto da derivação … não encontrado\" em todos os produtos: a consulta detalhada da Magazord (v3) responde num formato diferente das outras, e agora é lida corretamente." },
+        { "type": "melhoria", "area": "SEO do e-commerce", "text": "O botão Analisar catálogo lê todos os produtos pendentes de uma vez (a rodada automática segue a cada 30 minutos). Produto que der erro só é tentado de novo no dia seguinte, sem travar os outros." }
+      ]
+    },
+    {
       "version": "0.86.1",
       "date": "2026-10-22",
       "title": "Novo grupo E-commerce no menu: Catálogo, Carrinhos abandonados e SEO dos produtos",
