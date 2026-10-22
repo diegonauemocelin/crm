@@ -100,8 +100,14 @@ export const NAVIGATION: NavGroup[] = [
     title: 'CRM',
     items: [
       { title: 'Base de leads', to: '/leads', icon: UsersRoundIcon, module: 'leads' },
-      { title: 'Carrinhos e checkout', to: '/carrinhos', icon: ShoppingCartIcon, module: 'carrinhos' },
+    ],
+  },
+  {
+    title: 'E-commerce',
+    items: [
       { title: 'Catálogo', to: '/catalogo', icon: PackageIcon, module: 'catalogo' },
+      { title: 'Carrinhos abandonados', to: '/carrinhos', icon: ShoppingCartIcon, module: 'carrinhos' },
+      { title: 'SEO dos produtos', to: '/seo-ecommerce', icon: SearchCheckIcon, module: 'seo_ecommerce' },
     ],
   },
   {
@@ -110,7 +116,6 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Captura', to: '/captura', icon: MegaphoneIcon, module: 'captura' },
       { title: 'Email marketing', to: '/email-marketing', icon: MailIcon, module: 'email_marketing' },
       { title: 'Landing pages', to: '/landing-pages', icon: LayoutTemplateIcon, module: 'email_marketing' },
-      { title: 'SEO do e-commerce', to: '/seo-ecommerce', icon: SearchCheckIcon, module: 'seo_ecommerce' },
       { title: 'Automações', to: '/automacoes', icon: BotIcon, module: 'automacoes' },
     ],
   },

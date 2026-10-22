@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.86.1",
+      "date": "2026-10-22",
+      "title": "Novo grupo E-commerce no menu: Catálogo, Carrinhos abandonados e SEO dos produtos",
+      "changes": [
+        { "type": "melhoria", "area": "Menu", "text": "Tudo da loja virtual fica junto no grupo E-commerce do menu: Catálogo, Carrinhos abandonados e SEO dos produtos (antes espalhados entre CRM e Marketing)." },
+        { "type": "melhoria", "area": "Permissões", "text": "Catálogo, Carrinhos e SEO aparecem juntos no grupo E-commerce na tela de permissões. As permissões já dadas continuam iguais." }
+      ]
+    },
+    {
       "version": "0.86.0",
       "date": "2026-10-22",
       "title": "SEO do e-commerce: nota de SEO dos produtos da loja e melhoria com IA, um a um ou em lote",

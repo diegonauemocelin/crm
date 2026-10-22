@@ -463,7 +463,7 @@ export const TRAIL: TrailModule[] = [
         id: 'carrinhos.recuperar',
         title: 'Recuperar um carrinho',
         steps: [
-          'Abra CRM → Carrinhos e checkout: os abandonados aparecem primeiro.',
+          'Abra E-commerce → Carrinhos abandonados: os abandonados aparecem primeiro.',
           'Clique em WhatsApp: a mensagem já vem com o nome, os produtos, o link e o cupom.',
           'Marque o contato feito para a equipe não repetir.',
         ],
@@ -483,7 +483,7 @@ export const TRAIL: TrailModule[] = [
         id: 'catalogo.usar',
         title: 'Usar o catálogo',
         steps: [
-          'Abra CRM → Catálogo: produtos da Magazord, copiados todo dia de madrugada.',
+          'Abra E-commerce → Catálogo: produtos da Magazord, copiados todo dia de madrugada.',
           'Ordene por “Mais vistos no site” ou “Mais colocados no carrinho” para ver o que está em alta.',
           'Copie o link do produto para mandar ao cliente.',
         ],
@@ -623,7 +623,7 @@ export const TRAIL: TrailModule[] = [
         id: 'seo.produto',
         title: 'Melhorar um produto',
         steps: [
-          'Abra Marketing → SEO do e-commerce e clique em Analisar catálogo (a primeira leitura demora).',
+          'Abra E-commerce → SEO dos produtos e clique em Analisar catálogo (a primeira leitura demora).',
           'Filtre pelas notas mais baixas ou por um problema e abra o produto.',
           'Clique em Sugerir com IA (se quiser, escreva uma instrução) e confira cada campo.',
           'Marque os campos que vão para a loja e clique em Enviar para a loja.',
