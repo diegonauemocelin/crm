@@ -1,6 +1,6 @@
 import { createCipheriv, hkdfSync, randomBytes } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { bytesOf, decryptSecretEdit, parseMessage, parseSecretEdit, protoMessageText } from '../src/whatsapp/mensagens'
+import { bytesOf, decryptSecretEdit, openSecretEdit, parseMessage, parseSecretEdit, protoMessageText } from '../src/whatsapp/mensagens'
 
 /** Protobuf mínimo: campo de tamanho variável (wire 2). */
 const field = (no: number, bytes: Buffer) => Buffer.concat([Buffer.from([(no << 3) | 2, bytes.length]), bytes])
@@ -58,5 +58,34 @@ describe('edição criptografada do WhatsApp (secretEncryptedMessage)', () => {
     expect(protoMessageText(field(6, field(1, text('Com link'))))).toBe('Com link')
     expect(protoMessageText(field(3, field(3, text('Legenda'))))).toBe('Legenda')
     expect(protoMessageText(Buffer.from([0xff, 0xff]))).toBeNull()
+  })
+
+  it('chave em hexadecimal ou no BufferJSON do Baileys', () => {
+    expect(bytesOf(secret.toString('hex'))?.equals(secret)).toBe(true)
+    expect(bytesOf({ type: 'Buffer', data: secret.toString('base64') })?.equals(secret)).toBe(true)
+  })
+
+  it('diz no registro por que não abriu, sem telefone inteiro nem chave', () => {
+    const e = parseSecretEdit(event)!
+    const r = openSecretEdit(randomBytes(32).toString('base64'), e.targetWaId, e.senders, e.encPayload, e.encIv)
+    expect(r.opened).toBe(false)
+    expect(r.reason).toContain('nenhuma combinação abriu')
+    expect(r.reason).toContain('…2345@lid')
+    expect(r.reason).not.toContain('5549999999999')
+    expect(openSecretEdit(Buffer.alloc(8).toString('base64'), 'X', [], e.encPayload, e.encIv).reason).toContain('tamanho errado')
+  })
+
+  it('abriu mas o texto veio num formato desconhecido: mostra só os números dos campos', () => {
+    const odd = encrypt(secret, 'ORIG2', lid, field(15, field(5, text('segredo'))))
+    const r = openSecretEdit(secret.toString('base64'), 'ORIG2', [lid], odd.enc, odd.iv)
+    expect(r).toMatchObject({ opened: true, text: null })
+    expect(r.reason).toContain('15{5}')
+    expect(r.reason).not.toContain('segredo')
+  })
+
+  it('edição feita pelo celular da empresa (o número dela escreveu e editou)', () => {
+    const me = '5547988887777@s.whatsapp.net'
+    const mine = encrypt(secret, 'ORIG3', me, field(1, text('Corrigido pela empresa')))
+    expect(decryptSecretEdit(secret.toString('base64'), 'ORIG3', [me, lid], mine.enc, mine.iv)).toBe('Corrigido pela empresa')
   })
 })

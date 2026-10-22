@@ -18,7 +18,7 @@ import { type Sector, servesNumber, splitWhere, teamOf, teamWhere } from './aten
 import { type AgendaCategory, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isClosingMessage, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
 import { parseCsv } from '../atendimento/planilha'
 import { answersNote, type BotOutcome, botStateOf, chooseFlow, continueFlow, flowOf, startFlow } from './fluxo'
-import { extOf, INLINE_MEDIA_MAX_BYTES, MEDIA_MAX_BYTES, decryptSecretEdit, parseCalls, parseMessage, parseReaction, parseRevision, parseSecretEdit, type ParsedSecretEdit, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, whatsappOf, withReaction } from './mensagens'
+import { extOf, INLINE_MEDIA_MAX_BYTES, MEDIA_MAX_BYTES, openSecretEdit, parseCalls, parseMessage, parseReaction, parseRevision, parseSecretEdit, type ParsedSecretEdit, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, whatsappOf, withReaction } from './mensagens'
 
 const PAGE = 60
 /** Nome que aparece nas mensagens e notas do chatbot. */
@@ -178,13 +178,15 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
    * guardar as chaves fica só marcada como editada.
    */
   private async applySecretEdit(n: WhatsappNumber, e: ParsedSecretEdit) {
-    const m = await this.prisma.whatsappMessage.findFirst({ where: { tenantId: n.tenantId, waId: e.targetWaId, conversation: { numberId: n.id } }, select: { secret: true, conversation: { select: { jid: true } } } })
+    const m = await this.prisma.whatsappMessage.findFirst({ where: { tenantId: n.tenantId, waId: e.targetWaId, conversation: { numberId: n.id } }, select: { secret: true, conversation: { select: { jid: true, phone: true } } } })
     if (!m) return
     const own = n.phone ? `${n.phone.replace(/\D/g, '')}@s.whatsapp.net` : null
-    const senders = (e.fromMe ? [own] : [...e.senders, m.conversation.jid]).filter((x): x is string => !!x)
-    const text = m.secret ? decryptSecretEdit(m.secret, e.targetWaId, senders, e.encPayload, e.encIv) : null
-    if (!text) this.logger.warn(`Edição criptografada não aberta (${n.name}): ${m.secret ? 'a chave da mensagem original não abriu' : 'mensagem original sem a chave'}`)
-    await this.applyRevision(n, { targetWaId: e.targetWaId, kind: 'editada', text })
+    const contactPhone = m.conversation.phone ? `${m.conversation.phone.replace(/\D/g, '')}@s.whatsapp.net` : null
+    // Quem escreveu a original e quem editou: as formas do contato (telefone e @lid) e, por garantia, o próprio número.
+    const senders = (e.fromMe ? [own, ...e.senders] : [...e.senders, m.conversation.jid, contactPhone]).filter((x): x is string => !!x)
+    const r = m.secret ? openSecretEdit(m.secret, e.targetWaId, senders, e.encPayload, e.encIv) : null
+    if (!r?.text) this.logger.warn(`Edição criptografada não aberta (${n.name}): ${r ? r.reason : 'mensagem original sem a chave'}`)
+    await this.applyRevision(n, { targetWaId: e.targetWaId, kind: 'editada', text: r?.text ?? null })
   }
 
   /**

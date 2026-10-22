@@ -512,12 +512,21 @@ export function parseCalls(data: unknown): ParsedCall[] {
 
 // ---------- Edição criptografada (secretEncryptedMessage) ----------
 
-/** Bytes vindos no JSON da Evolution: base64, { type: 'Buffer', data: [...] } ou { "0": 12, "1": 34, ... }. */
+/**
+ * Bytes vindos no JSON da Evolution: base64, hexadecimal, { type: 'Buffer', data: [...] }, o BufferJSON do Baileys
+ * ({ type: 'Buffer', data: 'base64' }) ou { "0": 12, "1": 34, ... }.
+ */
 export function bytesOf(v: unknown): Buffer | null {
-  if (typeof v === 'string') return v ? Buffer.from(v, 'base64') : null
+  if (typeof v === 'string') {
+    if (!v) return null
+    // 32 bytes em hexadecimal (64 caracteres) também passariam como base64, com o tamanho errado.
+    if (/^[0-9a-f]+$/i.test(v) && v.length % 2 === 0 && v.length >= 32) return Buffer.from(v, 'hex')
+    return Buffer.from(v, 'base64')
+  }
   const o = obj(v)
   if (!o) return null
   if (Array.isArray(o.data)) return Buffer.from(o.data as number[])
+  if (typeof o.data === 'string') return bytesOf(o.data)
   const keys = Object.keys(o)
   if (!keys.length || !keys.every((k) => /^\d+$/.test(k))) return null
   return Buffer.from(keys.sort((a, b) => Number(a) - Number(b)).map((k) => Number(o[k]) & 0xff))
@@ -561,8 +570,21 @@ const plainJid = (j: string) => j.replace(/:\d+@/, '@')
  * (telefone e @lid); a autenticação do GCM garante que só a combinação certa abre. Devolve o texto novo ou null.
  */
 export function decryptSecretEdit(secretB64: string, targetWaId: string, senders: string[], encPayload: Buffer, encIv: Buffer): string | null {
+  return openSecretEdit(secretB64, targetWaId, senders, encPayload, encIv).text
+}
+
+/** Resultado da abertura, com o motivo quando não abre (para o registro do servidor; sem conteúdo nem chave). */
+export interface SecretEditResult {
+  text: string | null
+  /** A autenticação do AES-GCM passou com alguma combinação (a chave e os remetentes estavam certos). */
+  opened: boolean
+  reason: string
+}
+
+export function openSecretEdit(secretB64: string, targetWaId: string, senders: string[], encPayload: Buffer, encIv: Buffer): SecretEditResult {
   const secret = Buffer.from(secretB64, 'base64')
-  if (secret.length !== 32) return null
+  const shape = `chave ${secret.length} bytes, iv ${encIv.length}, dados ${encPayload.length}, remetentes ${senders.map(maskJid).join(' ') || '(nenhum)'}`
+  if (secret.length !== 32) return { text: null, opened: false, reason: `chave da original com tamanho errado (${shape})` }
   const jids = [...new Set(senders.map(plainJid))]
   const data = encPayload.subarray(0, encPayload.length - 16)
   const tag = encPayload.subarray(encPayload.length - 16)
@@ -577,7 +599,8 @@ export function decryptSecretEdit(secretB64: string, targetWaId: string, senders
             if (aad) d.setAAD(aad)
             d.setAuthTag(tag)
             const plain = Buffer.concat([d.update(data), d.final()])
-            return protoMessageText(plain)
+            const text = protoMessageText(plain)
+            return text ? { text, opened: true, reason: 'ok' } : { text: null, opened: true, reason: `abriu, mas o texto não foi achado (campos ${protoShape(plain)})` }
           } catch {
             // Combinação errada: a autenticação do GCM falha; tenta a próxima.
           }
@@ -585,7 +608,31 @@ export function decryptSecretEdit(secretB64: string, targetWaId: string, senders
       }
     }
   }
-  return null
+  return { text: null, opened: false, reason: `nenhuma combinação abriu (${shape})` }
+}
+
+/** JID para o registro: só o tipo e os 4 últimos dígitos (ex.: …1234@lid). */
+const maskJid = (j: string) => {
+  const at = j.indexOf('@')
+  return at < 0 ? '…' : `…${j.slice(Math.max(0, at - 4), at)}${j.slice(at)}`
+}
+
+/** Estrutura do protobuf (números dos campos, até dois níveis), sem o conteúdo. */
+function protoShape(buf: Buffer) {
+  try {
+    return protoFields(buf)
+      .map((f) => {
+        if (!f.bytes) return String(f.no)
+        try {
+          return `${f.no}{${protoFields(f.bytes).map((g) => g.no).join(',')}}`
+        } catch {
+          return String(f.no)
+        }
+      })
+      .join(' ')
+  } catch {
+    return '(ilegível)'
+  }
 }
 
 type ProtoField = { no: number; wire: number; bytes: Buffer | null }

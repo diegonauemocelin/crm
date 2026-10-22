@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.88.3",
+      "date": "2026-10-22",
+      "title": "Chat: edição de mensagem com diagnóstico e mais formatos de chave",
+      "changes": [
+        { "type": "correcao", "area": "Chat WhatsApp", "text": "Edição de mensagem: o CRM aceita a chave da mensagem original em mais formatos (hexadecimal e o formato de bytes do Baileys) e tenta também o telefone do contato e o número da empresa como quem escreveu e quem editou." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Quando uma edição não abre, o registro do servidor diz o motivo (tamanho da chave, se nenhuma combinação abriu ou se abriu e o texto veio em outro formato), com os contatos mascarados e sem o conteúdo." }
+      ]
+    },
+    {
       "version": "0.88.2",
       "date": "2026-10-22",
       "title": "SEO dos produtos não mexe mais no Subtítulo da loja",
