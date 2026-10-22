@@ -10,7 +10,8 @@ import { RastreamentoService } from '../rastreamento/rastreamento.service'
 import { env } from '../config/env'
 import { MailService } from '../settings/mail.service'
 import { SettingsService } from '../settings/settings.service'
-import { cartItems, cleanBaseUrl, cleanHttpsBase, type CustomerData, customerFrom, DEFAULT_CART_MESSAGE, type MagazordPessoa, type MzSiteProduct, mzDateTime, orderGroup, parseMzDate, PRODUCTS_MAX_ATTEMPTS, orderChannel, orderLines, productFrom, productsDue, shrinkError, spDay } from './magazord'
+import type { SeoFields } from './seo'
+import { cartItems, cleanBaseUrl, cleanHttpsBase, type CustomerData, customerFrom, DEFAULT_CART_MESSAGE, type MagazordPessoa, type MzSiteProduct, mzDateTime, orderGroup, parseMzDate, PRODUCTS_MAX_ATTEMPTS, orderChannel, orderLines, productFrom, seoFromMagazord, seoToMagazord, type MzPage, type MzProductDetail, productsDue, shrinkError, spDay } from './magazord'
 
 export interface MagazordSettings {
   enabled: boolean
@@ -240,6 +241,52 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
     if (res.status === 401 || res.status === 403) throw new MagazordError('A Magazord recusou o token/senha ou o usuário não tem permissão para simular frete.')
     if (!res.ok || !json || json.status === 'error') throw new MagazordError(`A Magazord não calculou o frete (${res.status}${json?.message ? `: ${json.message}` : ''}).`)
     return json.data ?? json
+  }
+
+  /** Alteração na Magazord (PATCH), com a mesma autenticação e o mesmo cuidado com o limite de requisições. */
+  private async send<T>(s: MagazordSettings, method: 'PATCH' | 'PUT', path: string, body: unknown, attempt = 0): Promise<T> {
+    const base = cleanBaseUrl(s.baseUrl)
+    if (!base || !s.tokenEnc || !s.passwordEnc) throw new MagazordError('Integração sem endereço, token ou senha.')
+    const auth = Buffer.from(`${decrypt(s.tokenEnc)}:${decrypt(s.passwordEnc)}`).toString('base64')
+    const res = await fetch(`${base}/api${path}`, { method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Basic ${auth}` }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000), redirect: 'error' })
+    if (res.status === 429 && attempt < 3) {
+      await new Promise((r) => setTimeout(r, 5_000 * (attempt + 1)))
+      return this.send(s, method, path, body, attempt + 1)
+    }
+    const out = (await res.json().catch(() => null)) as { status?: string; data?: T; message?: string; errors?: unknown } | null
+    if (res.status === 401 || res.status === 403) throw new MagazordError('A Magazord recusou o token/senha ou o usuário não tem permissão para alterar produtos.')
+    if (!res.ok || out?.status === 'error') throw new MagazordError(`Magazord respondeu ${res.status}${out?.message ? `: ${out.message}` : ''}`)
+    await new Promise((r) => setTimeout(r, 250))
+    return out?.data as T
+  }
+
+  // ---------- SEO do e-commerce ----------
+
+  /**
+   * Textos de SEO de um produto, a partir de uma derivação (SKU): aba Descrição Geral (produto x loja) e aba SEO
+   * (a página do produto). Também os dados que a IA pode usar (marca, categorias, características, EAN).
+   */
+  async seoRead(tenantId: string, derivationCode: string) {
+    const s = await this.config(tenantId)
+    if (!s.enabled) throw new MagazordError('Integração com a Magazord desligada.')
+    const storeId = s.storeId || 1
+    const d = await this.get<MzProductDetail>(s, `/v3/produtos/derivacao/${encodeURIComponent(derivationCode)}/detail`)
+    if (!d?.codigoProduto) throw new MagazordError(`Produto da derivação ${derivationCode} não encontrado.`)
+    const pages = this.page<MzPage>(await this.get(s, '/v2/site/paginas', { codigoDerivacao: derivationCode, id_loja: storeId, limit: 5 }))
+    return { storeId, ...seoFromMagazord(d, pages.items[0] ?? null, storeId) }
+  }
+
+  /** Grava os textos: página (aba SEO) e produto x loja (Descrição Geral); só os campos informados. */
+  async seoWrite(tenantId: string, w: { productCode: string; pageId: number | null; fields: Partial<SeoFields> }) {
+    const s = await this.config(tenantId)
+    if (!s.enabled) throw new MagazordError('Integração com a Magazord desligada.')
+    const storeId = s.storeId || 1
+    const { page, product } = seoToMagazord(w.fields, storeId)
+    if (page) {
+      if (!w.pageId) throw new MagazordError('Este produto ainda não tem a página de SEO criada na Magazord (abra o produto no painel e salve a aba SEO uma vez).')
+      await this.send(s, 'PATCH', `/v2/site/paginas/${w.pageId}`, page)
+    }
+    if (product) await this.send(s, 'PATCH', `/v2/site/produto/${encodeURIComponent(w.productCode)}`, product)
   }
 
   private page<T>(data: unknown): Page<T> {

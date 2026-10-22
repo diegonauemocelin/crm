@@ -14,6 +14,7 @@ export const MODULES = [
   { key: 'email_marketing', label: 'Email marketing', group: 'Marketing', help: 'Segmentos e campanhas. Criar/Editar inclui enviar.' },
   { key: 'automacoes', label: 'Automações', group: 'Marketing', help: 'Fluxos automáticos. Editar inclui ligar e desligar.' },
   { key: 'catalogo', label: 'Catálogo de produtos', group: 'Marketing', help: 'Produtos da loja virtual e seus números.' },
+  { key: 'seo_ecommerce', label: 'SEO do e-commerce', group: 'Marketing', help: 'Ver: produtos da loja virtual com a nota de SEO. Criar: gerar sugestões com IA e editar textos. Editar: enviar as alterações para a loja (Magazord) e desfazer.' },
   { key: 'relatorios', label: 'Dashboards e relatórios', group: 'Análise', help: 'Ver: dashboards e relatórios. Criar/Editar/Excluir: relatórios salvos. Exportar: baixar.' },
   { key: 'google_ads', label: 'Painel do Google Ads', group: 'Análise', help: 'Ver: investimento, leads, vendas e custo por campanha e palavra-chave. Editar: saldo, recargas e aviso de saldo.' },
   { key: 'mi_executivo', label: 'Visão geral, dashboard executivo, funil e análise de campanhas', group: 'Marketing Inteligente', help: 'Ver: indicadores consolidados de marketing e vendas, funil, atribuição e comparação de campanhas. Exportar: baixar as tabelas.' },

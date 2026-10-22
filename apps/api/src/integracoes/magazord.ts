@@ -333,3 +333,75 @@ export function orderLines(detail: unknown): OrderLine[] {
   }
   return out
 }
+
+// ---------- SEO do e-commerce ----------
+
+export interface MzProductDetail {
+  codigoProduto?: string
+  nomeProduto?: string
+  derivacaoCodigo?: string
+  ativo?: boolean
+  marca?: { id?: number; nome?: string } | null
+  categorias?: { id?: number; nome?: string; principal?: boolean }[]
+  atributos?: { nome?: string; valor?: string }[]
+  ean?: { codigo?: string; principal?: boolean }[]
+  produtoLoja?: { loja?: number; titulo?: string | null; tituloComplemento?: string | null; descricao?: string | null; descricaoResumida?: string | null }[]
+  imagens?: { url?: string; principal?: boolean }[]
+}
+
+export interface MzPage {
+  id: number
+  title?: string | null
+  titleSeo?: string | null
+  metaDescription?: string | null
+  metaKeywords?: string | null
+  url_pagina?: string | null
+}
+
+const txt = (v: unknown, n = 10_000) => (typeof v === 'string' ? v.trim().slice(0, n) : '')
+
+/** Detalhe do produto + página de SEO da Magazord nos campos do CRM. */
+export function seoFromMagazord(d: MzProductDetail, page: MzPage | null, storeId: number) {
+  const pl = (d.produtoLoja ?? []).find((l) => l.loja === storeId) ?? d.produtoLoja?.[0] ?? {}
+  const cats = [...(d.categorias ?? [])].sort((a, b) => Number(!!b.principal) - Number(!!a.principal))
+  const ean = (d.ean ?? []).find((e) => e.principal)?.codigo ?? d.ean?.[0]?.codigo ?? null
+  return {
+    productCode: String(d.codigoProduto),
+    name: txt(d.nomeProduto, 300),
+    brand: txt(d.marca?.nome, 120) || null,
+    categories: cats.map((c) => txt(c.nome, 120)).filter(Boolean).slice(0, 6),
+    attributes: (d.atributos ?? []).map((a) => ({ name: txt(a.nome, 80), value: txt(a.valor, 300) })).filter((a) => a.name && a.value).slice(0, 40),
+    ean,
+    image: txt((d.imagens ?? []).find((i) => i.principal)?.url ?? d.imagens?.[0]?.url, 1000) || null,
+    pageId: page?.id ?? null,
+    fields: {
+      pageTitle: txt(page?.title, 300),
+      seoTitle: txt(page?.titleSeo, 300),
+      metaDescription: txt(page?.metaDescription, 1000),
+      url: txt(page?.url_pagina, 300).replace(/^https?:\/\/[^/]+/, '').replace(/^\/+/, ''),
+      title: txt(pl.titulo, 300),
+      subtitle: txt(pl.tituloComplemento, 300),
+      description: txt(pl.descricao, 20_000),
+      summary: txt(pl.descricaoResumida, 2000),
+      searchKeywords: '',
+    },
+  }
+}
+
+/** O que vai para a Magazord: o PATCH da página (aba SEO) e o PATCH do produto (Descrição Geral), só com o que mudou. */
+export function seoToMagazord(f: Partial<Record<string, string>>, storeId: number) {
+  const page: Record<string, unknown> = {}
+  if (f.pageTitle !== undefined) page.title = f.pageTitle
+  if (f.seoTitle !== undefined) page.titleSeo = f.seoTitle
+  if (f.metaDescription !== undefined) page.metaDescription = f.metaDescription
+  if (f.url !== undefined) page.url = f.url
+  const loja: Record<string, unknown> = { loja: storeId }
+  if (f.title !== undefined) loja.titulo = f.title
+  if (f.subtitle !== undefined) loja.tituloComplemento = f.subtitle
+  if (f.description !== undefined) loja.descricao = f.description
+  if (f.summary !== undefined) loja.descricaoResumida = f.summary
+  const product: Record<string, unknown> = {}
+  if (Object.keys(loja).length > 1) product.produtoLoja = [loja]
+  if (f.searchKeywords !== undefined) product.palavraChave = f.searchKeywords
+  return { page: Object.keys(page).length ? { loja: storeId, ...page } : null, product: Object.keys(product).length ? product : null }
+}

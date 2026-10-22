@@ -611,6 +611,38 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'seo',
+    title: 'SEO do e-commerce',
+    module: 'seo_ecommerce',
+    routes: ['/seo-ecommerce'],
+    purpose: 'Melhorar títulos, meta-descrições e descrições dos produtos da loja virtual para aparecer melhor no Google.',
+    howItWorks: 'O CRM lê os produtos do Magazord, dá uma nota de SEO para cada um e aponta o que falta. A IA sugere textos novos, um a um ou em lote; nada vai para a loja sem você revisar e clicar em Enviar. Cada envio guarda o texto anterior, e dá para desfazer.',
+    media: { src: '/trilha/seo-ecommerce.jpg', alt: 'SEO do e-commerce' },
+    lessons: [
+      {
+        id: 'seo.produto',
+        title: 'Melhorar um produto',
+        steps: [
+          'Abra Marketing → SEO do e-commerce e clique em Analisar catálogo (a primeira leitura demora).',
+          'Filtre pelas notas mais baixas ou por um problema e abra o produto.',
+          'Clique em Sugerir com IA (se quiser, escreva uma instrução) e confira cada campo.',
+          'Marque os campos que vão para a loja e clique em Enviar para a loja.',
+        ],
+        tip: 'A IA não inventa medidas, aplicações nem códigos: onde faltar dado ela escreve [conferir: …]. Complete antes de enviar.',
+      },
+      {
+        id: 'seo.lote',
+        title: 'Melhorar em lote',
+        steps: [
+          'Na aba Produtos, selecione até 50 itens e clique em Gerar sugestões com IA.',
+          'Na aba Para revisar, abra cada sugestão, ajuste e envie (ou selecione várias e envie juntas).',
+          'Na aba Enviadas, veja o histórico e use Desfazer se precisar voltar o texto anterior.',
+        ],
+        tip: 'Mudar a URL da página faz o produto perder posição no Google por um tempo: só altere quando valer a pena.',
+      },
+    ],
+  },
+  {
     key: 'automacoes',
     title: 'Automações',
     module: 'automacoes',

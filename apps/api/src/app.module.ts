@@ -8,6 +8,7 @@ import { AuthGuard } from './auth/auth.guard'
 import { AuthModule } from './auth/auth.module'
 import { CapturaModule } from './captura/captura.module'
 import { LandingModule } from './landing/landing.module'
+import { SeoModule } from './seo/seo.module'
 import { CsrfMiddleware } from './common/csrf.middleware'
 import { EmailModule } from './email/email.module'
 import { UserThrottlerGuard } from './common/throttle.guard'
@@ -58,6 +59,7 @@ import { UsersService } from './users/users.service'
     RastreamentoModule,
     CapturaModule,
     LandingModule,
+    SeoModule,
     EmailModule,
     AutomacoesModule,
     RelatoriosModule,

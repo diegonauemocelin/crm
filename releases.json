@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.86.0",
+      "date": "2026-10-22",
+      "title": "SEO do e-commerce: nota de SEO dos produtos da loja e melhoria com IA, um a um ou em lote",
+      "changes": [
+        { "type": "novo", "area": "SEO do e-commerce", "text": "Nova tela Marketing › SEO do e-commerce: lê os produtos do Magazord, dá uma nota de 0 a 100 para cada um e mostra o que falta (título SEO, meta-description, descrição curta, título repetido, tudo em maiúsculas). Filtros por nome, código, marca, problema e nota." },
+        { "type": "novo", "area": "SEO do e-commerce", "text": "IA gratuita (Gemini) sugere título SEO, meta-description, título da página, título, subtítulo, descrição, descrição resumida e palavras-chave de busca a partir da marca, categoria e características do produto. Não inventa medidas, aplicações nem códigos: deixa [conferir: …] para completar." },
+        { "type": "novo", "area": "SEO do e-commerce", "text": "Um a um ou em lote (até 50 por vez): as sugestões ficam em Para revisar; você edita, escolhe os campos que vão para a loja e envia. Prévia do resultado no Google e da descrição." },
+        { "type": "novo", "area": "SEO do e-commerce", "text": "Cada envio guarda o texto anterior e fica no histórico (Enviadas), com Desfazer. Só os campos alterados são enviados; a URL e as palavras-chave ficam desmarcadas por padrão." },
+        { "type": "novo", "area": "Permissões", "text": "Nova permissão SEO do e-commerce (Ver; Criar: sugerir e editar; Editar: enviar para a loja e desfazer)." }
+      ]
+    },
+    {
       "version": "0.85.0",
       "date": "2026-10-22",
       "title": "Landing pages (editor em blocos, modelos, IA, subdomínio e medição) e configurações dos Marketplaces num lugar só",
