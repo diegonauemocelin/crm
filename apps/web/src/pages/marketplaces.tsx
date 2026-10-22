@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArchiveIcon, DownloadIcon, ExternalLinkIcon, Loader2Icon, PlugIcon, RefreshCwIcon, ShoppingBagIcon, StoreIcon, UnplugIcon } from 'lucide-react'
+import { ExternalLinkIcon, Loader2Icon, PlugIcon, RefreshCwIcon, ShoppingBagIcon, StoreIcon, UnplugIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -14,7 +14,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
@@ -45,8 +44,6 @@ interface SyncState {
   lastOkAt?: string
   lastError?: string | null
   running?: boolean
-  biImportedAt?: string | null
-  biRows?: number
 }
 interface MlConfigView {
   clientId: string
@@ -111,7 +108,6 @@ function SyncInfo({ sync, coverage }: { sync: SyncState; coverage?: MlPanel['cov
     <p className={cn('text-xs', sync.lastError ? 'text-red-600' : 'text-muted-foreground')}>
       {coverage ? (coverage.from ? `Dados de ${dayBr(coverage.from)} a ${dayBr(coverage.to!)} · ` : 'Ainda sem dados · ') : ''}Mercado Livre{' '}
       {sync.running ? 'sincronizando agora' : sync.lastOkAt ? `sincronizado em ${formatDateTime(sync.lastOkAt)}` : 'ainda não sincronizado pelo CRM'}
-      {sync.biImportedAt ? ` · histórico do sistema anterior trazido em ${formatDateTime(sync.biImportedAt)}` : ''}
       {sync.lastError ? ` · última tentativa falhou: ${sync.lastError}` : ''}
     </p>
   )
@@ -155,7 +151,7 @@ function Visao() {
                   <div className="space-y-1.5">
                     <CardTitle className="flex items-center gap-2 text-base">
                       <ShoppingBagIcon className="size-4" /> Mercado Livre Ads
-                      <Badge variant={ml.connected ? 'default' : 'secondary'}>{ml.connected ? `Conectado${ml.nickname ? `: ${ml.nickname}` : ''}` : ml.cost || ml.revenue ? 'Histórico de Marketplaces' : 'Não conectado'}</Badge>
+                      <Badge variant={ml.connected ? 'default' : 'secondary'}>{ml.connected ? `Conectado${ml.nickname ? `: ${ml.nickname}` : ''}` : ml.cost || ml.revenue ? 'Dados anteriores' : 'Não conectado'}</Badge>
                     </CardTitle>
                     <CardDescription>
                       {dayBr(d.period.from)} a {dayBr(d.period.to)}, comparado com {dayBr(d.period.prevFrom)} a {dayBr(d.period.prevTo)}. Receita atribuída pelo Mercado Livre (até 14 dias depois do clique).
@@ -301,7 +297,7 @@ function MercadoLivre() {
               <EmptyState
                 icon={ShoppingBagIcon}
                 title="Mercado Livre ainda não conectado"
-                description="Conecte a conta do Mercado Livre (ou traga o histórico do sistema anterior) para ver investimento, vendas atribuídas, campanhas e anúncios."
+                description="Conecte a conta do Mercado Livre para ver investimento, vendas atribuídas, campanhas e anúncios."
                 action={
                   can('marketplaces', 'edit') && (
                     <Button asChild size="sm">
@@ -483,7 +479,7 @@ export function MarketplacesIntegracoesPage() {
   )
 }
 
-type ConfigResponse = MlConfigView & { sync: SyncState; biAvailable: boolean; biImportedAt: string | null }
+type ConfigResponse = MlConfigView & { sync: SyncState }
 
 function Integracoes() {
   const { can } = useAuth()
@@ -541,7 +537,7 @@ function Integracoes() {
   const badge = c.connected ? (c.status === 'ERRO' ? <Badge variant="destructive">Precisa reconectar</Badge> : <Badge>Conectado</Badge>) : <Badge variant="secondary">Não conectado</Badge>
   return (
     <div>
-      <PageHeader title="Conexões dos marketplaces" description="Contas dos marketplaces e os dados trazidos do sistema anterior de Marketplaces. O CRM não altera anúncios, preços nem campanhas: só lê os números e, se ligado em Perguntas de frete, responde perguntas de frete." />
+      <PageHeader title="Conexões dos marketplaces" description="Contas dos marketplaces. O painel de Ads só lê os números: nunca altera anúncios, preços nem campanhas. As perguntas dos clientes ficam no Assistente ML." />
       <div className="space-y-4">
         <Card>
           <CardHeader>
@@ -551,7 +547,7 @@ function Integracoes() {
             <CardDescription>
               {c.connected
                 ? `Conta ${c.nickname ?? c.userId ?? ''}${c.connectedBy ? `, conectada por ${c.connectedBy}` : ''}${c.connectedAt ? ` em ${formatDateTime(c.connectedAt)}` : ''}. Sincroniza sozinho a cada 6 horas (os últimos 15 dias, porque o Mercado Livre atribui vendas até 14 dias depois do clique).`
-                : 'Conecte a conta do Mercado Livre para o CRM buscar as campanhas de Product Ads e Display Ads. Na primeira vez, vêm os últimos 90 dias (limite do Mercado Livre); o que for mais antigo vem do sistema anterior de Marketplaces.'}
+                : 'Conecte a conta do Mercado Livre para o CRM buscar as campanhas de Product Ads e Display Ads. Na primeira vez, vêm os últimos 90 dias (limite do Mercado Livre).'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5 text-sm">
@@ -564,7 +560,7 @@ function Integracoes() {
                 <a className="underline" href="https://developers.mercadolivre.com.br/devcenter" target="_blank" rel="noreferrer">
                   developers.mercadolivre.com.br <ExternalLinkIcon className="inline size-3" />
                 </a>
-                , abra o aplicativo que o sistema anterior usava (ou crie um) e acrescente esta URI de redirecionamento. Permissões: publicidade e usuários (leitura) e Perguntas e respostas (leitura e escrita, para responder as perguntas de frete).
+                , abra o aplicativo que o sistema anterior usava (ou crie um) e acrescente esta URI de redirecionamento. Permissões: publicidade e usuários (leitura) e Perguntas e respostas e Vendas (leitura e escrita, para o Assistente ML responder as perguntas).
               </p>
               <CopyField value={c.redirectUri} />
             </section>
@@ -644,8 +640,6 @@ function Integracoes() {
           </CardContent>
         </Card>
 
-        <BiCard config={c} onDone={refresh} />
-
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -659,438 +653,3 @@ function Integracoes() {
   )
 }
 
-function BiCard({ config, onDone }: { config: ConfigResponse; onDone: () => void }) {
-  const { can } = useAuth()
-  const [busy, setBusy] = useState(false)
-  const again = async () => {
-    setBusy(true)
-    try {
-      const r = await api.post<{ message: string }>('/marketplaces/bi/importar-marketplace')
-      toast.success(r.message)
-      onDone()
-    } catch (err) {
-      toast.error(errorMessage(err))
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-          <ArchiveIcon className="size-4" /> Dados do sistema anterior de Marketplaces <Badge variant={config.biAvailable ? 'default' : 'secondary'}>{config.biAvailable ? 'Trazidos' : 'Ainda não trazidos'}</Badge>
-        </CardTitle>
-        <CardDescription>
-          {config.biAvailable
-            ? `Cópia do sistema anterior de ${formatDateTime(config.biImportedAt)}. O histórico do Mercado Livre ${config.sync.biImportedAt ? `entrou nas telas em ${formatDateTime(config.sync.biImportedAt)} (${num(config.sync.biRows ?? 0)} registros novos)` : 'entra nas telas em alguns minutos'}. Leads, investimentos, Google Ads e as demais tabelas ficam em Histórico de Marketplaces.`
-            : 'O banco do sistema anterior é copiado inteiro para o CRM, sem alterar nada nele, pelo comando abaixo na VPS (veja docs/DEPLOY.md, "Trazer o sistema anterior de Marketplaces"). Depois, esta tela mostra a cópia.'}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3 text-sm">
-        {!config.biAvailable && <CopyField value="sudo bash /opt/usaparts-crm/deploy/importar-bi.sh" />}
-        <div className="flex flex-wrap gap-2">
-          {config.biAvailable && can('marketplaces', 'edit') && (
-            <Button size="sm" variant="outline" onClick={() => void again()} disabled={busy}>
-              {busy ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />} Trazer o Mercado Livre do sistema anterior de novo
-            </Button>
-          )}
-          {config.biAvailable && can('bi_historico') && (
-            <Button asChild size="sm" variant="outline">
-              <Link to="/marketplaces/historico">
-                <ArchiveIcon /> Abrir o Histórico de Marketplaces
-              </Link>
-            </Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-// ---------- Histórico de Marketplaces ----------
-
-interface BiStatus {
-  available: boolean
-  importedAt?: string
-  biVersion?: string | null
-  tables?: { name: string; label: string; rows: number; exportable: boolean }[]
-  marketplace?: { importedAt: string | null; rows: number }
-}
-interface BiLead {
-  id: string
-  entryDate: string | null
-  customerName: string | null
-  customerType: string | null
-  region: string | null
-  state: string | null
-  origin: string | null
-  platform: string | null
-  campaign: string | null
-  brand: string | null
-  seller: string | null
-  attendanceType: string | null
-  saleStatus: string
-  revenue: number | null
-  notes: string | null
-  source: string
-}
-interface BiLeads {
-  items: BiLead[]
-  total: number
-  page: number
-  pageSize: number
-  sources: { id: string; name: string; leads: number }[]
-  summary: { sold: number; revenue: number; first: string | null; last: string | null }
-}
-
-export function HistoricoBiPage() {
-  return (
-    <RequirePermission module="bi_historico">
-      <HistoricoBi />
-    </RequirePermission>
-  )
-}
-
-function HistoricoBi() {
-  const q = useQuery({ queryKey: ['bi-status'], queryFn: () => api.get<BiStatus>('/marketplaces/bi') })
-  const d = q.data
-  return (
-    <div>
-      <PageHeader title="Histórico de Marketplaces" description="Tudo o que estava no sistema anterior de Marketplaces, copiado para dentro do CRM sem alterar nada. Só consulta: os leads do CRM não são tocados." />
-      {q.isLoading && <TableSkeleton rows={5} />}
-      {q.error && <ErrorState error={q.error} onRetry={() => q.refetch()} />}
-      {d && !d.available && (
-        <EmptyState icon={ArchiveIcon} title="Os dados do sistema anterior ainda não foram trazidos" description="Rode na VPS o comando abaixo (docs/DEPLOY.md, “Trazer o sistema anterior de Marketplaces”). Ele copia o banco inteiro do sistema anterior para o CRM, com ele no ar." action={<CopyField value="sudo bash /opt/usaparts-crm/deploy/importar-bi.sh" className="w-96 max-w-full" />} />
-      )}
-      {d?.available && (
-        <div className="space-y-4">
-          <p className="text-xs text-muted-foreground">
-            Cópia de {formatDateTime(d.importedAt)}
-            {d.biVersion ? ` (versão ${d.biVersion})` : ''} · {num(d.tables?.reduce((s, t) => s + t.rows, 0) ?? 0)} registros em {d.tables?.length ?? 0} tabelas · o Mercado Livre está em Marketplaces › Mercado Livre Ads.
-          </p>
-          <Tabs defaultValue="leads">
-            <TabsList className="flex-wrap">
-              <TabsTrigger value="leads">Leads das planilhas</TabsTrigger>
-              <TabsTrigger value="investimentos">Investimentos</TabsTrigger>
-              <TabsTrigger value="google">Google Ads</TabsTrigger>
-              <TabsTrigger value="tabelas">Tudo o que foi guardado</TabsTrigger>
-            </TabsList>
-            <TabsContent value="leads">
-              <BiLeadsTab />
-            </TabsContent>
-            <TabsContent value="investimentos">
-              <BiSpendTab />
-            </TabsContent>
-            <TabsContent value="google">
-              <BiGoogleTab />
-            </TabsContent>
-            <TabsContent value="tabelas">
-              <BiTablesTab tables={d.tables ?? []} />
-            </TabsContent>
-          </Tabs>
-        </div>
-      )}
-    </div>
-  )
-}
-
-const SALE: Record<string, string> = { VENDEU: 'Vendeu', NAO_VENDEU: 'Não vendeu', SEM_SITUACAO: 'Sem situação' }
-const ATT: Record<string, string> = { PRE_VENDA: 'Pré-venda', POS_VENDA: 'Pós-venda' }
-const ANY = '__todos'
-
-function BiLeadsTab() {
-  const [search, setSearch] = useState('')
-  const [term, setTerm] = useState('')
-  const [fonte, setFonte] = useState('')
-  const [situacao, setSituacao] = useState('')
-  const [atendimento, setAtendimento] = useState('')
-  const [de, setDe] = useState('')
-  const [ate, setAte] = useState('')
-  const [page, setPage] = useState(1)
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setTerm(search.trim())
-      setPage(1)
-    }, 350)
-    return () => clearTimeout(t)
-  }, [search])
-  const qs = new URLSearchParams({ page: String(page), pageSize: '50' })
-  if (term) qs.set('search', term)
-  if (fonte) qs.set('fonte', fonte)
-  if (situacao) qs.set('situacao', situacao)
-  if (atendimento) qs.set('atendimento', atendimento)
-  if (de) qs.set('de', de)
-  if (ate) qs.set('ate', ate)
-  const q = useQuery({ queryKey: ['bi-leads', qs.toString()], queryFn: () => api.get<BiLeads>(`/marketplaces/bi/leads?${qs}`), placeholderData: keepPreviousData })
-  const d = q.data
-  const pages = d ? Math.max(1, Math.ceil(d.total / d.pageSize)) : 1
-  const pick = (set: (v: string) => void) => (v: string) => {
-    set(v === ANY ? '' : v)
-    setPage(1)
-  }
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-2">
-        <div className="space-y-1.5">
-          <CardTitle className="text-base">Leads das planilhas</CardTitle>
-          <CardDescription>
-            {d ? `${num(d.total)} leads${d.summary.first ? ` de ${dayBr(d.summary.first)} a ${dayBr(d.summary.last!)}` : ''} · ${num(d.summary.sold)} vendidos · ${money(d.summary.revenue)} faturados (só “Vendeu”)` : 'Carregando...'}
-          </CardDescription>
-        </div>
-        <ExportButton table="Lead" label="Baixar todos" />
-      </CardHeader>
-      <CardContent className="space-y-3 px-0">
-        <div className="flex flex-wrap gap-2 px-6">
-          <Input className="h-8 w-60" placeholder="Buscar cliente, vendedor, campanha..." value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Buscar" />
-          <Select value={fonte || ANY} onValueChange={pick(setFonte)}>
-            <SelectTrigger size="sm" className="w-52" aria-label="Planilha">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ANY}>Todas as planilhas</SelectItem>
-              {d?.sources.map((s) => (
-                <SelectItem key={s.id} value={s.id}>
-                  {s.name} ({num(s.leads)})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={situacao || ANY} onValueChange={pick(setSituacao)}>
-            <SelectTrigger size="sm" className="w-40" aria-label="Situação">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ANY}>Toda situação</SelectItem>
-              {Object.entries(SALE).map(([k, v]) => (
-                <SelectItem key={k} value={k}>
-                  {v}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={atendimento || ANY} onValueChange={pick(setAtendimento)}>
-            <SelectTrigger size="sm" className="w-40" aria-label="Atendimento">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ANY}>Pré e pós-venda</SelectItem>
-              {Object.entries(ATT).map(([k, v]) => (
-                <SelectItem key={k} value={k}>
-                  {v}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input type="date" className="h-8 w-36" aria-label="De" value={de} onChange={(e) => (setDe(e.target.value), setPage(1))} />
-          <Input type="date" className="h-8 w-36" aria-label="Até" value={ate} onChange={(e) => (setAte(e.target.value), setPage(1))} />
-        </div>
-        {q.isLoading && <div className="px-6"><TableSkeleton rows={6} /></div>}
-        {q.error && <div className="px-6"><ErrorState error={q.error} onRetry={() => q.refetch()} /></div>}
-        {d && d.items.length === 0 && <p className="px-6 text-sm text-muted-foreground">Nenhum lead com estes filtros.</p>}
-        {d && d.items.length > 0 && (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6">Entrada</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Origem e campanha</TableHead>
-                <TableHead>Vendedor</TableHead>
-                <TableHead>Atendimento</TableHead>
-                <TableHead>Situação</TableHead>
-                <TableHead className="text-right">Faturado</TableHead>
-                <TableHead>Planilha</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {d.items.map((l) => (
-                <TableRow key={l.id}>
-                  <TableCell className="pl-6 whitespace-nowrap">{l.entryDate ? dayBr(l.entryDate) : '—'}</TableCell>
-                  <TableCell className="max-w-56">
-                    <p className="truncate font-medium" title={l.customerName ?? ''}>
-                      {l.customerName ?? '—'}
-                    </p>
-                    <p className="truncate text-xs text-muted-foreground">{[l.customerType, l.state, l.brand].filter(Boolean).join(' · ')}</p>
-                  </TableCell>
-                  <TableCell className="max-w-56">
-                    <p className="truncate">{[l.origin, l.platform].filter(Boolean).join(' · ') || '—'}</p>
-                    {l.campaign && <p className="truncate text-xs text-muted-foreground" title={l.campaign}>{l.campaign}</p>}
-                  </TableCell>
-                  <TableCell>{l.seller ?? '—'}</TableCell>
-                  <TableCell>{l.attendanceType ? ATT[l.attendanceType] : '—'}</TableCell>
-                  <TableCell>
-                    <Badge variant={l.saleStatus === 'VENDEU' ? 'default' : 'secondary'}>{SALE[l.saleStatus] ?? l.saleStatus}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">{l.saleStatus === 'VENDEU' ? money(l.revenue) : '—'}</TableCell>
-                  <TableCell className="max-w-40 truncate text-xs text-muted-foreground" title={l.source}>
-                    {l.source}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-        {d && d.total > d.pageSize && (
-          <div className="flex items-center justify-between px-6 text-sm">
-            <span className="text-muted-foreground">
-              Página {d.page} de {pages}
-            </span>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                Anterior
-              </Button>
-              <Button size="sm" variant="outline" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
-                Próxima
-              </Button>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-interface BiSpend {
-  id: string
-  platform: string
-  source: string
-  periodStart: string
-  periodEnd: string
-  amount: number
-  campaignName: string | null
-  notes: string | null
-}
-const PLATFORM: Record<string, string> = { GOOGLE_ADS: 'Google Ads', META_ADS: 'Meta Ads', MERCADO_LIVRE_ADS: 'Mercado Livre Ads', OUTRO: 'Outro' }
-
-function BiSpendTab() {
-  const q = useQuery({ queryKey: ['bi-spend'], queryFn: () => api.get<BiSpend[]>('/marketplaces/bi/investimentos') })
-  if (q.isLoading) return <TableSkeleton rows={5} />
-  if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />
-  const rows = q.data ?? []
-  const total = rows.reduce((s, r) => s + r.amount, 0)
-  return (
-    <SimpleTable
-      title="Investimentos do sistema anterior"
-      description={`${num(rows.length)} lançamentos, ${money(total)} no total. “À mão” foi digitado no sistema anterior; “Integração” veio do Google Ads ou do Mercado Livre.`}
-      rows={rows}
-      rowKey={(r) => r.id}
-      exportName="bi-investimentos"
-      exportModule="bi_historico"
-      empty="Nenhum investimento no sistema anterior."
-      limit={100}
-      cols={[
-        { label: 'Período', value: (r) => (r.periodStart === r.periodEnd ? dayBr(r.periodStart) : `${dayBr(r.periodStart)} a ${dayBr(r.periodEnd)}`), csv: (r) => `${r.periodStart} a ${r.periodEnd}` },
-        { label: 'Plataforma', value: (r) => PLATFORM[r.platform] ?? r.platform, csv: (r) => PLATFORM[r.platform] ?? r.platform },
-        { label: 'Origem', value: (r) => (r.source === 'MANUAL' ? 'À mão' : 'Integração'), csv: (r) => r.source },
-        { label: 'Campanha', value: (r) => <span className="line-clamp-1" title={r.campaignName ?? ''}>{r.campaignName ?? '—'}</span>, csv: (r) => r.campaignName },
-        { label: 'Valor', value: (r) => money(r.amount), right: true, csv: (r) => r.amount },
-        { label: 'Observação', value: (r) => <span className="line-clamp-1 text-muted-foreground" title={r.notes ?? ''}>{r.notes ?? ''}</span>, csv: (r) => r.notes },
-      ]}
-    />
-  )
-}
-
-interface BiGoogle {
-  campaigns: { id: string; name: string; status: string | null; channelType: string | null; first: string | null; last: string | null; impressions: number; clicks: number; cost: number; conversions: number; conversionsValue: number }[]
-  months: { month: string; impressions: number; clicks: number; cost: number; conversions: number; conversionsValue: number }[]
-}
-
-function BiGoogleTab() {
-  const q = useQuery({ queryKey: ['bi-google'], queryFn: () => api.get<BiGoogle>('/marketplaces/bi/google-ads') })
-  if (q.isLoading) return <TableSkeleton rows={5} />
-  if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />
-  const d = q.data!
-  const month = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`
-  return (
-    <div className="space-y-4">
-      <SimpleTable
-        title="Google Ads por mês (sistema anterior)"
-        rows={d.months}
-        rowKey={(r) => r.month}
-        exportName="bi-google-ads-meses"
-        exportModule="bi_historico"
-        empty="O sistema anterior não tinha dados do Google Ads."
-        cols={[
-          { label: 'Mês', value: (r) => month(r.month), csv: (r) => r.month },
-          { label: 'Investido', value: (r) => money(r.cost), right: true, csv: (r) => r.cost },
-          { label: 'Impressões', value: (r) => num(r.impressions), right: true, csv: (r) => r.impressions },
-          { label: 'Cliques', value: (r) => num(r.clicks), right: true, csv: (r) => r.clicks },
-          { label: 'Conversões', value: (r) => num(r.conversions), right: true, csv: (r) => r.conversions },
-          { label: 'Valor de conversão', value: (r) => money(r.conversionsValue), right: true, csv: (r) => r.conversionsValue },
-        ]}
-      />
-      <SimpleTable
-        title="Campanhas do Google Ads (sistema anterior)"
-        rows={d.campaigns}
-        rowKey={(r) => r.id}
-        exportName="bi-google-ads-campanhas"
-        exportModule="bi_historico"
-        empty="Sem campanhas."
-        cols={[
-          { label: 'Campanha', value: (r) => <div className="min-w-0"><p className="truncate font-medium" title={r.name}>{r.name}</p><p className="text-xs text-muted-foreground">{[r.channelType, r.first ? `${dayBr(r.first)} a ${dayBr(r.last!)}` : null].filter(Boolean).join(' · ')}</p></div>, csv: (r) => r.name },
-          { label: 'Investido', value: (r) => money(r.cost), right: true, csv: (r) => r.cost },
-          { label: 'Cliques', value: (r) => num(r.clicks), right: true, csv: (r) => r.clicks },
-          { label: 'Conversões', value: (r) => num(r.conversions), right: true, csv: (r) => r.conversions },
-          { label: 'Valor de conversão', value: (r) => money(r.conversionsValue), right: true, csv: (r) => r.conversionsValue },
-        ]}
-      />
-    </div>
-  )
-}
-
-function ExportButton({ table, label = 'Baixar planilha' }: { table: string; label?: string }) {
-  const { can } = useAuth()
-  const [busy, setBusy] = useState(false)
-  if (!can('bi_historico', 'export')) return null
-  return (
-    <Button
-      size="sm"
-      variant="outline"
-      disabled={busy}
-      onClick={async () => {
-        setBusy(true)
-        try {
-          await api.download(`/marketplaces/bi/exportar/${table}`, `bi-${table}.csv`)
-        } catch (err) {
-          toast.error(errorMessage(err))
-        } finally {
-          setBusy(false)
-        }
-      }}
-    >
-      {busy ? <Loader2Icon className="animate-spin" /> : <DownloadIcon />} {label}
-    </Button>
-  )
-}
-
-function BiTablesTab({ tables }: { tables: NonNullable<BiStatus['tables']> }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Tudo o que foi guardado</CardTitle>
-        <CardDescription>Cada tabela do sistema anterior, com a quantidade de registros. A planilha sai sem senhas nem tokens. Sessões de login e pedidos de troca de senha ficam guardados, mas não saem em planilha.</CardDescription>
-      </CardHeader>
-      <CardContent className="px-0">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="pl-6">Dado</TableHead>
-              <TableHead>Tabela</TableHead>
-              <TableHead className="text-right">Registros</TableHead>
-              <TableHead className="pr-6 text-right" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {tables.map((t) => (
-              <TableRow key={t.name}>
-                <TableCell className="pl-6 font-medium">{t.label}</TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">{t.name}</TableCell>
-                <TableCell className="text-right tabular-nums">{num(t.rows)}</TableCell>
-                <TableCell className="pr-6 text-right">{t.exportable && t.rows > 0 ? <ExportButton table={t.name} /> : <span className="text-xs text-muted-foreground">{t.exportable ? 'vazia' : 'só guardada'}</span>}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  )
-}

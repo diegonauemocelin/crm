@@ -761,7 +761,7 @@ export const TRAIL: TrailModule[] = [
     routes: ['/marketplaces'],
     purpose: 'Acompanhar a publicidade e as vendas nos marketplaces: hoje o Mercado Livre (Product Ads e Display Ads); depois, a Shopee.',
     howItWorks:
-      'O CRM lê as campanhas do Mercado Livre a cada 6 horas, só leitura: nunca altera anúncio, preço ou orçamento. A receita é a que o Mercado Livre atribui aos anúncios (até 14 dias depois do clique), por isso os últimos 15 dias são refeitos a cada sincronização. O histórico mais antigo veio do sistema anterior de Marketplaces. A Visão geral junta a publicidade com as vendas por canal da loja virtual (Magazord).',
+      'O CRM lê as campanhas do Mercado Livre a cada 6 horas, só leitura: nunca altera anúncio, preço ou orçamento. A receita é a que o Mercado Livre atribui aos anúncios (até 14 dias depois do clique), por isso os últimos 15 dias são refeitos a cada sincronização. A Visão geral junta a publicidade com as vendas por canal da loja virtual (Magazord).',
     lessons: [
       {
         id: 'mktp.painel',
@@ -784,41 +784,52 @@ export const TRAIL: TrailModule[] = [
         ],
         tip: 'Quando o CRM conecta, a sincronização do sistema anterior para: o Mercado Livre aceita uma conexão por aplicativo.',
       },
-      {
-        id: 'mktp.perguntas',
-        title: 'Responder perguntas de frete do Mercado Livre',
-        steps: [
-          'Abra Marketplaces → Perguntas de frete. Ligue a leitura das perguntas e deixe em Só sugerir para começar.',
-          'Em Testar cotação, informe um anúncio (MLB...) ou um SKU e um CEP para ver as opções que a Magazord calcula.',
-          'Na fila Para responder, confira a resposta pronta, ajuste se quiser e clique em Enviar resposta. Sem CEP, a resposta pede o CEP ao cliente.',
-          'Frete junto com outro assunto (ex.: serve no carro? qual o frete?) sempre espera alguém: complete a resposta antes de enviar.',
-          'Quando as respostas estiverem boas, passe para Responder sozinho: as perguntas só de frete são respondidas na hora.',
-        ],
-        tip: 'O frete vem da Magazord pelo SKU do anúncio (peso, medidas e tabelas de frete da loja). Anúncio sem SKU ou produto sem frete calculado fica em Precisa de atenção.',
-      },
     ],
   },
   {
-    key: 'bi-historico',
-    title: 'Histórico de Marketplaces',
-    module: 'bi_historico',
-    routes: ['/marketplaces/historico'],
-    purpose: 'Consultar tudo o que estava no sistema anterior de Marketplaces: leads das planilhas, investimentos, Google Ads e as demais tabelas.',
+    key: 'assistente-ml',
+    title: 'Assistente das perguntas do Mercado Livre',
+    module: 'assist_atendimento',
+    routes: ['/marketplaces/assistente'],
+    purpose: 'Responder as perguntas dos clientes no Mercado Livre com a base de conhecimento, a IA e o frete calculado na Magazord, e acompanhar quais perguntas viraram venda.',
     howItWorks:
-      'O banco inteiro do sistema anterior foi copiado para dentro do CRM, sem alteração. Aqui é só consulta: os leads do sistema anterior não se misturam com a Base de leads do CRM. Cada tabela pode ser baixada em planilha, sem senhas nem tokens.',
+      'Cada pergunta nova é analisada: o assistente procura respostas aprovadas, aplicações peça × máquina confirmadas e os anúncios da loja (por título, código e OEM). Pergunta de frete com CEP é respondida com as opções da Magazord; sem CEP, o assistente pede o CEP. Com confiança alta e a resposta automática ligada, a resposta vai sozinha; senão, fica como sugestão ou entra na fila de pendentes com o motivo (A a G). Compatibilidade só é afirmada quando a aplicação está confirmada.',
     lessons: [
       {
-        id: 'bi.consultar',
-        title: 'Consultar e baixar os dados do sistema anterior',
+        id: 'assist.pendentes',
+        title: 'Atender as perguntas pendentes',
         steps: [
-          'Abra Marketplaces → Histórico de Marketplaces.',
-          'Em Leads das planilhas, busque pelo cliente, vendedor ou campanha e filtre por planilha, situação, pré/pós-venda e período.',
-          'Investimentos e Google Ads mostram o que o sistema anterior tinha lançado e sincronizado.',
-          'Em Tudo o que foi guardado, cada tabela do sistema anterior aparece com a quantidade de registros e o botão Baixar planilha.',
+          'Abra Marketplaces → Perguntas pendentes. A fila vem da mais urgente para a menos: idade, intenção de compra, dúvida técnica e relevância.',
+          'Abra a pergunta. Leia a análise do assistente (o que achou e o que faltou).',
+          'Se houver sugestão, edite se precisar e clique em Aprovar e enviar. Ou escreva a resposta em Responder. "Rascunho pedindo informações" monta a pergunta ao cliente sobre modelo, ano ou código.',
+          'Se precisar de outra pessoa, use Encaminhar para; mude a situação e o motivo quando fizer sentido.',
         ],
+        tip: 'O Mercado Livre não aceita telefone, e-mail ou link de fora do Mercado Livre na resposta.',
+      },
+      {
+        id: 'assist.conhecimento',
+        title: 'Ensinar o assistente (base de conhecimento)',
+        steps: [
+          'Na pergunta, clique em Cadastrar conhecimento: a pergunta e a resposta já vêm preenchidas.',
+          'Preencha marca, modelo, código e a aplicação confirmada. Marque "Cadastrar também a aplicação" para a IA poder afirmar a compatibilidade.',
+          'Quem pode aprovar salva como Ativo; os demais salvam Em revisão e alguém aprova em Base de conhecimento.',
+          'Para muitos de uma vez: Base de conhecimento → Importar planilha. Baixe o modelo, preencha e envie. Confira a prévia (novo, atualização, duplicado, erro), decida as atualizações e confirme.',
+        ],
+      },
+      {
+        id: 'assist.config',
+        title: 'Configurar e passar o atendimento para o CRM',
+        steps: [
+          'Abra Marketplaces → Configurações do assistente → Motor de IA. Escolha Sem IA, Gemini ou Claude e salve a chave do provedor escolhido.',
+          'Na aba Respostas, ajuste a resposta automática e a confiança mínima, os textos de frete e quando pedir informação ou encaminhar.',
+          'Use a aba Testar o assistente com perguntas reais: nada é enviado ao cliente.',
+          'Na aba Integração, informe a loja oficial, sincronize os anúncios e clique em Assumir o atendimento. Depois, peça para parar o painel antigo no servidor.',
+        ],
+        tip: 'Enquanto o CRM não assume, o painel antigo continua respondendo e o CRM só mostra os dados e testa.',
       },
     ],
   },
+
   {
     key: 'whatsapp-dash',
     title: 'Atendimento WhatsApp (painel)',

@@ -35,10 +35,13 @@ import {
   CameraIcon,
   UsersIcon,
   FileBarChartIcon,
-  ArchiveIcon,
   ShoppingBagIcon,
   StoreIcon,
   MessageCircleQuestionIcon,
+  MessagesSquareIcon,
+  SendIcon,
+  BookOpenIcon,
+  SlidersHorizontalIcon,
 } from 'lucide-react'
 import type { Action } from './types'
 
@@ -135,8 +138,13 @@ export const NAVIGATION: NavGroup[] = [
     items: [
       { title: 'Visão geral', to: '/marketplaces', icon: StoreIcon, module: 'marketplaces' },
       { title: 'Mercado Livre Ads', to: '/marketplaces/mercado-livre', icon: ShoppingBagIcon, module: 'marketplaces' },
-      { title: 'Perguntas de frete', to: '/marketplaces/perguntas', icon: MessageCircleQuestionIcon, module: 'marketplaces' },
-      { title: 'Histórico de Marketplaces', to: '/marketplaces/historico', icon: ArchiveIcon, module: 'bi_historico' },
+      { title: 'Assistente ML', to: '/marketplaces/assistente', icon: BotIcon, module: 'assist_atendimento' },
+      { title: 'Perguntas pendentes', to: '/marketplaces/assistente/pendentes', icon: MessageCircleQuestionIcon, module: 'assist_atendimento' },
+      { title: 'Perguntas e respostas', to: '/marketplaces/assistente/perguntas', icon: MessagesSquareIcon, module: 'assist_atendimento' },
+      { title: 'Respostas enviadas', to: '/marketplaces/assistente/respostas', icon: SendIcon, module: 'assist_atendimento' },
+      { title: 'Base de conhecimento', to: '/marketplaces/assistente/conhecimento', icon: BookOpenIcon, module: 'assist_conhecimento' },
+      { title: 'Produtos e aplicações', to: '/marketplaces/assistente/aplicacoes', icon: PackageSearchIcon, module: 'assist_aplicacoes' },
+      { title: 'Configurações do assistente', to: '/marketplaces/assistente/configuracoes', icon: SlidersHorizontalIcon, module: 'assist_config' },
       { title: 'Conexões', to: '/marketplaces/integracoes', icon: PlugIcon, module: 'marketplaces' },
     ],
   },

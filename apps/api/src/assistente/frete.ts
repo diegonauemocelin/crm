@@ -1,37 +1,8 @@
-// Perguntas do Mercado Livre sobre frete: reconhecer a pergunta, achar o CEP, ler a cotação da Magazord e montar a
-// resposta. Sem banco e sem rede (testado em test/marketplaces-perguntas.spec.ts).
+// Frete nas perguntas do Mercado Livre: reconhecer a pergunta, achar o CEP, ler a cotação da Magazord e montar a
+// resposta. Sem banco e sem rede (testado em test/assistente-frete.spec.ts).
 
-export const QUESTIONS_KEY = 'marketplace_ml_perguntas'
 /** O Mercado Livre aceita respostas de até 2.000 caracteres. */
 export const ANSWER_MAX = 2000
-
-export type QuestionMode = 'sugerir' | 'automatico'
-
-export interface QuestionsConfig {
-  /** Liga a leitura das perguntas (a cada 2 minutos). */
-  enabled: boolean
-  /** sugerir: a resposta fica pronta para alguém enviar; automatico: o CRM responde sozinho. */
-  mode: QuestionMode
-  /** Pergunta de frete sem CEP: responde pedindo o CEP. */
-  askCep: boolean
-  intro: string
-  outro: string
-  askCepText: string
-  /** Quando ligou: perguntas feitas antes disso ficam de fora no modo automático. */
-  enabledAt: string | null
-  lastCheckAt?: string | null
-  lastError?: string | null
-}
-
-export const DEFAULT_QUESTIONS: QuestionsConfig = {
-  enabled: false,
-  mode: 'sugerir',
-  askCep: true,
-  intro: 'Olá! Para o CEP {cep}, as opções de envio são:',
-  outro: 'Valores para 1 unidade, sujeitos a confirmação no fechamento da compra. Qualquer dúvida, estamos à disposição!',
-  askCepText: 'Olá! Para calcular o frete, por favor nos informe o seu CEP aqui nas perguntas que respondemos com as opções de envio e os prazos. Obrigado!',
-  enabledAt: null,
-}
 
 export type QuestionKind = 'frete' | 'frete_sem_cep' | 'misto'
 
@@ -53,8 +24,10 @@ export const formatCep = (cep: string) => `${cep.slice(0, 5)}-${cep.slice(5)}`
 /** Pergunta sobre frete? Com outro assunto junto, vira "misto" (uma pessoa responde). Sem frete: null. */
 export function classifyQuestion(text: string): { kind: QuestionKind; cep: string | null } | null {
   const t = text.normalize('NFC')
-  const cep = extractCep(t)
-  if (!FREIGHT.test(t) && !cep) return null
+  const freightWords = FREIGHT.test(t)
+  // Oito números soltos podem ser código de peça ("tem o 32925682?"): só é CEP com hífen/ponto ou falando de frete.
+  const cep = freightWords || /\b\d{2}\.?\d{3}-\d{3}\b/.test(t) ? extractCep(t) : null
+  if (!freightWords && !cep) return null
   // Um CEP sozinho ("01310-100?") também é pedido de frete.
   const rest = t.replace(CEP, ' ')
   if (OTHER.test(rest)) return { kind: 'misto', cep }
@@ -134,7 +107,7 @@ export function parseFreightOptions(data: unknown, inherited: string | null = nu
 const brl = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 /** Resposta com as opções (o Mercado Livre não aceita telefone, e-mail ou link: os textos fixos não devem ter). */
-export function buildAnswer(cfg: Pick<QuestionsConfig, 'intro' | 'outro'>, cep: string, options: FreightOption[]) {
+export function buildAnswer(cfg: { intro: string; outro: string }, cep: string, options: FreightOption[]) {
   const lines = options.map((o) => `- ${o.name}: ${o.price === 0 ? 'grátis' : brl(o.price)}${o.days !== null ? `, entrega em até ${o.days} ${o.days === 1 ? 'dia útil' : 'dias úteis'}` : ''}`)
   const head = cfg.intro.replace(/\{cep\}/g, formatCep(cep)).trim()
   const tail = cfg.outro.trim()

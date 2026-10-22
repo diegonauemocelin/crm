@@ -249,25 +249,36 @@ bash /opt/usaparts-crm/deploy/backup-servidor.sh --drive gdrive:Backups-VPS
 Para restaurar, baixe a pasta do Drive para o computador ou para a VPS nova e siga o `COMO-REINSTALAR.txt`. A chave
 privada (`chave-backup-crm.txt`) é necessária para abrir as partes: guarde em lugar seguro e fora do Drive.
 
-## Trazer o sistema anterior de Marketplaces (antigo Usaparts BI)
+## Mercado Livre no CRM (Marketplaces)
 
-O Usaparts BI (`/opt/usaparts-bi`) passa a fazer parte do CRM, no menu **Marketplaces**. O comando abaixo copia o banco **inteiro** do BI para dentro do banco do CRM (esquema `bi`), sem alterar nada no BI e com os dois sistemas no ar:
-
-```bash
-sudo bash /opt/usaparts-crm/deploy/importar-bi.sh
-```
-
-- Antes, faz o backup do CRM e guarda uma cópia criptografada do banco e dos arquivos do BI na pasta de backups do CRM (`bi-db-*.dump.age` e `bi-arquivos-*.tar.gz.age`, mesma chave dos backups do CRM). Essas cópias não são apagadas pela limpeza automática.
-- O histórico do **Mercado Livre Ads** (inclusive o que tem mais de 90 dias, que o Mercado Livre não entrega de novo) entra nas telas de Marketplaces em até 30 minutos. Nada é sobrescrito: o que o CRM já sincronizou fica como está.
-- **Leads das planilhas, investimentos, Google Ads, usuários, sugestões e as demais tabelas** ficam guardados e aparecem em **Marketplaces › Histórico de Marketplaces**, com download de cada tabela em planilha (sem senhas nem tokens). Os leads do CRM não são tocados.
-- A partir desta versão o backup diário do CRM já inclui o esquema `bi`.
-- Pode rodar de novo quando quiser (por exemplo, logo antes de desligar o BI): troca a cópia pela mais nova, sem duplicar.
-- Libere as permissões **Marketplaces** e **Histórico de Marketplaces** nos perfis de acesso de quem vai usar (o histórico tem dados de clientes).
-
-Depois, em **Marketplaces › Conexões**, conecte o Mercado Livre no CRM. Use o mesmo aplicativo do Mercado Livre que o BI usava: o Client ID já vem preenchido, mas o Client Secret precisa ser digitado de novo, porque no BI ele fica criptografado com outra chave. Acrescente no aplicativo a URI de redirecionamento que a tela mostra e, para responder as perguntas de frete, a permissão de leitura e escrita em Perguntas e respostas. Quando o CRM conectar, a sincronização do BI para, porque o Mercado Livre aceita uma conexão por aplicativo. O BI continua aberto para consulta até você desligá-lo:
+Em **Marketplaces › Conexões**, conecte o Mercado Livre (Ads e vendas). O antigo Usaparts BI (`/opt/usaparts-bi`) não é mais importado: o painel de Ads do CRM busca tudo direto no Mercado Livre. Quando o CRM estiver conectado, pare o BI:
 
 ```bash
 cd /opt/usaparts-bi && sudo docker compose stop app worker
 ```
 
-O banco do BI continua no servidor (volume `usaparts-bi_pgdata`) e nos backups. Para voltar a usar o BI: `sudo docker compose up -d`.
+## Trazer o assistente das perguntas (painel.usaparts.com.br)
+
+O Usaparts Assistente (`/opt/usaparts-assistente`) passa a fazer parte do CRM, em **Marketplaces › Assistente**: perguntas e respostas do Mercado Livre, base de conhecimento, importação por planilha, aplicações peça × máquina, anúncios da loja, vendas ligadas às perguntas, configurações de IA (Sem IA, Gemini ou Claude) e o frete calculado pela Magazord. O comando abaixo copia **tudo** do painel para o CRM, sem alterar nada no painel e com os dois no ar:
+
+```bash
+sudo bash /opt/usaparts-crm/deploy/importar-painel.sh
+```
+
+- Antes, faz o backup do CRM e guarda uma cópia criptografada da pasta de dados e do `.env` do painel na pasta de backups do CRM (`painel-dados-*.tar.gz.age`, mesma chave dos backups do CRM). Essa cópia não é apagada pela limpeza automática.
+- Os usuários do painel viram referências aos usuários do CRM com o mesmo e-mail (quem não existir no CRM fica só com o nome no histórico).
+- As chaves de IA e o acesso ao Mercado Livre do painel vêm junto, já criptografados com a chave do CRM.
+- **O CRM não responde nada sozinho** depois da importação: o painel continua respondendo. Pode rodar o comando de novo quantas vezes quiser (troca os dados pelos mais novos, sem duplicar).
+- Libere as permissões do grupo **Marketplaces** (Assistente: atendimento, base de conhecimento, aplicações e configurações) nos perfis de acesso de quem vai usar.
+
+### Passar o atendimento para o CRM
+
+1. No aplicativo do Mercado Livre usado pelo painel (developers.mercadolivre.com.br › Meus aplicativos), troque a **URL de notificações** para `https://SEU-DOMINIO/api/webhooks/mercadolivre` com os tópicos **questions** e **orders_v2**, e acrescente a **URI de redirecionamento** que aparece em Marketplaces › Conexões. Confira as permissões: Perguntas e respostas (leitura e escrita), Vendas e acesso offline.
+2. Em **Marketplaces › Assistente › Integração**, clique em **Assumir o atendimento** (marcando "usar o acesso do painel" para não precisar conectar de novo). O CRM testa a conexão, passa a buscar as perguntas a cada minuto e responde conforme as configurações importadas.
+3. Pare o painel, para os dois não responderem a mesma pergunta:
+
+```bash
+sudo systemctl disable --now usaparts.service
+```
+
+Para voltar ao painel: **Liberar o atendimento** no CRM e `sudo systemctl enable --now usaparts.service`. Depois de assumir, o importador se recusa a rodar, para não apagar o que o CRM já respondeu.

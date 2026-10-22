@@ -69,9 +69,6 @@ export interface MlSyncState {
   apiCalls?: number
   from?: string
   to?: string
-  /** Última importação dos dados do Usaparts BI (data do arquivo importado). */
-  biImportedAt?: string | null
-  biRows?: number
 }
 
 /** O que vai para a tela: nunca os tokens nem o segredo. */

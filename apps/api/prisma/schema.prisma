@@ -2020,34 +2020,313 @@ model MarketplaceAdDay {
   @@map("marketplace_ad_days")
 }
 
-/// Pergunta de frete feita num anúncio do marketplace, com a cotação da Magazord e a resposta (sugerida ou enviada).
-model MarketplaceQuestion {
-  id            String    @id @default(uuid()) @db.Uuid
-  tenantId      String    @db.Uuid
-  marketplace   String
-  questionId    String
-  itemId        String
-  itemTitle     String?
-  itemPermalink String?
-  sku           String?
-  buyerId       String?
-  text          String
-  cep           String?
-  /// frete, frete_sem_cep ou misto (frete e outro assunto: uma pessoa responde)
-  kind          String
-  /// sugerida, revisar, respondida, ignorada, erro ou encerrada (respondida ou apagada direto no marketplace)
-  status        String
-  answer        String?
-  options       Json?
-  error         String?
-  askedAt       DateTime
-  answeredAt    DateTime?
-  /// "automático" ou o nome de quem enviou pelo CRM
-  answeredBy    String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+// ---------- Assistente de perguntas do Mercado Livre (veio do painel.usaparts.com.br) ----------
+// Os ids são números, como no painel: a IA cita os conhecimentos pelo número e as telas mostram "#123".
 
-  @@unique([tenantId, marketplace, questionId])
-  @@index([tenantId, status, askedAt])
-  @@map("marketplace_questions")
+/// Pergunta recebida no marketplace: registro único por pergunta, com a trajetória em assist_events.
+model AssistQuestion {
+  id                  Int       @id @default(autoincrement())
+  tenantId            String    @db.Uuid
+  marketplace         String    @default("mercadolivre")
+  mlQuestionId        String
+  mlItemId            String?
+  mlStatus            String?
+  customerId          String?
+  customerNickname    String?
+  customerName        String?
+  customerLookupAt    DateTime?
+  text                String
+  receivedAt          DateTime
+  firstSeenAt         DateTime
+  /// nova, aguardando_analise, em_atendimento, aguardando_cliente, aguardando_validacao, conhecimento_aprovacao, respondida, resolvida, nao_aplicavel
+  status              String    @default("nova")
+  processingState     String    @default("ocioso")
+  processingStartedAt DateTime?
+  /// A a G (motivo da pendência)
+  pendingReason       String?
+  pendingSince        DateTime?
+  brand               String?
+  model               String?
+  partCode            String?
+  purchaseIntent      Boolean   @default(false)
+  relevance           Int       @default(0)
+  assignedToId        String?   @db.Uuid
+  assignedToName      String?
+  confidence          Float?
+  answeredAt          DateTime?
+  resolvedAt          DateTime?
+  externalAnsweredAt  DateTime?
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([tenantId, mlQuestionId])
+  @@index([tenantId, status])
+  @@index([tenantId, receivedAt])
+  @@index([tenantId, customerId])
+  @@map("assist_questions")
+}
+
+/// Cada resposta preparada ou enviada (nunca sobrescrita).
+model AssistAttempt {
+  id               Int       @id @default(autoincrement())
+  tenantId         String    @db.Uuid
+  questionId       Int
+  /// ia ou atendente
+  origin           String
+  /// resposta ou solicitar_info
+  kind             String    @default("resposta")
+  authorId         String?   @db.Uuid
+  authorName       String?
+  basedOnId        Int?
+  text             String
+  ai               Json?
+  confidence       Float?
+  /// preparada, pendente_aprovacao, enviando, enviada, pendente_confirmacao, falha, descartada
+  sendStatus       String
+  createdAt        DateTime  @default(now())
+  sendRequestedAt  DateTime?
+  sentAt           DateTime?
+  confirmedAt      DateTime?
+  mlResponse       Json?
+  mlAnswerRef      String?
+  error            String?
+  sendAttempts     Int       @default(0)
+  reviewed         Boolean   @default(false)
+  reviewedById     String?   @db.Uuid
+  reviewedByName   String?
+  flaggedForReview Boolean   @default(false)
+
+  @@index([tenantId, questionId])
+  @@index([tenantId, sendStatus])
+  @@map("assist_attempts")
+}
+
+/// Conhecimentos (com a versão) usados em cada resposta.
+model AssistAttemptKnowledge {
+  attemptId        Int
+  knowledgeId      Int
+  knowledgeVersion Int
+
+  @@id([attemptId, knowledgeId])
+  @@index([knowledgeId])
+  @@map("assist_attempt_knowledge")
+}
+
+/// Observação interna de uma pergunta ou de uma resposta.
+model AssistNote {
+  id        Int      @id @default(autoincrement())
+  tenantId  String   @db.Uuid
+  /// question ou answer
+  entity    String
+  entityId  Int
+  userId    String?  @db.Uuid
+  userName  String
+  note      String
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, entity, entityId])
+  @@map("assist_notes")
+}
+
+/// Trajetória de cada pergunta.
+model AssistEvent {
+  id         Int      @id @default(autoincrement())
+  tenantId   String   @db.Uuid
+  questionId Int
+  type       String
+  fromStatus String?
+  toStatus   String?
+  userId     String?  @db.Uuid
+  userName   String?
+  note       String?
+  data       Json?
+  createdAt  DateTime @default(now())
+
+  @@index([questionId])
+  @@index([tenantId, type, createdAt])
+  @@map("assist_events")
+}
+
+/// Base de conhecimento (técnico e comercial) que a IA pode usar.
+model AssistKnowledge {
+  id               Int       @id @default(autoincrement())
+  tenantId         String    @db.Uuid
+  title            String
+  category         String
+  brand            String?
+  model            String?
+  partCode         String?
+  product          String?
+  application      String?
+  question         String?
+  answer           String
+  source           String?
+  /// ativo, em_revisao, inativo, rascunho
+  status           String    @default("em_revisao")
+  version          Int       @default(1)
+  originQuestionId Int?
+  originImportId   Int?
+  createdById      String?   @db.Uuid
+  createdByName    String?
+  updatedById      String?   @db.Uuid
+  updatedByName    String?
+  approvedById     String?   @db.Uuid
+  approvedByName   String?
+  approvedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now())
+  deletedAt        DateTime?
+  deletedByName    String?
+  matchKey         String?
+  autoLearned      Boolean   @default(false)
+  /// conhecimento que vale só para um anúncio
+  mlItemId         String?
+  /// manual, aprovada, externa ou ia
+  learnedFrom      String?
+
+  @@index([tenantId, status])
+  @@index([tenantId, matchKey])
+  @@index([tenantId, partCode])
+  @@map("assist_knowledge")
+}
+
+model AssistKnowledgeVersion {
+  id            Int      @id @default(autoincrement())
+  tenantId      String   @db.Uuid
+  knowledgeId   Int
+  version       Int
+  snapshot      Json
+  changeType    String
+  changedById   String?  @db.Uuid
+  changedByName String?
+  changedAt     DateTime @default(now())
+
+  @@index([knowledgeId])
+  @@map("assist_knowledge_versions")
+}
+
+/// Importação de planilha Excel para a base de conhecimento (prévia, correções e confirmação).
+model AssistImport {
+  id           Int       @id @default(autoincrement())
+  tenantId     String    @db.Uuid
+  filename     String
+  userId       String?   @db.Uuid
+  userName     String?
+  createdAt    DateTime  @default(now())
+  finishedAt   DateTime?
+  /// previa, confirmada, cancelada, invalida
+  status       String    @default("previa")
+  totalRows    Int       @default(0)
+  imported     Int       @default(0)
+  updated      Int       @default(0)
+  ignored      Int       @default(0)
+  errors       Int       @default(0)
+  headerErrors Json?
+  report       Json?
+
+  @@index([tenantId, createdAt])
+  @@map("assist_imports")
+}
+
+model AssistImportRow {
+  id         Int     @id @default(autoincrement())
+  importId   Int
+  rowNumber  Int
+  data       Json
+  /// novo, atualizacao, identico, duplicado, erro
+  action     String
+  existingId Int?
+  existing   Json?
+  errors     Json?
+  warnings   Json?
+  /// pendente, aceitar, rejeitar
+  decision   String  @default("pendente")
+  result     String?
+
+  @@index([importId])
+  @@map("assist_import_rows")
+}
+
+/// Anúncios da loja no Mercado Livre (cópia local sincronizada pela API).
+model AssistItem {
+  tenantId          String   @db.Uuid
+  id                String
+  sellerId          String?
+  officialStoreId   String?
+  title             String?
+  permalink         String?
+  price             Decimal? @db.Decimal(14, 2)
+  currency          String?
+  availableQuantity Int?
+  status            String?
+  sellerSku         String?
+  partNumber        String?
+  brand             String?
+  description       String?
+  attributes        Json?
+  mlLastUpdated     String?
+  syncedAt          DateTime
+
+  @@id([tenantId, id])
+  @@index([tenantId, status])
+  @@map("assist_items")
+}
+
+/// Aplicação peça × máquina (compatibilidade confirmada, pendente ou não confirmada).
+model AssistApplication {
+  id               Int       @id @default(autoincrement())
+  tenantId         String    @db.Uuid
+  partCode         String
+  productName      String?
+  partBrand        String?
+  machineBrand     String?
+  machineModel     String?
+  system           String?
+  application      String?
+  mlItemId         String?
+  /// confirmada, pendente, nao_confirmada
+  validationStatus String    @default("pendente")
+  knowledgeId      Int?
+  source           String?
+  validatedById    String?   @db.Uuid
+  validatedByName  String?
+  validatedAt      DateTime?
+  createdById      String?   @db.Uuid
+  createdByName    String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now())
+  matchKey         String
+
+  @@unique([tenantId, matchKey])
+  @@index([tenantId, partCode])
+  @@index([tenantId, machineModel])
+  @@map("assist_applications")
+}
+
+/// Venda (ou ida ao checkout) do mesmo comprador ligada a uma pergunta.
+model AssistSale {
+  id                 Int      @id @default(autoincrement())
+  tenantId           String   @db.Uuid
+  mlOrderId          String
+  mlItemId           String
+  itemTitle          String?
+  questionId         Int
+  buyerId            String
+  orderStatus        String?
+  orderDate          DateTime
+  quantity           Int      @default(1)
+  unitPrice          Decimal? @db.Decimal(14, 2)
+  total              Decimal? @db.Decimal(14, 2)
+  currency           String?
+  /// mesmo_anuncio ou anuncio_indicado
+  matchType          String
+  hoursAfterQuestion Float?
+  linkedAt           DateTime @default(now())
+  updatedAt          DateTime @default(now())
+  paidBefore         Boolean  @default(false)
+  paymentStatus      String?
+
+  @@unique([tenantId, mlOrderId, mlItemId])
+  @@index([tenantId, questionId])
+  @@index([tenantId, orderDate])
+  @@map("assist_sales")
 }

@@ -2,6 +2,24 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.83.0",
+      "date": "2026-10-22",
+      "title": "Assistente das perguntas do Mercado Livre (o painel.usaparts.com.br) dentro do CRM",
+      "changes": [
+        { "type": "novo", "area": "Marketplaces", "text": "Assistente ML no menu Marketplaces: o antigo painel.usaparts.com.br inteiro dentro do CRM. Painel com perguntas recebidas e respondidas pela IA, fila de atendimento, tempo de resposta (IA automática, IA aprovada, atendente e direto no Mercado Livre), marcas e produtos mais perguntados e as perguntas que viraram venda ou desistência no checkout." },
+        { "type": "novo", "area": "Marketplaces", "text": "Perguntas pendentes: fila por prioridade (idade, intenção de compra, dúvida técnica e relevância) com filtros por situação, motivo (A a G) e responsável. Na pergunta: análise do assistente, aprovar ou editar a sugestão, responder, rascunho pedindo informações, encaminhar para alguém da equipe, situação, relevância, observações internas, trajetória e vendas depois da pergunta." },
+        { "type": "novo", "area": "Marketplaces", "text": "Perguntas e respostas e Respostas enviadas: todas as perguntas com atalhos (aguardando, encaminhadas, para revisar, com venda, desistiu no checkout) e as respostas com a confirmação do Mercado Livre, reenvio das que falharam e marcação para revisão." },
+        { "type": "novo", "area": "Marketplaces", "text": "Base de conhecimento do assistente: cadastro a partir da pergunta (já preenchido), aprovação, versões, inativar e excluir, e o que o assistente aprende sozinho com as respostas enviadas. Importação por planilha Excel com prévia (novo, atualização, idêntico, duplicado, erro), comparação com o atual, correção de linhas e decisão de cada atualização." },
+        { "type": "novo", "area": "Marketplaces", "text": "Produtos e aplicações: peça × máquina com validação (confirmada, pendente, não serve), ficha do produto e os anúncios da loja sincronizados. A IA só afirma compatibilidade confirmada." },
+        { "type": "novo", "area": "Marketplaces", "text": "Configurações do assistente: motor de respostas (Sem IA, Gemini ou Claude Opus 5.5, Sonnet 5.5 e Haiku), chaves criptografadas com teste, resposta automática e confiança mínima, quando pedir informação ou encaminhar, venda adicional, aprendizado, as instruções que a IA recebe e Testar o assistente sem enviar nada." },
+        { "type": "novo", "area": "Marketplaces", "text": "Frete pela Magazord dentro do assistente: pergunta de frete com CEP é respondida com as opções e prazos calculados na Magazord; sem CEP, o assistente pede o CEP; pergunta de frete com outro assunto leva o frete calculado para a IA. Os textos ficam em Configurações do assistente › Respostas." },
+        { "type": "novo", "area": "Marketplaces", "text": "Passagem do painel para o CRM: deploy/importar-painel.sh traz tudo do painel (perguntas, respostas, base, aplicações, anúncios, vendas, configurações e chaves) sem alterar o painel e guarda uma cópia criptografada. O painel continua respondendo até alguém clicar em Assumir o atendimento (Configurações do assistente › Integração), que pode usar o mesmo acesso do Mercado Livre do painel." },
+        { "type": "melhoria", "area": "Marketplaces", "text": "Notificações do Mercado Livre (perguntas e pedidos) chegam direto no CRM, com busca periódica das perguntas como garantia e ligação automática das perguntas com as vendas do mesmo cliente." },
+        { "type": "melhoria", "area": "Marketplaces", "text": "Saíram a tela Perguntas de frete (agora parte do assistente), o Histórico do sistema anterior de Marketplaces e a importação dele: o painel de Ads busca tudo direto no Mercado Livre." },
+        { "type": "melhoria", "area": "Trilha", "text": "Nova trilha do Assistente ML: atender as pendentes, ensinar o assistente e passar o atendimento para o CRM." }
+      ]
+    },
+    {
       "version": "0.82.0",
       "date": "2026-10-22",
       "title": "Marketplaces: Mercado Livre Ads e perguntas de frete no CRM, e o sistema anterior trazido inteiro",
