@@ -24,6 +24,12 @@ const MAX_BATCH = 50
 const AI_GAP_MS = 4_500
 const SENDABLE = new Set<string>(SEO_FIELDS.map((f) => f.key))
 
+/** Período usado para "mais vendidos" e "mais vistos". */
+const POPULAR_DAYS = 90
+const POPULAR_CACHE_MS = 10 * 60_000
+
+type Popularity = { sold: number; views: number }
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref())
 
 /**
@@ -34,7 +40,12 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref()
 export class SeoService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(SeoService.name)
   private timer: NodeJS.Timeout | null = null
+  /** Tarefa de IA ou envio em andamento, por empresa (uma por vez). */
   private readonly jobs = new Map<string, Job>()
+  /** Análise do catálogo em andamento, por empresa; roda junto com a IA e o envio. */
+  private readonly analyses = new Map<string, Job>()
+  /** Vendas e visitas dos últimos 90 dias por produto de SEO, guardadas por alguns minutos. */
+  private readonly popularCache = new Map<string, { at: number; byId: Map<string, Popularity> }>()
   /** Derivações que deram erro na leitura, por empresa (código → quando falhou). */
   private readonly failed = new Map<string, Map<string, number>>()
 
@@ -68,7 +79,7 @@ export class SeoService implements OnApplicationBootstrap, OnModuleDestroy {
     const rows = await this.prisma.tenantSetting.findMany({ where: { key: 'magazord' }, select: { tenantId: true, value: true } })
     for (const r of rows) {
       const s = { ...DEFAULT_MAGAZORD, ...(r.value as Partial<MagazordSettings>) }
-      if (!s.enabled || !s.importProducts || this.jobs.get(r.tenantId)) continue
+      if (!s.enabled || !s.importProducts || this.analyses.get(r.tenantId)) continue
       await this.analyze(r.tenantId, null).catch((err: unknown) => this.logger.warn(`SEO: análise falhou: ${(err as Error).message}`))
     }
   }
@@ -107,19 +118,19 @@ export class SeoService implements OnApplicationBootstrap, OnModuleDestroy {
    * vez. Cada produto pai entra uma vez, mesmo com várias derivações.
    */
   async analyze(tenantId: string, by: string | null, all = false) {
-    if (this.jobs.get(tenantId)) return this.jobs.get(tenantId)!
+    if (this.analyses.get(tenantId)) return this.analyses.get(tenantId)!
     const fresh = new Date(Date.now() - STALE_MS)
     const known = await this.prisma.seoProduct.findMany({ where: { tenantId, checkedAt: { gte: fresh } }, select: { derivations: true } })
     const done = new Set(known.flatMap((k) => k.derivations))
-    const catalog = await this.prisma.storeProduct.findMany({ where: { tenantId, active: true, code: { not: '' } }, orderBy: { name: 'asc' }, select: { code: true } })
+    const catalog = await this.catalogByPopularity(tenantId)
     const failed = this.failed.get(tenantId) ?? new Map<string, number>()
     this.failed.set(tenantId, failed)
     const retryBefore = Date.now() - RETRY_FAILED_MS
-    const pending = [...new Set(catalog.map((c) => c.code))].filter((c) => !done.has(c) && !((failed.get(c) ?? 0) > retryBefore))
+    const pending = catalog.filter((c) => !done.has(c) && !((failed.get(c) ?? 0) > retryBefore))
     const todo = all ? pending : pending.slice(0, ANALYZE_PER_RUN)
     const job: Job = { kind: 'analise', total: todo.length, done: 0, errors: 0, startedAt: new Date().toISOString(), by, lastError: null }
     if (!todo.length) return job
-    this.jobs.set(tenantId, job)
+    this.analyses.set(tenantId, job)
     void (async () => {
       try {
         for (const code of todo) {
@@ -139,10 +150,54 @@ export class SeoService implements OnApplicationBootstrap, OnModuleDestroy {
           job.done++
         }
       } finally {
-        this.jobs.delete(tenantId)
+        this.analyses.delete(tenantId)
+        this.popularCache.delete(tenantId)
       }
     })()
     return job
+  }
+
+  /** Códigos do catálogo ativo, os mais vendidos e mais vistos (90 dias) primeiro, depois por nome. */
+  private async catalogByPopularity(tenantId: string): Promise<string[]> {
+    const since = new Date(Date.now() - POPULAR_DAYS * 86_400_000)
+    const rows = await this.prisma.$queryRaw<{ code: string }[]>`
+      WITH sold AS (
+        SELECT i.sku, sum(i.quantity) AS q FROM ecommerce_order_items i JOIN ecommerce_orders o ON o.id = i."orderId"
+        WHERE i."tenantId" = ${tenantId}::uuid AND o."orderedAt" >= ${since} AND o."statusGroup" = 'pago' AND i.sku IS NOT NULL
+        GROUP BY i.sku),
+      pv AS (
+        SELECT path, count(*) AS n FROM site_pageviews
+        WHERE "tenantId" = ${tenantId}::uuid AND "occurredAt" >= ${since} AND path IS NOT NULL GROUP BY path)
+      SELECT sp.code FROM store_products sp
+      LEFT JOIN sold ON sold.sku = sp.code
+      LEFT JOIN pv ON pv.path = sp.path
+      WHERE sp."tenantId" = ${tenantId}::uuid AND sp.active AND sp.code <> ''
+      GROUP BY sp.code
+      ORDER BY coalesce(max(sold.q), 0) DESC, coalesce(max(pv.n), 0) DESC, min(sp.name)`
+    return rows.map((r) => r.code)
+  }
+
+  /** Vendas pagas e visitas à página nos últimos 90 dias de cada produto de SEO (todas as derivações dele). */
+  private async popularity(tenantId: string): Promise<Map<string, Popularity>> {
+    const hit = this.popularCache.get(tenantId)
+    if (hit && Date.now() - hit.at < POPULAR_CACHE_MS) return hit.byId
+    const since = new Date(Date.now() - POPULAR_DAYS * 86_400_000)
+    const rows = await this.prisma.$queryRaw<{ id: string; sold: bigint | number | null; views: bigint | number | null }[]>`
+      WITH sold AS (
+        SELECT i.sku, sum(i.quantity) AS q FROM ecommerce_order_items i JOIN ecommerce_orders o ON o.id = i."orderId"
+        WHERE i."tenantId" = ${tenantId}::uuid AND o."orderedAt" >= ${since} AND o."statusGroup" = 'pago' AND i.sku IS NOT NULL
+        GROUP BY i.sku),
+      pv AS (
+        SELECT path, count(*) AS n FROM site_pageviews
+        WHERE "tenantId" = ${tenantId}::uuid AND "occurredAt" >= ${since} AND path IS NOT NULL GROUP BY path),
+      paths AS (SELECT DISTINCT code, path FROM store_products WHERE "tenantId" = ${tenantId}::uuid AND path IS NOT NULL)
+      SELECT p.id,
+        (SELECT sum(sold.q) FROM sold WHERE sold.sku = ANY(p.derivations) OR sold.sku = p."productCode") AS sold,
+        (SELECT sum(pv.n) FROM pv WHERE pv.path IN (SELECT paths.path FROM paths WHERE paths.code = ANY(p.derivations))) AS views
+      FROM seo_products p WHERE p."tenantId" = ${tenantId}::uuid`
+    const byId = new Map(rows.map((r) => [r.id, { sold: Number(r.sold ?? 0), views: Number(r.views ?? 0) }]))
+    this.popularCache.set(tenantId, { at: Date.now(), byId })
+    return byId
   }
 
   async startAnalysis(user: AuthUser) {
@@ -164,15 +219,31 @@ export class SeoService implements OnApplicationBootstrap, OnModuleDestroy {
     if (q.maxScore !== undefined && Number.isFinite(q.maxScore)) where.score = { lte: q.maxScore }
     if (q.issue && SENDABLE.has(q.issue)) where.issues = { array_contains: [{ field: q.issue }] }
     const page = Math.max(1, q.page ?? 1)
+    const popular = await this.popularity(T)
+    const include = { changes: { orderBy: { createdAt: 'desc' as const }, take: 1, select: { id: true, status: true, createdAt: true } } }
+    const byPopularity = q.order === 'vendidos' || q.order === 'vistos'
+    const pageRows = async () => {
+      if (!byPopularity) {
+        return this.prisma.seoProduct.findMany({
+          where,
+          orderBy: q.order === 'nome' ? { name: 'asc' } : q.order === 'nota_desc' ? { score: 'desc' } : [{ score: 'asc' }, { name: 'asc' }],
+          skip: (page - 1) * 50,
+          take: 50,
+          include,
+        })
+      }
+      // Mais vendidos / mais vistos: ordena todos os que passam no filtro e busca só a página pedida.
+      const all = await this.prisma.seoProduct.findMany({ where, select: { id: true, score: true } })
+      const key = (id: string) => popular.get(id) ?? { sold: 0, views: 0 }
+      const a = q.order === 'vendidos' ? 'sold' : 'views'
+      const b = a === 'sold' ? 'views' : 'sold'
+      const ids = all.sort((x, y) => key(y.id)[a] - key(x.id)[a] || key(y.id)[b] - key(x.id)[b] || x.score - y.score).slice((page - 1) * 50, page * 50).map((r) => r.id)
+      const found = await this.prisma.seoProduct.findMany({ where: { id: { in: ids } }, include })
+      return ids.map((id) => found.find((f) => f.id === id)).filter((r) => !!r)
+    }
     const [total, rows, stats, catalog, dups, pending] = await Promise.all([
       this.prisma.seoProduct.count({ where }),
-      this.prisma.seoProduct.findMany({
-        where,
-        orderBy: q.order === 'nome' ? { name: 'asc' } : q.order === 'nota_desc' ? { score: 'desc' } : [{ score: 'asc' }, { name: 'asc' }],
-        skip: (page - 1) * 50,
-        take: 50,
-        include: { changes: { orderBy: { createdAt: 'desc' }, take: 1, select: { id: true, status: true, createdAt: true } } },
-      }),
+      pageRows(),
       this.prisma.seoProduct.aggregate({ where: { tenantId: T }, _count: true, _avg: { score: true } }),
       this.prisma.storeProduct.findMany({ where: { tenantId: T, active: true }, distinct: ['code'], select: { code: true } }).then((r) => r.length),
       this.prisma.$queryRaw<{ title: string }[]>`
@@ -187,12 +258,14 @@ export class SeoService implements OnApplicationBootstrap, OnModuleDestroy {
       page,
       stats: { analyzed: stats._count, catalog, avgScore: stats._avg.score === null ? null : Math.round(stats._avg.score), below60: below, pending },
       job: this.jobs.get(T) ?? null,
+      analysis: this.analyses.get(T) ?? null,
+      popularDays: POPULAR_DAYS,
       fields: SEO_FIELDS,
       items: rows.map((r) => {
         const f = r.fields as unknown as SeoFields
         const duplicate = !!f.seoTitle && dup.has(f.seoTitle.toLowerCase())
         const { score, issues } = seoScore(f, duplicate)
-        return { id: r.id, productCode: r.productCode, derivationCode: r.derivationCode, name: r.name, brand: r.brand, image: r.image, score, issues, seoTitle: f.seoTitle, metaDescription: f.metaDescription, url: f.url, checkedAt: r.checkedAt, error: r.error, lastChange: r.changes[0] ?? null }
+        return { id: r.id, productCode: r.productCode, derivationCode: r.derivationCode, name: r.name, brand: r.brand, image: r.image, score, issues, seoTitle: f.seoTitle, metaDescription: f.metaDescription, url: f.url, checkedAt: r.checkedAt, error: r.error, lastChange: r.changes[0] ?? null, ...(popular.get(r.id) ?? { sold: 0, views: 0 }) }
       }),
     }
   }
@@ -258,7 +331,7 @@ export class SeoService implements OnApplicationBootstrap, OnModuleDestroy {
         throw new BadRequestException(`Não foi possível gerar a sugestão: ${(err as Error).message}`)
       }
     }
-    if (this.jobs.get(user.tenantId)) throw new BadRequestException('Já há uma tarefa de SEO rodando (análise, IA ou envio). Aguarde terminar.')
+    if (this.jobs.get(user.tenantId)) throw new BadRequestException('Já há uma tarefa de SEO rodando (IA ou envio). Aguarde terminar.')
     const job: Job = { kind: 'ia', total: list.length, done: 0, errors: 0, startedAt: new Date().toISOString(), by: user.name, lastError: null }
     this.jobs.set(user.tenantId, job)
     void (async () => {
@@ -356,7 +429,7 @@ export class SeoService implements OnApplicationBootstrap, OnModuleDestroy {
       }
       return { ok: true, message: 'Enviado para a loja.' }
     }
-    if (this.jobs.get(user.tenantId)) throw new BadRequestException('Já há uma tarefa de SEO rodando (análise, IA ou envio). Aguarde terminar.')
+    if (this.jobs.get(user.tenantId)) throw new BadRequestException('Já há uma tarefa de SEO rodando (IA ou envio). Aguarde terminar.')
     const job: Job = { kind: 'envio', total: list.length, done: 0, errors: 0, startedAt: new Date().toISOString(), by: user.name, lastError: null }
     this.jobs.set(user.tenantId, job)
     void (async () => {

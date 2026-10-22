@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.87.0",
+      "date": "2026-10-22",
+      "title": "SEO dos produtos: mais vendidos e mais vistos primeiro, e IA em lote durante a análise",
+      "changes": [
+        { "type": "correcao", "area": "SEO do e-commerce", "text": "O botão Gerar sugestões com IA ficava desativado enquanto a análise do catálogo rodava. Agora a análise roda separada: dá para gerar sugestões e enviar para a loja ao mesmo tempo." },
+        { "type": "novo", "area": "SEO do e-commerce", "text": "Ordenar por Mais vendidos e Mais vistos (últimos 90 dias), para cuidar primeiro dos produtos que mais importam. Cada produto mostra quantos foram vendidos (pedidos pagos da loja virtual) e quantas visitas a página teve." },
+        { "type": "melhoria", "area": "SEO do e-commerce", "text": "A análise do catálogo lê primeiro os mais vendidos e os mais vistos, depois os demais." }
+      ]
+    },
+    {
       "version": "0.86.3",
       "date": "2026-10-22",
       "title": "SEO dos produtos: leitura pelo código do produto pai e aviso de erro mais claro",

@@ -45,9 +45,13 @@ interface ListData {
   total: number
   page: number
   stats: { analyzed: number; catalog: number; avgScore: number | null; below60: number; pending: number }
+  /** Tarefa de IA ou envio (uma por vez). */
   job: Job | null
+  /** Análise do catálogo; roda junto com a IA e o envio. */
+  analysis: Job | null
+  popularDays: number
   fields: FieldDef[]
-  items: { id: string; productCode: string; derivationCode: string; name: string; brand: string | null; image: string | null; score: number; issues: Issue[]; seoTitle: string; metaDescription: string; url: string; checkedAt: string; error: string | null; lastChange: { id: string; status: string } | null }[]
+  items: { id: string; productCode: string; derivationCode: string; name: string; brand: string | null; image: string | null; score: number; issues: Issue[]; seoTitle: string; metaDescription: string; url: string; checkedAt: string; error: string | null; lastChange: { id: string; status: string } | null; sold: number; views: number }[]
 }
 interface Change {
   id: string
@@ -119,9 +123,10 @@ export function SeoEcommercePage() {
     queryFn: () => api.get<ListData>(`/seo-ecommerce/produtos?${params}`),
     placeholderData: keepPreviousData,
     // Enquanto há tarefa (análise, IA ou envio), atualiza a cada 3 segundos.
-    refetchInterval: (query) => (query.state.data?.job ? 3000 : false),
+    refetchInterval: (query) => (query.state.data?.job || query.state.data?.analysis ? 3000 : false),
   })
   const job = list.data?.job
+  const analysis = list.data?.analysis
   useEffect(() => {
     if (!job) {
       void qc.invalidateQueries({ queryKey: ['seo-revisao'] })
@@ -151,7 +156,7 @@ export function SeoEcommercePage() {
         title="SEO do e-commerce"
         description="Produtos da loja virtual (Magazord) com a nota de SEO. A IA sugere título SEO, meta-description e descrição a partir dos dados do produto; você revisa e envia para a loja."
         actions={
-          <Button variant="outline" onClick={() => analyze.mutate()} disabled={analyze.isPending || !!job}>
+          <Button variant="outline" onClick={() => analyze.mutate()} disabled={analyze.isPending || !!analysis}>
             {analyze.isPending ? <Loader2Icon className="animate-spin" /> : <RefreshCwIcon />} Analisar catálogo
           </Button>
         }
@@ -171,12 +176,17 @@ export function SeoEcommercePage() {
           ))}
         </div>
       )}
-      {job && (
-        <p className="mb-4 flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm" role="status">
-          <Loader2Icon className="size-4 animate-spin" />
-          {job.kind === 'analise' ? 'Analisando o catálogo na Magazord' : job.kind === 'ia' ? 'A IA está escrevendo as sugestões' : 'Enviando para a loja'}: {job.done} de {job.total}
-          {job.errors ? ` · ${job.errors} com erro (${job.lastError ?? ''})` : ''}
-        </p>
+      {[analysis, job].map(
+        (j) =>
+          j && (
+            <p key={j.kind} className="mb-4 flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm" role="status">
+              <Loader2Icon className="size-4 shrink-0 animate-spin" />
+              <span>
+                {j.kind === 'analise' ? 'Analisando o catálogo na Magazord (mais vendidos e mais vistos primeiro)' : j.kind === 'ia' ? 'A IA está escrevendo as sugestões' : 'Enviando para a loja'}: {j.done} de {j.total}
+                {j.errors ? ` · ${j.errors} com erro (${j.lastError ?? ''})` : ''}
+              </span>
+            </p>
+          ),
       )}
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="mb-3">
@@ -213,13 +223,15 @@ export function SeoEcommercePage() {
                 <SelectItem value="79">Nota abaixo de 80</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={order} onValueChange={setOrder}>
-              <SelectTrigger className="w-44" aria-label="Ordem">
+            <Select value={order} onValueChange={(v) => (setOrder(v), setPage(1))}>
+              <SelectTrigger className="w-48" aria-label="Ordem">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="nota">Pior nota primeiro</SelectItem>
                 <SelectItem value="nota_desc">Melhor nota primeiro</SelectItem>
+                <SelectItem value="vendidos">Mais vendidos ({d?.popularDays ?? 90} dias)</SelectItem>
+                <SelectItem value="vistos">Mais vistos ({d?.popularDays ?? 90} dias)</SelectItem>
                 <SelectItem value="nome">Nome</SelectItem>
               </SelectContent>
             </Select>
@@ -272,6 +284,8 @@ export function SeoEcommercePage() {
                             <span className="text-xs text-muted-foreground">
                               {p.derivationCode}
                               {p.brand ? ` · ${p.brand}` : ''}
+                              {p.sold ? ` · ${p.sold.toLocaleString('pt-BR')} vendido(s)` : ''}
+                              {p.views ? ` · ${p.views.toLocaleString('pt-BR')} visita(s)` : ''}
                             </span>
                           </span>
                         </div>
