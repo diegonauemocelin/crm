@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2Icon, PlayIcon, RefreshCwIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { Link, Navigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm'
 import { CopyField } from '@/components/copy-field'
-import { ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { ErrorState, formatDateTime, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,7 +13,6 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
@@ -114,42 +113,27 @@ const EFFORT_NAMES: Record<string, string> = { low: 'Baixo (mais rápido)', medi
 const COUNT_LABELS: Record<string, string> = { perguntas: 'perguntas', respostas: 'respostas', conhecimentos: 'conhecimentos', aplicacoes: 'aplicações', anuncios: 'anúncios', vendas: 'vendas', eventos: 'registros da trajetória' }
 const DECISION: Record<string, string> = { responder: 'Responder', solicitar_info: 'Pedir informação ao cliente', encaminhar: 'Encaminhar para a equipe' }
 
+/** Abas antigas desta tela: agora cada uma é uma seção de Configurações › Marketplaces. */
+const SECAO: Record<string, string> = { integracao: 'assistente-ml', respostas: 'assistente-respostas', motor: 'assistente-ia', testar: 'assistente-testar' }
+
+/** Endereço antigo (/marketplaces/assistente/configuracoes?aba=...): vai para a seção certa de Configurações. */
 export function AssistenteConfigPage() {
-  return (
-    <RequirePermission module="assist_config">
-      <Config />
-    </RequirePermission>
-  )
+  const [params] = useSearchParams()
+  return <Navigate to={`/configuracoes?secao=${SECAO[params.get('aba') ?? ''] ?? 'assistente-ml'}`} replace />
 }
 
-function Config() {
-  const [params, setParams] = useSearchParams()
-  const tab = params.get('aba') ?? 'integracao'
-  return (
-    <div>
-      <PageHeader title="Configurações do assistente" description="Integração com o Mercado Livre, como a IA responde, o frete pela Magazord e as chaves de IA." />
-      <Tabs value={tab} onValueChange={(v) => setParams({ aba: v }, { replace: true })}>
-        <TabsList className="mb-4 flex-wrap">
-          <TabsTrigger value="integracao">Integração</TabsTrigger>
-          <TabsTrigger value="respostas">Respostas</TabsTrigger>
-          <TabsTrigger value="motor">Motor de IA</TabsTrigger>
-          <TabsTrigger value="testar">Testar o assistente</TabsTrigger>
-        </TabsList>
-        <TabsContent value="integracao">
-          <IntegracaoTab />
-        </TabsContent>
-        <TabsContent value="respostas">
-          <SettingsForm part="respostas" />
-        </TabsContent>
-        <TabsContent value="motor">
-          <SettingsForm part="motor" />
-        </TabsContent>
-        <TabsContent value="testar">
-          <Testar />
-        </TabsContent>
-      </Tabs>
-    </div>
-  )
+/** Configurações › Marketplaces: as partes do assistente do Mercado Livre. */
+export function AssistenteIntegracao() {
+  return <IntegracaoTab />
+}
+export function AssistenteRespostas() {
+  return <SettingsForm part="respostas" />
+}
+export function AssistenteMotor() {
+  return <SettingsForm part="motor" />
+}
+export function AssistenteTestar() {
+  return <Testar />
 }
 
 const useConfig = () => useQuery({ queryKey: ['assist-config'], queryFn: () => api.get<ConfigResponse>('/assistente/config') })
@@ -644,7 +628,7 @@ function IntegracaoTab() {
             </div>
           )}
           <p className="text-muted-foreground">
-            Conta no CRM: {d.account ? `${d.account.nickname ?? ''} (${d.account.sellerId})` : 'não conectada'} · <Link className="underline" to="/marketplaces/integracoes">Marketplaces › Conexões</Link>
+            Conta no CRM: {d.account ? `${d.account.nickname ?? ''} (${d.account.sellerId})` : 'não conectada'} · <Link className="underline" to="/configuracoes?secao=marketplaces-conexoes">Configurações › Marketplaces › Conexões</Link>
             {d.lastTestAt && ` · último teste ${formatDateTime(d.lastTestAt)} ${d.lastTestOk ? '(ok)' : '(falhou)'}`}
           </p>
           {edit && (
@@ -656,7 +640,7 @@ function IntegracaoTab() {
                       <Checkbox checked={usePainel} onCheckedChange={(v) => setUsePainel(v === true)} className="mt-0.5" />
                       <span>
                         Usar o aplicativo e o acesso do Mercado Livre do painel antigo
-                        <span className="block text-xs text-muted-foreground">Substitui a conexão de Marketplaces › Conexões por essa. Depois de assumir, pare o painel antigo: o acesso passa a ser renovado pelo CRM.</span>
+                        <span className="block text-xs text-muted-foreground">Substitui a conexão de Configurações › Marketplaces › Conexões por essa. Depois de assumir, pare o painel antigo: o acesso passa a ser renovado pelo CRM.</span>
                       </span>
                     </label>
                   )}

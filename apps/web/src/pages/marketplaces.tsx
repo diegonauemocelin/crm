@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ExternalLinkIcon, Loader2Icon, PlugIcon, RefreshCwIcon, ShoppingBagIcon, StoreIcon, UnplugIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm'
 import { CopyField } from '@/components/copy-field'
@@ -261,7 +261,7 @@ function MercadoLivre() {
                 </Button>
               )}
               <Button asChild size="sm" variant="outline">
-                <Link to="/marketplaces/integracoes">
+                <Link to="/configuracoes?secao=marketplaces-conexoes">
                   <PlugIcon /> Conexão
                 </Link>
               </Button>
@@ -301,7 +301,7 @@ function MercadoLivre() {
                 action={
                   can('marketplaces', 'edit') && (
                     <Button asChild size="sm">
-                      <Link to="/marketplaces/integracoes">Conectar o Mercado Livre</Link>
+                      <Link to="/configuracoes?secao=marketplaces-conexoes">Conectar o Mercado Livre</Link>
                     </Button>
                   )
                 }
@@ -442,7 +442,7 @@ export function MlRetornoPage() {
       .post<{ nickname: string | null }>('/marketplaces/mercado-livre/retorno', { code, state })
       .then((r) => {
         toast.success(`Mercado Livre conectado${r.nickname ? `: ${r.nickname}` : ''}.`)
-        navigate('/marketplaces/integracoes', { replace: true })
+        navigate('/configuracoes?secao=marketplaces-conexoes', { replace: true })
       })
       .catch((err: unknown) => setError(errorMessage(err)))
   }, [params, navigate])
@@ -456,7 +456,7 @@ export function MlRetornoPage() {
           description={error}
           action={
             <Button asChild size="sm" variant="outline">
-              <Link to="/marketplaces/integracoes">Voltar para a conexão</Link>
+              <Link to="/configuracoes?secao=marketplaces-conexoes">Voltar para a conexão</Link>
             </Button>
           }
         />
@@ -471,12 +471,14 @@ export function MlRetornoPage() {
 
 // ---------- Conexões ----------
 
+/** Endereço antigo: as conexões ficam em Configurações › Marketplaces. */
 export function MarketplacesIntegracoesPage() {
-  return (
-    <RequirePermission module="marketplaces">
-      <Integracoes />
-    </RequirePermission>
-  )
+  return <Navigate to="/configuracoes?secao=marketplaces-conexoes" replace />
+}
+
+/** Configurações › Marketplaces › Conexões (Mercado Livre e histórico do BI). */
+export function MarketplacesConexoes() {
+  return <Integracoes />
 }
 
 type ConfigResponse = MlConfigView & { sync: SyncState }

@@ -2330,3 +2330,59 @@ model AssistSale {
   @@index([tenantId, orderDate])
   @@map("assist_sales")
 }
+
+/// Landing page (E-mail marketing › Landing pages): blocos, tema, versão B para teste A/B e publicação no subdomínio.
+model LandingPage {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  name        String
+  /// Endereço da página no subdomínio (ex.: filtros-komatsu).
+  slug        String
+  /// RASCUNHO, PUBLICADA ou PAUSADA.
+  status      String    @default("RASCUNHO")
+  /// Cores, fonte, cantos e botões da página.
+  theme       Json
+  /// Blocos da versão A (e única, sem teste A/B).
+  blocks      Json
+  /// Blocos da versão B (teste A/B); vazio = sem teste.
+  blocksB     Json?
+  /// Parte das visitas que vê a versão B (0 a 100).
+  abSplit     Int       @default(50)
+  abActive    Boolean   @default(false)
+  /// Título e descrição para o Google e as redes, imagem de compartilhamento e "não aparecer no Google".
+  seo         Json
+  publishedAt DateTime?
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  events LandingEvent[]
+
+  @@unique([tenantId, slug])
+  @@map("landing_pages")
+}
+
+/// Visita, rolagem, clique no botão, clique no WhatsApp e lead de uma landing page (por versão A/B e origem).
+model LandingEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  pageId     String   @db.Uuid
+  variant    String   @default("A")
+  /// view, scroll, cta, whatsapp ou lead.
+  type       String
+  /// Identificador aleatório do navegador (sem dado pessoal).
+  visitor    String
+  source     String?
+  medium     String?
+  campaign   String?
+  device     String?
+  leadId     String?  @db.Uuid
+  occurredAt DateTime @default(now())
+
+  page LandingPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([pageId, occurredAt])
+  @@index([tenantId, occurredAt])
+  @@map("landing_events")
+}

@@ -169,7 +169,8 @@ export class PublicCapturaController {
     if (!site) return { ok: false, message: 'Envio não autorizado.' }
     res.setHeader('Access-Control-Allow-Origin', origin!)
     res.setHeader('Vary', 'Origin')
-    return this.captura.submit(site.tenantId, p, { ip: req.ip ?? null, userAgent: ua?.slice(0, 500) })
+    const { leadId: _lead, ...result } = await this.captura.submit(site.tenantId, p, { ip: req.ip ?? null, userAgent: ua?.slice(0, 500) })
+    return result
   }
 }
 

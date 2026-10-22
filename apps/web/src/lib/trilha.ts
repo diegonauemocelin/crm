@@ -571,6 +571,46 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'landing',
+    title: 'Landing pages',
+    module: 'email_marketing',
+    routes: ['/landing-pages', '/landing-pages/:id'],
+    purpose: 'Páginas para anúncios e campanhas, no subdomínio da empresa, com medição até a venda.',
+    howItWorks: 'Você monta a página com blocos (a partir de um modelo pronto, com a IA ou em branco), ajusta as cores e publica. Quem preenche o formulário vira lead e pré-venda com a página e o anúncio como origem; visitas e cliques entram só nas métricas. GA4, Meta Pixel e Google Ads recebem as conversões de quem aceitou os cookies.',
+    media: { src: '/trilha/landing-pages.jpg', alt: 'Editor de landing page' },
+    lessons: [
+      {
+        id: 'landing.criar',
+        title: 'Criar e publicar uma landing page',
+        steps: [
+          'Abra Marketing → Landing pages → Nova landing page.',
+          'Escolha um modelo pronto, peça para a IA montar a partir do objetivo ou comece em branco.',
+          'Clique em cada bloco para trocar textos e imagens; complete o que estiver [entre colchetes].',
+          'Em Tema, ajuste cores, fonte, cantos, botões e o WhatsApp da página.',
+          'Confira a prévia no computador e no celular e clique em Publicar.',
+        ],
+        tip: 'A IA não inventa preço, prazo, estoque nem garantia: confira os textos com o Comercial antes de publicar.',
+      },
+      {
+        id: 'landing.anuncios',
+        title: 'Usar nos anúncios e medir',
+        steps: [
+          'Na aba Links, copie o endereço com UTM do canal (Google, Meta, TikTok, e-mail, WhatsApp).',
+          'Na aba Métricas, veja visitantes, cliques, leads, conversão e as vendas do Pré-Vendas.',
+          'Para comparar duas versões, ligue o Teste A/B na aba Página.',
+        ],
+      },
+      {
+        id: 'landing.config',
+        title: 'Subdomínio e medição',
+        steps: [
+          'Em Subdomínio e medição, informe o subdomínio (ex.: lp.usaparts.com.br), o GA4 e o Meta Pixel.',
+          'O TI aponta o DNS e roda o script do servidor (deploy/LANDING-PAGES.md).',
+        ],
+      },
+    ],
+  },
+  {
     key: 'automacoes',
     title: 'Automações',
     module: 'automacoes',
@@ -759,7 +799,7 @@ export const TRAIL: TrailModule[] = [
     key: 'marketplaces',
     title: 'Marketplaces: Mercado Livre Ads',
     module: 'marketplaces',
-    routes: ['/marketplaces'],
+    routes: ['/marketplaces', '/configuracoes?secao=marketplaces-conexoes'],
     purpose: 'Acompanhar a publicidade e as vendas nos marketplaces: hoje o Mercado Livre (Product Ads e Display Ads); depois, a Shopee.',
     howItWorks:
       'O CRM lê as campanhas do Mercado Livre a cada 6 horas, só leitura: nunca altera anúncio, preço ou orçamento. A receita é a que o Mercado Livre atribui aos anúncios (até 14 dias depois do clique), por isso os últimos 15 dias são refeitos a cada sincronização. A Visão geral junta a publicidade com as vendas por canal da loja virtual (Magazord).',
@@ -778,7 +818,7 @@ export const TRAIL: TrailModule[] = [
         id: 'mktp.conectar',
         title: 'Conectar o Mercado Livre',
         steps: [
-          'Abra Marketplaces → Conexões. Copie a URI de redirecionamento e acrescente no aplicativo do Mercado Livre (developers.mercadolivre.com.br).',
+          'Abra Configurações → Marketplaces → Conexões dos marketplaces. Copie a URI de redirecionamento e acrescente no aplicativo do Mercado Livre (developers.mercadolivre.com.br).',
           'Digite o Client ID e o Client Secret do aplicativo e clique em Salvar credenciais.',
           'Clique em Conectar o Mercado Livre, entre com a conta da empresa e autorize. Escolha o anunciante do Product Ads, se houver mais de um.',
           'Clique em Sincronizar agora. Na primeira vez vêm os últimos 90 dias (limite do Mercado Livre).',
@@ -791,7 +831,7 @@ export const TRAIL: TrailModule[] = [
     key: 'assistente-ml',
     title: 'Assistente das perguntas do Mercado Livre',
     module: 'assist_atendimento',
-    routes: ['/marketplaces/assistente'],
+    routes: ['/marketplaces/assistente', '/configuracoes?secao=assistente-ml', '/configuracoes?secao=assistente-respostas', '/configuracoes?secao=assistente-ia', '/configuracoes?secao=assistente-testar'],
     purpose: 'Responder as perguntas dos clientes no Mercado Livre com a base de conhecimento, a IA e o frete calculado na Magazord, e acompanhar quais perguntas viraram venda.',
     howItWorks:
       'Cada pergunta nova é analisada: o assistente procura respostas aprovadas, aplicações peça × máquina confirmadas e os anúncios da loja (por título, código e OEM). Pergunta de frete com CEP é respondida com as opções da Magazord; sem CEP, o assistente pede o CEP. Com confiança alta e a resposta automática ligada, a resposta vai sozinha; senão, fica como sugestão ou entra na fila de pendentes com o motivo (A a G). Compatibilidade só é afirmada quando a aplicação está confirmada.',
@@ -821,7 +861,7 @@ export const TRAIL: TrailModule[] = [
         id: 'assist.config',
         title: 'Configurar e passar o atendimento para o CRM',
         steps: [
-          'Abra Marketplaces → Configurações do assistente → Motor de IA. Escolha Sem IA, Gemini ou Claude e salve a chave do provedor escolhido.',
+          'Abra Configurações → Marketplaces → Assistente ML: motor de IA. Escolha Sem IA, Gemini ou Claude e salve a chave do provedor escolhido.',
           'Na aba Respostas, ajuste a resposta automática e a confiança mínima, os textos de frete e quando pedir informação ou encaminhar.',
           'Use a aba Testar o assistente com perguntas reais: nada é enviado ao cliente.',
           'Na aba Integração, informe a loja oficial, sincronize os anúncios e clique em Assumir o atendimento. Depois, peça para parar o painel antigo no servidor.',

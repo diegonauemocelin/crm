@@ -159,6 +159,11 @@ export class EmailAiService {
     return (await this.call(s, system, prompt, 0.3, [], maxOutputTokens)).text
   }
 
+  /** Texto "sobre a empresa" cadastrado para a IA (usado também nas landing pages). */
+  async about(tenantId: string) {
+    return (await this.config(tenantId)).about
+  }
+
   /** Há chave do Gemini cadastrada (Configurações → E-mail marketing)? */
   async available(tenantId: string) {
     return !!(await this.config(tenantId)).apiKeyEnc

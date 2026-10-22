@@ -101,6 +101,8 @@ export interface SubmitResult {
   message?: string
   redirect?: string | null
   errors?: Record<string, string>
+  /** Lead criado ou atualizado (uso interno: landing pages; nunca vai para o navegador). */
+  leadId?: string
 }
 
 const UUID = /^[0-9a-f-]{36}$/
@@ -332,15 +334,15 @@ export class CapturaService {
     await this.audit.log({ tenantId, action: 'captura.submitted', entity: 'lead', entityId: result.leadId, ip: meta.ip, data: { canal: p.kind, formulario: form?.id ?? null, novo: result.created } })
 
     if (p.kind === 'whatsapp') {
-      return { ok: true, redirect: waLink(wa!.phone, whatsappText(wa!.message, { name: contact.name, page: pageUrl })) }
+      return { ok: true, leadId: result.leadId, redirect: waLink(wa!.phone, whatsappText(wa!.message, { name: contact.name, page: pageUrl })) }
     }
     if (form!.afterSubmit === 'whatsapp') {
       // Formulário que abre o WhatsApp: usa o primeiro botão ativo (número central).
       const main = await this.prisma.captureWhatsapp.findFirst({ where: { tenantId, active: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] })
-      if (main) return { ok: true, message: form!.successMessage, redirect: waLink(main.phone, whatsappText(main.message, { name: contact.name, page: pageUrl })) }
+      if (main) return { ok: true, leadId: result.leadId, message: form!.successMessage, redirect: waLink(main.phone, whatsappText(main.message, { name: contact.name, page: pageUrl })) }
     }
-    if (form!.afterSubmit === 'redirect') return { ok: true, message: form!.successMessage, redirect: safeRedirect(form!.redirectUrl) }
-    return { ok: true, message: form!.successMessage }
+    if (form!.afterSubmit === 'redirect') return { ok: true, leadId: result.leadId, message: form!.successMessage, redirect: safeRedirect(form!.redirectUrl) }
+    return { ok: true, leadId: result.leadId, message: form!.successMessage }
   }
 
   /**

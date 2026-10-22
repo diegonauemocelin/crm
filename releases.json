@@ -2,6 +2,20 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.85.0",
+      "date": "2026-10-22",
+      "title": "Landing pages (editor em blocos, modelos, IA, subdomínio e medição) e configurações dos Marketplaces num lugar só",
+      "changes": [
+        { "type": "novo", "area": "Landing pages", "text": "Nova tela Marketing › Landing pages: monte páginas para anúncios e campanhas com 15 tipos de bloco (topo, números, benefícios, produtos do catálogo, marcas, depoimentos, oferta com contagem regressiva, galeria, vídeo, perguntas frequentes, formulário, WhatsApp, chamada final, texto), prévia ao vivo no computador e no celular." },
+        { "type": "novo", "area": "Landing pages", "text": "8 modelos prontos (orçamento de peças, material rodante, promoção de filtros, peças por marca, lançamento, feira, página de obrigado e cotização em espanhol), no padrão visual do shadcn/ui, com cores, fonte, cantos, botões e topo personalizáveis em cada página (começam com as cores da marca)." },
+        { "type": "novo", "area": "Landing pages", "text": "IA (Gemini): descreva o objetivo e ela sugere 3 estruturas e monta a página escolhida; em cada bloco, o botão Reescrever melhora os textos. A IA não inventa preço, prazo, estoque nem garantia: deixa [entre colchetes] para alguém completar." },
+        { "type": "novo", "area": "Landing pages", "text": "Publicação no subdomínio (ex.: lp.usaparts.com.br), com script do servidor e passo a passo para o TI (deploy/LANDING-PAGES.md); enquanto isso, a página funciona no endereço do CRM em /lp/." },
+        { "type": "novo", "area": "Landing pages", "text": "Medição: GA4 (eventos generate_lead e contact), Meta Pixel e conversões do Google Ads, carregados só depois do aceite de cookies (LGPD); métricas próprias de visitantes, rolagem, cliques, leads, conversão e vendas fechadas no Pré-Vendas, por origem e campanha; teste A/B com duas versões; gerador de links com UTM por canal." },
+        { "type": "melhoria", "area": "Captura", "text": "Quem preenche o formulário da landing page vira lead e pré-venda pela Captura, com a página e o anúncio (UTM, gclid) como origem e o consentimento de e-mail registrado. Visitas e cliques não viram lead." },
+        { "type": "melhoria", "area": "Configurações", "text": "As configurações dos Marketplaces foram para Configurações › Marketplaces: Conexões dos marketplaces (Mercado Livre e histórico do BI) e o Assistente ML em quatro partes (integração, respostas, motor de IA e testar), com busca. Saíram do menu Marketplaces; os endereços antigos levam direto para a seção certa." }
+      ]
+    },
+    {
       "version": "0.84.0",
       "date": "2026-10-22",
       "title": "Finalizar vários atendimentos do WhatsApp de uma vez",

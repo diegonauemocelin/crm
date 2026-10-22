@@ -9,6 +9,7 @@ import {
   HistoryIcon,
   InboxIcon,
   LayoutDashboardIcon,
+  LayoutTemplateIcon,
   LightbulbIcon,
   MailIcon,
   MegaphoneIcon,
@@ -41,7 +42,6 @@ import {
   MessagesSquareIcon,
   SendIcon,
   BookOpenIcon,
-  SlidersHorizontalIcon,
 } from 'lucide-react'
 import type { Action } from './types'
 
@@ -108,6 +108,7 @@ export const NAVIGATION: NavGroup[] = [
     items: [
       { title: 'Captura', to: '/captura', icon: MegaphoneIcon, module: 'captura' },
       { title: 'Email marketing', to: '/email-marketing', icon: MailIcon, module: 'email_marketing' },
+      { title: 'Landing pages', to: '/landing-pages', icon: LayoutTemplateIcon, module: 'email_marketing' },
       { title: 'Automações', to: '/automacoes', icon: BotIcon, module: 'automacoes' },
     ],
   },
@@ -144,8 +145,6 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Respostas enviadas', to: '/marketplaces/assistente/respostas', icon: SendIcon, module: 'assist_atendimento' },
       { title: 'Base de conhecimento', to: '/marketplaces/assistente/conhecimento', icon: BookOpenIcon, module: 'assist_conhecimento' },
       { title: 'Produtos e aplicações', to: '/marketplaces/assistente/aplicacoes', icon: PackageSearchIcon, module: 'assist_aplicacoes' },
-      { title: 'Configurações do assistente', to: '/marketplaces/assistente/configuracoes', icon: SlidersHorizontalIcon, module: 'assist_config' },
-      { title: 'Conexões', to: '/marketplaces/integracoes', icon: PlugIcon, module: 'marketplaces' },
     ],
   },
   {

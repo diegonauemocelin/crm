@@ -28,6 +28,9 @@ import {
   UserCogIcon,
   UsersIcon,
   ClockIcon,
+  FlaskConicalIcon,
+  PlugIcon,
+  SparklesIcon,
   ListChecksIcon,
   WorkflowIcon,
 } from 'lucide-react'
@@ -79,6 +82,12 @@ const MarketingSettingsTab = lazyNamed(() => import('./settings/marketing-tab'),
 const MetaTab = lazyNamed(() => import('./settings/meta-tab'), 'MetaTab')
 const Ga4Tab = lazyNamed(() => import('./settings/ga4-tab'), 'Ga4Tab')
 const GoogleAdsTab = lazyNamed(() => import('./settings/google-ads-tab'), 'GoogleAdsTab')
+const MarketplacesConexoes = lazyNamed(() => import('./marketplaces'), 'MarketplacesConexoes')
+const assistente = () => import('./assistente/configuracoes')
+const AssistenteIntegracao = lazyNamed(assistente, 'AssistenteIntegracao')
+const AssistenteRespostas = lazyNamed(assistente, 'AssistenteRespostas')
+const AssistenteMotor = lazyNamed(assistente, 'AssistenteMotor')
+const AssistenteTestar = lazyNamed(assistente, 'AssistenteTestar')
 const TcarTab = lazyNamed(() => import('./settings/tcar-tab'), 'TcarTab')
 
 interface Section {
@@ -191,6 +200,58 @@ const SECTIONS: Section[] = [
   { id: 'ga4', group: 'Integrações', title: 'Google Analytics', description: 'Dados do GA4 nos relatórios.', icon: ChartLineIcon, module: 'configuracoes', keywords: 'analytics ga4 relatórios', render: () => <Ga4Tab /> },
   { id: 'google-ads', group: 'Integrações', title: 'Google Ads', description: 'Conversões dos atendimentos enviadas às campanhas.', icon: TargetIcon, module: 'configuracoes', keywords: 'conversões offline campanhas', render: () => <GoogleAdsTab /> },
   { id: 'tcar', group: 'Integrações', title: 'Tcar (ERP)', description: 'Estoque e preços do ERP na consulta de produtos.', icon: ContactRoundIcon, module: 'configuracoes', keywords: 'erp estoque preço produtos', render: () => <TcarTab /> },
+  // ---------- Marketplaces ----------
+  {
+    id: 'marketplaces-conexoes',
+    group: 'Marketplaces',
+    title: 'Conexões dos marketplaces',
+    description: 'Conta do Mercado Livre (anúncios e Mercado Livre Ads), sincronização e o histórico trazido do Usaparts BI.',
+    icon: PlugIcon,
+    module: 'marketplaces',
+    ownHeader: true,
+    keywords: 'mercado livre ml ads conectar conta oauth bi histórico shopee',
+    render: () => <MarketplacesConexoes />,
+  },
+  {
+    id: 'assistente-ml',
+    group: 'Marketplaces',
+    title: 'Assistente ML: integração',
+    description: 'Atendimento das perguntas do Mercado Livre pelo CRM: conexão, notificações do Mercado Livre, loja oficial e anúncios, e o registro.',
+    icon: BotIcon,
+    module: 'assist_config',
+    keywords: 'assistente perguntas mercado livre webhook notificações painel',
+    render: () => <AssistenteIntegracao />,
+  },
+  {
+    id: 'assistente-respostas',
+    group: 'Marketplaces',
+    title: 'Assistente ML: respostas',
+    description: 'Instruções que a IA recebe, envio das respostas, frete pela Magazord, quando pedir informação ou encaminhar, venda adicional e categorias.',
+    icon: MessageSquareTextIcon,
+    module: 'assist_config',
+    keywords: 'resposta instruções envio frete magazord encaminhar venda adicional categorias',
+    render: () => <AssistenteRespostas />,
+  },
+  {
+    id: 'assistente-ia',
+    group: 'Marketplaces',
+    title: 'Assistente ML: motor de IA',
+    description: 'Motor de respostas (sem IA, Gemini ou Claude), modelo, aprendizado e as chaves de IA.',
+    icon: SparklesIcon,
+    module: 'assist_config',
+    keywords: 'ia claude gemini chave modelo motor',
+    render: () => <AssistenteMotor />,
+  },
+  {
+    id: 'assistente-testar',
+    group: 'Marketplaces',
+    title: 'Assistente ML: testar',
+    description: 'Faça uma pergunta de teste e veja a resposta e a decisão do assistente.',
+    icon: FlaskConicalIcon,
+    module: 'assist_config',
+    keywords: 'teste simular pergunta resposta',
+    render: () => <AssistenteTestar />,
+  },
 ]
 
 /** Endereços antigos (?aba=...) das telas que viraram seções. */

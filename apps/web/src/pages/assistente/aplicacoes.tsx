@@ -469,14 +469,14 @@ function Anuncios() {
         >
           <Input className="w-72" placeholder="Buscar título, código, SKU ou MLB" value={search} onChange={(e) => setSearch(e.target.value)} />
         </form>
-        <p className="self-center text-sm text-muted-foreground">Sincronize em Configurações do assistente › Integração.</p>
+        <p className="self-center text-sm text-muted-foreground">Sincronize em Configurações › Marketplaces › Assistente ML: integração.</p>
       </div>
       {list.isLoading ? (
         <TableSkeleton />
       ) : list.error || !list.data ? (
         <ErrorState error={list.error} onRetry={() => list.refetch()} />
       ) : !list.data.rows.length ? (
-        <EmptyState title="Nenhum anúncio sincronizado" description="Os anúncios da loja entram pela sincronização em Configurações do assistente › Integração." />
+        <EmptyState title="Nenhum anúncio sincronizado" description="Os anúncios da loja entram pela sincronização em Configurações › Marketplaces › Assistente ML: integração." />
       ) : (
         <Card className="py-0">
           <Table>

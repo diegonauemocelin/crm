@@ -11,7 +11,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
  * não usam sessão e só criam/completam leads (nunca leem nem alteram dados do painel).
  */
 // Descadastro: autenticado pelo token assinado do link (o Gmail/Outlook envia o "cancelar inscrição" direto, sem cookie).
-const EXEMPT_PREFIXES = ['/api/webhooks/', '/api/public/rastreamento/', '/api/public/captura/', '/api/public/descadastro/']
+// Landing pages (subdomínio lp.*): sem sessão; o formulário só cria lead pela Captura e só para página publicada.
+const EXEMPT_PREFIXES = ['/api/webhooks/', '/api/public/rastreamento/', '/api/public/captura/', '/api/public/descadastro/', '/api/public/lp/']
 
 function originOf(referer: string | undefined): string | undefined {
   if (!referer) return undefined
