@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.91.1",
+      "date": "2026-10-23",
+      "title": "Script para deixar no servidor só o CRM",
+      "changes": [
+        { "type": "infra", "area": "Servidor", "text": "deploy/enxugar-servidor.sh: verifica o que roda na VPS além do CRM e, em dois passos, desliga e depois apaga o Usaparts BI e o painel do assistente com os bancos deles, sempre com cópia criptografada antes. O painel só sai depois de importado e de o CRM assumir o atendimento. O que não for desses sistemas só é listado." }
+      ]
+    },
+    {
       "version": "0.91.0",
       "date": "2026-10-23",
       "title": "Chat: o tempo de espera para quando o atendente responde",

@@ -282,3 +282,20 @@ sudo systemctl disable --now usaparts.service
 ```
 
 Para voltar ao painel: **Liberar o atendimento** no CRM e `sudo systemctl enable --now usaparts.service`. Depois de assumir, o importador se recusa a rodar, para não apagar o que o CRM já respondeu.
+
+## Enxugar o servidor (deixar só o CRM)
+
+Desliga e depois apaga os sistemas antigos (Usaparts BI e o painel do assistente) e os bancos deles, para sobrar memória e disco para o CRM. São três passos, cada um rodado por você:
+
+```bash
+sudo bash /opt/usaparts-crm/deploy/enxugar-servidor.sh            # 1. verificar: só lê e mostra o que há
+sudo bash /opt/usaparts-crm/deploy/enxugar-servidor.sh desligar   # 2. backup criptografado + para e desativa
+sudo bash /opt/usaparts-crm/deploy/enxugar-servidor.sh apagar     # 3. remove de vez (pede para digitar APAGAR)
+```
+
+- **desligar**: faz o backup do CRM e guarda cópias criptografadas do banco e da pasta do BI (`bi-db-*.dump.age`, `bi-pasta-*.tar.gz.age`) e da pasta do painel (`painel-pasta-*.tar.gz.age`) na pasta de backups do CRM. Para os containers do BI (sem subir de novo ao reiniciar), desativa o `usaparts.service` e tira os sites antigos do Nginx. Nada é apagado.
+- O painel só é desligado depois de importado (`deploy/importar-painel.sh`) **e** de o CRM assumir o atendimento (Marketplaces › Assistente › Integração › Assumir o atendimento). Antes disso, o script desliga só o BI e avisa.
+- **apagar**: remove o que já foi desligado: containers, volumes (o banco PostgreSQL do BI), imagens, as pastas `/opt/usaparts-bi` e `/opt/usaparts-assistente` (banco SQLite), o backup sem criptografia do painel em `/opt/backups/usaparts`, o serviço e a tarefa do cron. As cópias criptografadas continuam na pasta de backups do CRM.
+- O que a verificação lista em "Outros containers", "Serviços próprios" e "Bancos fora do Docker" não é tocado: confira e decida um a um.
+
+Para voltar um sistema depois do **desligar** (antes do apagar): `cd /opt/usaparts-bi && sudo docker compose up -d` (BI) ou `sudo systemctl enable --now usaparts.service` (painel; no CRM, Liberar o atendimento antes), e os sites do Nginx guardados em `/opt/usaparts-crm/.deploy/enxugar/nginx` voltam para `/etc/nginx/sites-enabled/` (depois `sudo nginx -t && sudo systemctl reload nginx`).
