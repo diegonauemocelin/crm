@@ -166,7 +166,16 @@ export class MercadoLivreService implements OnApplicationBootstrap, OnModuleDest
       signal: AbortSignal.timeout(30_000),
     })
     const json = (await res.json().catch(() => null)) as { access_token: string; refresh_token: string; expires_in: number; user_id: number; error?: string; message?: string } | null
-    if (!res.ok || !json?.access_token) throw tokenError(res.status, json)
+    if (!res.ok || !json?.access_token) {
+      const err = tokenError(res.status, json)
+      // Segredo recusado: diz qual Client ID foi usado e o final do segredo salvo, para conferir com o do aplicativo.
+      if (json?.error === 'invalid_client') {
+        const secret = body.client_secret ?? ''
+        err.message += ` (enviado: Client ID ${body.client_id}; Client Secret salvo com ${secret.length} caracteres, terminando em …${secret.slice(-4)})`
+      }
+      this.logger.warn(`Mercado Livre recusou o pedido de token (${body.grant_type}): ${res.status} ${json?.error ?? ''} ${json?.message ?? ''}`.trim())
+      throw err
+    }
     return json
   }
 

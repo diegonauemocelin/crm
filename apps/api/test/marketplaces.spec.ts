@@ -102,6 +102,17 @@ describe('Mercado Livre: autorização com PKCE', () => {
     return { svc, store, calls }
   }
 
+  it('segredo recusado (invalid_client): mostra o Client ID usado e o final do segredo salvo, nunca ele inteiro', async () => {
+    const { svc } = make()
+    svc.fetcher = (async () => new Response(JSON.stringify({ error: 'invalid_client', message: 'invalid client_id or client_secret' }), { status: 400 })) as typeof fetch
+    await svc.saveCredentials('t1', '6156699654672393', 'abcdefghijklmnopqrstuvwxyz12WXYZ')
+    const { url } = await svc.startAuthorization(user)
+    const err = await svc.completeAuthorization(user, 'CODE', new URL(url).searchParams.get('state')!).catch((e: Error) => e)
+    expect((err as Error).message).toContain('não aceitou o Client Secret')
+    expect((err as Error).message).toContain('Client ID 6156699654672393; Client Secret salvo com 32 caracteres, terminando em …WXYZ')
+    expect((err as Error).message).not.toContain('abcdefghijklmnop')
+  })
+
   it('sem credenciais não conecta', async () => {
     const { svc } = make()
     await expect(svc.startAuthorization(user)).rejects.toThrow(/Client ID/)

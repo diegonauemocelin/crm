@@ -101,7 +101,7 @@ export class MarketplacesController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @RequirePermission('marketplaces', 'edit')
   async callback(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx, @Body() dto: CallbackDto) {
-    const r = await this.ml.completeAuthorization(user, dto.code, dto.state)
+    const r = await this.ml.completeAuthorization(user, dto.code, dto.state).catch(mlBadRequest)
     await this.audit.byUser(user, ctx, 'marketplaces.ml_connected', 'settings', 'marketplace_ml', { conta: r.nickname })
     return r
   }

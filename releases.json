@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.93.2",
+      "date": "2026-10-23",
+      "title": "Mercado Livre: o Reconectar mostra o motivo quando falha",
+      "changes": [
+        { "type": "correcao", "area": "Marketplaces", "text": "A volta do Mercado Livre depois de Reconectar mostrava \"Erro inesperado no servidor\" quando o Mercado Livre recusava a autorização. Agora mostra o motivo." },
+        { "type": "melhoria", "area": "Marketplaces", "text": "Quando o Mercado Livre não aceita o Client Secret, o aviso mostra o Client ID usado, quantos caracteres tem o segredo salvo e os 4 últimos, para conferir com o do aplicativo (o segredo inteiro nunca aparece)." }
+      ]
+    },
+    {
       "version": "0.93.1",
       "date": "2026-10-23",
       "title": "Mercado Livre: aviso claro quando o Client Secret não é aceito",
