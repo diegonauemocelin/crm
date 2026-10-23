@@ -143,12 +143,12 @@ export interface Brand {
 export interface Person {
   name: string | null
   email: string
-  /** Variáveis do envio: {cupom}, {cupom_desconto}, {cupom_validade} e {link_carrinho} (vazias quando não há). */
+  /** Variáveis do envio: {cupom} (o cupom informado no e-mail) e {link_carrinho} (vazias quando não há). */
   vars?: Partial<Record<CartVar, string>>
 }
 
-/** Variáveis do carrinho abandonado (automação). Fora dela, somem do texto. */
-export const CART_VARS = ['cupom', 'cupom_desconto', 'cupom_validade', 'link_carrinho'] as const
+/** {cupom}: o cupom informado no e-mail (criado à mão na Magazord). {link_carrinho}: só no envio da automação. */
+export const CART_VARS = ['cupom', 'link_carrinho'] as const
 export type CartVar = (typeof CART_VARS)[number]
 
 /** Carrinho do destinatário para o bloco "Produtos do carrinho": itens e o link de volta para o carrinho. */
@@ -212,7 +212,7 @@ export function personalize(text: string, p: Person, esc: (v: string) => string 
     .replace(/,?\s*\{primeiro_nome\}/g, (m) => (first ? m.replace('{primeiro_nome}', esc(first)) : ''))
     .replace(/,?\s*\{nome\}/g, (m) => (p.name?.trim() ? m.replace('{nome}', esc(p.name.trim())) : ''))
     .replaceAll('{email}', esc(p.email))
-    .replace(/{(cupom|cupom_desconto|cupom_validade|link_carrinho)}/g, (_m, k: CartVar) => esc(p.vars?.[k] ?? ''))
+    .replace(/{(cupom|link_carrinho)}/g, (_m, k: CartVar) => esc(p.vars?.[k] ?? ''))
 }
 
 // ---------- Texto formatado ----------

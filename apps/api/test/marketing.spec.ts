@@ -20,6 +20,7 @@ import {
   sumRecords,
 } from '../src/marketing/metricas'
 import { recommendations } from '../src/marketing/recomendacoes'
+import { mlSheets } from '../src/marketing/arquivos'
 import { reportHtml, reportWhatsapp } from '../src/marketing/relatorio-email'
 
 const rules: Rules = { qualified: 'repassado_retorno', marginPct: 30, fixedMonthly: 0, marketingOriginIds: [] }
@@ -237,5 +238,25 @@ describe('Marketing Inteligente: recomendações e e-mail do relatório', () => 
     expect(wa).toContain('Leads gerados')
     expect(wa).toContain('Ver tudo no sistema: https://crm/x')
     expect(wa.length).toBeLessThanOrEqual(1024)
+
+    // Mercado Livre Ads: tabela no e-mail, linha no WhatsApp e planilhas do PDF/Excel
+    const k = (cost: number, revenue: number) => ({ impressions: 10000, clicks: 400, cost, revenue, directRevenue: revenue, indirectRevenue: 0, units: 12, items: 12, ctr: 4, cpc: cost / 400, cpm: 1, roas: revenue / cost, acos: (cost * 100) / revenue, cvr: 3 })
+    const ml = {
+      config: { connected: true },
+      totals: { all: { ...k(1000, 8000), before: k(800, 5000), delta: { cost: 25, revenue: 60, clicks: 0, impressions: 0, roas: 28, acos: -22, items: 0, cpc: 25 } } },
+      campaigns: [{ name: 'Filtros JCB', status: 'active', ...k(600, 5000) }, { name: 'Parada', status: 'paused', ...k(0, 0), cost: 0, revenue: 0 }],
+      display: [],
+    } as never
+    const mlHtml = reportHtml({ schedule: { name: 'Diário', sections: ['mercado_livre'] }, periodLabel: 'Ontem', data, email: null, health: null, branding: { appName: 'CRM Usaparts', primaryColor: '#5747cb' }, link: 'https://crm/x', ml })
+    expect(mlHtml).toContain('Mercado Livre Ads')
+    expect(mlHtml).toContain('Filtros JCB')
+    expect(mlHtml).not.toContain('Parada')
+    expect(mlHtml).toContain('8x')
+    const mlWa = reportWhatsapp({ schedule: { name: 'Diário', sections: ['mercado_livre'] }, periodLabel: 'Ontem', data, email: null, health: null, branding: { appName: 'CRM Usaparts', primaryColor: '#5747cb' }, link: 'https://crm/x', ml })
+    expect(mlWa).toContain('Mercado Livre Ads: *')
+    expect(mlWa).toContain('de receita* (ROAS 8x)')
+    const sheets = mlSheets(ml)
+    expect(sheets.map((x) => x.name)).toEqual(['Mercado Livre Ads', 'ML Ads: campanhas'])
+    expect(sheets[1]!.rows).toHaveLength(1)
   })
 })

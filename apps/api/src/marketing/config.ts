@@ -128,6 +128,7 @@ export const REPORT_SECTIONS = [
   { key: 'origens', label: 'Resultado por origem do lead' },
   { key: 'email', label: 'E-mail marketing do período' },
   { key: 'loja', label: 'Loja virtual (Magazord): vendas, canais de venda e produtos mais vendidos' },
+  { key: 'mercado_livre', label: 'Mercado Livre Ads: investimento, receita atribuída, ROAS, ACOS e campanhas' },
   { key: 'recomendacoes', label: 'Recomendações (diagnósticos com os números)' },
   { key: 'saude', label: 'Saúde dos dados (fontes, última atualização, leads sem campanha)' },
 ] as const

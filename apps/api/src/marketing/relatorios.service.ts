@@ -12,6 +12,7 @@ import { cleanSchedule, DEFAULT_REPORTS, whatsappGap, describeFrequency, isDue, 
 import { reportHtml, reportText, reportWhatsapp } from './relatorio-email'
 import { MarketingManagementService } from './gestao.service'
 import { MarketingService } from './marketing.service'
+import { MarketplacesService } from '../marketplaces/marketplaces.service'
 
 const TICK_MS = 5 * 60_000
 const MAX_RUNS = 50
@@ -38,6 +39,7 @@ export class MarketingReportsService implements OnApplicationBootstrap, OnModule
     private readonly marketing: MarketingService,
     private readonly management: MarketingManagementService,
     private readonly chat: ChatService,
+    private readonly marketplaces: MarketplacesService,
   ) {}
 
   onApplicationBootstrap() {
@@ -122,19 +124,20 @@ export class MarketingReportsService implements OnApplicationBootstrap, OnModule
 
   private async build(tenantId: string, sch: ReportSchedule, now: number) {
     const period = reportPeriod(sch.period, now)
-    const [data, email, health, branding, ai, store] = await Promise.all([
+    const [data, email, health, branding, ai, store, ml] = await Promise.all([
       this.marketing.analyze(tenantId, { ...period, filters: sch.filters }, now),
       sch.sections.includes('email') ? this.marketing.email(tenantId, period) : Promise.resolve(null),
       sch.sections.includes('saude') ? this.marketing.health(tenantId) : Promise.resolve(null),
       this.settings.branding(tenantId),
       sch.sections.includes('resumo_ia') ? this.management.aiSummary(tenantId, { ...period, filters: sch.filters }).then((r) => r.text).catch(() => null) : Promise.resolve(null),
       sch.sections.includes('loja') ? this.marketing.store(tenantId, period) : Promise.resolve(null),
+      sch.sections.includes('mercado_livre') ? this.marketplaces.mercadoLivre(tenantId, period.from, period.to).catch(() => null) : Promise.resolve(null),
     ])
     const periodLabel = REPORT_PERIODS.find((p) => p.key === sch.period)?.label ?? ''
     const link = `${env.appUrl}/marketing/executivo?de=${period.from}&ate=${period.to}`
     // Logo pelo endereço público do CRM (o e-mail não carrega imagem anexada em todos os programas).
     const logoUrl = branding.logoFileId ? `${env.appUrl}/api/files/public/${branding.logoFileId}` : null
-    const input = { schedule: sch, periodLabel, data, email, health, branding: { ...branding, primaryColor: branding.brandColor || branding.primaryColor, logoUrl }, link, ai, store }
+    const input = { schedule: sch, periodLabel, data, email, health, branding: { ...branding, primaryColor: branding.brandColor || branding.primaryColor, logoUrl }, link, ai, store, ml }
     const file = (format: 'pdf' | 'xlsx') => this.management.file(tenantId, format, { ...period, filters: sch.filters, sections: sch.sections.filter((x) => x !== 'resumo_ia'), title: sch.name })
     const attachments = sch.emails.length && (sch.attach === 'pdf' || sch.attach === 'xlsx') ? [await file(sch.attach)] : []
     // WhatsApp: sempre com o PDF (o resumo vai na legenda).

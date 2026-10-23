@@ -943,6 +943,8 @@ model EmailCampaign {
   preheader   String?
   fromName    String?
   replyTo     String?
+  /// Cupom do e-mail ({cupom} no texto): criado à mão na Magazord, o mesmo código para todos.
+  coupon      String?
   /// Blocos do editor (título, texto, imagem, botão, produtos...).
   blocks      Json           @default("[]")
   /// Links do conteúdo no momento do envio (o clique rastreado aponta para o índice, nunca para um endereço livre).

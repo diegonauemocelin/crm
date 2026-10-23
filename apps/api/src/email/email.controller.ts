@@ -57,12 +57,14 @@ class CampaignDto {
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(80) fromName?: string | null
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsEmail() replyTo?: string | null
   @ApiProperty() @IsArray() blocks!: unknown[]
+  @ApiPropertyOptional({ description: 'Cupom ({cupom} no texto), criado na Magazord' }) @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @Matches(/^[A-Za-z0-9_-]{2,40}$/, { message: 'Cupom: use de 2 a 40 letras, números, hífen ou sublinhado (o mesmo código da Magazord).' }) coupon?: string | null
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() segmentId?: string | null
   @ApiPropertyOptional({ description: 'Só na criação' }) @IsOptional() @IsIn(['CAMPANHA', 'MODELO']) kind?: 'CAMPANHA' | 'MODELO'
 }
 
 class PreviewDto {
   @ApiProperty() @IsString() @MaxLength(200) subject!: string
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(40) coupon?: string | null
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(200) preheader?: string | null
   @ApiProperty() @IsArray() blocks!: unknown[]
 }

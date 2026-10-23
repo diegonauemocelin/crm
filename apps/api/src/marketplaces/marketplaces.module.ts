@@ -5,7 +5,7 @@ import { MercadoLivreService } from './mercadolivre.service'
 
 /** Marketplaces: publicidade e vendas do Mercado Livre (e, depois, da Shopee). */
 @Module({
-  exports: [MercadoLivreService],
+  exports: [MercadoLivreService, MarketplacesService],
   controllers: [MarketplacesController],
   providers: [MercadoLivreService, MarketplacesService],
 })

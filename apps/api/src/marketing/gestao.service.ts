@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
 import { AuditService } from '../audit/audit.service'
+import { MarketplacesService } from '../marketplaces/marketplaces.service'
 import type { RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { env } from '../config/env'
@@ -54,6 +55,7 @@ export class MarketingManagementService implements OnApplicationBootstrap, OnMod
     private readonly ai: EmailAiService,
     private readonly mkt: MarketingService,
     private readonly files: FilesService,
+    private readonly marketplaces: MarketplacesService,
   ) {}
 
   /** Logo da empresa (Configurações › Marca) preparado para o PDF; sem logo ou formato que não abre: null. */
@@ -294,7 +296,7 @@ export class MarketingManagementService implements OnApplicationBootstrap, OnMod
 
   async file(tenantId: string, format: 'pdf' | 'xlsx', q: { from?: string; to?: string; filters?: Partial<Record<string, unknown>> | Filters; sections: ReportSection[]; title: string; withAi?: boolean }) {
     const d = await this.mkt.analyze(tenantId, { from: q.from, to: q.to, filters: cleanFilters(q.filters ?? {}) })
-    const [email, health, branding, ai, store] = await Promise.all([
+    const [email, health, branding, ai, store, ml] = await Promise.all([
       q.sections.includes('email') ? this.mkt.email(tenantId, { from: d.period.from, to: d.period.to }) : Promise.resolve(null),
       q.sections.includes('saude') ? this.mkt.health(tenantId) : Promise.resolve(null),
       this.settings.branding(tenantId),
@@ -302,8 +304,9 @@ export class MarketingManagementService implements OnApplicationBootstrap, OnMod
         ? this.ai.complete(tenantId, AI_SYSTEM, aiPrompt(d), 1200).then(cleanAiText).catch(() => null)
         : Promise.resolve(null),
       q.sections.includes('loja') ? this.mkt.store(tenantId, { from: d.period.from, to: d.period.to }) : Promise.resolve(null),
+      q.sections.includes('mercado_livre') ? this.marketplaces.mercadoLivre(tenantId, d.period.from, d.period.to).catch(() => null) : Promise.resolve(null),
     ])
-    const sheets = reportSheets(d, q.sections, email, health, ai, store)
+    const sheets = reportSheets(d, q.sections, email, health, ai, store, ml)
     const period = periodLabel(d.period.from, d.period.to)
     const base = `${q.title} ${d.period.from}${d.period.from === d.period.to ? '' : `_${d.period.to}`}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').toLowerCase()
     const footer = `${branding.appName} · Fonte: Pré-Vendas do CRM e plataformas conectadas · gerado em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`

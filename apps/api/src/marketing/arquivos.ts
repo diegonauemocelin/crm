@@ -6,11 +6,14 @@ import { zipSync, strToU8 } from 'fflate'
 import type { ReportSection } from './config'
 import type { PdfImage } from './pdf-imagem'
 import type { MarketingService } from './marketing.service'
+import type { MarketplacesService } from '../marketplaces/marketplaces.service'
 
 type Analysis = Awaited<ReturnType<MarketingService['analyze']>>
 type Email = Awaited<ReturnType<MarketingService['email']>>
 type Health = Awaited<ReturnType<MarketingService['health']>>
 export type Store = Awaited<ReturnType<MarketingService['store']>>
+/** Painel do Mercado Livre Ads (Marketplaces). */
+export type MlAds = Awaited<ReturnType<MarketplacesService['mercadoLivre']>>
 
 type Kind = 'brl' | 'int' | 'pct' | 'x' | 'num'
 export interface Sheet {
@@ -73,7 +76,7 @@ export function pdfCards(d: Analysis) {
 }
 
 /** As tabelas do relatório (mesmo conteúdo para Excel e PDF), só das partes escolhidas. */
-export function reportSheets(d: Analysis, sections: ReportSection[], email: Email | null, health: Health | null, aiSummary: string | null, store: Store | null = null): Sheet[] {
+export function reportSheets(d: Analysis, sections: ReportSection[], email: Email | null, health: Health | null, aiSummary: string | null, store: Store | null = null, ml: MlAds | null = null): Sheet[] {
   const has = (k: ReportSection) => sections.includes(k)
   const out: Sheet[] = []
   if (aiSummary && has('resumo_ia')) out.push({ name: 'Resumo do período', kind: 'text', header: ['Resumo do período (gerado por IA a partir dos números agregados)'], rows: aiSummary.split('\n').filter(Boolean).map((l) => [l]), note: 'Texto gerado pela IA a partir dos números agregados do período. Confira os números nas tabelas.' })
@@ -100,8 +103,52 @@ export function reportSheets(d: Analysis, sections: ReportSection[], email: Emai
   if (has('funil')) out.push({ name: 'Funil', header: ['Etapa', 'Volume', 'Passagem (%)'], rows: [...d.funnel.steps.map((s) => [s.label, s.value, s.rate]), ['Faturamento', d.funnel.revenue, null]], rowKinds: [...d.funnel.steps.map((): Kind => 'int'), 'brl'], colKinds: [null, null, 'pct'] })
   if (has('email') && email) out.push({ name: 'E-mail', header: ['Campanha', 'Enviados', 'Abertura registrada (%)', 'Cliques (%)', 'Descadastros (%)', 'Vendas', 'Faturamento'], rows: email.campaigns.map((c) => [c.name, c.sent, c.openRate, c.clickRate, c.unsubRate, c.orders, c.revenue]), colKinds: [null, 'int', 'pct', 'pct', 'pct', 'int', 'brl'], note: 'Abertura registrada pode ser maior que a real (privacidade do Apple Mail).' })
   if (has('loja') && store) out.push(...storeSheets(store))
+  if (has('mercado_livre') && ml) out.push(...mlSheets(ml))
   if (has('recomendacoes')) out.push({ name: 'Recomendações', header: ['Prioridade', 'Confiança', 'Problema', 'Evidência', 'Ação sugerida', 'Como medir', 'Fonte'], rows: d.recommendations.map((r) => [r.priority, r.confidence, r.problem, r.evidence.join(' · '), r.action, r.validate, r.source]) })
   if (has('saude') && health) out.push({ name: 'Saúde dos dados', header: ['Fonte', 'Situação', 'Última atualização', 'Detalhe'], rows: health.sources.map((s) => [s.name, s.status, s.lastAt ? new Date(s.lastAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : null, s.detail]) })
+  return out
+}
+
+/** Mercado Livre Ads: resumo contra o período anterior, campanhas de Product Ads e de Display (as 15 com mais investimento). */
+export function mlSheets(ml: MlAds): Sheet[] {
+  const a = ml.totals.all
+  const none = !a.cost && !a.revenue && !a.clicks
+  const note = none
+    ? ml.config.connected
+      ? 'Sem investimento no Mercado Livre Ads no período.'
+      : 'Mercado Livre não conectado (Configurações › Marketplaces): sem dados de publicidade.'
+    : 'Receita atribuída pelo Mercado Livre aos anúncios (até 14 dias depois do clique). ROAS = receita ÷ investimento; ACOS = investimento ÷ receita.'
+  const row = (label: string, k: 'cost' | 'revenue' | 'roas' | 'acos' | 'clicks' | 'impressions' | 'cpc' | 'units', dk?: keyof typeof a.delta) => [label, a[k], a.before[k], dk ? a.delta[dk] : null]
+  const camp = (list: MlAds['campaigns']) =>
+    list
+      .filter((c) => c.cost || c.revenue)
+      .slice(0, 15)
+      .map((c) => [c.name, c.status ?? '—', c.cost, c.revenue, c.roas, c.acos, c.clicks, c.units])
+  const header = ['Campanha', 'Situação', 'Investimento', 'Receita atribuída', 'ROAS', 'ACOS (%)', 'Cliques', 'Vendas (un.)']
+  const kinds: (Kind | null)[] = [null, null, 'brl', 'brl', 'x', 'pct', 'int', 'int']
+  const out: Sheet[] = [
+    {
+      name: 'Mercado Livre Ads',
+      header: ['Indicador', 'Período', 'Anterior', 'Variação (%)'],
+      rows: [
+        row('Investimento', 'cost', 'cost'),
+        row('Receita atribuída', 'revenue', 'revenue'),
+        row('ROAS', 'roas', 'roas'),
+        row('ACOS (%)', 'acos', 'acos'),
+        row('Cliques', 'clicks', 'clicks'),
+        row('Impressões', 'impressions', 'impressions'),
+        row('CPC', 'cpc', 'cpc'),
+        row('Vendas pelos anúncios (un.)', 'units'),
+      ],
+      rowKinds: ['brl', 'brl', 'x', 'pct', 'int', 'int', 'brl', 'int'],
+      colKinds: [null, null, null, 'pct'],
+      note,
+    },
+  ]
+  const pads = camp(ml.campaigns)
+  if (pads.length) out.push({ name: 'ML Ads: campanhas', header, rows: pads, colKinds: kinds })
+  const display = camp(ml.display)
+  if (display.length) out.push({ name: 'ML Ads: Display', header, rows: display, colKinds: kinds })
   return out
 }
 

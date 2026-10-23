@@ -247,6 +247,8 @@ export interface Campaign {
   preheader: string | null
   fromName: string | null
   replyTo: string | null
+  /** Cupom do e-mail ({cupom} no texto), criado à mão na Magazord: o mesmo para todos. */
+  coupon: string | null
   blocks: Block[]
   segmentId: string | null
   segment?: { name: string } | null

@@ -4,6 +4,7 @@
  */
 import type { BrandingSettings } from '../settings/settings.service'
 import type { ReportSchedule } from './config'
+import type { MlAds } from './arquivos'
 import type { MarketingService } from './marketing.service'
 
 type Analysis = Awaited<ReturnType<MarketingService['analyze']>>
@@ -21,6 +22,8 @@ export interface ReportInput {
   link: string
   /** Loja virtual (Magazord), com a parte "loja" marcada. */
   store?: Store | null
+  /** Mercado Livre Ads (Marketplaces), com a parte "mercado_livre" marcada. */
+  ml?: MlAds | null
   /** Resumo escrito pela IA (só com a parte "resumo_ia" marcada e a chave do Gemini cadastrada). */
   ai?: string | null
 }
@@ -179,6 +182,37 @@ export function reportHtml(x: ReportInput) {
     )
     if (st.pendingItems) parts.push(`<tr><td style="font-size:12px;color:#6b7280;padding-top:6px">${int(st.pendingItems)} pedido(s) do período ainda sem os itens lidos da Magazord: os mais vendidos ficam completos quando a leitura terminar.</td></tr>`)
   }
+  if (has('mercado_livre') && x.ml) {
+    const a = x.ml.totals.all
+    parts.push(h2('Mercado Livre Ads', color))
+    if (!a.cost && !a.revenue && !a.clicks) {
+      parts.push(`<tr><td style="font-size:13px;color:#6b7280">${x.ml.config.connected ? 'Sem investimento no Mercado Livre Ads no período.' : 'Mercado Livre não conectado (Configurações › Marketplaces).'}</td></tr>`)
+    } else {
+      const roas = (v: number | null) => (v === null ? '—' : `${v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}x`)
+      parts.push(
+        table(
+          `<tr>${th('Indicador')}${th('Período', true)}${th('Anterior', true)}${th('Variação', true)}</tr>`,
+          [
+            ['Investimento', `<b>${brl(a.cost)}</b>`, brl(a.before.cost), arrow(a.delta.cost)],
+            ['Receita atribuída', `<b>${brl(a.revenue)}</b>`, brl(a.before.revenue), arrow(a.delta.revenue)],
+            ['ROAS', roas(a.roas), roas(a.before.roas), arrow(a.delta.roas)],
+            ['ACOS', pc(a.acos), pc(a.before.acos), ''],
+            ['Cliques', int(a.clicks), int(a.before.clicks), arrow(a.delta.clicks)],
+            ['Vendas pelos anúncios', int(a.units), int(a.before.units), ''],
+          ]
+            .map((r) => `<tr>${td(esc(r[0]))}${td(r[1]!, true)}${td(r[2]!, true)}${td(r[3]!, true)}</tr>`)
+            .join(''),
+        ),
+      )
+      const top = x.ml.campaigns.filter((c) => c.cost || c.revenue).slice(0, 8)
+      if (top.length)
+        parts.push(
+          h2('Campanhas do Mercado Livre Ads', color),
+          table(`<tr>${th('Campanha')}${th('Investimento', true)}${th('Receita', true)}${th('ROAS', true)}${th('ACOS', true)}</tr>`, top.map((c) => `<tr>${td(esc(c.name))}${td(brl(c.cost), true)}${td(brl(c.revenue), true)}${td(roas(c.roas), true)}${td(pc(c.acos), true)}</tr>`).join('')),
+        )
+      parts.push('<tr><td style="font-size:12px;color:#6b7280;padding-top:6px">Receita que o Mercado Livre atribui aos anúncios (até 14 dias depois do clique): os últimos dias ainda podem subir. ACOS = investimento ÷ receita (quanto menor, melhor).</td></tr>')
+    }
+  }
   if (has('recomendacoes')) {
     parts.push(h2('Recomendações', color))
     if (!d.recommendations.length) parts.push('<tr><td style="font-size:13px;color:#6b7280">Nenhum ponto de atenção com amostra suficiente no período.</td></tr>')
@@ -219,6 +253,10 @@ ${parts.join('\n')}
 export function reportText(x: ReportInput) {
   const d = x.data
   const lines = [`${x.schedule.name}`, `${x.periodLabel}: ${day(d.period.from)} a ${day(d.period.to)}`, '']
+  if (x.ml && (x.schedule.sections as string[]).includes('mercado_livre')) {
+    const a = x.ml.totals.all
+    if (a.cost || a.revenue) lines.push(`Mercado Livre Ads: ${brl(a.cost)} investidos · ${brl(a.revenue)} de receita${a.roas !== null ? ` (ROAS ${a.roas.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}x)` : ''}`, '')
+  }
   if (x.ai && (x.schedule.sections as string[]).includes('resumo_ia')) lines.push(x.ai, '')
   if ((x.schedule.sections as string[]).includes('kpis')) for (const k of KPIS) lines.push(`${k.label}: ${k.fmt(d.now[k.key] as number | null)} (anterior: ${k.fmt(d.before[k.key] as number | null)})`)
   if ((x.schedule.sections as string[]).includes('recomendacoes')) for (const r of d.recommendations.slice(0, 8)) lines.push('', `• ${r.problem}`, `  ${r.evidence.join(' · ')}`, `  Ação: ${r.action}`)
@@ -239,6 +277,10 @@ export function reportWhatsapp(x: ReportInput) {
   if (x.store && (x.schedule.sections as string[]).includes('loja')) {
     const top = x.store.channels.slice(0, 3).map((c) => `${c.name} ${brl(c.revenue)}`).join(' · ')
     lines.push('', `Loja virtual: *${int(x.store.now.orders)} vendas · ${brl(x.store.now.revenue)}*${top ? ` (${top})` : ''}`)
+  }
+  if (x.ml && (x.schedule.sections as string[]).includes('mercado_livre')) {
+    const a = x.ml.totals.all
+    if (a.cost || a.revenue) lines.push('', `Mercado Livre Ads: *${brl(a.cost)} investidos · ${brl(a.revenue)} de receita*${a.roas !== null ? ` (ROAS ${a.roas.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}x)` : ''}`)
   }
   if (x.ai && (x.schedule.sections as string[]).includes('resumo_ia')) lines.push('', x.ai.length > 600 ? `${x.ai.slice(0, 597).trimEnd()}...` : x.ai)
   lines.push('', `Ver tudo no sistema: ${x.link}`)

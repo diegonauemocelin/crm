@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.90.0",
+      "date": "2026-10-23",
+      "title": "Mercado Livre Ads nos relatórios automáticos e cupom informado no próprio e-mail",
+      "changes": [
+        { "type": "novo", "area": "Marketing Inteligente", "text": "Relatórios automáticos e arquivos (PDF e Excel) com a parte Mercado Livre Ads: investimento, receita atribuída, ROAS, ACOS, cliques e vendas pelos anúncios, comparados com o período anterior, e as campanhas com mais investimento. No WhatsApp vai uma linha com investimento, receita e ROAS." },
+        { "type": "melhoria", "area": "Email marketing", "text": "Campo Cupom nas configurações de cada e-mail (campanha ou modelo): você cria o cupom na Magazord e informa o código aqui; nos textos, {cupom} vira esse código, o mesmo para todos. Aparece na pré-visualização e no e-mail de teste." },
+        { "type": "melhoria", "area": "Automações", "text": "O cupom do e-mail de carrinho abandonado passa a ser o informado no próprio e-mail: saíram do passo Enviar e-mail as opções de cupom e a criação de cupom único na Magazord, e as variáveis {cupom_desconto} e {cupom_validade}. O bloco Produtos do carrinho e o {link_carrinho} continuam." }
+      ]
+    },
+    {
       "version": "0.89.0",
       "date": "2026-10-22",
       "title": "E-mail de carrinho abandonado com os produtos do cliente e cupom personalizado",

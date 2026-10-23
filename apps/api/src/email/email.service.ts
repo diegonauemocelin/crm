@@ -47,6 +47,8 @@ export interface CampaignInput {
   fromName?: string | null
   replyTo?: string | null
   blocks: unknown
+  /** Cupom do e-mail ({cupom} no texto), criado à mão na Magazord. */
+  coupon?: string | null
   segmentId?: string | null
   /** Só na criação: CAMPANHA (padrão) ou MODELO (usado pelas automações). */
   kind?: 'CAMPANHA' | 'MODELO'
@@ -58,8 +60,8 @@ const BOUNCE = /\b(550|551|553|554)\b|user unknown|unknown user|no such user|mai
 /** GIF transparente de 1x1 (pixel de abertura). */
 export const PIXEL = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64')
 
-/** Pré-visualização e teste: o carrinho e o cupom de exemplo (no envio da automação vêm os do cliente). */
-const SAMPLE_CART_VARS: Partial<Record<CartVar, string>> = { cupom: 'VOLTE10', cupom_desconto: '10%', cupom_validade: '31/12', link_carrinho: 'https://www.exemplo.com.br/carrinho' }
+/** Pré-visualização e teste: o link de um carrinho de exemplo (no envio da automação vem o do cliente). */
+const sampleVars = (coupon: string | null | undefined): Partial<Record<CartVar, string>> => ({ cupom: coupon?.trim().toUpperCase() ?? '', link_carrinho: 'https://www.exemplo.com.br/carrinho' })
 
 @Injectable()
 export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -210,6 +212,7 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
       preheader: d.preheader?.trim() || null,
       fromName: d.fromName?.trim() || null,
       replyTo: d.replyTo?.trim() || null,
+      coupon: d.coupon?.trim().toUpperCase() || null,
       blocks: checked.blocks as unknown as Prisma.InputJsonValue,
       segmentId: kind === 'MODELO' ? null : (d.segmentId ?? null),
       ...(links ? { links } : {}),
@@ -231,7 +234,7 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     // Modelo guarda os links (para contar os cliques de cada envio); campanha não usa segmento de modelo.
     const links = kind === 'MODELO' ? [...new Set([...(c.kind === 'MODELO' ? c.links : []), ...collectLinks(c.blocks as unknown as Block[])])] : []
     const copy = await this.prisma.emailCampaign.create({
-      data: { tenantId: user.tenantId, name: `${c.name} (cópia)`.slice(0, 120), subject: c.subject, preheader: c.preheader, fromName: c.fromName, replyTo: c.replyTo, blocks: c.blocks as Prisma.InputJsonValue, segmentId: kind === 'MODELO' ? null : c.segmentId, kind, links, createdById: user.id },
+      data: { tenantId: user.tenantId, name: `${c.name} (cópia)`.slice(0, 120), subject: c.subject, preheader: c.preheader, fromName: c.fromName, replyTo: c.replyTo, coupon: c.coupon, blocks: c.blocks as Prisma.InputJsonValue, segmentId: kind === 'MODELO' ? null : c.segmentId, kind, links, createdById: user.id },
     })
     await this.audit.byUser(user, ctx, 'email.campaign_duplicated', 'email_campaign', copy.id, { origem: id, como: kind === 'MODELO' ? 'modelo de fluxo' : 'campanha' })
     return { id: copy.id, kind }
@@ -355,11 +358,11 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /** Pré-visualização com os dados de quem está editando (nada é rastreado). */
-  async preview(user: AuthUser, d: { subject: string; preheader?: string | null; blocks: unknown }) {
+  async preview(user: AuthUser, d: { subject: string; preheader?: string | null; blocks: unknown; coupon?: string | null }) {
     this.assertCan(user, 'view')
     const checked = cleanBlocks(d.blocks)
     if ('error' in checked) throw new BadRequestException(checked.error)
-    const r = renderEmail(checked.blocks, { brand: await this.brand(user.tenantId), subject: d.subject || '(sem assunto)', preheader: d.preheader, person: { name: user.name, email: user.email, vars: SAMPLE_CART_VARS }, unsubscribeUrl: `${env.appUrl}/descadastro/exemplo`, cart: 'exemplo' })
+    const r = renderEmail(checked.blocks, { brand: await this.brand(user.tenantId), subject: d.subject || '(sem assunto)', preheader: d.preheader, person: { name: user.name, email: user.email, vars: sampleVars(d.coupon) }, unsubscribeUrl: `${env.appUrl}/descadastro/exemplo`, cart: 'exemplo' })
     return { html: r.html, subject: r.subject }
   }
 
@@ -368,7 +371,7 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     this.assertCan(user, 'edit')
     const c = await this.load(user, id)
     const [smtp, cfg, brand] = await Promise.all([this.settings.smtp(user.tenantId), this.config(user.tenantId), this.brand(user.tenantId)])
-    const r = renderEmail(c.blocks as unknown as Block[], { brand, subject: c.subject, preheader: c.preheader, person: { name: user.name, email: to, vars: SAMPLE_CART_VARS }, unsubscribeUrl: `${env.appUrl}/descadastro/exemplo`, cart: 'exemplo' })
+    const r = renderEmail(c.blocks as unknown as Block[], { brand, subject: c.subject, preheader: c.preheader, person: { name: user.name, email: to, vars: sampleVars(c.coupon) }, unsubscribeUrl: `${env.appUrl}/descadastro/exemplo`, cart: 'exemplo' })
     await this.mail.sendWith(
       { ...smtp, fromName: c.fromName || cfg.fromName || smtp.fromName, replyTo: c.replyTo || cfg.replyTo || smtp.replyTo },
       { to, subject: `[TESTE] ${r.subject}`, html: r.html, text: r.text },
@@ -470,7 +473,7 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
           brand,
           subject: c.subject,
           preheader: c.preheader,
-          person: { name: r.lead.name, email: r.email },
+          person: { name: r.lead.name, email: r.email, vars: { cupom: c.coupon ?? '' } },
           unsubscribeUrl: unsub,
           trackLink: (_u, i) => `${env.appUrl}/api/public/e/l/${token}/${i}`,
           openPixelUrl: `${env.appUrl}/api/public/e/a/${token}`,
@@ -544,7 +547,7 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
   async templateUses(tenantId: string, templateId: string) {
     const tpl = await this.prisma.emailCampaign.findFirst({ where: { id: templateId, tenantId, kind: 'MODELO' }, select: { blocks: true, subject: true, preheader: true } })
     const all = JSON.stringify([tpl?.blocks ?? [], tpl?.subject ?? '', tpl?.preheader ?? ''])
-    return { cart: all.includes('"type":"carrinho"'), coupon: /{cupom(_desconto|_validade)?}/.test(all), link: all.includes('{link_carrinho}') }
+    return { cart: all.includes('"type":"carrinho"'), link: all.includes('{link_carrinho}') }
   }
 
   async sendAutomationEmail(a: { tenantId: string; templateId: string; leadId: string; runId: string; automationId: string; automationName: string; cart?: CartContent | null; vars?: Partial<Record<CartVar, string>> }): Promise<{ status: 'enviado' | 'pulado' | 'erro' | 'tentar_depois'; message: string; recipientId?: string }> {
@@ -566,7 +569,7 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
       brand,
       subject: tpl.subject,
       preheader: tpl.preheader,
-      person: { name: lead.name, email: lead.email, vars: a.vars },
+      person: { name: lead.name, email: lead.email, vars: { cupom: tpl.coupon ?? '', ...a.vars } },
       unsubscribeUrl: `${env.appUrl}/descadastro/${unsubToken}?c=${tpl.id}`,
       trackLink: (_u, i) => `${env.appUrl}/api/public/e/l/${token}/${i}`,
       openPixelUrl: `${env.appUrl}/api/public/e/a/${token}`,

@@ -3,7 +3,6 @@
  * validação do que vem do painel e o "mapa" de qual passo vem depois de qual.
  */
 import { LEAD_REGIONS } from '../atendimento/br'
-import { cleanCoupon, type CouponConfig } from '../integracoes/magazord'
 
 export const TRIGGER_TYPES = [
   'lead_novo',
@@ -85,8 +84,7 @@ export interface Rule {
 export type Step =
   | { id: string; type: 'esperar'; amount: number; unit: 'minutos' | 'horas' | 'dias' }
   | { id: string; type: 'condicao'; match: 'todas' | 'qualquer'; rules: Rule[]; yes: Step[]; no: Step[] }
-  /** coupon: cupom do e-mail de carrinho abandonado ({cupom} no texto). Sem o campo = o cupom da loja. */
-  | { id: string; type: 'enviar_email'; templateId: string; coupon?: CouponConfig }
+  | { id: string; type: 'enviar_email'; templateId: string }
   | { id: string; type: 'adicionar_tag'; tags: string[] }
   | { id: string; type: 'remover_tag'; tags: string[] }
   | { id: string; type: 'alterar_vendedor'; ownerId: string }
@@ -238,9 +236,7 @@ function cleanList(raw: unknown, depth: number, seen: Set<string>): Step[] | str
       case 'enviar_email': {
         const templateId = uuidOrNull(r.templateId)
         if (!templateId) return 'Escolha o modelo de e-mail do passo "Enviar e-mail".'
-        const coupon = cleanCoupon(r.coupon)
-        if (typeof coupon === 'string') return coupon
-        out.push({ id, type: 'enviar_email', templateId, ...(coupon.mode !== 'loja' ? { coupon } : {}) })
+        out.push({ id, type: 'enviar_email', templateId })
         break
       }
       case 'adicionar_tag':

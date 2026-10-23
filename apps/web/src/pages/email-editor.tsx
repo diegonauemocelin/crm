@@ -356,7 +356,7 @@ export function Editor({ campaign }: { campaign: Campaign }) {
   // Texto do e-mail (para a IA sugerir assunto e pré-cabeçalho).
   const textOf = (x: Block): string => (x.type === 'texto' || x.type === 'titulo' ? x.html : x.type === 'colunas' ? x.columns.map((k) => k.html).join(' ') : x.type === 'linha' ? x.cols.flat().map(textOf).join(' ') : '')
   const contentHtml = blocks.map(textOf).join(' ').slice(0, 20_000)
-  const body = () => ({ name: c.name, subject: c.subject, preheader: c.preheader || null, fromName: c.fromName || null, replyTo: c.replyTo || null, segmentId: c.segmentId, blocks })
+  const body = () => ({ name: c.name, subject: c.subject, preheader: c.preheader || null, fromName: c.fromName || null, replyTo: c.replyTo || null, coupon: c.coupon?.trim() || null, segmentId: c.segmentId, blocks })
   const persist = async () => {
     await api.put<Campaign>(`/email/campanhas/${campaign.id}`, body())
     setDirty(false)
@@ -478,6 +478,9 @@ export function Editor({ campaign }: { campaign: Campaign }) {
             <Input id="c-pre" maxLength={200} value={c.preheader ?? ''} onChange={(e) => set('preheader', e.target.value)} disabled={!canEdit} />
             <AiSuggest action="preheader" content={contentHtml} onPick={(v) => set('preheader', v)} disabled={!canEdit} />
           </Field>
+          <Field label="Cupom (opcional)" htmlFor="c-coupon" hint="Crie o cupom na Magazord e informe o código aqui. Nos textos, {cupom} vira este código, o mesmo para todos.">
+            <Input id="c-coupon" maxLength={40} placeholder="Ex.: VOLTE10" value={c.coupon ?? ''} onChange={(e) => set('coupon', e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''))} disabled={!canEdit} />
+          </Field>
           <Field label="Nome do remetente (opcional)" htmlFor="c-from">
             <Input id="c-from" maxLength={80} placeholder="Padrão das configurações" value={c.fromName ?? ''} onChange={(e) => set('fromName', e.target.value)} disabled={!canEdit} />
           </Field>
@@ -543,7 +546,7 @@ export function Editor({ campaign }: { campaign: Campaign }) {
         </Card>
       </div>
 
-      <PreviewDialog open={previewOpen} onOpenChange={setPreviewOpen} subject={c.subject} preheader={c.preheader} blocks={blocks} />
+      <PreviewDialog open={previewOpen} onOpenChange={setPreviewOpen} subject={c.subject} preheader={c.preheader} coupon={c.coupon} blocks={blocks} />
 
       <Dialog open={testOpen} onOpenChange={setTestOpen}>
         <DialogContent>
@@ -1404,7 +1407,7 @@ function FormatBar({ active }: { active: boolean }) {
       <ToolButton label="Inserir primeiro nome do lead" onClick={() => exec('insertText', '{primeiro_nome}')}>
         <UserIcon />
       </ToolButton>
-      <ToolButton label="Inserir o cupom (e-mail de carrinho abandonado)" onClick={() => exec('insertText', '{cupom}')}>
+      <ToolButton label="Inserir o cupom (o código informado em Cupom)" onClick={() => exec('insertText', '{cupom}')}>
         <TicketIcon />
       </ToolButton>
       <Popover>
@@ -2163,7 +2166,7 @@ function InspectorFields({ block: b, numbers, disabled, onChange, onPickImage, o
           </Field>
           <ColorField label="Cor do botão" value={b.buttonColor} fallback="#1d4ed8" onChange={(buttonColor) => onChange({ ...b, buttonColor })} disabled={disabled} clearable />
           <p className="text-xs text-muted-foreground">
-            Nos textos: {'{cupom}'} (o código), {'{cupom_desconto}'} (ex.: 10%) e {'{cupom_validade}'} (ex.: 31/10) vêm do cupom escolhido no passo da automação. Num botão comum, use {'{link_carrinho}'} como link.
+            Nos textos, {'{cupom}'} vira o código informado em Cupom (nas configurações do e-mail). Num botão comum, use {'{link_carrinho}'} como link.
           </p>
         </div>
       )
@@ -2281,7 +2284,7 @@ function InspectorFields({ block: b, numbers, disabled, onChange, onPickImage, o
 
 // ---------- Como fica no e-mail ----------
 
-function PreviewDialog({ open, onOpenChange, subject, preheader, blocks }: { open: boolean; onOpenChange: (v: boolean) => void; subject: string; preheader: string | null; blocks: Block[] }) {
+function PreviewDialog({ open, onOpenChange, subject, preheader, coupon, blocks }: { open: boolean; onOpenChange: (v: boolean) => void; subject: string; preheader: string | null; coupon?: string | null; blocks: Block[] }) {
   const [html, setHtml] = useState('')
   const [title, setTitle] = useState('')
   const [mobile, setMobile] = useState(false)
@@ -2291,7 +2294,7 @@ function PreviewDialog({ open, onOpenChange, subject, preheader, blocks }: { ope
     setHtml('')
     setError(null)
     api
-      .post<{ html: string; subject: string }>('/email/previa', { subject, preheader, blocks })
+      .post<{ html: string; subject: string }>('/email/previa', { subject, preheader, coupon: coupon || null, blocks })
       .then((r) => {
         setHtml(r.html)
         setTitle(r.subject)
