@@ -551,7 +551,7 @@ describe('Google Ads: diagnóstico do script do investimento', () => {
     const settings = { get: async (_t: string, k: string, d: object) => store.get(k) ?? (k === 'google_ads' ? { ...DEFAULT_GOOGLE_ADS, campaignsToken: token } : d), set: async (_t: string, k: string, v: object) => (store.set(k, v), v) }
     const stored: unknown[] = []
     const panel = { store: async (_t: string, st: unknown) => (stored.push(st), { dias: 1, palavras: 0 }) }
-    const service = new GoogleAdsService(prisma as never, settings as never, {} as never, undefined, panel as never)
+    const service = new GoogleAdsService(prisma as never, settings as never, {} as never, panel as never)
     return { service, store, token, stored }
   }
 

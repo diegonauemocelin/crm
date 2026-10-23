@@ -98,7 +98,7 @@ function AdsCard({ now, before, kind }: { now: AdsComparison; before?: AdsCompar
       <CardHeader>
         <CardTitle className="text-base">Google Ads × fora do Ads</CardTitle>
         <CardDescription>
-          Do Google Ads: atendimento ligado a uma campanha (clique no anúncio, {int.format(now.byCampaign)}) ou com origem “Google” ({int.format(now.byOrigin)}). {share !== null && `${pctFmt.format(share)} dos atendimentos do período vieram do Ads.`} A seta compara com o período anterior.
+          Do Google Ads: só o atendimento de quem clicou num anúncio antes do contato ({int.format(now.byCampaign)}). Quem chamou direto, inclusive no WhatsApp, não conta. {share !== null && `${pctFmt.format(share)} dos atendimentos do período vieram do Ads.`} A seta compara com o período anterior.
         </CardDescription>
       </CardHeader>
       <CardContent className="overflow-x-auto">

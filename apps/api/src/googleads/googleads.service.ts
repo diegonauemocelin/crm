@@ -5,7 +5,6 @@ import { env } from '../config/env'
 import type { RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import type { Prisma } from '../generated/prisma/client'
-import { OrigemAdsService } from '../leads/origem-ads.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { cleanStats, adsScript } from './painel'
 import { cleanDetail, cleanTerms } from './detalhes'
@@ -122,7 +121,6 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly audit: AuditService,
-    @Optional() private readonly origemAds?: OrigemAdsService,
     @Optional() private readonly panel?: GoogleAdsPanelService,
   ) {}
 
@@ -283,9 +281,6 @@ export class GoogleAdsService implements OnApplicationBootstrap, OnModuleDestroy
     }
     await this.settings.set(user.tenantId, 'google_ads', next)
     const requeued = await this.requeueForNewActions(user.tenantId, next)
-    // Mudaram as origens dos anúncios: refaz a marcação "veio do Google Ads" dos atendimentos.
-    const sameOrigins = [...(current.originIds ?? [])].sort().join() === [...next.originIds].sort().join()
-    if (!sameOrigins) await this.origemAds?.recheckRecords(user.tenantId)
     for (const k of this.tokens.keys()) if (k.startsWith(`${user.tenantId}:`)) this.tokens.delete(k)
     await this.audit.byUser(user, ctx, 'settings.google_ads_updated', 'settings', 'google_ads', {
       ativo: next.enabled,

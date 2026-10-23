@@ -45,12 +45,6 @@ export class OrigemAdsService implements OnApplicationBootstrap, OnModuleDestroy
     return (await this.settings.get<GoogleAdsSettings>(tenantId, 'google_ads', DEFAULT_GOOGLE_ADS)).campaigns ?? {}
   }
 
-  /** Refaz a marcação de todos os atendimentos (ex.: mudaram as origens que recebem os contatos dos anúncios). */
-  async recheckRecords(tenantId: string) {
-    await this.prisma.$executeRaw`UPDATE service_records SET "adsCheckedAt" = NULL WHERE "tenantId" = ${tenantId}::uuid`
-    void this.tick()
-  }
-
   /** Confere os leads e atendimentos que mudaram desde a última conferência. */
   async tick() {
     if (this.running) return
@@ -129,19 +123,20 @@ export class OrigemAdsService implements OnApplicationBootstrap, OnModuleDestroy
   }
 
   async syncRecords(tenantId: string, ids: string[]) {
-    const records = await this.prisma.serviceRecord.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, leadId: true, leadAt: true, originId: true, origin: { select: { name: true } } } })
+    const records = await this.prisma.serviceRecord.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, leadId: true, leadAt: true } })
     const [s, touches] = await Promise.all([
       this.settings.get<GoogleAdsSettings>(tenantId, 'google_ads', DEFAULT_GOOGLE_ADS),
       this.touchesOf([...new Set(records.map((r) => r.leadId).filter((x): x is string => !!x))]),
     ])
     const names = s.campaigns ?? {}
-    // Origens marcadas em Configurações → Google Ads como as que recebem os contatos dos anúncios (ex.: WhatsApp da LP).
-    const adsOrigins = new Set(s.originIds ?? [])
     const now = new Date()
     for (const r of records) {
       const info = adsForRecord(touches.get(r.leadId ?? '') ?? [], r.leadAt, names)
       const entryPage = entryPageForRecord(touches.get(r.leadId ?? '') ?? [], r.leadAt)
-      const via = info ? 'ANUNCIO' : /google/i.test(r.origin?.name ?? '') || (!!r.originId && adsOrigins.has(r.originId)) ? 'ORIGEM' : null
+      // Só quem de fato veio de um anúncio (clique registrado antes do contato). A origem do atendimento não marca:
+      // quem chamou direto, inclusive no WhatsApp, não é Google Ads. As origens de Configurações → Google Ads
+      // servem só para escolher o que vai no retorno de conversões para o Google.
+      const via = info ? 'ANUNCIO' : null
       await this.prisma.$executeRaw`
         UPDATE service_records SET "adsVia" = ${via}, "adsCampaignId" = ${info?.campaignId ?? null}, "adsCampaign" = ${info?.campaign ?? null}, "adsTouchAt" = ${info?.at ?? null}, "adsTerm" = ${info?.term ?? null}, "entryPage" = CASE WHEN "entryChannel" IS NOT NULL AND "entryPage" IS NOT NULL THEN "entryPage" ELSE ${entryPage} END, "adsCheckedAt" = ${now}
         WHERE id = ${r.id}::uuid`

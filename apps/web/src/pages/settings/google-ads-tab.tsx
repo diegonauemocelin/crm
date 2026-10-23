@@ -275,8 +275,8 @@ function Editor({ initial }: { initial: Config }) {
                   disabled={!canEdit}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Pode marcar várias (ex.: WhatsApp, Ligação, Site - LP). Vale a origem escolhida no atendimento do Pré-Vendas. O Google só aproveita quem de fato clicou num anúncio; os
-                  demais ele ignora.
+                  Pode marcar várias (ex.: WhatsApp, Ligação, Site - LP). Vale a origem escolhida no atendimento do Pré-Vendas. Serve só para o envio: o Google aproveita quem de fato clicou
+                  num anúncio e ignora os demais. A marcação "veio do Google Ads" no CRM não depende destas origens, só do clique no anúncio.
                 </p>
               </div>
               <p className="text-xs font-medium">
