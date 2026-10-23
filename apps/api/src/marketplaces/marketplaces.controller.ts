@@ -6,7 +6,7 @@ import { AuditService } from '../audit/audit.service'
 import { CurrentUser, ReqContext, type RequestCtx, RequirePermission } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { MarketplacesService } from './marketplaces.service'
-import { mlView, todayBr } from './mercadolivre'
+import { MlError, mlView, todayBr } from './mercadolivre'
 import { MercadoLivreService } from './mercadolivre.service'
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
@@ -41,6 +41,12 @@ function period(q: PeriodDto) {
   if (from > to) throw new BadRequestException('A data inicial precisa ser antes da final.')
   if (Date.parse(to) - Date.parse(from) > 3 * 366 * 86_400_000) throw new BadRequestException('Escolha um período de até 3 anos.')
   return { from, to }
+}
+
+/** Erro do Mercado Livre vira mensagem para a tela (e não "erro inesperado no servidor"). */
+const mlBadRequest = (err: unknown): never => {
+  if (err instanceof MlError) throw new BadRequestException(err.message)
+  throw err
 }
 
 @ApiTags('Marketplaces')
@@ -103,13 +109,13 @@ export class MarketplacesController {
   @Get('mercado-livre/anunciantes')
   @RequirePermission('marketplaces', 'edit')
   advertisers(@CurrentUser() user: AuthUser) {
-    return this.ml.listAdvertisers(user.tenantId)
+    return this.ml.listAdvertisers(user.tenantId).catch(mlBadRequest)
   }
 
   @Put('mercado-livre/anunciante')
   @RequirePermission('marketplaces', 'edit')
   async advertiser(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx, @Body() dto: AdvertiserDto) {
-    const c = await this.ml.selectAdvertiser(user.tenantId, dto.advertiserId)
+    const c = await this.ml.selectAdvertiser(user.tenantId, dto.advertiserId).catch(mlBadRequest)
     await this.audit.byUser(user, ctx, 'marketplaces.ml_advertiser', 'settings', 'marketplace_ml', { anunciante: c.advertiserName ?? c.advertiserId })
     return mlView(c)
   }

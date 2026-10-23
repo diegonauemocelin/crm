@@ -51,6 +51,10 @@ describe('Mercado Livre Ads: leitura das respostas da API', () => {
   it('autorização revogada pede Reconectar', () => {
     expect(tokenError(400, { error: 'invalid_grant' }).reconnect).toBe(true)
     expect(tokenError(500, { error: 'server' }).reconnect).toBe(false)
+    // Client Secret errado: não pede Reconectar, pede o segredo certo.
+    const bad = tokenError(400, { error: 'invalid_client', message: 'invalid client_id or client_secret' })
+    expect(bad.reconnect).toBe(false)
+    expect(bad.message).toContain('Client Secret')
   })
 
   it('tela nunca recebe tokens nem segredo', () => {

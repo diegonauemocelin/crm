@@ -91,6 +91,8 @@ export class MlError extends Error {
 /** Erro do pedido de token: autorização revogada ou expirada pede Reconectar. */
 export function tokenError(status: number, body: { error?: string; message?: string; error_description?: string } | null) {
   const reconnect = body?.error === 'invalid_grant' || body?.error === 'unauthorized_client'
+  // Client ID ou Client Secret errado (ex.: segredo trocado no aplicativo do Mercado Livre): é só salvar o certo.
+  if (body?.error === 'invalid_client') return new MlError('O Mercado Livre não aceitou o Client Secret deste aplicativo. Em developers.mercadolivre.com.br › Minhas aplicações, abra o aplicativo com este Client ID, copie o Client Secret, cole em Credenciais do aplicativo, salve e clique em Testar conexão.', status, false)
   return new MlError(
     reconnect ? 'A autorização do Mercado Livre expirou ou foi revogada. Clique em Reconectar.' : `O Mercado Livre recusou o token (${body?.error ?? status}): ${body?.message ?? body?.error_description ?? ''}`.trim(),
     status,

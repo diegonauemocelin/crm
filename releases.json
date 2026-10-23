@@ -2,6 +2,15 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.93.1",
+      "date": "2026-10-23",
+      "title": "Mercado Livre: aviso claro quando o Client Secret não é aceito",
+      "changes": [
+        { "type": "correcao", "area": "Marketplaces", "text": "Quando o Mercado Livre não aceita o Client Secret do aplicativo (invalid_client), o aviso diz o que fazer: copiar o Client Secret do aplicativo em developers.mercadolivre.com.br, salvar em Credenciais do aplicativo e Testar conexão. A escolha do anunciante mostra o motivo em vez de \"Erro inesperado no servidor\"." },
+        { "type": "infra", "area": "Servidor", "text": "deploy/importar-painel.sh lê o .env do painel como o Node lê (comentário no fim da linha e export na frente), para as credenciais virem exatamente iguais." }
+      ]
+    },
+    {
       "version": "0.93.0",
       "date": "2026-10-23",
       "title": "Resumo do vendedor: cópia para o gestor e intervalo entre os envios",

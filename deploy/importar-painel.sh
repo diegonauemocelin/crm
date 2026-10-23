@@ -100,7 +100,16 @@ for line in open(sys.argv[1], encoding='utf-8'):
     if not line or line.startswith('#') or '=' not in line:
         continue
     k, v = line.split('=', 1)
-    env[k.strip()] = v.strip().strip('"').strip("'")
+    k = k.strip()
+    if k.startswith('export '):
+        k = k[7:].strip()
+    v = v.strip()
+    # Como o Node lê o .env do painel: valor entre aspas fica como está; sem aspas, o " #" começa um comentário.
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in ('"', "'"):
+        v = v[1:-1]
+    else:
+        v = v.split(' #', 1)[0].strip()
+    env[k] = v
 print(json.dumps({
     'encryptionKey': env.get('APP_ENCRYPTION_KEY', ''),
     'mlClientId': env.get('ML_CLIENT_ID', ''),
