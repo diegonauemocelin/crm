@@ -129,6 +129,23 @@ verificar() {
   echo "O que aparece em \"Outros containers\", \"Serviços próprios\" ou \"Bancos fora do Docker\" não é tocado por este script."
 }
 
+# Tarefas do cron de um sistema antigo: pausar (comenta, dá para voltar) e remover (no apagar).
+pausar_cron() {
+  local dir="$1"
+  if crontab -l 2>/dev/null | grep -v '^#' | grep -qF "$dir"; then
+    crontab -l | awk -v d="$dir" 'index($0, d) && $0 !~ /^#/ { print "#enxugar# " $0; next } { print }' | crontab -
+    ok "Tarefa do cron pausada ($dir)."
+  fi
+}
+remover_cron() {
+  local dir="$1"
+  if crontab -l 2>/dev/null | grep -qF "$dir"; then
+    crontab -l | { grep -vF "$dir" || true; } | crontab -
+    ok "Tarefa do cron removida ($dir)."
+  fi
+  grep -lF "$dir" /etc/cron.d/* 2>/dev/null | xargs -r rm -f
+}
+
 CHAVE=""
 DESTINO=""
 cifrar() { dc run --rm -T --no-deps --entrypoint age backup -r "$CHAVE"; }
@@ -186,6 +203,7 @@ desligar() {
     bi stop >/dev/null
     # Não sobe sozinho quando o servidor reiniciar.
     docker update --restart=no $(bi ps -aq) >/dev/null 2>&1 || true
+    pausar_cron "$BI_DIR"
     touch "$ESTADO_ENXUGAR/bi-desligado"
     ok "BI parado (containers e banco continuam no servidor até o passo apagar)."
   else
@@ -197,6 +215,7 @@ desligar() {
     if painel_pronto; then
       [ -d "$PAINEL_DIR" ] && tar -C "$PAINEL_DIR" -cz . 2>/dev/null | cifrar > "$DESTINO/painel-pasta-$STAMP.tar.gz.age" && ok "Pasta do painel (dados e .env): $DESTINO/painel-pasta-$STAMP.tar.gz.age"
       systemctl disable --now "$PAINEL_SERVICO" >/dev/null 2>&1 || true
+      pausar_cron "$PAINEL_DIR"
       touch "$ESTADO_ENXUGAR/painel-desligado"
       ok "Painel parado e desativado (arquivos continuam em $PAINEL_DIR até o passo apagar)."
     else
@@ -223,7 +242,7 @@ desligar() {
 
 apagar() {
   local alvo=()
-  [ -f "$ESTADO_ENXUGAR/bi-desligado" ] && tem_bi && alvo+=("BI: containers, banco PostgreSQL (volumes), imagens e a pasta $BI_DIR")
+  [ -f "$ESTADO_ENXUGAR/bi-desligado" ] && tem_bi && alvo+=("BI: containers, banco PostgreSQL (volumes), imagens, a pasta $BI_DIR (com os backups próprios dele) e a tarefa do cron")
   [ -f "$ESTADO_ENXUGAR/painel-desligado" ] && tem_painel && alvo+=("Painel: serviço $PAINEL_SERVICO, a pasta $PAINEL_DIR (banco SQLite), o backup próprio dele em /opt/backups/usaparts e a tarefa do cron")
   [ ${#alvo[@]} -gt 0 ] || fatal "Nada para apagar: rode antes 'sudo bash deploy/enxugar-servidor.sh desligar' (o apagar só remove o que já foi desligado, com backup)."
   info "Vai ser apagado de vez (as cópias criptografadas ficam na pasta de backups do CRM):"
@@ -240,22 +259,22 @@ apagar() {
     bi down -v --remove-orphans >/dev/null 2>&1 || true
     [ -n "$imagens" ] && docker rmi $imagens >/dev/null 2>&1 || true
     rm -rf "$BI_DIR"
+    remover_cron "$BI_DIR"
     rm -f "$ESTADO_ENXUGAR/bi-desligado"
-    ok "BI apagado (containers, banco e pasta)."
+    ok "BI apagado (containers, banco, imagens, pasta e cron)."
   fi
   if [ -f "$ESTADO_ENXUGAR/painel-desligado" ] && tem_painel; then
     systemctl disable --now "$PAINEL_SERVICO" >/dev/null 2>&1 || true
     rm -f "/etc/systemd/system/$PAINEL_SERVICO"
     systemctl daemon-reload
     rm -rf "$PAINEL_DIR" /opt/backups/usaparts
-    # Tarefa do cron que fazia o backup do painel.
-    if crontab -l 2>/dev/null | grep -q "usaparts-assistente"; then crontab -l | grep -v "usaparts-assistente" | crontab -; fi
-    grep -l "usaparts-assistente" /etc/cron.d/* 2>/dev/null | xargs -r rm -f
+    remover_cron "$PAINEL_DIR"
     id usaparts >/dev/null 2>&1 && userdel usaparts 2>/dev/null || true
     rm -f "$ESTADO_ENXUGAR/painel-desligado"
     ok "Painel apagado (serviço, pasta, banco, backup próprio e cron)."
   fi
   docker image prune -f >/dev/null 2>&1 || true
+  docker builder prune -f >/dev/null 2>&1 || true
   echo
   df -h / | sed 's/^/  /'
   free -h | sed 's/^/  /'

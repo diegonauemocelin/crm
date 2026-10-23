@@ -2,6 +2,14 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.91.2",
+      "date": "2026-10-23",
+      "title": "Enxugar o servidor: tarefas de backup dos sistemas antigos",
+      "changes": [
+        { "type": "infra", "area": "Servidor", "text": "deploy/enxugar-servidor.sh: no desligar, pausa as tarefas de backup do BI e do painel no cron (dá para voltar); no apagar, remove essas tarefas e limpa as imagens e o cache de construção do Docker que sobraram. As demais tarefas do cron (como o backup do servidor) não mudam." }
+      ]
+    },
+    {
       "version": "0.91.1",
       "date": "2026-10-23",
       "title": "Script para deixar no servidor só o CRM",
