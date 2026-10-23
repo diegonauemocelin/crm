@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
 import { ApiProperty, ApiTags } from '@nestjs/swagger'
 import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, IsUUID, Length, MaxLength, ValidateIf } from 'class-validator'
 import { SecurityService } from '../auth/security.service'
@@ -29,7 +29,7 @@ class UpdateUserDto {
   @ApiProperty({ required: false }) @IsOptional() @IsBoolean() active?: boolean
 }
 
-/** Usuários nunca são apagados: são desativados, preservando o histórico e a auditoria. */
+/** Usuários: desativar tira o acesso; excluir tira das listas também. Em nenhum caso o histórico e a auditoria se perdem. */
 @ApiTags('Usuários')
 @Controller('users')
 export class UsersController {
@@ -61,6 +61,12 @@ export class UsersController {
   @RequirePermission('usuarios', 'edit')
   update(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateUserDto, @ReqContext() ctx: RequestCtx) {
     return this.users.update(user, id, dto, ctx)
+  }
+
+  @Delete(':id')
+  @RequirePermission('usuarios', 'delete')
+  remove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    return this.users.remove(user, id, ctx)
   }
 
   @Post(':id/unlock')

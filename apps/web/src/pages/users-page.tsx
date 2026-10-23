@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { KeyRoundIcon, Loader2Icon, LockOpenIcon, MailIcon, MonitorSmartphoneIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, PowerIcon, SearchIcon, ShieldOffIcon, UsersIcon } from 'lucide-react'
+import { KeyRoundIcon, Loader2Icon, LockOpenIcon, MailIcon, MonitorSmartphoneIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, PowerIcon, SearchIcon, ShieldOffIcon, Trash2Icon, UsersIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { type ConfirmOptions, isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
@@ -59,7 +59,7 @@ export function UsersContent() {
     <>
       <PageHeader
         title="Usuários"
-        description="Quem acessa o sistema e com qual perfil. Usuários não são apagados: são desativados, preservando o histórico."
+        description="Quem acessa o sistema e com qual perfil. Desativar tira o acesso; excluir tira também da lista. O histórico do usuário é sempre mantido."
         actions={
           <Can module="usuarios" action="create">
             <Button onClick={() => setEditing('new')}>
@@ -98,6 +98,7 @@ export function UsersContent() {
               <TableRow>
                 <TableHead>Usuário</TableHead>
                 <TableHead>Perfil</TableHead>
+                <TableHead className="hidden lg:table-cell">Unidade</TableHead>
                 <TableHead className="hidden md:table-cell">2FA</TableHead>
                 <TableHead>Situação</TableHead>
                 <TableHead className="hidden lg:table-cell">Último acesso</TableHead>
@@ -208,6 +209,23 @@ export function UsersContent() {
                               >
                                 <PowerIcon /> {u.active ? 'Desativar' : 'Reativar'}
                               </DropdownMenuItem>
+                              {can('usuarios', 'delete') && (
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onSelect={() =>
+                                    void ask(
+                                      `Excluir ${u.name}?`,
+                                      `${u.name} perde o acesso, some da lista de usuários e sai dos números de WhatsApp, setores e conversas (as que eram dele voltam para a fila). O nome continua no histórico de mensagens, atendimentos e auditoria. Não dá para desfazer: para voltar, cadastre de novo.`,
+                                      'Excluir usuário',
+                                      () => api.delete(`/users/${u.id}`),
+                                      'Usuário excluído.',
+                                      true,
+                                    )
+                                  }
+                                >
+                                  <Trash2Icon /> Excluir
+                                </DropdownMenuItem>
+                              )}
                             </>
                           )}
                         </DropdownMenuContent>

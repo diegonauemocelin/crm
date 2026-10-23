@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.96.0",
+      "date": "2026-10-23",
+      "title": "Excluir usuário",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Usuários",
+          "text": "Nova opção Excluir no menu de cada usuário (perfil com permissão de excluir em Usuários). O usuário perde o acesso na hora, some da lista e sai dos números de WhatsApp, setores, gestores e participantes; as conversas que eram dele voltam para a fila e o vendedor ligado a ele fica sem login."
+        },
+        {
+          "type": "melhoria",
+          "area": "Usuários",
+          "text": "O nome de quem foi excluído continua no histórico (mensagens, atendimentos e auditoria) e o e-mail fica livre para um cadastro novo. Não dá para excluir a si mesmo nem o último administrador."
+        },
+        {
+          "type": "correcao",
+          "area": "Usuários",
+          "text": "A coluna Unidade da lista de usuários ganhou o título que faltava."
+        }
+      ]
+    },
+    {
       "version": "0.95.0",
       "date": "2026-10-23",
       "title": "Chat: transferir e adicionar participantes em qualquer conversa, só no mesmo número",

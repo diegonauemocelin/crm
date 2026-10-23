@@ -33,7 +33,7 @@ export class RolesService {
   async list(tenantId: string) {
     const roles = await this.prisma.role.findMany({
       where: { tenantId },
-      include: { permissions: true, _count: { select: { users: true } } },
+      include: { permissions: true, _count: { select: { users: { where: { deletedAt: null } } } } },
       orderBy: [{ isSystem: 'desc' }, { name: 'asc' }],
     })
     return roles.map(view)
@@ -42,7 +42,7 @@ export class RolesService {
   async get(tenantId: string, id: string) {
     const role = await this.prisma.role.findFirst({
       where: { id, tenantId },
-      include: { permissions: true, _count: { select: { users: true } } },
+      include: { permissions: true, _count: { select: { users: { where: { deletedAt: null } } } } },
     })
     if (!role) throw new NotFoundException('Perfil não encontrado.')
     return view(role)
@@ -59,7 +59,7 @@ export class RolesService {
         active: input.active,
         permissions: { create: toRows(input.permissions) },
       },
-      include: { permissions: true, _count: { select: { users: true } } },
+      include: { permissions: true, _count: { select: { users: { where: { deletedAt: null } } } } },
     })
     await this.audit.byUser(actor, ctx, 'role.created', 'role', role.id, { name: role.name, permissions: input.permissions })
     return view(role)
@@ -82,7 +82,7 @@ export class RolesService {
           active: input.active,
           permissions: { create: toRows(input.permissions) },
         },
-        include: { permissions: true, _count: { select: { users: true } } },
+        include: { permissions: true, _count: { select: { users: { where: { deletedAt: null } } } } },
       })
     })
     await this.audit.byUser(actor, ctx, 'role.updated', 'role', id, { name: role.name, permissions: input.permissions })
@@ -90,7 +90,7 @@ export class RolesService {
   }
 
   async remove(actor: AuthUser, id: string, ctx: RequestCtx) {
-    const role = await this.prisma.role.findFirst({ where: { id, tenantId: actor.tenantId }, include: { _count: { select: { users: true } } } })
+    const role = await this.prisma.role.findFirst({ where: { id, tenantId: actor.tenantId }, include: { _count: { select: { users: { where: { deletedAt: null } } } } } })
     if (!role) throw new NotFoundException('Perfil não encontrado.')
     if (role.isSystem) throw new BadRequestException('O perfil Administrador não pode ser excluído.')
     if (role._count.users > 0) {

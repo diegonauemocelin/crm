@@ -53,6 +53,7 @@ export class UsersService {
     const rows = await this.prisma.user.findMany({
       where: {
         tenantId,
+        deletedAt: null,
         ...(q.status ? { active: q.status === 'active' } : {}),
         ...(q.search
           ? { OR: [{ name: { contains: q.search, mode: 'insensitive' } }, { email: { contains: q.search, mode: 'insensitive' } }] }
@@ -65,9 +66,33 @@ export class UsersService {
   }
 
   async get(tenantId: string, id: string) {
-    const user = await this.prisma.user.findFirst({ where: { id, tenantId }, select: USER_SELECT })
+    const user = await this.prisma.user.findFirst({ where: { id, tenantId, deletedAt: null }, select: USER_SELECT })
     if (!user) throw new NotFoundException('Usuário não encontrado.')
     return view(user)
+  }
+
+  /**
+   * Excluir: o usuário some das listas, perde o acesso e sai dos números, setores, gestores e conversas (as que eram
+   * dele voltam para a fila). O nome continua no histórico (mensagens, atendimentos, auditoria) e o e-mail fica livre
+   * para um cadastro novo. Não exclui a si mesmo nem o último administrador.
+   */
+  async remove(actor: AuthUser, id: string, ctx: RequestCtx) {
+    const current = await this.prisma.user.findFirst({ where: { id, tenantId: actor.tenantId, deletedAt: null }, include: { role: true } })
+    if (!current) throw new NotFoundException('Usuário não encontrado.')
+    if (id === actor.id) throw new BadRequestException('Você não pode excluir o seu próprio usuário.')
+    if (current.role.isSystem && current.active) await this.assertAnotherAdmin(actor.tenantId, id)
+    const t = actor.tenantId
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id }, data: { deletedAt: new Date(), active: false, email: `excluido-${id}@usuario-excluido.invalid`, passwordHash: await hashPassword(randomToken(48)), totpSecretEnc: null, totpPendingSecretEnc: null, totpEnabled: false, managerIds: [] } }),
+      this.prisma.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } }),
+      this.prisma.seller.updateMany({ where: { tenantId: t, userId: id }, data: { userId: null } }),
+      this.prisma.$executeRaw`UPDATE whatsapp_numbers SET "userIds" = array_remove("userIds", ${id}::uuid), "defaultUserId" = NULLIF("defaultUserId", ${id}::uuid) WHERE "tenantId" = ${t}::uuid AND (${id}::uuid = ANY("userIds") OR "defaultUserId" = ${id}::uuid)`,
+      this.prisma.$executeRaw`UPDATE whatsapp_sectors SET "userIds" = array_remove("userIds", ${id}::uuid), "managerIds" = array_remove("managerIds", ${id}::uuid) WHERE "tenantId" = ${t}::uuid AND (${id}::uuid = ANY("userIds") OR ${id}::uuid = ANY("managerIds"))`,
+      this.prisma.$executeRaw`UPDATE users SET "managerIds" = array_remove("managerIds", ${id}::uuid) WHERE "tenantId" = ${t}::uuid AND ${id}::uuid = ANY("managerIds")`,
+      this.prisma.$executeRaw`UPDATE whatsapp_conversations SET "assignedUserId" = NULLIF("assignedUserId", ${id}::uuid), "helperUserIds" = array_remove("helperUserIds", ${id}::uuid) WHERE "tenantId" = ${t}::uuid AND ("assignedUserId" = ${id}::uuid OR ${id}::uuid = ANY("helperUserIds"))`,
+    ])
+    await this.audit.byUser(actor, ctx, 'user.deleted', 'user', id, { nome: current.name, email: current.email })
+    return { ok: true }
   }
 
   async create(actor: AuthUser, input: CreateUserInput, ctx: RequestCtx) {
@@ -106,7 +131,7 @@ export class UsersService {
   }
 
   async update(actor: AuthUser, id: string, input: UpdateUserInput, ctx: RequestCtx) {
-    const current = await this.prisma.user.findFirst({ where: { id, tenantId: actor.tenantId }, include: { role: true } })
+    const current = await this.prisma.user.findFirst({ where: { id, tenantId: actor.tenantId, deletedAt: null }, include: { role: true } })
     if (!current) throw new NotFoundException('Usuário não encontrado.')
 
     if (id === actor.id && (input.active === false || (input.roleId && input.roleId !== current.roleId))) {
@@ -158,7 +183,7 @@ export class UsersService {
   }
 
   async sendReset(actor: AuthUser, id: string, ctx: RequestCtx) {
-    const user = await this.prisma.user.findFirst({ where: { id, tenantId: actor.tenantId } })
+    const user = await this.prisma.user.findFirst({ where: { id, tenantId: actor.tenantId, deletedAt: null } })
     if (!user) throw new NotFoundException('Usuário não encontrado.')
     await this.auth.sendPasswordLink(user.id, user.tenantId, user.email, user.name, 'invite')
     await this.audit.byUser(actor, ctx, 'user.password_link_sent', 'user', id)
