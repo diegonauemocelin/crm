@@ -15,7 +15,7 @@ import { normalizePhone } from '../atendimento/br'
 import { callHoursOf, DEFAULT_ATENDIMENTO } from '../atendimento/service-records.service'
 import { type EvolutionClient, EvolutionError } from './evolution'
 import { type Sector, servesNumber, splitWhere, teamOf, teamWhere } from './atendentes'
-import { type AgendaCategory, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isClosingMessage, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
+import { type AgendaCategory, answersClient, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isClosingMessage, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
 import { parseCsv } from '../atendimento/planilha'
 import { answersNote, type BotOutcome, botStateOf, chooseFlow, continueFlow, flowOf, startFlow } from './fluxo'
 import { extOf, INLINE_MEDIA_MAX_BYTES, MEDIA_MAX_BYTES, openSecretEdit, parseCalls, parseMessage, parseReaction, parseRevision, parseSecretEdit, type ParsedSecretEdit, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, whatsappOf, withReaction } from './mensagens'
@@ -62,6 +62,25 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     this.retentionTimer = setInterval(() => void this.applyRetention(), 24 * 3_600_000)
     this.retentionTimer.unref()
     setTimeout(() => void this.applyRetention(), 5 * 60_000).unref()
+    setTimeout(() => void this.stopAnsweredWaits().catch((err: unknown) => this.logger.warn(`Revisão do tempo de espera: ${(err as Error).message}`)), 60_000).unref()
+  }
+
+  /**
+   * Conversas paradas com "aguardando retorno" depois de a empresa já ter respondido (regra anterior, em que a resposta
+   * não parava o tempo): para o tempo quando a última mensagem da empresa é uma resposta, não uma promessa de retorno.
+   */
+  private async stopAnsweredWaits() {
+    const convs = await this.prisma.whatsappConversation.findMany({ where: { status: 'ABERTA', noReplyNeeded: false, lastFromMe: true, lastInboundAt: { not: null }, botFlowId: null }, select: { id: true, lastInboundAt: true }, take: 5000 })
+    let stopped = 0
+    for (const c of convs) {
+      const last = await this.prisma.whatsappMessage.findFirst({ where: { conversationId: c.id, fromMe: true, internal: false }, orderBy: { sentAt: 'desc' }, select: { type: true, text: true, sentAt: true, sentById: true, sentByName: true } })
+      // Só resposta de pessoa: pelo CRM (tem quem enviou) ou pelo celular (sem nome). Robô, ausência e automação têm nome sem pessoa.
+      const byPerson = !!last?.sentById || !last?.sentByName
+      if (!last || last.sentAt < c.lastInboundAt! || !byPerson || !answersClient(last)) continue
+      const r = await this.prisma.whatsappConversation.updateMany({ where: { id: c.id, lastInboundAt: c.lastInboundAt, noReplyNeeded: false }, data: { noReplyNeeded: true } })
+      stopped += r.count
+    }
+    if (stopped) this.logger.log(`Tempo de espera parado em ${stopped} conversa(s) já respondida(s).`)
   }
 
   onModuleDestroy() {
@@ -341,9 +360,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         ...(toDefault ? { assignedUserId: n.defaultUserId } : {}),
         ...(phone && !conv.phone ? { phone } : {}),
         ...(p.pushName && !conv.name ? { name: p.pushName } : {}),
-        // Mensagem da empresa não para o tempo de "aguardando retorno": só "Não precisa responder" ou finalizar.
-        // Mensagem do cliente (inclusive "obrigado") volta a contar o tempo: só o atendente decide quando não precisa responder.
-        ...(later ? { lastMessageAt: p.at, lastPreview: previewOf(p), lastFromMe: p.fromMe, ...(p.fromMe ? {} : { noReplyNeeded: false, lastInboundAt: p.at }) } : {}),
+        // Resposta da empresa pelo celular para o tempo de "aguardando retorno"; promessa de retorno ("vou verificar e
+        // lhe retorno") e figurinha não param (nem mensagem com o robô atendendo). Mensagem do cliente (inclusive
+        // "obrigado") volta a contar o tempo: só o atendente decide quando não precisa responder.
+        ...(later ? { lastMessageAt: p.at, lastPreview: previewOf(p), lastFromMe: p.fromMe, ...(p.fromMe ? (!conv.botFlowId && answersClient(p) ? { noReplyNeeded: true } : {}) : { noReplyNeeded: false, lastInboundAt: p.at }) } : {}),
         // Resposta pelo celular zera as não lidas (alguém já está atendendo).
         ...(p.fromMe ? { unread: 0 } : staysClosed ? {} : { unread: { increment: 1 }, status: 'ABERTA', closedAt: null, closedByName: null }),
       },
@@ -998,7 +1018,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     })
     await this.prisma.whatsappConversation.update({
       where: { id: c.conv.id },
-      data: { lastMessageAt: r.at, lastPreview: previewOf({ type: m.type as ParsedMessage['type'], text: m.text }), lastFromMe: true, unread: 0, status: 'ABERTA', ...(c.number.splitAttendance && !c.conv.assignedUserId ? { assignedUserId: user.id } : {}) },
+      data: { lastMessageAt: r.at, lastPreview: previewOf({ type: m.type as ParsedMessage['type'], text: m.text }), lastFromMe: true, unread: 0, status: 'ABERTA', ...(answersClient(m) ? { noReplyNeeded: true } : {}), ...(c.number.splitAttendance && !c.conv.assignedUserId ? { assignedUserId: user.id } : {}) },
     })
     // Uma pessoa respondeu: o robô de atendimento sai da conversa.
     await this.prisma.whatsappConversation.updateMany({ where: { id: c.conv.id, botFlowId: { not: null } }, data: { botFlowId: null, botState: Prisma.DbNull } })

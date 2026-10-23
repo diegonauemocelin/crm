@@ -860,9 +860,9 @@ function WaitingBar({ id, since, answered, yellowMinutes = 10 }: { id: string; s
   if (min < yellowMinutes || min > 7 * 1440) return null
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-orange-200 bg-orange-50 px-3 py-1 text-xs font-medium text-orange-800 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300" role="status">
-      <AlarmClockIcon className="size-3.5" /> {answered ? `Cliente aguardando retorno há ${waitText(min)}` : `Cliente esperando resposta há ${waitText(min)}`}
-      <Button size="sm" variant="ghost" className="ml-auto h-7 text-orange-800 hover:bg-orange-100 dark:text-orange-300 dark:hover:bg-orange-500/20" disabled={dismiss.isPending} onClick={() => dismiss.mutate()} title="Não há mais o que responder ao cliente: para de contar o tempo até ele escrever de novo">
-        {dismiss.isPending ? <Loader2Icon className="animate-spin" /> : <CheckIcon />} Não precisa responder
+      <AlarmClockIcon className="size-3.5" /> {answered ? `Retorno prometido ao cliente: aguardando há ${waitText(min)}` : `Cliente esperando resposta há ${waitText(min)}`}
+      <Button size="sm" variant="ghost" className="ml-auto h-7 text-orange-800 hover:bg-orange-100 dark:text-orange-300 dark:hover:bg-orange-500/20" disabled={dismiss.isPending} onClick={() => dismiss.mutate()} title={answered ? 'Já dei o retorno ao cliente: para de contar o tempo até ele escrever de novo' : 'Não há mais o que responder ao cliente: para de contar o tempo até ele escrever de novo'}>
+        {dismiss.isPending ? <Loader2Icon className="animate-spin" /> : <CheckIcon />} {answered ? 'Já retornei' : 'Não precisa responder'}
       </Button>
     </div>
   )

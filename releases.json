@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.91.0",
+      "date": "2026-10-23",
+      "title": "Chat: o tempo de espera para quando o atendente responde",
+      "changes": [
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Respondeu o cliente (pelo CRM ou pelo celular), o tempo de espera para. Promessa de retorno (\"vou verificar e lhe retorno\", \"só um momento\", \"assim que tiver eu aviso\") e figurinha não param: o tempo continua até você retornar." },
+        { "type": "melhoria", "area": "Chat WhatsApp", "text": "Depois de uma promessa de retorno, a faixa mostra \"Retorno prometido ao cliente: aguardando há…\" e o botão Já retornei. Mensagens automáticas (ausência, robô de atendimento, automações) nunca contam como resposta." },
+        { "type": "correcao", "area": "Chat WhatsApp", "text": "Conversas que ficaram com \"aguardando retorno\" mesmo já respondidas (regra anterior) param de contar sozinhas quando o sistema atualiza." }
+      ]
+    },
+    {
       "version": "0.90.0",
       "date": "2026-10-23",
       "title": "Mercado Livre Ads nos relatórios automáticos e cupom informado no próprio e-mail",

@@ -214,7 +214,7 @@ export const TRAIL: TrailModule[] = [
           'Use o clipe para enviar foto ou arquivo e o microfone para gravar áudio.',
           'Passe o mouse na mensagem: Responder (cita a mensagem), reagir com emoji, encaminhar e, nas suas, Corrigir ou apagar.',
           'No botão de carinha, ao lado da caixa de texto: emojis e as suas figurinhas. Figurinha recebida: menu ⋮ → Salvar figurinha.',
-          'O tempo de “aguardando retorno” conta da última mensagem do cliente. Quando não houver mais o que responder, clique em Não precisa responder; se o cliente escrever de novo, volta a contar.',
+          'O tempo de espera conta da última mensagem do cliente e para quando você responde. Se a resposta for uma promessa de retorno (“vou verificar e lhe retorno”, “só um momento”), o tempo continua até você retornar ou clicar em Já retornei. Figurinha não conta como resposta. Se o cliente escrever de novo, volta a contar.',
         ],
         tip: 'Você também pode responder pelo celular: a conversa aparece igual no CRM.',
         media: { src: '/trilha/chat-responder.webm', alt: 'Respondendo uma conversa no chat', kind: 'video' },

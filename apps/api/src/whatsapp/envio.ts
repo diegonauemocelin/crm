@@ -554,3 +554,39 @@ export function toCallVia(sub: { channel: string; formName: string | null } | nu
   if (ecommerce || conv?.source === 'ecommerce') return { kind: 'ecommerce', label: 'Loja virtual' }
   return { kind: 'outro', label: origin ?? 'Cadastro no CRM' }
 }
+
+/**
+ * Promessa de retorno ("só um momento", "vou verificar e lhe retorno", "assim que tiver eu aviso"): o cliente
+ * continua aguardando. Texto sem acento e em minúsculas.
+ */
+const HOLDING = new RegExp(
+  `\\b(${[
+    'so um (momento|minuto|minutinho|instante|pouquinho)',
+    'um (momento|minuto|minutinho|instante|pouquinho)',
+    'aguard(e|a|ar)',
+    'vou (verificar|ver|consultar|checar|conferir|confirmar|olhar|levantar|analisar|cotar|orcar|pesquisar|perguntar|falar com|dar uma olhada)',
+    'vamos (verificar|ver|consultar|checar|conferir|confirmar|analisar|cotar)',
+    'deixa eu (ver|verificar|olhar|conferir|confirmar)',
+    '(estou|to|tou|estamos) (vendo|verificando|consultando|checando|conferindo|confirmando|analisando|cotando|levantando)',
+    'verificando|consultando|checando',
+    'ja (te |lhe )?(retorno|volto|respondo|aviso|verifico|confirmo|envio|mando|passo|falo)',
+    '(te|lhe|vos) (retorno|aviso|confirmo|respondo|envio|mando|passo|falo)',
+    '(retorno|volto|respondo) (em breve|ja|logo|assim|daqui)',
+    'assim que (eu )?(tiver|souber|conseguir|possivel|verificar|confirmar|receber|chegar|liberar)',
+    'em breve (te |lhe )?(retorno|respondo|aviso|envio|mando)',
+    'mais tarde (te |lhe )?(retorno|respondo|aviso|envio|mando)',
+  ].join('|')})\\b`,
+)
+
+/**
+ * A mensagem da empresa responde o cliente e para o tempo de "aguardando retorno"? Responde: texto, áudio, foto,
+ * documento, contato ou localização. Não responde: promessa de retorno ("vou verificar e lhe retorno") e figurinha.
+ */
+export function answersClient(m: { type: string; text: string | null }): boolean {
+  if (m.type === 'figurinha' || m.type === 'chamada' || m.type === 'outro') return false
+  if (m.type !== 'texto') return true
+  // Tira a assinatura do atendente ("*Fabíola:*") antes de ler.
+  const plain = (m.text ?? '').replace(/^\*[^*\n]{1,40}:\*\s*/, '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+  if (!plain) return false
+  return !HOLDING.test(plain)
+}
