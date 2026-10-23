@@ -767,6 +767,16 @@ export const TRAIL: TrailModule[] = [
         ],
       },
       {
+        id: 'mkt.resumo-vendedor',
+        title: 'Resumo semanal de cada vendedor no WhatsApp',
+        steps: [
+          'Em Relatórios e alertas → Relatórios agendados, veja o cartão Resumo do vendedor (semanal, WhatsApp).',
+          'Ligue o envio, escolha o horário da sexta, o número que envia, para quem vai e o que vai no resumo (leads repassados, vendas, conversão, valor, perdas e motivos, retorno ao cliente, clientes sem contato, comparação com o ciclo anterior e com a equipe, marcas, peças, origem e sugestões).',
+          'O ciclo é de sexta a quinta (ex.: 16/10 a 22/10) e sai na sexta seguinte (23/10), só para quem teve cliente repassado. Confira a mensagem de cada vendedor na Prévia antes de ligar.',
+        ],
+        tip: 'O resumo vai para o telefone do cadastro do vendedor (Configurações › Vendedores): sem telefone, ele não recebe.',
+      },
+      {
         id: 'mkt.google',
         title: 'Google Ads: termos de pesquisa e negativas',
         steps: [

@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
+import { ResumoVendedorCard } from '@/components/marketing/resumo-vendedor'
 import { downloadReport, MktFilters } from '@/components/marketing/ui'
 import { useMktFilters, useMktOptions } from '@/lib/marketing'
 
@@ -203,6 +204,7 @@ function Relatorios() {
             </CardContent>
           </Card>
         )}
+        <ResumoVendedorCard />
         {d && d.runs.length > 0 && (
           <Card>
             <CardHeader>

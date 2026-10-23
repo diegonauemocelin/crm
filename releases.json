@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.92.0",
+      "date": "2026-10-23",
+      "title": "Resumo semanal de cada vendedor no WhatsApp (sexta a quinta)",
+      "changes": [
+        { "type": "novo", "area": "Relatórios", "text": "Resumo do vendedor (semanal) em Marketing › Relatórios e alertas: toda sexta, a partir do horário escolhido, cada vendedor que recebeu clientes da pré-venda repassados de sexta a quinta (ex.: 16/10 a 22/10, enviado em 23/10) recebe no WhatsApp do cadastro dele o resultado da semana. Uma vez por ciclo; quem não teve repasse não recebe." },
+        { "type": "novo", "area": "Relatórios", "text": "Você escolhe o que vai no resumo: leads repassados, vendas realizadas, conversão (vendas ÷ leads), valor vendido e ticket médio, em negociação e perdidas, motivos de perda, retorno ao cliente (taxa e tempo médio), clientes ainda sem contato, comparação com o ciclo anterior, média da equipe, vendas fechadas de repasses anteriores, marcas, tipos de peça, origem dos leads e sugestões de melhoria." },
+        { "type": "novo", "area": "Relatórios", "text": "Sugestões de melhoria a partir dos números: clientes sem contato registrado (com os nomes), conversão abaixo da média da equipe, retorno demorado, muitos em negociação e o motivo de perda mais comum. Prévia com a mensagem de cada vendedor e o resultado do último envio." }
+      ]
+    },
+    {
       "version": "0.91.2",
       "date": "2026-10-23",
       "title": "Enxugar o servidor: tarefas de backup dos sistemas antigos",
