@@ -731,8 +731,8 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
             </Button>
           )}
           <span className="hidden h-5 w-px bg-border @2xl/head:block" />
-          {!monitor && d.attendance?.split && d.conversation.category === 'CLIENTE' && <AttendantPicker thread={d} />}
-          {!monitor && d.attendance?.split && d.conversation.category === 'CLIENTE' && <HelpersPicker thread={d} />}
+          {!monitor && d.attendance && <AttendantPicker thread={d} />}
+          {!monitor && d.attendance && <HelpersPicker thread={d} />}
           {!monitor && d.conversation.category !== 'GRUPO' && d.conversation.phone && <SaveContactButton thread={d} />}
           {!monitor && can('chat', 'create') && d.conversation.category === 'CLIENTE' && d.conversation.status === 'ABERTA' && <FinishButton thread={d} />}
           {!monitor && <ConversationActions thread={d} />}
@@ -1132,7 +1132,10 @@ function Reactions({ list }: { list: { emoji: string; by: 'me' | 'them'; name: s
 }
 
 
-/** Atendimento dividido: quem atende a conversa, assumir da fila e transferir para outro atendente ou setor. */
+/**
+ * Quem atende a conversa: assumir da fila (atendimento dividido) e transferir para outro atendente ou para a fila de
+ * um setor. Só aparecem os atendentes do mesmo número de WhatsApp.
+ */
 function AttendantPicker({ thread }: { thread: Thread }) {
   const qc = useQueryClient()
   const { me, can } = useAuth()
@@ -1153,7 +1156,7 @@ function AttendantPicker({ thread }: { thread: Thread }) {
   const value = thread.conversation.assignedUserId ? `u:${thread.conversation.assignedUserId}` : thread.conversation.sectorId ? `s:${thread.conversation.sectorId}` : 'fila'
   return (
     <>
-      {free && can('chat', 'create') && (
+      {free && a.split && thread.conversation.category === 'CLIENTE' && can('chat', 'create') && (
         <Button size="sm" onClick={() => save.mutate({ userId: me?.id ?? null })} disabled={save.isPending}>
           <HandIcon /> Assumir
         </Button>
@@ -1163,11 +1166,11 @@ function AttendantPicker({ thread }: { thread: Thread }) {
           value={value}
           onValueChange={(v) => save.mutate(v === 'fila' ? { userId: null, sectorId: null } : v.startsWith('s:') ? { userId: null, sectorId: v.slice(2) } : { userId: v.slice(2) })}
         >
-          <SelectTrigger size="sm" className="w-auto max-w-48" aria-label="Atendente da conversa">
+          <SelectTrigger size="sm" className="w-auto max-w-48" aria-label="Transferir a conversa" title="Transferir para outro atendente ou setor deste número">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="fila">Na fila (todos)</SelectItem>
+            <SelectItem value="fila">{a.split ? 'Na fila (todos)' : 'Sem atendente'}</SelectItem>
             {a.sectors.map((s) => (
               <SelectItem key={s.id} value={`s:${s.id}`}>
                 Fila: {s.name}
@@ -1202,7 +1205,7 @@ function HelpersPicker({ thread }: { thread: Thread }) {
   const [open, setOpen] = useState(false)
   const [picked, setPicked] = useState<string[]>([])
   const mine = thread.conversation.assignedUserId === me?.id
-  const allowed = mine || can('chat', 'edit')
+  const allowed = mine || !thread.conversation.assignedUserId || can('chat', 'edit')
   const options = (thread.attendance?.attendants ?? []).filter((a) => a.id !== thread.conversation.assignedUserId)
   const save = useMutation({
     mutationFn: (userIds: string[]) => api.post(`/chat/conversas/${id}/participantes`, { userIds }),
@@ -1232,7 +1235,7 @@ function HelpersPicker({ thread }: { thread: Thread }) {
       <PopoverContent align="end" className="w-72 space-y-2">
         <p className="text-sm font-medium">Participantes da conversa</p>
         <p className="text-xs text-muted-foreground">Atendentes deste número que também veem e respondem. O cliente continua com {thread.conversation.assignedUserName ?? 'quem atende'}.</p>
-        {options.length === 0 && <p className="text-sm text-muted-foreground">Não há outros atendentes neste número.</p>}
+        {options.length === 0 && <p className="text-sm text-muted-foreground">Não há outros atendentes neste número. Quem atende em outro número não entra nesta conversa.</p>}
         <ul className="max-h-56 space-y-1 overflow-y-auto">
           {options.map((a) => (
             <li key={a.id}>

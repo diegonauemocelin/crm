@@ -803,10 +803,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     // Quem atende abriu: mensagens e nota interna vistas (no monitoramento, nada muda).
     if (!monitor && !beforeDate && (conv.unread > 0 || conv.noteUnread)) await this.prisma.whatsappConversation.update({ where: { id }, data: { unread: 0, noteUnread: false } })
     const more = rows.length > PAGE
-    // Atendentes do número (para assumir e transferir) e o nome de quem atende.
-    // Atendentes: os do número e os dos setores que atendem nele (para assumir e transferir).
-    const numberSectors = number ? (await this.sectors(user.tenantId)).filter((x) => servesNumber(x, number.id)) : []
-    const attendants = number ? await this.prisma.user.findMany({ where: { id: { in: [...new Set([...number.userIds, ...numberSectors.flatMap((x) => x.userIds), ...(conv.assignedUserId ? [conv.assignedUserId] : []), ...conv.helperUserIds])] }, tenantId: user.tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true, active: true } }) : []
+    // Equipe do número (para transferir e adicionar participantes) e os nomes de quem atende e participa.
+    const team = number ? await this.numberTeam(user.tenantId, number.id) : null
+    const numberSectors = team?.sectors ?? []
+    const attendants = number ? await this.prisma.user.findMany({ where: { id: { in: [...new Set([...(team?.ids ?? []), ...(conv.assignedUserId ? [conv.assignedUserId] : []), ...conv.helperUserIds])] }, tenantId: user.tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true, active: true } }) : []
     const quotedIds = [...new Set(rows.map((r) => r.quotedWaId).filter((x): x is string => !!x))]
     // Mensagem respondida que está no CRM: se era da empresa e o id dela (para ir até ela na conversa).
     const quotedRows = new Map((quotedIds.length ? await this.prisma.whatsappMessage.findMany({ where: { conversationId: conv.id, waId: { in: quotedIds } }, select: { id: true, waId: true, fromMe: true } }) : []).map((q) => [q.waId, { id: q.id, fromMe: q.fromMe }]))
@@ -814,7 +814,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, assignedUserId: conv.assignedUserId, assignedUserName: attendants.find((a) => a.id === conv.assignedUserId)?.name ?? null, helpers: attendants.filter((a) => conv.helperUserIds.includes(a.id)).map((a) => ({ id: a.id, name: a.name })), sectorId: conv.sectorId, category: conv.category, unread: conv.unread, noReplyNeeded: conv.noReplyNeeded, lastInboundAt: conv.lastInboundAt, labels: (await this.labelsOf(user, [conv.id])).get(conv.id) ?? [] },
       /** Contato na agenda do número (ou na geral): nome e tipo salvos. */
       agenda: conv.category !== 'GRUPO' ? await this.agendaContact(user.tenantId, conv.numberId, conv.phone ?? conv.jid).then((c) => (c ? { name: c.name, category: c.category, general: c.scope === '' } : null)) : null,
-      attendance: number ? { split: number.splitAttendance, sectors: numberSectors.map((x) => ({ id: x.id, name: x.name })), attendants: attendants.filter((a) => a.active).map((a) => ({ id: a.id, name: a.name })) } : null,
+      attendance: number ? { split: number.splitAttendance, sectors: numberSectors.map((x) => ({ id: x.id, name: x.name })), attendants: attendants.filter((a) => a.active && team?.ids.has(a.id)).map((a) => ({ id: a.id, name: a.name })) } : null,
       monitor: !!monitor,
       /** Finalizar atendimento: texto da mensagem de encerramento (null = desligada em Regras e horário). */
       closeText: await this.rules(user.tenantId).then((r) => (r.close.enabled ? r.close.text : null)),
@@ -1551,6 +1551,20 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /**
+   * Quem atende num número: os usuários ligados a ele, os usuários dos vendedores dele e os atendentes dos setores
+   * que escolheram este número. Transferir e adicionar participantes só entre eles: quem está no número Y não
+   * recebe conversa do número X. As filas de setor que atendem no número continuam disponíveis.
+   */
+  private async numberTeam(tenantId: string, numberId: string) {
+    const number = await this.prisma.whatsappNumber.findUnique({ where: { id: numberId }, select: { userIds: true, sellerIds: true } })
+    if (!number) throw new NotFoundException('Número não encontrado.')
+    const all = await this.sectors(tenantId)
+    const sellers = number.sellerIds.length ? await this.prisma.seller.findMany({ where: { tenantId, id: { in: number.sellerIds } }, select: { userId: true } }) : []
+    const ids = new Set([...number.userIds, ...sellers.flatMap((s) => (s.userId ? [s.userId] : [])), ...all.filter((s) => s.numberIds.includes(numberId)).flatMap((s) => s.userIds)])
+    return { ids, sectors: all.filter((s) => servesNumber(s, numberId)) }
+  }
+
+  /**
    * Atendimento dividido: assumir da fila ou transferir para outro atendente ou para a fila de um setor.
    * Quem atende pode passar a própria conversa (ou uma da fila); com a ação Editar do chat, qualquer uma.
    */
@@ -1559,12 +1573,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const conv = await this.load(user, id)
     const canEdit = can(user.permissions, user.role.isSystem, 'chat', 'edit')
     if (!canEdit && conv.assignedUserId && conv.assignedUserId !== user.id) throw new ForbiddenException('Esta conversa é de outro atendente.')
-    const number = await this.prisma.whatsappNumber.findUnique({ where: { id: conv.numberId }, select: { userIds: true } })
-    if (!number) throw new NotFoundException('Número não encontrado.')
-    const sectors = (await this.sectors(user.tenantId)).filter((s) => servesNumber(s, conv.numberId))
+    const { ids, sectors } = await this.numberTeam(user.tenantId, conv.numberId)
     const userId = d.userId === undefined ? conv.assignedUserId : d.userId
-    // Atendente do número ou de um setor que atende nele.
-    if (userId && userId !== user.id && !number.userIds.includes(userId) && !sectors.some((s) => s.userIds.includes(userId))) throw new BadRequestException('Escolha um atendente deste número ou de um setor dele.')
+    // Transferir só para quem está ligado a este número: um número não mistura com outro. Assumir vale para quem vê a conversa.
+    if (userId && userId !== user.id && userId !== conv.assignedUserId && !ids.has(userId)) throw new BadRequestException('Só dá para passar a conversa para quem atende neste mesmo número de WhatsApp.')
     if (userId && !(await this.prisma.user.count({ where: { id: userId, tenantId: user.tenantId, active: true } }))) throw new BadRequestException('Atendente inválido.')
     const sectorId = d.sectorId === undefined ? conv.sectorId : d.sectorId
     if (sectorId && !sectors.some((s) => s.id === sectorId)) throw new BadRequestException('Setor inválido.')
@@ -1605,11 +1617,11 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     this.assertAction(user, 'chat', 'create')
     const conv = await this.load(user, id)
     const canEdit = can(user.permissions, user.role.isSystem, 'chat', 'edit')
-    if (!canEdit && conv.assignedUserId !== user.id) throw new ForbiddenException('Só quem atende a conversa pode adicionar participantes.')
-    const number = await this.prisma.whatsappNumber.findUnique({ where: { id: conv.numberId }, select: { userIds: true } })
-    if (!number) throw new NotFoundException('Número não encontrado.')
+    if (!canEdit && conv.assignedUserId && conv.assignedUserId !== user.id) throw new ForbiddenException('Só quem atende a conversa pode adicionar participantes.')
+    const { ids } = await this.numberTeam(user.tenantId, conv.numberId)
     const wanted = [...new Set(userIds)].filter((u) => u !== conv.assignedUserId)
-    if (wanted.some((u) => !number.userIds.includes(u))) throw new BadRequestException('Só dá para adicionar atendentes deste mesmo número de WhatsApp.')
+    // Quem já era participante continua podendo ficar; novos, só do mesmo número.
+    if (wanted.some((u) => !ids.has(u) && !conv.helperUserIds.includes(u))) throw new BadRequestException('Só dá para adicionar atendentes deste mesmo número de WhatsApp.')
     const active = await this.prisma.user.findMany({ where: { id: { in: wanted }, tenantId: user.tenantId, active: true }, select: { id: true, name: true } })
     const helperUserIds = active.map((u) => u.id).slice(0, 20)
     await this.prisma.whatsappConversation.update({ where: { id }, data: { helperUserIds } })
