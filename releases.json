@@ -2,6 +2,16 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.93.0",
+      "date": "2026-10-23",
+      "title": "Resumo do vendedor: cópia para o gestor e intervalo entre os envios",
+      "changes": [
+        { "type": "novo", "area": "Relatórios", "text": "Resumo do vendedor (semanal): campo opcional Também para o gestor, com o WhatsApp de até 10 gestores. Cada um recebe uma mensagem só, com o total da equipe (leads repassados, vendas, conversão, valor vendido e clientes sem contato) e uma linha por vendedor, mais a maior conversão e quem tem mais clientes sem contato. Em branco, vai só para os vendedores." },
+        { "type": "melhoria", "area": "Relatórios", "text": "Intervalo entre as mensagens do resumo para o WhatsApp não tratar como spam: uma por vez, com espera sorteada entre 2 e 10 minutos (ajustável de 1 a 60). Vendedor sem telefone é pulado sem esperar." },
+        { "type": "melhoria", "area": "Relatórios", "text": "A prévia do resumo mostra também a mensagem do gestor." }
+      ]
+    },
+    {
       "version": "0.92.0",
       "date": "2026-10-23",
       "title": "Resumo semanal de cada vendedor no WhatsApp (sexta a quinta)",

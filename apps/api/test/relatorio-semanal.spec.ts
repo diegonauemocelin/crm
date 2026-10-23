@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanWeekly, weeklyCycle, weeklyFor, weeklyMessage, type WeeklyRow, weeklyStats, weeklySuggestions } from '../src/atendimento/semanal'
+import { cleanWeekly, managerMessage, weeklyCycle, weeklyGapMs, weeklyFor, weeklyMessage, type WeeklyRow, weeklyStats, weeklySuggestions } from '../src/atendimento/semanal'
 
 const row = (o: Partial<WeeklyRow> = {}): WeeklyRow => ({ sellerId: 's1', name: 'Cliente', saleStatus: 'NEGOCIACAO', saleValue: null, returnStatus: null, calledAt: null, lostReason: null, ...o })
 
@@ -100,5 +100,40 @@ describe('relatório semanal do vendedor: números e sugestões', () => {
     expect(msg).toContain('Marcas mais pedidas: CAT (2), JCB (2)')
     expect(msg).toContain('Peças mais pedidas: Filtro (1)')
     expect(msg).toContain('Origem dos leads: Google Ads (2), Site (1)')
+  })
+})
+
+describe('resumo da equipe para o gestor', () => {
+  it('números do gestor: informados à mão, normalizados; vazio = só os vendedores', () => {
+    expect(cleanWeekly(undefined).managerPhones).toEqual([])
+    expect(cleanWeekly({ managerPhones: ['(47) 99999-8888', '+55 47 99999-8888', 'abc'] }).managerPhones).toEqual(['+5547999998888'])
+  })
+
+  it('totais da equipe, uma linha por vendedor e os destaques', () => {
+    const a = weeklyStats([row({ saleStatus: 'SIM', saleValue: 1000, calledAt: new Date() }), row({ name: 'X' }), row({ name: 'Y' }), row({ saleStatus: 'NAO', calledAt: new Date() })])
+    const b = weeklyStats([row({ saleStatus: 'SIM', saleValue: 500, calledAt: new Date() }), row({ saleStatus: 'SIM', saleValue: 300, calledAt: new Date() }), row({ saleStatus: 'NAO', calledAt: new Date() })])
+    const msg = managerMessage('16/10 a 22/10', [{ seller: 'André', stats: b }, { seller: 'Alana', stats: a }])
+    expect(msg).toContain('*Resumo semanal da equipe: 16/10 a 22/10*')
+    expect(msg).toContain('Leads repassados: *7*')
+    expect(msg).toContain('Vendas realizadas: *3*')
+    expect(msg).toContain('Conversão (vendas ÷ leads): *42,9%*')
+    expect(msg).toContain('Valor vendido: R$ 1.800,00')
+    expect(msg).toContain('Clientes ainda sem contato registrado: 2')
+    // Quem teve mais repasses primeiro
+    expect(msg.indexOf('• Alana: 4 lead(s) · 1 venda(s) · 25% · R$ 1.000,00 · 2 sem contato')).toBeLessThan(msg.indexOf('• André: 3 lead(s) · 2 venda(s) · 66,7%'))
+    expect(msg).toContain('Maior conversão: André (66,7%)')
+    expect(msg).toContain('Mais clientes sem contato: Alana (2)')
+  })
+})
+
+describe('intervalo entre as mensagens (anti-spam)', () => {
+  it('padrão de 2 a 10 minutos, sorteado a cada envio; limites de 1 a 60', () => {
+    const c = cleanWeekly(undefined)
+    expect([c.gapMin, c.gapMax]).toEqual([2, 10])
+    expect(weeklyGapMs(c, () => 0)).toBe(2 * 60_000)
+    expect(weeklyGapMs(c, () => 1)).toBe(10 * 60_000)
+    expect(weeklyGapMs(c, () => 0.5)).toBe(6 * 60_000)
+    expect(cleanWeekly({ gapMin: 15, gapMax: 5 })).toMatchObject({ gapMin: 5, gapMax: 15 })
+    expect(cleanWeekly({ gapMin: 0, gapMax: 90 })).toMatchObject({ gapMin: 2, gapMax: 10 })
   })
 })

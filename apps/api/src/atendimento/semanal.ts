@@ -4,6 +4,7 @@
  * Funções puras (testadas em test/relatorio-semanal.spec.ts) e a leitura do banco (loadWeekly).
  */
 import type { PrismaService } from '../prisma/prisma.service'
+import { normalizePhone } from './br'
 
 /** Informações que podem ir no resumo (a ordem é a da mensagem). */
 export const WEEKLY_SECTIONS = [
@@ -37,9 +38,14 @@ export interface SellerWeekly {
   allSellers: boolean
   sellerIds: string[]
   sections: WeeklySection[]
+  /** Gestores (WhatsApp, informados à mão): recebem o resumo da equipe com uma linha por vendedor. Vazio: só os vendedores. */
+  managerPhones: string[]
+  /** Intervalo sorteado entre uma mensagem e outra (minutos), para o WhatsApp não ver o envio como spam. */
+  gapMin: number
+  gapMax: number
 }
 
-export const DEFAULT_WEEKLY: SellerWeekly = { enabled: false, time: '08:00', numberId: null, allSellers: true, sellerIds: [], sections: DEFAULT_SECTIONS }
+export const DEFAULT_WEEKLY: SellerWeekly = { enabled: false, time: '08:00', numberId: null, allSellers: true, sellerIds: [], sections: DEFAULT_SECTIONS, managerPhones: [], gapMin: 2, gapMax: 10 }
 
 export function cleanWeekly(raw: Partial<SellerWeekly> | null | undefined): SellerWeekly {
   const r = raw ?? {}
@@ -51,8 +57,24 @@ export function cleanWeekly(raw: Partial<SellerWeekly> | null | undefined): Sell
     allSellers: r.allSellers !== false,
     sellerIds: Array.isArray(r.sellerIds) ? [...new Set(r.sellerIds.filter((x): x is string => typeof x === 'string'))].slice(0, 500) : [],
     sections: sections.length ? sections : DEFAULT_SECTIONS,
+    ...weeklyGap(r.gapMin, r.gapMax),
+    managerPhones: Array.isArray(r.managerPhones) ? [...new Set(r.managerPhones.map((x) => normalizePhone(String(x))).filter((x): x is string => !!x))].slice(0, 10) : [],
   }
 }
+/** Intervalo entre os envios: de 1 a 60 minutos (padrão 2 a 10), o menor sempre primeiro. */
+export function weeklyGap(min: unknown, max: unknown) {
+  const n = (v: unknown, d: number) => {
+    const x = Math.round(Number(v))
+    return Number.isFinite(x) && x >= 1 && x <= 60 ? x : d
+  }
+  const a = n(min, DEFAULT_WEEKLY.gapMin)
+  const b = n(max, DEFAULT_WEEKLY.gapMax)
+  return { gapMin: Math.min(a, b), gapMax: Math.max(a, b) }
+}
+
+/** Espera até a próxima mensagem (ms), sorteada no intervalo. */
+export const weeklyGapMs = (c: Pick<SellerWeekly, 'gapMin' | 'gapMax'>, random = Math.random) => Math.round((c.gapMin + random() * (c.gapMax - c.gapMin)) * 60_000)
+
 export const isWeeklySection = (k: string): k is WeeklySection => SECTION_KEYS.has(k)
 
 export const weeklyFor = (c: SellerWeekly, sellerId: string) => c.enabled && (c.allSellers || c.sellerIds.includes(sellerId))
@@ -198,6 +220,41 @@ export function weeklyMessage(o: { seller: string; label: string; stats: WeeklyS
   if (has('sem_contato') && s.noContact.length) lines.push('', `*Ainda sem contato registrado (${s.noContact.length})*`, ...s.noContact.slice(0, 15).map((n) => `• ${n}`), ...(s.noContact.length > 15 ? [`• e mais ${s.noContact.length - 15}`] : []))
   if (has('sugestoes') && o.suggestions.length) lines.push('', '*Sugestões*', ...o.suggestions.map((x) => `• ${x}`))
   return lines.join('\n')
+}
+
+/** Linha de um vendedor no resumo do gestor. */
+export interface ManagerLine {
+  seller: string
+  stats: WeeklyStats
+}
+
+/**
+ * Resumo da equipe para o gestor: os totais do ciclo e uma linha por vendedor (leads, vendas, conversão e, se
+ * escolhidos, valor vendido e quem ainda está sem contato), com os destaques da semana.
+ */
+export function managerMessage(label: string, lines: ManagerLine[], sections: WeeklySection[] = DEFAULT_SECTIONS) {
+  const has = (k: WeeklySection) => sections.includes(k)
+  const sum = (f: (s: WeeklyStats) => number) => lines.reduce((a, l) => a + f(l.stats), 0)
+  const forwarded = sum((s) => s.forwarded)
+  const sales = sum((s) => s.sales)
+  const revenue = Math.round(sum((s) => s.revenue) * 100) / 100
+  const noContact = sum((s) => s.noContact.length)
+  const out = [`*Resumo semanal da equipe: ${label}*`, '', `📥 Leads repassados: *${forwarded}*`, `✅ Vendas realizadas: *${sales}*`, `📈 Conversão (vendas ÷ leads): *${fmtPct(pct(sales, forwarded))}*`]
+  if (has('valor') && revenue) out.push(`💰 Valor vendido: ${brl(revenue)}`)
+  if ((has('sem_contato') || has('sugestoes')) && noContact) out.push(`⚠️ Clientes ainda sem contato registrado: ${noContact}`)
+  out.push('', '*Por vendedor*')
+  for (const l of [...lines].sort((a, b) => b.stats.forwarded - a.stats.forwarded || a.seller.localeCompare(b.seller, 'pt-BR'))) {
+    const s = l.stats
+    const extra = [has('valor') && s.revenue ? brl(s.revenue) : null, (has('sem_contato') || has('sugestoes')) && s.noContact.length ? `${s.noContact.length} sem contato` : null].filter(Boolean)
+    out.push(`• ${l.seller}: ${s.forwarded} lead(s) · ${s.sales} venda(s) · ${fmtPct(s.conversion)}${extra.length ? ` · ${extra.join(' · ')}` : ''}`)
+  }
+  const ranked = lines.filter((l) => l.stats.forwarded >= 3 && l.stats.conversion !== null).sort((a, b) => b.stats.conversion! - a.stats.conversion!)
+  if (ranked.length >= 2) {
+    out.push('', `🏆 Maior conversão: ${ranked[0]!.seller} (${fmtPct(ranked[0]!.stats.conversion)})`)
+    const late = [...lines].sort((a, b) => b.stats.noContact.length - a.stats.noContact.length)[0]!
+    if (late.stats.noContact.length >= 2) out.push(`📞 Mais clientes sem contato: ${late.seller} (${late.stats.noContact.length})`)
+  }
+  return out.join('\n')
 }
 
 /** Leitura do ciclo: repasses por vendedor (ciclo e anterior), média da equipe e vendas fechadas na semana. */
