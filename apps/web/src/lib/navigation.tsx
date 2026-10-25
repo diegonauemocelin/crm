@@ -1,4 +1,5 @@
 import {
+  ActivityIcon,
   BarChart3Icon,
   BotIcon,
   ClipboardListIcon,
@@ -73,6 +74,7 @@ export const NAVIGATION: NavGroup[] = [
     title: 'Dashboards',
     items: [
       { title: 'Início', to: '/', icon: LayoutDashboardIcon },
+      { title: 'Vendas em tempo real', to: '/vendas-ao-vivo', icon: ActivityIcon, module: 'relatorios' },
       { title: 'Atendimento WhatsApp', to: '/whatsapp/dashboard', icon: MessageCircleIcon, module: 'chat' },
       { title: 'Resultados do e-mail', to: '/email-marketing/dashboard', icon: MailIcon, module: 'email_marketing' },
       { title: 'Google Ads', to: '/google-ads', icon: TargetIcon, module: 'google_ads' },

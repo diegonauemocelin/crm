@@ -24,6 +24,10 @@ class PeriodDto {
   @IsOptional() @Matches(DATE) ate?: string
 }
 
+class MapDto extends PeriodDto {
+  @IsOptional() @IsIn(['tudo', 'atendimento', 'ecommerce', 'marketplace']) origem?: string
+}
+
 class ThumbDto {
   @IsString() @MaxLength(2000) u!: string
 }
@@ -133,6 +137,19 @@ export class MarketingController {
   analysis(@CurrentUser() user: AuthUser, @Query() q: AnalysisDto) {
     this.assertAny(user, MarketingController.ANALYSIS_MODULES)
     return this.mkt.analysis(user, { from: q.de, to: q.ate, visao: q.visao, filters: filtersOf(q) })
+  }
+
+  @Get('ao-vivo')
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  live(@CurrentUser() user: AuthUser, @Query() q: MapDto) {
+    this.mkt.assertCan(user, 'relatorios')
+    return this.mkt.live(user.tenantId, { origin: q.origem })
+  }
+
+  @Get('mapa')
+  map(@CurrentUser() user: AuthUser, @Query() q: MapDto) {
+    this.mkt.assertCan(user, 'mi_executivo')
+    return this.mkt.map(user.tenantId, { from: q.de, to: q.ate, origin: q.origem })
   }
 
   @Get('email')

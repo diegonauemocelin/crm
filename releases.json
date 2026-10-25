@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.98.0",
+      "date": "2026-10-25",
+      "title": "Mapa de vendas e vendas em tempo real",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Marketing",
+          "text": "Mapa de vendas no Dashboard executivo: o mapa do Brasil fica mais colorido onde a empresa vendeu mais (sem venda, sem cor), com o modo Onde já cheguei (vendas e atendimentos), filtro por origem (atendimento, e-commerce, marketplace ou tudo) e as cidades de cada estado."
+        },
+        {
+          "type": "novo",
+          "area": "Dashboards",
+          "text": "Vendas em tempo real: o que entrou hoje no atendimento, no e-commerce e no marketplace, juntos ou separados, comparado com ontem até a mesma hora, vendas por hora e as últimas vendas. Atualiza sozinho a cada 30 segundos."
+        }
+      ]
+    },
+    {
       "version": "0.97.0",
       "date": "2026-10-25",
       "title": "Postagens: calendário do Instagram e do Facebook em várias contas, com aprovação, artes, vídeos, IA e métricas",

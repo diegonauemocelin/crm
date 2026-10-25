@@ -42,6 +42,7 @@ import {
   GRANULARITIES,
   type Granularity,
   indicators,
+  dayStart,
   localDay,
   periods,
   PLATFORMS,
@@ -52,6 +53,8 @@ import {
   type Rules,
   series,
 } from './metricas'
+import { buildLive, type LiveSale } from './ao-vivo'
+import { aggregateMap, MAP_ORIGINS, type MapOrigin, type MapRow, orderSource } from './mapa'
 import { DEFAULT_ALERT_WORDS, negativeSuggestions } from '../googleads/detalhes'
 import { fatigue } from './plataformas'
 import { recommendations } from './recomendacoes'
@@ -542,6 +545,55 @@ export class MarketingService {
   }
 
   /** E-mail marketing do período (dados do próprio CRM): envio, abertura registrada, clique e descadastro por campanha. */
+  /**
+   * Vendas em tempo real (hoje e ontem): atendimentos que viraram venda (hora em que a venda foi marcada no histórico,
+   * ou a criação quando já nasceu vendido) e pedidos pagos da loja (e-commerce e marketplace pelo canal).
+   */
+  async live(tenantId: string, q: { origin?: string }) {
+    const origin: MapOrigin = (MAP_ORIGINS as readonly string[]).includes(q.origin ?? '') ? (q.origin as MapOrigin) : 'tudo'
+    const now = Date.now()
+    const since = dayStart(localDay(new Date(now - 24 * 3_600_000)))
+    const [records, orders] = await Promise.all([
+      origin === 'tudo' || origin === 'atendimento'
+        ? this.prisma.$queryRaw<{ name: string; city: string | null; state: string | null; value: unknown; seller: string | null; at: Date }[]>`
+            SELECT r.name, r.city, r.state, r."saleValue" AS value, s.name AS seller, coalesce(h.at, r."createdAt") AS at
+            FROM service_records r
+            LEFT JOIN sellers s ON s.id = r."sellerId"
+            LEFT JOIN LATERAL (SELECT max(x."createdAt") AS at FROM service_record_history x WHERE x."recordId" = r.id AND x.changes -> 'saleStatus' ->> 'para' = 'SIM') h ON true
+            WHERE r."tenantId" = ${tenantId}::uuid AND r."deletedAt" IS NULL AND r.kind = 'PRE_VENDAS' AND r."saleStatus" = 'SIM'
+              AND coalesce(h.at, r."createdAt") >= ${since}
+            ORDER BY at DESC LIMIT 2000`
+        : [],
+      origin === 'atendimento'
+        ? []
+        : this.prisma.ecommerceOrder.findMany({ where: { tenantId, statusGroup: 'pago', orderedAt: { gte: since } }, orderBy: { orderedAt: 'desc' }, take: 2000, select: { code: true, total: true, channel: true, orderedAt: true, lead: { select: { name: true, city: true, state: true } } } }),
+    ])
+    const sales: LiveSale[] = [
+      ...records.map((r) => ({ source: 'atendimento' as const, at: new Date(r.at), value: Number(r.value ?? 0), title: r.name, city: r.city, state: r.state, who: r.seller })),
+      ...orders.map((o) => ({ source: orderSource(o.channel), at: o.orderedAt, value: Number(o.total), title: o.lead?.name ? `${o.lead.name} · pedido ${o.code}` : `Pedido ${o.code}`, city: o.lead?.city ?? null, state: o.lead?.state ?? null, who: o.channel })),
+    ]
+    return { origin, ...buildLive(sales, origin, now) }
+  }
+
+  /** Mapa de vendas do Dashboard executivo: atendimentos do Pré-Vendas e pedidos pagos da loja (e-commerce e marketplace). */
+  async map(tenantId: string, q: { from?: string; to?: string; origin?: string }) {
+    const p = periods(q.from, q.to)
+    const origin: MapOrigin = (MAP_ORIGINS as readonly string[]).includes(q.origin ?? '') ? (q.origin as MapOrigin) : 'tudo'
+    const [records, orders] = await Promise.all([
+      origin === 'tudo' || origin === 'atendimento'
+        ? this.prisma.serviceRecord.findMany({ where: { tenantId, deletedAt: null, kind: 'PRE_VENDAS', leadAt: { gte: p.start, lt: p.end } }, select: { state: true, city: true, saleStatus: true, saleValue: true } })
+        : [],
+      origin === 'atendimento'
+        ? []
+        : this.prisma.ecommerceOrder.findMany({ where: { tenantId, statusGroup: 'pago', orderedAt: { gte: p.start, lt: p.end } }, select: { total: true, channel: true, lead: { select: { state: true, city: true } } } }),
+    ])
+    const rows: MapRow[] = [
+      ...records.map((r) => ({ source: 'atendimento' as const, state: r.state, city: r.city, sale: r.saleStatus === 'SIM', value: r.saleStatus === 'SIM' ? Number(r.saleValue ?? 0) : 0 })),
+      ...orders.map((o) => ({ source: orderSource(o.channel), state: o.lead?.state ?? null, city: o.lead?.city ?? null, sale: true, value: Number(o.total) })),
+    ]
+    return { period: { from: p.from, to: p.to }, origin, ...aggregateMap(rows, origin) }
+  }
+
   async email(tenantId: string, q: { from?: string; to?: string }) {
     const p = periods(q.from, q.to)
     const T = tenantId
