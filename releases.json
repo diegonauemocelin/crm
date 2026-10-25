@@ -2,6 +2,53 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.97.0",
+      "date": "2026-10-25",
+      "title": "Postagens: calendário do Instagram e do Facebook em várias contas, com aprovação, artes, vídeos, IA e métricas",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "Nova tela Marketing › Postagens: calendário do mês com as postagens do Instagram e do Facebook (feed, Stories e Reels), cada uma no dia e na hora marcados, com a situação (rascunho, aguardando aprovação, agendada, publicada ou erro)."
+        },
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "Várias contas: a conta oficial e as dos vendedores (Instagram e páginas do Facebook), cadastradas na aba Contas (com Buscar na Meta) e separadas em grupos (ex.: Oficial, Vendedores). Cada postagem sai nas contas marcadas: uma, um grupo inteiro ou todas, com o resultado de cada conta."
+        },
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "Aprovação: quem cria monta a postagem e envia para aprovação; quem aprova (permissão Editar) aprova, devolve com o motivo ou cancela o agendamento. Mudou o conteúdo depois de aprovada, volta para aprovação."
+        },
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "Publicação automática na hora marcada pela conexão da Meta do Marketing Inteligente (imagem, carrossel de até 10, vídeo, Stories e Reels). O erro de cada rede aparece na postagem, com Tentar de novo só no que faltou. Botão Testar publicação confere as permissões do token."
+        },
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "Biblioteca de mídias com o editor de imagem: foto do computador, do catálogo da loja ou criada pela IA, enquadrada no tamanho do Instagram (1:1, 4:5 ou 9:16), com título, faixa e logo da marca. Vídeo para Reels e Stories montado a partir de fotos, ou envio de vídeo MP4."
+        },
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "Aba Métricas: seguidores, alcance, interações, curtidas, comentários, salvos, compartilhamentos e engajamento dos últimos 28 dias por conta e somados por grupo; perfil dos seguidores do Instagram (idade, gênero, cidades e países) e os números de cada postagem publicada pelo CRM."
+        },
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "IA gratuita (Gemini): escreve e melhora a legenda e sugere um calendário do período (temas, formatos e horários) que vira rascunhos. Imagens com IA dependem da cota gratuita do Gemini, que é pequena: sem cota, aparece o aviso."
+        },
+        {
+          "type": "novo",
+          "area": "Permissões",
+          "text": "Nova permissão Postagens (Ver; Criar: montar e mandar para aprovação; Editar: aprovar e publicar; Excluir: apagar postagens e mídias)."
+        }
+      ]
+    },
+    {
       "version": "0.96.0",
       "date": "2026-10-23",
       "title": "Excluir usuário",

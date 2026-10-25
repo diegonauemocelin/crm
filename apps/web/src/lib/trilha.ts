@@ -645,6 +645,50 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'postagens',
+    title: 'Postagens',
+    module: 'postagens',
+    routes: ['/postagens'],
+    purpose: 'Planejar e publicar as postagens do Instagram e do Facebook (feed, Stories e Reels) no dia e na hora certos.',
+    howItWorks: 'Você monta a postagem com imagens próprias, fotos do catálogo, artes com a marca ou imagens da IA, e a legenda (a IA gratuita ajuda), e escolhe em quais contas sai: uma, um grupo (ex.: Vendedores) ou todas. Ela vai para aprovação; depois de aprovada, o CRM publica sozinho na hora marcada. A aba Métricas mostra seguidores, alcance, engajamento e o perfil dos seguidores de cada conta e de cada grupo.',
+    media: { src: '/trilha/postagens.jpg', alt: 'Calendário de postagens' },
+    lessons: [
+      {
+        id: 'postagens.criar',
+        title: 'Criar e agendar uma postagem',
+        steps: [
+          'Abra Marketing → Postagens e clique em Nova postagem (ou no + do dia no calendário).',
+          'Em Onde publicar, marque as contas (uma, um grupo inteiro ou todas), o formato (Feed, Stories ou Reels) e a data e hora.',
+          'Em Imagens ou vídeo: traga da biblioteca, prepare uma imagem nova (do computador, do catálogo ou com IA) ou monte um vídeo a partir de fotos.',
+          'Escreva a legenda ou use Escrever com IA e confira o texto.',
+          'Clique em Enviar para aprovação. Quem aprova vê a postagem em Aguardando aprovação e clica em Aprovar.',
+        ],
+        tip: 'A IA não inventa preço, prazo nem estoque: onde faltar dado ela escreve [conferir: …]. Complete antes de mandar para aprovação.',
+      },
+      {
+        id: 'postagens.calendario',
+        title: 'Calendário com IA',
+        steps: [
+          'Clique em Calendário com IA, escolha o período, quantas postagens por semana, os temas, as redes e os formatos.',
+          'Confira as sugestões e desmarque o que não quiser; clique em Criar rascunhos.',
+          'Abra cada rascunho, escolha a imagem e mande para aprovação.',
+        ],
+      },
+      {
+        id: 'postagens.conexao',
+        title: 'Contas, grupos e métricas',
+        steps: [
+          'Na aba Contas, clique em Buscar na Meta e adicione a conta oficial e as dos vendedores; dê um grupo a cada uma (ex.: Oficial, Vendedores).',
+          'O CRM usa o token de Configurações › Marketing Inteligente: as páginas (e o Instagram ligado a cada uma) precisam estar atribuídas ao usuário do sistema.',
+          'Na aba Métricas: seguidores, alcance, interações e engajamento dos últimos 28 dias, por conta e por grupo; clique numa conta do Instagram para ver idade, gênero e cidades dos seguidores.',
+          'Para publicar, o token precisa das permissões instagram_content_publish e pages_manage_posts. Use Testar publicação para conferir.',
+          'Se uma postagem der erro, o motivo aparece nela; corrija e clique em Tentar de novo (só as redes que falharam).',
+        ],
+        tip: 'O Instagram aceita até 50 publicações por dia e imagens do feed entre 4:5 e 1,91:1 (o editor de imagem já enquadra).',
+      },
+    ],
+  },
+  {
     key: 'automacoes',
     title: 'Automações',
     module: 'automacoes',

@@ -11,6 +11,7 @@ export const MODULES = [
   { key: 'monitoramento', label: 'Monitorar conversas do WhatsApp', group: 'Atendimento', help: 'Ver: ler as conversas de todos os números e vendedores, só leitura e sem marcar como lidas (o vendedor continua vendo as mensagens novas). Cada conversa aberta fica registrada na auditoria. Criar: escrever nota interna na conversa (liberação de desconto, orientação), que só aparece no CRM: o cliente nunca recebe.' },
   { key: 'whatsapp', label: 'Números de WhatsApp', group: 'Atendimento', help: 'Ver: números, regras e contatos da empresa. Criar: cadastrar número. Editar: conectar (QR Code), desconectar, regras, contatos da empresa e respostas rápidas. Excluir: remover o número.' },
   { key: 'captura', label: 'Formulários, LPs e pop-ups', group: 'Marketing', help: 'Formulários, pop-ups, botões de WhatsApp e o editor visual.' },
+  { key: 'postagens', label: 'Postagens (Instagram e Facebook)', group: 'Marketing', help: 'Ver: calendário e biblioteca. Criar: montar postagens, mídias e textos com IA, e mandar para aprovação. Editar: aprovar, devolver, publicar e cancelar. Excluir: apagar postagens e mídias.' },
   { key: 'email_marketing', label: 'Email marketing', group: 'Marketing', help: 'Segmentos e campanhas. Criar/Editar inclui enviar.' },
   { key: 'automacoes', label: 'Automações', group: 'Marketing', help: 'Fluxos automáticos. Editar inclui ligar e desligar.' },
   { key: 'catalogo', label: 'Catálogo de produtos', group: 'E-commerce', help: 'Produtos da loja virtual e seus números.' },

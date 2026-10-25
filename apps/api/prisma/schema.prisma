@@ -2477,3 +2477,67 @@ model WhatsappSticker {
   @@index([tenantId, userId, createdAt])
   @@map("whatsapp_stickers")
 }
+
+/// Biblioteca de mídias das postagens: fotos (JPEG) e vídeos (MP4) próprios, artes montadas no CRM e imagens da IA.
+model SocialMedia {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  /// Arquivo guardado no CRM (FileAsset, tipo "postagem").
+  fileId        String   @db.Uuid
+  /// imagem ou video
+  kind          String
+  mime          String
+  name          String
+  /// upload, arte, catalogo, ia ou video (montado a partir de fotos)
+  source        String   @default("upload")
+  width         Int?
+  height        Int?
+  size          Int      @default(0)
+  createdById   String?  @db.Uuid
+  createdByName String?
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@map("social_media")
+}
+
+/// Postagens planejadas no Instagram e no Facebook: rascunho → aprovação → agendada → publicada.
+model SocialPost {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  title          String
+  caption        String    @default("")
+  /// Contas escolhidas (ids da lista de contas de Postagens): uma, várias ou todas.
+  accountIds     String[]  @default([])
+  /// Redes dessas contas (instagram, facebook), para os ícones e as regras de formato.
+  networks       String[]  @default([])
+  /// FEED, STORIES ou REELS
+  format         String    @default("FEED")
+  /// Mídias da biblioteca (SocialMedia), na ordem do carrossel.
+  mediaIds       String[]  @default([])
+  /// Quando publicar; vazio = assim que for aprovada.
+  scheduledAt    DateTime?
+  /// RASCUNHO, EM_APROVACAO, APROVADO, PUBLICANDO, PUBLICADO ou ERRO
+  status         String    @default("RASCUNHO")
+  /// Endereço público das mídias para a Meta baixar (difícil de adivinhar; só vale até publicar).
+  publicToken    String
+  /// Por rede: { id, permalink, at } ou { error }.
+  results        Json?
+  error          String?
+  /// Motivo de a aprovação ter devolvido a postagem.
+  reviewNote     String?
+  createdById    String?   @db.Uuid
+  createdByName  String?
+  updatedByName  String?
+  submittedAt    DateTime?
+  approvedById   String?   @db.Uuid
+  approvedByName String?
+  approvedAt     DateTime?
+  publishedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([tenantId, scheduledAt])
+  @@index([status, scheduledAt])
+  @@map("social_posts")
+}

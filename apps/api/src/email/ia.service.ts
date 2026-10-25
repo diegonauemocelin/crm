@@ -180,6 +180,53 @@ export class EmailAiService {
     return cleanTranscript(r.text)
   }
 
+  /**
+   * Imagem com a mesma chave do Gemini (modelos de imagem, ex.: gemini-2.5-flash-image). A cota gratuita de imagens
+   * é pequena e muda: sem cota, avisa para usar uma imagem própria.
+   */
+  async image(tenantId: string, prompt: string, aspect: '1:1' | '9:16' | '4:5') {
+    const s = await this.config(tenantId)
+    if (!s.apiKeyEnc) throw new BadRequestException('Para gerar imagens, cadastre a chave do Gemini em Configurações → E-mail marketing (é gratuita no Google AI Studio).')
+    const apiKey = decrypt(s.apiKeyEnc)
+    let names: string[] = []
+    try {
+      const res = await fetch(`${GEMINI}?pageSize=1000`, { headers: { 'x-goog-api-key': apiKey }, signal: AbortSignal.timeout(10_000), redirect: 'error' })
+      if (res.ok) {
+        const models = ((await res.json()) as { models?: { name: string; supportedGenerationMethods?: string[] }[] }).models ?? []
+        names = models.filter((m) => /image/i.test(m.name) && /gemini/i.test(m.name) && (m.supportedGenerationMethods ?? []).includes('generateContent')).map((m) => m.name.replace(/^models\//, ''))
+      }
+    } catch {
+      /* sem a lista: tenta os nomes conhecidos */
+    }
+    const prefer = (n: string) => (/2\.5-flash-image$/.test(n) ? 0 : /2\.5-flash-image/.test(n) ? 1 : /flash.*image/.test(n) ? 2 : 3)
+    const list = [...new Set([...names.sort((a, b) => prefer(a) - prefer(b)), 'gemini-2.5-flash-image', 'gemini-2.0-flash-preview-image-generation'])].slice(0, 3)
+    let last = 'Nenhum modelo de imagem do Gemini disponível para esta chave.'
+    for (const model of list) {
+      const body = {
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { responseModalities: ['TEXT', 'IMAGE'], ...(/2\.5-flash-image/.test(model) ? { imageConfig: { aspectRatio: aspect } } : {}) },
+      }
+      let res: Response
+      try {
+        res = await fetch(`${GEMINI}/${model}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey }, body: JSON.stringify(body), signal: AbortSignal.timeout(TIMEOUT_MS * 2), redirect: 'error' })
+      } catch {
+        last = 'O Gemini não respondeu a tempo. Tente de novo.'
+        continue
+      }
+      const data = (await res.json().catch(() => null)) as { candidates?: { content?: { parts?: { inlineData?: { mimeType?: string; data?: string } }[] } }[] } | null
+      if (res.status === 429) throw new BadRequestException('A cota gratuita de imagens do Gemini acabou (ou a sua chave não tem imagens no plano gratuito). Use uma imagem própria, uma foto do catálogo ou tente amanhã.')
+      if (res.status === 404 || (res.status === 400 && /model|modalit/i.test(JSON.stringify(data ?? '')))) {
+        last = `Modelo ${model} indisponível para esta chave.`
+        continue
+      }
+      if (!res.ok) throw new BadRequestException(aiError(res.status, data))
+      const part = data?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data)
+      if (!part?.inlineData?.data) throw new BadRequestException('O Gemini não devolveu imagem para este pedido. Mude a descrição e tente de novo.')
+      return { mime: part.inlineData.mimeType ?? 'image/png', data: part.inlineData.data, model }
+    }
+    throw new BadRequestException(last)
+  }
+
   async test(user: AuthUser) {
     this.assertCan(user, 'edit')
     const s = await this.config(user.tenantId)
