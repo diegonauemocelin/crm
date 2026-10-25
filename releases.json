@@ -15,6 +15,11 @@
           "type": "novo",
           "area": "Dashboards",
           "text": "Vendas em tempo real: o que entrou hoje no atendimento, no e-commerce e no marketplace, juntos ou separados, comparado com ontem até a mesma hora, vendas por hora e as últimas vendas. Atualiza sozinho a cada 30 segundos."
+        },
+        {
+          "type": "infra",
+          "area": "Segurança",
+          "text": "Dependências atualizadas com as correções de segurança apontadas pelo npm audit (body-parser, multer, fast-uri, zod, nodemailer e SDK da Anthropic)."
         }
       ]
     },
