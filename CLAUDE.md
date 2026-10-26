@@ -26,6 +26,15 @@ daquele computador.
    Commits que não são versão: `docs:`, `deps:`, `deploy:`. Detalhes em `docs/RELEASES.md`.
 5. Na VPS o usuário roda `cd /opt/usaparts-crm && sudo bash deploy/deploy.sh` (ver `docs/DEPLOY.md`).
 
+## Replicar no SG Multiconecta (SaaS)
+
+Toda versão entregue aqui (novidades, correções, tudo) também vai para o CRM da SG Multiconecta: repositório
+`diegonauemocelin/saascrm` (pasta `APP IA/Saas SG`), que nasceu de uma cópia deste na 0.97.0 e é **multiempresa**.
+Depois de publicar a vX.Y.Z aqui, leve a mudança para lá como a próxima 1.0.N, adaptada: empresa pelo endereço
+(`requireFromHost`, nunca `defaultId()` em rota pública), permissões filtradas pelo plano, textos genéricos (sem o ramo
+da Usaparts). Siga o CLAUDE.md e o docs/HISTORICO.md de lá. O pedido do usuário já vale como permissão para enviar.
+Coisas só da Usaparts (dados, scripts da VPS dela, importação do painel antigo) não vão.
+
 ## Decisões do usuário (não desfazer sem ele pedir)
 
 - Chat sem botão de ligar pelo WhatsApp (foi retirado a pedido).
