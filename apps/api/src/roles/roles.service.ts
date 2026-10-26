@@ -1,8 +1,10 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import type { RequestCtx } from '../common/decorators'
+import { cleanLoginHours } from '../common/horario-acesso'
 import { MODULE_KEYS, type ModuleKey, type Scope } from '../common/permissions'
 import type { AuthUser } from '../common/types'
+import { Prisma } from '../generated/prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 
 export interface PermissionInput {
@@ -19,6 +21,7 @@ export interface RoleInput {
   name: string
   description?: string
   require2fa: boolean
+  loginHours?: unknown
   active: boolean
   permissions: PermissionInput[]
 }
@@ -56,6 +59,7 @@ export class RolesService {
         name: input.name.trim(),
         description: input.description,
         require2fa: input.require2fa,
+        loginHours: hoursData(input.loginHours),
         active: input.active,
         permissions: { create: toRows(input.permissions) },
       },
@@ -79,6 +83,7 @@ export class RolesService {
           name: input.name.trim(),
           description: input.description,
           require2fa: input.require2fa,
+          ...(input.loginHours !== undefined ? { loginHours: hoursData(input.loginHours) } : {}),
           active: input.active,
           permissions: { create: toRows(input.permissions) },
         },
@@ -128,6 +133,7 @@ function view(role: {
   description: string | null
   isSystem: boolean
   require2fa: boolean
+  loginHours: unknown
   active: boolean
   permissions: { module: string; canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean; canExport: boolean; scope: Scope }[]
   _count: { users: number }
@@ -138,6 +144,7 @@ function view(role: {
     description: role.description,
     isSystem: role.isSystem,
     require2fa: role.require2fa,
+    loginHours: cleanLoginHours(role.loginHours),
     active: role.active,
     userCount: role._count.users,
     permissions: role.permissions.map((p) => ({
@@ -150,4 +157,10 @@ function view(role: {
       scope: p.scope,
     })),
   }
+}
+
+/** Horário de acesso limpo; desligado ou vazio grava nulo. */
+function hoursData(raw: unknown) {
+  const h = cleanLoginHours(raw)
+  return h?.enabled ? (h as unknown as Prisma.InputJsonValue) : Prisma.JsonNull
 }

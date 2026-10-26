@@ -2,6 +2,38 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.99.0",
+      "date": "2026-10-26",
+      "title": "App no celular: chat como o WhatsApp, painéis, notificações e horário de acesso",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "App no celular",
+          "text": "O sistema instala na tela inicial do celular (Android e iPhone), sem loja de aplicativos e sem custo: abra o endereço do sistema com /app no fim e use Instalar app (Chrome) ou Adicionar à Tela de Início (Safari). O ícone e o nome são os da empresa."
+        },
+        {
+          "type": "novo",
+          "area": "App no celular",
+          "text": "Aberto pelo ícone, o app mostra só as conversas, os painéis que o perfil libera e a conta. As conversas ficam como no WhatsApp: lista com foto, última mensagem, hora e não lidas; a conversa abre em tela cheia e as opções (transferir, participantes, etiquetas, lembrete, pré-venda, finalizar) ficam no ⋮."
+        },
+        {
+          "type": "novo",
+          "area": "App no celular",
+          "text": "Notificações: mensagem nova aparece no celular mesmo com o app fechado, para quem atende a conversa e os participantes (sem atendente, para a equipe do número). Tocar abre a conversa. Liga em Conta › Notificações; ao sair da conta, as notificações param naquele celular."
+        },
+        {
+          "type": "novo",
+          "area": "Perfis de acesso",
+          "text": "Horário de acesso por perfil: dias e horas em que o perfil pode entrar (horário de Brasília). Fora do horário, o login é recusado com o motivo e quem estava dentro é desconectado, no computador e no app. O Administrador não tem limite."
+        },
+        {
+          "type": "melhoria",
+          "area": "Configurações",
+          "text": "Configurações › Marca › Ícone do app no celular: envie uma imagem ou use o logo; o sistema deixa quadrado para a tela inicial."
+        }
+      ]
+    },
+    {
       "version": "0.98.2",
       "date": "2026-10-26",
       "title": "Chat: vários arquivos de uma vez e botões de robô",

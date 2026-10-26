@@ -3,6 +3,7 @@ import { Reflector } from '@nestjs/core'
 import { JwtService } from '@nestjs/jwt'
 import type { Request } from 'express'
 import { ALLOW_PENDING_2FA, IS_PUBLIC, PERMISSION } from '../common/decorators'
+import { outsideHoursMessage, withinLoginHours } from '../common/horario-acesso'
 import { type Action, can, type PermissionSet } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import { PrismaService } from '../prisma/prisma.service'
@@ -46,6 +47,11 @@ export class AuthGuard implements CanActivate {
     ])
     if (!user || !user.active || !user.role.active || !liveSession || user.tenantId !== payload.tid) {
       throw new UnauthorizedException()
+    }
+    // Fora do horário de acesso do perfil: encerra a sessão (o próximo login mostra o motivo).
+    if (!withinLoginHours(user.role.loginHours, user.role.isSystem)) {
+      await this.prisma.refreshToken.updateMany({ where: { familyId: payload.fam, revokedAt: null }, data: { revokedAt: new Date() } })
+      throw new UnauthorizedException(outsideHoursMessage(user.role.loginHours))
     }
     // Senha trocada depois da emissão do token invalida a sessão.
     if (payload.iat * 1000 < user.passwordChangedAt.getTime() - 1000) throw new UnauthorizedException()

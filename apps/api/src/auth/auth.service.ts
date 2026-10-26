@@ -11,6 +11,7 @@ import { MailService } from '../settings/mail.service'
 import { SettingsService } from '../settings/settings.service'
 import { dummyVerify, hashPassword, needsRehash, passwordProblems, verifyPassword } from './password'
 import { SecurityService } from './security.service'
+import { outsideHoursMessage, withinLoginHours } from '../common/horario-acesso'
 import { checkTotp } from './totp'
 
 export const MAX_FAILED_LOGINS = 5
@@ -79,6 +80,12 @@ export class AuthService {
     if (!user.active || !user.role.active) {
       await this.audit.log({ tenantId, userId: user.id, userEmail: email, action: 'auth.login_failed', ...ctx, data: { reason: 'usuario_inativo' } })
       throw new UnauthorizedException(GENERIC_LOGIN_ERROR)
+    }
+
+    // Horário de acesso do perfil: senha certa, mas fora do horário, não entra (e o motivo aparece).
+    if (!withinLoginHours(user.role.loginHours, user.role.isSystem)) {
+      await this.audit.log({ tenantId, userId: user.id, userEmail: email, action: 'auth.login_failed', ...ctx, data: { reason: 'fora_do_horario' } })
+      throw new UnauthorizedException(outsideHoursMessage(user.role.loginHours))
     }
 
     if (needsRehash(user.passwordHash)) {
@@ -152,6 +159,10 @@ export class AuthService {
       throw new UnauthorizedException()
     }
     if (stored.expiresAt < new Date() || !stored.user.active || !stored.user.role.active) throw new UnauthorizedException()
+    if (!withinLoginHours(stored.user.role.loginHours, stored.user.role.isSystem)) {
+      await this.prisma.refreshToken.updateMany({ where: { familyId: stored.familyId, revokedAt: null }, data: { revokedAt: new Date() } })
+      throw new UnauthorizedException(outsideHoursMessage(stored.user.role.loginHours))
+    }
 
     const newToken = randomToken()
     await this.prisma.$transaction([

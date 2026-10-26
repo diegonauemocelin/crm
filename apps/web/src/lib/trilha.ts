@@ -1004,6 +1004,45 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'app-celular',
+    title: 'App no celular',
+    routes: ['/app'],
+    purpose: 'Atender pelo celular com cara de WhatsApp, ver os painéis liberados e receber aviso de mensagem nova.',
+    howItWorks: 'O sistema instala na tela inicial do celular (Android e iPhone), sem loja de aplicativos. Aberto pelo ícone, mostra só as conversas, os painéis que o seu perfil libera e a sua conta. As permissões e o horário de acesso são os mesmos do computador.',
+    lessons: [
+      {
+        id: 'app.instalar',
+        title: 'Instalar na tela inicial',
+        steps: [
+          'No celular, abra o endereço do sistema e acrescente /app no fim (ex.: crm.empresa.com.br/app). Entre com o seu e-mail e senha.',
+          'Android: no Chrome, toque no menu ⋮ e em Instalar app (ou Adicionar à tela inicial).',
+          'iPhone: no Safari, toque em Compartilhar e em Adicionar à Tela de Início.',
+          'Abra sempre pelo ícone: ele vai direto para as conversas.',
+        ],
+      },
+      {
+        id: 'app.notificacoes',
+        title: 'Ligar as notificações',
+        steps: [
+          'Abra o app pelo ícone e toque em Conta.',
+          'Ligue Notificações e aceite o pedido do celular. Chega uma notificação de teste.',
+          'Mensagem nova aparece no celular mesmo com o app fechado; tocar nela abre a conversa.',
+        ],
+        tip: 'No iPhone as notificações só funcionam com o app instalado na tela inicial (iOS 16.4 ou mais novo). Celular compartilhado: ao sair da conta, as notificações param naquele aparelho.',
+      },
+      {
+        id: 'app.conversa',
+        title: 'Atender pelo celular',
+        steps: [
+          'A lista mostra as conversas como no WhatsApp: em verde, quantas mensagens não lidas.',
+          'Toque na conversa para abrir; a seta volta para a lista.',
+          'No ⋮ (ou tocando no nome) ficam transferir, participantes, etiquetas, lembrete, pré-venda e finalizar.',
+          'O botão verde no canto começa uma conversa nova.',
+        ],
+      },
+    ],
+  },
+  {
     key: 'whatsapp-config',
     title: 'WhatsApp: números, setores e robô',
     module: 'whatsapp',
@@ -1104,7 +1143,9 @@ export const TRAIL: TrailModule[] = [
           'Em Leads, Pré/Pós-Vendas e Chat, escolha o escopo: próprios, da unidade ou todos.',
           'Quem precisa marcar retorno e venda na pré-venda precisa de “Editar” em Pré-Vendas.',
           'Use o Gestor comercial para quem acompanha a equipe (inclui monitorar conversas).',
+          'Em “Limitar o horário de acesso”, marque os dias e as horas em que o perfil pode entrar (computador e app). Fora do horário, não entra e quem estava dentro é desconectado.',
         ],
+        tip: 'O Administrador não tem limite de horário, para ninguém ficar trancado para fora.',
       },
       {
         id: 'admin.integracoes',

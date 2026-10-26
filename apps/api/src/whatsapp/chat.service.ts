@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, type OnApplicationBootstrap, type OnModuleDestroy, Optional } from '@nestjs/common'
+import { PushService } from '../app-movel/push.service'
 import { AuditService } from '../audit/audit.service'
 import { CapturaService } from '../captura/captura.service'
 import type { RequestCtx } from '../common/decorators'
@@ -50,6 +51,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly settings: SettingsService,
     private readonly audit: AuditService,
     private readonly ai?: EmailAiService,
+    @Optional() private readonly push?: PushService,
   ) {}
 
   /** Última leitura em monitoramento registrada na auditoria (usuário + conversa), para não registrar a cada atualização da tela. */
@@ -382,6 +384,21 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         ? await this.runBot(n, { ...conv, assignedUserId: toDefault ? n.defaultUserId : conv.assignedUserId }, p, rules, idle, client).catch((err: unknown) => (this.logger.warn(`Chatbot (${n.name}): ${(err as Error).message}`), false))
         : false
     if (!botHandled && !p.fromMe && !goodbye && category === 'CLIENTE' && client) void this.sendAway(n, conv, p, rules, client).catch((err: unknown) => this.logger.warn(`Mensagem de ausência não enviada (${n.name}): ${(err as Error).message}`))
+    // Notificação no celular: mensagem nova do contato (não a do robô nem um agradecimento de atendimento já finalizado).
+    if (!p.fromMe && !botHandled && !staysClosed && Date.now() - p.at.getTime() < 10 * 60_000) {
+      void this.notifyNew(n, { ...conv, assignedUserId: toDefault ? n.defaultUserId : conv.assignedUserId }, p, phone)
+    }
+  }
+
+  /** Quem recebe a notificação: quem atende e os participantes; sem atendente, toda a equipe do número. */
+  private async notifyNew(n: WhatsappNumber, conv: { id: string; name: string | null; assignedUserId: string | null; helperUserIds: string[] }, p: ParsedMessage, phone: string | null) {
+    if (!this.push) return
+    try {
+      const to = conv.assignedUserId ? [conv.assignedUserId, ...conv.helperUserIds] : [...(await this.numberTeam(n.tenantId, n.id)).ids]
+      await this.push.notify(n.tenantId, to, { title: conv.name || p.pushName || (phone ? `+${phone.replace(/\D/g, '')}` : 'Nova mensagem'), body: previewOf(p), url: `/app/conversa/${conv.id}`, tag: conv.id })
+    } catch (err) {
+      this.logger.warn(`Notificação da conversa não saiu: ${(err as Error).message}`)
+    }
   }
 
   // ---------- Histórico (número conectado de novo pelo QR Code) ----------

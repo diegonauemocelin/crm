@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2Icon, ImageIcon, Loader2Icon, PlugZapIcon, SendIcon, Trash2Icon, UploadIcon, XCircleIcon } from 'lucide-react'
-import { type FormEvent, useRef, useState } from 'react'
+import { type FormEvent, type ReactNode, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { ColorsPreview, ColorWarnings, PalettePicker } from '@/components/branding-colors'
 import { useConfirm } from '@/components/confirm'
@@ -22,10 +22,10 @@ function useBrandingSettings() {
   return useQuery({ queryKey: ['settings-branding'], queryFn: () => api.get<Branding>('/settings/branding') })
 }
 
-type BrandingForm = Omit<Branding, 'logoUrl' | 'logoDarkUrl' | 'faviconUrl'>
+type BrandingForm = Omit<Branding, 'logoUrl' | 'logoDarkUrl' | 'faviconUrl' | 'appIconUrl'>
 
 function pickForm(b: Branding): BrandingForm {
-  const { logoUrl: _l, logoDarkUrl: _d, faviconUrl: _f, ...rest } = b
+  const { logoUrl: _l, logoDarkUrl: _d, faviconUrl: _f, appIconUrl: _a, ...rest } = b
   return rest
 }
 
@@ -63,12 +63,13 @@ function ColorField({ id, label, hint, value, onChange, disabled }: { id: string
   )
 }
 
-function ImageSlot({ slot, label, hint, url, onSaved, disabled }: { slot: string; label: string; hint: string; url: string | null; onSaved: (b: Branding) => void; disabled: boolean }) {
+function ImageSlot({ slot, label, hint, url, onSaved, disabled, prepare, extra }: { slot: string; label: string; hint: string; url: string | null; onSaved: (b: Branding) => void; disabled: boolean; prepare?: (f: File) => Promise<File>; extra?: (upload: (f: File) => Promise<void>, busy: boolean) => ReactNode }) {
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const confirm = useConfirm()
 
-  const upload = async (file: File) => {
+  const upload = async (original: File) => {
+    const file = prepare ? await prepare(original).catch(() => original) : original
     if (file.size > 1024 * 1024) {
       toast.error('Arquivo maior que 1 MB.')
       return
@@ -120,6 +121,7 @@ function ImageSlot({ slot, label, hint, url, onSaved, disabled }: { slot: string
         hidden
         onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
       />
+      {extra?.(upload, busy || disabled)}
       <Button type="button" variant="outline" size="sm" disabled={busy || disabled} onClick={() => input.current?.click()}>
         {busy ? <Loader2Icon className="animate-spin" /> : <UploadIcon />}
         Enviar
@@ -241,6 +243,22 @@ function BrandingEditor({ data }: { data: Branding }) {
           <ImageSlot slot="logo" label="Logo" hint="Fundo claro. Ideal: quadrado, 256×256." url={data.logoUrl} onSaved={onSaved} disabled={!canEdit} />
           <ImageSlot slot="logo-dark" label="Logo para fundo escuro" hint="Usado no menu escuro e no modo escuro." url={data.logoDarkUrl} onSaved={onSaved} disabled={!canEdit} />
           <ImageSlot slot="favicon" label="Favicon" hint="Ícone da aba do navegador. 64×64 ou ICO." url={data.faviconUrl} onSaved={onSaved} disabled={!canEdit} />
+          <ImageSlot
+            slot="app-icon"
+            label="Ícone do app no celular"
+            hint="Aparece na tela inicial do celular. O sistema deixa quadrado (512×512) com fundo branco."
+            url={data.appIconUrl ?? null}
+            onSaved={onSaved}
+            disabled={!canEdit}
+            prepare={squareIcon}
+            extra={(upload, busy) =>
+              data.logoUrl && (
+                <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => void fetch(data.logoUrl!).then((r) => r.blob()).then((b) => upload(new File([b], 'logo.png', { type: b.type })))}>
+                  Usar o logo
+                </Button>
+              )
+            }
+          />
         </CardContent>
       </Card>
     </div>
@@ -494,4 +512,24 @@ function SmtpEditor({ initial }: { initial: SmtpView }) {
       )}
     </div>
   )
+}
+
+/** Ícone do app: a imagem centralizada num quadrado de 512×512 com fundo branco e margem (o celular arredonda os cantos). */
+async function squareIcon(file: File): Promise<File> {
+  const img = await createImageBitmap(file)
+  const size = 512
+  const pad = 56
+  const c = document.createElement('canvas')
+  c.width = size
+  c.height = size
+  const ctx = c.getContext('2d')!
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, size, size)
+  const s = Math.min((size - pad * 2) / img.width, (size - pad * 2) / img.height)
+  const w = img.width * s
+  const h = img.height * s
+  ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h)
+  const blob = await new Promise<Blob | null>((ok) => c.toBlob(ok, 'image/png'))
+  if (!blob) throw new Error('Não deu para preparar o ícone.')
+  return new File([blob], 'icone-app.png', { type: 'image/png' })
 }

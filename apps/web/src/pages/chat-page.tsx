@@ -22,6 +22,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { api, errorMessage } from '@/lib/api'
@@ -33,7 +34,7 @@ import { splitLinks, splitPhones } from '@/lib/links'
 import { menuFor } from '@/lib/menu'
 import { cn } from '@/lib/utils'
 
-interface NumberRef {
+export interface NumberRef {
   id: string
   name: string
   phone: string | null
@@ -41,7 +42,7 @@ interface NumberRef {
   /** Atendimento dividido entre os atendentes do número. */
   splitAttendance?: boolean
 }
-interface ConvItem {
+export interface ConvItem {
   id: string
   /** Atendimento dividido: atendente da conversa (vazio = na fila). */
   assignedUserId?: string | null
@@ -72,7 +73,7 @@ interface ConvItem {
   /** Fase do atendimento mais recente do contato (pré ou pós-venda). */
   stage?: StageInfo | null
 }
-interface ListData {
+export interface ListData {
   /** Prazos das cores de atraso de resposta (minutos desde a última mensagem do cliente). */
   responseColors?: { yellowMinutes: number; redMinutes: number }
   /** Só no monitoramento: vendedores para o filtro. */
@@ -144,7 +145,7 @@ const dayKey = (iso: string) => dateShort(iso)
 
 /** Iniciais e cor fixa por contato, como a foto vazia do WhatsApp. */
 const AVATAR_COLORS = ['bg-emerald-600', 'bg-sky-600', 'bg-violet-600', 'bg-amber-600', 'bg-rose-600', 'bg-teal-600', 'bg-indigo-600', 'bg-orange-600']
-function Avatar({ name, group, className }: { name: string | null; group?: boolean; className?: string }) {
+export function Avatar({ name, group, className }: { name: string | null; group?: boolean; className?: string }) {
   const letters = (name ?? '').replace(/[^\p{L}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean)
   const text = letters.length ? (letters[0]![0]! + (letters.length > 1 ? letters[letters.length - 1]![0]! : '')).toUpperCase() : ''
   const color = AVATAR_COLORS[[...(name ?? '')].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % AVATAR_COLORS.length]
@@ -604,8 +605,13 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
   )
 }
 
-export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack?: () => void; monitor?: boolean }) {
+/**
+ * Conversa aberta. `compact` (app no celular): topo como o do WhatsApp (voltar, foto, nome e ⋮) e os botões da
+ * conversa num menu que sobe de baixo.
+ */
+export function ThreadView({ id, onBack, monitor = false, compact = false }: { id: string; onBack?: () => void; monitor?: boolean; compact?: boolean }) {
   const { can } = useAuth()
+  const [optionsOpen, setOptionsOpen] = useState(false)
   const mq = monitor ? 'monitorar=true' : ''
   const q = useQuery({ queryKey: ['chat-conversa', id, monitor], queryFn: () => api.get<Thread>(`/chat/conversas/${id}${mq ? `?${mq}` : ''}`), refetchInterval: 4000 })
   const { novo, colors } = useScreens()
@@ -654,6 +660,35 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
   // Reagir e responder: qualquer mensagem da conversa, menos aviso de ligação.
   const canAct = (m: Message) => !monitor && can('chat', 'create') && m.type !== 'chamada' && !m.deleted
   const toggleSelect = (mid: string) => setSelecting((s) => (!s ? [mid] : s.includes(mid) ? s.filter((x) => x !== mid) : s.length >= 20 ? (toast.error('No máximo 20 mensagens por vez.'), s) : [...s, mid]))
+  // Botões da conversa: na barra do topo (computador) ou no menu ⋮ (app no celular).
+  const actions = (
+    <>
+      {d.conversation.category === 'CLIENTE' && <ServiceButtons service={d.service} contact={{ name: d.lead?.name ?? d.conversation.name, phone: d.conversation.phone, email: d.lead?.email }} prefill={novo ? () => quickPrefill({ name: d.lead?.name ?? d.conversation.name, phone: d.conversation.phone, email: d.lead?.email }, messages, options.data) : undefined} />}
+      {!monitor && <LabelPicker conversationId={d.conversation.id} value={d.conversation.labels ?? []} />}
+      {!monitor && <ReminderButton conversationId={d.conversation.id} />}
+      {can('monitoramento', 'create') && <NoteButton conversationId={d.conversation.id} monitor={monitor} />}
+      {d.conversation.phone && (
+        <Button asChild size="sm" variant="outline" title="Ligar (pelo telefone; a ligação pelo WhatsApp é atendida no celular)" aria-label="Ligar">
+          <a href={`tel:${d.conversation.phone}`}>
+            <PhoneIcon /> <span className="hidden @4xl/head:inline">Ligar</span>
+          </a>
+        </Button>
+      )}
+      {d.lead && !compact && (
+        <Button asChild size="sm" variant="outline" title="Abrir a ficha do lead" aria-label="Lead">
+          <Link to={`/leads/${d.lead.id}`}>
+            <UserIcon /> <span className="hidden @4xl/head:inline">Lead</span>
+          </Link>
+        </Button>
+      )}
+      {!compact && <span className="hidden h-5 w-px bg-border @2xl/head:block" />}
+      {!monitor && d.attendance && <AttendantPicker thread={d} />}
+      {!monitor && d.attendance && <HelpersPicker thread={d} />}
+      {!monitor && d.conversation.category !== 'GRUPO' && d.conversation.phone && <SaveContactButton thread={d} />}
+      {!monitor && can('chat', 'create') && d.conversation.category === 'CLIENTE' && d.conversation.status === 'ABERTA' && <FinishButton thread={d} />}
+      {!monitor && <ConversationActions thread={d} />}
+    </>
+  )
   return (
     <MonitorContext.Provider value={monitor}>
     <ThreadNumberContext.Provider value={d.number?.id ?? null}>
@@ -684,6 +719,23 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
           <p className="text-xs text-muted-foreground">Foto, vídeo, PDF, planilha… até 64 MB. Você confere antes de enviar.</p>
         </div>
       )}
+      {compact ? (
+        <div className="flex items-center gap-1.5 border-b bg-[#f0f2f5] px-1.5 pb-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] dark:bg-[#202c33]">
+          {onBack && (
+            <Button size="icon" variant="ghost" className="size-10 shrink-0" onClick={onBack} aria-label="Voltar para as conversas">
+              <ArrowLeftIcon className="size-5" />
+            </Button>
+          )}
+          <Avatar name={d.conversation.name ?? d.lead?.name ?? null} group={d.conversation.category === 'GRUPO'} />
+          <button type="button" className="min-w-0 flex-1 px-1 text-left" onClick={() => setOptionsOpen(true)}>
+            <span className="block truncate font-medium leading-tight">{title}</span>
+            <span className="block truncate text-xs text-muted-foreground">{d.conversation.assignedUserName ? `com ${d.conversation.assignedUserName}` : (d.number?.name ?? formatPhone(d.conversation.phone))}</span>
+          </button>
+          <Button size="icon" variant="ghost" className="size-10 shrink-0" onClick={() => setOptionsOpen(true)} aria-label="Opções da conversa">
+            <EllipsisVerticalIcon className="size-5" />
+          </Button>
+        </div>
+      ) : (
       <div className={cn('@container/head space-y-2 border-b bg-[#f0f2f5] px-3 py-2 dark:bg-[#202c33]')}>
         <div className="flex items-start gap-2">
           {onBack && (
@@ -710,33 +762,21 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {d.conversation.category === 'CLIENTE' && <ServiceButtons service={d.service} contact={{ name: d.lead?.name ?? d.conversation.name, phone: d.conversation.phone, email: d.lead?.email }} prefill={novo ? () => quickPrefill({ name: d.lead?.name ?? d.conversation.name, phone: d.conversation.phone, email: d.lead?.email }, messages, options.data) : undefined} />}
-          {!monitor && <LabelPicker conversationId={d.conversation.id} value={d.conversation.labels ?? []} />}
-          {!monitor && <ReminderButton conversationId={d.conversation.id} />}
-          {can('monitoramento', 'create') && <NoteButton conversationId={d.conversation.id} monitor={monitor} />}
-          {d.conversation.phone && (
-            <Button asChild size="sm" variant="outline" title="Ligar (pelo telefone; a ligação pelo WhatsApp é atendida no celular)" aria-label="Ligar">
-              <a href={`tel:${d.conversation.phone}`}>
-                <PhoneIcon /> <span className="hidden @4xl/head:inline">Ligar</span>
-              </a>
-            </Button>
-          )}
-          {d.lead && (
-            <Button asChild size="sm" variant="outline" title="Abrir a ficha do lead" aria-label="Lead">
-              <Link to={`/leads/${d.lead.id}`}>
-                <UserIcon /> <span className="hidden @4xl/head:inline">Lead</span>
-              </Link>
-            </Button>
-          )}
-          <span className="hidden h-5 w-px bg-border @2xl/head:block" />
-          {!monitor && d.attendance && <AttendantPicker thread={d} />}
-          {!monitor && d.attendance && <HelpersPicker thread={d} />}
-          {!monitor && d.conversation.category !== 'GRUPO' && d.conversation.phone && <SaveContactButton thread={d} />}
-          {!monitor && can('chat', 'create') && d.conversation.category === 'CLIENTE' && d.conversation.status === 'ABERTA' && <FinishButton thread={d} />}
-          {!monitor && <ConversationActions thread={d} />}
-        </div>
+        <div className="flex flex-wrap items-center gap-1.5">{actions}</div>
       </div>
+      )}
+      {compact && (
+        <Sheet open={optionsOpen} onOpenChange={setOptionsOpen}>
+          <SheetContent side="bottom" className="max-h-[85svh] overflow-y-auto rounded-t-2xl pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+            <SheetHeader className="pb-0">
+              <SheetTitle className="truncate">{title}</SheetTitle>
+              <SheetDescription>{[formatPhone(d.conversation.phone), d.number?.name, d.conversation.assignedUserName ? `com ${d.conversation.assignedUserName}` : null].filter(Boolean).join(' · ')}</SheetDescription>
+            </SheetHeader>
+            {/* As mesmas opções do computador, uma embaixo da outra (com o texto aparecendo). */}
+            <div className="flex flex-col items-stretch gap-2 px-4 *:w-full *:max-w-none [&_button]:justify-start [&_span.hidden]:!inline">{actions}</div>
+          </SheetContent>
+        </Sheet>
+      )}
       {!monitor && <ReminderBar conversationId={d.conversation.id} />}
       <div className={cn('wa-wallpaper min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3 sm:px-[6%]')}>
         {(d.hasMore || older.length > 0) && (

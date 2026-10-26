@@ -3,6 +3,7 @@ import { Loader2Icon, LockIcon, PencilIcon, PlusIcon, ShieldCheckIcon, Trash2Ico
 import { type FormEvent, Fragment, useState } from 'react'
 import { toast } from 'sonner'
 import { isDirty, useCloseGuard } from '@/components/confirm'
+import { DEFAULT_LOGIN_HOURS, type LoginHours, LoginHoursEditor, loginHoursProblem, loginHoursSummary } from '@/components/horario-acesso'
 import { Can, EmptyState, ErrorState, PageHeader, TableSkeleton } from '@/components/page'
 import {
   AlertDialog,
@@ -98,6 +99,7 @@ export function RolesContent() {
                   )}
                   {!r.active && <Badge variant="outline">Inativo</Badge>}
                   {r.require2fa && <Badge variant="outline">2FA obrigatório</Badge>}
+                  {loginHoursSummary(r.loginHours) && <Badge variant="outline" title={loginHoursSummary(r.loginHours) ?? undefined}>Horário de acesso</Badge>}
                 </CardTitle>
                 <CardDescription>{r.description || 'Sem descrição.'}</CardDescription>
               </CardHeader>
@@ -171,12 +173,13 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
   const [description, setDescription] = useState(role?.description ?? '')
   const [require2fa, setRequire2fa] = useState(role?.require2fa ?? false)
   const [active, setActive] = useState(role?.active ?? true)
+  const [loginHours, setLoginHours] = useState<LoginHours>(() => (role?.loginHours?.enabled ? role.loginHours : DEFAULT_LOGIN_HOURS))
   const [perms, setPerms] = useState<Record<string, PermissionEntry>>(() =>
     Object.fromEntries(modules.map((m) => [m.key, { ...EMPTY, ...role?.permissions.find((p) => p.module === m.key) }])),
   )
   const [error, setError] = useState<string | null>(null)
-  const [initial] = useState(() => ({ name, description, require2fa, active, perms }))
-  const guard = useCloseGuard(isDirty(initial, { name, description, require2fa, active, perms }), onClose, 'o perfil')
+  const [initial] = useState(() => ({ name, description, require2fa, active, perms, loginHours }))
+  const guard = useCloseGuard(isDirty(initial, { name, description, require2fa, active, perms, loginHours }), onClose, 'o perfil')
 
   const toggle = (module: string, action: ActionKey, value: boolean) =>
     setPerms((prev) => {
@@ -196,6 +199,7 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
         name,
         description: description || undefined,
         require2fa,
+        loginHours,
         active,
         permissions: Object.entries(perms)
           .filter(([, p]) => p.view)
@@ -221,6 +225,8 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
           onSubmit={(e: FormEvent) => {
             e.preventDefault()
             setError(null)
+            const problem = loginHoursProblem(loginHours)
+            if (problem) return setError(problem)
             save.mutate()
           }}
           className="space-y-5"
@@ -248,6 +254,9 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="r-desc">Descrição</Label>
               <Textarea id="r-desc" rows={2} maxLength={300} value={description} onChange={(e) => setDescription(e.target.value)} />
+            </div>
+            <div className="sm:col-span-2">
+              <LoginHoursEditor value={loginHours} onChange={setLoginHours} />
             </div>
           </div>
 
