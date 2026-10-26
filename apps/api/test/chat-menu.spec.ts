@@ -63,4 +63,14 @@ describe('formatos de botões que chegavam como "tipo que o CRM ainda não mostr
     // Lista comum de um item no meio do texto não vira botão.
     expect(menuFor('Preciso de:\n1 filtro de óleo\nobrigado', 'COLEGA')).toEqual([])
   })
+
+  it('formulário do WhatsApp preenchido no celular: mostra as respostas; sem respostas, fica o texto do WhatsApp', () => {
+    const answered = parseMessage({ key: { ...key, fromMe: true }, message: { interactiveResponseMessage: { body: { text: 'Enviada' }, nativeFlowResponseMessage: { name: 'galaxy_message', paramsJson: '{"flow_token":"abc","screen_0_Escolha_0":"0_Ruim","screen_0_Mensagem_1":"não resolveu o problema"}' } } } })
+    expect(answered?.text).toBe('Formulário enviado: Ruim · não resolveu o problema')
+    const empty = parseMessage({ key: { ...key, fromMe: true }, message: { interactiveResponseMessage: { body: { text: 'Enviada' }, nativeFlowResponseMessage: { name: 'galaxy_message', paramsJson: '{"flow_token":"abc"}' } } } })
+    expect(empty?.text).toBe('Enviada')
+    // Botão de resposta rápida continua com o texto da opção.
+    const quick = parseMessage({ key: { ...key, fromMe: true }, message: { interactiveResponseMessage: { body: { text: 'Sim' }, nativeFlowResponseMessage: { name: 'quick_reply', paramsJson: '{"id":"s"}' } } } })
+    expect(quick?.text).toBe('Sim')
+  })
 })

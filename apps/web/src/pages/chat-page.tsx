@@ -1092,7 +1092,8 @@ function QuotedBlock({ text, who, targetId = null }: { text: string; who: string
       <p className="flex items-center gap-1 font-semibold text-[color:var(--brand)]">
         <ReplyIcon className="size-3" /> {who ? `Em resposta a ${who === 'Você' ? 'você' : who}` : 'Resposta a uma mensagem'}
       </p>
-      <p className="line-clamp-3 opacity-80">{waStyles(text)}</p>
+      {/* Sem as linhas de botões que só funcionam no celular (▸): a citação fica só com o texto. */}
+      <p className="line-clamp-3 opacity-80">{waStyles(text.split('\n').filter((l) => !l.startsWith('▸ ')).join(' '))}</p>
     </>
   )
   const box = 'mb-1 block w-full rounded border-l-4 border-l-[color:var(--brand)] bg-black/5 px-2 py-1 text-left text-xs dark:bg-white/10'
@@ -2086,7 +2087,9 @@ function phoneLinks(text: string): ReactNode[] {
 }
 
 /** *negrito*, _itálico_ e ~riscado~ do WhatsApp; leaf transforma cada pedaço de texto (ex.: telefones clicáveis). */
-function waStyles(text: string, leaf: (t: string) => ReactNode[] = (t) => [t]) {
+function waStyles(raw: string, leaf: (t: string) => ReactNode[] = (t) => [t]) {
+  // Barra de escape antes de pontuação ("491293622\.", texto vindo de robôs): o WhatsApp não mostra a barra.
+  const text = raw.replace(/\\([.!#()+\-|>[\]{}\\])/g, '$1')
   const out: React.ReactElement[] = []
   const re = /([*_~])([^*_~\n]+?)\1/g
   let last = 0

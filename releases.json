@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.99.1",
+      "date": "2026-10-26",
+      "title": "Chat: respostas de formulário do WhatsApp e textos mais limpos",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Chat",
+          "text": "Formulário do WhatsApp (ex.: \"Avalie nosso atendimento\") respondido pelo celular mostra no CRM as respostas escolhidas, como \"Formulário enviado: Ruim · não resolveu o problema\", quando quem criou o formulário manda as respostas."
+        },
+        {
+          "type": "correcao",
+          "area": "Chat",
+          "text": "Citação de mensagem com botão que só funciona no celular fica só com o texto, e a barra que alguns robôs colocam antes da pontuação (ex.: \"491293622\\.\") não aparece mais, como no WhatsApp."
+        }
+      ]
+    },
+    {
       "version": "0.99.0",
       "date": "2026-10-26",
       "title": "App no celular: chat como o WhatsApp, painéis, notificações e horário de acesso",
