@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.99.3",
+      "date": "2026-10-26",
+      "title": "App no celular com o ícone da Usaparts",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "App no celular",
+          "text": "Ícone do app com o logo da Usaparts e um balão de conversa, e o \"U\" da Usaparts no selo das notificações. Quem já instalou o app vê o ícone novo depois de remover e instalar de novo na tela inicial (o celular guarda o ícone antigo)."
+        }
+      ]
+    },
+    {
       "version": "0.99.2",
       "date": "2026-10-26",
       "title": "App no celular: um número por vez e caixa de mensagem como a do WhatsApp",
