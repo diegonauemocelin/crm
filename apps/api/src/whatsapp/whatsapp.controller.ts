@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
@@ -70,8 +70,9 @@ export class WhatsappController {
   @HttpCode(200)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @RequirePermission('whatsapp', 'edit')
-  connect(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
-    return this.wa.connect(user, id, ctx)
+  connect(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx, @Query('novo') novo?: string) {
+    // ?novo=1: QR Code novo mesmo com o número aparecendo conectado (sessão caída que a Evolution ainda dá como aberta).
+    return this.wa.connect(user, id, ctx, novo === '1')
   }
 
   @Get(':id/qr')

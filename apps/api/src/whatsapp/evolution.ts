@@ -6,8 +6,11 @@
 export type EvolutionState = 'open' | 'connecting' | 'close'
 export type NumberStatus = 'CONECTADO' | 'CONECTANDO' | 'DESCONECTADO'
 
-/** Eventos que a Evolution manda para o CRM em cada instância. */
-export const WEBHOOK_EVENTS = ['CONNECTION_UPDATE', 'QRCODE_UPDATED', 'MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'MESSAGES_EDITED', 'MESSAGES_DELETE', 'SEND_MESSAGE', 'CALL']
+/**
+ * Eventos que a Evolution manda para o CRM em cada instância. MESSAGES_SET: histórico que o WhatsApp manda ao conectar
+ * pelo QR Code (recupera as mensagens das últimas horas que não chegaram, ex.: com a sessão caída).
+ */
+export const WEBHOOK_EVENTS = ['CONNECTION_UPDATE', 'QRCODE_UPDATED', 'MESSAGES_UPSERT', 'MESSAGES_SET', 'MESSAGES_UPDATE', 'MESSAGES_EDITED', 'MESSAGES_DELETE', 'SEND_MESSAGE', 'CALL']
 
 export class EvolutionError extends Error {
   constructor(
@@ -46,10 +49,27 @@ export function isConnectionClosed(message: string) {
 }
 
 export const CONNECTION_CLOSED_MESSAGE =
-  'O WhatsApp deste número perdeu a conexão com o servidor (Connection Closed). O CRM tentou reconectar sozinho e não conseguiu: em Configurações › Números de WhatsApp, clique em Conectar neste número, leia o QR Code de novo e reenvie.'
+  'O WhatsApp deste número perdeu a conexão com o servidor (Connection Closed). O CRM tentou reconectar sozinho e não conseguiu: em Configurações › Números de WhatsApp, clique em Conectar neste número (ou em Novo QR Code, se ele aparecer conectado), leia o QR Code de novo e reenvie.'
 
 /** Motivo gravado no número quando a sessão morre por dentro da Evolution (ela ainda diz "conectado"). */
 export const SESSION_DEAD_REASON = 'A sessão caiu no serviço de WhatsApp (Connection Closed). Clique em Conectar e leia o QR Code.'
+
+/** Motivo gravado quando a equipe clica em Desconectar: o número só volta pelo Conectar (QR Code novo). */
+export const DISCONNECTED_BY_CRM = 'Desconectado pelo CRM'
+
+/**
+ * Situação que um evento da Evolution pode gravar no número (null = ignora):
+ * - evento de uma instância que não é mais a do número (sessão trocada pelo Desconectar ou pelo QR Code novo) não vale;
+ * - "connecting" vem também nas reconexões automáticas: só vale durante a leitura do QR Code, que quem começa é o Conectar;
+ * - número desconectado pela equipe não volta sozinho a "Conectado".
+ */
+export function acceptedStatus(current: { status: string; statusReason: string | null; instanceName: string }, instanceName: string, state: string): NumberStatus | null {
+  if (current.instanceName !== instanceName) return null
+  const status = statusOf(state)
+  if (status === 'CONECTANDO' && current.status !== 'CONECTANDO') return null
+  if (status === 'CONECTADO' && current.status === 'DESCONECTADO' && current.statusReason === DISCONNECTED_BY_CRM) return null
+  return status
+}
 
 /** Resposta da conferência de números: tem WhatsApp e o identificador que o WhatsApp usa (ex.: celular antigo sem o 9). */
 export interface NumberCheck {
@@ -87,16 +107,15 @@ export class EvolutionClient {
   }
 
   /**
-   * Envio com uma segunda chance: se a sessão caiu ("Connection Closed"), reinicia a conexão do número, espera
-   * alguns segundos e tenta de novo uma vez. Caindo de novo, devolve a explicação do que fazer.
+   * Envio com uma segunda chance: se a conexão estava fechada ("Connection Closed"), espera a reconexão e tenta de novo
+   * uma vez. Caindo de novo, devolve a explicação do que fazer.
    */
   private async send<T>(instanceName: string, path: string, body: unknown, timeoutMs: number, method = 'POST'): Promise<T> {
     try {
       return await this.call<T>(method, path, body, timeoutMs)
     } catch (err) {
       if (!(err instanceof EvolutionError) || !isConnectionClosed(err.message)) throw err
-      await this.restart(instanceName).catch(() => undefined)
-      await new Promise((r) => setTimeout(r, this.retryDelayMs))
+      await this.afterClosed(instanceName)
       try {
         return await this.call<T>(method, path, body, timeoutMs)
       } catch (again) {
@@ -106,6 +125,22 @@ export class EvolutionClient {
         }
         throw again
       }
+    }
+  }
+
+  /**
+   * Quase sempre o "Connection Closed" é a Evolution reconectando sozinha: espera voltar (até uns 15 s) em vez de
+   * reiniciar, porque reiniciar derruba a reconexão em andamento. Só reinicia quando ela diz "aberta" e mesmo assim falhou.
+   */
+  private async afterClosed(instanceName: string) {
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+    if ((await this.state(instanceName).catch(() => null)) === 'open') {
+      await this.restart(instanceName).catch(() => undefined)
+      return wait(this.retryDelayMs)
+    }
+    for (let i = 0; i < 10; i++) {
+      await wait(Math.min(1_500, this.retryDelayMs))
+      if ((await this.state(instanceName).catch(() => null)) === 'open') return
     }
   }
 
@@ -288,6 +323,15 @@ export class EvolutionClient {
   /** Áudio de voz (a Evolution converte para o formato do WhatsApp). */
   async sendAudio(instanceName: string, number: string, base64: string) {
     return this.sent(await this.send(instanceName, `/message/sendWhatsAppAudio/${encodeURIComponent(instanceName)}`, { number, audio: base64 }, 90_000))
+  }
+
+  /** Todas as instâncias da Evolution, com a situação gravada nela (para achar as que nenhum número usa mais). */
+  async instances() {
+    const r = await this.call<unknown>('GET', '/instance/fetchInstances', undefined, 15_000)
+    return (Array.isArray(r) ? r : []).flatMap((i) => {
+      const x = (i ?? {}) as { name?: unknown; connectionStatus?: unknown }
+      return typeof x.name === 'string' ? [{ name: x.name, state: typeof x.connectionStatus === 'string' ? x.connectionStatus : null }] : []
+    })
   }
 
   async deleteInstance(instanceName: string) {

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangleIcon, Loader2Icon, PencilIcon, PlugIcon, PlusIcon, SmartphoneIcon, Trash2Icon, UnplugIcon, UsersIcon } from 'lucide-react'
-import { type FormEvent, useEffect, useState } from 'react'
+import { AlertTriangleIcon, Loader2Icon, PencilIcon, PlugIcon, PlusIcon, QrCodeIcon, SmartphoneIcon, Trash2Icon, UnplugIcon, UsersIcon } from 'lucide-react'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { ReplyFileField, saveReplyFile } from '@/components/chat/organizar'
@@ -67,7 +67,7 @@ export function Numbers() {
   const options = useOptions()
   const names = namesOf(options.data)
   const [editing, setEditing] = useState<WaNumber | 'novo' | null>(null)
-  const [connecting, setConnecting] = useState<WaNumber | null>(null)
+  const [connecting, setConnecting] = useState<{ number: WaNumber; fresh?: boolean } | null>(null)
   const confirm = useConfirm()
   const qc = useQueryClient()
   const run = useMutation({
@@ -93,6 +93,15 @@ export function Numbers() {
           },
     )
     if (ok) run.mutate({ n, kind })
+  }
+  // Sessão caída que ainda aparece conectada (ou troca de aparelho): encerra a sessão e mostra um QR Code novo.
+  const askFresh = async (n: WaNumber) => {
+    const ok = await confirm({
+      title: `Gerar um QR Code novo para “${n.name}”?`,
+      description: 'A conexão atual é encerrada e o número só volta a enviar e receber depois de ler o QR Code novo no celular. Use quando o número aparece conectado, mas as mensagens não saem.',
+      confirmLabel: 'Gerar QR Code novo',
+    })
+    if (ok) setConnecting({ number: n, fresh: true })
   }
   const d = q.data
   const full = !!d && d.limits.registered >= d.limits.maxNumbers
@@ -174,13 +183,18 @@ export function Numbers() {
                     {can('whatsapp', 'edit') && (
                       <div className="flex flex-wrap gap-2">
                         {n.status === 'CONECTADO' ? (
-                          <Button size="sm" variant="outline" onClick={() => void ask(n, 'desconectar')} disabled={run.isPending}>
-                            <UnplugIcon /> Desconectar
-                          </Button>
+                          <>
+                            <Button size="sm" variant="outline" onClick={() => void ask(n, 'desconectar')} disabled={run.isPending}>
+                              <UnplugIcon /> Desconectar
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => void askFresh(n)} disabled={run.isPending || !d.service.online}>
+                              <QrCodeIcon /> Novo QR Code
+                            </Button>
+                          </>
                         ) : (
                           <Button
                             size="sm"
-                            onClick={() => setConnecting(n)}
+                            onClick={() => setConnecting({ number: n })}
                             disabled={!d.service.online || (n.status !== 'CONECTANDO' && slotsFull)}
                             title={slotsFull && n.status !== 'CONECTANDO' ? `Limite de ${d.limits.maxConnected} conectados ao mesmo tempo` : undefined}
                           >
@@ -209,7 +223,7 @@ export function Numbers() {
         </div>
       )}
       {editing && <NumberDialog number={editing === 'novo' ? null : editing} users={d?.users ?? []} onClose={() => setEditing(null)} />}
-      {connecting && <ConnectDialog number={connecting} onClose={() => setConnecting(null)} />}
+      {connecting && <ConnectDialog number={connecting.number} fresh={connecting.fresh} onClose={() => setConnecting(null)} />}
     </div>
   )
 }
@@ -378,23 +392,29 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
 }
 
 /** Pede a conexão e mostra o QR Code, consultando a cada 3 s até o celular ler. */
-function ConnectDialog({ number, onClose }: { number: WaNumber; onClose: () => void }) {
+function ConnectDialog({ number, fresh, onClose }: { number: WaNumber; fresh?: boolean; onClose: () => void }) {
   const qc = useQueryClient()
   const [error, setError] = useState<string | null>(null)
   const start = useMutation({
-    mutationFn: () => api.post<QrData>(`/whatsapp/numeros/${number.id}/conectar`),
+    mutationFn: () => api.post<QrData>(`/whatsapp/numeros/${number.id}/conectar${fresh ? '?novo=1' : ''}`),
     onError: (err) => setError(errorMessage(err)),
     onSettled: () => void qc.invalidateQueries({ queryKey: ['whatsapp-numeros'] }),
   })
   // Só começa uma vez ao abrir.
+  // Um pedido só, mesmo com o efeito rodando duas vezes (cada pedido de QR Code novo troca a sessão).
+  const started = useRef(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
+    if (started.current) return
+    started.current = true
     start.mutate()
   }, [])
   const poll = useQuery({
     queryKey: ['whatsapp-qr', number.id],
     queryFn: () => api.get<QrData>(`/whatsapp/numeros/${number.id}/qr`),
     enabled: start.isSuccess,
+    // Não guarda a resposta depois de fechar: o "Conectado" de uma leitura anterior fecharia o diálogo na hora.
+    gcTime: 0,
     refetchInterval: (q) => (q.state.data?.status === 'CONECTANDO' || !q.state.data ? 3000 : false),
   })
   const data = poll.data ?? start.data
@@ -411,7 +431,7 @@ function ConnectDialog({ number, onClose }: { number: WaNumber; onClose: () => v
         <DialogHeader>
           <DialogTitle>Conectar {number.name}</DialogTitle>
           <DialogDescription>
-            No celular, abra o WhatsApp Business → toque nos três pontinhos (ou em Configurações) → Aparelhos conectados → Conectar um aparelho, e aponte para o QR Code.
+            No celular, abra o WhatsApp Business → toque nos três pontinhos (ou em Configurações) → Aparelhos conectados. Se o CRM ainda aparecer na lista, desconecte-o primeiro. Depois toque em Conectar um aparelho e aponte para o QR Code.
           </DialogDescription>
         </DialogHeader>
         <div className="flex min-h-72 items-center justify-center">

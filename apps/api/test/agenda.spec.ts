@@ -167,20 +167,35 @@ describe('Envio quando a conexão do número cai (Connection Closed)', () => {
   const closed = () => new Response(JSON.stringify({ status: 400, error: 'Bad Request', response: { message: ['Error: Connection Closed'] } }), { status: 400 })
   const ok = () => new Response(JSON.stringify({ key: { id: 'W1', remoteJid: '5547999990000@s.whatsapp.net' }, messageTimestamp: 1760000000 }), { status: 200 })
 
-  it('reinicia a conexão do número e envia de novo', async () => {
+  // Respostas por endereço: o envio na ordem da lista; a situação da conexão (connectionState) sempre a mesma.
+  const evo = (sends: (() => Response)[], state: string | null, calls: string[] = []) =>
+    (async (u: string) => {
+      calls.push(String(u))
+      if (String(u).includes('/instance/connectionState')) return new Response(JSON.stringify(state ? { instance: { state } } : {}), { status: 200 })
+      if (String(u).includes('/instance/restart')) return new Response('{}', { status: 200 })
+      return sends.shift()!()
+    }) as unknown as typeof fetch
+
+  it('Evolution dizendo "aberta" e o envio falha: reinicia a conexão do número e envia de novo', async () => {
     const { EvolutionClient } = await import('../src/whatsapp/evolution')
     const calls: string[] = []
-    const replies = [closed(), new Response('{}', { status: 200 }), ok()]
-    const c = new EvolutionClient({ url: 'http://e', apiKey: 'k' }, (async (u: string) => (calls.push(String(u)), replies.shift()!)) as unknown as typeof fetch, 0)
+    const c = new EvolutionClient({ url: 'http://e', apiKey: 'k' }, evo([closed, ok], 'open', calls), 0)
     const r = await c.sendText('crm-abc123', '5547999990000', 'oi')
     expect(r.waId).toBe('W1')
-    expect(calls).toEqual(['http://e/message/sendText/crm-abc123', 'http://e/instance/restart/crm-abc123', 'http://e/message/sendText/crm-abc123'])
+    expect(calls).toEqual(['http://e/message/sendText/crm-abc123', 'http://e/instance/connectionState/crm-abc123', 'http://e/instance/restart/crm-abc123', 'http://e/message/sendText/crm-abc123'])
+  })
+
+  it('reconectando sozinha: espera e envia de novo sem reiniciar (reiniciar derrubaria a reconexão)', async () => {
+    const { EvolutionClient } = await import('../src/whatsapp/evolution')
+    const calls: string[] = []
+    const c = new EvolutionClient({ url: 'http://e', apiKey: 'k' }, evo([closed, ok], 'connecting', calls), 0)
+    expect((await c.sendText('crm-abc123', '5547999990000', 'oi')).waId).toBe('W1')
+    expect(calls.some((u) => u.includes('/instance/restart'))).toBe(false)
   })
 
   it('caindo de novo, explica o que fazer; outros erros passam direto', async () => {
     const { EvolutionClient, CONNECTION_CLOSED_MESSAGE } = await import('../src/whatsapp/evolution')
-    const replies = [closed(), new Response('{}', { status: 200 }), closed()]
-    const c = new EvolutionClient({ url: 'http://e', apiKey: 'k' }, (async () => replies.shift()!) as unknown as typeof fetch, 0)
+    const c = new EvolutionClient({ url: 'http://e', apiKey: 'k' }, evo([closed, closed], 'open'), 0)
     await expect(c.sendText('crm-abc123', '5547999990000', 'oi')).rejects.toThrow(CONNECTION_CLOSED_MESSAGE)
     const calls: string[] = []
     const c2 = new EvolutionClient({ url: 'http://e', apiKey: 'k' }, (async (u: string) => (calls.push(String(u)), new Response(JSON.stringify({ response: { message: ['number not exists'] } }), { status: 400 }))) as unknown as typeof fetch, 0)
@@ -191,8 +206,7 @@ describe('Envio quando a conexão do número cai (Connection Closed)', () => {
   it('sessão morta: avisa o CRM, a conferência pelo próprio número detecta e o logout sem saída é reconhecido', async () => {
     const { EvolutionClient, EvolutionError, isConnectionClosed } = await import('../src/whatsapp/evolution')
     const dead: string[] = []
-    const replies = [closed(), new Response('{}', { status: 200 }), closed()]
-    const c = new EvolutionClient({ url: 'http://e', apiKey: 'k' }, (async () => replies.shift()!) as unknown as typeof fetch, 0)
+    const c = new EvolutionClient({ url: 'http://e', apiKey: 'k' }, evo([closed, closed], 'open'), 0)
     c.onSessionDead = (i) => dead.push(i)
     await expect(c.sendText('crm-abc123', '5547999990000', 'oi')).rejects.toThrow()
     expect(dead).toEqual(['crm-abc123'])

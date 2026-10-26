@@ -5,10 +5,11 @@ import { NestFactory } from '@nestjs/core'
 import type { NestExpressApplication } from '@nestjs/platform-express'
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
 import cookieParser from 'cookie-parser'
-import { json, raw, text } from 'express'
+import { json, type NextFunction, raw, type Request, type Response, text } from 'express'
 import helmet from 'helmet'
 import { Logger } from 'nestjs-pino'
 import { AppModule } from './app.module'
+import { safeEqual } from './common/crypto'
 import { validationExceptionFactory } from './common/validacao'
 import { env } from './config/env'
 
@@ -29,8 +30,13 @@ async function bootstrap() {
   app.use('/api/public/captura/enviar', text({ type: () => true, limit: '16kb' }))
   // O webhook do Meta é validado pela assinatura do corpo exato que chegou: precisa do corpo bruto.
   app.use('/api/webhooks/meta', raw({ type: () => true, limit: '1mb' }))
-  // Eventos do WhatsApp (rede interna): mensagens com miniaturas de foto/vídeo podem passar de 1 MB.
-  app.use('/api/webhooks/whatsapp', json({ limit: '5mb' }))
+  // Eventos do WhatsApp (rede interna): mensagens com miniaturas de foto/vídeo podem passar de 1 MB. O histórico que o
+  // WhatsApp manda ao ler o QR Code (messages.set) vem num pedido só e pode ter dezenas de MB: limite maior só com o segredo.
+  const whatsappEvents = json({ limit: '5mb' })
+  const whatsappHistory = json({ limit: '48mb' })
+  app.use('/api/webhooks/whatsapp', (req: Request, res: Response, next: NextFunction) =>
+    (env.evolutionWebhookSecret && safeEqual(req.path.slice(1), env.evolutionWebhookSecret) ? whatsappHistory : whatsappEvents)(req, res, next),
+  )
   // Resultado das consultas da Tcar (páginas de 200 produtos com referências e filiais).
   app.use('/api/webhooks/tcar', json({ limit: '5mb' }))
   app.useBodyParser('json', { limit: '1mb' })

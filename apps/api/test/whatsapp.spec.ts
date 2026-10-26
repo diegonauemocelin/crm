@@ -23,7 +23,7 @@ describe('Evolution API (cliente)', () => {
     await c.createInstance('crm-abc123', 'http://api:3000/api/webhooks/whatsapp/s')
     expect((calls[0]!.init.headers as Record<string, string>).apikey).toBe('chave')
     const body = JSON.parse(String(calls[0]!.init.body))
-    expect(body).toMatchObject({ instanceName: 'crm-abc123', integration: 'WHATSAPP-BAILEYS', groupsIgnore: false, syncFullHistory: false, webhook: { url: 'http://api:3000/api/webhooks/whatsapp/s', events: ['CONNECTION_UPDATE', 'QRCODE_UPDATED', 'MESSAGES_UPSERT', 'MESSAGES_UPDATE', 'MESSAGES_EDITED', 'MESSAGES_DELETE', 'SEND_MESSAGE', 'CALL'] } })
+    expect(body).toMatchObject({ instanceName: 'crm-abc123', integration: 'WHATSAPP-BAILEYS', groupsIgnore: false, syncFullHistory: false, webhook: { url: 'http://api:3000/api/webhooks/whatsapp/s', events: ['CONNECTION_UPDATE', 'QRCODE_UPDATED', 'MESSAGES_UPSERT', 'MESSAGES_SET', 'MESSAGES_UPDATE', 'MESSAGES_EDITED', 'MESSAGES_DELETE', 'SEND_MESSAGE', 'CALL'] } })
     const err = await c.connect('crm-abc123').catch((e: unknown) => e)
     expect(err).toBeInstanceOf(EvolutionError)
     expect((err as EvolutionError).status).toBe(404)

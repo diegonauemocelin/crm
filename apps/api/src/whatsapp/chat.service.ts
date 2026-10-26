@@ -18,6 +18,7 @@ import { type Sector, servesNumber, splitWhere, teamOf, teamWhere } from './aten
 import { type AgendaCategory, answersClient, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isClosingMessage, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
 import { parseCsv } from '../atendimento/planilha'
 import { answersNote, type BotOutcome, botStateOf, chooseFlow, continueFlow, flowOf, startFlow } from './fluxo'
+import { HISTORY_NAME, historyFrom, historyName, historyNote, historyPatch, type HistoryPick, pickHistory } from './historico'
 import { extOf, INLINE_MEDIA_MAX_BYTES, MEDIA_MAX_BYTES, openSecretEdit, parseCalls, parseMessage, parseReaction, parseRevision, parseSecretEdit, type ParsedSecretEdit, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, whatsappOf, withReaction } from './mensagens'
 
 const PAGE = 60
@@ -142,11 +143,15 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     // Tipo novo do WhatsApp: fica o aviso na conversa e o formato no registro do servidor (para o CRM aprender a ler).
     if (p.type === 'outro' && p.text === UNKNOWN_TEXT) this.logger.warn(`Mensagem de tipo desconhecido (${n.name}): ${unknownKeys(data)}`)
     // Mesma fila para as duas formas do celular (com e sem o 9).
-    const key = `${n.id}:${phoneFromDigits(p.phoneDigits) ?? p.jid}`
-    const run = (this.queues.get(key) ?? Promise.resolve())
+    return this.enqueue(`${n.id}:${phoneFromDigits(p.phoneDigits) ?? p.jid}`, () => this.store(n, p, client), `Mensagem não gravada (${n.name})`)
+  }
+
+  /** Uma mensagem por vez em cada conversa: a que chega ao vivo e a que vem do histórico entram na mesma fila. */
+  private enqueue<T>(key: string, job: () => Promise<T>, failure: string): Promise<T | void> {
+    const run: Promise<T | void> = (this.queues.get(key) ?? Promise.resolve())
       .catch(() => undefined)
-      .then(() => this.store(n, p, client))
-      .catch((err: unknown) => this.logger.error(`Mensagem não gravada (${n.name}): ${(err as Error).message}`))
+      .then(() => job())
+      .catch((err: unknown) => this.logger.error(`${failure}: ${(err as Error).message}`))
       .finally(() => {
         if (this.queues.get(key) === run) this.queues.delete(key)
       })
@@ -377,6 +382,106 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         ? await this.runBot(n, { ...conv, assignedUserId: toDefault ? n.defaultUserId : conv.assignedUserId }, p, rules, idle, client).catch((err: unknown) => (this.logger.warn(`Chatbot (${n.name}): ${(err as Error).message}`), false))
         : false
     if (!botHandled && !p.fromMe && !goodbye && category === 'CLIENTE' && client) void this.sendAway(n, conv, p, rules, client).catch((err: unknown) => this.logger.warn(`Mensagem de ausência não enviada (${n.name}): ${(err as Error).message}`))
+  }
+
+  // ---------- Histórico (número conectado de novo pelo QR Code) ----------
+
+  /**
+   * Histórico que o WhatsApp manda ao conectar um aparelho novo (evento messages.set): grava as mensagens das últimas
+   * horas que não chegaram ao CRM (ex.: com a sessão caída), com a data original. Não dispara nada: sem robô, mensagem
+   * de ausência, lead novo, pré-venda, dia seguinte nem atendente padrão. Lê o pedido na hora (o corpo pode ser grande).
+   */
+  importHistory(n: WhatsappNumber, data: unknown, client: EvolutionClient | null) {
+    return this.saveHistory(n, pickHistory(data, historyFrom(new Date(), [n.createdAt])), client)
+  }
+
+  private async saveHistory(n: WhatsappNumber, picked: HistoryPick, client: EvolutionClient | null) {
+    const { items, ...counts } = picked
+    if (!items.length) return null
+    // Número que nunca teve conversa no CRM (primeira conexão): o histórico do celular não entra.
+    if (!(await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id }, select: { id: true } }))) {
+      this.logger.log(`Histórico do WhatsApp (${n.name}): primeira conexão do número, nada recuperado.`)
+      return null
+    }
+    // Lead apagado a pedido do titular (LGPD) não volta pelo histórico: só entra o que veio depois da exclusão.
+    const erased = await this.prisma.auditLog.findFirst({ where: { tenantId: n.tenantId, action: 'lead.anonymized', createdAt: { gt: items[0]!.at } }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } })
+    const wanted = erased ? items.filter((p) => p.at > erased.createdAt) : items
+    // Já gravadas neste número (ao vivo ou num pedaço anterior do histórico): ficam como estão.
+    const known = new Set<string>()
+    for (let i = 0; i < wanted.length; i += 500) {
+      const rows = await this.prisma.whatsappMessage.findMany({ where: { tenantId: n.tenantId, waId: { in: wanted.slice(i, i + 500).map((p) => p.waId) }, conversation: { numberId: n.id } }, select: { waId: true } })
+      for (const r of rows) known.add(r.waId)
+    }
+    const rules = await this.rules(n.tenantId)
+    const perConv = new Map<string, number>()
+    const media: { id: string; p: ParsedMessage }[] = []
+    let conversasNovas = 0
+    let semTelefone = 0
+    for (const p of wanted) {
+      if (known.has(p.waId)) continue
+      const r = await this.enqueue(`${n.id}:${phoneFromDigits(p.phoneDigits) ?? p.jid}`, () => this.storeHistory(n, p, rules), `Mensagem do histórico não gravada (${n.name})`)
+      if (!r) continue
+      perConv.set(r.conversationId, (perConv.get(r.conversationId) ?? 0) + 1)
+      if (r.created) conversasNovas++
+      if (!p.phoneDigits) semTelefone++
+      if (r.mediaId) media.push({ id: r.mediaId, p })
+    }
+    // Nota em cada conversa que recebeu mensagens: quem atende entende por que apareceram mensagens antigas.
+    for (const [conversationId, count] of perConv) {
+      await this.prisma.whatsappMessage.create({ data: { tenantId: n.tenantId, conversationId, waId: `nota:${randomUUID()}`, fromMe: true, type: 'nota', text: historyNote(count), internal: true, sentByName: HISTORY_NAME, status: 'NOTA', sentAt: new Date() } })
+    }
+    const gravadas = [...perConv.values()].reduce((a, b) => a + b, 0)
+    const result = { ...counts, foraDaJanela: counts.foraDaJanela + items.length - wanted.length, jaNoCrm: known.size, gravadas, conversas: perConv.size, conversasNovas, semTelefone, midias: media.length }
+    this.logger.log(`Histórico do WhatsApp (${n.name}): ${gravadas} mensagem(ns) recuperada(s) em ${perConv.size} conversa(s), ${known.size} já estavam no CRM.`)
+    await this.audit.log({ tenantId: n.tenantId, action: 'whatsapp.historico_importado', entity: 'whatsapp_number', entityId: n.id, data: { numero: n.name, ...result } }).catch((err: unknown) => this.logger.warn(`Auditoria do histórico não gravada (${n.name}): ${(err as Error).message}`))
+    // Mídias uma por vez, depois de tudo gravado (sem encher o serviço de WhatsApp de pedidos).
+    if (client) for (const m of media) await this.downloadMedia(n, m.id, m.p, client)
+    return result
+  }
+
+  /** Uma mensagem do histórico: acha (ou cria) a conversa e grava, sem nenhuma ação automática. */
+  private async storeHistory(n: WhatsappNumber, p: ParsedMessage, rules: WaRules) {
+    const phone = phoneFromDigits(p.phoneDigits)
+    let conv =
+      (await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: n.id, jid: p.jid } } })) ??
+      (phone ? await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, phone } }) : null)
+    const created = !conv
+    const name = historyName(p.pushName)
+    if (!conv) {
+      // Conversa só com o histórico: fica na fila (sem atendente), ligada ao lead que já existe, sem criar lead nem pré-venda.
+      // Sem o telefone (@lid), fica como contato escondido e junta com a do telefone quando o cliente escrever de novo.
+      const contact = await this.agendaContact(n.tenantId, n.id, phone ?? p.jid)
+      const lead =
+        phone && (!contact || contact.category === 'CLIENTE')
+          ? await this.prisma.lead.findFirst({ where: { tenantId: n.tenantId, deletedAt: null, anonymizedAt: null, phone: { in: phoneVariants(phone) } }, orderBy: { createdAt: 'asc' }, select: { id: true } })
+          : null
+      const plan = decide(rules, { marked: contact?.category ?? null, hasLead: !!lead, idle: true, fromMe: p.fromMe, hasPhone: !!phone, numberOpensRecords: n.createRecords })
+      conv = await this.prisma.whatsappConversation.create({ data: { tenantId: n.tenantId, numberId: n.id, jid: p.jid, phone, name, category: plan.category, leadId: lead && plan.linkLead ? lead.id : null } })
+    }
+    const tooBig = !!p.media?.size && p.media.size > MEDIA_MAX_BYTES
+    const saved = await this.prisma.whatsappMessage.createManyAndReturn({
+      data: [
+        {
+          tenantId: n.tenantId,
+          conversationId: conv.id,
+          waId: p.waId,
+          fromMe: p.fromMe,
+          type: p.type,
+          text: p.text,
+          fileName: p.media?.fileName ?? null,
+          mime: p.media?.mime ?? null,
+          mediaStatus: p.media ? (tooBig ? 'GRANDE' : 'PENDENTE') : null,
+          quotedWaId: p.quoted?.waId ?? null,
+          quotedText: p.quoted?.text ?? null,
+          secret: p.secret ?? null,
+          sentAt: p.at,
+        },
+      ],
+      skipDuplicates: true,
+    })
+    if (!saved.length) return null
+    await this.prisma.whatsappConversation.update({ where: { id: conv.id }, data: historyPatch(conv, p, { phone, name }) })
+    return { conversationId: conv.id, created, mediaId: p.media && !tooBig ? saved[0]!.id : null }
   }
 
   // ---------- Chatbot de atendimento ----------

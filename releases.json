@@ -2,6 +2,43 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.98.1",
+      "date": "2026-10-26",
+      "title": "WhatsApp: QR Code novo garantido, menos quedas e mensagens recuperadas",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "WhatsApp",
+          "text": "Desconectar encerra a sessão de verdade, mesmo caída: o número não volta mais sozinho para \"Conectado\" e o Conectar sempre mostra um QR Code novo."
+        },
+        {
+          "type": "novo",
+          "area": "WhatsApp",
+          "text": "Botão Novo QR Code nos números conectados, para quando o número aparece conectado mas as mensagens não saem."
+        },
+        {
+          "type": "correcao",
+          "area": "WhatsApp",
+          "text": "Quando um envio pega o WhatsApp reconectando, o CRM espera a reconexão e envia de novo, em vez de reiniciar a conexão (o que derrubava a reconexão e marcava o número como desconectado sem precisar)."
+        },
+        {
+          "type": "correcao",
+          "area": "WhatsApp",
+          "text": "Número que caiu por pouco tempo e voltou sozinho reconecta pelo Conectar sem pedir QR Code; sessões antigas que ficaram no serviço de WhatsApp são apagadas sozinhas."
+        },
+        {
+          "type": "correcao",
+          "area": "WhatsApp",
+          "text": "Mensagens que os clientes mandaram enquanto o número estava desconectado do CRM (ex.: sessão caída) passam a entrar no chat quando o número é conectado de novo pelo QR Code: o CRM aproveita o histórico que o WhatsApp manda nessa hora e grava só o que faltava das últimas 48 horas, com a data e a hora originais."
+        },
+        {
+          "type": "melhoria",
+          "area": "WhatsApp",
+          "text": "As mensagens recuperadas não mandam resposta automática nem mensagem de ausência, não abrem lead nem pré-venda e não mudam o atendente. A conversa recebe uma nota interna e, se o cliente ficou sem resposta, volta a aparecer como não lida."
+        }
+      ]
+    },
+    {
       "version": "0.98.0",
       "date": "2026-10-25",
       "title": "Mapa de vendas e vendas em tempo real",
