@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.98.2",
+      "date": "2026-10-26",
+      "title": "Chat: vários arquivos de uma vez e botões de robô",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Chat",
+          "text": "Envio de até 10 arquivos de uma vez no chat: escolha vários no clipe, arraste ou cole. Cada arquivo sai como uma mensagem, na ordem, e a legenda vai no primeiro. Se um falhar no meio, os que faltam continuam anexados para tentar de novo."
+        },
+        {
+          "type": "correcao",
+          "area": "Chat",
+          "text": "Menu de robô com um botão só (ex.: \"Sim, conversar agora\") também vira botão clicável no chat: clicar responde à mensagem com o texto da opção. O título da mensagem aparece em negrito, e botões que abrem formulário ou link (ex.: \"Opinar\") aparecem como aviso, porque só funcionam no celular."
+        }
+      ]
+    },
+    {
       "version": "0.98.1",
       "date": "2026-10-26",
       "title": "WhatsApp: QR Code novo garantido, menos quedas e mensagens recuperadas",

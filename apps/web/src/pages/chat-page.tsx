@@ -619,7 +619,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
   /** Responder: a mensagem citada na próxima mensagem enviada. */
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   /** Arrastar e soltar arquivo do computador na conversa: o arquivo solto e o aviso enquanto arrasta. */
-  const [dropped, setDropped] = useState<File | null>(null)
+  const [dropped, setDropped] = useState<File[] | null>(null)
   const [dragging, setDragging] = useState(false)
   const dragDepth = useRef(0)
   const end = useRef<HTMLDivElement>(null)
@@ -674,8 +674,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
         setDragging(false)
         if (monitor || !can('chat', 'create') || !e.dataTransfer.files.length) return
         e.preventDefault()
-        if (e.dataTransfer.files.length > 1) toast.info('Vai um arquivo por vez: anexei o primeiro.')
-        setDropped(e.dataTransfer.files[0]!)
+        setDropped([...e.dataTransfer.files])
       }}
     >
       {dragging && (
@@ -1380,23 +1379,37 @@ function NoteButton({ conversationId, monitor }: { conversationId: string; monit
 }
 
 /** Caixa de envio: texto (Enter envia, Shift+Enter quebra linha), arquivo com legenda e respostas rápidas. */
-function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { thread: Thread; replyTo?: Message | null; onClearReply?: () => void; dropped?: File | null; onDroppedUsed?: () => void }) {
+/** Arquivos por envio no chat (cada um sai como uma mensagem). */
+const MAX_FILES = 10
+
+function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { thread: Thread; replyTo?: Message | null; onClearReply?: () => void; dropped?: File[] | null; onDroppedUsed?: () => void }) {
   const { can } = useAuth()
   const qc = useQueryClient()
   const [text, setText] = useState('')
-  const [file, setFile] = useState<File | null>(null)
+  const [files, setFiles] = useState<File[]>([])
+  const file = files[0] ?? null
   const input = useRef<HTMLInputElement>(null)
   const id = thread.conversation.id
-  // Prévia da foto anexada ou colada (some ao trocar ou tirar o arquivo).
-  const preview = useMemo(() => (file && file.type.startsWith('image/') ? URL.createObjectURL(file) : null), [file])
-  useEffect(() => () => void (preview && URL.revokeObjectURL(preview)), [preview])
-  /** Arquivo colado (Ctrl+V) ou arrastado para a caixa: entra como anexo, com o texto digitado virando legenda. */
-  const attach = (f: File | null | undefined) => {
-    if (!f) return false
-    if (f.size > 64 * 1024 * 1024) return toast.error('Arquivo maior que 64 MB. Para arquivos maiores, envie um link (ex.: Google Drive).'), true
+  // Prévia das fotos anexadas ou coladas (some ao trocar ou tirar o arquivo).
+  const previews = useMemo(() => files.map((f) => (f.type.startsWith('image/') ? URL.createObjectURL(f) : null)), [files])
+  useEffect(() => () => previews.forEach((u) => u && URL.revokeObjectURL(u)), [previews])
+  /**
+   * Arquivos escolhidos, colados (Ctrl+V) ou arrastados: entram como anexo (até MAX_FILES), com o texto digitado
+   * virando a legenda do primeiro. Cada arquivo sai como uma mensagem, como no WhatsApp.
+   */
+  const attach = (list: File[] | null | undefined) => {
+    if (!list?.length) return false
+    const ok = list.filter((f) => f.size <= 64 * 1024 * 1024)
+    if (ok.length < list.length) toast.error('Arquivo maior que 64 MB ficou de fora. Para arquivos maiores, envie um link (ex.: Google Drive).')
     // Imagem copiada da tela vem como "image.png": ganha um nome com a hora, para aparecer na conversa.
-    const named = f.type.startsWith('image/') && /^image\.\w+$/i.test(f.name) ? new File([f], `imagem-${new Date().toLocaleTimeString('pt-BR').replace(/:/g, '')}.${f.type.split('/')[1] === 'jpeg' ? 'jpg' : f.type.split('/')[1]}`, { type: f.type }) : f
-    setFile(named)
+    const named = ok.map((f, i) =>
+      f.type.startsWith('image/') && /^image\.\w+$/i.test(f.name) ? new File([f], `imagem-${new Date().toLocaleTimeString('pt-BR').replace(/:/g, '')}${i ? `-${i + 1}` : ''}.${f.type.split('/')[1] === 'jpeg' ? 'jpg' : f.type.split('/')[1]}`, { type: f.type }) : f,
+    )
+    setFiles((cur) => {
+      const all = [...cur, ...named]
+      if (all.length > MAX_FILES) toast.info(`Vão até ${MAX_FILES} arquivos por vez: os outros ficaram de fora.`)
+      return all.slice(0, MAX_FILES)
+    })
     setReplyFile(null)
     return true
   }
@@ -1424,7 +1437,7 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { t
   const [replyFile, setReplyFile] = useState<{ id: string; fileName: string } | null>(null)
   const applyReply = (r: { id: string; preview: string; fileName?: string | null }, append = false) => {
     if (r.fileName) {
-      setFile(null)
+      setFiles([])
       setReplyFile({ id: r.id, fileName: r.fileName })
       setText(r.preview)
     } else setText((t) => (append && t ? `${t}\n${r.preview}` : r.preview))
@@ -1434,20 +1447,34 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { t
   const [pick, setPick] = useState(0)
   const slash = novo && !file && !replyFile && text.startsWith('/') && !text.includes('\n') ? text.slice(1).trim().toLowerCase() : null
   const slashList = slash === null ? [] : (replies.data ?? []).filter((r) => !slash || r.title.toLowerCase().includes(slash) || r.preview.toLowerCase().includes(slash)).slice(0, 8)
+  /** Um arquivo por vez, na ordem; a legenda vai no primeiro. Falhando no meio, os que não foram continuam anexados. */
+  const sendFiles = async () => {
+    for (let i = 0; i < files.length; i++) {
+      const fd = new FormData()
+      fd.append('file', files[i]!)
+      if (i === 0 && text.trim()) fd.append('legenda', text.trim())
+      try {
+        await api.post(`/chat/conversas/${id}/arquivos`, fd)
+      } catch (err) {
+        if (i > 0) {
+          setText('')
+          setFiles(files.slice(i))
+          void qc.invalidateQueries({ queryKey: ['chat-conversa', id] })
+          throw new Error(`${i} de ${files.length} arquivos enviados. Os que faltam continuam anexados: ${errorMessage(err)}`)
+        }
+        throw err
+      }
+    }
+  }
   const send = useMutation({
     mutationFn: () => {
       if (replyFile) return api.post(`/chat/conversas/${id}/respostas/${replyFile.id}/enviar`, { legenda: text.trim() || undefined })
-      if (file) {
-        const fd = new FormData()
-        fd.append('file', file)
-        if (text.trim()) fd.append('legenda', text.trim())
-        return api.post(`/chat/conversas/${id}/arquivos`, fd)
-      }
+      if (files.length) return sendFiles()
       return api.post(`/chat/conversas/${id}/mensagens`, { text, ...(replyTo ? { quotedId: replyTo.id } : {}) })
     },
     onSuccess: () => {
       setText('')
-      setFile(null)
+      setFiles([])
       setReplyFile(null)
       onClearReply?.()
       void qc.invalidateQueries({ queryKey: ['chat-conversa', id] })
@@ -1561,27 +1588,27 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { t
           </Button>
         </div>
       )}
-      {file && (
-        <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-2 py-1 text-xs">
-          {preview ? <img src={preview} alt="Prévia da imagem" className="size-12 rounded object-cover" /> : <PaperclipIcon className="size-3.5" />}
-          <span className="min-w-0 flex-1 truncate">{file.name}</span>
-          <span className="text-muted-foreground tabular-nums">{(file.size / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB</span>
-          <Button type="button" size="sm" variant="ghost" className="h-6 px-2" onClick={() => setFile(null)} aria-label={`Remover o anexo ${file.name}`}>
+      {files.map((f, i) => (
+        <div key={`${f.name}-${i}`} className="flex items-center gap-2 rounded-md border bg-muted/40 px-2 py-1 text-xs">
+          {previews[i] ? <img src={previews[i]!} alt="Prévia da imagem" className="size-12 rounded object-cover" /> : <PaperclipIcon className="size-3.5" />}
+          <span className="min-w-0 flex-1 truncate">{f.name}</span>
+          <span className="text-muted-foreground tabular-nums">{(f.size / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB</span>
+          <Button type="button" size="sm" variant="ghost" className="h-6 px-2" onClick={() => setFiles((cur) => cur.filter((_, j) => j !== i))} aria-label={`Remover o anexo ${f.name}`}>
             Remover
           </Button>
         </div>
-      )}
+      ))}
       <div className="flex items-end gap-1.5">
         <input
           ref={input}
           type="file"
+          multiple
           className="hidden"
           accept="image/jpeg,image/png,image/webp,video/mp4,audio/ogg,audio/mpeg,audio/mp4,.m4a,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
           onChange={(e) => {
-            const f = e.target.files?.[0] ?? null
+            const list = [...(e.target.files ?? [])]
             e.target.value = ''
-            if (f && f.size > 64 * 1024 * 1024) return void toast.error('Arquivo maior que 64 MB. Para arquivos maiores, envie um link (ex.: Google Drive).')
-            setFile(f)
+            attach(list)
           }}
         />
         <Button type="button" size="icon" variant="ghost" onClick={() => input.current?.click()} aria-label="Anexar foto, vídeo, áudio ou documento">
@@ -1628,8 +1655,7 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { t
           onKeyDown={onKey}
           onPaste={(e) => {
             // Imagem copiada (print, foto do site, do Explorer): vira anexo; texto colado segue normal.
-            const f = [...e.clipboardData.files].find((x) => x.type.startsWith('image/')) ?? e.clipboardData.files[0]
-            if (f && attach(f)) e.preventDefault()
+            if (attach([...e.clipboardData.files])) e.preventDefault()
           }}
           rows={1}
           maxLength={file || replyFile ? 1000 : 4000}

@@ -138,11 +138,16 @@ export function parseMessage(data: unknown): ParsedMessage | null {
 const obj = (v: unknown) => (v && typeof v === 'object' ? (v as Obj) : null)
 
 /** Texto do menu com as opções numeradas ("1 Marketing"), como o chat mostra e o cliente vê no celular. */
-function menuText(body: string | null, options: string[]) {
+function menuText(body: string | null, options: string[], extras: string[] = []) {
   const opts = options.map((t) => t.trim()).filter(Boolean).slice(0, 30)
-  if (!opts.length) return null
-  return [body?.trim() || 'Escolha uma opção:', ...opts.map((t, i) => `${i + 1} ${t.slice(0, 80)}`)].join('\n').slice(0, 4000)
+  // Botão que abre link, ligação ou formulário no celular: não dá para responder pelo CRM, mas fica o nome dele.
+  const links = extras.map((t) => t.trim()).filter(Boolean).slice(0, 10).map((t) => `${LINK_MARK}${t.slice(0, 80)} (no celular)`)
+  if (!opts.length && !links.length) return null
+  return [body?.trim() || (opts.length ? 'Escolha uma opção:' : ''), ...opts.map((t, i) => `${i + 1} ${t.slice(0, 80)}`), ...links].filter(Boolean).join('\n').slice(0, 4000)
 }
+
+/** Começo da linha de um botão que só funciona no celular (link, ligação, formulário). */
+export const LINK_MARK = '▸ '
 
 /** Botões, lista ou mensagem interativa (WhatsApp Business / robôs): o texto e as opções. */
 function menuOf(m: Obj): string | null {
@@ -160,14 +165,19 @@ function menuOf(m: Obj): string | null {
   const tpl = obj(tm?.hydratedTemplate) ?? obj(tm?.hydratedFourRowTemplate) ?? obj(tm?.fourRowTemplate)
   if (tpl) {
     const buttons = Array.isArray(tpl.hydratedButtons) ? tpl.hydratedButtons : []
-    const label = (b: unknown) => str(obj(obj(b)?.quickReplyButton)?.displayText, 120) ?? str(obj(obj(b)?.urlButton)?.displayText, 120) ?? str(obj(obj(b)?.callButton)?.displayText, 120) ?? ''
-    return menuText(str(tpl.hydratedContentText) ?? str(obj(tpl.content)?.namespace), buttons.map(label)) ?? str(tpl.hydratedContentText)
+    const reply = (b: unknown) => str(obj(obj(b)?.quickReplyButton)?.displayText, 120) ?? ''
+    const link = (b: unknown) => str(obj(obj(b)?.urlButton)?.displayText, 120) ?? str(obj(obj(b)?.callButton)?.displayText, 120) ?? ''
+    return menuText(str(tpl.hydratedContentText) ?? str(obj(tpl.content)?.namespace), buttons.map(reply), buttons.map(link)) ?? str(tpl.hydratedContentText)
   }
   const inter = obj(m.interactiveMessage)
   if (inter) {
-    const body = [str(obj(inter.header)?.title, 300), str(obj(inter.body)?.text)].filter(Boolean).join('\n') || null
+    // Título em negrito, como aparece no celular.
+    const title = str(obj(inter.header)?.title, 300)
+    const text = str(obj(inter.body)?.text)
+    const body = [title && text ? `*${title.replace(/\*/g, '')}*` : title, text].filter(Boolean).join('\n') || null
     const flow = obj(inter.nativeFlowMessage)
     const options: string[] = []
+    const extras: string[] = []
     for (const b of Array.isArray(flow?.buttons) ? (flow!.buttons as unknown[]) : []) {
       let params: Obj = {}
       try {
@@ -178,8 +188,9 @@ function menuOf(m: Obj): string | null {
       const rows = (Array.isArray(params.sections) ? params.sections : []).flatMap((sec) => (Array.isArray(obj(sec)?.rows) ? (obj(sec)!.rows as unknown[]) : []))
       if (rows.length) options.push(...rows.map((r) => str(obj(r)?.title, 120) ?? ''))
       else if (str(params.display_text, 120) && obj(b)?.name === 'quick_reply') options.push(str(params.display_text, 120)!)
+      else if (str(params.display_text, 120) ?? str(params.flow_cta, 120)) extras.push((str(params.display_text, 120) ?? str(params.flow_cta, 120))!)
     }
-    return menuText(body, options) ?? body
+    return menuText(body, options, extras) ?? body
   }
   return null
 }

@@ -52,4 +52,15 @@ describe('formatos de botões que chegavam como "tipo que o CRM ainda não mostr
     const novo = parseMessage({ key, message: { algumTipoNovoMessage: { header: { text: 'Escolha' }, actions: [{ displayText: 'A' }, { displayText: 'B' }] } } })
     expect(novo).toMatchObject({ type: 'texto', text: 'Escolha\n1 A\n2 B' })
   })
+
+  it('botão único do robô vira botão; o de formulário ou link aparece só como aviso; título em negrito', () => {
+    const one = parseMessage({ key, message: { interactiveMessage: { body: { text: 'Olá, Usaparts.\nVocê pode conversar com alguém da nossa equipe agora?' }, nativeFlowMessage: { buttons: [{ name: 'quick_reply', buttonParamsJson: '{"display_text":"Sim, conversar agora","id":"s"}' }] } } } })
+    expect(one?.text).toBe('Olá, Usaparts.\nVocê pode conversar com alguém da nossa equipe agora?\n1 Sim, conversar agora')
+    expect(menuFor(one?.text, 'COLEGA').map((o) => o.label)).toEqual(['Sim, conversar agora'])
+    const rate = parseMessage({ key, message: { interactiveMessage: { header: { title: 'Avalie nosso atendimento' }, body: { text: 'Sua opinião nos ajuda a melhorar.' }, nativeFlowMessage: { buttons: [{ name: 'galaxy_message', buttonParamsJson: '{"flow_cta":"Opinar","flow_id":"1"}' }] } } } })
+    expect(rate?.text).toBe('*Avalie nosso atendimento*\nSua opinião nos ajuda a melhorar.\n▸ Opinar (no celular)')
+    expect(menuFor(rate?.text, 'COLEGA')).toEqual([])
+    // Lista comum de um item no meio do texto não vira botão.
+    expect(menuFor('Preciso de:\n1 filtro de óleo\nobrigado', 'COLEGA')).toEqual([])
+  })
 })
