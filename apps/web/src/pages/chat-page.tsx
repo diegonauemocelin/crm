@@ -41,6 +41,8 @@ export interface NumberRef {
   status: string
   /** Atendimento dividido entre os atendentes do número. */
   splitAttendance?: boolean
+  /** A pessoa atende neste número (ligada a ele, pelo vendedor ou pelo setor). */
+  attends?: boolean
 }
 export interface ConvItem {
   id: string
@@ -861,7 +863,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
           </Button>
         </div>
       ) : (
-        <Composer thread={d} replyTo={replyTo} onClearReply={() => setReplyTo(null)} dropped={dropped} onDroppedUsed={() => setDropped(null)} />
+        <Composer thread={d} replyTo={replyTo} onClearReply={() => setReplyTo(null)} dropped={dropped} onDroppedUsed={() => setDropped(null)} compact={compact} />
       )}
       {forwarding && selecting && (
         <ForwardDialog
@@ -1420,10 +1422,13 @@ function NoteButton({ conversationId, monitor }: { conversationId: string; monit
 }
 
 /** Caixa de envio: texto (Enter envia, Shift+Enter quebra linha), arquivo com legenda e respostas rápidas. */
+/** Botão redondo verde de enviar/gravar, como no WhatsApp (app no celular). */
+const ROUND_SEND = 'size-11 shrink-0 rounded-full bg-[#00a884] text-white hover:bg-[#008f6f] [&_svg]:size-5'
+
 /** Arquivos por envio no chat (cada um sai como uma mensagem). */
 const MAX_FILES = 10
 
-function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { thread: Thread; replyTo?: Message | null; onClearReply?: () => void; dropped?: File[] | null; onDroppedUsed?: () => void }) {
+function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed, compact = false }: { thread: Thread; replyTo?: Message | null; onClearReply?: () => void; dropped?: File[] | null; onDroppedUsed?: () => void; compact?: boolean }) {
   const { can } = useAuth()
   const qc = useQueryClient()
   const [text, setText] = useState('')
@@ -1577,11 +1582,71 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { t
       submit()
     }
   }
+  // Botões da caixa de escrever: no app do celular ficam dentro do campo, como no WhatsApp.
+  const clipButton = (
+    <Button type="button" size="icon" variant="ghost" onClick={() => input.current?.click()} aria-label="Anexar foto, vídeo, áudio ou documento">
+      <PaperclipIcon />
+    </Button>
+  )
+  const repliesMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" size="icon" variant="ghost" aria-label="Respostas rápidas">
+          <ZapIcon />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
+        <DropdownMenuLabel>Respostas rápidas</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {(replies.data ?? []).length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">Nenhuma ainda. Crie as suas em “Gerenciar respostas”.</p>}
+        {replies.data?.map((r) => (
+          <DropdownMenuItem key={r.id} onSelect={() => applyReply(r, true)} className="flex-col items-start gap-0.5">
+            <span className="flex items-center gap-1 font-medium">
+              {r.fileName && <PaperclipIcon className="size-3.5" aria-label="Com arquivo" />}
+              {r.title}
+            </span>
+            <span className="line-clamp-2 text-xs text-muted-foreground">{r.preview}</span>
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => setManaging(true)}>Gerenciar respostas</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+  const emojiPicker = (
+    <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" size="icon" variant="ghost" aria-label="Emojis e figurinhas">
+          <SmileIcon />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="start" className="w-80 p-2" onCloseAutoFocus={(e) => e.preventDefault()}>
+        <EmojiStickerPanel onEmoji={insertEmoji} onSticker={(sid) => sticker.mutate(sid)} sending={sticker.isPending} />
+      </PopoverContent>
+    </Popover>
+  )
+  const messageBox = (
+    <Textarea
+      ref={box}
+      value={text}
+      onChange={(e) => (setText(e.target.value), setPick(0))}
+      onKeyDown={onKey}
+      onPaste={(e) => {
+        // Imagem copiada (print, foto do site, do Explorer): vira anexo; texto colado segue normal.
+        if (attach([...e.clipboardData.files])) e.preventDefault()
+      }}
+      rows={1}
+      maxLength={file || replyFile ? 1000 : 4000}
+      placeholder={file || replyFile ? (compact ? 'Legenda' : 'Legenda (opcional) · Enter envia') : compact ? 'Mensagem' : novo ? 'Escreva a mensagem (Enter envia, / abre as respostas rápidas)' : 'Escreva a mensagem (Enter envia, Shift+Enter pula linha)'}
+      className={cn('max-h-40 min-h-9 flex-1 resize-none rounded-lg border-transparent bg-white shadow-none dark:bg-[#2a3942]', compact && 'max-h-32 min-h-11 rounded-none border-0 bg-transparent px-1 py-3 text-[16px] shadow-none outline-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent')}
+      aria-label="Mensagem"
+    />
+  )
   return (
     <>
     <form
       onSubmit={submit}
-      className={cn('relative space-y-2 border-t bg-[#f0f2f5] p-2 dark:bg-[#202c33]')}
+      className={cn('relative space-y-2 border-t bg-[#f0f2f5] p-2 dark:bg-[#202c33]', compact && 'border-t-0 bg-[#efeae2] px-1.5 pt-1 pb-[calc(0.375rem+env(safe-area-inset-bottom))] dark:bg-[#0b141a]')}
     >
       {replyTo && (
         <div className="flex items-start gap-2 rounded-md border-l-4 border-l-[color:var(--brand)] bg-muted/60 px-2.5 py-1.5 text-xs">
@@ -1652,58 +1717,22 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { t
             attach(list)
           }}
         />
-        <Button type="button" size="icon" variant="ghost" onClick={() => input.current?.click()} aria-label="Anexar foto, vídeo, áudio ou documento">
-          <PaperclipIcon />
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type="button" size="icon" variant="ghost" aria-label="Respostas rápidas">
-              <ZapIcon />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
-            <DropdownMenuLabel>Respostas rápidas</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {(replies.data ?? []).length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">Nenhuma ainda. Crie as suas em “Gerenciar respostas”.</p>}
-            {replies.data?.map((r) => (
-              <DropdownMenuItem key={r.id} onSelect={() => applyReply(r, true)} className="flex-col items-start gap-0.5">
-                <span className="flex items-center gap-1 font-medium">
-                  {r.fileName && <PaperclipIcon className="size-3.5" aria-label="Com arquivo" />}
-                  {r.title}
-                </span>
-                <span className="line-clamp-2 text-xs text-muted-foreground">{r.preview}</span>
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => setManaging(true)}>Gerenciar respostas</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
-          <PopoverTrigger asChild>
-            <Button type="button" size="icon" variant="ghost" aria-label="Emojis e figurinhas">
-              <SmileIcon />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent side="top" align="start" className="w-80 p-2" onCloseAutoFocus={(e) => e.preventDefault()}>
-            <EmojiStickerPanel onEmoji={insertEmoji} onSticker={(sid) => sticker.mutate(sid)} sending={sticker.isPending} />
-          </PopoverContent>
-        </Popover>
-        <ShareContactButton conversationId={id} disabled={!!file} />
-        <Textarea
-          ref={box}
-          value={text}
-          onChange={(e) => (setText(e.target.value), setPick(0))}
-          onKeyDown={onKey}
-          onPaste={(e) => {
-            // Imagem copiada (print, foto do site, do Explorer): vira anexo; texto colado segue normal.
-            if (attach([...e.clipboardData.files])) e.preventDefault()
-          }}
-          rows={1}
-          maxLength={file || replyFile ? 1000 : 4000}
-          placeholder={file || replyFile ? 'Legenda (opcional) · Enter envia' : novo ? 'Escreva a mensagem (Enter envia, / abre as respostas rápidas)' : 'Escreva a mensagem (Enter envia, Shift+Enter pula linha)'}
-          className={cn('max-h-40 min-h-9 flex-1 resize-none rounded-lg border-transparent bg-white shadow-none dark:bg-[#2a3942]')}
-          aria-label="Mensagem"
-        />
+        {compact ? (
+          <div className="flex min-h-11 min-w-0 flex-1 items-end rounded-3xl bg-white px-1 shadow-sm dark:bg-[#2a3942]">
+            {emojiPicker}
+            {messageBox}
+            {repliesMenu}
+            {clipButton}
+          </div>
+        ) : (
+          <>
+            {clipButton}
+            {repliesMenu}
+            {emojiPicker}
+          <ShareContactButton conversationId={id} disabled={!!file} />
+            {messageBox}
+          </>
+        )}
         {voice.recording ? (
           <div className="flex items-center gap-1.5">
             <span className="flex items-center gap-1.5 text-sm tabular-nums text-destructive" aria-live="polite">
@@ -1717,11 +1746,11 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { t
             </Button>
           </div>
         ) : !text.trim() && !file ? (
-          <Button type="button" size="icon" onClick={() => void voice.start()} disabled={voice.sending} aria-label="Gravar mensagem de voz">
+          <Button type="button" size="icon" className={cn(compact && ROUND_SEND)} onClick={() => void voice.start()} disabled={voice.sending} aria-label="Gravar mensagem de voz">
             {voice.sending ? <Loader2Icon className="animate-spin" /> : <MicIcon />}
           </Button>
         ) : (
-          <Button type="submit" size="icon" disabled={send.isPending} aria-label="Enviar mensagem">
+          <Button type="submit" size="icon" className={cn(compact && ROUND_SEND)} disabled={send.isPending} aria-label="Enviar mensagem">
             {send.isPending ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
           </Button>
         )}

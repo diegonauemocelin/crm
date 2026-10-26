@@ -14,7 +14,7 @@ import { useAuth } from '@/lib/auth'
 import { useBranding } from '@/lib/branding'
 import { dateShort, time } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { Avatar, type ListData, StartDialog, ThreadView } from '@/pages/chat-page'
+import { Avatar, type ListData, type NumberRef, StartDialog, ThreadView } from '@/pages/chat-page'
 
 /**
  * App no celular: só o que a pessoa usa no dia a dia, com cara de WhatsApp. Conversas (lista e conversa em tela
@@ -103,6 +103,8 @@ const FILTERS = [
   { key: 'grupos', label: 'Grupos' },
 ] as const
 type Filter = (typeof FILTERS)[number]['key']
+/** Número de WhatsApp escolhido na lista de conversas do app (salvo no aparelho). */
+const NUMBER_KEY = 'app-numero'
 
 function when(iso: string | null) {
   if (!iso) return ''
@@ -121,12 +123,37 @@ export function AppConversas() {
   const [search, setSearch] = useState('')
   const [q, setQ] = useState('')
   const [starting, setStarting] = useState(false)
+  // Número escolhido (como abrir um WhatsApp só): fica salvo no aparelho. Sem escolha, o primeiro da lista.
+  const [picked, setPicked] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(NUMBER_KEY)
+    } catch {
+      return null
+    }
+  })
+  const [numbers, setNumbers] = useState<NumberRef[] | null>(null)
+  const numberId = numbers?.length ? (numbers.find((n) => n.id === picked) ?? numbers[0]!).id : null
+  const pick = (id: string) => {
+    setPicked(id)
+    try {
+      localStorage.setItem(NUMBER_KEY, id)
+    } catch {
+      /* sem armazenamento: vale só nesta abertura */
+    }
+  }
   useEffect(() => {
     const t = setTimeout(() => setQ(search.trim()), 300)
     return () => clearTimeout(t)
   }, [search])
-  const qs = new URLSearchParams({ ...(filter === 'naoLidas' ? { naoLidas: 'true' } : {}), ...(filter === 'fila' ? { fila: 'true' } : {}), ...(filter === 'grupos' ? { tipo: 'GRUPO' } : {}), ...(q ? { busca: q } : {}) }).toString()
+  const qs = new URLSearchParams({ ...(filter === 'naoLidas' ? { naoLidas: 'true' } : {}), ...(filter === 'fila' ? { fila: 'true' } : {}), ...(filter === 'grupos' ? { tipo: 'GRUPO' } : {}), ...(q ? { busca: q } : {}), ...(numberId ? { numero: numberId } : {}) }).toString()
   const list = useQuery({ queryKey: ['app-conversas', qs], queryFn: () => api.get<ListData>(`/chat/conversas?${qs}`), refetchInterval: 5000, placeholderData: keepPreviousData })
+  // A lista de números vem junto com as conversas; até saber se há mais de um, não mostra conversas de todos misturadas.
+  useEffect(() => {
+    // Só os números em que a pessoa atende; quem não atende em nenhum (ex.: só acompanha) escolhe entre todos.
+    if (list.data?.numbers && !numbers) setNumbers(list.data.numbers.some((n) => n.attends) ? list.data.numbers.filter((n) => n.attends) : list.data.numbers)
+  }, [list.data?.numbers, numbers])
+  const waitingNumber = !numbers || (!!numbers.length && !qs.includes('numero='))
+  const items = waitingNumber ? [] : (list.data?.items ?? [])
   const hasQueue = !!list.data?.numbers.some((n) => n.splitAttendance)
   return (
     <div className="relative min-h-full">
@@ -137,6 +164,23 @@ export function AppConversas() {
           </span>
         }
       >
+        {numbers && numbers.length > 1 && (
+          <div className="mt-2 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Número de WhatsApp">
+            {numbers.map((n) => (
+              <button
+                key={n.id}
+                type="button"
+                role="tab"
+                aria-selected={n.id === numberId}
+                onClick={() => pick(n.id)}
+                className={cn('flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-sm', n.id === numberId ? 'border-[#25d366] bg-[#25d366] font-medium text-white' : 'bg-background text-muted-foreground')}
+              >
+                <span className={cn('size-2 rounded-full', n.status === 'CONECTADO' ? 'bg-[#25d366]' : 'bg-muted-foreground/50', n.id === numberId && 'bg-white')} />
+                {n.name}
+              </button>
+            ))}
+          </div>
+        )}
         <label className="relative mt-2 block">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Pesquisar" className="h-10 rounded-full border-0 bg-muted pl-9" aria-label="Pesquisar conversas" />
@@ -156,15 +200,15 @@ export function AppConversas() {
         </div>
       </TopBar>
       <InstallBanner />
-      {list.isLoading && (
+      {(list.isLoading || (waitingNumber && !list.error)) && (
         <p className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
           <Loader2Icon className="size-4 animate-spin" /> Carregando conversas…
         </p>
       )}
       {list.error && <p className="p-6 text-center text-sm text-destructive">{errorMessage(list.error)}</p>}
-      {list.data?.items.length === 0 && <p className="p-8 text-center text-sm text-muted-foreground">{q ? 'Nenhuma conversa encontrada.' : filter === 'naoLidas' ? 'Nenhuma conversa não lida.' : 'Nenhuma conversa por aqui.'}</p>}
+      {!waitingNumber && list.data?.items.length === 0 && <p className="p-8 text-center text-sm text-muted-foreground">{q ? 'Nenhuma conversa encontrada.' : filter === 'naoLidas' ? 'Nenhuma conversa não lida.' : 'Nenhuma conversa por aqui.'}</p>}
       <ul>
-        {list.data?.items.map((c) => {
+        {items.map((c) => {
           const name = c.name || (c.phone ? `+${c.phone.replace(/\D/g, '')}` : 'Contato')
           const unread = c.unread > 0
           return (

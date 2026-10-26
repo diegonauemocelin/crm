@@ -884,10 +884,12 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
 
   private async visibleNumbers(user: AuthUser, scope: Prisma.WhatsappConversationWhereInput) {
     const all = await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, deletedAt: null }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, phone: true, status: true, splitAttendance: true } })
-    if (this.scopeOf(user) === 'ALL') return all
-    const ids = new Set((await this.prisma.whatsappConversation.findMany({ where: scope, select: { numberId: true }, distinct: ['numberId'] })).map((c) => c.numberId))
+    // attends: números em que a pessoa atende (o app no celular abre só neles).
     const mine = (await this.ownNumbers(user)).numberIds
-    return all.filter((n) => ids.has(n.id) || mine.includes(n.id))
+    const marked = all.map((n) => ({ ...n, attends: mine.includes(n.id) }))
+    if (this.scopeOf(user) === 'ALL') return marked
+    const ids = new Set((await this.prisma.whatsappConversation.findMany({ where: scope, select: { numberId: true }, distinct: ['numberId'] })).map((c) => c.numberId))
+    return marked.filter((n) => ids.has(n.id) || n.attends)
   }
 
   private async load(user: AuthUser, id: string) {

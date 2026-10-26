@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.99.2",
+      "date": "2026-10-26",
+      "title": "App no celular: um número por vez e caixa de mensagem como a do WhatsApp",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "App no celular",
+          "text": "As conversas abrem só no número de WhatsApp em que a pessoa atende. Quem atende em mais de um número escolhe qual no alto da tela (a escolha fica salva no aparelho); quem atende em um só não vê o seletor."
+        },
+        {
+          "type": "melhoria",
+          "area": "App no celular",
+          "text": "Caixa de escrever como a do WhatsApp: campo arredondado com emoji, respostas rápidas e anexo dentro, e o botão verde redondo de enviar ou gravar áudio."
+        }
+      ]
+    },
+    {
       "version": "0.99.1",
       "date": "2026-10-26",
       "title": "Chat: respostas de formulário do WhatsApp e textos mais limpos",
