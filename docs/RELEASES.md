@@ -43,6 +43,11 @@ A versão do sistema tem **uma única fonte**: o arquivo [`releases.json`](../re
    git push origin v0.2.0
    ```
 
+   **Sem Git no PC** (ou pelo Claude na nuvem, que não consegue enviar tags): depois do `git push` da versão, no GitHub
+   abra **Actions › Criar tag da versão › Run workflow** (na `main`). Ela cria a tag da versão atual do `releases.json`
+   no último commit da `main` e dispara a "Publicar versão". Não use Releases › Draft a new release para isso: a
+   "Publicar versão" cria a Release sozinha e falha se ela já existir.
+
    A Action "Publicar versão" confere se a tag bate com o `releases.json` do commit: tag no commit errado falha em
    "Conferir versão" e o deploy não acha as imagens. Para corrigir: `git tag -d v0.2.0`, `git push origin :refs/tags/v0.2.0`
    e crie de novo no commit certo.

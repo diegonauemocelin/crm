@@ -20,6 +20,11 @@
           "type": "infra",
           "area": "Segurança",
           "text": "Dependências atualizadas com as correções de segurança apontadas pelo npm audit (body-parser, multer, fast-uri, zod, nodemailer e SDK da Anthropic)."
+        },
+        {
+          "type": "infra",
+          "area": "Publicação",
+          "text": "Publicar uma versão sem Git no PC: Actions › Criar tag da versão › Run workflow cria a tag da versão atual e dispara a Publicar versão."
         }
       ]
     },

@@ -5,9 +5,11 @@ name: Publicar versão
 #  2. constrói as imagens Docker e publica no GitHub Container Registry (a VPS só baixa, sem compilar);
 #  3. publica a Release com as notas do releases.json (é o que o rodapé consulta para "nova versão disponível").
 # Tag de versão antiga (ex.: marcada depois) não vira a "latest": a imagem :latest e a Release "Latest" ficam com a mais nova.
+# Também roda pelo "Run workflow" escolhendo a tag (é assim que a "Criar tag da versão" a dispara).
 on:
   push:
     tags: ['v*.*.*']
+  workflow_dispatch:
 
 permissions:
   contents: write

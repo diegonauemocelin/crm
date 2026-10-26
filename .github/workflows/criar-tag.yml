@@ -1,0 +1,46 @@
+name: Criar tag da versão
+
+# Publica sem Git no PC: cria a tag vX.Y.Z da versão atual do releases.json no último commit da main e dispara a
+# "Publicar versão" nessa tag. Rodar à mão: Actions › Criar tag da versão › Run workflow (na main).
+# Tag criada pela própria Action não dispara outras Actions sozinha; por isso a "Publicar versão" é chamada aqui.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: criar-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag e publicação
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Criar a tag
+        id: tag
+        run: |
+          tag="v$(node -p "require('./releases.json').releases[0].version")"
+          node scripts/check-release.mjs "$tag"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "::error::A tag $tag já existe. Para publicar de novo: Actions › Publicar versão › Run workflow, escolhendo a tag."
+            exit 1
+          fi
+          git tag "$tag" "$GITHUB_SHA"
+          git push origin "refs/tags/$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Tag $tag criada no commit ${GITHUB_SHA::7}."
+      - name: Disparar a Publicar versão
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: gh workflow run release.yml --ref "$TAG"
