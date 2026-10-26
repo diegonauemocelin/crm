@@ -39,6 +39,7 @@ daquele computador.
 - Envios automáticos pelo WhatsApp em lote (ex.: resumo semanal do vendedor) com intervalo aleatório entre mensagens (padrão 2–10 min), para não parecer spam.
 - Resumo semanal do vendedor fica em Marketing › Relatórios e alertas (ciclo sexta a quinta, envio na sexta).
 - Excluir usuário é exclusão lógica (`users.deletedAt`): some das listas e de números, setores e conversas, mas o nome fica no histórico.
+- App no celular (PWA, /app, apps/web/src/pages/app): chat com layout do WhatsApp, painéis por permissão e conta; notificações Web Push (apps/api/src/app-movel). Horário de acesso por perfil (roles.loginHours), Administrador sem limite.
 - Integrações de anúncios (Google, Meta, TikTok) são só leitura: o CRM não altera as contas de anúncio.
 - O BI antigo foi descartado (só o painel de Mercado Livre Ads ficou, em Marketplaces). O painel.usaparts virou o
   Assistente ML (`apps/api/src/assistente`); a VPS só deve ter o CRM (`deploy/enxugar-servidor.sh`).
