@@ -41,7 +41,9 @@ type ActionKey = (typeof ACTIONS)[number]['key']
 const EMPTY: PermissionEntry = { view: false, create: false, edit: false, delete: false, export: false, scope: 'ALL' }
 
 /** Módulos em que faz sentido restringir a "somente os próprios registros". */
-const SCOPED_MODULES = new Set(['leads', 'pre_vendas', 'pos_vendas', 'chat'])
+const SCOPED_MODULES = new Set(['leads', 'pre_vendas', 'pos_vendas', 'chat', 'fretes_painel', 'fretes_cotacao', 'fretes_tabelas', 'fretes_transportadoras', 'fretes_filiais'])
+/** No módulo de fretes o escopo é por filial: não existe “somente os próprios”. */
+const UNIT_ONLY = (m: string) => m.startsWith('fretes_')
 
 export function RolesContent() {
   const qc = useQueryClient()
@@ -305,8 +307,8 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
                                   </SelectTrigger>
                                   <SelectContent>
                                     <SelectItem value="ALL">Todos</SelectItem>
-                                    <SelectItem value="UNIT">Somente da unidade</SelectItem>
-                                    <SelectItem value="OWN">Somente os próprios</SelectItem>
+                                    <SelectItem value="UNIT">{UNIT_ONLY(m.key) ? 'Somente das filiais da pessoa' : 'Somente da unidade'}</SelectItem>
+                                    {!UNIT_ONLY(m.key) && <SelectItem value="OWN">Somente os próprios</SelectItem>}
                                   </SelectContent>
                                 </Select>
                               ) : (

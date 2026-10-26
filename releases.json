@@ -2,6 +2,63 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.99.0",
+      "date": "2026-10-26",
+      "title": "Gestão de fretes: transportadoras, tabelas versionadas, importação de planilhas e cotação por filial",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Novo módulo Fretes, separado no menu e com permissões próprias (painel, cotações, tabelas, transportadoras e filiais). Cada pessoa vê as suas filiais; quem tem acesso a todas escolhe \"Todas as filiais (visão global)\" no seletor de filial do cabeçalho."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Transportadoras: CNPJ, razão social, nome na cotação, contatos, modalidades, filiais atendidas, códigos nos sistemas externos e \"usar recebedor como destinatário\", com as tabelas vinculadas e quantas vezes cada uma foi cotada e escolhida."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Tabelas de frete com vigência, filiais, tipo de pessoa, faixas de peso e valor, modal, tabela de carga, expedição e código de serviço. Os valores ficam em versões: a publicada calcula, alterar cria um rascunho, e as versões anteriores ficam guardadas para auditoria."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Importação da planilha da transportadora (Excel ou CSV): o sistema acha o cabeçalho, sugere o que é cada coluna (inclusive faixas de peso em colunas, como \"Até 10 kg | Até 30 kg\"), valida CEPs, números, percentuais e duplicidades linha a linha e mostra o relatório antes de gravar. A planilha vira rascunho; o original fica para baixar no Histórico de Importação."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Componentes do frete com fórmulas (ad valorem, GRIS, pedágio por fração, TAS, T-CPF, TDA, TRT, TDE, despacho, reentrega e outros), condição de incidência, ordem de aplicação, \"soma no imposto\" e nome no CT-e, com variáveis clicáveis, validação da fórmula e simulador. O editor aceita só variáveis, operadores e funções autorizadas."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Cotação de frete: filial de origem, CEP de destino (cidade e UF pelo CEP), PF/PJ, valor da NF e vários volumes com medidas. Calcula peso cubado e taxado, a regra do destino, cada componente e o ICMS, e compara as transportadoras por preço ou prazo, com o motivo de quem não atende (sem cobertura, restrição, tabela vencida, fora da faixa)."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Toda cotação fica salva com a versão de tabela usada e pode ser reproduzida depois com os mesmos valores. Escolher uma transportadora que não é a mais barata pede o motivo; tabela vencida só entra com liberação justificada, registrada na auditoria."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Painel de fretes com cotações, frete escolhido, custo por kg, frete sobre o valor da mercadoria, economia estimada, tabelas vencidas ou vencendo, e rankings por transportadora, filial e UF, só com números calculados dos registros."
+        },
+        {
+          "type": "melhoria",
+          "area": "Usuários",
+          "text": "Cadastro do usuário com \"Outras unidades que acessa\": gestores de mais de uma filial enxergam todas elas no módulo de fretes."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Projeto completo (arquitetura, modelo de dados, permissões, motor de cálculo, plano de CT-e, Correios, Mercado Livre ME1, Google Shopping e cronograma) em docs/fretes/PROJETO.md."
+        }
+      ]
+    },
+    {
       "version": "0.98.2",
       "date": "2026-10-26",
       "title": "Chat: vários arquivos de uma vez e botões de robô",

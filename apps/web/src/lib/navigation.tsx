@@ -45,6 +45,10 @@ import {
   MessagesSquareIcon,
   SendIcon,
   BookOpenIcon,
+  TruckIcon,
+  CalculatorIcon,
+  TableIcon,
+  Building2Icon,
 } from 'lucide-react'
 import type { Action } from './types'
 
@@ -156,6 +160,18 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Respostas enviadas', to: '/marketplaces/assistente/respostas', icon: SendIcon, module: 'assist_atendimento' },
       { title: 'Base de conhecimento', to: '/marketplaces/assistente/conhecimento', icon: BookOpenIcon, module: 'assist_conhecimento' },
       { title: 'Produtos e aplicações', to: '/marketplaces/assistente/aplicacoes', icon: PackageSearchIcon, module: 'assist_aplicacoes' },
+    ],
+  },
+  {
+    // Módulo separado de fretes: cada pessoa vê as suas filiais; quem tem acesso a todas vê a visão global.
+    title: 'Fretes',
+    items: [
+      { title: 'Painel de fretes', to: '/fretes', icon: GaugeIcon, module: 'fretes_painel' },
+      { title: 'Cotação de frete', to: '/fretes/cotacao', icon: CalculatorIcon, module: 'fretes_cotacao', action: 'create' },
+      { title: 'Histórico de cotações', to: '/fretes/cotacoes', icon: HistoryIcon, module: 'fretes_cotacao' },
+      { title: 'Tabelas de frete', to: '/fretes/tabelas', icon: TableIcon, module: 'fretes_tabelas' },
+      { title: 'Transportadoras', to: '/fretes/transportadoras', icon: TruckIcon, module: 'fretes_transportadoras' },
+      { title: 'Filiais e integrações', to: '/fretes/filiais', icon: Building2Icon, module: 'fretes_filiais' },
     ],
   },
   {

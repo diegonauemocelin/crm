@@ -140,8 +140,8 @@ export class PainelService {
       this.prisma.freightQuote.findMany({ where: selected, select: { results: true, selectedTotal: true, selectedTableId: true }, take: 20_000 }),
       this.prisma.unit.findMany({ where: { tenantId: user.tenantId }, select: { id: true, name: true } }),
     ])
-    const series = await this.prisma.$queryRaw<{ day: Date; quotes: bigint; chosen: bigint; total: Prisma.Decimal | null }[]>`
-      SELECT date_trunc('day', "createdAt" AT TIME ZONE 'America/Sao_Paulo') AS day,
+    const series = await this.prisma.$queryRaw<{ day: string; quotes: bigint; chosen: bigint; total: Prisma.Decimal | null }[]>`
+      SELECT to_char(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM-DD') AS day,
              count(*) AS quotes,
              count(*) FILTER (WHERE status = 'SELECIONADA') AS chosen,
              sum("selectedTotal") FILTER (WHERE status = 'SELECIONADA') AS total
@@ -186,7 +186,7 @@ export class PainelService {
       byUnit: byUnit.map((u) => ({ unitId: u.unitId, name: unitsRows.find((x) => x.id === u.unitId)?.name ?? '—', count: u._count._all, total: n(u._sum.selectedTotal) })).sort((a, b) => b.total - a.total),
       byCarrier: byCarrier.map((c) => ({ carrierId: c.selectedCarrierId, name: carriers.find((x) => x.id === c.selectedCarrierId)?.name ?? '—', count: c._count._all, total: n(c._sum.selectedTotal), perKg: n(c._sum.realWeight) > 0 ? n(c._sum.selectedTotal) / n(c._sum.realWeight) : null })).sort((a, b) => b.total - a.total),
       byUf: byUf.map((u) => ({ uf: u.destUf ?? '—', count: u._count._all, total: n(u._sum.selectedTotal) })).sort((a, b) => b.total - a.total),
-      series: series.map((s) => ({ day: s.day.toISOString().slice(0, 10), quotes: Number(s.quotes), chosen: Number(s.chosen), total: n(s.total) })),
+      series: series.map((s) => ({ day: s.day, quotes: Number(s.quotes), chosen: Number(s.chosen), total: n(s.total) })),
       tables: {
         vigentes,
         drafts,

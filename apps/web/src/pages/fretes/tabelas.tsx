@@ -460,7 +460,7 @@ function TableForm({ table }: { table?: TableDetail }) {
     notes: table?.notes ?? '',
   }))
   useEffect(() => {
-    if (!table && carriers.data?.length === 1 && !f.carrierId) setF((x) => ({ ...x, carrierId: carriers.data[0]!.id }))
+    if (!table && carriers.data?.length === 1 && !f.carrierId) setF((x) => ({ ...x, carrierId: carriers.data![0]!.id }))
   }, [carriers.data, table, f.carrierId])
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }))
   const days = f.validTo ? Math.round((new Date(`${f.validTo}T00:00:00`).getTime() - new Date(new Date().toDateString()).getTime()) / 86_400_000) : null

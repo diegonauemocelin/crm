@@ -17,7 +17,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { money } from '@/lib/format'
-import { type CalcSettings, type ComponentDef, fmtNum, type IcmsMode, maskCep, parseBr, type QuoteResult, RESULT_STATUS, useFreightContext } from '@/lib/fretes'
+import { type CalcSettings, type ComponentDef, fmtNum, type IcmsMode, maskCep, parseBr, type QuoteResult, RESULT_STATUS, useFreightContext, type VariableDef } from '@/lib/fretes'
 import { cn } from '@/lib/utils'
 import type { FreightTable, VersionRow } from '@/pages/fretes/tabelas'
 
@@ -95,7 +95,7 @@ export function ComponentsTab({ table, version }: { table: FreightTable; version
   if (v.isLoading || ctx.isLoading || !settings) return <TableSkeleton />
   if (v.error) return <ErrorState error={v.error} onRetry={() => v.refetch()} />
   const cat = ctx.data!.catalog
-  const allVars = [...cat.ruleVariables, ...cat.inputVariables, ...(v.data?.ruleVariables ?? []).filter((x) => !cat.ruleVariables.some((r) => r.code === x)).map((code) => ({ code, label: code, source: 'REGRA' as const, unit: '' }))]
+  const allVars: VariableDef[] = [...cat.ruleVariables, ...cat.inputVariables, ...(v.data?.ruleVariables ?? []).filter((x) => !cat.ruleVariables.some((r) => r.code === x)).map((code) => ({ code, label: code, source: 'REGRA' as const, unit: '' }))]
   const shownVars = allVars.filter((x) => !filter || `${x.label} ${x.code}`.toLowerCase().includes(filter.toLowerCase()))
   const sorted = rows.map((c, i) => ({ c, i })).sort((a, b) => a.c.order - b.c.order)
 
@@ -127,7 +127,7 @@ export function ComponentsTab({ table, version }: { table: FreightTable; version
                     <Input aria-label="Nome do componente" className="h-8 font-medium" value={c.name} disabled={!editable} onChange={(e) => update(i, { name: e.target.value })} />
                     <div className="mt-1 flex gap-1">
                       <Input aria-label="Código" className="h-7 font-mono text-xs uppercase" value={c.code} disabled={!editable} onChange={(e) => update(i, { code: e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, '') })} />
-                      <Input aria-label="Ordem de aplicação" title="Ordem de aplicação" className="h-7 w-14 text-xs" inputMode="numeric" value={c.order} disabled={!editable} onChange={(e) => update(i, { order: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
+                      <Input aria-label="Ordem de aplicação" title="Ordem de aplicação" className="h-7 w-16 text-xs" inputMode="numeric" value={c.order} disabled={!editable} onChange={(e) => update(i, { order: Number(e.target.value.replace(/\D/g, '')) || 0 })} />
                     </div>
                   </TableCell>
                   <TableCell className="align-top">

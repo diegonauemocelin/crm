@@ -362,6 +362,100 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'fretes-painel',
+    title: 'Painel de fretes',
+    module: 'fretes_painel',
+    routes: ['/fretes'],
+    purpose: 'Ver quanto se cotou e escolheu de frete, por transportadora, filial e UF, e quais tabelas estão vencendo.',
+    howItWorks: 'Os números saem das cotações salvas e das tabelas cadastradas. "Economia estimada" é a média das opções menos a escolhida: é estimativa, não dinheiro recuperado. O seletor de filial no cabeçalho filtra a tela; quem tem acesso a todas vê a visão global.',
+    lessons: [
+      {
+        id: 'fretes.painel',
+        title: 'Acompanhar os fretes',
+        steps: ['Abra Fretes → Painel de fretes.', 'Escolha o período e a filial (ou "Todas as filiais").', 'Clique num número para abrir a lista que o forma.', 'Tabelas vencidas ou vencendo em 30 dias aparecem no aviso amarelo.'],
+      },
+    ],
+  },
+  {
+    key: 'fretes-cotacao',
+    title: 'Cotação de frete',
+    module: 'fretes_cotacao',
+    routes: ['/fretes/cotacao', '/fretes/cotacoes'],
+    purpose: 'Calcular o frete de todas as transportadoras com tabela vigente e escolher a melhor opção.',
+    howItWorks: 'O sistema acha as tabelas ativas e vigentes da filial de origem, a regra do CEP de destino e a faixa de peso (o maior entre o peso real e o cubado), calcula cada componente e o ICMS e mostra quem não atende e por quê. A cotação fica salva com a versão de cada tabela: dá para reproduzir depois com os mesmos valores.',
+    lessons: [
+      {
+        id: 'fretes.cotar',
+        title: 'Fazer uma cotação',
+        steps: [
+          'Abra Fretes → Cotação de frete. A filial de origem e o CEP de expedição vêm preenchidos.',
+          'Digite o CEP de destino (a cidade aparece sozinha), o tipo de destinatário e o valor da NF.',
+          'Informe o peso total ou os volumes com peso e medidas em centímetros.',
+          'Clique em Calcular fretes. Abra a seta de cada opção para ver a composição do preço.',
+          'Clique em Escolher na transportadora. Se não for a mais barata, escreva o motivo.',
+        ],
+        tip: 'Tabela vencida não entra. Quem pode editar tabelas consegue liberar numa cotação, com justificativa.',
+      },
+      {
+        id: 'fretes.historico',
+        title: 'Conferir uma cotação antiga',
+        steps: ['Abra Fretes → Histórico de cotações e busque pelo número, pedido, cliente, cidade ou CEP.', 'Na cotação, clique em Reproduzir com as versões originais: o sistema recalcula e compara.', 'Use Imprimir para gerar o comprovante.'],
+      },
+    ],
+  },
+  {
+    key: 'fretes-tabelas',
+    title: 'Tabelas de frete',
+    module: 'fretes_tabelas',
+    routes: ['/fretes/tabelas'],
+    purpose: 'Cadastrar e importar as tabelas negociadas com cada transportadora, com versões e fórmulas.',
+    howItWorks: 'Os valores ficam em versões. A publicada é a que calcula e não muda; para alterar, crie um rascunho (ou importe uma planilha nova), confira no simulador e publique. As versões anteriores ficam guardadas para auditoria e para reproduzir cotações antigas.',
+    lessons: [
+      {
+        id: 'fretes.importar',
+        title: 'Importar a planilha da transportadora',
+        steps: [
+          'Abra Fretes → Tabelas de frete → Nova tabela, escolha a transportadora, a vigência e as filiais, e salve.',
+          'Na aba Histórico de Importação, clique em Importar Regras e envie o Excel ou CSV.',
+          'Confira o que é cada coluna. Colunas como "Até 10 kg" viram faixas de peso.',
+          'Clique em Validar, leia os erros e alertas por linha e confirme.',
+          'Na aba Versões, publique o rascunho para valer nas cotações.',
+        ],
+        tip: 'Linhas com erro ficam de fora. Corrija a planilha e importe de novo, ou cadastre a regra à mão no rascunho.',
+      },
+      {
+        id: 'fretes.componentes',
+        title: 'Ajustar componentes e fórmulas',
+        steps: [
+          'Na aba Componentes de um rascunho, ajuste a fórmula de cada taxa ao contrato (clique nas variáveis para inserir).',
+          'Use a condição de incidência para cobrar só em alguns casos (ex.: $is_pf$ para T-CPF).',
+          'Defina a cobrança do ICMS e o fator de cubagem da versão.',
+          'Salve e teste destinos conhecidos no simulador antes de publicar.',
+        ],
+      },
+    ],
+  },
+  {
+    key: 'fretes-cadastros',
+    title: 'Transportadoras e filiais',
+    module: 'fretes_transportadoras',
+    routes: ['/fretes/transportadoras', '/fretes/filiais'],
+    purpose: 'Manter o cadastro das transportadoras e os dados de expedição de cada filial.',
+    howItWorks: 'A transportadora atende todas as filiais ou só as escolhidas. O CEP de expedição da filial é a origem padrão das cotações. As integrações (Correios, Mercado Livre, Google Shopping, CT-e) aparecem com a situação real.',
+    lessons: [
+      {
+        id: 'fretes.transportadora',
+        title: 'Cadastrar uma transportadora',
+        steps: ['Abra Fretes → Transportadoras → Nova transportadora.', 'Informe o CNPJ, a razão social, os contatos e as filiais atendidas.', 'Depois cadastre a tabela de frete dela em Tabelas de frete.'],
+      },
+      {
+        id: 'fretes.filiais',
+        title: 'Dados das filiais',
+        steps: ['Abra Fretes → Filiais e integrações.', 'Confira o CNPJ e o CEP de expedição de cada filial e salve.', 'Para dar acesso a mais de uma filial, use "Outras unidades que acessa" no cadastro do usuário.'],
+      },
+    ],
+  },
+  {
     key: 'cadastros',
     title: 'Ajustes do atendimento',
     module: 'cadastros',

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { api } from '@/lib/api'
 
 export interface FreightUnit {
@@ -90,9 +90,6 @@ export function useActiveUnit() {
   const valid = data ? (value === ALL_UNITS ? data.global : data.units.some((u) => u.id === value)) : true
   const fallback = data ? (data.global ? ALL_UNITS : (data.defaultUnitId ?? data.units[0]?.id ?? '')) : ''
   const current = valid && value ? value : fallback
-  useEffect(() => {
-    if (data && current !== value) setValue(current)
-  }, [data, current, value])
   const set = useCallback((v: string) => {
     setValue(v)
     try {

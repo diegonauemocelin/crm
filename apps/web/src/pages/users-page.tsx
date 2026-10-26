@@ -3,6 +3,7 @@ import { KeyRoundIcon, Loader2Icon, LockOpenIcon, MailIcon, MonitorSmartphoneIco
 import { type FormEvent, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { type ConfirmOptions, isDirty, useCloseGuard, useConfirm } from '@/components/confirm'
+import { MultiSelect } from '@/components/multi-select'
 import { UserAvatar } from '@/components/layout/user-menu'
 import { type Session, SessionsList } from '@/components/sessions-list'
 import { Can, EmptyState, ErrorState, formatDateTime, PageHeader, TableSkeleton } from '@/components/page'
@@ -304,18 +305,19 @@ function UserDialog({ user, onClose }: { user: UserRow | null; onClose: () => vo
   const [email, setEmail] = useState(user?.email ?? '')
   const [roleId, setRoleId] = useState(user?.role.id ?? '')
   const [unitId, setUnitId] = useState<string | null>(user?.unit?.id ?? null)
+  const [extraUnitIds, setExtraUnitIds] = useState<string[]>(user?.extraUnitIds ?? [])
   const options = useOptions()
   const [sendInvite, setSendInvite] = useState(true)
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [initial] = useState(() => ({ name, email, roleId, unitId, sendInvite, password }))
-  const guard = useCloseGuard(isDirty(initial, { name, email, roleId, unitId, sendInvite, password }), onClose, 'os dados do usuário')
+  const [initial] = useState(() => ({ name, email, roleId, unitId, extraUnitIds, sendInvite, password }))
+  const guard = useCloseGuard(isDirty(initial, { name, email, roleId, unitId, extraUnitIds, sendInvite, password }), onClose, 'os dados do usuário')
 
   const save = useMutation({
     mutationFn: () =>
       user
-        ? api.patch(`/users/${user.id}`, { name, email, roleId, unitId })
-        : api.post('/users', { name, email, roleId, unitId, sendInvite, ...(sendInvite ? {} : { password }) }),
+        ? api.patch(`/users/${user.id}`, { name, email, roleId, unitId, extraUnitIds })
+        : api.post('/users', { name, email, roleId, unitId, extraUnitIds, sendInvite, ...(sendInvite ? {} : { password }) }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['users'] })
       toast.success(user ? 'Usuário atualizado.' : sendInvite ? 'Usuário criado e convite enviado por e-mail.' : 'Usuário criado.')
@@ -382,6 +384,11 @@ function UserDialog({ user, onClose }: { user: UserRow | null; onClose: () => vo
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">Usada nos perfis com acesso “somente da unidade”.</p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="u-extra-units">Outras unidades que acessa (fretes)</Label>
+            <MultiSelect id="u-extra-units" items={(options.data?.units ?? []).filter((u) => u.id !== unitId)} value={extraUnitIds.filter((id) => id !== unitId)} onChange={setExtraUnitIds} placeholder="Só a unidade acima" />
+            <p className="text-xs text-muted-foreground">Para gestores de mais de uma filial: no módulo de fretes, o escopo “somente da unidade” passa a incluir estas também.</p>
           </div>
           {!user && (
             <div className="space-y-3 rounded-md border p-3">

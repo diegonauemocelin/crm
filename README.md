@@ -12,6 +12,7 @@ CRM, automação de marketing e painel de pré e pós-vendas, whitelabel, em por
 | Segurança | [docs/SEGURANCA.md](docs/SEGURANCA.md) |
 | Como publicar versões | [docs/RELEASES.md](docs/RELEASES.md) |
 | O que falta | [docs/ROADMAP.md](docs/ROADMAP.md) |
+| Gestão de fretes | [docs/fretes/PROJETO.md](docs/fretes/PROJETO.md) |
 
 ## Arquitetura
 
