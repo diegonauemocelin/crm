@@ -26,6 +26,8 @@ export class FilesController {
     if (asset.tenantId !== req.user?.tenantId) throw new NotFoundException()
     // Mídia do WhatsApp só abre pelo chat (que confere quem pode ver a conversa).
     if (asset.kind === 'whatsapp') throw new NotFoundException()
+    // Planilha original de tabela de frete só sai pelo módulo de fretes (que confere a permissão e a filial).
+    if (asset.kind === 'frete-importacao') throw new NotFoundException()
     this.send(res, asset.mime, content, 'private, max-age=3600')
   }
 
