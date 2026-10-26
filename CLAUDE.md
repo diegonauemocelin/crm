@@ -13,7 +13,7 @@ daquele computador.
 - Instalar: `npm install`; depois `cd apps/api && npx prisma generate`.
 - Testes: `npx vitest run --root apps/api`. Tipos: `cd apps/api && npx tsc --noEmit -p tsconfig.json` e `cd apps/web && npx tsc --noEmit -p tsconfig.app.json`.
 - Banco local: `node scripts/dev-db.mjs` (Postgres embutido, porta 54329, banco `crm_f4`). `.claude/launch.json` tem "api" (porta 3000; roda `node dist/main.js`, então faça `npm run build -w @crm/api` antes) e "web" (porta 5173).
-- Login local: `storage/dev-admin.json` (não vai para o Git; em outro PC crie um admin novo no banco local).
+- Login local: `apps/api/storage/dev-admin.json` (não vai para o Git; em outro PC crie um admin novo no banco local).
 - Migrações: pasta nova em `apps/api/prisma/migrations/<AAAAMMDDhhmmss>_<nome>/migration.sql` + campo no `schema.prisma`.
 - Em edições de código com `\n`, `\b`, `\d` ou crases, use o editor, não heredoc/`node -e` no shell (já quebrou arquivos).
 
