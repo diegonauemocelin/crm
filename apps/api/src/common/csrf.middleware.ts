@@ -5,6 +5,7 @@ import { env } from '../config/env'
 import { randomToken, safeEqual } from './crypto'
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+const CSRF_MAX_AGE_MS = 180 * 86_400_000
 /**
  * Webhooks de terceiros e o rastreamento do site vêm de outros domínios, sem cookie e sem sessão:
  * webhooks são autenticados por assinatura; rastreamento e captura só aceitam os domínios do site cadastrados,
@@ -36,7 +37,8 @@ export class CsrfMiddleware implements NestMiddleware {
     let token = req.cookies?.[CSRF_COOKIE] as string | undefined
     if (!token) {
       token = randomToken(24)
-      res.cookie(CSRF_COOKIE, token, { httpOnly: false, secure: env.cookieSecure, sameSite: 'strict', path: '/' })
+      // com validade: cookie sem validade some quando o iPhone fecha o app instalado, e a sessão caía na volta
+      res.cookie(CSRF_COOKIE, token, { httpOnly: false, secure: env.cookieSecure, sameSite: 'strict', path: '/', maxAge: CSRF_MAX_AGE_MS })
     }
 
     if (SAFE_METHODS.has(req.method)) return next()

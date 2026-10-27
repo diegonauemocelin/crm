@@ -25,6 +25,16 @@ class PostDto {
   @ApiPropertyOptional({ nullable: true }) @IsOptional() @ValidateIf((o: PostDto) => o.scheduledAt !== null) @IsISO8601() scheduledAt?: string | null
 }
 
+class IgAppDto {
+  @Matches(/^\d{5,25}$/) appId!: string
+  @IsOptional() @IsString() @MaxLength(200) secret?: string
+}
+
+class IgCallbackDto {
+  @IsString() @MaxLength(2000) code!: string
+  @IsString() @MaxLength(200) state!: string
+}
+
 class NoteDto {
   @IsOptional() @IsString() @MaxLength(500) nota?: string
 }
@@ -127,6 +137,24 @@ export class PostagensController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   discover(@CurrentUser() user: AuthUser) {
     return this.svc.discoverAccounts(user)
+  }
+
+  @Put('instagram/app')
+  saveIgApp(@CurrentUser() user: AuthUser, @Body() dto: IgAppDto, @ReqContext() ctx: RequestCtx) {
+    return this.svc.saveIgApp(user, dto.appId, dto.secret, ctx)
+  }
+
+  @Post('instagram/conectar')
+  @HttpCode(200)
+  startInstagram(@CurrentUser() user: AuthUser) {
+    return this.svc.startInstagram(user)
+  }
+
+  @Post('instagram/retorno')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  completeInstagram(@CurrentUser() user: AuthUser, @Body() dto: IgCallbackDto, @ReqContext() ctx: RequestCtx) {
+    return this.svc.completeInstagram(user, dto.code, dto.state, ctx)
   }
 
   @Get('metricas')

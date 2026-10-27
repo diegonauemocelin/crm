@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckIcon, ExternalLinkIcon, Loader2Icon, PlusIcon, RefreshCwIcon, SearchIcon, Trash2Icon, UsersIcon } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { CheckIcon, CopyIcon, ExternalLinkIcon, Loader2Icon, LogInIcon, PlusIcon, RefreshCwIcon, SearchIcon, Trash2Icon, UnplugIcon, UsersIcon } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
-import { EmptyState, ErrorState, formatDateTime, TableSkeleton } from '@/components/page'
+import { EmptyState, ErrorState, formatDateTime, PageHeader, TableSkeleton } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { api, errorMessage } from '@/lib/api'
@@ -21,6 +23,152 @@ export interface Account {
   externalId: string
   name: string
   group: string
+  /** Conectada pelo login do Instagram. */
+  via?: 'instagram'
+}
+
+/** Conexão pelo login do Instagram: app da Meta e as contas conectadas (por ID do Instagram). */
+export interface InstagramLoginConfig {
+  appId: string
+  hasSecret: boolean
+  redirectUri: string
+  connections: Record<string, { username: string; expiresAt: string; connectedBy: string; lastError: string | null }>
+}
+
+/** Login do Instagram: ID e chave do app e o botão de conectar (abre a tela de login do Instagram). */
+function InstagramConnect({ ig }: { ig: InstagramLoginConfig }) {
+  const qc = useQueryClient()
+  const [appId, setAppId] = useState(ig.appId)
+  const [secret, setSecret] = useState('')
+  const [setup, setSetup] = useState(!ig.appId || !ig.hasSecret)
+  useEffect(() => setAppId(ig.appId), [ig.appId])
+  const save = useMutation({
+    mutationFn: () => api.put('/postagens/instagram/app', { appId: appId.trim(), ...(secret.trim() ? { secret: secret.trim() } : {}) }),
+    onSuccess: () => {
+      toast.success('App do Instagram salvo.')
+      setSecret('')
+      setSetup(false)
+      void qc.invalidateQueries({ queryKey: ['postagens-config'] })
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const connect = useMutation({
+    mutationFn: () => api.post<{ url: string }>('/postagens/instagram/conectar'),
+    onSuccess: (r) => window.location.assign(r.url),
+    onError: (err) => toast.error(errorMessage(err), { duration: 10_000 }),
+  })
+  const ready = !!ig.appId && ig.hasSecret
+  return (
+    <Card className="gap-3 p-4">
+      <div className="flex flex-wrap items-start gap-3">
+        <NetBadge n="instagram" className="size-8 rounded-md text-xs" />
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">Conectar pelo login do Instagram</p>
+          <p className="text-sm text-muted-foreground">
+            Abre a tela do Instagram: entre com o usuário e a senha da conta e autorize. A senha fica só no Instagram; o CRM recebe o acesso para publicar, que é renovado sozinho. Repita para cada conta (a conta precisa ser profissional: Empresa ou Criador de conteúdo).
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {ready && (
+            <Button onClick={() => connect.mutate()} disabled={connect.isPending}>
+              {connect.isPending ? <Loader2Icon className="animate-spin" /> : <LogInIcon />} Conectar conta do Instagram
+            </Button>
+          )}
+          {ready && !setup && (
+            <Button variant="ghost" onClick={() => setSetup(true)}>
+              App do Instagram
+            </Button>
+          )}
+        </div>
+      </div>
+      {setup && (
+        <div className="space-y-3 rounded-md border p-3">
+          <p className="text-sm text-muted-foreground">
+            Em developers.facebook.com, no app da empresa, adicione o produto Instagram › API com login do Instagram. Em Configurar o login da empresa, copie o ID e a chave secreta do app do Instagram e cadastre este endereço de redirecionamento:
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 text-xs">{ig.redirectUri}</code>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                void navigator.clipboard.writeText(ig.redirectUri)
+                toast.success('Endereço copiado.')
+              }}
+            >
+              <CopyIcon /> Copiar
+            </Button>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="ig-app-id">ID do app do Instagram</Label>
+              <Input id="ig-app-id" value={appId} inputMode="numeric" maxLength={25} onChange={(e) => setAppId(e.target.value.replace(/\D/g, ''))} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="ig-app-secret">Chave secreta do app do Instagram</Label>
+              <Input id="ig-app-secret" type="password" autoComplete="off" value={secret} maxLength={200} onChange={(e) => setSecret(e.target.value)} placeholder={ig.hasSecret ? 'Guardada (preencha só para trocar)' : ''} />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={() => save.mutate()} disabled={save.isPending || !appId || (!secret.trim() && !ig.hasSecret)}>
+              {save.isPending ? <Loader2Icon className="animate-spin" /> : <CheckIcon />} Salvar app
+            </Button>
+            {ready && (
+              <Button variant="ghost" onClick={() => setSetup(false)}>
+                Fechar
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+/** Volta do login do Instagram: conclui a conexão e volta para a aba Contas. */
+export function InstagramRetornoPage() {
+  const [params] = useSearchParams()
+  const navigate = useNavigate()
+  const done = useRef(false)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    if (done.current) return
+    done.current = true
+    const code = params.get('code')
+    const state = params.get('state')
+    if (!code || !state) {
+      setError(params.get('error_description') ?? params.get('error_reason') ?? 'O Instagram não devolveu a autorização. Tente conectar de novo.')
+      return
+    }
+    api
+      .post<{ username: string }>('/postagens/instagram/retorno', { code, state })
+      .then((r) => {
+        toast.success(`Instagram conectado${r.username ? `: @${r.username}` : ''}.`)
+        navigate('/postagens?aba=contas', { replace: true })
+      })
+      .catch((err: unknown) => setError(errorMessage(err)))
+  }, [params, navigate])
+  return (
+    <div>
+      <PageHeader title="Conectando o Instagram" />
+      {error ? (
+        <EmptyState
+          icon={UnplugIcon}
+          title="Não foi possível conectar"
+          description={error}
+          action={
+            <Button asChild size="sm" variant="outline">
+              <Link to="/postagens?aba=contas">Voltar para as contas</Link>
+            </Button>
+          }
+        />
+      ) : (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2Icon className="size-4 animate-spin" /> Concluindo a conexão...
+        </p>
+      )}
+    </div>
+  )
 }
 
 /** Marca da rede (o pacote de ícones não tem as logomarcas): IG e f nas cores de cada uma. */
@@ -29,6 +177,17 @@ export function NetBadge({ n, className }: { n: Network; className?: string }) {
     <span className={cn('inline-flex size-4 shrink-0 items-center justify-center rounded-[4px] text-[9px] leading-none font-bold text-white', n === 'instagram' ? 'bg-gradient-to-tr from-amber-500 via-pink-600 to-purple-600' : 'bg-[#1877f2]', className)} aria-label={n === 'instagram' ? 'Instagram' : 'Facebook'}>
       {n === 'instagram' ? 'IG' : 'f'}
     </span>
+  )
+}
+
+/** Situação da conexão pelo login do Instagram (embaixo do ID). */
+function IgStatus({ c }: { c?: InstagramLoginConfig['connections'][string] }) {
+  if (!c) return <p className="mt-1 text-xs text-red-600">Sem conexão: conecte de novo.</p>
+  const expired = Date.parse(c.expiresAt) < Date.now()
+  return (
+    <p className={cn('mt-1 text-xs', expired || c.lastError ? 'text-red-600' : 'text-muted-foreground')} title={c.lastError ?? undefined}>
+      {expired ? 'Conexão vencida: conecte de novo.' : c.lastError ? 'Não renovou: conecte de novo.' : `Login do Instagram · renova sozinho (válido até ${new Date(c.expiresAt).toLocaleDateString('pt-BR')})`}
+    </p>
   )
 }
 
@@ -69,7 +228,7 @@ export function AccountPicker({ accounts, value, onChange, disabled }: { account
 
 // ---------- Aba Contas ----------
 
-export function AccountsTab({ accounts }: { accounts: Account[] }) {
+export function AccountsTab({ accounts, instagram }: { accounts: Account[]; instagram?: InstagramLoginConfig }) {
   const qc = useQueryClient()
   const { can } = useAuth()
   const edit = can('postagens', 'edit')
@@ -95,8 +254,9 @@ export function AccountsTab({ accounts }: { accounts: Account[] }) {
   const set = (i: number, patch: Partial<Account>) => setList(list.map((a, j) => (j === i ? { ...a, ...patch } : a)))
   return (
     <div className="space-y-4">
+      {edit && instagram && <InstagramConnect ig={instagram} />}
       <p className="text-sm text-muted-foreground">
-        Cada conta é um Instagram profissional ou uma página do Facebook. A empresa pode ter várias (ex.: a conta oficial e a de cada vendedor). Use os grupos para escolher várias de uma vez nas postagens e para somar as métricas. As contas precisam estar no Gerenciador de Negócios da empresa, atribuídas ao usuário do sistema do token (o Instagram de cada vendedor ligado a uma página).
+        Também dá para usar o token da Meta (Configurações › Marketing Inteligente). Cada conta é um Instagram profissional ou uma página do Facebook. A empresa pode ter várias (ex.: a conta oficial e a de cada vendedor). Use os grupos para escolher várias de uma vez nas postagens e para somar as métricas. As contas precisam estar no Gerenciador de Negócios da empresa, atribuídas ao usuário do sistema do token (o Instagram de cada vendedor ligado a uma página).
       </p>
       {edit && (
         <div className="flex flex-wrap gap-2">
@@ -146,7 +306,7 @@ export function AccountsTab({ accounts }: { accounts: Account[] }) {
               {list.map((a, i) => (
                 <TableRow key={`${a.network}-${a.externalId}-${i}`}>
                   <TableCell className="pl-4">
-                    <Select value={a.network} onValueChange={(v) => set(i, { network: v as Network })} disabled={!edit}>
+                    <Select value={a.network} onValueChange={(v) => set(i, { network: v as Network })} disabled={!edit || a.via === 'instagram'}>
                       <SelectTrigger className="w-36" aria-label="Rede">
                         <SelectValue />
                       </SelectTrigger>
@@ -160,7 +320,8 @@ export function AccountsTab({ accounts }: { accounts: Account[] }) {
                     <Input value={a.name} maxLength={80} onChange={(e) => set(i, { name: e.target.value })} disabled={!edit} placeholder="@usuario ou nome da página" aria-label="Nome" />
                   </TableCell>
                   <TableCell>
-                    <Input value={a.externalId} maxLength={25} onChange={(e) => set(i, { externalId: e.target.value.replace(/\D/g, '') })} disabled={!edit} placeholder="Só números" aria-label="ID na Meta" className="w-48" />
+                    <Input value={a.externalId} maxLength={25} onChange={(e) => set(i, { externalId: e.target.value.replace(/\D/g, '') })} disabled={!edit || a.via === 'instagram'} placeholder="Só números" aria-label="ID na Meta" className="w-48" />
+                    {a.via === 'instagram' && <IgStatus c={instagram?.connections[a.externalId]} />}
                   </TableCell>
                   <TableCell>
                     <Input value={a.group} maxLength={40} list="postagens-grupos" onChange={(e) => set(i, { group: e.target.value })} disabled={!edit} placeholder="Ex.: Vendedores" aria-label="Grupo" className="w-40" />

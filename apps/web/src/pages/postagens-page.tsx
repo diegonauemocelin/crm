@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertCircleIcon, CalendarDaysIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ExternalLinkIcon, Loader2Icon, PlusIcon, PlugZapIcon, SendIcon, SparklesIcon, Trash2Icon, UndoIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm'
 import { Can, EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
-import { type Account, AccountPicker, AccountsTab, MetricsTab, NetBadge } from '@/components/postagens/contas'
+import { type Account, AccountPicker, AccountsTab, type InstagramLoginConfig, MetricsTab, NetBadge } from '@/components/postagens/contas'
 import { type Frame } from '@/components/postagens/imagem'
 import { LibraryTab, MediaPicker, mediaSrc, Thumb, useMediaLibrary } from '@/components/postagens/midias'
 import { Badge } from '@/components/ui/badge'
@@ -47,6 +48,7 @@ interface Post {
 }
 interface Config {
   hasToken: boolean
+  instagram: InstagramLoginConfig
   accounts: Account[]
   hasAi: boolean
   canApprove: boolean
@@ -75,7 +77,8 @@ const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour
 export function PostagensPage() {
   usePageTitle('Postagens')
   const qc = useQueryClient()
-  const [tab, setTab] = useState('calendario')
+  const [params] = useSearchParams()
+  const [tab, setTab] = useState(() => params.get('aba') ?? 'calendario')
   const [month, setMonth] = useState(() => {
     const d = new Date()
     return new Date(d.getFullYear(), d.getMonth(), 1)
@@ -93,7 +96,8 @@ export function PostagensPage() {
   })
   const waiting = useQuery({ queryKey: ['postagens', 'aprovar'], queryFn: () => api.get<{ items: Post[] }>('/postagens?situacao=EM_APROVACAO') })
   const c = config.data
-  const missing = c && (!c.hasToken || !c.accounts.length)
+  const viaInstagram = !!c?.accounts.some((a) => a.via === 'instagram')
+  const missing = c && ((!c.hasToken && !viaInstagram) || !c.accounts.length)
   return (
     <RequirePermission module="postagens">
       <PageHeader
@@ -121,7 +125,7 @@ export function PostagensPage() {
         <p className="mb-4 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
           <AlertCircleIcon className="mt-0.5 size-4 shrink-0" />
           <span>
-            {!c.hasToken ? 'Para publicar, cadastre o token da Meta em Configurações › Marketing Inteligente' : 'Cadastre as contas do Instagram e do Facebook na aba Contas'}. O token precisa das permissões instagram_content_publish e pages_manage_posts.
+            {!c.hasToken && !viaInstagram ? 'Para publicar, conecte as contas do Instagram pelo login do Instagram na aba Contas (ou cadastre o token da Meta em Configurações › Marketing Inteligente)' : 'Cadastre as contas do Instagram e do Facebook na aba Contas'}.
           </span>
         </p>
       )}
@@ -146,7 +150,7 @@ export function PostagensPage() {
         </TabsContent>
         <TabsContent value="metricas">{tab === 'metricas' && <MetricsTab />}</TabsContent>
         <TabsContent value="contas">
-          <AccountsTab accounts={c?.accounts ?? []} />
+          <AccountsTab accounts={c?.accounts ?? []} instagram={c?.instagram} />
         </TabsContent>
       </Tabs>
       {open && (

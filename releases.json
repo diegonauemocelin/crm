@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.100.0",
+      "date": "2026-10-27",
+      "title": "Postagens: várias contas do Instagram pelo login do Instagram",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "Em Postagens › Contas, o botão Conectar conta do Instagram abre a tela do próprio Instagram: entre com o usuário e a senha da conta e autorize. Dá para conectar várias contas, uma de cada vez. A senha fica só no Instagram e o CRM renova o acesso sozinho antes de vencer."
+        },
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "As contas conectadas pelo login do Instagram publicam Feed, Carrossel, Reels e Stories com aprovação e agendamento, e aparecem no Testar publicação e nas Métricas, sem precisar do token da Meta."
+        },
+        {
+          "type": "correcao",
+          "area": "App no celular",
+          "text": "O app instalado no iPhone não pede mais login a cada vez que é reaberto: o iPhone apagava um cookie de segurança ao fechar o app e a renovação da sessão era recusada."
+        }
+      ]
+    },
+    {
       "version": "0.99.5",
       "date": "2026-10-27",
       "title": "Assistente ML indica outros produtos para a mesma máquina",

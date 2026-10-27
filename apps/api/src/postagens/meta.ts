@@ -71,12 +71,16 @@ export class MetaPublisher {
     private readonly fetcher: Fetcher = fetch,
     /** Espera entre as consultas do processamento de vídeo (menor nos testes). */
     private readonly pollMs = 5_000,
+    /** graph.facebook.com (token da Meta) ou graph.instagram.com (conta conectada pelo login do Instagram). */
+    private readonly base = GRAPH,
   ) {}
 
   private async call(method: 'GET' | 'POST', path: string, params: Record<string, string | boolean | undefined> = {}, token = this.token) {
     const qs = new URLSearchParams()
     for (const [k, v] of Object.entries(params)) if (v !== undefined) qs.set(k, String(v))
-    const url = `${GRAPH}/${path}${method === 'GET' && qs.size ? `?${qs}` : ''}`
+    // a API do Instagram recebe o token como parâmetro
+    if (this.base !== GRAPH) qs.set('access_token', token)
+    const url = `${this.base}/${path}${method === 'GET' && qs.size ? `?${qs}` : ''}`
     const res = await this.fetcher(url, {
       method,
       headers: { Authorization: `Bearer ${token}`, ...(method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}) },
@@ -116,10 +120,7 @@ export class MetaPublisher {
     for (const a of accounts) {
       try {
         if (a.network === 'instagram') {
-          const ig = await this.call('GET', a.externalId, { fields: 'username' })
-          const limit = await this.call('GET', `${a.externalId}/content_publishing_limit`, { fields: 'quota_usage,config' }).catch(() => null)
-          const used = (limit?.data as { quota_usage?: number; config?: { quota_total?: number } }[] | undefined)?.[0]
-          checks.push({ name: `Instagram ${a.name}`, ok: true, message: `@${String(ig.username ?? '')}${used ? ` · ${used.quota_usage ?? 0} de ${used.config?.quota_total ?? 50} publicações nas últimas 24 h` : ''}` })
+          checks.push(await this.instagramCheck(a))
         } else {
           const page = await this.call('GET', a.externalId, { fields: 'name,access_token' })
           checks.push({ name: `Facebook ${a.name}`, ok: !!page.access_token, message: page.access_token ? `Página ${String(page.name ?? '')}` : 'O token não traz o acesso da página (atribua a página ao usuário do sistema).' })
@@ -129,6 +130,14 @@ export class MetaPublisher {
       }
     }
     return checks
+  }
+
+  /** Instagram: o @ e quantas publicações a conta ainda pode fazer nas 24 h. */
+  async instagramCheck(a: Account) {
+    const ig = await this.call('GET', a.externalId, { fields: 'username' })
+    const limit = await this.call('GET', `${a.externalId}/content_publishing_limit`, { fields: 'quota_usage,config' }).catch(() => null)
+    const used = (limit?.data as { quota_usage?: number; config?: { quota_total?: number } }[] | undefined)?.[0]
+    return { name: `Instagram ${a.name}`, ok: true, message: `@${String(ig.username ?? '')}${used ? ` · ${used.quota_usage ?? 0} de ${used.config?.quota_total ?? 50} publicações nas últimas 24 h` : ''}` }
   }
 
   // ---------- Métricas ----------

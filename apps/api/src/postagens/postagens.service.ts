@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
-import { decrypt } from '../common/crypto'
+import { decrypt, encrypt, safeEqual } from '../common/crypto'
 import type { RequestCtx } from '../common/decorators'
 import { type Action, can } from '../common/permissions'
 import type { AuthUser } from '../common/types'
@@ -12,6 +12,7 @@ import { Prisma } from '../generated/prisma/client'
 import { DEFAULT_INTEGRATIONS, INTEGRATIONS_KEY, type IntegrationsConfig } from '../marketing/config'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
+import { IG_CALLBACK_PATH, IG_GRAPH, type IgApp, type IgToken, InstagramLogin, authorizeUrl, needsRenewal } from './instagram-login'
 import { type AccountMetrics, MetaPublisher, type PostMetrics } from './meta'
 import {
   type Account,
@@ -43,6 +44,12 @@ import {
 
 const TICK_MS = 60_000
 const ACCOUNTS_KEY = 'postagens_contas'
+/** App do Instagram (ID e chave secreta) e os tokens das contas conectadas pelo login do Instagram. */
+const IG_APP_KEY = 'postagens_ig_app'
+const IG_TOKENS_KEY = 'postagens_ig_tokens'
+const IG_OAUTH_KEY = 'postagens_ig_oauth'
+/** Confere os tokens do Instagram a cada 6 horas (renova os que estão perto de vencer). */
+const IG_RENEW_EVERY_MS = 6 * 3_600_000
 /** Métricas guardadas por um tempo (cada consulta faz várias chamadas à Meta). */
 const METRICS_TTL_MS = 3 * 3_600_000
 /** Depois de publicada, a mídia ainda fica acessível por este tempo (a Meta pode baixar de novo ao processar). */
@@ -58,6 +65,8 @@ export class PostagensService implements OnApplicationBootstrap, OnModuleDestroy
   private timer: NodeJS.Timeout | null = null
   private running = false
   private readonly metricsCache = new Map<string, { at: number; data: unknown }>()
+  private lastRenew = 0
+  igLogin = new InstagramLogin()
 
   constructor(
     private readonly prisma: PrismaService,
@@ -104,8 +113,124 @@ export class PostagensService implements OnApplicationBootstrap, OnModuleDestroy
     const accounts = cleanAccounts(list)
     if ('error' in accounts) throw new BadRequestException(accounts.error)
     await this.settings.set(user.tenantId, ACCOUNTS_KEY, { accounts })
+    // conta do Instagram tirada da lista: o acesso dela é apagado
+    const tokens = await this.igTokens(user.tenantId)
+    const kept = Object.fromEntries(Object.entries(tokens).filter(([id]) => accounts.some((a) => a.via === 'instagram' && a.externalId === id)))
+    if (Object.keys(kept).length !== Object.keys(tokens).length) await this.settings.set(user.tenantId, IG_TOKENS_KEY, kept)
     await this.audit.byUser(user, ctx, 'postagens.contas', 'settings', ACCOUNTS_KEY, { contas: accounts.map((a) => `${a.network}:${a.name}`) })
     return { accounts }
+  }
+
+  // ---------- Contas conectadas pelo login do Instagram ----------
+
+  igRedirectUri() {
+    return `${env.appUrl}${IG_CALLBACK_PATH}`
+  }
+
+  private async igApp(tenantId: string): Promise<IgApp> {
+    return { appId: '', secretEnc: null, ...(await this.settings.get<Partial<IgApp>>(tenantId, IG_APP_KEY, {})) }
+  }
+
+  private async igTokens(tenantId: string) {
+    return this.settings.get<Record<string, IgToken>>(tenantId, IG_TOKENS_KEY, {})
+  }
+
+  /** ID e chave secreta do app do Instagram (Meta for Developers › app › Instagram › Configurar o login da empresa). */
+  async saveIgApp(user: AuthUser, appId: string, secret: string | undefined, ctx: RequestCtx) {
+    this.assertCan(user, 'edit')
+    const c = await this.igApp(user.tenantId)
+    if (!/^\d{5,25}$/.test(appId.trim())) throw new BadRequestException('O ID do app do Instagram tem só números.')
+    if (!secret?.trim() && !c.secretEnc) throw new BadRequestException('Informe a chave secreta do app do Instagram.')
+    await this.settings.set(user.tenantId, IG_APP_KEY, { appId: appId.trim(), secretEnc: secret?.trim() ? encrypt(secret.trim()) : c.secretEnc })
+    await this.audit.byUser(user, ctx, 'postagens.instagram_app', 'settings', IG_APP_KEY, { appId: appId.trim(), chaveNova: !!secret?.trim() })
+    return { ok: true }
+  }
+
+  /** Botão "Conectar conta do Instagram": endereço do login do Instagram. */
+  async startInstagram(user: AuthUser) {
+    this.assertCan(user, 'edit')
+    const c = await this.igApp(user.tenantId)
+    if (!c.appId || !c.secretEnc) throw new BadRequestException('Cadastre o ID e a chave secreta do app do Instagram antes de conectar.')
+    const state = randomBytes(24).toString('base64url')
+    await this.settings.set(user.tenantId, IG_OAUTH_KEY, { state, userId: user.id, expiresAt: new Date(Date.now() + 10 * 60_000).toISOString() })
+    return { url: authorizeUrl(c.appId, this.igRedirectUri(), state) }
+  }
+
+  /** Volta do Instagram: a tela do CRM manda o code e o state; a conta entra (ou é atualizada) na lista. */
+  async completeInstagram(user: AuthUser, code: string, state: string, ctx: RequestCtx) {
+    this.assertCan(user, 'edit')
+    const pending = await this.settings.get<{ state?: string; userId?: string; expiresAt?: string }>(user.tenantId, IG_OAUTH_KEY, {})
+    if (!pending.state || !safeEqual(pending.state, state) || pending.userId !== user.id || Date.parse(pending.expiresAt ?? '') < Date.now()) {
+      throw new BadRequestException('Autorização inválida ou expirada. Clique em Conectar conta do Instagram de novo.')
+    }
+    await this.settings.set(user.tenantId, IG_OAUTH_KEY, {})
+    const app = await this.igApp(user.tenantId)
+    if (!app.appId || !app.secretEnc) throw new BadRequestException('Cadastre o ID e a chave secreta do app do Instagram.')
+    let r
+    try {
+      r = await this.igLogin.connect({ appId: app.appId, secret: decrypt(app.secretEnc) }, code, this.igRedirectUri())
+    } catch (err) {
+      throw new BadRequestException((err as Error).message)
+    }
+    if (r.accountType === 'PERSONAL') throw new BadRequestException(`A conta @${r.username} é pessoal. No Instagram, mude para conta profissional (Empresa ou Criador de conteúdo) e conecte de novo.`)
+    const tokens = await this.igTokens(user.tenantId)
+    const now = new Date().toISOString()
+    tokens[r.userId] = { tokenEnc: encrypt(r.token), username: r.username, expiresAt: r.expiresAt, issuedAt: now, connectedBy: user.name, lastError: null }
+    await this.settings.set(user.tenantId, IG_TOKENS_KEY, tokens)
+    const accounts = await this.accounts(user.tenantId)
+    const name = r.username ? `@${r.username}` : `Instagram ${r.userId}`
+    const i = accounts.findIndex((a) => a.network === 'instagram' && a.externalId === r.userId)
+    if (i >= 0) accounts[i] = { ...accounts[i]!, name, via: 'instagram' }
+    else accounts.push({ id: `ig-${r.userId}`, network: 'instagram', externalId: r.userId, name, group: accounts[0]?.group ?? 'Oficial', via: 'instagram' })
+    if (accounts.length > 30) throw new BadRequestException('Limite de 30 contas atingido: tire uma conta da lista antes de conectar outra.')
+    await this.settings.set(user.tenantId, ACCOUNTS_KEY, { accounts })
+    this.metricsCache.delete(user.tenantId)
+    await this.audit.byUser(user, ctx, 'postagens.instagram_conectado', 'settings', IG_TOKENS_KEY, { conta: name, id: r.userId })
+    return { username: r.username, accounts }
+  }
+
+  /** Renova os tokens do Instagram perto de vencer (todas as empresas). */
+  async renewInstagramTokens(now = Date.now()) {
+    const rows = await this.prisma.tenantSetting.findMany({ where: { key: IG_TOKENS_KEY }, select: { tenantId: true } })
+    for (const { tenantId } of rows) {
+      const tokens = await this.igTokens(tenantId)
+      let changed = false
+      for (const [id, t] of Object.entries(tokens)) {
+        if (!needsRenewal(t, now)) continue
+        try {
+          const r = await this.igLogin.refresh(decrypt(t.tokenEnc))
+          tokens[id] = { ...t, tokenEnc: encrypt(r.token), expiresAt: r.expiresAt, issuedAt: new Date(now).toISOString(), lastError: null }
+        } catch (err) {
+          tokens[id] = { ...t, lastError: (err as Error).message.slice(0, 300) }
+          this.logger.warn(`Instagram @${t.username}: não renovou o acesso (${(err as Error).message})`)
+        }
+        changed = true
+      }
+      if (changed) await this.settings.set(tenantId, IG_TOKENS_KEY, tokens)
+    }
+  }
+
+  /**
+   * Quem publica por uma conta: o token da própria conta (conectada pelo login do Instagram) ou o token da Meta
+   * (Marketing Inteligente).
+   */
+  private async publisherFor(tenantId: string, a: Account, cache: Map<string, MetaPublisher>) {
+    const key = a.via === 'instagram' ? `ig:${a.externalId}` : 'meta'
+    const hit = cache.get(key)
+    if (hit) return hit
+    let p: MetaPublisher
+    if (a.via === 'instagram') {
+      const t = (await this.igTokens(tenantId))[a.externalId]
+      if (!t) throw new Error('Conta sem conexão com o Instagram: clique em Conectar conta do Instagram na aba Contas.')
+      if (Date.parse(t.expiresAt) < Date.now()) throw new Error('A conexão desta conta com o Instagram venceu: conecte de novo na aba Contas.')
+      p = new MetaPublisher(decrypt(t.tokenEnc), fetch, 5_000, IG_GRAPH)
+    } else {
+      const c = await this.integrations(tenantId)
+      if (!c.metaAds.tokenEnc) throw new Error('Token da Meta não cadastrado (Configurações › Marketing Inteligente).')
+      p = new MetaPublisher(decrypt(c.metaAds.tokenEnc))
+    }
+    cache.set(key, p)
+    return p
   }
 
   /** Contas que o token da Meta alcança (para escolher quais cadastrar). */
@@ -124,8 +249,16 @@ export class PostagensService implements OnApplicationBootstrap, OnModuleDestroy
   async config(user: AuthUser) {
     this.assertCan(user, 'view')
     const c = await this.integrations(user.tenantId)
+    const app = await this.igApp(user.tenantId)
+    const tokens = await this.igTokens(user.tenantId)
     return {
       hasToken: !!c.metaAds.tokenEnc,
+      instagram: {
+        appId: app.appId,
+        hasSecret: !!app.secretEnc,
+        redirectUri: this.igRedirectUri(),
+        connections: Object.fromEntries(Object.entries(tokens).map(([id, t]) => [id, { username: t.username, expiresAt: t.expiresAt, connectedBy: t.connectedBy, lastError: t.lastError }])),
+      },
       accounts: await this.accounts(user.tenantId),
       hasAi: await this.ai.available(user.tenantId),
       canApprove: can(user.permissions, user.role.isSystem, 'postagens', 'edit'),
@@ -137,8 +270,22 @@ export class PostagensService implements OnApplicationBootstrap, OnModuleDestroy
   async test(user: AuthUser) {
     this.assertCan(user, 'edit')
     const c = await this.integrations(user.tenantId)
-    if (!c.metaAds.tokenEnc) throw new BadRequestException('Cadastre o token da Meta em Configurações › Marketing Inteligente.')
-    return { checks: await new MetaPublisher(decrypt(c.metaAds.tokenEnc)).check(await this.accounts(user.tenantId)) }
+    const accounts = await this.accounts(user.tenantId)
+    const viaMeta = accounts.filter((a) => a.via !== 'instagram')
+    const viaIg = accounts.filter((a) => a.via === 'instagram')
+    if (!c.metaAds.tokenEnc && !viaIg.length) throw new BadRequestException('Conecte uma conta do Instagram na aba Contas ou cadastre o token da Meta em Configurações › Marketing Inteligente.')
+    const checks: { name: string; ok: boolean; message: string }[] = []
+    if (c.metaAds.tokenEnc && (viaMeta.length || !viaIg.length)) checks.push(...(await new MetaPublisher(decrypt(c.metaAds.tokenEnc)).check(viaMeta)))
+    const cache = new Map<string, MetaPublisher>()
+    for (const a of viaIg) {
+      try {
+        const r = await (await this.publisherFor(user.tenantId, a, cache)).instagramCheck(a)
+        checks.push({ ...r, message: `${r.message} · conectada pelo login do Instagram` })
+      } catch (err) {
+        checks.push({ name: `Instagram ${a.name}`, ok: false, message: (err as Error).message })
+      }
+    }
+    return { checks }
   }
 
   // ---------- Métricas ----------
@@ -152,12 +299,13 @@ export class PostagensService implements OnApplicationBootstrap, OnModuleDestroy
     const hit = this.metricsCache.get(user.tenantId)
     if (!refresh && hit && Date.now() - hit.at < METRICS_TTL_MS) return hit.data
     const c = await this.integrations(user.tenantId)
-    if (!c.metaAds.tokenEnc) throw new BadRequestException('Cadastre o token da Meta em Configurações › Marketing Inteligente.')
-    const meta = new MetaPublisher(decrypt(c.metaAds.tokenEnc))
     const accounts = await this.accounts(user.tenantId)
+    if (!c.metaAds.tokenEnc && !accounts.some((a) => a.via === 'instagram')) throw new BadRequestException('Conecte uma conta do Instagram na aba Contas ou cadastre o token da Meta em Configurações › Marketing Inteligente.')
+    const cache = new Map<string, MetaPublisher>()
     const rows: (Account & AccountMetrics & { engagement: number | null; error: string | null })[] = []
     for (const a of accounts) {
       try {
+        const meta = await this.publisherFor(user.tenantId, a, cache)
         const m = a.network === 'instagram' ? await meta.instagramMetrics(a.externalId) : await meta.facebookMetrics(a.externalId)
         rows.push({ ...a, ...m, engagement: engagementRate(m), error: null })
       } catch (err) {
@@ -173,6 +321,7 @@ export class PostagensService implements OnApplicationBootstrap, OnModuleDestroy
         const a = accounts.find((x) => x.id === accountId)
         const base = { postId: p.id, title: p.title, format: p.format, publishedAt: p.publishedAt, mediaId: p.mediaIds[0] ?? null, accountId, account: a?.name ?? r.name ?? accountId, network: a?.network ?? r.network ?? 'instagram', group: a?.group ?? 'Geral', permalink: r.permalink ?? null }
         try {
+          const meta = await this.publisherFor(user.tenantId, a ?? { id: accountId, network: base.network as 'instagram' | 'facebook', externalId: '', name: base.account, group: base.group }, cache)
           const m = await meta.postMetrics(base.network as 'instagram' | 'facebook', r.id, a?.network === 'facebook' ? a.externalId : undefined)
           posts.push({ ...base, metrics: m, engagement: engagementRate({ followers: a ? (rows.find((x) => x.id === a.id)?.followers ?? null) : null, reach: m.reach, interactions: m.interactions }), error: null })
         } catch (err) {
@@ -445,6 +594,10 @@ export class PostagensService implements OnApplicationBootstrap, OnModuleDestroy
       }
       // Ficou "publicando" (o servidor reiniciou no meio): volta como erro para alguém conferir e tentar de novo.
       await this.prisma.socialPost.updateMany({ where: { status: 'PUBLICANDO', updatedAt: { lt: new Date(Date.now() - 30 * 60_000) } }, data: { status: 'ERRO', error: 'A publicação foi interrompida. Confira no Instagram/Facebook se saiu e, se não, publique de novo.' } })
+      if (Date.now() - this.lastRenew > IG_RENEW_EVERY_MS) {
+        this.lastRenew = Date.now()
+        await this.renewInstagramTokens()
+      }
     } catch (err) {
       this.logger.warn(`Postagens: ${(err as Error).message}`)
     } finally {
@@ -462,9 +615,7 @@ export class PostagensService implements OnApplicationBootstrap, OnModuleDestroy
     const results: PostResults = { ...((p.results as PostResults | null) ?? {}) }
     let error: string | null = null
     try {
-      const c = await this.integrations(p.tenantId)
-      if (!c.metaAds.tokenEnc) throw new Error('Token da Meta não cadastrado (Configurações › Marketing Inteligente).')
-      const meta = new MetaPublisher(decrypt(c.metaAds.tokenEnc))
+      const cache = new Map<string, MetaPublisher>()
       const media = await this.prisma.socialMedia.findMany({ where: { tenantId: p.tenantId, id: { in: p.mediaIds } }, select: { id: true, kind: true } })
       const ordered = p.mediaIds.map((m) => media.find((x) => x.id === m)).filter((m): m is NonNullable<typeof m> => !!m)
       if (!ordered.length) throw new Error('As mídias da postagem foram apagadas da biblioteca.')
@@ -475,6 +626,7 @@ export class PostagensService implements OnApplicationBootstrap, OnModuleDestroy
         const a = accounts.find((x) => x.id === id)
         try {
           if (!a) throw new Error('Conta removida da lista de contas de Postagens.')
+          const meta = await this.publisherFor(p.tenantId, a, cache)
           const r = a.network === 'instagram' ? await meta.instagram(a.externalId, input) : await meta.facebook(a.externalId, input)
           results[id] = { ...r, network: a.network, name: a.name }
         } catch (err) {
