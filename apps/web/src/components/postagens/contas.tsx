@@ -27,6 +27,8 @@ export interface Account {
   via?: 'instagram'
 }
 
+const IG_CHANNEL = 'postagens-instagram'
+
 /** Conexão pelo login do Instagram: app da Meta e as contas conectadas (por ID do Instagram). */
 export interface InstagramLoginConfig {
   appId: string
@@ -52,11 +54,34 @@ function InstagramConnect({ ig }: { ig: InstagramLoginConfig }) {
     },
     onError: (err) => toast.error(errorMessage(err)),
   })
+  // a aba nova abre já no clique (senão o navegador bloqueia) e recebe o endereço do Instagram depois
+  const tab = useRef<Window | null>(null)
   const connect = useMutation({
     mutationFn: () => api.post<{ url: string }>('/postagens/instagram/conectar'),
-    onSuccess: (r) => window.location.assign(r.url),
-    onError: (err) => toast.error(errorMessage(err), { duration: 10_000 }),
+    onMutate: () => {
+      tab.current = window.open('', '_blank')
+      if (tab.current) tab.current.opener = null
+    },
+    onSuccess: (r) => {
+      if (tab.current && !tab.current.closed) tab.current.location.href = r.url
+      else window.open(r.url, '_blank', 'noopener')
+    },
+    onError: (err) => {
+      tab.current?.close()
+      toast.error(errorMessage(err), { duration: 10_000 })
+    },
   })
+  // a aba do Instagram avisa quando a conta foi conectada: a lista se atualiza aqui
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return
+    const ch = new BroadcastChannel(IG_CHANNEL)
+    ch.onmessage = (e: MessageEvent<{ username?: string }>) => {
+      toast.success(`Instagram conectado${e.data?.username ? `: @${e.data.username}` : ''}.`)
+      void qc.invalidateQueries({ queryKey: ['postagens-config'] })
+      void qc.invalidateQueries({ queryKey: ['postagens-metricas'] })
+    }
+    return () => ch.close()
+  }, [qc])
   const ready = !!ig.appId && ig.hasSecret
   return (
     <Card className="gap-3 p-4">
@@ -131,6 +156,7 @@ export function InstagramRetornoPage() {
   const navigate = useNavigate()
   const done = useRef(false)
   const [error, setError] = useState<string | null>(null)
+  const [connected, setConnected] = useState<string | null>(null)
   useEffect(() => {
     if (done.current) return
     done.current = true
@@ -143,8 +169,20 @@ export function InstagramRetornoPage() {
     api
       .post<{ username: string }>('/postagens/instagram/retorno', { code, state })
       .then((r) => {
-        toast.success(`Instagram conectado${r.username ? `: @${r.username}` : ''}.`)
-        navigate('/postagens?aba=contas', { replace: true })
+        setConnected(r.username || '')
+        // aberta pelo botão do CRM: avisa a aba do CRM e fecha; senão, volta para as contas
+        if (typeof BroadcastChannel !== 'undefined') {
+          const ch = new BroadcastChannel(IG_CHANNEL)
+          ch.postMessage({ username: r.username })
+          ch.close()
+        }
+        setTimeout(() => {
+          window.close()
+          setTimeout(() => {
+            toast.success(`Instagram conectado${r.username ? `: @${r.username}` : ''}.`)
+            navigate('/postagens?aba=contas', { replace: true })
+          }, 300)
+        }, 1500)
       })
       .catch((err: unknown) => setError(errorMessage(err)))
   }, [params, navigate])
@@ -162,6 +200,10 @@ export function InstagramRetornoPage() {
             </Button>
           }
         />
+      ) : connected !== null ? (
+        <p className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400">
+          <CheckIcon className="size-4" /> Instagram conectado{connected ? `: @${connected}` : ''}. Esta aba vai fechar sozinha.
+        </p>
       ) : (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2Icon className="size-4 animate-spin" /> Concluindo a conexão...

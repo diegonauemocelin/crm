@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.100.1",
+      "date": "2026-10-27",
+      "title": "Conectar Instagram em uma aba nova",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Postagens",
+          "text": "Conectar conta do Instagram abre o login do Instagram em uma aba nova, sem sair do CRM. Ao terminar, a aba fecha sozinha e a lista de contas se atualiza."
+        }
+      ]
+    },
+    {
       "version": "0.100.0",
       "date": "2026-10-27",
       "title": "Postagens: várias contas do Instagram pelo login do Instagram",
