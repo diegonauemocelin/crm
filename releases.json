@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.101.0",
+      "date": "2026-10-27",
+      "title": "Instagram: análise de cada perfil e geral",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Marketing Inteligente",
+          "text": "Em Marketing Inteligente › Instagram, logo acima das abas, escolha Geral (todos os perfis somados) ou um perfil: visão geral, conteúdo, stories, melhores horários e público mostram os números só daquele perfil."
+        },
+        {
+          "type": "novo",
+          "area": "Marketing Inteligente",
+          "text": "As contas conectadas pelo login do Instagram em Postagens › Contas entram na sincronização e ganham análise própria (alcance, interações, publicações, stories e público), sem precisar estar no Gerenciador de Negócios."
+        }
+      ]
+    },
+    {
       "version": "0.100.1",
       "date": "2026-10-27",
       "title": "Conectar Instagram em uma aba nova",

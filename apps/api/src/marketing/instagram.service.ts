@@ -4,6 +4,7 @@ import { decrypt } from '../common/crypto'
 import type { RequestCtx } from '../common/decorators'
 import { can } from '../common/permissions'
 import type { AuthUser } from '../common/types'
+import { IG_TOKENS_KEY, type IgToken, igLoginAccounts, POSTAGENS_ACCOUNTS_KEY } from '../postagens/instagram-login'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { CONFIG_KEY, DEFAULT_CONFIG, DEFAULT_INTEGRATIONS, GRAPH, INTEGRATIONS_KEY, type IntegrationsConfig, type MarketingConfig } from './config'
@@ -80,7 +81,10 @@ export class MarketingInstagramService {
     const integ = { ...DEFAULT_INTEGRATIONS, ...(await this.settings.get<IntegrationsConfig>(tenantId, INTEGRATIONS_KEY, DEFAULT_INTEGRATIONS)) }
     const official = integ.metaOrganic.instagramId
     const extra = cleanIgAccounts((await this.settings.get<{ list?: unknown }>(tenantId, IG_ACCOUNTS_KEY, {})).list, official)
-    const all = [...(official ? [{ id: official, username: '', label: 'Usaparts (oficial)', owner: 'empresa' as const, sellerId: null, official: true }] : []), ...extra.map((a) => ({ ...a, official: false }))]
+    // contas conectadas pelo login do Instagram em Postagens › Contas também têm análise própria
+    const login = igLoginAccounts((await this.settings.get<{ accounts?: { network: string; externalId: string; name: string; via?: string }[] }>(tenantId, POSTAGENS_ACCOUNTS_KEY, {})).accounts, await this.settings.get<Record<string, IgToken>>(tenantId, IG_TOKENS_KEY, {}))
+    const fromLogin = login.filter((l) => l.id !== official && !extra.some((a) => a.id === l.id)).map((l) => ({ id: l.id, username: l.username, label: `@${l.username}`, owner: 'empresa' as const, sellerId: null, official: false }))
+    const all = [...(official ? [{ id: official, username: '', label: 'Usaparts (oficial)', owner: 'empresa' as const, sellerId: null, official: true }] : []), ...extra.map((a) => ({ ...a, official: false })), ...fromLogin]
     return { integ, official, all, connected: all.filter((a) => a.id) }
   }
 

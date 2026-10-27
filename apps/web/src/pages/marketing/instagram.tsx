@@ -117,31 +117,22 @@ function Instagram() {
           <div className="min-w-0 flex-1">
             <MktFilters show="period" />
           </div>
-          {d && d.accounts.length > 1 && (
-            <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Perfil</Label>
-              <Select value={d.selected} onValueChange={setConta}>
-                <SelectTrigger className="w-64">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Visão geral (todos os perfis conectados)</SelectItem>
-                  {d.accounts.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.label}
-                      {a.owner === 'vendedor' ? ' · vendedor' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
         </div>
         {q.isLoading && <TableSkeleton rows={6} />}
         {q.error && <ErrorState error={q.error} onRetry={() => q.refetch()} />}
         {d && (
           <>
             <SyncLine sync={d.sync} label="Instagram" />
+            {d.accounts.length > 1 && (
+              <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Perfil analisado">
+                <span className="text-sm text-muted-foreground">Perfil:</span>
+                {[{ id: 'todas', label: 'Geral (todos os perfis)' }, ...d.accounts.map((a) => ({ id: a.id, label: `${a.label}${a.owner === 'vendedor' ? ' · vendedor' : ''}` }))].map((a) => (
+                  <Button key={a.id} size="sm" variant={d.selected === a.id ? 'default' : 'outline'} aria-pressed={d.selected === a.id} onClick={() => setConta(a.id)}>
+                    {a.label}
+                  </Button>
+                ))}
+              </div>
+            )}
             {!d.connected && (
               <PendingIntegration
                 title="Instagram (Graph API)"

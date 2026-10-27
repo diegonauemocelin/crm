@@ -12,7 +12,7 @@ import { Prisma } from '../generated/prisma/client'
 import { DEFAULT_INTEGRATIONS, INTEGRATIONS_KEY, type IntegrationsConfig } from '../marketing/config'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
-import { IG_CALLBACK_PATH, IG_GRAPH, type IgApp, type IgToken, InstagramLogin, authorizeUrl, needsRenewal } from './instagram-login'
+import { IG_CALLBACK_PATH, IG_GRAPH, IG_TOKENS_KEY, type IgApp, type IgToken, InstagramLogin, authorizeUrl, needsRenewal, POSTAGENS_ACCOUNTS_KEY } from './instagram-login'
 import { type AccountMetrics, MetaPublisher, type PostMetrics } from './meta'
 import {
   type Account,
@@ -43,10 +43,9 @@ import {
 } from './postagens'
 
 const TICK_MS = 60_000
-const ACCOUNTS_KEY = 'postagens_contas'
+const ACCOUNTS_KEY = POSTAGENS_ACCOUNTS_KEY
 /** App do Instagram (ID e chave secreta) e os tokens das contas conectadas pelo login do Instagram. */
 const IG_APP_KEY = 'postagens_ig_app'
-const IG_TOKENS_KEY = 'postagens_ig_tokens'
 const IG_OAUTH_KEY = 'postagens_ig_oauth'
 /** Confere os tokens do Instagram a cada 6 horas (renova os que estão perto de vencer). */
 const IG_RENEW_EVERY_MS = 6 * 3_600_000

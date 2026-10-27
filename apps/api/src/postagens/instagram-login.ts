@@ -38,6 +38,19 @@ export interface IgConnected {
   expiresAt: string
 }
 
+/** Contas de Postagens e os tokens das conectadas pelo login do Instagram (também lidas pelo Marketing Inteligente). */
+export const POSTAGENS_ACCOUNTS_KEY = 'postagens_contas'
+export const IG_TOKENS_KEY = 'postagens_ig_tokens'
+
+/** Contas conectadas pelo login do Instagram com acesso válido (para as análises do Marketing Inteligente). */
+export function igLoginAccounts(accounts: { network: string; externalId: string; name: string; via?: string }[] | undefined, tokens: Record<string, IgToken>, now = Date.now()) {
+  return (accounts ?? [])
+    .filter((a) => a.network === 'instagram' && a.via === 'instagram')
+    .map((a) => ({ id: a.externalId, name: a.name, token: tokens[a.externalId] }))
+    .filter((a): a is { id: string; name: string; token: IgToken } => !!a.token && Date.parse(a.token.expiresAt) > now)
+    .map((a) => ({ id: a.id, username: a.token.username || a.name.replace(/^@/, ''), tokenEnc: a.token.tokenEnc }))
+}
+
 export class IgLoginError extends Error {}
 
 /** Endereço do login do Instagram. force_authentication pede usuário e senha de novo (para conectar outra conta). */

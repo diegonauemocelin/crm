@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { authorizeUrl, cleanCode, IG_GRAPH, InstagramLogin, needsRenewal } from '../src/postagens/instagram-login'
+import { authorizeUrl, cleanCode, IG_GRAPH, igLoginAccounts, InstagramLogin, needsRenewal } from '../src/postagens/instagram-login'
 import { MetaPublisher } from '../src/postagens/meta'
 import { cleanAccounts } from '../src/postagens/postagens'
 
@@ -73,5 +73,20 @@ describe('Postagens: contas conectadas pelo login do Instagram', () => {
       { network: 'facebook', externalId: '1234567', name: 'Página', via: 'instagram' },
     ])
     expect(Array.isArray(r) && r.map((a) => a.via)).toEqual(['instagram', undefined])
+  })
+
+  it('Marketing Inteligente analisa as contas conectadas pelo login com acesso válido', () => {
+    const now = Date.parse('2026-10-27T12:00:00Z')
+    const tok = (exp: string) => ({ tokenEnc: 'x', username: 'loja', expiresAt: exp, issuedAt: '2026-10-01T00:00:00Z', connectedBy: 'Ana', lastError: null })
+    const list = igLoginAccounts(
+      [
+        { network: 'instagram', externalId: '1', name: '@loja', via: 'instagram' },
+        { network: 'instagram', externalId: '2', name: '@vencida', via: 'instagram' },
+        { network: 'instagram', externalId: '3', name: 'Instagram' },
+      ],
+      { '1': tok('2026-12-01T00:00:00Z'), '2': tok('2026-10-01T00:00:00Z'), '3': tok('2026-12-01T00:00:00Z') },
+      now,
+    )
+    expect(list).toEqual([{ id: '1', username: 'loja', tokenEnc: 'x' }])
   })
 })
