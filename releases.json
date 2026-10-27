@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.101.1",
+      "date": "2026-10-27",
+      "title": "Backups não enchem mais o disco",
+      "changes": [
+        {
+          "type": "infra",
+          "area": "Servidor",
+          "text": "O backup guarda no máximo as 7 cópias mais recentes (ajustável com BACKUP_KEEP no .env), além do limite de 30 dias. Cada atualização também faz um backup, e com várias atualizações os backups chegaram a ocupar 44 GB e travar a atualização por falta de espaço."
+        }
+      ]
+    },
+    {
       "version": "0.101.0",
       "date": "2026-10-27",
       "title": "Instagram: análise de cada perfil e geral",

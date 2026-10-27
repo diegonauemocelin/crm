@@ -6,6 +6,8 @@ set -eu
 
 : "${BACKUP_AGE_RECIPIENT:?BACKUP_AGE_RECIPIENT não definido}"
 RETENTION="${BACKUP_RETENTION_DAYS:-30}"
+# Cada atualização também faz um backup: guarda no máximo estas cópias (as mais recentes), além do limite de dias.
+KEEP="${BACKUP_KEEP:-7}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 DEST=/backups
 TMP="$DEST/.parcial-$STAMP"
@@ -29,3 +31,10 @@ echo "[backup] concluído: $(ls -1 "$DEST" | grep -c "$STAMP") arquivo(s) em $DE
 
 # Retenção: apaga apenas arquivos de backup deste sistema mais antigos que N dias.
 find "$DEST" -maxdepth 1 -type f \( -name 'crm-*.age' -o -name 'crm-*.sha256' \) -mtime "+$RETENTION" -print -delete
+# Limite de cópias: apaga os conjuntos (banco, arquivos e conferência) além das KEEP mais recentes.
+ls -1t "$DEST"/crm-*.sha256 2>/dev/null | tail -n +"$((KEEP + 1))" | while read -r f; do
+  s="$(basename "$f" .sha256)"
+  s="${s#crm-}"
+  echo "[backup] apagando cópia antiga $s"
+  rm -f -- "$DEST/crm-db-$s.dump.age" "$DEST/crm-uploads-$s.tar.gz.age" "$f"
+done

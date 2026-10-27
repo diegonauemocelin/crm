@@ -119,6 +119,7 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD}
       BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?defina BACKUP_AGE_RECIPIENT no .env (chave pública age)}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_KEEP: ${BACKUP_KEEP:-7}
       BACKUP_HOUR: ${BACKUP_HOUR:-3}
       TZ: America/Sao_Paulo
     volumes:
