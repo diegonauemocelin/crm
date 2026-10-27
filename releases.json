@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.99.4",
+      "date": "2026-10-27",
+      "title": "Fretes: alíquotas de ICMS aprendidas pelos CT-e",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Em Fretes → Filiais → ICMS do frete, \"Atualizar pelos CT-e (XML)\": envie os XMLs e cada frete dentro de um mesmo estado com ICMS tributado atualiza a alíquota interna daquela UF (vale o CT-e mais recente; redução de base vira a alíquota efetiva). Cada alíquota mostra se veio do cadastro manual ou de qual CT-e, e a mudança fica na auditoria."
+        },
+        {
+          "type": "infra",
+          "area": "Fretes",
+          "text": "Leitor do XML do CT-e (chave, trecho, componentes e ICMS), base da captura e da conciliação de CT-e."
+        }
+      ]
+    },
+    {
       "version": "0.99.3",
       "date": "2026-10-27",
       "title": "Fretes: ICMS do frete pela legislação",

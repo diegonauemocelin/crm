@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common'
-import { FileInterceptor } from '@nestjs/platform-express'
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common'
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
@@ -290,6 +290,14 @@ export class FretesController {
   @Put('icms')
   saveIcms(@CurrentUser() user: AuthUser, @Body() dto: IcmsDto, @ReqContext() ctx: RequestCtx) {
     return this.quotes.saveIcmsRates(user, dto.internas, ctx)
+  }
+
+  @Post('icms/cte')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseInterceptors(FilesInterceptor('arquivos', 200, { limits: { fileSize: 2 * 1024 * 1024 } }))
+  learnIcms(@CurrentUser() user: AuthUser, @UploadedFiles() files: Express.Multer.File[], @ReqContext() ctx: RequestCtx) {
+    return this.quotes.learnIcmsFromCtes(user, files ?? [], ctx)
   }
 
   @Get('cep/:cep')

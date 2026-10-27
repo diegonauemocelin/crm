@@ -13,6 +13,7 @@ import { addBusinessDays, calculate, type CalcResult, matchRule, type Measures, 
 import { componentsOf, ruleFromRow, settingsOf, todayUtc } from './tabelas.service'
 import type { ComponentDef } from './catalogo'
 import { FEE_LABEL, FEE_ORDER, type FeeCode } from './taxas'
+import { internalRateFrom, parseCteXml, type RateLearning } from './cte'
 
 export interface QuoteInput {
   unitId: string
@@ -69,9 +70,11 @@ const QUOTES_PAGE = 30
 const ICMS_KEY = 'fretes.icms'
 interface IcmsTable {
   internas: Record<string, number>
+  /** De onde veio cada alíquota: cadastro manual ou o CT-e em que foi lida. */
+  origem?: Record<string, { fonte: 'manual' | 'cte'; cte?: string | null; data?: string | null; nota?: string | null }>
 }
 /** SC 17%: conferido no CT-e 340.989 da Expresso São Miguel (Maravilha → Palhoça). As demais UFs a empresa cadastra. */
-const DEFAULT_ICMS: IcmsTable = { internas: { SC: 17 } }
+const DEFAULT_ICMS: IcmsTable = { internas: { SC: 17 }, origem: { SC: { fonte: 'cte', cte: 'CT-e 340.989 (Expresso São Miguel, Maravilha → Palhoça)', data: null, nota: null } } }
 
 /** Taxa da lista da transportadora como componente: fixo, ou o maior entre o fixo e o % do frete (TDE 222/20%). */
 export function feeComponent(f: { code: string; fixed: Prisma.Decimal | number; percent: Prisma.Decimal | number | null }): ComponentDef {
@@ -121,9 +124,55 @@ export class CotacaoService {
       internas[u] = v
     }
     const before = await this.icmsRates(user.tenantId)
-    await this.settings.set<IcmsTable>(user.tenantId, ICMS_KEY, { internas })
+    const origem = Object.fromEntries(
+      Object.entries(internas).map(([uf, v]) => [uf, before.internas[uf] === v && before.origem?.[uf] ? before.origem[uf]! : { fonte: 'manual' as const, data: new Date().toISOString().slice(0, 10) }]),
+    )
+    await this.settings.set<IcmsTable>(user.tenantId, ICMS_KEY, { internas, origem })
     await this.audit.byUser(user, ctx, 'frete.icms.alterado', 'tenant_setting', ICMS_KEY, { antes: before.internas, depois: internas })
-    return { internas }
+    return { internas, origem }
+  }
+
+  /**
+   * Atualiza as alíquotas internas pelos XMLs de CT-e: cada frete dentro do mesmo estado com ICMS tributado vira a
+   * alíquota daquela UF (vale o CT-e mais recente). O que mudou fica na auditoria com a chave do CT-e. Quando a captura
+   * automática de CT-e entrar, ela chama este mesmo passo.
+   */
+  async learnIcmsFromCtes(user: AuthUser, files: Express.Multer.File[], ctx: RequestCtx) {
+    assertCan(user, 'fretes_filiais', 'edit')
+    if (allowedUnits(user, 'fretes_filiais')) throw new ForbiddenException('Só quem tem acesso a todas as filiais altera as alíquotas.')
+    if (!files?.length) throw new BadRequestException('Envie os arquivos XML dos CT-es.')
+    const ignored: { file: string; reason: string }[] = []
+    const best = new Map<string, Extract<RateLearning, { ok: true }>>()
+    for (const f of files.slice(0, 200)) {
+      const name = cleanText(f.originalname, 120)
+      let learned: RateLearning
+      try {
+        learned = internalRateFrom(parseCteXml(f.buffer.toString('utf8')))
+      } catch (e) {
+        ignored.push({ file: name, reason: (e as Error).message })
+        continue
+      }
+      if (!learned.ok) {
+        ignored.push({ file: name, reason: learned.reason })
+        continue
+      }
+      const cur = best.get(learned.uf)
+      if (!cur || (learned.issuedAt ?? '') > (cur.issuedAt ?? '')) best.set(learned.uf, learned)
+    }
+    const table = await this.icmsRates(user.tenantId)
+    const internas = { ...table.internas }
+    const origem = { ...(table.origem ?? {}) }
+    const updated: { uf: string; from: number | null; to: number; cte: string | null }[] = []
+    for (const [uf, l] of best) {
+      if (internas[uf] !== l.rate) updated.push({ uf, from: internas[uf] ?? null, to: l.rate, cte: l.key })
+      internas[uf] = l.rate
+      origem[uf] = { fonte: 'cte', cte: l.key, data: l.issuedAt?.slice(0, 10) ?? null, nota: l.note }
+    }
+    if (best.size) {
+      await this.settings.set<IcmsTable>(user.tenantId, ICMS_KEY, { internas, origem })
+      await this.audit.byUser(user, ctx, 'frete.icms.aprendido_cte', 'tenant_setting', ICMS_KEY, { alteradas: updated, ctes: [...best.values()].map((l) => ({ uf: l.uf, aliquota: l.rate, chave: l.key })), ignorados: ignored.length })
+    }
+    return { read: files.length, used: [...best.values()].map((l) => ({ uf: l.uf, rate: l.rate, cte: l.key, note: l.note })), updated, ignored, internas, origem }
   }
 
   /** Cidade e UF do CEP: cache local; senão ViaCEP (serviço público). Sem resposta, a UF sai da faixa oficial de CEPs. */

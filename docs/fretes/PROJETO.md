@@ -123,6 +123,8 @@ Perfis sugeridos (criar em Configurações → Perfis):
    ordem: a da regra (`icms_aliq`), a fixada na versão (interestadual / mesmo estado) e, sem nenhuma, a da
    legislação: interestadual 7% ou 12% (Resolução do Senado 22/1989) e interna pela tabela por UF em Fretes →
    Filiais (SC 17%, conferida no CT-e 340.989). UF sem alíquota interna fica em aberto: avisa e não calcula.
+   As alíquotas internas são cadastradas à mão ou lidas dos XMLs de CT-e (`src/fretes/cte.ts`): frete no mesmo
+   estado com CST 00 (ou 20, alíquota efetiva) atualiza a UF; a captura automática de CT-e usará o mesmo passo.
 5. **Prazo:** dias úteis da regra + expedição da tabela; data prevista sem sábados e domingos (feriados não).
 
 **Fórmulas:** só números, `$variáveis$`, `+ - * / %`, comparações, `&& || !` e as funções `ceil floor round abs

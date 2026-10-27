@@ -172,7 +172,26 @@ const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', '
 /** Alíquotas internas de ICMS do frete por UF. A interestadual o sistema calcula pela legislação. */
 function IcmsRates({ editable }: { editable: boolean }) {
   const qc = useQueryClient()
-  const q = useQuery({ queryKey: ['fretes', 'icms'], queryFn: () => api.get<{ internas: Record<string, number> }>('/fretes/icms') })
+  const q = useQuery({ queryKey: ['fretes', 'icms'], queryFn: () => api.get<{ internas: Record<string, number>; origem?: Record<string, { fonte: string; cte?: string | null; data?: string | null; nota?: string | null }> }>('/fretes/icms') })
+  const [learned, setLearned] = useState<{ read: number; updated: { uf: string; from: number | null; to: number }[]; ignored: { file: string; reason: string }[] } | null>(null)
+  const learn = useMutation({
+    mutationFn: (files: FileList) => {
+      const fd = new FormData()
+      for (const f of Array.from(files)) fd.append('arquivos', f)
+      return api.post<{ read: number; updated: { uf: string; from: number | null; to: number }[]; ignored: { file: string; reason: string }[] }>('/fretes/icms/cte', fd)
+    },
+    onSuccess: (r) => {
+      setDraft(null)
+      setLearned(r)
+      qc.invalidateQueries({ queryKey: ['fretes', 'icms'] })
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const origin = (u: string) => {
+    const o = q.data?.origem?.[u]
+    if (!o) return null
+    return o.fonte === 'cte' ? `Lida do ${o.cte?.length === 44 ? `CT-e ${o.cte.slice(25, 34)}` : (o.cte ?? 'CT-e')}${o.data ? ` em ${o.data.split('-').reverse().join('/')}` : ''}${o.nota ? ` (${o.nota})` : ''}` : `Cadastro manual${o.data ? ` em ${o.data.split('-').reverse().join('/')}` : ''}`
+  }
   const [draft, setDraft] = useState<Record<string, string> | null>(null)
   const values = draft ?? Object.fromEntries(UFS.map((u) => [u, q.data?.internas[u] !== undefined ? String(q.data.internas[u]).replace('.', ',') : '']))
   const save = useMutation({
@@ -207,13 +226,32 @@ function IcmsRates({ editable }: { editable: boolean }) {
           {UFS.map((u) => (
             <label key={u} className="space-y-1 text-xs">
               <span className="font-medium">{u}</span>
-              <Input aria-label={`Alíquota interna de ${u}`} inputMode="decimal" className="h-8" disabled={!editable} placeholder="aberta" value={values[u]} onChange={(e) => setDraft({ ...values, [u]: e.target.value })} />
+              <Input aria-label={`Alíquota interna de ${u}`} title={origin(u) ?? undefined} inputMode="decimal" className="h-8" disabled={!editable} placeholder="aberta" value={values[u]} onChange={(e) => setDraft({ ...values, [u]: e.target.value })} />
+              {q.data?.origem?.[u]?.fonte === 'cte' && <span className="block text-[10px] text-muted-foreground">pelo CT-e</span>}
             </label>
           ))}
         </div>
-        <p className="text-xs text-muted-foreground">SC 17%: conferida no CT-e 340.989 da Expresso São Miguel. Confirme as demais com o contador ou com um CT-e de cada estado.</p>
+        <p className="text-xs text-muted-foreground">
+          Preencha à mão (contador) ou envie XMLs de CT-e: cada frete dentro de um mesmo estado com ICMS tributado atualiza a alíquota daquela UF (vale o CT-e mais recente). Passe o mouse sobre a alíquota para ver de onde ela veio.
+        </p>
+        {learned && (
+          <div className="rounded-md border p-2 text-xs">
+            <p className="font-medium">
+              {learned.read} CT-e(s) lido(s). {learned.updated.length ? `Atualizadas: ${learned.updated.map((x) => `${x.uf} ${x.from ?? 'aberta'} → ${x.to}%`).join(', ')}.` : 'Nenhuma alíquota mudou.'}
+            </p>
+            {learned.ignored.slice(0, 8).map((i, k) => (
+              <p key={k} className="text-muted-foreground">
+                {i.file}: {i.reason}
+              </p>
+            ))}
+          </div>
+        )}
         {editable && (
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-2">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-1.5 text-sm">
+              {learn.isPending && <Loader2Icon className="size-4 animate-spin" aria-hidden />} Atualizar pelos CT-e (XML)
+              <input type="file" multiple className="sr-only" accept=".xml,text/xml,application/xml" onChange={(e) => e.target.files?.length && learn.mutate(e.target.files)} />
+            </label>
             <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending || !draft}>
               {save.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Salvar alíquotas
             </Button>
