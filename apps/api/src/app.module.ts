@@ -24,6 +24,7 @@ import { AssistenteModule } from './assistente/assistente.module'
 import { TcarModule } from './tcar/tcar.module'
 import { FretesModule } from './fretes/fretes.module'
 import { WhatsappModule } from './whatsapp/whatsapp.module'
+import { AppMovelModule } from './app-movel/app-movel.module'
 import { env } from './config/env'
 import { FilesModule } from './files/files.module'
 import { LeadsModule } from './leads/leads.module'
@@ -55,6 +56,7 @@ import { UsersService } from './users/users.service'
     AuditModule,
     FilesModule,
     SettingsModule,
+    AppMovelModule,
     AuthModule,
     LeadsModule,
     AtendimentoModule,

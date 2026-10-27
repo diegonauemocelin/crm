@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common'
+import { Body, Controller, Get, Headers, HttpCode, Post, Req, Res } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import type { Request, Response } from 'express'
@@ -23,13 +23,14 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
   @HttpCode(200)
-  async login(@Body() dto: LoginDto, @ReqContext() ctx: RequestCtx, @Res({ passthrough: true }) res: Response) {
-    const result = await this.auth.login(dto.email, dto.password, ctx)
+  async login(@Body() dto: LoginDto, @ReqContext() ctx: RequestCtx, @Headers('x-crm-app') appHeader: string | undefined, @Res({ passthrough: true }) res: Response) {
+    const app = appHeader === '1'
+    const result = await this.auth.login(dto.email, dto.password, ctx, app)
     if (result.status === 'mfa_required') {
       setMfaCookie(res, result.mfaToken)
       return { status: result.status }
     }
-    setSessionCookies(res, result.accessToken, result.refreshToken)
+    setSessionCookies(res, result.accessToken, result.refreshToken, app)
     return { status: result.status }
   }
 
@@ -37,9 +38,10 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('2fa/verify')
   @HttpCode(200)
-  async verify(@Body() dto: MfaCodeDto, @Req() req: Request, @ReqContext() ctx: RequestCtx, @Res({ passthrough: true }) res: Response) {
-    const result = await this.auth.verifyMfa(req.cookies?.[MFA_COOKIE], dto.code, ctx)
-    setSessionCookies(res, result.accessToken, result.refreshToken)
+  async verify(@Body() dto: MfaCodeDto, @Req() req: Request, @ReqContext() ctx: RequestCtx, @Headers('x-crm-app') appHeader: string | undefined, @Res({ passthrough: true }) res: Response) {
+    const app = appHeader === '1'
+    const result = await this.auth.verifyMfa(req.cookies?.[MFA_COOKIE], dto.code, ctx, app)
+    setSessionCookies(res, result.accessToken, result.refreshToken, app)
     return { status: result.status }
   }
 
@@ -47,10 +49,11 @@ export class AuthController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('refresh')
   @HttpCode(200)
-  async refresh(@Req() req: Request, @ReqContext() ctx: RequestCtx, @Res({ passthrough: true }) res: Response) {
+  async refresh(@Req() req: Request, @ReqContext() ctx: RequestCtx, @Headers('x-crm-app') appHeader: string | undefined, @Res({ passthrough: true }) res: Response) {
+    const app = appHeader === '1'
     try {
-      const result = await this.auth.refresh(req.cookies?.[REFRESH_COOKIE], ctx)
-      setSessionCookies(res, result.accessToken, result.refreshToken)
+      const result = await this.auth.refresh(req.cookies?.[REFRESH_COOKIE], ctx, app)
+      setSessionCookies(res, result.accessToken, result.refreshToken, app)
       return { ok: true }
     } catch (err) {
       clearSessionCookies(res)

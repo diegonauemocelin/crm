@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import {
   AI_DEFAULTS,
+  OLD_UPSELL_RULES,
   AI_KEY,
   type AiSettings,
   type AssistState,
@@ -48,7 +49,10 @@ export class AssistService {
   // ---------- Configurações ----------
 
   async ai(tenantId: string): Promise<AiSettings> {
-    return { ...AI_DEFAULTS, ...(await this.settings.get<Partial<AiSettings>>(tenantId, AI_KEY, {})) }
+    const s = { ...AI_DEFAULTS, ...(await this.settings.get<Partial<AiSettings>>(tenantId, AI_KEY, {})) }
+    // regra padrão antiga ("apenas aplicação confirmada") segurava a venda adicional: passa para a nova
+    if (s.upsell_rules.trim() === OLD_UPSELL_RULES) s.upsell_rules = AI_DEFAULTS.upsell_rules
+    return s
   }
   async saveAi(tenantId: string, s: AiSettings) {
     return this.settings.set(tenantId, AI_KEY, s)

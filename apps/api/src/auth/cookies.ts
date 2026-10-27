@@ -10,9 +10,12 @@ function base(path: string, maxAgeSec: number): CookieOptions {
   return { httpOnly: true, secure: env.cookieSecure, sameSite: 'strict', path, maxAge: maxAgeSec * 1000 }
 }
 
-export function setSessionCookies(res: Response, accessToken: string, refreshToken: string) {
+/** Sessão do app instalado no celular (cabeçalho X-CRM-App): dura mais. */
+export const refreshTtlSec = (app: boolean) => (app ? env.appRefreshTokenTtlSec : env.refreshTokenTtlSec)
+
+export function setSessionCookies(res: Response, accessToken: string, refreshToken: string, app = false) {
   res.cookie(ACCESS_COOKIE, accessToken, base('/api', env.accessTokenTtlSec))
-  res.cookie(REFRESH_COOKIE, refreshToken, base('/api/auth', env.refreshTokenTtlSec))
+  res.cookie(REFRESH_COOKIE, refreshToken, base('/api/auth', refreshTtlSec(app)))
   res.clearCookie(MFA_COOKIE, { path: '/api/auth' })
 }
 

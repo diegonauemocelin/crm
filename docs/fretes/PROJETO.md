@@ -5,7 +5,7 @@ Módulo **separado** dentro do CRM Usaparts (mesmo login, mesmos perfis, mesma a
 histórico de importação, vigência e filiais). Nada do sistema de referência é copiado: o código é próprio.
 
 Este documento responde à seção 24 do pedido (o que apresentar antes de programar) e registra o que já está
-entregue no MVP (v0.99.0).
+entregue na v0.100.0.
 
 ## 1. Arquitetura
 
@@ -155,7 +155,7 @@ Componentes padrão de uma tabela nova (ajustar ao contrato de cada transportado
 | T-CPF | `$t_cpf$` com condição `$is_pf$` |
 | REENTREGA | `$total_value$ * ($redelivery$ / 100)` (desligado na cotação; serve para conferir CT-e) |
 
-### Taxas por destinatário, SVD e ICMS por estado (v0.99.2)
+### Taxas por destinatário, SVD e ICMS por estado
 
 - **Listas da transportadora** (TDA, TDE, TDC, TVD por CPF/CNPJ, como as da Expresso São Miguel): importadas na
   ficha da transportadora (`freight_recipient_fees`, sem o nome da pessoa). Na cotação, com o documento do
@@ -190,8 +190,8 @@ Na tela **Filiais e integrações** todas aparecem como *Não conectada* até es
 
 | Fase | Conteúdo | Situação |
 |---|---|---|
-| 1 | Permissões por filial, filiais, transportadoras, tabelas, importação, componentes e variáveis | **Entregue (v0.99.0)** |
-| 2 | Fórmulas, regras geográficas, cubagem, cotação, comparativo, histórico e reprodução, cotação em lote | **Entregue (v0.99.0–v0.100.0)** |
+| 1 | Permissões por filial, filiais, transportadoras, tabelas, importação, componentes e variáveis | **Entregue (v0.100.0)** |
+| 2 | Fórmulas, regras geográficas, cubagem, cotação, comparativo, histórico e reprodução, cotação em lote | **Entregue (v0.100.0)** |
 | 3 | Pedidos e expedição (manual, planilha, pela cotação), importação dos XMLs de CT-e | **Entregue (v0.100.0)**; captura automática na SEFAZ (DF-e, certificado A1) e pedidos da Tcar: a decidir |
 | 4 | Faturas, conciliação automática por componente, tolerâncias, contestação, pagamentos | **Entregue (v0.100.0)** |
 | 5 | Relatórios gerenciais, alertas, indicadores de desempenho, perfis prontos | **Entregue (v0.100.0)** |

@@ -22,6 +22,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { api, errorMessage } from '@/lib/api'
@@ -33,15 +34,17 @@ import { splitLinks, splitPhones } from '@/lib/links'
 import { menuFor } from '@/lib/menu'
 import { cn } from '@/lib/utils'
 
-interface NumberRef {
+export interface NumberRef {
   id: string
   name: string
   phone: string | null
   status: string
   /** Atendimento dividido entre os atendentes do número. */
   splitAttendance?: boolean
+  /** A pessoa atende neste número (ligada a ele, pelo vendedor ou pelo setor). */
+  attends?: boolean
 }
-interface ConvItem {
+export interface ConvItem {
   id: string
   /** Atendimento dividido: atendente da conversa (vazio = na fila). */
   assignedUserId?: string | null
@@ -72,7 +75,7 @@ interface ConvItem {
   /** Fase do atendimento mais recente do contato (pré ou pós-venda). */
   stage?: StageInfo | null
 }
-interface ListData {
+export interface ListData {
   /** Prazos das cores de atraso de resposta (minutos desde a última mensagem do cliente). */
   responseColors?: { yellowMinutes: number; redMinutes: number }
   /** Só no monitoramento: vendedores para o filtro. */
@@ -144,7 +147,7 @@ const dayKey = (iso: string) => dateShort(iso)
 
 /** Iniciais e cor fixa por contato, como a foto vazia do WhatsApp. */
 const AVATAR_COLORS = ['bg-emerald-600', 'bg-sky-600', 'bg-violet-600', 'bg-amber-600', 'bg-rose-600', 'bg-teal-600', 'bg-indigo-600', 'bg-orange-600']
-function Avatar({ name, group, className }: { name: string | null; group?: boolean; className?: string }) {
+export function Avatar({ name, group, className }: { name: string | null; group?: boolean; className?: string }) {
   const letters = (name ?? '').replace(/[^\p{L}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean)
   const text = letters.length ? (letters[0]![0]! + (letters.length > 1 ? letters[letters.length - 1]![0]! : '')).toUpperCase() : ''
   const color = AVATAR_COLORS[[...(name ?? '')].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % AVATAR_COLORS.length]
@@ -604,8 +607,13 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
   )
 }
 
-export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack?: () => void; monitor?: boolean }) {
+/**
+ * Conversa aberta. `compact` (app no celular): topo como o do WhatsApp (voltar, foto, nome e ⋮) e os botões da
+ * conversa num menu que sobe de baixo.
+ */
+export function ThreadView({ id, onBack, monitor = false, compact = false }: { id: string; onBack?: () => void; monitor?: boolean; compact?: boolean }) {
   const { can } = useAuth()
+  const [optionsOpen, setOptionsOpen] = useState(false)
   const mq = monitor ? 'monitorar=true' : ''
   const q = useQuery({ queryKey: ['chat-conversa', id, monitor], queryFn: () => api.get<Thread>(`/chat/conversas/${id}${mq ? `?${mq}` : ''}`), refetchInterval: 4000 })
   const { novo, colors } = useScreens()
@@ -654,6 +662,35 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
   // Reagir e responder: qualquer mensagem da conversa, menos aviso de ligação.
   const canAct = (m: Message) => !monitor && can('chat', 'create') && m.type !== 'chamada' && !m.deleted
   const toggleSelect = (mid: string) => setSelecting((s) => (!s ? [mid] : s.includes(mid) ? s.filter((x) => x !== mid) : s.length >= 20 ? (toast.error('No máximo 20 mensagens por vez.'), s) : [...s, mid]))
+  // Botões da conversa: na barra do topo (computador) ou no menu ⋮ (app no celular).
+  const actions = (
+    <>
+      {d.conversation.category === 'CLIENTE' && <ServiceButtons service={d.service} contact={{ name: d.lead?.name ?? d.conversation.name, phone: d.conversation.phone, email: d.lead?.email }} prefill={novo ? () => quickPrefill({ name: d.lead?.name ?? d.conversation.name, phone: d.conversation.phone, email: d.lead?.email }, messages, options.data) : undefined} />}
+      {!monitor && <LabelPicker conversationId={d.conversation.id} value={d.conversation.labels ?? []} />}
+      {!monitor && <ReminderButton conversationId={d.conversation.id} />}
+      {can('monitoramento', 'create') && <NoteButton conversationId={d.conversation.id} monitor={monitor} />}
+      {d.conversation.phone && (
+        <Button asChild size="sm" variant="outline" title="Ligar (pelo telefone; a ligação pelo WhatsApp é atendida no celular)" aria-label="Ligar">
+          <a href={`tel:${d.conversation.phone}`}>
+            <PhoneIcon /> <span className="hidden @4xl/head:inline">Ligar</span>
+          </a>
+        </Button>
+      )}
+      {d.lead && !compact && (
+        <Button asChild size="sm" variant="outline" title="Abrir a ficha do lead" aria-label="Lead">
+          <Link to={`/leads/${d.lead.id}`}>
+            <UserIcon /> <span className="hidden @4xl/head:inline">Lead</span>
+          </Link>
+        </Button>
+      )}
+      {!compact && <span className="hidden h-5 w-px bg-border @2xl/head:block" />}
+      {!monitor && d.attendance && <AttendantPicker thread={d} />}
+      {!monitor && d.attendance && <HelpersPicker thread={d} />}
+      {!monitor && d.conversation.category !== 'GRUPO' && d.conversation.phone && <SaveContactButton thread={d} />}
+      {!monitor && can('chat', 'create') && d.conversation.category === 'CLIENTE' && d.conversation.status === 'ABERTA' && <FinishButton thread={d} />}
+      {!monitor && <ConversationActions thread={d} />}
+    </>
+  )
   return (
     <MonitorContext.Provider value={monitor}>
     <ThreadNumberContext.Provider value={d.number?.id ?? null}>
@@ -684,6 +721,23 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
           <p className="text-xs text-muted-foreground">Foto, vídeo, PDF, planilha… até 64 MB. Você confere antes de enviar.</p>
         </div>
       )}
+      {compact ? (
+        <div className="flex items-center gap-1.5 border-b bg-[#f0f2f5] px-1.5 pb-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] dark:bg-[#202c33]">
+          {onBack && (
+            <Button size="icon" variant="ghost" className="size-10 shrink-0" onClick={onBack} aria-label="Voltar para as conversas">
+              <ArrowLeftIcon className="size-5" />
+            </Button>
+          )}
+          <Avatar name={d.conversation.name ?? d.lead?.name ?? null} group={d.conversation.category === 'GRUPO'} />
+          <button type="button" className="min-w-0 flex-1 px-1 text-left" onClick={() => setOptionsOpen(true)}>
+            <span className="block truncate font-medium leading-tight">{title}</span>
+            <span className="block truncate text-xs text-muted-foreground">{d.conversation.assignedUserName ? `com ${d.conversation.assignedUserName}` : (d.number?.name ?? formatPhone(d.conversation.phone))}</span>
+          </button>
+          <Button size="icon" variant="ghost" className="size-10 shrink-0" onClick={() => setOptionsOpen(true)} aria-label="Opções da conversa">
+            <EllipsisVerticalIcon className="size-5" />
+          </Button>
+        </div>
+      ) : (
       <div className={cn('@container/head space-y-2 border-b bg-[#f0f2f5] px-3 py-2 dark:bg-[#202c33]')}>
         <div className="flex items-start gap-2">
           {onBack && (
@@ -710,33 +764,21 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {d.conversation.category === 'CLIENTE' && <ServiceButtons service={d.service} contact={{ name: d.lead?.name ?? d.conversation.name, phone: d.conversation.phone, email: d.lead?.email }} prefill={novo ? () => quickPrefill({ name: d.lead?.name ?? d.conversation.name, phone: d.conversation.phone, email: d.lead?.email }, messages, options.data) : undefined} />}
-          {!monitor && <LabelPicker conversationId={d.conversation.id} value={d.conversation.labels ?? []} />}
-          {!monitor && <ReminderButton conversationId={d.conversation.id} />}
-          {can('monitoramento', 'create') && <NoteButton conversationId={d.conversation.id} monitor={monitor} />}
-          {d.conversation.phone && (
-            <Button asChild size="sm" variant="outline" title="Ligar (pelo telefone; a ligação pelo WhatsApp é atendida no celular)" aria-label="Ligar">
-              <a href={`tel:${d.conversation.phone}`}>
-                <PhoneIcon /> <span className="hidden @4xl/head:inline">Ligar</span>
-              </a>
-            </Button>
-          )}
-          {d.lead && (
-            <Button asChild size="sm" variant="outline" title="Abrir a ficha do lead" aria-label="Lead">
-              <Link to={`/leads/${d.lead.id}`}>
-                <UserIcon /> <span className="hidden @4xl/head:inline">Lead</span>
-              </Link>
-            </Button>
-          )}
-          <span className="hidden h-5 w-px bg-border @2xl/head:block" />
-          {!monitor && d.attendance && <AttendantPicker thread={d} />}
-          {!monitor && d.attendance && <HelpersPicker thread={d} />}
-          {!monitor && d.conversation.category !== 'GRUPO' && d.conversation.phone && <SaveContactButton thread={d} />}
-          {!monitor && can('chat', 'create') && d.conversation.category === 'CLIENTE' && d.conversation.status === 'ABERTA' && <FinishButton thread={d} />}
-          {!monitor && <ConversationActions thread={d} />}
-        </div>
+        <div className="flex flex-wrap items-center gap-1.5">{actions}</div>
       </div>
+      )}
+      {compact && (
+        <Sheet open={optionsOpen} onOpenChange={setOptionsOpen}>
+          <SheetContent side="bottom" className="max-h-[85svh] overflow-y-auto rounded-t-2xl pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+            <SheetHeader className="pb-0">
+              <SheetTitle className="truncate">{title}</SheetTitle>
+              <SheetDescription>{[formatPhone(d.conversation.phone), d.number?.name, d.conversation.assignedUserName ? `com ${d.conversation.assignedUserName}` : null].filter(Boolean).join(' · ')}</SheetDescription>
+            </SheetHeader>
+            {/* As mesmas opções do computador, uma embaixo da outra (com o texto aparecendo). */}
+            <div className="flex flex-col items-stretch gap-2 px-4 *:w-full *:max-w-none [&_button]:justify-start [&_span.hidden]:!inline">{actions}</div>
+          </SheetContent>
+        </Sheet>
+      )}
       {!monitor && <ReminderBar conversationId={d.conversation.id} />}
       <div className={cn('wa-wallpaper min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3 sm:px-[6%]')}>
         {(d.hasMore || older.length > 0) && (
@@ -821,7 +863,7 @@ export function ThreadView({ id, onBack, monitor = false }: { id: string; onBack
           </Button>
         </div>
       ) : (
-        <Composer thread={d} replyTo={replyTo} onClearReply={() => setReplyTo(null)} dropped={dropped} onDroppedUsed={() => setDropped(null)} />
+        <Composer thread={d} replyTo={replyTo} onClearReply={() => setReplyTo(null)} dropped={dropped} onDroppedUsed={() => setDropped(null)} compact={compact} />
       )}
       {forwarding && selecting && (
         <ForwardDialog
@@ -1052,7 +1094,8 @@ function QuotedBlock({ text, who, targetId = null }: { text: string; who: string
       <p className="flex items-center gap-1 font-semibold text-[color:var(--brand)]">
         <ReplyIcon className="size-3" /> {who ? `Em resposta a ${who === 'Você' ? 'você' : who}` : 'Resposta a uma mensagem'}
       </p>
-      <p className="line-clamp-3 opacity-80">{waStyles(text)}</p>
+      {/* Sem as linhas de botões que só funcionam no celular (▸): a citação fica só com o texto. */}
+      <p className="line-clamp-3 opacity-80">{waStyles(text.split('\n').filter((l) => !l.startsWith('▸ ')).join(' '))}</p>
     </>
   )
   const box = 'mb-1 block w-full rounded border-l-4 border-l-[color:var(--brand)] bg-black/5 px-2 py-1 text-left text-xs dark:bg-white/10'
@@ -1379,10 +1422,13 @@ function NoteButton({ conversationId, monitor }: { conversationId: string; monit
 }
 
 /** Caixa de envio: texto (Enter envia, Shift+Enter quebra linha), arquivo com legenda e respostas rápidas. */
+/** Botão redondo verde de enviar/gravar, como no WhatsApp (app no celular). */
+const ROUND_SEND = 'size-11 shrink-0 rounded-full bg-[#00a884] text-white hover:bg-[#008f6f] [&_svg]:size-5'
+
 /** Arquivos por envio no chat (cada um sai como uma mensagem). */
 const MAX_FILES = 10
 
-function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { thread: Thread; replyTo?: Message | null; onClearReply?: () => void; dropped?: File[] | null; onDroppedUsed?: () => void }) {
+function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed, compact = false }: { thread: Thread; replyTo?: Message | null; onClearReply?: () => void; dropped?: File[] | null; onDroppedUsed?: () => void; compact?: boolean }) {
   const { can } = useAuth()
   const qc = useQueryClient()
   const [text, setText] = useState('')
@@ -1536,11 +1582,71 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { t
       submit()
     }
   }
+  // Botões da caixa de escrever: no app do celular ficam dentro do campo, como no WhatsApp.
+  const clipButton = (
+    <Button type="button" size="icon" variant="ghost" onClick={() => input.current?.click()} aria-label="Anexar foto, vídeo, áudio ou documento">
+      <PaperclipIcon />
+    </Button>
+  )
+  const repliesMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" size="icon" variant="ghost" aria-label="Respostas rápidas">
+          <ZapIcon />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
+        <DropdownMenuLabel>Respostas rápidas</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {(replies.data ?? []).length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">Nenhuma ainda. Crie as suas em “Gerenciar respostas”.</p>}
+        {replies.data?.map((r) => (
+          <DropdownMenuItem key={r.id} onSelect={() => applyReply(r, true)} className="flex-col items-start gap-0.5">
+            <span className="flex items-center gap-1 font-medium">
+              {r.fileName && <PaperclipIcon className="size-3.5" aria-label="Com arquivo" />}
+              {r.title}
+            </span>
+            <span className="line-clamp-2 text-xs text-muted-foreground">{r.preview}</span>
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => setManaging(true)}>Gerenciar respostas</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+  const emojiPicker = (
+    <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" size="icon" variant="ghost" aria-label="Emojis e figurinhas">
+          <SmileIcon />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="start" className="w-80 p-2" onCloseAutoFocus={(e) => e.preventDefault()}>
+        <EmojiStickerPanel onEmoji={insertEmoji} onSticker={(sid) => sticker.mutate(sid)} sending={sticker.isPending} />
+      </PopoverContent>
+    </Popover>
+  )
+  const messageBox = (
+    <Textarea
+      ref={box}
+      value={text}
+      onChange={(e) => (setText(e.target.value), setPick(0))}
+      onKeyDown={onKey}
+      onPaste={(e) => {
+        // Imagem copiada (print, foto do site, do Explorer): vira anexo; texto colado segue normal.
+        if (attach([...e.clipboardData.files])) e.preventDefault()
+      }}
+      rows={1}
+      maxLength={file || replyFile ? 1000 : 4000}
+      placeholder={file || replyFile ? (compact ? 'Legenda' : 'Legenda (opcional) · Enter envia') : compact ? 'Mensagem' : novo ? 'Escreva a mensagem (Enter envia, / abre as respostas rápidas)' : 'Escreva a mensagem (Enter envia, Shift+Enter pula linha)'}
+      className={cn('max-h-40 min-h-9 flex-1 resize-none rounded-lg border-transparent bg-white shadow-none dark:bg-[#2a3942]', compact && 'max-h-32 min-h-11 rounded-none border-0 bg-transparent px-1 py-3 text-[16px] shadow-none outline-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent')}
+      aria-label="Mensagem"
+    />
+  )
   return (
     <>
     <form
       onSubmit={submit}
-      className={cn('relative space-y-2 border-t bg-[#f0f2f5] p-2 dark:bg-[#202c33]')}
+      className={cn('relative space-y-2 border-t bg-[#f0f2f5] p-2 dark:bg-[#202c33]', compact && 'border-t-0 bg-[#efeae2] px-1.5 pt-1 pb-[calc(0.375rem+env(safe-area-inset-bottom))] dark:bg-[#0b141a]')}
     >
       {replyTo && (
         <div className="flex items-start gap-2 rounded-md border-l-4 border-l-[color:var(--brand)] bg-muted/60 px-2.5 py-1.5 text-xs">
@@ -1611,58 +1717,22 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { t
             attach(list)
           }}
         />
-        <Button type="button" size="icon" variant="ghost" onClick={() => input.current?.click()} aria-label="Anexar foto, vídeo, áudio ou documento">
-          <PaperclipIcon />
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type="button" size="icon" variant="ghost" aria-label="Respostas rápidas">
-              <ZapIcon />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
-            <DropdownMenuLabel>Respostas rápidas</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {(replies.data ?? []).length === 0 && <p className="px-2 py-1.5 text-xs text-muted-foreground">Nenhuma ainda. Crie as suas em “Gerenciar respostas”.</p>}
-            {replies.data?.map((r) => (
-              <DropdownMenuItem key={r.id} onSelect={() => applyReply(r, true)} className="flex-col items-start gap-0.5">
-                <span className="flex items-center gap-1 font-medium">
-                  {r.fileName && <PaperclipIcon className="size-3.5" aria-label="Com arquivo" />}
-                  {r.title}
-                </span>
-                <span className="line-clamp-2 text-xs text-muted-foreground">{r.preview}</span>
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => setManaging(true)}>Gerenciar respostas</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
-          <PopoverTrigger asChild>
-            <Button type="button" size="icon" variant="ghost" aria-label="Emojis e figurinhas">
-              <SmileIcon />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent side="top" align="start" className="w-80 p-2" onCloseAutoFocus={(e) => e.preventDefault()}>
-            <EmojiStickerPanel onEmoji={insertEmoji} onSticker={(sid) => sticker.mutate(sid)} sending={sticker.isPending} />
-          </PopoverContent>
-        </Popover>
-        <ShareContactButton conversationId={id} disabled={!!file} />
-        <Textarea
-          ref={box}
-          value={text}
-          onChange={(e) => (setText(e.target.value), setPick(0))}
-          onKeyDown={onKey}
-          onPaste={(e) => {
-            // Imagem copiada (print, foto do site, do Explorer): vira anexo; texto colado segue normal.
-            if (attach([...e.clipboardData.files])) e.preventDefault()
-          }}
-          rows={1}
-          maxLength={file || replyFile ? 1000 : 4000}
-          placeholder={file || replyFile ? 'Legenda (opcional) · Enter envia' : novo ? 'Escreva a mensagem (Enter envia, / abre as respostas rápidas)' : 'Escreva a mensagem (Enter envia, Shift+Enter pula linha)'}
-          className={cn('max-h-40 min-h-9 flex-1 resize-none rounded-lg border-transparent bg-white shadow-none dark:bg-[#2a3942]')}
-          aria-label="Mensagem"
-        />
+        {compact ? (
+          <div className="flex min-h-11 min-w-0 flex-1 items-end rounded-3xl bg-white px-1 shadow-sm dark:bg-[#2a3942]">
+            {emojiPicker}
+            {messageBox}
+            {repliesMenu}
+            {clipButton}
+          </div>
+        ) : (
+          <>
+            {clipButton}
+            {repliesMenu}
+            {emojiPicker}
+          <ShareContactButton conversationId={id} disabled={!!file} />
+            {messageBox}
+          </>
+        )}
         {voice.recording ? (
           <div className="flex items-center gap-1.5">
             <span className="flex items-center gap-1.5 text-sm tabular-nums text-destructive" aria-live="polite">
@@ -1676,11 +1746,11 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed }: { t
             </Button>
           </div>
         ) : !text.trim() && !file ? (
-          <Button type="button" size="icon" onClick={() => void voice.start()} disabled={voice.sending} aria-label="Gravar mensagem de voz">
+          <Button type="button" size="icon" className={cn(compact && ROUND_SEND)} onClick={() => void voice.start()} disabled={voice.sending} aria-label="Gravar mensagem de voz">
             {voice.sending ? <Loader2Icon className="animate-spin" /> : <MicIcon />}
           </Button>
         ) : (
-          <Button type="submit" size="icon" disabled={send.isPending} aria-label="Enviar mensagem">
+          <Button type="submit" size="icon" className={cn(compact && ROUND_SEND)} disabled={send.isPending} aria-label="Enviar mensagem">
             {send.isPending ? <Loader2Icon className="animate-spin" /> : <SendIcon />}
           </Button>
         )}
@@ -2046,7 +2116,9 @@ function phoneLinks(text: string): ReactNode[] {
 }
 
 /** *negrito*, _itálico_ e ~riscado~ do WhatsApp; leaf transforma cada pedaço de texto (ex.: telefones clicáveis). */
-function waStyles(text: string, leaf: (t: string) => ReactNode[] = (t) => [t]) {
+function waStyles(raw: string, leaf: (t: string) => ReactNode[] = (t) => [t]) {
+  // Barra de escape antes de pontuação ("491293622\.", texto vindo de robôs): o WhatsApp não mostra a barra.
+  const text = raw.replace(/\\([.!#()+\-|>[\]{}\\])/g, '$1')
   const out: React.ReactElement[] = []
   const re = /([*_~])([^*_~\n]+?)\1/g
   let last = 0

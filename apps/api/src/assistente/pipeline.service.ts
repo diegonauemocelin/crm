@@ -11,6 +11,7 @@ import { AssistKnowledgeService } from './conhecimento.service'
 import { type AiSettings, FINAL_STATUSES, ML_ANSWER_LIMIT, REASONS } from './constantes'
 import { buildAnswer, classifyQuestion, type FreightOption, parseFreightOptions } from './frete'
 import { AiError, type AiResult, type AssistContext, type CtxIds, generateAnswer } from './ia'
+import { type Complement, titleComplements } from './venda-adicional'
 import { codeKey, extractCodes, greetingFor, itemCodes, norm, normCode, questionSimilarity, searchTokens } from './texto'
 
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v))
@@ -116,7 +117,12 @@ export class AssistPipelineService {
         if (related.length >= 5) break
       }
     }
-    const already = new Set([...related.map((i) => i.id), ...complementary.map((a) => a.mlItemId)])
+    // venda adicional: aplicações confirmadas primeiro; depois anúncios com o mesmo modelo no título (como o painel antigo)
+    const extras: Complement[] = complementary.map((a) => ({ id: a.mlItemId!, titulo: itemById.get(a.mlItemId!)?.title ?? a.productName, codigo: a.partCode, sistema: a.system, aplicacao_confirmada: `${a.machineBrand ?? ''} ${a.machineModel ?? ''}`.trim() }))
+    if (settings.upsell_enabled && extras.length < 8) {
+      extras.push(...titleComplements(text, item, items, storeItems, new Set([...extras.map((c) => c.id), ...related.map((i) => i.id)]), 8 - extras.length))
+    }
+    const already = new Set([...related.map((i) => i.id), ...extras.map((c) => c.id)])
     const found = this.searchStoreItems(text, items, storeItems, { exclude: item?.id }).filter((f) => !already.has(f.r.id))
 
     const context: AssistContext = {
@@ -163,7 +169,7 @@ export class AssistPipelineService {
       })),
       aplicacoes: apps.map((a) => ({ codigo: a.partCode, produto: a.productName, marca_peca: a.partBrand, marca_maquina: a.machineBrand, modelo: a.machineModel, sistema: a.system, aplicacao: a.application, status_validacao: a.validationStatus, anuncio_id: a.mlItemId })),
       anuncios_relacionados_ao_codigo: related.map((i) => ({ id: i.id, titulo: i.title, codigo: i.partNumber ?? i.sellerSku, status: i.status })),
-      anuncios_complementares: complementary.map((a) => ({ id: a.mlItemId!, titulo: itemById.get(a.mlItemId!)?.title ?? a.productName, codigo: a.partCode, sistema: a.system, aplicacao_confirmada: `${a.machineBrand ?? ''} ${a.machineModel ?? ''}`.trim() })),
+      anuncios_complementares: extras,
       dados_detectados: { codigos: [...codeSet], marcas: entities.brands, modelos: entities.models },
       anuncios_com_link_permitido: [],
       frete_calculado: freight ?? null,
@@ -172,14 +178,14 @@ export class AssistPipelineService {
       [
         item?.id,
         ...related.map((i) => i.id),
-        ...complementary.map((a) => a.mlItemId),
+        ...extras.map((c) => c.id),
         ...apps.map((a) => a.mlItemId),
         ...found.map((f) => f.r.id),
         ...knowledge.flatMap((k) => [...String(k.answer ?? '').matchAll(/\{\{LINK:([A-Z]{3}\d+)\}\}/g)].map((m) => m[1])),
       ].filter((id): id is string => !!id && storeItems.has(id)),
     )
     context.anuncios_com_link_permitido = [...linkIds]
-    const ctxIds: CtxIds = { knowledge: new Set(knowledge.map((k) => k.id)), complementary: new Set(complementary.map((a) => a.mlItemId!)), links: linkIds }
+    const ctxIds: CtxIds = { knowledge: new Set(knowledge.map((k) => k.id)), complementary: new Set(extras.map((c) => c.id)), links: linkIds }
     return { context, knowledge, ctxIds }
   }
 

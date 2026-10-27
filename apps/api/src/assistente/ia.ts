@@ -2,6 +2,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { type AiSettings, GEMINI_MODELS, PROVIDERS } from './constantes'
 import { generateRules } from './regras'
+import { addComplements } from './venda-adicional'
 
 export class AiError extends Error {
   constructor(
@@ -161,8 +162,10 @@ PADRÃO DE ATENDIMENTO
 VENDA ADICIONAL
 ${
   s.upsell_enabled
-    ? `- Após responder a pergunta principal, você pode oferecer no máximo ${s.max_complementary} anúncio(s) complementar(es), escolhidos somente entre os "anuncios_complementares" do contexto (todos têm aplicação confirmada para o modelo). Regras da equipe: ${s.upsell_rules}
-- Se não houver complementar relevante, não ofereça nada. Liste os IDs oferecidos em complementary_item_ids.`
+    ? `- Ao responder (decision = "responder"), depois da pergunta principal, ofereça até ${s.max_complementary} anúncio(s) complementar(es) para aumentar a venda, escolhidos somente entre os "anuncios_complementares" do contexto, na ordem em que aparecem (os primeiros são os mais ligados ao produto pedido; ex.: pediu filtro de ar primário → filtro de ar secundário, filtro de óleo).
+- Todos são da mesma máquina: pela base técnica ou pelo título do anúncio ("aplicacao_confirmada" diz qual). Para os que vêm do título, diga "indicado para a mesma máquina, conforme o anúncio", sem garantir além disso.
+- Oferta breve e opcional, uma linha por item com o nome e o marcador {{LINK:ID}}. Regras da equipe: ${s.upsell_rules}
+- Se a lista estiver vazia, não ofereça nada. Liste os IDs oferecidos em complementary_item_ids.`
     : '- A venda adicional está desativada: não ofereça outros produtos e deixe complementary_item_ids vazio.'
 }
 
@@ -224,7 +227,12 @@ export interface GenerateInput {
 }
 
 /** Gera a resposta conforme o motor escolhido em Configurações do assistente. */
-export async function generateAnswer({ settings, context, question, greeting, ctxIds, keys }: GenerateInput): Promise<{ result: AiResult; model: string }> {
+export async function generateAnswer(input: GenerateInput): Promise<{ result: AiResult; model: string }> {
+  const out = await generateRaw(input)
+  return { ...out, result: addComplements(out.result, input.context, input.settings) }
+}
+
+async function generateRaw({ settings, context, question, greeting, ctxIds, keys }: GenerateInput): Promise<{ result: AiResult; model: string }> {
   const provider = PROVIDERS[settings.provider] ? settings.provider : 'sem_ia'
   if (provider === 'sem_ia') return { result: validate(generateRules({ settings, context, question, greeting }), ctxIds), model: 'sem-ia (regras)' }
   const userContent = `<saudacao>${greeting}</saudacao>\n<contexto>\n${JSON.stringify(context, null, 1)}\n</contexto>\n<pergunta_cliente>\n${question}\n</pergunta_cliente>`

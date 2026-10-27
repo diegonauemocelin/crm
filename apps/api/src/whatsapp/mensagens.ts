@@ -196,6 +196,28 @@ function menuOf(m: Obj): string | null {
 }
 
 /** Resposta de botão de fluxo (paramsJson com o texto ou o id da opção). */
+/**
+ * Formulário do WhatsApp (Flow) preenchido no celular: as respostas vêm no paramsJson, quando quem criou o formulário
+ * manda (ex.: {"flow_token":"…","nota":"0_Ruim","mensagem":"não resolveu"} vira "Formulário enviado: Ruim · não resolveu").
+ */
+function formAnswers(r: Obj | null): string | null {
+  if (!r || r.name === 'quick_reply') return null
+  let p: Obj
+  try {
+    p = JSON.parse(str(r.paramsJson, 20_000) ?? '{}') as Obj
+  } catch {
+    return null
+  }
+  const answers = Object.entries(p)
+    .filter(([k]) => !/^(flow_token|wa_flow_response_params|flow_id|version)$/i.test(k))
+    .flatMap(([, v]) => (Array.isArray(v) ? v : [v]))
+    .filter((v): v is string | number | boolean => ['string', 'number', 'boolean'].includes(typeof v))
+    // Opção escolhida costuma vir como "0_Ruim" (posição + texto): fica só o texto.
+    .map((v) => String(v).replace(/^\d+_(?=\D)/, '').replace(/_/g, ' ').trim())
+    .filter(Boolean)
+  return answers.length ? `Formulário enviado: ${answers.join(' · ')}`.slice(0, 300) : null
+}
+
 function nativeReply(r: Obj | null): string | null {
   if (!r) return null
   try {
@@ -244,6 +266,7 @@ function pickedOption(m: Obj): string | null {
     str(obj(m.buttonsResponseMessage)?.selectedDisplayText, 300) ??
     str(obj(m.listResponseMessage)?.title, 300) ??
     str(obj(m.templateButtonReplyMessage)?.selectedDisplayText, 300) ??
+    formAnswers(obj(obj(m.interactiveResponseMessage)?.nativeFlowResponseMessage)) ??
     str(obj(obj(m.interactiveResponseMessage)?.body)?.text, 300) ??
     nativeReply(obj(obj(m.interactiveResponseMessage)?.nativeFlowResponseMessage)) ??
     null

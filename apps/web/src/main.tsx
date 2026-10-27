@@ -8,6 +8,7 @@ import { ConfirmProvider } from './components/confirm'
 import { Toaster } from './components/ui/sonner'
 import { TooltipProvider } from './components/ui/tooltip'
 import { ApiError } from './lib/api'
+import { registerServiceWorker } from './lib/app-movel'
 import { AuthProvider } from './lib/auth'
 import { BrandingProvider } from './lib/branding'
 import { ThemeProvider } from './lib/theme'
@@ -25,6 +26,9 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+// App no celular: notificações e instalação na tela inicial.
+registerServiceWorker()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

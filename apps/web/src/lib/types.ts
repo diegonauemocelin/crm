@@ -61,6 +61,8 @@ export interface Branding {
   logoUrl: string | null
   logoDarkUrl: string | null
   faviconUrl: string | null
+  /** Ícone do app na tela inicial do celular (vazio = o ícone padrão). */
+  appIconUrl?: string | null
 }
 
 export interface VersionInfo {
@@ -109,6 +111,8 @@ export interface RoleRow {
   description: string | null
   isSystem: boolean
   require2fa: boolean
+  /** Horário de acesso (null = sem limite). */
+  loginHours?: { enabled: boolean; days: ({ from: string; to: string } | null)[] } | null
   active: boolean
   userCount: number
   permissions: (PermissionEntry & { module: string })[]

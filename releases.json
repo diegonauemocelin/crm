@@ -4,8 +4,113 @@
     {
       "version": "0.100.0",
       "date": "2026-10-27",
-      "title": "Fretes: pedidos, CT-e, conciliação, faturas, relatórios e alertas",
+      "title": "Gestão de fretes: tabelas, cotação, pedidos, CT-e, conciliação e faturas por filial",
       "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Novo módulo Fretes, separado no menu e com permissões próprias (painel, cotações, tabelas, transportadoras e filiais). Cada pessoa vê as suas filiais; quem tem acesso a todas escolhe \"Todas as filiais (visão global)\" no seletor de filial do cabeçalho."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Transportadoras: CNPJ, razão social, nome na cotação, contatos, modalidades, filiais atendidas, códigos nos sistemas externos e \"usar recebedor como destinatário\", com as tabelas vinculadas e quantas vezes cada uma foi cotada e escolhida."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Tabelas de frete com vigência, filiais, tipo de pessoa, faixas de peso e valor, modal, tabela de carga, expedição e código de serviço. Os valores ficam em versões: a publicada calcula, alterar cria um rascunho, e as versões anteriores ficam guardadas para auditoria."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Importação da planilha da transportadora (Excel ou CSV): o sistema acha o cabeçalho, sugere o que é cada coluna (inclusive faixas de peso em colunas, como \"Até 10 kg | Até 30 kg\"), valida CEPs, números, percentuais e duplicidades linha a linha e mostra o relatório antes de gravar. A planilha vira rascunho; o original fica para baixar no Histórico de Importação."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Componentes do frete com fórmulas (ad valorem, GRIS, pedágio por fração, TAS, T-CPF, TDA, TRT, TDE, despacho, reentrega e outros), condição de incidência, ordem de aplicação, \"soma no imposto\" e nome no CT-e, com variáveis clicáveis, validação da fórmula e simulador. O editor aceita só variáveis, operadores e funções autorizadas."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Cotação de frete: filial de origem, CEP de destino (cidade e UF pelo CEP), PF/PJ, valor da NF e vários volumes com medidas. Calcula peso cubado e taxado, a regra do destino, cada componente e o ICMS, e compara as transportadoras por preço ou prazo, com o motivo de quem não atende (sem cobertura, restrição, tabela vencida, fora da faixa)."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Toda cotação fica salva com a versão de tabela usada e pode ser reproduzida depois com os mesmos valores. Escolher uma transportadora que não é a mais barata pede o motivo; tabela vencida só entra com liberação justificada, registrada na auditoria."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Painel de fretes com cotações, frete escolhido, custo por kg, frete sobre o valor da mercadoria, economia estimada, tabelas vencidas ou vencendo, e rankings por transportadora, filial e UF, só com números calculados dos registros."
+        },
+        {
+          "type": "melhoria",
+          "area": "Usuários",
+          "text": "Cadastro do usuário com \"Outras unidades que acessa\": gestores de mais de uma filial enxergam todas elas no módulo de fretes."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Importação escolhe sozinha a aba com a tabela (planilhas com abas de contrato, generalidades e taxas, como as da Expresso São Miguel) e reconhece TAXA, QUILO, % NF, GRIS e GRIS %, pedágio por fração e prazo mínimo/máximo."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Coluna com texto (ex.: ICMS \"CONFORME LEGISLAÇÃO\", \"De 2 a 6 dias\") não é mais sugerida como valor, evitando erro em todas as linhas."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Isenção de cubagem por volume na versão da tabela (ex.: São Miguel cobra pelo peso real até 0,30 m³)."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "A observação da transportadora para o destino (taxa por volume, dias de entrega) aparece como aviso na cotação."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Taxas por destinatário: na ficha da transportadora, importe as listas de TDA, TDE, TDC e TVD (como as abas da Expresso São Miguel). Na cotação, a taxa entra sozinha quando o CPF/CNPJ do destinatário está na lista (ex.: TDE de R$ 222,00 ou 20% do frete, o maior). Só o documento, a cidade e a taxa são guardados, sem o nome."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Cotação de envio sem nota fiscal (SVD, com declaração de conteúdo): usa o preço SVD da tabela quando a transportadora tem."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Alíquota de ICMS própria para entregas no mesmo estado da filial de origem, além da interestadual."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "A vigência da tabela é informada no assistente de importação, a cada planilha nova (fica na auditoria)."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Importação reconhece a coluna \"Pequenos volumes S.V.D.\" (sem valor declarado)."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "ICMS do frete automático: entre estados, 7% ou 12% pela Resolução do Senado 22/1989; dentro do mesmo estado, a alíquota interna da tabela de ICMS em Fretes → Filiais (SC 17% já cadastrada, conferida em CT-e). UF sem alíquota fica em aberto e a cotação avisa, sem calcular imposto inventado."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "A tabela de frete ainda pode fixar a alíquota (aba Componentes) ou trazer a coluna de alíquota por destino, que valem mais que a regra automática. A cotação antiga é reproduzida com a alíquota da época."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Em Fretes → Filiais → ICMS do frete, \"Atualizar pelos CT-e (XML)\": envie os XMLs e cada frete dentro de um mesmo estado com ICMS tributado atualiza a alíquota interna daquela UF (vale o CT-e mais recente; redução de base vira a alíquota efetiva). Cada alíquota mostra se veio do cadastro manual ou de qual CT-e, e a mudança fica na auditoria."
+        },
         {
           "type": "novo",
           "area": "Fretes",
@@ -54,152 +159,124 @@
       ]
     },
     {
-      "version": "0.99.4",
+      "version": "0.99.5",
       "date": "2026-10-27",
-      "title": "Fretes: alíquotas de ICMS aprendidas pelos CT-e",
+      "title": "Assistente ML indica outros produtos para a mesma máquina",
       "changes": [
         {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Em Fretes → Filiais → ICMS do frete, \"Atualizar pelos CT-e (XML)\": envie os XMLs e cada frete dentro de um mesmo estado com ICMS tributado atualiza a alíquota interna daquela UF (vale o CT-e mais recente; redução de base vira a alíquota efetiva). Cada alíquota mostra se veio do cadastro manual ou de qual CT-e, e a mudança fica na auditoria."
+          "type": "correcao",
+          "area": "Assistente ML",
+          "text": "As respostas do Mercado Livre voltam a indicar outros produtos da loja para a mesma máquina, como no sistema antigo. Ex.: pediu o filtro de ar primário da JCB JS200, a resposta indica o filtro de ar secundário e o filtro de óleo da JS200, com o link de cada anúncio."
         },
         {
-          "type": "infra",
-          "area": "Fretes",
-          "text": "Leitor do XML do CT-e (chave, trecho, componentes e ICMS), base da captura e da conciliação de CT-e."
+          "type": "melhoria",
+          "area": "Assistente ML",
+          "text": "As indicações usam as aplicações confirmadas e também o modelo da máquina no título dos anúncios ativos, com os produtos mais ligados ao pedido primeiro. Valem para a IA e para o modo Sem IA, sem passar do tamanho máximo da resposta."
+        },
+        {
+          "type": "melhoria",
+          "area": "Assistente ML",
+          "text": "Em Configurações › Venda adicional, escolha de 0 a 5 indicações por resposta."
+        }
+      ]
+    },
+    {
+      "version": "0.99.4",
+      "date": "2026-10-27",
+      "title": "App no celular: não desconecta e notificações com diagnóstico",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "App no celular",
+          "text": "O app instalado no celular não desconecta mais à toa: a sessão vale 30 dias sem uso (cada uso renova), e uma renovação interrompida pelo celular (app pausado no meio) não derruba mais o acesso."
+        },
+        {
+          "type": "melhoria",
+          "area": "App no celular",
+          "text": "Em Conta, o botão Testar notificação mostra se a notificação saiu ou o motivo exato da recusa (ex.: Apple), e avisa quando o celular não ficou cadastrado."
+        },
+        {
+          "type": "novo",
+          "area": "App no celular",
+          "text": "Bolinha com o número de conversas não lidas no ícone do app (iPhone com iOS 16.4 ou mais novo e Android)."
         }
       ]
     },
     {
       "version": "0.99.3",
-      "date": "2026-10-27",
-      "title": "Fretes: ICMS do frete pela legislação",
+      "date": "2026-10-26",
+      "title": "App no celular com o ícone da Usaparts",
       "changes": [
         {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "ICMS do frete automático: entre estados, 7% ou 12% pela Resolução do Senado 22/1989; dentro do mesmo estado, a alíquota interna da tabela de ICMS em Fretes → Filiais (SC 17% já cadastrada, conferida em CT-e). UF sem alíquota fica em aberto e a cotação avisa, sem calcular imposto inventado."
-        },
-        {
           "type": "melhoria",
-          "area": "Fretes",
-          "text": "A tabela de frete ainda pode fixar a alíquota (aba Componentes) ou trazer a coluna de alíquota por destino, que valem mais que a regra automática. A cotação antiga é reproduzida com a alíquota da época."
+          "area": "App no celular",
+          "text": "Ícone do app com o logo da Usaparts e um balão de conversa, e o \"U\" da Usaparts no selo das notificações. Quem já instalou o app vê o ícone novo depois de remover e instalar de novo na tela inicial (o celular guarda o ícone antigo)."
         }
       ]
     },
     {
       "version": "0.99.2",
-      "date": "2026-10-27",
-      "title": "Fretes: taxas por destinatário, envio sem nota (SVD), ICMS no mesmo estado e vigência na importação",
+      "date": "2026-10-26",
+      "title": "App no celular: um número por vez e caixa de mensagem como a do WhatsApp",
       "changes": [
         {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Taxas por destinatário: na ficha da transportadora, importe as listas de TDA, TDE, TDC e TVD (como as abas da Expresso São Miguel). Na cotação, a taxa entra sozinha quando o CPF/CNPJ do destinatário está na lista (ex.: TDE de R$ 222,00 ou 20% do frete, o maior). Só o documento, a cidade e a taxa são guardados, sem o nome."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Cotação de envio sem nota fiscal (SVD, com declaração de conteúdo): usa o preço SVD da tabela quando a transportadora tem."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Alíquota de ICMS própria para entregas no mesmo estado da filial de origem, além da interestadual."
+          "type": "melhoria",
+          "area": "App no celular",
+          "text": "As conversas abrem só no número de WhatsApp em que a pessoa atende. Quem atende em mais de um número escolhe qual no alto da tela (a escolha fica salva no aparelho); quem atende em um só não vê o seletor."
         },
         {
           "type": "melhoria",
-          "area": "Fretes",
-          "text": "A vigência da tabela é informada no assistente de importação, a cada planilha nova (fica na auditoria)."
-        },
-        {
-          "type": "melhoria",
-          "area": "Fretes",
-          "text": "Importação reconhece a coluna \"Pequenos volumes S.V.D.\" (sem valor declarado)."
+          "area": "App no celular",
+          "text": "Caixa de escrever como a do WhatsApp: campo arredondado com emoji, respostas rápidas e anexo dentro, e o botão verde redondo de enviar ou gravar áudio."
         }
       ]
     },
     {
       "version": "0.99.1",
-      "date": "2026-10-27",
-      "title": "Fretes: importação das tabelas da Expresso São Miguel e da Viopex",
+      "date": "2026-10-26",
+      "title": "Chat: respostas de formulário do WhatsApp e textos mais limpos",
       "changes": [
         {
           "type": "melhoria",
-          "area": "Fretes",
-          "text": "Importação escolhe sozinha a aba com a tabela (planilhas com abas de contrato, generalidades e taxas, como as da Expresso São Miguel) e reconhece TAXA, QUILO, % NF, GRIS e GRIS %, pedágio por fração e prazo mínimo/máximo."
+          "area": "Chat",
+          "text": "Formulário do WhatsApp (ex.: \"Avalie nosso atendimento\") respondido pelo celular mostra no CRM as respostas escolhidas, como \"Formulário enviado: Ruim · não resolveu o problema\", quando quem criou o formulário manda as respostas."
         },
         {
-          "type": "melhoria",
-          "area": "Fretes",
-          "text": "Coluna com texto (ex.: ICMS \"CONFORME LEGISLAÇÃO\", \"De 2 a 6 dias\") não é mais sugerida como valor, evitando erro em todas as linhas."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Isenção de cubagem por volume na versão da tabela (ex.: São Miguel cobra pelo peso real até 0,30 m³)."
-        },
-        {
-          "type": "melhoria",
-          "area": "Fretes",
-          "text": "A observação da transportadora para o destino (taxa por volume, dias de entrega) aparece como aviso na cotação."
+          "type": "correcao",
+          "area": "Chat",
+          "text": "Citação de mensagem com botão que só funciona no celular fica só com o texto, e a barra que alguns robôs colocam antes da pontuação (ex.: \"491293622\\.\") não aparece mais, como no WhatsApp."
         }
       ]
     },
     {
       "version": "0.99.0",
       "date": "2026-10-26",
-      "title": "Gestão de fretes: transportadoras, tabelas versionadas, importação de planilhas e cotação por filial",
+      "title": "App no celular: chat como o WhatsApp, painéis, notificações e horário de acesso",
       "changes": [
         {
           "type": "novo",
-          "area": "Fretes",
-          "text": "Novo módulo Fretes, separado no menu e com permissões próprias (painel, cotações, tabelas, transportadoras e filiais). Cada pessoa vê as suas filiais; quem tem acesso a todas escolhe \"Todas as filiais (visão global)\" no seletor de filial do cabeçalho."
+          "area": "App no celular",
+          "text": "O sistema instala na tela inicial do celular (Android e iPhone), sem loja de aplicativos e sem custo: abra o endereço do sistema com /app no fim e use Instalar app (Chrome) ou Adicionar à Tela de Início (Safari). O ícone e o nome são os da empresa."
         },
         {
           "type": "novo",
-          "area": "Fretes",
-          "text": "Transportadoras: CNPJ, razão social, nome na cotação, contatos, modalidades, filiais atendidas, códigos nos sistemas externos e \"usar recebedor como destinatário\", com as tabelas vinculadas e quantas vezes cada uma foi cotada e escolhida."
+          "area": "App no celular",
+          "text": "Aberto pelo ícone, o app mostra só as conversas, os painéis que o perfil libera e a conta. As conversas ficam como no WhatsApp: lista com foto, última mensagem, hora e não lidas; a conversa abre em tela cheia e as opções (transferir, participantes, etiquetas, lembrete, pré-venda, finalizar) ficam no ⋮."
         },
         {
           "type": "novo",
-          "area": "Fretes",
-          "text": "Tabelas de frete com vigência, filiais, tipo de pessoa, faixas de peso e valor, modal, tabela de carga, expedição e código de serviço. Os valores ficam em versões: a publicada calcula, alterar cria um rascunho, e as versões anteriores ficam guardadas para auditoria."
+          "area": "App no celular",
+          "text": "Notificações: mensagem nova aparece no celular mesmo com o app fechado, para quem atende a conversa e os participantes (sem atendente, para a equipe do número). Tocar abre a conversa. Liga em Conta › Notificações; ao sair da conta, as notificações param naquele celular."
         },
         {
           "type": "novo",
-          "area": "Fretes",
-          "text": "Importação da planilha da transportadora (Excel ou CSV): o sistema acha o cabeçalho, sugere o que é cada coluna (inclusive faixas de peso em colunas, como \"Até 10 kg | Até 30 kg\"), valida CEPs, números, percentuais e duplicidades linha a linha e mostra o relatório antes de gravar. A planilha vira rascunho; o original fica para baixar no Histórico de Importação."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Componentes do frete com fórmulas (ad valorem, GRIS, pedágio por fração, TAS, T-CPF, TDA, TRT, TDE, despacho, reentrega e outros), condição de incidência, ordem de aplicação, \"soma no imposto\" e nome no CT-e, com variáveis clicáveis, validação da fórmula e simulador. O editor aceita só variáveis, operadores e funções autorizadas."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Cotação de frete: filial de origem, CEP de destino (cidade e UF pelo CEP), PF/PJ, valor da NF e vários volumes com medidas. Calcula peso cubado e taxado, a regra do destino, cada componente e o ICMS, e compara as transportadoras por preço ou prazo, com o motivo de quem não atende (sem cobertura, restrição, tabela vencida, fora da faixa)."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Toda cotação fica salva com a versão de tabela usada e pode ser reproduzida depois com os mesmos valores. Escolher uma transportadora que não é a mais barata pede o motivo; tabela vencida só entra com liberação justificada, registrada na auditoria."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Painel de fretes com cotações, frete escolhido, custo por kg, frete sobre o valor da mercadoria, economia estimada, tabelas vencidas ou vencendo, e rankings por transportadora, filial e UF, só com números calculados dos registros."
+          "area": "Perfis de acesso",
+          "text": "Horário de acesso por perfil: dias e horas em que o perfil pode entrar (horário de Brasília). Fora do horário, o login é recusado com o motivo e quem estava dentro é desconectado, no computador e no app. O Administrador não tem limite."
         },
         {
           "type": "melhoria",
-          "area": "Usuários",
-          "text": "Cadastro do usuário com \"Outras unidades que acessa\": gestores de mais de uma filial enxergam todas elas no módulo de fretes."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Projeto completo (arquitetura, modelo de dados, permissões, motor de cálculo, plano de CT-e, Correios, Mercado Livre ME1, Google Shopping e cronograma) em docs/fretes/PROJETO.md."
+          "area": "Configurações",
+          "text": "Configurações › Marca › Ícone do app no celular: envie uma imagem ou use o logo; o sistema deixa quadrado para a tela inicial."
         }
       ]
     },

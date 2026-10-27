@@ -99,6 +99,12 @@ export interface AiSettings {
   frete_ask_cep_text: string
 }
 
+/** Texto padrão anterior das regras de venda adicional (trocado pelo novo ao carregar as configurações). */
+export const OLD_UPSELL_RULES =
+  'Ofereça apenas itens com aplicação confirmada para o mesmo modelo de máquina e relacionados ao mesmo sistema ou à manutenção em curso (filtros, vedações, componentes do mesmo sistema). A oferta deve ser opcional e breve.'
+const UPSELL_RULES =
+  'Ofereça itens para o mesmo modelo de máquina, de preferência do mesmo sistema ou da manutenção em curso (ex.: pediu filtro de ar primário → filtro de ar secundário e filtro de óleo; vedações e componentes do mesmo sistema). A oferta deve ser opcional e breve.'
+
 export const AI_DEFAULTS: AiSettings = {
   assistant_name: 'Assistente Usaparts',
   tone: 'consultivo',
@@ -109,7 +115,7 @@ export const AI_DEFAULTS: AiSettings = {
   min_confidence: 0.8,
   upsell_enabled: true,
   upsell_rules:
-    'Ofereça apenas itens com aplicação confirmada para o mesmo modelo de máquina e relacionados ao mesmo sistema ou à manutenção em curso (filtros, vedações, componentes do mesmo sistema). A oferta deve ser opcional e breve.',
+    UPSELL_RULES,
   max_complementary: 2,
   request_info_when: 'Quando o cliente não informar modelo completo, ano, número de série ou código original e isso for necessário para confirmar a compatibilidade.',
   request_info_mode: 'enviar',

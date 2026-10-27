@@ -6,6 +6,7 @@ import { ClassicLayout } from '@/components/layout/classic-layout'
 import { ModernLayout } from '@/components/layout/modern-layout'
 import { useAuth } from '@/lib/auth'
 import { ReauthDialog } from '@/components/reauth-dialog'
+import { isInstalledApp } from '@/lib/app-movel'
 import { NAVIGATION } from '@/lib/navigation'
 import { LoginPage } from '@/pages/auth/login-page'
 
@@ -61,6 +62,13 @@ function RouteError() {
 }
 
 const pages = {
+  // App no celular (PWA): só conversas, painéis liberados e conta.
+  appShell: () => page(() => import('@/pages/app/app-celular'), 'AppShell'),
+  appConversas: () => page(() => import('@/pages/app/app-celular'), 'AppConversas'),
+  appConversa: () => page(() => import('@/pages/app/app-celular'), 'AppConversa'),
+  appPaineis: () => page(() => import('@/pages/app/app-celular'), 'AppPaineis'),
+  appPainelFrame: () => page(() => import('@/pages/app/app-celular'), 'AppPainelFrame'),
+  appConta: () => page(() => import('@/pages/app/app-celular'), 'AppConta'),
   home: () => page(() => import('@/pages/home-page'), 'HomePage'),
   settings: () => page(() => import('@/pages/configuracoes-page'), 'ConfiguracoesPage'),
   audit: () => page(() => import('@/pages/audit-page'), 'AuditPage'),
@@ -194,6 +202,8 @@ function Protected() {
   if (loading) return <Loader fullscreen />
   if (!me) return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
   if (me.mustChangePassword || me.pending2faSetup) return <Navigate to="/configurar-conta" replace />
+  // Aberto pelo ícone da tela inicial: fica só no app do celular (conversas, painéis e conta).
+  if (isInstalledApp() && !location.pathname.startsWith('/app')) return <Navigate to="/app" replace />
   return (
     <>
       <Outlet />
@@ -222,6 +232,32 @@ const router = createBrowserRouter([
     element: <Protected />,
     errorElement: <RouteError />,
     children: [
+      {
+        // Caminhos completos (/app/...) nas telas de dentro: a trilha de ajuda cobre todas pelo começo /app.
+        path: 'app',
+        element: <Lazy fullscreen>{pages.appShell()}</Lazy>,
+        children: [
+          { index: true, element: <Lazy>{pages.appConversas()}</Lazy> },
+          { path: '/app/conversa/:id', element: <Lazy>{pages.appConversa()}</Lazy> },
+          {
+            path: '/app/paineis',
+            children: [
+              { index: true, element: <Lazy>{pages.appPaineis()}</Lazy> },
+              {
+                element: <Lazy>{pages.appPainelFrame()}</Lazy>,
+                children: [
+                  { path: '/app/paineis/vendas', element: <Lazy>{pages.vendasAoVivo()}</Lazy> },
+                  { path: '/app/paineis/atendimento', element: <Lazy>{pages.whatsappDashboard()}</Lazy> },
+                  { path: '/app/paineis/executivo', element: <Lazy>{pages.mktExecutivo()}</Lazy> },
+                  { path: '/app/paineis/email', element: <Lazy>{pages.emailDashboard()}</Lazy> },
+                ],
+              },
+            ],
+          },
+          { path: '/app/conta', element: <Lazy>{pages.appConta()}</Lazy> },
+          { path: '*', element: <Navigate to="/app" replace /> },
+        ],
+      },
       {
         element: <AppShell />,
         children: [

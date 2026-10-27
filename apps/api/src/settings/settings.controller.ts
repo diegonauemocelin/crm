@@ -68,7 +68,7 @@ class RenameDto {
   @ApiProperty() @IsBoolean() aplicar!: boolean
 }
 
-const IMAGE_SLOTS = { logo: 'logoFileId', 'logo-dark': 'logoDarkFileId', favicon: 'faviconFileId' } as const
+const IMAGE_SLOTS = { logo: 'logoFileId', 'logo-dark': 'logoDarkFileId', favicon: 'faviconFileId', 'app-icon': 'appIconFileId' } as const
 
 function smtpView(s: SmtpSettings) {
   const { passwordEnc, ...rest } = s

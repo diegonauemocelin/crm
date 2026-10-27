@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createContext, type ReactNode, useCallback, useContext, useEffect } from 'react'
 import { api, ApiError, recoverSession } from './api'
+import { disablePush } from './app-movel'
 import { useTheme } from './theme'
 import type { Action, Me } from './types'
 
@@ -57,6 +58,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
+      // Celular compartilhado: quem sai para de receber as notificações neste aparelho.
+      await disablePush().catch(() => undefined)
       await api.post('/auth/logout')
     } finally {
       qc.clear()
