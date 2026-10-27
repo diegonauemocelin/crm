@@ -434,6 +434,9 @@ model ServiceRecord {
   /// Mensagem automática de WhatsApp do dia seguinte: quando foi tentada e o resultado (ENVIADA ou o motivo da falha).
   autoMessageAt     DateTime?
   autoMessageStatus String?
+  /// Mensagem automática depois do repasse ao vendedor (ex.: 2 horas depois): quando foi tentada e o resultado.
+  forwardMessageAt     DateTime?
+  forwardMessageStatus String?
   /// Chave de deduplicação da importação: reimportar a mesma planilha não duplica registros.
   externalKey    String?
   importBatch    String?
@@ -542,6 +545,12 @@ model Lead {
   importBatch String?
   /// Id do cliente na loja virtual (Magazord), quando ele tem cadastro lá.
   ecommerceId String?
+  /// Código do cliente (sistema da empresa): vem das pré-vendas ou do chat e preenche a próxima pré-venda.
+  customerCode   String?
+  /// Vendedor do cliente (carteira): vem da pré-venda com código ou do chat; a próxima pré-venda já vem com ele.
+  clientSellerId String?   @db.Uuid
+  /// Cliente já atendido pelo vendedor dele: o WhatsApp não abre pré-venda (a conversa segue normal no chat).
+  walletOnly     Boolean   @default(false)
   /// Dados pessoais apagados a pedido do titular (LGPD): o registro fica só para estatística.
   anonymizedAt DateTime?
 
@@ -576,6 +585,7 @@ model Lead {
 
   @@unique([tenantId, email])
   @@index([tenantId, ecommerceId])
+  @@index([tenantId, customerCode])
   @@index([tenantId, phone])
   @@index([tenantId, stage])
   @@index([tenantId, scoreGrade])

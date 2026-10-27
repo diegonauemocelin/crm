@@ -17,6 +17,7 @@ import type { ImportOptions, Mapping } from './mapeamento'
 
 const STAGES = ['LEAD', 'QUALIFICADO', 'OPORTUNIDADE', 'CLIENTE'] as const
 const UUID_OR_NONE = /^([0-9a-f-]{36}|none)$/
+const SALE_LABEL: Record<string, string> = { SIM: 'Venda realizada', NAO: 'Sem venda', NEGOCIACAO: 'Em negociação' }
 
 class FiltersDto implements LeadFilters {
   @IsOptional() @IsString() @MaxLength(120) search?: string
@@ -29,6 +30,7 @@ class FiltersDto implements LeadFilters {
   @IsOptional() @Matches(UUID_OR_NONE) originId?: string
   @IsOptional() @IsIn(['true', 'false']) emailOptIn?: 'true' | 'false'
   @IsOptional() @IsIn(['true', 'false']) hasPhone?: 'true' | 'false'
+  @IsOptional() @IsIn(['true', 'false']) hasCode?: 'true' | 'false'
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) from?: string
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) to?: string
   @IsOptional() @IsIn(['NORTE', 'NORDESTE', 'CENTRO_OESTE', 'SUDESTE', 'SUL', 'INTERNACIONAL']) region?: 'NORTE' | 'NORDESTE' | 'CENTRO_OESTE' | 'SUDESTE' | 'SUL' | 'INTERNACIONAL'
@@ -61,6 +63,9 @@ class LeadDto {
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() originId?: string | null
   @ApiPropertyOptional() @IsOptional() @IsArray() @ArrayMaxSize(50) @IsString({ each: true }) @MaxLength(60, { each: true }) tags?: string[]
   @ApiPropertyOptional() @IsOptional() @IsObject() customFields?: Record<string, unknown>
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(60) customerCode?: string | null
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() clientSellerId?: string | null
+  @ApiPropertyOptional({ description: 'Cliente da carteira do vendedor: o WhatsApp não abre pré-venda' }) @IsOptional() @IsBoolean() walletOnly?: boolean
 }
 
 class BulkDto {
@@ -142,7 +147,8 @@ export class LeadsController {
     const header = [
       'Nome', 'E-mail', 'Telefone', 'Empresa', 'Cargo', 'Cidade', 'Estado', 'Estágio', 'Nota', 'Pontos perfil', 'Pontos interesse', 'Tags', 'Responsável', 'Unidade', 'Origem',
       'Aceita e-mail', 'Descadastro do e-mail', 'Fonte (1ª conversão)', 'Meio (1ª conversão)', 'Campanha (1ª conversão)', 'Primeira conversão', 'Última conversão', 'Google Ads (primeira campanha)', 'Google Ads (última campanha)',
-      'Cliente da loja virtual', 'Última venda', 'Valor última venda', 'Cadastro', ...fields.map((f) => f.label),
+      'Cliente da loja virtual', 'Última venda', 'Valor última venda', 'Cadastro', 'Código do cliente', 'Vendedor do cliente',
+      'Atendimento', 'Data do atendimento', 'Resultado do atendimento', 'Motivo da perda', 'Vendedor do atendimento', 'Observação do atendimento', ...fields.map((f) => f.label),
     ]
     const fmt = (d: Date | null) => (d ? new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(d) : '')
     const touch = (j: unknown, k: string) => (j && typeof j === 'object' ? String((j as Record<string, unknown>)[k] ?? '') : '')
@@ -161,7 +167,9 @@ export class LeadsController {
         l.scoreGrade, l.scoreProfile, l.scoreInterest, l.tags.join(', '), l.owner?.name, l.unit?.name, l.origin?.name,
         l.emailOptIn ? 'Sim' : 'Não', fmt(l.emailOptOutAt), touch(l.firstConversion, 'source') || touch(l.firstConversion, 'origem'), touch(l.firstConversion, 'medium'), touch(l.firstConversion, 'campaign'),
         fmt(l.firstConversionAt), fmt(l.lastConversionAt), l.googleAds?.first.label, l.googleAds?.label, l.ecommerceId ? 'Sim' : 'Não',
-        fmt(l.lastSaleAt), l.lastSaleValue === null ? '' : Number(l.lastSaleValue).toLocaleString('pt-BR', { minimumFractionDigits: 2 }), fmt(l.createdAt),
+        fmt(l.lastSaleAt), l.lastSaleValue === null ? '' : Number(l.lastSaleValue).toLocaleString('pt-BR', { minimumFractionDigits: 2 }), fmt(l.createdAt), l.customerCode, l.clientSeller,
+        l.service ? (l.service.kind === 'POS_VENDAS' ? 'Pós-venda' : 'Pré-venda') : '', fmt(l.service?.leadAt ?? null), l.service ? SALE_LABEL[l.service.saleStatus] : '', l.service?.lostReason, l.service?.seller,
+        l.service?.notes?.replace(/\s*\r?\n\s*/g, ' / '),
         ...fields.map((f) => custom((l.customFields as Record<string, unknown> | null)?.[f.key])),
       ]
         .map(csvCell)

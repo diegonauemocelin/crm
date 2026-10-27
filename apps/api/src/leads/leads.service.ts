@@ -30,6 +30,8 @@ export interface LeadFilters {
   originId?: string
   emailOptIn?: 'true' | 'false'
   hasPhone?: 'true' | 'false'
+  /** Com ou sem código do cliente. */
+  hasCode?: 'true' | 'false'
   from?: string
   to?: string
   /** Atendimento do lead: resultado (venda, sem venda, em negociação), motivo da perda, tipo e período. */
@@ -57,9 +59,12 @@ export interface LeadInput {
   originId?: string | null
   tags?: string[]
   customFields?: Record<string, unknown>
+  customerCode?: string | null
+  clientSellerId?: string | null
+  walletOnly?: boolean
 }
 
-const EDITABLE = ['name', 'email', 'phone', 'company', 'jobTitle', 'country', 'state', 'city', 'stage', 'ownerId', 'unitId', 'originId', 'tags', 'customFields'] as const
+const EDITABLE = ['name', 'email', 'phone', 'company', 'jobTitle', 'country', 'state', 'city', 'stage', 'ownerId', 'unitId', 'originId', 'tags', 'customFields', 'customerCode', 'clientSellerId', 'walletOnly'] as const
 const SORTS: Record<string, Prisma.LeadOrderByWithRelationInput[]> = {
   recent: [{ createdAt: 'desc' }],
   name: [{ name: 'asc' }],
@@ -108,6 +113,7 @@ export class LeadsService {
           { email: { contains: search.toLowerCase() } },
           { company: { contains: search, mode: 'insensitive' } },
           { city: { contains: search, mode: 'insensitive' } },
+          { customerCode: { equals: search, mode: 'insensitive' } },
           ...(digits.length >= 4 ? [{ phone: { contains: digits } }] : []),
         ],
       })
@@ -128,22 +134,9 @@ export class LeadsService {
     if (f.originId) and.push({ originId: f.originId === 'none' ? null : f.originId })
     if (f.emailOptIn) and.push({ emailOptIn: f.emailOptIn === 'true' })
     if (f.hasPhone) and.push(f.hasPhone === 'true' ? { phone: { not: null } } : { phone: null })
-    if (f.serviceResult || f.serviceKind || f.lostReasonId || f.serviceFrom || f.serviceTo || f.serviceDays) {
-      const days = f.serviceDays && f.serviceDays > 0 ? new Date(Date.now() - f.serviceDays * 86_400_000) : null
-      and.push({
-        records: {
-          some: {
-            deletedAt: null,
-            ...(f.serviceKind ? { kind: f.serviceKind } : {}),
-            ...(f.serviceResult ? { saleStatus: f.serviceResult } : {}),
-            ...(f.lostReasonId ? { lostReasonId: f.lostReasonId } : {}),
-            ...(f.serviceFrom || f.serviceTo || days
-              ? { leadAt: { ...(f.serviceFrom ? { gte: new Date(`${f.serviceFrom}T00:00:00-03:00`) } : days ? { gte: days } : {}), ...(f.serviceTo ? { lte: new Date(`${f.serviceTo}T23:59:59.999-03:00`) } : {}) } }
-              : {}),
-          },
-        },
-      })
-    }
+    if (f.hasCode) and.push(f.hasCode === 'true' ? { customerCode: { not: null } } : { customerCode: null })
+    const service = this.serviceWhere(f)
+    if (service) and.push({ records: { some: service } })
     if (f.from || f.to) {
       and.push({
         createdAt: {
@@ -153,6 +146,21 @@ export class LeadsService {
       })
     }
     return { AND: and }
+  }
+
+  /** Atendimento que o filtro procura (situação da venda, motivo da perda, tipo e período); null = sem filtro de atendimento. */
+  serviceWhere(f: LeadFilters): Prisma.ServiceRecordWhereInput | null {
+    if (!(f.serviceResult || f.serviceKind || f.lostReasonId || f.serviceFrom || f.serviceTo || f.serviceDays)) return null
+    const days = f.serviceDays && f.serviceDays > 0 ? new Date(Date.now() - f.serviceDays * 86_400_000) : null
+    return {
+      deletedAt: null,
+      ...(f.serviceKind ? { kind: f.serviceKind } : {}),
+      ...(f.serviceResult ? { saleStatus: f.serviceResult } : {}),
+      ...(f.lostReasonId ? { lostReasonId: f.lostReasonId } : {}),
+      ...(f.serviceFrom || f.serviceTo || days
+        ? { leadAt: { ...(f.serviceFrom ? { gte: new Date(`${f.serviceFrom}T00:00:00-03:00`) } : days ? { gte: days } : {}), ...(f.serviceTo ? { lte: new Date(`${f.serviceTo}T23:59:59.999-03:00`) } : {}) } }
+        : {}),
+    }
   }
 
   async list(user: AuthUser, f: LeadFilters, page: number, pageSize: number, sort: string) {
@@ -190,7 +198,21 @@ export class LeadsService {
     ])
     const filtros = Object.fromEntries(Object.entries(f).filter(([, v]) => v !== undefined && v !== ''))
     await this.audit.byUser(user, ctx, 'lead.exported', 'lead', undefined, { quantidade: rows.length, filtros })
-    return { rows: rows.map((l) => ({ ...l, googleAds: googleAdsOfLead(adsNames, l) })), fields }
+    // Atendimento de cada lead: o mais recente que bate com o filtro (ex.: sem venda por falta de produto), com a
+    // observação; sem filtro de atendimento, o mais recente.
+    const service = new Map<string, { kind: string; leadAt: Date; saleStatus: string; lostReason: string | null; notes: string | null; seller: string | null }>()
+    const ids = rows.map((l) => l.id)
+    for (let i = 0; i < ids.length; i += 5000) {
+      const list = await this.prisma.serviceRecord.findMany({
+        where: { leadId: { in: ids.slice(i, i + 5000) }, deletedAt: null, ...(this.serviceWhere(f) ?? {}) },
+        orderBy: { leadAt: 'desc' },
+        select: { leadId: true, kind: true, leadAt: true, saleStatus: true, notes: true, lostReason: { select: { name: true } }, seller: { select: { name: true } } },
+      })
+      for (const r of list) if (!service.has(r.leadId!)) service.set(r.leadId!, { kind: r.kind, leadAt: r.leadAt, saleStatus: r.saleStatus, lostReason: r.lostReason?.name ?? null, notes: r.notes, seller: r.seller?.name ?? null })
+    }
+    const sellerIds = [...new Set(rows.map((l) => l.clientSellerId).filter((x): x is string => !!x))]
+    const sellers = new Map((sellerIds.length ? await this.prisma.seller.findMany({ where: { id: { in: sellerIds } }, select: { id: true, name: true } }) : []).map((x) => [x.id, x.name]))
+    return { rows: rows.map((l) => ({ ...l, googleAds: googleAdsOfLead(adsNames, l), service: service.get(l.id) ?? null, clientSeller: l.clientSellerId ? (sellers.get(l.clientSellerId) ?? null) : null })), fields }
   }
 
   view(l: Prisma.LeadGetPayload<object>) {
@@ -236,6 +258,7 @@ export class LeadsService {
 
   private async assertRefs(tenantId: string, d: LeadInput) {
     if (d.ownerId && !(await this.prisma.seller.count({ where: { id: d.ownerId, tenantId } }))) throw new BadRequestException('Responsável inválido.')
+    if (d.clientSellerId && !(await this.prisma.seller.count({ where: { id: d.clientSellerId, tenantId } }))) throw new BadRequestException('Vendedor do cliente inválido.')
     if (d.unitId && !(await this.prisma.unit.count({ where: { id: d.unitId, tenantId } }))) throw new BadRequestException('Unidade inválida.')
     if (d.originId && !(await this.prisma.lookupItem.count({ where: { id: d.originId, tenantId, type: 'ORIGEM' } }))) throw new BadRequestException('Origem inválida.')
   }
@@ -267,7 +290,7 @@ export class LeadsService {
       if (d.phone && !out.phone) throw new BadRequestException('Telefone inválido. Use DDD + número.')
     }
     if (d.tags !== undefined) out.tags = normalizeTags(d.tags)
-    for (const k of ['name', 'company', 'jobTitle', 'city'] as const) if (d[k] !== undefined) out[k] = d[k]?.trim() || null
+    for (const k of ['name', 'company', 'jobTitle', 'city', 'customerCode'] as const) if (d[k] !== undefined) out[k] = d[k]?.trim() || null
     if (d.state !== undefined) out.state = d.state ? d.state.toUpperCase() : null
     return out
   }

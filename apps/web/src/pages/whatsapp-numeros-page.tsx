@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangleIcon, Loader2Icon, PencilIcon, PlugIcon, PlusIcon, QrCodeIcon, SmartphoneIcon, Trash2Icon, UnplugIcon, UsersIcon } from 'lucide-react'
+import { AlertTriangleIcon, Loader2Icon, PencilIcon, PlugIcon, PlusIcon, QrCodeIcon, SmartphoneIcon, Trash2Icon, UnplugIcon, UsersIcon, XIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { formatPhone, namesOf, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
+import type { BusinessDay, BusinessHours } from '@/lib/horario'
 
 type Status = 'CONECTADO' | 'CONECTANDO' | 'DESCONECTADO'
 interface WaNumber {
@@ -601,7 +602,7 @@ interface WaRules {
   reopenDays: number
   yellowMinutes?: number
   redMinutes?: number
-  businessHours?: { enabled: boolean; days: ({ start: string; end: string } | null)[] }
+  businessHours?: BusinessHours
   away?: { enabled: boolean; text: string; cooldownHours: number }
   retention?: { enabled: boolean; clientMonths: number; otherMonths: number; mediaMonths: number }
   close?: { enabled: boolean; text: string }
@@ -660,22 +661,22 @@ function RetentionSettings({ form, set, editable }: { form: WaRules; set: <K ext
 function HoursAndAway({ form, set, editable }: { form: WaRules; set: <K extends keyof WaRules>(k: K, v: WaRules[K]) => void; editable: boolean }) {
   const hours = form.businessHours ?? { enabled: false, days: [null, null, null, null, null, null, null] }
   const away = form.away ?? { enabled: false, text: '', cooldownHours: 12 }
-  const setDay = (i: number, v: { start: string; end: string } | null) => set('businessHours', { ...hours, days: hours.days.map((d, k) => (k === i ? v : d)) })
+  const setDay = (i: number, v: BusinessDay | null) => set('businessHours', { ...hours, days: hours.days.map((d, k) => (k === i ? v : d)) })
   return (
     <div className="space-y-3 rounded-md border p-3">
       <label className="flex items-center justify-between gap-3">
         <span>
           <span className="block text-sm font-medium">Horário comercial</span>
-          <span className="block text-xs text-muted-foreground">Horário de Brasília. Fora dele, os avisos de cliente sem resposta ficam em pausa e pode sair a mensagem de ausência.</span>
+          <span className="block text-xs text-muted-foreground">Horário de Brasília. Fora dele (inclusive no almoço), o tempo de espera do cliente, os prazos da pré-venda e da pós-venda e a mensagem depois do repasse param de contar, e pode sair a mensagem de ausência.</span>
         </span>
         <Switch checked={hours.enabled} onCheckedChange={(v) => set('businessHours', { ...hours, enabled: v })} disabled={!editable} aria-label="Usar horário comercial" />
       </label>
       {hours.enabled && (
-        <div className="grid gap-1.5 sm:grid-cols-2">
+        <div className="grid gap-1.5 xl:grid-cols-2">
           {WEEKDAYS.map((name, i) => {
             const d = hours.days[i] ?? null
             return (
-              <div key={name} className="flex items-center gap-2 text-sm">
+              <div key={name} className="flex flex-wrap items-center gap-2 text-sm">
                 <Switch checked={!!d} onCheckedChange={(v) => setDay(i, v ? { start: '08:00', end: '18:00' } : null)} disabled={!editable} aria-label={name + " aberto"} />
                 <span className="w-16">{name}</span>
                 {d ? (
@@ -683,6 +684,21 @@ function HoursAndAway({ form, set, editable }: { form: WaRules; set: <K extends 
                     <Input type="time" className="h-8 w-24" value={d.start} onChange={(e) => setDay(i, { ...d, start: e.target.value })} disabled={!editable} aria-label={name + ": abre"} />
                     <span className="text-muted-foreground">às</span>
                     <Input type="time" className="h-8 w-24" value={d.end} onChange={(e) => setDay(i, { ...d, end: e.target.value })} disabled={!editable} aria-label={name + ": fecha"} />
+                    {d.pauseStart ? (
+                      <span className="flex items-center gap-1">
+                        <span className="text-muted-foreground">almoço</span>
+                        <Input type="time" className="h-8 w-24" value={d.pauseStart} onChange={(e) => setDay(i, { ...d, pauseStart: e.target.value })} disabled={!editable} aria-label={name + ": início do almoço"} />
+                        <span className="text-muted-foreground">às</span>
+                        <Input type="time" className="h-8 w-24" value={d.pauseEnd ?? ''} onChange={(e) => setDay(i, { ...d, pauseEnd: e.target.value })} disabled={!editable} aria-label={name + ": fim do almoço"} />
+                        <Button type="button" size="icon" variant="ghost" className="size-7" onClick={() => setDay(i, { start: d.start, end: d.end })} disabled={!editable} aria-label={name + ": tirar o almoço"} title="Tirar o almoço">
+                          <XIcon />
+                        </Button>
+                      </span>
+                    ) : (
+                      <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setDay(i, { ...d, pauseStart: '12:00', pauseEnd: '13:30' })} disabled={!editable}>
+                        + almoço
+                      </Button>
+                    )}
                   </>
                 ) : (
                   <span className="text-muted-foreground">fechado</span>

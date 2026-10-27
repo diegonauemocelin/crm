@@ -53,6 +53,12 @@ class ReactionDto {
   @IsString() @MaxLength(16) emoji!: string
 }
 
+class ClientDto {
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(60) customerCode?: string | null
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() sellerId?: string | null
+  @IsOptional() @IsBoolean() walletOnly?: boolean
+}
+
 class SaveAsContactDto {
   @IsString() @Length(1, 120) name!: string
   @IsIn(['CLIENTE', 'COLEGA', 'FORNECEDOR', 'OUTRO']) category!: 'CLIENTE' | 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
@@ -357,6 +363,12 @@ export class ChatController {
   @Patch('conversas/:id')
   update(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateDto) {
     return this.chat.update(user, id, dto)
+  }
+
+  /** Código e vendedor do cliente; cliente da carteira do vendedor (não abre pré-venda). */
+  @Put('conversas/:id/cliente')
+  setClient(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ClientDto, @ReqContext() ctx: RequestCtx) {
+    return this.chat.setClient(user, id, dto, ctx)
   }
 
   @Put('conversas/:id/tipo')

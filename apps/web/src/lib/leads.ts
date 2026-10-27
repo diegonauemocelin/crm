@@ -63,6 +63,10 @@ export interface Lead {
   name: string | null
   email: string | null
   phone: string | null
+  /** Código do cliente (sistema da empresa), vendedor dele e se é da carteira (o WhatsApp não abre pré-venda). */
+  customerCode?: string | null
+  clientSellerId?: string | null
+  walletOnly?: boolean
   company: string | null
   jobTitle: string | null
   country: string

@@ -16,7 +16,7 @@ import { normalizePhone } from '../atendimento/br'
 import { callHoursOf, DEFAULT_ATENDIMENTO } from '../atendimento/service-records.service'
 import { type EvolutionClient, EvolutionError } from './evolution'
 import { type Sector, servesNumber, splitWhere, teamOf, teamWhere } from './atendentes'
-import { type AgendaCategory, answersClient, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isClosingMessage, isOpen, LABEL_COLORS, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
+import { type AgendaCategory, answersClient, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isClosingMessage, isOpen, LABEL_COLORS, subBusinessMs, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
 import { parseCsv } from '../atendimento/planilha'
 import { answersNote, type BotOutcome, botStateOf, chooseFlow, continueFlow, flowOf, startFlow } from './fluxo'
 import { HISTORY_NAME, historyFrom, historyName, historyNote, historyPatch, type HistoryPick, pickHistory } from './historico'
@@ -336,7 +336,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       ? await this.prisma.lead.findFirst({
           where: { tenantId: n.tenantId, deletedAt: null, anonymizedAt: null, ...(leadId ? { id: leadId } : phone ? { phone: { in: phoneVariants(phone) } } : { id: { in: [] } }) },
           orderBy: { createdAt: 'asc' },
-          select: { id: true, phone: true },
+          select: { id: true, phone: true, walletOnly: true },
         })
       : null
     if (lead) {
@@ -344,7 +344,9 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       // Telefone como está no lead (com ou sem o 9), para a captura não criar outro lead.
       leadPhone = lead.phone ?? phone
     }
-    const plan = decide(rules, { marked: contact?.category ?? null, hasLead: !!lead, idle, fromMe: p.fromMe, hasPhone: !!phone, numberOpensRecords: n.createRecords })
+    const decided = decide(rules, { marked: contact?.category ?? null, hasLead: !!lead, idle, fromMe: p.fromMe, hasPhone: !!phone, numberOpensRecords: n.createRecords })
+    // Cliente da carteira de um vendedor: a conversa entra no histórico do lead, mas não abre pré-venda.
+    const plan = lead?.walletOnly ? { ...decided, openRecord: false } : decided
     const category = plan.category
     if (!plan.linkLead) leadId = null
     if (plan.createLead || plan.openRecord) {
@@ -844,7 +846,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       /** Conversas aguardando o vendedor retornar (selo da aba). */
       waitingSeller: waitingSellerCount,
       // Prazos das cores de atraso de resposta (verde, amarelo, vermelho).
-      responseColors: await this.rules(user.tenantId).then((r) => ({ yellowMinutes: r.yellowMinutes, redMinutes: r.redMinutes })),
+      responseColors: await this.rules(user.tenantId).then((r) => ({ yellowMinutes: r.yellowMinutes, redMinutes: r.redMinutes, hours: r.businessHours })),
       numbers,
       ...(q.monitor ? { sellers: [...(sellerName ?? new Map()).entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)) } : {}),
       items: rows.map((r) => ({
@@ -921,7 +923,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const [rows, number, lead, record] = await Promise.all([
       this.prisma.whatsappMessage.findMany({ where: { conversationId: id, ...(beforeDate ? { sentAt: { lt: beforeDate } } : {}) }, orderBy: [{ sentAt: 'desc' }, { createdAt: 'desc' }], take: PAGE + 1 }),
       this.prisma.whatsappNumber.findUnique({ where: { id: conv.numberId }, select: { id: true, name: true, phone: true, status: true, splitAttendance: true, sectors: true, userIds: true } }),
-      conv.leadId ? this.prisma.lead.findUnique({ where: { id: conv.leadId }, select: { id: true, name: true, email: true, phone: true, adsLastCampaign: true, adsLastCampaignId: true } }) : null,
+      conv.leadId ? this.prisma.lead.findUnique({ where: { id: conv.leadId }, select: { id: true, name: true, email: true, phone: true, adsLastCampaign: true, adsLastCampaignId: true, customerCode: true, clientSellerId: true, walletOnly: true } }) : null,
       conv.recordId ? this.prisma.serviceRecord.findUnique({ where: { id: conv.recordId }, select: { id: true, kind: true, leadAt: true, saleStatus: true, adsVia: true, adsCampaign: true, adsCampaignId: true, entryChannel: true } }) : null,
     ])
     // Quem atende abriu: mensagens e nota interna vistas (no monitoramento, nada muda).
@@ -947,6 +949,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       number: number ? { id: number.id, name: number.name, phone: number.phone, status: number.status } : null,
       lead,
       record,
+      client: await this.customerOf(user.tenantId, lead),
       service: await this.serviceOf(user.tenantId, conv.leadId, conv.phone),
       hasMore: more,
       messages: rows
@@ -1031,6 +1034,67 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
    * Atendimento do contato para o chat: a pré-venda e o pós-venda mais recentes (com a fase) e o último vendedor
    * que atendeu (do histórico de atendimentos ou do vendedor da conversa).
    */
+  /** Código e vendedor do cliente (base de leads) e se ele é da carteira do vendedor (não abre pré-venda). */
+  private async customerOf(tenantId: string, lead: { customerCode: string | null; clientSellerId: string | null; walletOnly: boolean } | null) {
+    if (!lead) return null
+    const seller = lead.clientSellerId ? await this.prisma.seller.findFirst({ where: { id: lead.clientSellerId, tenantId }, select: { id: true, name: true, phone: true } }) : null
+    return { customerCode: lead.customerCode, walletOnly: lead.walletOnly, seller: seller ? { id: seller.id, name: seller.name, phone: seller.phone ? (normalizePhone(seller.phone) ?? null) : null } : null }
+  }
+
+  /**
+   * Dados do cliente no chat: código do cliente e vendedor (vão para o lead e para a pré-venda em aberto) e "cliente
+   * da carteira do vendedor": não é venda perdida, a pré-venda aberta sai e o WhatsApp não abre outra para ele.
+   */
+  async setClient(user: AuthUser, id: string, d: { customerCode?: string | null; sellerId?: string | null; walletOnly?: boolean }, ctx: RequestCtx) {
+    this.assertAction(user, 'chat', 'edit')
+    const conv = await this.load(user, id)
+    if (conv.category !== 'CLIENTE') throw new BadRequestException('Só conversas de cliente têm código e vendedor.')
+    if (d.sellerId && !(await this.prisma.seller.count({ where: { id: d.sellerId, tenantId: user.tenantId } }))) throw new BadRequestException('Vendedor inválido.')
+    if (d.walletOnly && !(d.sellerId ?? null)) throw new BadRequestException('Escolha o vendedor do cliente.')
+    let leadId = conv.leadId
+    // Sem lead ainda (conversa sem pré-venda): cria pelo telefone, para o código ficar na base.
+    if (!leadId) {
+      if (!conv.phone) throw new BadRequestException('Contato sem telefone: não dá para guardar o código na base de leads.')
+      const existing = await this.prisma.lead.findFirst({ where: { tenantId: user.tenantId, deletedAt: null, anonymizedAt: null, phone: { in: phoneVariants(conv.phone) } }, orderBy: { createdAt: 'asc' }, select: { id: true } })
+      leadId = existing?.id ?? (await this.capture.capture(user.tenantId, { name: conv.name, phone: conv.phone }, { title: 'Contato do WhatsApp', originName: 'WhatsApp', touch: { source: 'whatsapp', medium: 'mensagem' }, details: { canal: 'whatsapp' }, tags: ['whatsapp'] }))?.leadId ?? null
+      if (!leadId) throw new BadRequestException('Não foi possível ligar o contato à base de leads.')
+      await this.prisma.whatsappConversation.update({ where: { id }, data: { leadId } })
+    }
+    const code = d.customerCode === undefined ? undefined : d.customerCode?.trim().slice(0, 60) || null
+    await this.prisma.lead.update({
+      where: { id: leadId },
+      data: { ...(code !== undefined ? { customerCode: code } : {}), ...(d.sellerId !== undefined ? { clientSellerId: d.sellerId } : {}), ...(d.walletOnly !== undefined ? { walletOnly: d.walletOnly } : {}) },
+    })
+    // Pré-venda em aberto desta conversa: recebe o código e o vendedor (se ainda não tem) ou, cliente da carteira, sai.
+    let removedRecord = false
+    const record = conv.recordId ? await this.prisma.serviceRecord.findFirst({ where: { id: conv.recordId, tenantId: user.tenantId, kind: 'PRE_VENDAS', deletedAt: null } }) : null
+    if (record && d.walletOnly && record.saleStatus === 'NEGOCIACAO' && !record.forwarded && can(user.permissions, user.role.isSystem, 'pre_vendas', 'delete')) {
+      const seller = await this.prisma.seller.findUnique({ where: { id: d.sellerId! }, select: { name: true } })
+      await this.prisma.serviceRecord.update({
+        where: { id: record.id },
+        data: { deletedAt: new Date(), history: { create: { userId: user.id, userName: user.name, action: `excluído (cliente da carteira de ${seller?.name ?? 'um vendedor'}, não é venda perdida)`, changes: {} } } },
+      })
+      await this.prisma.whatsappConversation.update({ where: { id }, data: { recordId: null } })
+      removedRecord = true
+    } else if (record && record.saleStatus === 'NEGOCIACAO' && can(user.permissions, user.role.isSystem, 'pre_vendas', 'edit')) {
+      const data: Prisma.ServiceRecordUncheckedUpdateInput = {}
+      const changes: Record<string, { de: unknown; para: unknown }> = {}
+      if (code !== undefined && code !== record.customerCode) {
+        data.customerCode = code
+        changes.customerCode = { de: record.customerCode, para: code }
+      }
+      if (d.sellerId && !record.sellerId) {
+        const seller = await this.prisma.seller.findUnique({ where: { id: d.sellerId }, select: { unitId: true } })
+        data.sellerId = d.sellerId
+        if (!record.unitId && seller?.unitId) data.unitId = seller.unitId
+        changes.sellerId = { de: null, para: d.sellerId }
+      }
+      if (Object.keys(changes).length) await this.prisma.serviceRecord.update({ where: { id: record.id }, data: { ...data, updatedById: user.id, history: { create: { userId: user.id, userName: user.name, action: 'alterado pelo chat', changes: changes as Prisma.InputJsonValue } } } })
+    }
+    await this.audit.byUser(user, ctx, 'chat.cliente', 'whatsapp_conversation', id, { codigo: code ?? null, vendedor: d.sellerId ?? null, carteira: d.walletOnly ?? null, preVendaExcluida: removedRecord })
+    return { leadId, removedRecord }
+  }
+
   private async serviceOf(tenantId: string, leadId: string | null, phone: string | null) {
     const or: Prisma.ServiceRecordWhereInput[] = [...(leadId ? [{ leadId }] : []), ...(phone ? [{ phone: { in: phoneVariants(phone) } }] : [])]
     if (!or.length) return { pre: null, pos: null, lastSeller: null }
@@ -1919,7 +1983,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (d.category !== 'CLIENTE' && d.removeAuto) {
       if (conv.recordId && can(user.permissions, user.role.isSystem, 'pre_vendas', 'delete')) {
         const auto = await this.prisma.serviceRecordHistory.findFirst({ where: { recordId: conv.recordId, action: 'criado automaticamente' } })
-        if (auto) {
+        const open = await this.prisma.serviceRecord.count({ where: { id: conv.recordId, kind: 'PRE_VENDAS', deletedAt: null, saleStatus: 'NEGOCIACAO', forwarded: false } })
+        if (auto || open) {
           await this.prisma.serviceRecord.update({ where: { id: conv.recordId }, data: { deletedAt: new Date() } })
           await this.prisma.serviceRecordHistory.create({ data: { recordId: conv.recordId, userId: user.id, userName: user.name, action: 'excluído (contato não é cliente)', changes: {} } })
           removedRecord = true
@@ -1942,10 +2007,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (d.category === 'CLIENTE' && !conv.recordId && conv.phone) {
       const n = await this.prisma.whatsappNumber.findUnique({ where: { id: conv.numberId } })
       if (n) {
-        const existing = await this.prisma.lead.findFirst({ where: { tenantId: user.tenantId, deletedAt: null, anonymizedAt: null, phone: { in: phoneVariants(conv.phone) } }, orderBy: { createdAt: 'asc' }, select: { phone: true } })
+        const existing = await this.prisma.lead.findFirst({ where: { tenantId: user.tenantId, deletedAt: null, anonymizedAt: null, phone: { in: phoneVariants(conv.phone) } }, orderBy: { createdAt: 'asc' }, select: { phone: true, walletOnly: true } })
         const first = await this.prisma.whatsappMessage.findFirst({ where: { conversationId: id, fromMe: false }, orderBy: { sentAt: 'asc' } })
         const rules = await this.rules(user.tenantId)
-        const withRecord = n.createRecords && (existing ? rules.knownLead === 'HISTORICO_E_PREVENDA' : rules.newContact !== 'SO_LEAD')
+        const withRecord = n.createRecords && !existing?.walletOnly && (existing ? rules.knownLead === 'HISTORICO_E_PREVENDA' : rules.newContact !== 'SO_LEAD')
         created = await this.openRecord(n, { name: conv.name, phone: existing?.phone ?? conv.phone }, first?.text ?? null, first ? previewOf({ type: first.type as ParsedMessage['type'], text: first.text }) : 'Conversa no WhatsApp', first?.sentAt ?? new Date(), withRecord)
         if (created) await this.prisma.whatsappConversation.update({ where: { id }, data: { leadId: created.leadId, recordId: created.recordId } })
       }
@@ -2279,18 +2344,19 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       this.prisma.whatsappReminder.findMany({ where: { userId: user.id, doneAt: null, dueAt: { lte: new Date() } }, orderBy: { dueAt: 'asc' }, take: 20, include: { conversation: { select: { id: true, name: true, phone: true, leadId: true } } } }),
       this.prisma.whatsappReminder.count({ where: { userId: user.id, doneAt: null, dueAt: { gt: new Date() } } }),
     ])
-    // Clientes esperando resposta além do prazo amarelo (mesmas cores da lista do chat). Só as últimas 24 horas:
+    // Clientes esperando resposta além do prazo amarelo (mesmas cores da lista do chat), contando só o horário
+    // comercial (sem almoço, noite e dias fechados). Só as últimas 24 horas:
     // conversa parada há dias não vira alarme a cada consulta.
     const rules = await this.rules(user.tenantId)
     const now = Date.now()
     const waitWhere = {
-      AND: [scope, { status: 'ABERTA', noReplyNeeded: false, category: 'CLIENTE' }, { lastInboundAt: { lte: new Date(now - rules.yellowMinutes * 60_000), gte: new Date(now - 24 * 3_600_000) } }],
+      AND: [scope, { status: 'ABERTA', noReplyNeeded: false, category: 'CLIENTE' }, { lastInboundAt: { lte: subBusinessMs(rules.businessHours, new Date(now), rules.yellowMinutes * 60_000), gte: new Date(now - 24 * 3_600_000) } }],
     }
     // Fora do horário comercial ninguém é cobrado: o aviso de "sem resposta" volta quando abrir.
     const open = isOpen(rules.businessHours)
     const [waitCount, redCount, waitList] = !open ? [0, 0, []] : await Promise.all([
       this.prisma.whatsappConversation.count({ where: waitWhere }),
-      this.prisma.whatsappConversation.count({ where: { AND: [waitWhere, { lastInboundAt: { lte: new Date(now - rules.redMinutes * 60_000) } }] } }),
+      this.prisma.whatsappConversation.count({ where: { AND: [waitWhere, { lastInboundAt: { lte: subBusinessMs(rules.businessHours, new Date(now), rules.redMinutes * 60_000) } }] } }),
       this.prisma.whatsappConversation.findMany({ where: waitWhere, orderBy: { lastInboundAt: 'asc' }, take: 10, select: { id: true, name: true, phone: true, lastPreview: true, lastInboundAt: true, leadId: true } }),
     ])
     const leadIds = [latest?.leadId, ...due.map((r) => r.conversation.leadId), ...waitList.map((c) => c.leadId)].filter((x): x is string => !!x)
@@ -2305,6 +2371,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       waiting: {
         yellowMinutes: rules.yellowMinutes,
         redMinutes: rules.redMinutes,
+        hours: rules.businessHours,
         closed: !open,
         count: waitCount,
         red: redCount,

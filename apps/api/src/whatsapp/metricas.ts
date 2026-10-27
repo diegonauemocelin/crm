@@ -4,8 +4,11 @@
  *   se a empresa escreve primeiro depois desse intervalo, é um atendimento iniciado pela empresa.
  * - Vez do cliente: uma ou mais mensagens seguidas do cliente. Tempo de resposta = da primeira mensagem dessa vez
  *   até a próxima mensagem da empresa. Primeira resposta = a da primeira vez do atendimento.
- * - Tempo comercial: só conta seg. a sex. das 8h às 18h e sáb. das 8h às 12h (horário de Brasília).
+ * - Tempo comercial: o horário comercial das regras do WhatsApp (com a pausa do almoço); desligado, seg. a sex. das 8h
+ *   às 18h e sáb. das 8h às 12h (horário de Brasília).
  */
+
+import { type BusinessHours, businessMsBetween, isOpen } from './envio'
 
 export const SESSION_GAP_MS = 24 * 3_600_000
 const BRT = -3 * 3_600_000
@@ -64,14 +67,15 @@ export function localSlot(d: Date) {
   return { weekday: l.getUTCDay(), hour: l.getUTCHours(), day: l.toISOString().slice(0, 10) }
 }
 
-export function inBusiness(d: Date) {
+export function inBusiness(d: Date, hours?: BusinessHours) {
+  if (hours?.enabled) return isOpen(hours, d)
   const { weekday, hour } = localSlot(d)
   const h = BUSINESS[weekday]
   return !!h && hour >= h[0] && hour < h[1]
 }
 
 /** Atendimentos e vezes do cliente a partir das mensagens (já ordenadas por conversa e horário). */
-export function analyze(messages: Msg[]) {
+export function analyze(messages: Msg[], hours?: BusinessHours) {
   const sessions: Session[] = []
   const turns: Turn[] = []
   let conv: string | null = null
@@ -104,7 +108,7 @@ export function analyze(messages: Msg[]) {
         waiting.respondedAt = m.sentAt
         waiting.responder = m.sentById ?? 'celular'
         waiting.ms = m.sentAt.getTime() - waiting.at.getTime()
-        waiting.businessMs = businessMs(waiting.at, m.sentAt)
+        waiting.businessMs = hours?.enabled ? businessMsBetween(hours, waiting.at, m.sentAt) : businessMs(waiting.at, m.sentAt)
         turns.push(waiting)
         waiting = null
       }

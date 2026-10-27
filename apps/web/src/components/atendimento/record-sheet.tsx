@@ -44,6 +44,9 @@ import { StartDialog } from '@/pages/chat-page'
 
 const NONE = '__none__'
 
+/** Resposta ao salvar: o que aconteceu com o pós-venda (gerado, ou encerrado sem pós-venda pelo motivo da perda). */
+type Saved = ServiceRecord & { postSale?: 'CRIADO' | 'ENCERRADO' | null }
+
 interface FormState {
   kind: Kind
   leadAt: string
@@ -238,15 +241,19 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
   const save = useMutation({
     mutationFn: () => {
       const payload = toPayload(form, record)
-      return record ? api.patch<ServiceRecord>(`/atendimentos/${record.id}`, payload) : api.post<ServiceRecord>('/atendimentos', payload)
+      return record ? api.patch<Saved>(`/atendimentos/${record.id}`, payload) : api.post<Saved>('/atendimentos', payload)
     },
     onSuccess: (saved) => {
       void qc.invalidateQueries({ queryKey: ['atendimentos'] })
       void qc.invalidateQueries({ queryKey: ['atendimento-alertas'] })
       void qc.invalidateQueries({ queryKey: ['atendimento', saved.id] })
       toast.success(record ? 'Atendimento atualizado.' : 'Atendimento registrado.')
-      const wasClosed = !!record && (record.saleStatus === 'SIM' || record.saleStatus === 'NAO')
-      if (saved.kind === 'PRE_VENDAS' && (saved.saleStatus === 'SIM' || saved.saleStatus === 'NAO') && !wasClosed) toast.info('Pós-venda criado: o cliente já está na fila do pós-venda.')
+      if (saved.postSale === 'CRIADO') toast.info('Pós-venda criado: o cliente já está na fila do pós-venda.')
+      if (saved.postSale === 'ENCERRADO') {
+        toast.info('Sem pós-venda (motivo da perda): o atendimento no chat foi finalizado.')
+        void qc.invalidateQueries({ queryKey: ['chat-conversa'] })
+        void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+      }
       onClose()
     },
     onError: (err) => setError(errorMessage(err)),

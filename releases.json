@@ -2,6 +2,68 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.102.0",
+      "date": "2026-10-27",
+      "title": "Código do cliente, prazos no horário comercial e mensagem depois do repasse",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Chat WhatsApp",
+          "text": "Botão Cliente na conversa: informe o código do cliente e o vendedor dele. Eles vão para a base de leads e para a pré-venda em aberto, e na próxima vez que o cliente chamar a pré-venda já vem com o código e o vendedor. As pré-vendas antigas que já tinham código passaram o código e o vendedor para a base de leads."
+        },
+        {
+          "type": "novo",
+          "area": "Chat WhatsApp",
+          "text": "Cliente da carteira do vendedor: marcando no botão Cliente, não conta como venda perdida, a pré-venda aberta sai e as próximas mensagens dele não abrem outra. A conversa continua normal, e o botão \"Enviar contato do vendedor\" manda o cartão do vendedor para o cliente."
+        },
+        {
+          "type": "melhoria",
+          "area": "Chat WhatsApp",
+          "text": "Marcar o contato como \"Outro (não é venda)\" já exclui a pré-venda aberta (ainda não repassada), sem perguntar."
+        },
+        {
+          "type": "melhoria",
+          "area": "Chat WhatsApp",
+          "text": "Saiu o lembrete de retorno do chat (botão, faixa e filtro). Lembretes já criados ainda avisam no horário."
+        },
+        {
+          "type": "novo",
+          "area": "Pré-Vendas",
+          "text": "Mensagem depois do repasse ao vendedor (Configurações › Mensagens automáticas): um tempo depois de marcar \"Repassou ao vendedor\" (padrão 2 horas), o cliente recebe uma mensagem personalizada pelo WhatsApp, como a do dia seguinte. Só sai em horário comercial e só para pré-vendas em negociação."
+        },
+        {
+          "type": "novo",
+          "area": "Pré-Vendas",
+          "text": "Venda perdida sem pós-venda (Configurações › Prazos e alertas): pré-venda marcada como não vendida por \"Sem produto disponível\" (ou os motivos escolhidos) não vai para o Pós-Vendas e o atendimento no chat é finalizado na hora."
+        },
+        {
+          "type": "melhoria",
+          "area": "Pré e Pós-Vendas",
+          "text": "Os prazos (retorno do vendedor, chamar o cliente, primeiro contato do pós-venda), o tempo médio de retorno e o tempo de espera do chat contam só o horário comercial: almoço, noite e fim de semana ficam de fora. Ligue o horário comercial e coloque o almoço em WhatsApp › Regras e horário."
+        },
+        {
+          "type": "melhoria",
+          "area": "Chat WhatsApp",
+          "text": "Horário comercial com pausa para o almoço. No almoço também sai a mensagem de ausência (quando ligada), como fora do horário."
+        },
+        {
+          "type": "novo",
+          "area": "Base de leads",
+          "text": "Novos filtros: Atendimento (venda realizada, sem venda, em negociação), Motivo da perda e Código do cliente. A busca também acha pelo código. A exportação traz o código e o vendedor do cliente e o atendimento (resultado, motivo da perda, vendedor e observação)."
+        },
+        {
+          "type": "melhoria",
+          "area": "Base de leads",
+          "text": "Na ficha do lead dá para editar o código do cliente, o vendedor do cliente e marcar se é da carteira do vendedor."
+        },
+        {
+          "type": "novo",
+          "area": "Relatórios e alertas",
+          "text": "Resumo do vendedor semanal, quinzenal (dias 1º e 16) ou mensal (dia 1º), e a opção de mandar só para os números informados (gestor, diretoria), sem enviar a cada vendedor."
+        }
+      ]
+    },
+    {
       "version": "0.101.1",
       "date": "2026-10-27",
       "title": "Backups não enchem mais o disco",

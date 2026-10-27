@@ -33,7 +33,7 @@ import { AuditService } from '../audit/audit.service'
 import { UFS, UF_LIST } from './br'
 import { CadastrosService, LOOKUP_TYPES } from './cadastros.service'
 import { ImportService } from './import.service'
-import { cleanDigest, cleanNextDay } from './regras'
+import { cleanDigest, cleanForwardMessage, cleanNextDay } from './regras'
 import { callHoursOf, DEFAULT_ATENDIMENTO, ServiceRecordsService, type RecordFilters } from './service-records.service'
 
 const KINDS = ['PRE_VENDAS', 'POS_VENDAS'] as const
@@ -174,6 +174,19 @@ class SellerDigestDto extends NextDayMessageDto {
   @ApiProperty() @IsArray() @ArrayMaxSize(500) @IsUUID('all', { each: true }) sellerIds!: string[]
 }
 
+class ForwardMessageDto {
+  @ApiProperty() @IsBoolean() enabled!: boolean
+  @ApiProperty({ description: 'Minutos depois do repasse (horário comercial)', minimum: 5, maximum: 10080 }) @IsInt() @Min(5) @Max(10080) delayMinutes!: number
+  @ApiProperty() @IsString() @Length(1, 1000) text!: string
+  @ApiProperty() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) numberIds!: string[]
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() withoutChat?: boolean
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() numberId?: string | null
+  @ApiPropertyOptional({ minimum: 1, maximum: 120 }) @IsOptional() @IsInt() @Min(1) @Max(120) gapMin?: number
+  @ApiPropertyOptional({ minimum: 1, maximum: 120 }) @IsOptional() @IsInt() @Min(1) @Max(120) gapMax?: number
+  /** Quando foi ligada (só leitura: o servidor mantém o valor gravado). */
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() since?: string | null
+}
+
 class AlertSettingsDto {
   @ApiProperty() @Type(() => Number) @IsInt() @Min(1) @Max(720) alertHours!: number
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1440) newRecordMinutes?: number
@@ -183,6 +196,8 @@ class AlertSettingsDto {
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(720) callHours?: number
   @ApiPropertyOptional({ type: NextDayMessageDto }) @IsOptional() @ValidateNested() @Type(() => NextDayMessageDto) nextDayMessage?: NextDayMessageDto
   @ApiPropertyOptional({ type: SellerDigestDto }) @IsOptional() @ValidateNested() @Type(() => SellerDigestDto) sellerDigest?: SellerDigestDto
+  @ApiPropertyOptional({ type: ForwardMessageDto }) @IsOptional() @ValidateNested() @Type(() => ForwardMessageDto) forwardMessage?: ForwardMessageDto
+  @ApiPropertyOptional({ description: 'Motivos de perda que não geram pós-venda (e finalizam o chat)' }) @IsOptional() @IsArray() @ArrayMaxSize(100) @IsUUID('all', { each: true }) noPostSaleReasonIds?: string[]
 }
 
 class DigestDto {
@@ -321,6 +336,7 @@ export class CadastrosController {
     private readonly cadastros: CadastrosService,
     private readonly settings: SettingsService,
     private readonly audit: AuditService,
+    private readonly records: ServiceRecordsService,
   ) {}
 
   /** Listas para formulários e filtros: liberado para quem usa Pré ou Pós-Vendas (ou gerencia os cadastros). */
@@ -378,7 +394,7 @@ export class CadastrosController {
   @RequirePermission('cadastros', 'view')
   async alertSettings(@CurrentUser() user: AuthUser) {
     const s = await this.settings.get(user.tenantId, 'atendimento', DEFAULT_ATENDIMENTO)
-    return { ...s, callHours: callHoursOf(s), nextDayMessage: cleanNextDay(s.nextDayMessage), sellerDigest: cleanDigest(s.sellerDigest) }
+    return { ...s, callHours: callHoursOf(s), nextDayMessage: cleanNextDay(s.nextDayMessage), sellerDigest: cleanDigest(s.sellerDigest), forwardMessage: cleanForwardMessage(s.forwardMessage), noPostSaleReasonIds: await this.records.noPostSaleReasons(user.tenantId, s) }
   }
 
   /** Números de WhatsApp para escolher quem envia a mensagem do dia seguinte. */
@@ -400,7 +416,14 @@ export class CadastrosController {
     const nextDay = dto.nextDayMessage ? cleanNextDay(dto.nextDayMessage) : cleanNextDay(current.nextDayMessage)
     const digest = dto.sellerDigest ? cleanDigest(dto.sellerDigest) : cleanDigest(current.sellerDigest)
     const numberIds = (await this.cadastros.whatsappNumbers(user.tenantId)).map((n) => n.id)
-    if ([nextDay.numberId, digest.numberId].some((id) => id && !numberIds.includes(id))) throw new BadRequestException('Número de WhatsApp inválido.')
+    const before = cleanForwardMessage(current.forwardMessage)
+    const forward = dto.forwardMessage ? cleanForwardMessage({ ...dto.forwardMessage, since: before.since }) : before
+    // Ligada agora: vale para os repasses daqui em diante (os antigos não recebem de uma vez).
+    if (forward.enabled && (!before.enabled || !forward.since)) forward.since = new Date().toISOString()
+    if (forward.enabled && !forward.numberIds.length) throw new BadRequestException('Escolha ao menos um número de WhatsApp para a mensagem depois do repasse.')
+    if ([nextDay.numberId, digest.numberId, forward.numberId, ...forward.numberIds].some((id) => id && !numberIds.includes(id))) throw new BadRequestException('Número de WhatsApp inválido.')
+    const reasons = dto.noPostSaleReasonIds ?? current.noPostSaleReasonIds
+    if (reasons?.length && (await this.records.countLostReasons(user.tenantId, reasons)) !== new Set(reasons).size) throw new BadRequestException('Motivo de perda inválido.')
     if (digest.sellerIds.length && (await this.cadastros.countSellers(user.tenantId, digest.sellerIds)) !== digest.sellerIds.length) throw new BadRequestException('Vendedor inválido no resumo do dia.')
     const next = {
       ...current,
@@ -412,6 +435,8 @@ export class CadastrosController {
       callHours: dto.callHours ?? callHoursOf(current),
       nextDayMessage: nextDay,
       sellerDigest: digest,
+      forwardMessage: forward,
+      ...(reasons ? { noPostSaleReasonIds: [...new Set(reasons)] } : {}),
     }
     const saved = await this.settings.set(user.tenantId, 'atendimento', next)
     await this.audit.byUser(user, ctx, 'settings.atendimento_updated', 'settings', 'atendimento', { ...next })

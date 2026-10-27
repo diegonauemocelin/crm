@@ -53,6 +53,9 @@ interface Form {
   ownerId: string | null
   unitId: string | null
   originId: string | null
+  customerCode: string
+  clientSellerId: string | null
+  walletOnly: boolean
   tags: string[]
   customFields: Record<string, unknown>
 }
@@ -70,6 +73,9 @@ function toForm(l: Lead | null): Form {
     ownerId: l?.ownerId ?? null,
     unitId: l?.unitId ?? null,
     originId: l?.originId ?? null,
+    customerCode: l?.customerCode ?? '',
+    clientSellerId: l?.clientSellerId ?? null,
+    walletOnly: l?.walletOnly ?? false,
     tags: l?.tags ?? [],
     customFields: l?.customFields ?? {},
   }
@@ -206,6 +212,9 @@ function LeadView({ lead }: { lead: Lead | null }) {
         ownerId: form.ownerId,
         unitId: form.unitId,
         originId: form.originId,
+        customerCode: form.customerCode.trim() || null,
+        clientSellerId: form.clientSellerId,
+        walletOnly: form.walletOnly,
         tags: form.tags,
         customFields: form.customFields,
       }
@@ -336,6 +345,19 @@ function LeadView({ lead }: { lead: Lead | null }) {
                       <Field label="Unidade" htmlFor="l-unit">
                         <Pick id="l-unit" value={form.unitId} onChange={(v) => set('unitId', v)} items={o?.units ?? []} empty="Sem unidade" />
                       </Field>
+                      <Field label="Código do cliente" htmlFor="l-code">
+                        <Input id="l-code" value={form.customerCode} maxLength={60} onChange={(e) => set('customerCode', e.target.value)} />
+                      </Field>
+                      <Field label="Vendedor do cliente" htmlFor="l-client-seller">
+                        <Pick id="l-client-seller" value={form.clientSellerId} onChange={(v) => set('clientSellerId', v)} items={o?.sellers ?? []} empty="Sem vendedor" />
+                      </Field>
+                      <label className="flex items-start gap-2 text-sm sm:col-span-2">
+                        <input type="checkbox" className="mt-0.5 size-4" checked={form.walletOnly} onChange={(e) => set('walletOnly', e.target.checked)} />
+                        <span>
+                          Cliente da carteira do vendedor
+                          <span className="block text-xs text-muted-foreground">Quando ele chamar no WhatsApp, a conversa fica no histórico, mas não abre pré-venda. A próxima pré-venda (quando abrir) já vem com o código e o vendedor.</span>
+                        </span>
+                      </label>
                       <Field label="Tags" className="space-y-1.5 sm:col-span-2">
                         <TagInput value={form.tags} onChange={(v) => set('tags', v)} />
                       </Field>

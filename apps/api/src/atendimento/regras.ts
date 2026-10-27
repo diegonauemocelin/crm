@@ -1,5 +1,12 @@
 /** Regras dos atendimentos de Pré/Pós-Vendas. Funções puras (testadas em test/atendimento.spec.ts). */
 
+import { addBusinessMs, type BusinessHours } from '../whatsapp/envio'
+
+/** Prazo em horas contado no horário comercial (sem almoço, noite e dias fechados); sem horário, o tempo corrido. */
+export function deadline(from: Date, hours: number, h?: BusinessHours | null) {
+  return h ? addBusinessMs(h, from, hours * 3_600_000) : new Date(from.getTime() + hours * 3_600_000)
+}
+
 export type SaleStatus = 'SIM' | 'NAO' | 'NEGOCIACAO'
 export type ReturnStatus = 'SIM' | 'NAO' | 'PENDENTE'
 
@@ -54,9 +61,9 @@ export function applyAutomaticFields<T extends RecordState & { forwardedAt?: Dat
   return out
 }
 
-/** Atendimento repassado, ainda sem retorno do vendedor, há mais tempo que o limite configurado. */
-export function isOverdue(r: { forwarded: boolean; returnStatus: ReturnStatus | null; forwardedAt: Date | null }, alertHours: number, now = new Date()) {
-  return r.forwarded && r.returnStatus === 'PENDENTE' && !!r.forwardedAt && now.getTime() - r.forwardedAt.getTime() > alertHours * 3_600_000
+/** Atendimento repassado, ainda sem retorno do vendedor, há mais tempo que o limite configurado (em horário comercial). */
+export function isOverdue(r: { forwarded: boolean; returnStatus: ReturnStatus | null; forwardedAt: Date | null }, alertHours: number, now = new Date(), h?: BusinessHours | null) {
+  return r.forwarded && r.returnStatus === 'PENDENTE' && !!r.forwardedAt && now.getTime() > deadline(r.forwardedAt, alertHours, h).getTime()
 }
 
 // ---------- Em negociação: prazo para chamar o cliente ----------
@@ -79,10 +86,11 @@ export function nextCallDue(
   callHours: number,
   chosen?: Date | null,
   now = new Date(),
+  h?: BusinessHours | null,
 ): Date | null {
   if (!inNegotiation(next)) return null
   if (chosen) return chosen
-  const fresh = new Date(now.getTime() + callHours * 3_600_000)
+  const fresh = deadline(now, callHours, h)
   if (!prev || !inNegotiation(prev)) return fresh
   return prev.callDueAt ?? fresh
 }
@@ -178,6 +186,54 @@ export function nextDayWindow(time: string, now = new Date()): { from: Date; to:
   const to = new Date(`${today}T00:00:00-03:00`)
   const from = new Date(to.getTime() - 86_400_000)
   return { from, to, day: new Date(from.getTime() - 3 * 3_600_000).toISOString().slice(0, 10) }
+}
+
+// ---------- Mensagem depois do repasse ao vendedor ----------
+
+export interface ForwardMessage {
+  enabled: boolean
+  /** Quanto tempo depois do repasse (minutos de horário comercial, quando ele está ligado). */
+  delayMinutes: number
+  /** Texto com {nome} (primeiro nome do cliente) e {vendedor} (primeiro nome do vendedor). */
+  text: string
+  /** Números de WhatsApp cujos atendimentos recebem a mensagem; sai pelo mesmo número. */
+  numberIds: string[]
+  /** Também para quem não chamou por WhatsApp (veio de formulário): sai pelo numberId. */
+  withoutChat: boolean
+  numberId: string | null
+  gapMin: number
+  gapMax: number
+  /** Quando foi ligada: só repasses a partir daqui (ligar não dispara para os repasses antigos). */
+  since: string | null
+}
+
+export const DEFAULT_FORWARD_TEXT =
+  'Olá, {nome}! Seu atendimento foi encaminhado para o vendedor {vendedor}, que vai dar continuidade ao seu pedido. Se precisar de algo, é só responder esta mensagem.'
+
+export const DEFAULT_FORWARD_MESSAGE: ForwardMessage = { enabled: false, delayMinutes: 120, text: DEFAULT_FORWARD_TEXT, numberIds: [], withoutChat: false, numberId: null, gapMin: 3, gapMax: 20, since: null }
+
+export function cleanForwardMessage(raw: Partial<ForwardMessage> | null | undefined): ForwardMessage {
+  const r = raw ?? {}
+  const delay = Math.round(Number(r.delayMinutes))
+  const numberId = typeof r.numberId === 'string' ? r.numberId : null
+  return {
+    enabled: r.enabled === true,
+    delayMinutes: Number.isFinite(delay) && delay >= 5 && delay <= 7 * 24 * 60 ? delay : DEFAULT_FORWARD_MESSAGE.delayMinutes,
+    text: typeof r.text === 'string' && r.text.trim() ? r.text.trim().slice(0, 1000) : DEFAULT_FORWARD_TEXT,
+    numberIds: Array.isArray(r.numberIds) ? [...new Set(r.numberIds.filter((x): x is string => typeof x === 'string'))].slice(0, 50) : [],
+    withoutChat: r.withoutChat === true,
+    numberId,
+    ...cleanGap(r.gapMin, r.gapMax),
+    since: typeof r.since === 'string' && !Number.isNaN(Date.parse(r.since)) ? r.since : null,
+  }
+}
+
+// ---------- Pré-venda perdida sem pós-venda ----------
+
+/** Motivo de perda que, por padrão, não gera pós-venda: produto que a empresa não tem ("Não temos o produto", "Sem estoque"). */
+export function skipsPostSale(reason: string) {
+  const n = reason.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  return /(sem|nao (tem|temos|possui|possuimos|trabalha|trabalhamos)|falta|em falta|fora de linha).*(produto|peca|estoque)|(produto|peca).*(indisponivel|em falta|nao encontrad|fora de linha)|sem estoque/.test(n)
 }
 
 // ---------- Resumo do dia para cada vendedor ----------

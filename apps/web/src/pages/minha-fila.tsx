@@ -30,7 +30,7 @@ const TONE: Record<Tone, string> = {
   gray: 'bg-muted text-muted-foreground',
 }
 
-type Filter = 'tudo' | 'chat' | 'pre' | 'lembretes'
+type Filter = 'tudo' | 'chat' | 'pre'
 
 interface Task {
   key: string
@@ -162,7 +162,7 @@ export function MinhaFila() {
   for (const r of chat?.dueReminders ?? []) {
     tasks.push({
       key: `r-${r.id}`,
-      filter: 'lembretes',
+      filter: 'chat',
       kind: 'Lembrete vencido',
       tone: 'red',
       name: r.name,
@@ -183,7 +183,6 @@ export function MinhaFila() {
     { v: 'tudo', label: 'Tudo', show: true },
     { v: 'chat', label: 'Chat', show: can('chat') },
     { v: 'pre', label: 'Pré-Vendas', show: can('pre_vendas') },
-    { v: 'lembretes', label: 'Lembretes', show: can('chat') },
   ]
 
   return (
@@ -209,7 +208,7 @@ export function MinhaFila() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {can('chat') && (
           <Counter
             value={chat?.waiting?.count}
@@ -228,15 +227,6 @@ export function MinhaFila() {
             label="Vendedores sem retorno"
             hint={`Repassadas há mais de ${att?.alertHours ?? '…'} h`}
             to="/pre-vendas?overdue=true"
-          />
-        )}
-        {can('chat') && (
-          <Counter
-            value={chat?.dueReminders.length}
-            label="Lembretes vencidos"
-            hint={chat?.upcomingReminders ? `${chat.upcomingReminders} ainda por vir` : 'Nenhum lembrete marcado'}
-            to="/chat"
-            alert
           />
         )}
       </div>

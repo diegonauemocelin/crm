@@ -4,6 +4,7 @@ import { createContext, Fragment, type FormEvent, type KeyboardEvent, type React
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { type ChatService, LastSeller, quickPrefill, ServiceButtons, StageBadge, type StageInfo } from '@/components/chat/atendimento-chat'
+import { type ChatClient, ClientButton, ClientInfo } from '@/components/chat/cliente-chat'
 import { ClientPanel } from '@/components/chat/painel-cliente'
 import { ContactBubble, ShareContactButton } from '@/components/chat/compartilhar-contato'
 import { ForwardDialog } from '@/components/chat/encaminhar'
@@ -30,6 +31,7 @@ import { formatPhone, maskPhone, useOptions } from '@/lib/atendimento'
 import { dateShort, dateTime, time } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { setSoundOn, soundOn, useChatAlerts } from '@/lib/chat-alerts'
+import { type BusinessHours, waitingMinutes } from '@/lib/horario'
 import { splitLinks, splitPhones } from '@/lib/links'
 import { menuFor } from '@/lib/menu'
 import { cn } from '@/lib/utils'
@@ -69,7 +71,6 @@ export interface ConvItem {
   lastInboundAt?: string | null
   category?: ContactCategory | 'GRUPO'
   status?: string
-  reminderAt?: string | null
   /** Etiquetas que este usuário vê (padrão da empresa e as pessoais dele). */
   labels?: ChatLabel[]
   /** Fase do atendimento mais recente do contato (pré ou pós-venda). */
@@ -77,7 +78,7 @@ export interface ConvItem {
 }
 export interface ListData {
   /** Prazos das cores de atraso de resposta (minutos desde a última mensagem do cliente). */
-  responseColors?: { yellowMinutes: number; redMinutes: number }
+  responseColors?: { yellowMinutes: number; redMinutes: number; hours?: BusinessHours }
   /** Só no monitoramento: vendedores para o filtro. */
   sellers?: { id: string; name: string }[]
   total: number
@@ -128,6 +129,8 @@ interface Thread {
   lead: { id: string; name: string | null; email: string | null; phone: string | null } | null
   /** Pré-venda e pós-venda mais recentes do contato e o último vendedor que atendeu. */
   service?: ChatService
+  /** Código e vendedor do cliente (base de leads). */
+  client?: ChatClient | null
   record: { id: string; kind: 'PRE_VENDAS' | 'POS_VENDAS'; leadAt: string; saleStatus: string; adsVia: string | null; adsCampaign: string | null; adsCampaignId: string | null; entryChannel: string | null } | null
   hasMore: boolean
   messages: Message[]
@@ -195,7 +198,8 @@ const WAIT_COLOR = {
 } as const
 function waitColor(c: { noReplyNeeded?: boolean; lastInboundAt?: string | null; status?: string }, r: ListData['responseColors']) {
   if (!r || c.noReplyNeeded || !c.lastInboundAt || c.status === 'ARQUIVADA') return null
-  const min = Math.max(0, Math.floor((Date.now() - Date.parse(c.lastInboundAt)) / 60_000))
+  // Só o horário comercial conta (almoço, noite e dias fechados ficam de fora).
+  const min = waitingMinutes(r.hours, c.lastInboundAt)
   const k = min < r.yellowMinutes ? 'verde' : min < r.redMinutes ? 'amarelo' : 'vermelho'
   return { ...WAIT_COLOR[k], min }
 }
@@ -259,7 +263,6 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
   const [numberId, setNumberId] = useState<string | null>(null)
   const [unread, setUnread] = useState(() => params.get('naoLidas') === '1')
   const [archived, setArchived] = useState(false)
-  const [withReminder, setWithReminder] = useState(false)
   const [category, setCategory] = useState<ContactCategory | null>(null)
   const [labelId, setLabelId] = useState<string | null>(null)
   const labels = useLabels()
@@ -283,7 +286,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
     const t = setTimeout(() => setQ(search.trim()), 300)
     return () => clearTimeout(t)
   }, [search])
-  const qs = new URLSearchParams({ ...(numberId ? { numero: numberId } : {}), ...(unread ? { naoLidas: 'true' } : {}), ...(archived ? { arquivadas: 'true' } : {}), ...(groups ? { tipo: 'GRUPO' } : category ? { tipo: category } : {}), ...(waitingSeller ? { aguardandoVendedor: 'true' } : {}), ...(withReminder && !monitor ? { lembretes: 'true' } : {}), ...(q ? { busca: q } : {}), ...(monitor ? { monitorar: 'true' } : {}), ...(monitor && sellerId ? { vendedor: sellerId } : {}), ...(monitor && awaiting ? { aguardando: 'true' } : {}), ...(queue ? { fila: 'true' } : {}), ...(labelId ? { etiqueta: labelId } : {}) }).toString()
+  const qs = new URLSearchParams({ ...(numberId ? { numero: numberId } : {}), ...(unread ? { naoLidas: 'true' } : {}), ...(archived ? { arquivadas: 'true' } : {}), ...(groups ? { tipo: 'GRUPO' } : category ? { tipo: category } : {}), ...(waitingSeller ? { aguardandoVendedor: 'true' } : {}), ...(q ? { busca: q } : {}), ...(monitor ? { monitorar: 'true' } : {}), ...(monitor && sellerId ? { vendedor: sellerId } : {}), ...(monitor && awaiting ? { aguardando: 'true' } : {}), ...(queue ? { fila: 'true' } : {}), ...(labelId ? { etiqueta: labelId } : {}) }).toString()
   const list = useQuery({ queryKey: ['chat-conversas', qs], queryFn: () => api.get<ListData>(`/chat/conversas?${qs}`), refetchInterval: 5000, placeholderData: keepPreviousData })
   const numbers = useMemo(() => new Map((list.data?.numbers ?? []).map((n) => [n.id, n])), [list.data?.numbers])
   const open = (id: string | null) => setParams((p) => {
@@ -455,13 +458,9 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                {monitor ? (
+                {monitor && (
                   <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground" title="A última mensagem é do contato">
                     <Switch checked={awaiting} onCheckedChange={setAwaiting} aria-label="Só aguardando resposta" /> Aguardando resposta
-                  </label>
-                ) : (
-                  <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                    <Switch checked={withReminder} onCheckedChange={setWithReminder} aria-label="Só com lembrete" /> Lembretes
                   </label>
                 )}
                 {list.data.numbers.some((n) => n.splitAttendance) && (
@@ -504,7 +503,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
             <ul className="min-h-0 flex-1 overflow-y-auto">
               {list.data.items.length === 0 && waitingSeller && !q && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa aguardando vendedor. Quando a pré-venda for marcada como repassada ao vendedor, a conversa vem para cá até ele retornar.</li>}
               {list.data.items.length === 0 && groups && !q && <li className="p-6 text-center text-sm text-muted-foreground">Nenhum grupo ainda. As mensagens dos grupos do WhatsApp aparecem aqui, separadas das conversas com clientes.</li>}
-              {list.data.items.length === 0 && !(groups && !q) && !(waitingSeller && !q) && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa{archived ? ' arquivada' : ''}{q || unread || numberId || category || labelId || withReminder || sellerId || awaiting || queue ? ' com esses filtros' : archived ? '' : ' ainda'}.</li>}
+              {list.data.items.length === 0 && !(groups && !q) && !(waitingSeller && !q) && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa{archived ? ' arquivada' : ''}{q || unread || numberId || category || labelId || sellerId || awaiting || queue ? ' com esses filtros' : archived ? '' : ' ainda'}.</li>}
               {(groups ? byNumber(list.data.items, list.data.numbers) : list.data.items).map((c, i, arr) => {
                 const wc = c.category === 'CLIENTE' || !c.category ? waitColor(c, list.data.responseColors) : null
                 // Aba Grupos: cada grupo aparece debaixo do número que o recebeu (o mesmo grupo em dois números são duas conversas).
@@ -551,11 +550,6 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                           {c.lastFromMe && <CheckIcon className="mr-0.5 inline size-3" aria-label="Enviada pela empresa" />}
                           {c.lastPreview}
                         </span>
-                        {c.reminderAt && (
-                          <span className={cn('inline-flex shrink-0 items-center gap-0.5 text-xs tabular-nums', new Date(c.reminderAt) <= new Date() ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-muted-foreground')} title="Lembrete de retorno">
-                            <AlarmClockIcon className="size-3" /> {when(c.reminderAt)}
-                          </span>
-                        )}
                         {c.noteUnread && !monitor && (
                           <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-100 px-1 text-xs font-medium text-amber-800 dark:bg-amber-500/20 dark:text-amber-300" title="Nota interna nova da gestão">
                             <StickyNoteIcon className="size-3" /> Nota
@@ -667,7 +661,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
     <>
       {d.conversation.category === 'CLIENTE' && <ServiceButtons service={d.service} contact={{ name: d.lead?.name ?? d.conversation.name, phone: d.conversation.phone, email: d.lead?.email }} prefill={novo ? () => quickPrefill({ name: d.lead?.name ?? d.conversation.name, phone: d.conversation.phone, email: d.lead?.email }, messages, options.data) : undefined} />}
       {!monitor && <LabelPicker conversationId={d.conversation.id} value={d.conversation.labels ?? []} />}
-      {!monitor && <ReminderButton conversationId={d.conversation.id} />}
+      {!monitor && can('chat', 'edit') && d.conversation.category === 'CLIENTE' && <ClientButton conversationId={d.conversation.id} client={d.client} lastSeller={d.service?.lastSeller?.name} />}
       {can('monitoramento', 'create') && <NoteButton conversationId={d.conversation.id} monitor={monitor} />}
       {d.conversation.phone && (
         <Button asChild size="sm" variant="outline" title="Ligar (pelo telefone; a ligação pelo WhatsApp é atendida no celular)" aria-label="Ligar">
@@ -756,6 +750,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
                 </span>
               )}
               <LastSeller service={d.service} />
+              <ClientInfo client={d.client} />
               {d.record?.adsVia && (
                 <span className="inline-flex items-center gap-1 whitespace-nowrap text-sky-700 dark:text-sky-300">
                   <MegaphoneIcon className="size-3" /> Google Ads{d.record.adsCampaign ? ` · ${d.record.adsCampaign}` : d.record.adsCampaignId ? ` · campanha nº ${d.record.adsCampaignId}` : ''}
@@ -779,7 +774,6 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
           </SheetContent>
         </Sheet>
       )}
-      {!monitor && <ReminderBar conversationId={d.conversation.id} />}
       <div className={cn('wa-wallpaper min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3 sm:px-[6%]')}>
         {(d.hasMore || older.length > 0) && (
           <div className="text-center">
@@ -845,7 +839,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
         })}
         <div ref={end} />
       </div>
-      {colors && !monitor && d.conversation.category === 'CLIENTE' && d.conversation.status !== 'ARQUIVADA' && !d.conversation.noReplyNeeded && <WaitingBar id={d.conversation.id} since={d.conversation.lastInboundAt ?? null} answered={!!messages.findLast((m) => !m.internal)?.fromMe} yellowMinutes={alerts?.waiting?.yellowMinutes} />}
+      {colors && !monitor && d.conversation.category === 'CLIENTE' && d.conversation.status !== 'ARQUIVADA' && !d.conversation.noReplyNeeded && <WaitingBar id={d.conversation.id} since={d.conversation.lastInboundAt ?? null} answered={!!messages.findLast((m) => !m.internal)?.fromMe} yellowMinutes={alerts?.waiting?.yellowMinutes} hours={alerts?.waiting?.hours} />}
       {monitor ? (
         <p className="flex items-center gap-2 border-t bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
           <EyeIcon className="size-4 shrink-0" /> Monitoramento: só leitura. O vendedor e o cliente não são avisados, e a conversa continua como não lida para quem atende.
@@ -884,7 +878,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
  * Telas novas (Moderno): faixa laranja quando a última mensagem é do cliente e já passou do prazo amarelo.
  * "Não precisa responder" tira o aviso quando a conversa já terminou (ex.: áudio de despedida).
  */
-function WaitingBar({ id, since, answered, yellowMinutes = 10 }: { id: string; since: string | null; answered: boolean; yellowMinutes?: number }) {
+function WaitingBar({ id, since, answered, yellowMinutes = 10, hours }: { id: string; since: string | null; answered: boolean; yellowMinutes?: number; hours?: BusinessHours }) {
   const qc = useQueryClient()
   const dismiss = useMutation({
     mutationFn: () => api.post(`/chat/conversas/${id}/sem-resposta`),
@@ -897,8 +891,9 @@ function WaitingBar({ id, since, answered, yellowMinutes = 10 }: { id: string; s
     onError: (err) => toast.error(errorMessage(err)),
   })
   if (!since) return null
-  const min = Math.floor((Date.now() - Date.parse(since)) / 60_000)
-  if (min < yellowMinutes || min > 7 * 1440) return null
+  if (Date.now() - Date.parse(since) > 7 * 86_400_000) return null
+  const min = waitingMinutes(hours, since)
+  if (min < yellowMinutes) return null
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-orange-200 bg-orange-50 px-3 py-1 text-xs font-medium text-orange-800 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300" role="status">
       <AlarmClockIcon className="size-3.5" /> {answered ? `Retorno prometido ao cliente: aguardando há ${waitText(min)}` : `Cliente esperando resposta há ${waitText(min)}`}
@@ -2306,7 +2301,9 @@ function CategoryPicker({ thread }: { thread: Thread }) {
         value={thread.conversation.category === ('NOVO' as ContactCategory) ? undefined : thread.conversation.category}
         onValueChange={(v) => {
           const c = v as ContactCategory
-          if (c !== 'CLIENTE' && canRemove) setPending(c)
+          // Outro (não é venda): a pré-venda aberta sai na hora, sem perguntar.
+          if (c === 'OUTRO') save.mutate({ category: c, removeAuto: true })
+          else if (c !== 'CLIENTE' && canRemove) setPending(c)
           else save.mutate({ category: c })
         }}
       >
@@ -2331,8 +2328,8 @@ function CategoryPicker({ thread }: { thread: Thread }) {
             <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
               <input type="checkbox" className="mt-0.5 size-4" checked={removeAuto} onChange={(e) => setRemoveAuto(e.target.checked)} />
               <span>
-                Excluir o lead e a pré-venda que esta conversa criou sozinha
-                <span className="block text-xs text-muted-foreground">Só os criados automaticamente pelo WhatsApp, sem outros atendimentos. Leads já existentes não são apagados.</span>
+                Excluir a pré-venda aberta e o lead que esta conversa criou sozinha
+                <span className="block text-xs text-muted-foreground">A pré-venda sai se ainda não foi repassada ao vendedor. O lead só se foi criado pelo WhatsApp, sem outros atendimentos.</span>
               </span>
             </label>
             <DialogFooter>
@@ -2493,137 +2490,5 @@ function AlertSettings() {
         </span>
       )}
     </>
-  )
-}
-
-interface Reminder {
-  id: string
-  dueAt: string
-  note: string | null
-  userName: string
-  mine: boolean
-}
-
-/** Horário pronto: em 1 hora, amanhã às 9h, em 3 dias às 9h. */
-function preset(kind: '1h' | 'amanha' | '3d') {
-  const d = new Date()
-  if (kind === '1h') return new Date(d.getTime() + 3_600_000)
-  d.setDate(d.getDate() + (kind === 'amanha' ? 1 : 3))
-  d.setHours(9, 0, 0, 0)
-  return d
-}
-const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
-
-function ReminderButton({ conversationId }: { conversationId: string }) {
-  const qc = useQueryClient()
-  const [open, setOpen] = useState(false)
-  const [due, setDue] = useState(() => localInput(preset('amanha')))
-  const [note, setNote] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  // Observação digitada e não salva: pergunta antes de fechar.
-  const guard = useCloseGuard(!!note.trim(), () => setOpen(false), 'o lembrete')
-  const save = useMutation({
-    mutationFn: () => api.post(`/chat/conversas/${conversationId}/lembretes`, { dueAt: new Date(due).toISOString(), note: note || undefined }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['chat-lembretes', conversationId] })
-      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
-      void qc.invalidateQueries({ queryKey: ['chat-alertas'] })
-      toast.success(`Lembrete para ${dateTime(due)}.`)
-      setOpen(false)
-      setNote('')
-    },
-    onError: (err) => setError(errorMessage(err)),
-  })
-  return (
-    <>
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)} title="Lembrete de retorno" aria-label="Criar lembrete de retorno">
-        <AlarmClockIcon /> <span className="hidden @4xl/head:inline">Lembrete</span>
-      </Button>
-      {open && (
-        <Dialog open onOpenChange={(o) => !o && void guard()}>
-          <DialogContent>
-            <form
-              className="space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault()
-                setError(null)
-                save.mutate()
-              }}
-            >
-              <DialogHeader>
-                <DialogTitle>Lembrete de retorno</DialogTitle>
-                <DialogDescription>No horário, o CRM avisa você (na tela, com som e notificação do navegador) com o atalho para esta conversa.</DialogDescription>
-              </DialogHeader>
-              <div className="flex flex-wrap gap-2">
-                {([['1h', 'Em 1 hora'], ['amanha', 'Amanhã às 9h'], ['3d', 'Em 3 dias']] as const).map(([k, label]) => (
-                  <Button key={k} type="button" size="sm" variant="outline" onClick={() => setDue(localInput(preset(k)))}>
-                    {label}
-                  </Button>
-                ))}
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="rem-due" required>Data e hora</Label>
-                <Input id="rem-due" type="datetime-local" required value={due} onChange={(e) => setDue(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="rem-note">Observação (opcional)</Label>
-                <Input id="rem-note" autoFocus maxLength={500} placeholder="Ex.: confirmar se aprovou o orçamento" value={note} onChange={(e) => setNote(e.target.value)} />
-              </div>
-              {error && <p className="text-sm text-destructive">{error}</p>}
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => void guard()}>
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={save.isPending}>
-                  Criar lembrete
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      )}
-    </>
-  )
-}
-
-/** Lembretes em aberto da conversa, com concluir. */
-function ReminderBar({ conversationId }: { conversationId: string }) {
-  const qc = useQueryClient()
-  const q = useQuery({ queryKey: ['chat-lembretes', conversationId], queryFn: () => api.get<Reminder[]>(`/chat/conversas/${conversationId}/lembretes`) })
-  const done = useMutation({
-    mutationFn: (id: string) => api.post(`/chat/lembretes/${id}/concluir`),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['chat-lembretes', conversationId] })
-      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
-      void qc.invalidateQueries({ queryKey: ['chat-alertas'] })
-    },
-    onError: (err) => toast.error(errorMessage(err)),
-  })
-  if (q.error && !q.data)
-    return (
-      <div className="border-b px-3 py-2">
-        <InlineError error={q.error} onRetry={() => void q.refetch()} />
-      </div>
-    )
-  if (!q.data?.length) return null
-  return (
-    <ul className="space-y-1 border-b bg-amber-500/5 px-3 py-2">
-      {q.data.map((r) => {
-        const late = new Date(r.dueAt) <= new Date()
-        return (
-          <li key={r.id} className="flex items-center gap-2 text-xs">
-            <AlarmClockIcon className={cn('size-3.5 shrink-0', late ? 'text-amber-600' : 'text-muted-foreground')} />
-            <span className={cn('tabular-nums', late && 'font-medium text-amber-800 dark:text-amber-300')}>{dateTime(r.dueAt)}</span>
-            <span className="min-w-0 flex-1 truncate text-muted-foreground">
-              {r.note ?? 'Retornar a conversa'}
-              {!r.mine ? ` · de ${r.userName}` : ''}
-            </span>
-            <Button size="sm" variant="ghost" className="h-6 px-2" disabled={done.isPending} onClick={() => done.mutate(r.id)}>
-              <CheckIcon /> Concluir
-            </Button>
-          </li>
-        )
-      })}
-    </ul>
   )
 }
