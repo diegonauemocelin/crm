@@ -70,4 +70,18 @@ describe('fretes: SVD e ICMS por estado', () => {
     expect(r.icms.value).toBe(9.49)
     expect(r.total).toBe(79.11)
   })
+
+  it('reproduz o ICMS interno do CT-e 340.989 (Maravilha → Palhoça/SC, 17% por dentro, total R$ 104,55)', () => {
+    const comps = [
+      { code: 'FRETE_PESO', name: 'FRETE PESO', formula: '74.70', inTax: true, order: 1, active: true },
+      { code: 'FRETE_VALOR', name: 'FRETE VALOR', formula: '$cargo_value$ * ($freight_value$ / 100)', inTax: true, order: 2, active: true },
+      { code: 'PEDAGIO', name: 'PEDAGIO', formula: 'ceil($weight$ / 100) * $toll$', inTax: true, order: 3, active: true },
+      { code: 'GRIS', name: 'GRIS', formula: 'max($cargo_value$ * ($gris$ / 100), $gris_min$)', inTax: true, order: 4, active: true },
+      { code: 'TAS', name: 'TAS', formula: '$tas$', inTax: true, order: 5, active: true },
+    ]
+    const r = calculate(comps, { ...DEFAULT_SETTINGS, icmsMode: 'SOMADO', icmsRate: 12, icmsRateIntra: 17 }, match(rule({ freight_value: 0.5, toll: 3.79, gris: 0.17, gris_min: 3.79, tas: 3 })), { cargoValue: 300, personType: 'PF', measures: measure([], 1), sameState: true })
+    expect(r.subtotal).toBe(86.78)
+    expect(r.icms).toMatchObject({ rate: 17, value: 17.77 })
+    expect(r.total).toBe(104.55)
+  })
 })
