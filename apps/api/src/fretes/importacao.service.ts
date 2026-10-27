@@ -56,7 +56,7 @@ export async function readSheets(raw: Buffer, fileName: string): Promise<Sheet[]
 /** Linha do cabeçalho: a primeira (entre as 30 iniciais) em que a sugestão reconhece ao menos duas colunas. */
 function guessHeader(rows: Cell[][]) {
   for (let i = 0; i < Math.min(rows.length, 30); i++) {
-    const m = suggestMapping(rows[i] ?? [])
+    const m = suggestMapping(rows[i] ?? [], rows.slice(i + 1, i + 9))
     if (m.length >= 2) return { headerRow: i + 1, mapping: m }
   }
   const first = rows.findIndex((r) => r.some((c) => c !== null && String(c).trim() !== ''))
@@ -118,9 +118,15 @@ export class ImportacaoService {
     if (!sheets.some((s) => s.rows.length)) throw new BadRequestException('A planilha está vazia.')
     const xlsx = isXlsx(maybeGunzip(file.buffer))
     const asset = await this.files.saveBuffer(user.tenantId, 'frete-importacao', file.buffer, xlsx ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv', xlsx ? 'xlsx' : 'csv')
-    const best = sheets.findIndex((s) => s.rows.length > 1)
-    const sheet = Math.max(0, best)
-    const guess = guessHeader(sheets[sheet]!.rows)
+    // Aba principal: a que tem destino e valores reconhecidos (planilhas com abas de contrato, generalidades e taxas).
+    const guesses = sheets.map((s) => guessHeader(s.rows))
+    const score = (i: number) => {
+      const fields = new Set(guesses[i]!.mapping.map((m) => m.field))
+      const dest = fields.has('cep_start') || fields.has('cep') || fields.has('city') || fields.has('uf') ? 10 : 0
+      return dest + guesses[i]!.mapping.filter((m) => m.field.startsWith('var:')).length + Math.min(5, sheets[i]!.rows.length / 100)
+    }
+    const sheet = sheets.reduce((best, _, i) => (score(i) > score(best) ? i : best), 0)
+    const guess = guesses[sheet]!
     const imp = await this.prisma.freightImport.create({
       data: { tenantId: user.tenantId, tableId, fileId: asset.id, fileName, sheet, headerRow: guess.headerRow, mapping: guess.mapping as unknown as Prisma.InputJsonValue, createdById: user.id, createdByName: user.name },
     })
@@ -140,7 +146,7 @@ export class ImportacaoService {
     const s = sheets[sheet]
     if (!s) throw new BadRequestException('Aba inválida.')
     if (!headerRow) return guessHeader(s.rows)
-    return { headerRow, mapping: suggestMapping(s.rows[headerRow - 1] ?? []) }
+    return { headerRow, mapping: suggestMapping(s.rows[headerRow - 1] ?? [], s.rows.slice(headerRow, headerRow + 8)) }
   }
 
   private run(sheets: Sheet[], sheetIdx: number, headerRow: number, mapping: ColumnMap[]) {

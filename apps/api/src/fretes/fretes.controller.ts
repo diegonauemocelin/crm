@@ -105,6 +105,7 @@ class SettingsDto {
   @IsOptional() @nullable @IsNumber() icmsRate?: number | null
   @IsOptional() @IsNumber() cubageFactor?: number
   @IsOptional() @IsBoolean() useCubage?: boolean
+  @IsOptional() @nullable @IsNumber() cubageExemptM3?: number | null
 }
 
 class VersionDto {

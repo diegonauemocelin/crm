@@ -121,10 +121,12 @@ const HEADER_RULES: [RegExp, string][] = [
   [/frete base/, 'var:base_freight'],
   [/ad ?-?valorem min|adv min/, 'var:advalorem_min'],
   [/ad ?-?valorem|^adv$/, 'var:advalorem'],
+  [/^gris ?(%|percentual)/, 'var:gris'],
   [/gris min/, 'var:gris_min'],
   [/^gris|gerenciamento de risco/, 'var:gris'],
-  [/fracao/, 'var:fraction'],
+  // "PEDÁGIO FRAÇÃO 100 Kg" é o valor do pedágio; a fração (100 kg) fica na fórmula ou numa coluna própria.
   [/pedagio|^ped$/, 'var:toll'],
+  [/fracao/, 'var:fraction'],
   [/t ?-?cpf|taxa cpf/, 'var:t_cpf'],
   [/^tas$/, 'var:tas'],
   [/^tda$|dificil acesso/, 'var:tda'],
@@ -143,8 +145,12 @@ const HEADER_RULES: [RegExp, string][] = [
   [/seguro/, 'var:insurance'],
   [/coleta/, 'var:collection'],
   [/aliq.*icms|icms.*(aliq|%)|^icms$/, 'var:icms_aliq'],
-  [/^(frete|frete peso|valor|tarifa|valor frete)$/, 'var:freight'],
+  [/^(frete|frete peso|valor|tarifa|valor frete|taxa|taxa fixa|taxa por cte)$/, 'var:freight'],
+  [/^quilo$|frete quilo|valor quilo|^kg$/, 'var:freight_kg'],
 ]
+
+/** Campos que precisam de número: coluna de texto ("CONFORME LEGISLAÇÃO", "De 2 a 6 dias") não é sugerida para eles. */
+const NUMERIC = (field: string) => field.startsWith('var:') || field === 'weight_min' || field === 'weight_max' || field === 'deadline'
 
 /** Coluna de faixa de peso: "até 10 kg", "0 a 10 kg", "de 10,01 a 20 kg", "10-20kg". */
 export function weightBand(header: unknown): { min: number | null; max: number } | null {
@@ -157,10 +163,22 @@ export function weightBand(header: unknown): { min: number | null; max: number }
   return null
 }
 
-/** Sugestão de mapeamento pelos títulos. Faixas sem início ("até 20 kg") começam onde a anterior terminou. */
-export function suggestMapping(headers: unknown[]): ColumnMap[] {
+/**
+ * Sugestão de mapeamento pelos títulos (e pelas primeiras linhas de dados, quando vierem). Faixas sem início
+ * ("até 20 kg") começam onde a anterior terminou.
+ */
+export function suggestMapping(headers: unknown[], samples: unknown[][] = []): ColumnMap[] {
   const out: ColumnMap[] = []
   const used = new Set<string>()
+  const norm = headers.map(normalizeHeader)
+  // Prazo em duas colunas (mínimo e máximo de dias): vale o máximo, e "mínimo" não é frete mínimo.
+  const daysPair = norm.includes('minimo') && norm.includes('maximo')
+  // "GRIS" (R$) ao lado de "GRIS %": o sem % é o mínimo.
+  const grisPct = norm.some((h) => /^gris ?(%|percentual)/.test(h))
+  const textColumn = (column: number) => {
+    const values = samples.map((r) => r?.[column]).filter((v) => v !== null && v !== undefined && String(v).trim() !== '').slice(0, 8)
+    return values.length > 0 && values.filter((v) => Number.isNaN(parseNumber(v))).length > values.length / 2
+  }
   let lastMax = 0
   headers.forEach((raw, column) => {
     const band = weightBand(raw)
@@ -169,12 +187,16 @@ export function suggestMapping(headers: unknown[]): ColumnMap[] {
       lastMax = band.max
       return
     }
-    const h = normalizeHeader(raw)
+    const h = norm[column]!
     if (!h) return
-    const hit = HEADER_RULES.find(([re, field]) => re.test(h) && !used.has(field))
-    if (!hit) return
-    used.add(hit[1])
-    out.push({ column, field: hit[1] })
+    let field: string | undefined
+    if (daysPair && h === 'maximo') field = 'deadline'
+    else if (daysPair && h === 'minimo') return
+    else if (grisPct && h === 'gris') field = 'var:gris_min'
+    else field = HEADER_RULES.find(([re, f]) => re.test(h) && !used.has(f) && !(NUMERIC(f) && textColumn(column)))?.[1]
+    if (!field || used.has(field) || (NUMERIC(field) && textColumn(column))) return
+    used.add(field)
+    out.push({ column, field })
   })
   return out
 }

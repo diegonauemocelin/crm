@@ -156,9 +156,11 @@ export interface CalcSettings {
   cubageFactor: number
   /** false = cobra só pelo peso real. */
   useCubage: boolean
+  /** Isenção de cubagem: envio com até este volume (m³) paga pelo peso real (ex.: 0,30 na São Miguel). */
+  cubageExemptM3?: number | null
 }
 
-export const DEFAULT_SETTINGS: CalcSettings = { icmsMode: 'SOMADO', icmsRate: null, cubageFactor: 300, useCubage: true }
+export const DEFAULT_SETTINGS: CalcSettings = { icmsMode: 'SOMADO', icmsRate: null, cubageFactor: 300, useCubage: true, cubageExemptM3: null }
 
 export const TABLE_KINDS = ['COMPRA_VENDA', 'COMPRA', 'VENDA'] as const
 export const TABLE_STATUS = ['ATIVA', 'INATIVA', 'RASCUNHO'] as const

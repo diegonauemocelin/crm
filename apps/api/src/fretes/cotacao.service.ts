@@ -207,7 +207,10 @@ export class CotacaoService {
     const r = match.rule
     const label = match.by === 'CEP' ? `CEP ${formatCep(r.cepStart)} a ${formatCep(r.cepEnd)}` : match.by === 'CIDADE' ? `${r.city}${r.uf ? `/${r.uf}` : ''}` : `UF ${r.uf}`
     base.rule = { id: r.id ?? null, by: match.by, label: `${label}, ${r.weightMin} a ${r.weightMax ?? '∞'} kg` }
-    if (r.restricted) return no('RESTRITO', 'A transportadora marcou restrição de atendimento para este destino.')
+    // Observação da transportadora para o destino (taxa por volume, dias de entrega): aparece para quem cota.
+    const note = rows.find((x) => x.id === r.id)?.note
+    if (note) base.warnings.push(`Observação da transportadora: ${note}`)
+    if (r.restricted) return no('RESTRITO', `A transportadora marcou restrição de atendimento para este destino.${note ? ` ${note}` : ''}`)
     const res = calculate(componentsOf(v.components), settings, match, { cargoValue: d.cargoValue, totalValue: d.totalValue, personType: d.personType, measures: m })
     base.weights = res.weights
     base.components = res.components

@@ -53,9 +53,10 @@ export function measure(volumes: Volume[], declaredWeight: number | null | undef
   return { realWeight: roundTo(Math.max(real, declared), 3), cubicMeters: roundTo(m3, 6), quantity: qty || (declared ? 1 : 0), warnings }
 }
 
-export function weights(m: Measures, s: Pick<CalcSettings, 'cubageFactor' | 'useCubage'>) {
+export function weights(m: Measures, s: Pick<CalcSettings, 'cubageFactor' | 'useCubage' | 'cubageExemptM3'>) {
   const cubed = roundTo(m.cubicMeters * (s.cubageFactor || 0), 3)
-  const taxed = s.useCubage ? Math.max(m.realWeight, cubed) : m.realWeight
+  const exempt = !!s.cubageExemptM3 && m.cubicMeters <= s.cubageExemptM3 + 1e-9
+  const taxed = s.useCubage && !exempt ? Math.max(m.realWeight, cubed) : m.realWeight
   return { real: m.realWeight, cubed, taxed: roundTo(taxed, 3) }
 }
 

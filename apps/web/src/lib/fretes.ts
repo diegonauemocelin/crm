@@ -41,6 +41,7 @@ export interface CalcSettings {
   icmsRate: number | null
   cubageFactor: number
   useCubage: boolean
+  cubageExemptM3?: number | null
 }
 
 export interface FreightContext {

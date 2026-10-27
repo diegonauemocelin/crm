@@ -123,7 +123,9 @@ export function validateSettings(s: Partial<CalcSettings>): CalcSettings {
   if (!(ICMS_MODES as readonly string[]).includes(out.icmsMode)) throw new BadRequestException('Cobrança do ICMS inválida.')
   if (out.icmsRate !== null && (typeof out.icmsRate !== 'number' || out.icmsRate < 0 || out.icmsRate >= 100)) throw new BadRequestException('Alíquota de ICMS deve ficar entre 0 e 99,99%.')
   if (typeof out.cubageFactor !== 'number' || out.cubageFactor < 0 || out.cubageFactor > 10_000) throw new BadRequestException('Fator de cubagem inválido (kg/m³ entre 0 e 10.000).')
-  return { icmsMode: out.icmsMode, icmsRate: out.icmsRate ?? null, cubageFactor: out.cubageFactor, useCubage: out.useCubage !== false }
+  const exempt = out.cubageExemptM3 ?? null
+  if (exempt !== null && (typeof exempt !== 'number' || exempt < 0 || exempt > 100)) throw new BadRequestException('Isenção de cubagem inválida (m³ entre 0 e 100).')
+  return { icmsMode: out.icmsMode, icmsRate: out.icmsRate ?? null, cubageFactor: out.cubageFactor, useCubage: out.useCubage !== false, cubageExemptM3: exempt || null }
 }
 
 const RULE_CODE_SET = new Set(RULE_VARIABLES.map((v) => v.code))

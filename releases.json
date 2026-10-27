@@ -2,6 +2,33 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.99.1",
+      "date": "2026-10-27",
+      "title": "Fretes: importação das tabelas da Expresso São Miguel e da Viopex",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Importação escolhe sozinha a aba com a tabela (planilhas com abas de contrato, generalidades e taxas, como as da Expresso São Miguel) e reconhece TAXA, QUILO, % NF, GRIS e GRIS %, pedágio por fração e prazo mínimo/máximo."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Coluna com texto (ex.: ICMS \"CONFORME LEGISLAÇÃO\", \"De 2 a 6 dias\") não é mais sugerida como valor, evitando erro em todas as linhas."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Isenção de cubagem por volume na versão da tabela (ex.: São Miguel cobra pelo peso real até 0,30 m³)."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "A observação da transportadora para o destino (taxa por volume, dias de entrega) aparece como aviso na cotação."
+        }
+      ]
+    },
+    {
       "version": "0.99.0",
       "date": "2026-10-26",
       "title": "Gestão de fretes: transportadoras, tabelas versionadas, importação de planilhas e cotação por filial",

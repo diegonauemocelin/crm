@@ -106,3 +106,19 @@ describe('fretes: validação das linhas', () => {
     ])
   })
 })
+
+describe('fretes: layouts reais das transportadoras', () => {
+  it('São Miguel: TAXA/QUILO/% NF, GRIS e GRIS %, pedágio por fração, prazo máximo e coluna de texto ignorada', () => {
+    const headers = ['UNIDADE ORIGEM', 'CIDADE', 'UF', 'REGIÃO', 'CEP PRINCIPAL', 'CEP INICIAL', 'CEP FINAL', 'PREVISÃO DE ENTREGA', 'MINIMO', 'MÁXIMO', 'TAXA', 'QUILO', '% NF', 'TAS', 'GRIS', 'GRIS %', 'PEDÁGIO FRAÇÃO 100 Kg', 'MERC. VOLUMOSA -  kg³', 'ICMS']
+    const data = [['ITAJAI', 'ABATIA', 'PR', 'PR5', '86460-000', '86460-000', '86464-999', ' De 2 a 6 dias', 2, 6, 41.11, 0.941, 0.5, 3, 3.79, 0.17, 3.79, 265, 'CONFORME LEGISLACAO']]
+    const m = suggestMapping(headers, data)
+    const by = Object.fromEntries(m.map((x) => [headers[x.column], x.field]))
+    expect(by).toEqual({
+      CIDADE: 'city', UF: 'uf', 'CEP INICIAL': 'cep_start', 'CEP FINAL': 'cep_end', 'MÁXIMO': 'deadline', TAXA: 'var:freight', QUILO: 'var:freight_kg',
+      '% NF': 'var:freight_value', TAS: 'var:tas', GRIS: 'var:gris_min', 'GRIS %': 'var:gris', 'PEDÁGIO FRAÇÃO 100 Kg': 'var:toll',
+    })
+    const r = parseRows(data, m, 2)
+    expect(r.rules[0]).toMatchObject({ cepStart: 86460000, cepEnd: 86464999, deadlineDays: 6, values: { freight: 41.11, freight_kg: 0.941, freight_value: 0.5, gris: 0.17, gris_min: 3.79, toll: 3.79, tas: 3 } })
+  })
+})
+

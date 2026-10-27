@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_COMPONENTS, DEFAULT_SETTINGS } from '../src/fretes/catalogo'
 import { normalizeCep, ufByCep } from '../src/fretes/cep'
-import { addBusinessDays, calculate, matchRule, measure, type RuleLike } from '../src/fretes/motor'
+import { addBusinessDays, calculate, matchRule, measure, type RuleLike, weights } from '../src/fretes/motor'
 
 const rule = (p: Partial<RuleLike>): RuleLike => ({ cepStart: null, cepEnd: null, uf: null, city: null, weightMin: 0, weightMax: null, deadlineDays: null, restricted: false, values: {}, ...p })
 
@@ -11,6 +11,13 @@ describe('fretes: cubagem e peso taxado', () => {
     expect(m).toMatchObject({ realWeight: 20, cubicMeters: 0.12, quantity: 2 })
     expect(() => measure([{ quantity: 1, weight: 1, length: 5000, width: 1, height: 1 }], null)).toThrow(/centímetros/)
     expect(measure([], 35)).toMatchObject({ realWeight: 35, cubicMeters: 0, quantity: 1 })
+  })
+  it('isenção de cubagem até o volume combinado (ex.: 0,30 m³)', () => {
+    const small = measure([{ quantity: 1, weight: 10, length: 100, width: 60, height: 50 }], null)
+    const big = measure([{ quantity: 1, weight: 10, length: 100, width: 80, height: 50 }], null)
+    const s = { cubageFactor: 265, useCubage: true, cubageExemptM3: 0.3 }
+    expect(weights(small, s)).toEqual({ real: 10, cubed: 79.5, taxed: 10 })
+    expect(weights(big, s).taxed).toBe(106)
   })
 })
 

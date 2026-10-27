@@ -255,7 +255,11 @@ export function ComponentsTab({ table, version }: { table: FreightTable; version
             <Label htmlFor="p-cub">Fator de cubagem (kg/m³)</Label>
             <Input id="p-cub" inputMode="decimal" disabled={!editable} defaultValue={fmtNum(settings.cubageFactor, 2)} onBlur={(e) => { const n = parseBr(e.target.value); if (n !== null && !Number.isNaN(n)) { setSettings({ ...settings, cubageFactor: n }); setDirty(true) } }} />
           </div>
-          <label className="flex items-center gap-2 text-sm md:col-span-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="p-exempt">Isenta de cubagem até (m³)</Label>
+            <Input id="p-exempt" inputMode="decimal" disabled={!editable} placeholder="Sem isenção" defaultValue={fmtNum(settings.cubageExemptM3 ?? null, 3)} onBlur={(e) => { const n = parseBr(e.target.value); if (!Number.isNaN(n)) { setSettings({ ...settings, cubageExemptM3: n }); setDirty(true) } }} />
+          </div>
+          <label className="flex items-center gap-2 text-sm md:col-span-3">
             <Switch checked={settings.useCubage} disabled={!editable} onCheckedChange={(x) => (setSettings({ ...settings, useCubage: x }), setDirty(true))} /> Cobrar pelo peso taxado (maior entre real e cubado). Desligado: só o peso real.
           </label>
         </CardContent>
