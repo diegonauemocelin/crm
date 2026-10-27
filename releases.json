@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.99.3",
+      "date": "2026-10-27",
+      "title": "Fretes: ICMS do frete pela legislação",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "ICMS do frete automático: entre estados, 7% ou 12% pela Resolução do Senado 22/1989; dentro do mesmo estado, a alíquota interna da tabela de ICMS em Fretes → Filiais (SC 17% já cadastrada, conferida em CT-e). UF sem alíquota fica em aberto e a cotação avisa, sem calcular imposto inventado."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "A tabela de frete ainda pode fixar a alíquota (aba Componentes) ou trazer a coluna de alíquota por destino, que valem mais que a regra automática. A cotação antiga é reproduzida com a alíquota da época."
+        }
+      ]
+    },
+    {
       "version": "0.99.2",
       "date": "2026-10-27",
       "title": "Fretes: taxas por destinatário, envio sem nota (SVD), ICMS no mesmo estado e vigência na importação",

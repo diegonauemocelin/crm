@@ -2,7 +2,7 @@
 // aplicação e ICMS. Sem banco e sem rede (test/fretes-motor.spec.ts). O serviço busca as regras candidatas e grava o resultado.
 
 import { type CalcSettings, type ComponentDef, componentVar } from './catalogo'
-import { cityKey } from './cep'
+import { cityKey, interstateIcms } from './cep'
 import { compileFormula, evaluate, FormulaError, money, roundTo } from './formula'
 
 export interface Volume {
@@ -140,6 +140,13 @@ export interface CalcInput {
   noInvoice?: boolean
   /** Origem e destino no mesmo estado (ICMS interno). */
   sameState?: boolean
+  /** UFs de origem e destino: alíquota pela legislação quando a versão não fixa uma. */
+  originUf?: string | null
+  destUf?: string | null
+  /** Alíquotas internas por UF cadastradas pela empresa (frete dentro do mesmo estado). */
+  internalRates?: Record<string, number>
+  /** Reprodução de cotação: a alíquota usada na época. */
+  forceIcmsRate?: number | null
   /** Taxas extras deste envio (ex.: destinatário na lista de TDE da transportadora). */
   extraComponents?: ComponentDef[]
 }
@@ -221,19 +228,44 @@ export function calculate(components: ComponentDef[], settings: CalcSettings, ma
     }
   }
 
-  const intra = input.sameState && settings.icmsRateIntra !== null && settings.icmsRateIntra !== undefined
-  const rate = Number.isFinite(rule.values.icms_aliq) ? rule.values.icms_aliq! : intra ? settings.icmsRateIntra! : settings.icmsRate
-  if (input.sameState && !intra && !Number.isFinite(rule.values.icms_aliq) && settings.icmsMode !== 'NAO_INCIDE' && rate !== null) warnings.push('Origem e destino no mesmo estado, sem alíquota interna cadastrada: usada a alíquota padrão.')
+  const icmsRate = icmsRateFor(rule, settings, input)
+  const rate = icmsRate.rate
+  if (settings.icmsMode !== 'NAO_INCIDE' && icmsRate.note) warnings.push(icmsRate.note)
   const base = money(out.filter((c) => c.inTax && !c.skipped).reduce((s, c) => s + c.value, 0))
   let icms = 0
   if (settings.icmsMode !== 'NAO_INCIDE') {
-    if (rate === null || rate === undefined) warnings.push('Alíquota de ICMS não informada (nem na regra nem nos parâmetros): ICMS não calculado.')
+    if (rate === null || rate === undefined) warnings.push(icmsRate.missing ?? 'Alíquota de ICMS não informada (nem na regra nem nos parâmetros): ICMS não calculado.')
     else if (rate < 0 || rate >= 100) return fail(`Alíquota de ICMS inválida: ${rate}%.`)
-    else icms = settings.icmsMode === 'SOMADO' ? money(base / (1 - rate / 100) - base) : money((base * rate) / 100)
+    else {
+      icms = settings.icmsMode === 'SOMADO' ? money(base / (1 - rate / 100) - base) : money((base * rate) / 100)
+      if (icmsRate.source) warnings.push(`ICMS ${rate}% (${icmsRate.source}).`)
+    }
   }
   const total = settings.icmsMode === 'SOMADO' ? money(subtotal + icms) : subtotal
   if (total <= 0) warnings.push('Frete total zerado: a regra pode estar sem valores para este destino.')
   return { ok: true, error: null, components: out, subtotal, icms: { mode: settings.icmsMode, rate: rate ?? null, base, value: icms }, total, weights: w, variables: vars, warnings }
+}
+
+/**
+ * Alíquota do ICMS do frete, nesta ordem: a da regra (coluna da tabela), a fixada na versão (interestadual ou no mesmo
+ * estado) e, sem nenhuma, a da legislação: interestadual pela Resolução do Senado 22/1989 e interna pela tabela de
+ * alíquotas por UF da empresa (Fretes → Filiais). Sem alíquota interna cadastrada, o ICMS não é calculado.
+ */
+export function icmsRateFor(rule: RuleLike, settings: CalcSettings, input: Pick<CalcInput, 'sameState' | 'originUf' | 'destUf' | 'internalRates' | 'forceIcmsRate'>): { rate: number | null; source: string | null; note?: string; missing?: string } {
+  if (input.forceIcmsRate !== undefined) return { rate: input.forceIcmsRate, source: null }
+  if (Number.isFinite(rule.values.icms_aliq)) return { rate: rule.values.icms_aliq!, source: null }
+  const same = input.sameState ?? (!!input.originUf && input.originUf === input.destUf)
+  if (same) {
+    if (settings.icmsRateIntra !== null && settings.icmsRateIntra !== undefined) return { rate: settings.icmsRateIntra, source: null }
+    const uf = input.destUf ?? input.originUf
+    const internal = uf ? input.internalRates?.[uf] : undefined
+    if (internal !== undefined) return { rate: internal, source: `alíquota interna de ${uf} cadastrada` }
+    return { rate: null, source: null, missing: `Frete dentro de ${uf ?? 'um mesmo estado'} sem alíquota interna cadastrada (Fretes → Filiais → ICMS): ICMS não calculado.` }
+  }
+  if (settings.icmsRate !== null && settings.icmsRate !== undefined) return { rate: settings.icmsRate, source: null }
+  const inter = interstateIcms(input.originUf, input.destUf)
+  if (inter !== null) return { rate: inter, source: `interestadual ${input.originUf}→${input.destUf}, Resolução do Senado 22/1989` }
+  return { rate: null, source: null }
 }
 
 /** Data prevista somando dias úteis (sábado e domingo não contam; feriados não são conhecidos pelo sistema). */

@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Building2Icon, Loader2Icon, PlugIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
@@ -59,6 +59,7 @@ function Filiais() {
           ))}
         </div>
       )}
+      <IcmsRates editable={can('fretes_filiais', 'edit') && !!ctx.data?.global} />
       <Integrations />
     </div>
   )
@@ -165,3 +166,61 @@ function Integrations() {
     </Card>
   )
 }
+
+const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO']
+
+/** Alíquotas internas de ICMS do frete por UF. A interestadual o sistema calcula pela legislação. */
+function IcmsRates({ editable }: { editable: boolean }) {
+  const qc = useQueryClient()
+  const q = useQuery({ queryKey: ['fretes', 'icms'], queryFn: () => api.get<{ internas: Record<string, number> }>('/fretes/icms') })
+  const [draft, setDraft] = useState<Record<string, string> | null>(null)
+  const values = draft ?? Object.fromEntries(UFS.map((u) => [u, q.data?.internas[u] !== undefined ? String(q.data.internas[u]).replace('.', ',') : '']))
+  const save = useMutation({
+    mutationFn: () => {
+      const internas: Record<string, number | null> = {}
+      for (const u of UFS) {
+        const v = values[u]!.trim()
+        if (!v) continue
+        const n = Number(v.replace(',', '.'))
+        if (!Number.isFinite(n)) throw new Error(`Alíquota de ${u} inválida.`)
+        internas[u] = n
+      }
+      return api.put('/fretes/icms', { internas })
+    },
+    onSuccess: () => {
+      setDraft(null)
+      qc.invalidateQueries({ queryKey: ['fretes', 'icms'] })
+      toast.success('Alíquotas salvas.')
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">ICMS do frete</CardTitle>
+        <CardDescription>
+          Interestadual: automático pela Resolução do Senado 22/1989 (7% saindo do Sul/Sudeste, menos ES, para Norte, Nordeste, Centro-Oeste e ES; 12% nos demais). Dentro do mesmo estado: a alíquota interna abaixo. UF em branco fica em aberto: o ICMS não é calculado e a cotação avisa. A tabela de frete pode fixar outra alíquota na aba Componentes.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-9">
+          {UFS.map((u) => (
+            <label key={u} className="space-y-1 text-xs">
+              <span className="font-medium">{u}</span>
+              <Input aria-label={`Alíquota interna de ${u}`} inputMode="decimal" className="h-8" disabled={!editable} placeholder="aberta" value={values[u]} onChange={(e) => setDraft({ ...values, [u]: e.target.value })} />
+            </label>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">SC 17%: conferida no CT-e 340.989 da Expresso São Miguel. Confirme as demais com o contador ou com um CT-e de cada estado.</p>
+        {editable && (
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending || !draft}>
+              {save.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Salvar alíquotas
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+

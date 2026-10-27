@@ -5,6 +5,7 @@ import { can } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import type { Prisma } from '../generated/prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
+import { SettingsService } from '../settings/settings.service'
 import { cleanText } from '../sugestoes/sugestoes'
 import { allowedUnits, assertCan, assertUnit, unitListWhere } from './acesso'
 import { cityKey, formatCep, normalizeCep, normalizeUf, ufByCep, validCnpj, validCpf } from './cep'
@@ -65,6 +66,12 @@ export interface QuoteResult {
 }
 
 const QUOTES_PAGE = 30
+const ICMS_KEY = 'fretes.icms'
+interface IcmsTable {
+  internas: Record<string, number>
+}
+/** SC 17%: conferido no CT-e 340.989 da Expresso São Miguel (Maravilha → Palhoça). As demais UFs a empresa cadastra. */
+const DEFAULT_ICMS: IcmsTable = { internas: { SC: 17 } }
 
 /** Taxa da lista da transportadora como componente: fixo, ou o maior entre o fixo e o % do frete (TDE 222/20%). */
 export function feeComponent(f: { code: string; fixed: Prisma.Decimal | number; percent: Prisma.Decimal | number | null }): ComponentDef {
@@ -94,7 +101,30 @@ export class CotacaoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly settings: SettingsService,
   ) {}
+
+  /** Alíquotas internas de ICMS por UF cadastradas pela empresa (frete dentro do mesmo estado). */
+  icmsRates(tenantId: string) {
+    return this.settings.get<IcmsTable>(tenantId, ICMS_KEY, DEFAULT_ICMS)
+  }
+
+  async saveIcmsRates(user: AuthUser, rates: Record<string, number | null>, ctx: RequestCtx) {
+    assertCan(user, 'fretes_filiais', 'edit')
+    if (allowedUnits(user, 'fretes_filiais')) throw new ForbiddenException('Só quem tem acesso a todas as filiais altera as alíquotas.')
+    const internas: Record<string, number> = {}
+    for (const [uf, v] of Object.entries(rates)) {
+      const u = normalizeUf(uf)
+      if (!u) throw new BadRequestException(`UF inválida: ${uf}.`)
+      if (v === null || v === undefined) continue
+      if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v >= 100) throw new BadRequestException(`Alíquota de ${u} inválida.`)
+      internas[u] = v
+    }
+    const before = await this.icmsRates(user.tenantId)
+    await this.settings.set<IcmsTable>(user.tenantId, ICMS_KEY, { internas })
+    await this.audit.byUser(user, ctx, 'frete.icms.alterado', 'tenant_setting', ICMS_KEY, { antes: before.internas, depois: internas })
+    return { internas }
+  }
 
   /** Cidade e UF do CEP: cache local; senão ViaCEP (serviço público). Sem resposta, a UF sai da faixa oficial de CEPs. */
   async cep(raw: string) {
@@ -151,7 +181,8 @@ export class CotacaoService {
     if (doc && !(doc.length === 11 ? validCpf(doc) : doc.length === 14 ? validCnpj(doc) : false)) throw new BadRequestException('CPF/CNPJ do destinatário inválido.')
     const quoteDate = d.quoteDate ? new Date(`${d.quoteDate}T00:00:00Z`) : todayUtc()
     if (Number.isNaN(quoteDate.getTime())) throw new BadRequestException('Data da cotação inválida.')
-    return { unit, originZip, destZip, destCity, destUf, measures: m, doc, quoteDate }
+    const { internas } = await this.icmsRates(user.tenantId)
+    return { unit, originZip, destZip, destCity, destUf, measures: m, doc, quoteDate, internalRates: internas }
   }
 
   /**
@@ -161,7 +192,7 @@ export class CotacaoService {
     t: Prisma.FreightTableGetPayload<{ include: { carrier: true } }>,
     p: Awaited<ReturnType<CotacaoService['prepare']>>,
     d: QuoteInput,
-    opts: { allowExpired: boolean; forceVersionId?: string; fees?: ComponentDef[] },
+    opts: { allowExpired: boolean; forceVersionId?: string; fees?: ComponentDef[]; icmsRate?: number | null },
   ): Promise<QuoteResult> {
     const base: QuoteResult = {
       tableId: t.id,
@@ -236,7 +267,7 @@ export class CotacaoService {
     const fees = opts.fees ?? []
     if (fees.length) base.recipientFees = fees
     const sameState = !!p.unit.state && !!p.destUf && p.unit.state === p.destUf
-    const res = calculate(componentsOf(v.components), settings, match, { cargoValue: d.cargoValue, totalValue: d.totalValue, personType: d.personType, measures: m, noInvoice: !!d.noInvoice, sameState, extraComponents: fees })
+    const res = calculate(componentsOf(v.components), settings, match, { cargoValue: d.cargoValue, totalValue: d.totalValue, personType: d.personType, measures: m, noInvoice: !!d.noInvoice, sameState, extraComponents: fees, originUf: p.unit.state, destUf: p.destUf, internalRates: p.internalRates, ...(opts.icmsRate !== undefined ? { forceIcmsRate: opts.icmsRate } : {}) })
     base.weights = res.weights
     base.components = res.components
     base.warnings.push(...res.warnings)
@@ -499,7 +530,7 @@ export class CotacaoService {
         out.push({ tableId: o.tableId, carrierName: o.carrierName, versionNumber: o.versionNumber, original: o.total, recalculated: null, same: false, reason: 'Tabela não encontrada.' })
         continue
       }
-      const r = await this.evaluate(t, p, input, { allowExpired: true, forceVersionId: o.versionId!, fees: o.recipientFees })
+      const r = await this.evaluate(t, p, input, { allowExpired: true, forceVersionId: o.versionId!, fees: o.recipientFees, ...(o.icms ? { icmsRate: o.icms.rate } : {}) })
       out.push({ tableId: o.tableId, carrierName: o.carrierName, versionNumber: o.versionNumber, original: o.total, recalculated: r.total, same: r.status === 'OK' && r.total === o.total, reason: r.status === 'OK' ? null : r.reason })
     }
     return { code: q.code, quoteDate: iso(q.quoteDate), allSame: out.every((x) => x.same), items: out }

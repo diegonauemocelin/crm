@@ -231,6 +231,10 @@ class UnitDto {
   @IsOptional() @nullable @IsString() @MaxLength(2) state?: string | null
 }
 
+class IcmsDto {
+  @IsObject() internas!: Record<string, number | null>
+}
+
 class DashboardDto {
   @IsOptional() @Matches(DATE) de?: string
   @IsOptional() @Matches(DATE) ate?: string
@@ -276,6 +280,16 @@ export class FretesController {
   @HttpCode(200)
   seedUnits(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
     return this.painel.seedUsaparts(user, ctx)
+  }
+
+  @Get('icms')
+  icms(@CurrentUser() user: AuthUser) {
+    return this.quotes.icmsRates(user.tenantId)
+  }
+
+  @Put('icms')
+  saveIcms(@CurrentUser() user: AuthUser, @Body() dto: IcmsDto, @ReqContext() ctx: RequestCtx) {
+    return this.quotes.saveIcmsRates(user, dto.internas, ctx)
   }
 
   @Get('cep/:cep')

@@ -108,3 +108,15 @@ export function validCpf(raw: string | null | undefined): boolean {
   }
   return digit(9) === Number(d[9]) && digit(10) === Number(d[10])
 }
+
+/** Sul e Sudeste, menos o Espírito Santo (Resolução do Senado 22/1989). */
+const SUL_SUDESTE_SEM_ES = new Set(['SP', 'RJ', 'MG', 'PR', 'SC', 'RS'])
+
+/**
+ * Alíquota interestadual de ICMS (Resolução do Senado 22/1989): 7% saindo do Sul/Sudeste (menos ES) para Norte,
+ * Nordeste, Centro-Oeste ou ES; 12% nos demais casos. Mesmo estado: null (vale a alíquota interna de cada UF).
+ */
+export function interstateIcms(originUf: string | null | undefined, destUf: string | null | undefined): number | null {
+  if (!originUf || !destUf || originUf === destUf) return null
+  return SUL_SUDESTE_SEM_ES.has(originUf) && !SUL_SUDESTE_SEM_ES.has(destUf) ? 7 : 12
+}

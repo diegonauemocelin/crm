@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_COMPONENTS, DEFAULT_SETTINGS } from '../src/fretes/catalogo'
 import { feeComponent } from '../src/fretes/cotacao.service'
 import { calculate, measure, type RuleLike } from '../src/fretes/motor'
+import { interstateIcms } from '../src/fretes/cep'
 import { normalizeDoc, parseFeeSheet, parseFeeText } from '../src/fretes/taxas'
 
 const rule = (values: Record<string, number>): RuleLike => ({ cepStart: null, cepEnd: null, uf: 'SC', city: null, weightMin: 0, weightMax: null, deadlineDays: 1, restricted: false, values })
@@ -84,4 +85,25 @@ describe('fretes: SVD e ICMS por estado', () => {
     expect(r.icms).toMatchObject({ rate: 17, value: 17.77 })
     expect(r.total).toBe(104.55)
   })
+
+  it('ICMS pela legislação: 7% ou 12% entre estados e a alíquota interna cadastrada no mesmo estado', () => {
+    expect(interstateIcms('SC', 'BA')).toBe(7)
+    expect(interstateIcms('SC', 'ES')).toBe(7)
+    expect(interstateIcms('SC', 'SP')).toBe(12)
+    expect(interstateIcms('BA', 'SC')).toBe(12)
+    expect(interstateIcms('GO', 'MT')).toBe(12)
+    expect(interstateIcms('SC', 'SC')).toBeNull()
+    const s = { ...DEFAULT_SETTINGS, icmsMode: 'SOMADO' as const }
+    const go = (originUf: string, destUf: string) => calculate(DEFAULT_COMPONENTS, s, match(rule({ freight: 100 })), { cargoValue: 0, personType: 'PJ', measures: measure([], 1), originUf, destUf, sameState: originUf === destUf, internalRates: { SC: 17 } })
+    expect(go('SC', 'BA').icms).toMatchObject({ rate: 7, value: 7.53 })
+    expect(go('RS', 'SC').icms.rate).toBe(12)
+    expect(go('SC', 'SC').icms).toMatchObject({ rate: 17, value: 20.48 })
+    const pr = go('PR', 'PR')
+    expect(pr.icms).toMatchObject({ rate: null, value: 0 })
+    expect(pr.warnings.join(' ')).toMatch(/PR sem alíquota interna/)
+    // A alíquota fixada na versão vale mais que a legislação; a da regra vale mais que tudo.
+    expect(calculate(DEFAULT_COMPONENTS, { ...s, icmsRate: 12 }, match(rule({ freight: 100 })), { cargoValue: 0, personType: 'PJ', measures: measure([], 1), originUf: 'SC', destUf: 'BA' }).icms.rate).toBe(12)
+    expect(calculate(DEFAULT_COMPONENTS, { ...s, icmsRate: 12 }, match(rule({ freight: 100, icms_aliq: 4 })), { cargoValue: 0, personType: 'PJ', measures: measure([], 1), originUf: 'SC', destUf: 'BA' }).icms.rate).toBe(4)
+  })
 })
+

@@ -119,8 +119,10 @@ Perfis sugeridos (criar em Configurações → Perfis):
    a opção sai *Fora da faixa* (não vira preço errado).
 3. **Componentes** na ordem de aplicação, cada um com fórmula, condição de incidência opcional, "soma no imposto"
    e nome no CT-e. Cada componente vira a variável `$c_<código>$` para os seguintes (taxa sobre o frete).
-4. **ICMS:** *somado por dentro* (base ÷ (1 − alíquota)), *destacado sem somar* ou *não incide*. Alíquota da
-   regra (`icms_aliq`) ou a padrão da versão; sem nenhuma, avisa (não inventa).
+4. **ICMS:** *somado por dentro* (base ÷ (1 − alíquota)), *destacado sem somar* ou *não incide*. Alíquota, nesta
+   ordem: a da regra (`icms_aliq`), a fixada na versão (interestadual / mesmo estado) e, sem nenhuma, a da
+   legislação: interestadual 7% ou 12% (Resolução do Senado 22/1989) e interna pela tabela por UF em Fretes →
+   Filiais (SC 17%, conferida no CT-e 340.989). UF sem alíquota interna fica em aberto: avisa e não calcula.
 5. **Prazo:** dias úteis da regra + expedição da tabela; data prevista sem sábados e domingos (feriados não).
 
 **Fórmulas:** só números, `$variáveis$`, `+ - * / %`, comparações, `&& || !` e as funções `ceil floor round abs
