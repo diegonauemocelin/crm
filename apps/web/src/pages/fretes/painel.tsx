@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangleIcon, CalculatorIcon, TableIcon } from 'lucide-react'
+import { AlertTriangleIcon, BellIcon, CalculatorIcon, TableIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { api } from '@/lib/api'
 import { dayBr, money, num, pct, todaySP } from '@/lib/format'
 import { useActiveUnit } from '@/lib/fretes'
+import { cn } from '@/lib/utils'
 
 interface Dashboard {
   quotes: number
@@ -29,6 +30,18 @@ interface Dashboard {
   series: { day: string; quotes: number; chosen: number; total: number }[]
   tables: { vigentes: number; drafts: number; expiring: { id: string; name: string; carrier: string; validTo: string }[]; expired: { id: string; name: string; carrier: string; validTo: string }[] }
   activeCarriers: number
+  ctes: { count: number; charged: number; expected: number; approved: number; recovered: number; byStatus: Record<string, number>; pendingDecision: number }
+  invoices: { open: number; openTotal: number; paidInPeriod: number }
+  deliveries: { measured: number; onTime: number; pct: number | null }
+}
+
+export interface FreightAlert {
+  kind: string
+  severity: 'alta' | 'media' | 'baixa'
+  title: string
+  detail: string
+  link: string
+  count: number
 }
 
 const chart: ChartConfig = { total: { label: 'Frete escolhido', color: 'var(--chart-1)' }, quotes: { label: 'Cotações', color: 'var(--chart-2)' } }
@@ -61,11 +74,12 @@ function Painel() {
   const qs = new URLSearchParams({ de: from, ate: to, ...(active.unitId ? { filial: active.unitId } : {}) })
   const d = useQuery({ queryKey: ['fretes', 'painel', qs.toString()], queryFn: () => api.get<Dashboard>(`/fretes/painel?${qs}`), enabled: !!active.ctx.data })
   const list = `/fretes/cotacoes`
+  const alerts = useQuery({ queryKey: ['fretes', 'alertas'], queryFn: () => api.get<FreightAlert[]>('/fretes/alertas') })
   return (
     <div className="space-y-5">
       <PageHeader
         title="Painel de fretes"
-        description="Números calculados das cotações e das tabelas cadastradas. Frete faturado, pago e conciliado entram quando o módulo de CT-e e conciliação for ligado."
+        description="Cotações, CT-es, conciliação e faturas do período. Clique num número para abrir a lista que o forma."
         actions={
           <>
             <Input type="date" className="w-40" aria-label="De" value={from} onChange={(e) => setFrom(e.target.value)} />
@@ -90,6 +104,17 @@ function Painel() {
             <Kpi label="Tabelas vigentes" value={num(d.data.tables.vigentes)} hint={d.data.tables.drafts ? `${d.data.tables.drafts} em rascunho` : undefined} to="/fretes/tabelas?vigencia=VIGENTE" />
             <Kpi label="Transportadoras ativas" value={num(d.data.activeCarriers)} to="/fretes/transportadoras" />
           </div>
+
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Kpi label="Frete cobrado (CT-e)" value={money(d.data.ctes.charged)} hint={`${num(d.data.ctes.count)} CT-e(s) · esperado ${money(d.data.ctes.expected)}`} to={`/fretes/ctes?de=${from}&ate=${to}`} />
+            <Kpi label="Aguardando decisão" value={num(d.data.ctes.pendingDecision)} hint={`${num(d.data.ctes.byStatus.DIVERGENTE ?? 0)} divergente(s) no período`} to="/fretes/conciliacao" />
+            <Kpi label="Crédito recuperado" value={money(d.data.ctes.recovered)} hint="Contestações aceitas pelas transportadoras" />
+            <Kpi label="Entregas no prazo" value={pct(d.data.deliveries.pct)} hint={d.data.deliveries.measured ? `${num(d.data.deliveries.onTime)} de ${num(d.data.deliveries.measured)} entregas` : 'Sem entregas com previsão no período'} to="/fretes/pedidos?situacao=ENTREGUE" />
+            <Kpi label="Faturas em aberto" value={money(d.data.invoices.openTotal)} hint={`${num(d.data.invoices.open)} fatura(s)`} to="/fretes/faturas?situacao=ABERTA" />
+            <Kpi label="Pago no período" value={money(d.data.invoices.paidInPeriod)} to="/fretes/faturas?situacao=PAGA" />
+          </div>
+
+          {!!alerts.data?.length && <AlertList alerts={alerts.data} />}
 
           {(d.data.tables.expired.length > 0 || d.data.tables.expiring.length > 0) && (
             <Card className="border-amber-500/40">
@@ -162,6 +187,29 @@ function Painel() {
         </>
       )}
     </div>
+  )
+}
+
+export function AlertList({ alerts }: { alerts: FreightAlert[] }) {
+  return (
+    <Card className="border-amber-500/40">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <BellIcon className="size-4 text-amber-600" aria-hidden /> Alertas
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-2 sm:grid-cols-2">
+        {alerts.map((a) => (
+          <Link key={a.kind} to={a.link} className="flex items-start gap-3 rounded-md border p-3 text-sm transition-colors hover:bg-muted/40">
+            <span className={cn('min-w-8 rounded-md px-2 py-0.5 text-center font-semibold tabular-nums', a.severity === 'alta' ? 'bg-destructive/10 text-destructive' : 'bg-amber-500/10 text-amber-700 dark:text-amber-300')}>{a.count}</span>
+            <span>
+              <span className="font-medium">{a.title}</span>
+              <span className="block text-muted-foreground">{a.detail}</span>
+            </span>
+          </Link>
+        ))}
+      </CardContent>
+    </Card>
   )
 }
 

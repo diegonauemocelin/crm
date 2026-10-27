@@ -365,7 +365,7 @@ export const TRAIL: TrailModule[] = [
     key: 'fretes-painel',
     title: 'Painel de fretes',
     module: 'fretes_painel',
-    routes: ['/fretes'],
+    routes: ['/fretes', '/fretes/alertas'],
     purpose: 'Ver quanto se cotou e escolheu de frete, por transportadora, filial e UF, e quais tabelas estão vencendo.',
     howItWorks: 'Os números saem das cotações salvas e das tabelas cadastradas. "Economia estimada" é a média das opções menos a escolhida: é estimativa, não dinheiro recuperado. O seletor de filial no cabeçalho filtra a tela; quem tem acesso a todas vê a visão global.',
     lessons: [
@@ -395,6 +395,12 @@ export const TRAIL: TrailModule[] = [
           'Clique em Escolher na transportadora. Se não for a mais barata, escreva o motivo.',
         ],
         tip: 'Tabela vencida não entra. Quem pode editar tabelas consegue liberar numa cotação, com justificativa.',
+      },
+      {
+        id: 'fretes.lote',
+        title: 'Cotar vários destinos de uma vez',
+        steps: ['Na Cotação de frete, clique em Cotação em lote.', 'Escolha a filial de origem e envie a planilha com CEP, Peso e Valor (uma linha por destino).', 'Confira a melhor e a segunda opção de cada linha e baixe o CSV.'],
+        tip: 'O lote não vai para o histórico: para escolher a transportadora de um envio, faça a cotação normal.',
       },
       {
         id: 'fretes.historico',
@@ -436,6 +442,89 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'fretes-pedidos',
+    title: 'Pedidos e expedição',
+    module: 'fretes_pedidos',
+    routes: ['/fretes/pedidos'],
+    purpose: 'Acompanhar cada envio do pedido/NF à coleta, entrega e CT-e.',
+    howItWorks: 'O pedido gerado pela cotação guarda o valor escolhido: é com ele que o CT-e é comparado. A chave da NF-e no pedido liga o CT-e sozinho quando o XML é importado. Cada mudança de situação fica no histórico com data e usuário.',
+    lessons: [
+      {
+        id: 'fretes.pedido',
+        title: 'Registrar e acompanhar um envio',
+        steps: [
+          'Na cotação com transportadora escolhida, clique em Gerar pedido e informe pedido, NF e a chave da NF-e.',
+          'Ou abra Fretes → Pedidos e expedição → Novo pedido (ou Importar planilha do ERP).',
+          'Clique no pedido e atualize a situação: coleta, despachado, em trânsito, ocorrência, entregue.',
+          'Use o filtro Atrasados para ver as entregas com previsão vencida.',
+        ],
+      },
+    ],
+  },
+  {
+    key: 'fretes-cte',
+    title: 'CT-e e conciliação',
+    module: 'fretes_cte',
+    routes: ['/fretes/ctes', '/fretes/conciliacao'],
+    purpose: 'Importar os CT-es e conferir se o cobrado bate com o cotado ou com a tabela.',
+    howItWorks: 'Ao importar o XML, o sistema acha a transportadora pelo CNPJ, a filial pelo CNPJ de quem enviou ou pagou e o pedido pela chave da NF-e. A referência é a cotação do pedido; sem ela, a tabela publicada na data do CT-e. Dentro da tolerância o CT-e é aprovado sozinho; fora dela vai para a Conciliação com a diferença por componente.',
+    lessons: [
+      {
+        id: 'fretes.cte-importar',
+        title: 'Importar CT-es',
+        steps: ['Abra Fretes → CT-e → Importar XML.', 'Envie os XMLs ou um .zip com eles. Repetidos são pulados pela chave.', 'Leia o resumo: novos, ligados a pedidos, ignorados e o motivo.'],
+        tip: 'O CT-e de frete dentro do estado também atualiza a alíquota interna de ICMS da UF.',
+      },
+      {
+        id: 'fretes.conciliar',
+        title: 'Decidir um CT-e divergente',
+        steps: [
+          'Abra Fretes → Conciliação e clique no número do CT-e.',
+          'Confira a tabela de componentes: esperado, cobrado e diferença.',
+          'Se faltar o pedido, busque e clique em Ligar: a conciliação é refeita.',
+          'Escolha aprovar o cobrado, aprovar o esperado contestando a diferença, ou contestar tudo, com o motivo.',
+          'Quando a transportadora responder, registre se a contestação foi aceita (com o crédito) ou recusada.',
+        ],
+      },
+    ],
+  },
+  {
+    key: 'fretes-financeiro',
+    title: 'Faturas de frete',
+    module: 'fretes_financeiro',
+    routes: ['/fretes/faturas'],
+    purpose: 'Conferir a fatura da transportadora com os CT-es e controlar o pagamento.',
+    howItWorks: 'A fatura reúne os CT-es que ela cobra. O valor a pagar é o aprovado na conciliação; o contestado em aberto fica de fora. A fatura só é aprovada quando todos os CT-es têm decisão.',
+    lessons: [
+      {
+        id: 'fretes.fatura',
+        title: 'Lançar e pagar uma fatura',
+        steps: [
+          'Abra Fretes → Faturas de frete → Lançar fatura.',
+          'Escolha a transportadora, informe número, vencimento e valor.',
+          'Cole os números dos CT-es da fatura e clique em Filtrar; marque os CT-es.',
+          'Na fatura, clique em Aprovar para pagamento e, depois de pagar, em Registrar pagamento.',
+        ],
+        tip: 'Diferença entre a fatura e a soma dos CT-es aparece como "Sem CT-e correspondente".',
+      },
+    ],
+  },
+  {
+    key: 'fretes-relatorios',
+    title: 'Relatórios de frete',
+    module: 'fretes_cte',
+    routes: ['/fretes/relatorios'],
+    purpose: 'Ver gastos por transportadora, filial, UF e mês, divergências, contestações, faturas e tabelas.',
+    howItWorks: 'Os relatórios são calculados dos CT-es (data de emissão), das faturas e das tabelas. O filtro de filial segue as filiais liberadas para você.',
+    lessons: [
+      {
+        id: 'fretes.relatorios',
+        title: 'Tirar um relatório',
+        steps: ['Abra Fretes → Relatórios de frete.', 'Escolha o relatório, o período e a filial.', 'Clique em CSV para abrir no Excel.'],
+      },
+    ],
+  },
+  {
     key: 'fretes-cadastros',
     title: 'Transportadoras e filiais',
     module: 'fretes_transportadoras',
@@ -451,7 +540,13 @@ export const TRAIL: TrailModule[] = [
       {
         id: 'fretes.filiais',
         title: 'Dados das filiais',
-        steps: ['Abra Fretes → Filiais e integrações.', 'Confira o CNPJ e o CEP de expedição de cada filial e salve.', 'Para dar acesso a mais de uma filial, use "Outras unidades que acessa" no cadastro do usuário.'],
+        steps: [
+          'Abra Fretes → Filiais e integrações.',
+          'Confira o CNPJ e o CEP de expedição de cada filial e salve.',
+          'Para dar acesso a mais de uma filial, use "Outras unidades que acessa" no cadastro do usuário.',
+          'O Administrador pode criar os perfis prontos (Gestor de logística, Operador de expedição, Financeiro de fretes) e ajustá-los em Configurações.',
+          'Ajuste as tolerâncias da conciliação e os prazos dos alertas no quadro Conciliação de CT-e e alertas.',
+        ],
       },
     ],
   },

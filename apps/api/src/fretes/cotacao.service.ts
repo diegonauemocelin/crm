@@ -14,6 +14,7 @@ import { componentsOf, ruleFromRow, settingsOf, todayUtc } from './tabelas.servi
 import type { ComponentDef } from './catalogo'
 import { FEE_LABEL, FEE_ORDER, type FeeCode } from './taxas'
 import { internalRateFrom, parseCteXml, type RateLearning } from './cte'
+import { parseNumber } from './importacao'
 
 export interface QuoteInput {
   unitId: string
@@ -445,6 +446,69 @@ export class CotacaoService {
     })
     if (reason) await this.audit.byUser(user, ctx, 'frete.cotacao.tabela_vencida_liberada', 'freight_quote', q.id, { cotacao: q.code, justificativa: reason, tabelas: results.filter((r) => r.expiredUsed).map((r) => r.tableId) })
     return this.view(q)
+  }
+
+  /**
+   * Cotação em lote: uma linha por destino (planilha). Calcula com as mesmas regras da cotação, mas não grava cada
+   * linha no histórico: serve para comparar transportadoras e orçar vários envios de uma vez.
+   */
+  async batch(user: AuthUser, unitId: string, rows: unknown[][], ctx: RequestCtx) {
+    assertCan(user, 'fretes_cotacao', 'create')
+    assertUnit(user, 'fretes_cotacao', unitId)
+    const hIdx = rows.slice(0, 15).findIndex((r) => r.filter((c) => typeof c === 'string' && c.trim()).length >= 2)
+    if (hIdx < 0) throw new BadRequestException('Não achei o cabeçalho da planilha.')
+    const norm = (v: unknown) => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+    const h = rows[hIdx]!.map(norm)
+    const col = (re: RegExp) => h.findIndex((x) => re.test(x))
+    const c = {
+      ref: col(/refer|pedido|^id$|^codigo/),
+      zip: col(/cep/),
+      city: col(/cidade|municipio/),
+      uf: col(/^uf$|estado/),
+      type: col(/^tipo|pessoa|^pf|^pj/),
+      doc: col(/cpf|cnpj|documento/),
+      value: col(/valor/),
+      weight: col(/peso/),
+    }
+    if (c.zip < 0 || c.weight < 0) throw new BadRequestException('A planilha precisa das colunas CEP e Peso (e, de preferência, Valor da NF).')
+    const data = rows.slice(hIdx + 1).map((r, i) => ({ r, line: hIdx + 2 + i })).filter(({ r }) => r && r.some((x) => x !== null && String(x).trim() !== ''))
+    if (data.length > 300) throw new BadRequestException('Envie até 300 linhas por vez.')
+    const get = (r: unknown[], i: number) => (i >= 0 && r[i] !== null && r[i] !== undefined ? String(r[i]).trim() : '')
+    const num = (r: unknown[], i: number) => {
+      const x = i >= 0 ? parseNumber(r[i]) : null
+      return x === null || Number.isNaN(x) ? null : x
+    }
+    const out: { line: number; reference: string | null; destZip: string; destCity: string | null; destUf: string | null; weight: number | null; cargoValue: number | null; options: number; best: { carrierName: string; tableName: string | null; total: number; deadlineDays: number | null } | null; second: { carrierName: string; total: number } | null; error: string | null }[] = []
+    // Poucas linhas em paralelo para não sobrecarregar o banco nem a consulta de CEP.
+    for (let i = 0; i < data.length; i += 5) {
+      const chunk = data.slice(i, i + 5)
+      const done = await Promise.all(
+        chunk.map(async ({ r, line }) => {
+          const doc = get(r, c.doc).replace(/\D/g, '')
+          const type = norm(get(r, c.type))
+          const base = { line, reference: get(r, c.ref) || null, destZip: get(r, c.zip), destCity: get(r, c.city) || null, destUf: get(r, c.uf) || null, weight: num(r, c.weight), cargoValue: num(r, c.value), options: 0, best: null, second: null, error: null }
+          try {
+            const { p, results } = await this.compute(user, { unitId, destZip: base.destZip, destCity: base.destCity, destUf: base.destUf, personType: type.includes('f') || doc.length === 11 ? 'PF' : 'PJ', customerDoc: doc || null, cargoValue: base.cargoValue ?? 0, weight: base.weight }, false)
+            const ok = results.filter((x) => x.status === 'OK' && x.total !== null)
+            return {
+              ...base,
+              destZip: p.destZip,
+              destCity: p.destCity,
+              destUf: p.destUf,
+              options: ok.length,
+              best: ok[0] ? { carrierName: ok[0].carrierName, tableName: ok[0].tableName, total: ok[0].total!, deadlineDays: ok[0].deadlineDays } : null,
+              second: ok[1] ? { carrierName: ok[1].carrierName, total: ok[1].total! } : null,
+              error: ok.length ? null : (results[0]?.reason ?? 'Nenhuma transportadora atende.'),
+            }
+          } catch (e) {
+            return { ...base, error: e instanceof BadRequestException ? e.message : 'Erro ao calcular esta linha.' }
+          }
+        }),
+      )
+      out.push(...done)
+    }
+    await this.audit.byUser(user, ctx, 'frete.cotacao.lote', 'unit', unitId, { linhas: out.length, comErro: out.filter((x) => x.error).length })
+    return { rows: out, total: out.reduce((s, x) => s + (x.best?.total ?? 0), 0) }
   }
 
   private view(q: Prisma.FreightQuoteGetPayload<object>, unitName?: string) {

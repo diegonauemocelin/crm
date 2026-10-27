@@ -23,7 +23,12 @@ export function FretesFiliaisPage() {
 function Filiais() {
   const ctx = useFreightContext()
   const qc = useQueryClient()
-  const { can } = useAuth()
+  const { can, me } = useAuth()
+  const roles = useMutation({
+    mutationFn: () => api.post<{ created: string[]; existing: string[] }>('/fretes/perfis/padrao'),
+    onSuccess: (r) => toast.success(r.created.length ? `Perfis criados: ${r.created.join(', ')}. Ajuste em Configurações → Perfis de acesso e vincule aos usuários.` : 'Os perfis prontos já existiam (nada foi alterado).'),
+    onError: (e) => toast.error(errorMessage(e)),
+  })
   const seed = useMutation({
     mutationFn: () => api.post<{ created: string[]; completed: string[] }>('/fretes/filiais/padrao'),
     onSuccess: (r) => {
@@ -38,12 +43,18 @@ function Filiais() {
         title="Filiais"
         description="Dados fiscais e CEP de expedição de cada filial: a origem das cotações. Novas unidades e o acesso de cada pessoa ficam em Configurações (Listas e Usuários)."
         actions={
-          can('fretes_filiais', 'edit') &&
-          ctx.data?.global && (
-            <Button variant="outline" onClick={() => seed.mutate()} disabled={seed.isPending}>
-              {seed.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Cadastrar as unidades da Usaparts
-            </Button>
-          )
+          <>
+            {me?.role.isSystem && (
+              <Button variant="outline" onClick={() => roles.mutate()} disabled={roles.isPending}>
+                {roles.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Criar perfis prontos de fretes
+              </Button>
+            )}
+            {can('fretes_filiais', 'edit') && ctx.data?.global && (
+              <Button variant="outline" onClick={() => seed.mutate()} disabled={seed.isPending}>
+                {seed.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Cadastrar as unidades da Usaparts
+              </Button>
+            )}
+          </>
         }
       />
       {ctx.isLoading ? (
@@ -60,6 +71,7 @@ function Filiais() {
         </div>
       )}
       <IcmsRates editable={can('fretes_filiais', 'edit') && !!ctx.data?.global} />
+      {can('fretes_cte', 'view') && <RecParams editable={can('fretes_cte', 'edit') && !!ctx.data?.global} carriers={ctx.data?.carriers ?? []} />}
       <Integrations />
     </div>
   )
@@ -170,6 +182,112 @@ function Integrations() {
 const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO']
 
 /** Alíquotas internas de ICMS do frete por UF. A interestadual o sistema calcula pela legislação. */
+interface RecSettings {
+  valor: number
+  percentual: number
+  porTransportadora: Record<string, { valor: number; percentual: number }>
+  diasSemCte: number
+  diasFatura: number
+}
+
+const br = (v: number | undefined) => (v === undefined ? '' : String(v).replace('.', ','))
+const nb = (v: string) => Number(v.trim().replace(',', '.'))
+
+/** Tolerâncias da conciliação (geral e por transportadora) e prazos dos alertas. */
+function RecParams({ editable, carriers }: { editable: boolean; carriers: { id: string; name: string }[] }) {
+  const qc = useQueryClient()
+  const q = useQuery({ queryKey: ['fretes', 'conciliacao', 'parametros'], queryFn: () => api.get<RecSettings>('/fretes/ctes/parametros') })
+  const [draft, setDraft] = useState<Record<string, string> | null>(null)
+  const d = q.data
+  const values: Record<string, string> =
+    draft ??
+    (d
+      ? {
+          valor: br(d.valor),
+          percentual: br(d.percentual),
+          diasSemCte: String(d.diasSemCte),
+          diasFatura: String(d.diasFatura),
+          ...Object.fromEntries(carriers.flatMap((c) => [[`v:${c.id}`, br(d.porTransportadora[c.id]?.valor)], [`p:${c.id}`, br(d.porTransportadora[c.id]?.percentual)]])),
+        }
+      : {})
+  const set = (k: string, v: string) => setDraft({ ...values, [k]: v })
+  const save = useMutation({
+    mutationFn: () => {
+      const porTransportadora: RecSettings['porTransportadora'] = {}
+      for (const c of carriers) {
+        const v = values[`v:${c.id}`]?.trim()
+        const p = values[`p:${c.id}`]?.trim()
+        if (v || p) porTransportadora[c.id] = { valor: v ? nb(v) : 0, percentual: p ? nb(p) : 0 }
+      }
+      const body = { valor: nb(values.valor ?? ''), percentual: nb(values.percentual ?? ''), diasSemCte: Number(values.diasSemCte), diasFatura: Number(values.diasFatura), porTransportadora }
+      if ([body.valor, body.percentual, body.diasSemCte, body.diasFatura, ...Object.values(porTransportadora).flatMap((t) => [t.valor, t.percentual])].some((x) => !Number.isFinite(x))) throw new Error('Confira os números.')
+      return api.put<RecSettings>('/fretes/ctes/parametros', body)
+    },
+    onSuccess: (r) => {
+      qc.setQueryData(['fretes', 'conciliacao', 'parametros'], r)
+      setDraft(null)
+      toast.success('Parâmetros da conciliação salvos. Valem para os próximos CT-es (use Conciliar de novo nos antigos).')
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Conciliação de CT-e e alertas</CardTitle>
+        <CardDescription>Diferença aceita entre o cobrado e o esperado: vale a maior entre o valor em reais e o percentual. A da transportadora substitui a geral.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {q.isLoading ? (
+          <TableSkeleton />
+        ) : q.error ? (
+          <ErrorState error={q.error} onRetry={() => q.refetch()} />
+        ) : (
+          <fieldset disabled={!editable} className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="rec-v">Tolerância (R$)</Label>
+                <Input id="rec-v" inputMode="decimal" value={values.valor ?? ''} onChange={(e) => set('valor', e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="rec-p">Tolerância (%)</Label>
+                <Input id="rec-p" inputMode="decimal" value={values.percentual ?? ''} onChange={(e) => set('percentual', e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="rec-dc">Alerta sem CT-e após (dias)</Label>
+                <Input id="rec-dc" inputMode="numeric" value={values.diasSemCte ?? ''} onChange={(e) => set('diasSemCte', e.target.value.replace(/\D/g, ''))} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="rec-df">Alerta de fatura (dias antes)</Label>
+                <Input id="rec-df" inputMode="numeric" value={values.diasFatura ?? ''} onChange={(e) => set('diasFatura', e.target.value.replace(/\D/g, ''))} />
+              </div>
+            </div>
+            {carriers.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Por transportadora (deixe em branco para usar a geral)</p>
+                {carriers.map((c) => (
+                  <div key={c.id} className="grid grid-cols-[1fr_7rem_7rem] items-center gap-2 text-sm">
+                    <span>{c.name}</span>
+                    <Input aria-label={`Tolerância em reais de ${c.name}`} inputMode="decimal" placeholder="R$" value={values[`v:${c.id}`] ?? ''} onChange={(e) => set(`v:${c.id}`, e.target.value)} />
+                    <Input aria-label={`Tolerância em % de ${c.name}`} inputMode="decimal" placeholder="%" value={values[`p:${c.id}`] ?? ''} onChange={(e) => set(`p:${c.id}`, e.target.value)} />
+                  </div>
+                ))}
+              </div>
+            )}
+            {editable && (
+              <div className="flex justify-end">
+                <Button onClick={() => save.mutate()} disabled={!draft || save.isPending}>
+                  {save.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Salvar parâmetros
+                </Button>
+              </div>
+            )}
+          </fieldset>
+        )}
+        {!editable && <p className="text-xs text-muted-foreground">Só quem tem acesso a todas as filiais e pode editar CT-e altera estes parâmetros.</p>}
+      </CardContent>
+    </Card>
+  )
+}
+
 function IcmsRates({ editable }: { editable: boolean }) {
   const qc = useQueryClient()
   const q = useQuery({ queryKey: ['fretes', 'icms'], queryFn: () => api.get<{ internas: Record<string, number>; origem?: Record<string, { fonte: string; cte?: string | null; data?: string | null; nota?: string | null }> }>('/fretes/icms') })

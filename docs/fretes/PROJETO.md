@@ -62,7 +62,13 @@ Regras invioláveis no modelo:
 | Histórico de cotações | `/fretes/cotacoes` | Busca por nº, pedido, cliente, cidade, CEP; detalhe com reprodução e impressão |
 | Tabelas de frete | `/fretes/tabelas` | Lista com vigência; detalhe com abas **Regras**, **Histórico de Importação**, **Componentes**, **Versões**, **Dados da tabela** |
 | Transportadoras | `/fretes/transportadoras` | Cadastro, contatos, filiais atendidas, tabelas vinculadas, indicadores |
-| Filiais e integrações | `/fretes/filiais` | CNPJ e CEP de expedição de cada filial; situação real de cada integração |
+| Filiais e integrações | `/fretes/filiais` | CNPJ e CEP de expedição de cada filial; ICMS do frete; tolerâncias da conciliação e prazos dos alertas; perfis prontos; situação real de cada integração |
+| Pedidos e expedição | `/fretes/pedidos` | Pedido pela cotação, à mão ou por planilha; situação do envio com histórico; atrasados |
+| CT-e | `/fretes/ctes` | Importação dos XMLs (.xml/.zip, cancelamentos); lista com somas; detalhe com a conciliação por componente, pedido, decisão e XML |
+| Conciliação | `/fretes/conciliacao` | Fila do que precisa de decisão: divergentes, sem referência e contestações abertas |
+| Faturas de frete | `/fretes/faturas` | Fatura da transportadora com os CT-es; aprovado, contestado e pagamento |
+| Relatórios de frete | `/fretes/relatorios` | Transportadoras, filiais, UF, mês, divergências, contestações, faturas e tabelas (CSV) |
+| Alertas de frete | `/fretes/alertas` | Tabelas vencendo, pedidos sem cotação/CT-e, atrasos, divergências, contestações paradas, faturas vencendo |
 
 Seletor de **filial ativa** no cabeçalho de cada tela; quem tem acesso a todas vê **Todas as filiais (visão global)**.
 
@@ -73,12 +79,19 @@ Seletor de **filial ativa** no cabeçalho de cada tela; quem tem acesso a todas 
 2. **Tabela atualizada pela transportadora:** importar a planilha nova na mesma tabela (vira rascunho da próxima
    versão) → simular → publicar. Se mudar a vigência, editar em *Dados da tabela* (fica na auditoria).
 3. **Cotação:** filial + CEP destino + valor + peso/volumes → *Calcular fretes* → comparar → *Escolher*.
-4. **Auditoria de cobrança (fase 4):** CT-e capturado → localizar cotação → comparar componente a componente.
+4. **Pedido:** na cotação escolhida, *Gerar pedido* (com NF e chave da NF-e) → atualizar a situação até a entrega.
+5. **CT-e e conciliação:** importar os XMLs → transportadora (CNPJ), filial (CNPJ de remetente/tomador ou cidade) e
+   pedido (chave da NF-e) identificados → comparação com a cotação do pedido ou com a tabela publicada na data do
+   CT-e → dentro da tolerância, aprovado sozinho; fora dela, decisão na *Conciliação* (aprovar o cobrado, aprovar o
+   esperado contestando a diferença, ou contestar) → resultado da contestação (crédito obtido ou recusa).
+6. **Fatura:** lançar a fatura da transportadora → marcar os CT-es (colando os números) → aprovar para pagamento
+   (só com todos os CT-es decididos) → registrar o pagamento. O valor a pagar é o aprovado na conciliação.
 
 ## 6. Permissões
 
-Cinco módulos em **Configurações → Perfis**: `fretes_painel`, `fretes_cotacao`, `fretes_tabelas`,
-`fretes_transportadoras`, `fretes_filiais` (ver o texto de ajuda de cada um na tela). O escopo de cada módulo:
+Oito módulos em **Configurações → Perfis**: `fretes_painel`, `fretes_cotacao`, `fretes_pedidos`, `fretes_cte`,
+`fretes_financeiro`, `fretes_tabelas`, `fretes_transportadoras`, `fretes_filiais` (ver o texto de ajuda de cada um
+na tela). O escopo de cada módulo:
 
 - **Todos:** todas as filiais (visão global).
 - **Somente das filiais da pessoa:** a unidade do usuário + as *Outras unidades que acessa* (cadastro do usuário).
@@ -86,15 +99,14 @@ Cinco módulos em **Configurações → Perfis**: `fretes_painel`, `fretes_cotac
 Tabela ou transportadora que vale para *todas as filiais* só é alterada por quem tem a visão global. Liberar
 tabela vencida numa cotação exige *Editar* em Tabelas e justificativa (gravada na cotação e na auditoria).
 
-Perfis sugeridos (criar em Configurações → Perfis):
+Perfis prontos (o Administrador cria em **Fretes → Filiais → Criar perfis prontos de fretes**; perfis com o mesmo
+nome não são alterados; ajuste depois em Configurações → Perfis). Definição em `apps/api/src/fretes/perfis.ts`:
 
-| Perfil | Painel | Cotação | Tabelas | Transportadoras | Filiais | Escopo |
-|---|---|---|---|---|---|---|
-| Gestor de logística | Ver | Tudo | Tudo | Tudo | Editar | Todos |
-| Operador de expedição | — | Ver/Criar/Editar | Ver | Ver | Ver | Filiais da pessoa |
-| Compras | Ver | Ver/Criar | Ver/Criar/Editar | Ver/Criar/Editar | Ver | Todos |
-| Financeiro | Ver/Exportar | Ver/Exportar | Ver | Ver | Ver | Todos |
-| Auditor / Consulta | Ver | Ver | Ver | Ver | Ver | Todos ou filiais |
+| Perfil | Painel | Cotação | Pedidos | CT-e | Faturas | Tabelas | Transportadoras | Filiais | Escopo |
+|---|---|---|---|---|---|---|---|---|---|
+| Gestor de logística | Ver | Tudo | Tudo | Tudo | Tudo | Tudo | Tudo | Ver/Editar | Todas |
+| Operador de expedição | Ver | Ver/Criar/Editar | Ver/Criar/Editar | Ver/Importar | — | Ver | Ver | Ver | Filiais da pessoa |
+| Financeiro de fretes | Ver | Ver | Ver | Ver/Decidir/Exportar | Tudo | Ver | Ver | — | Todas |
 
 ## 7. Importação de tabelas
 
@@ -179,18 +191,21 @@ Na tela **Filiais e integrações** todas aparecem como *Não conectada* até es
 | Fase | Conteúdo | Situação |
 |---|---|---|
 | 1 | Permissões por filial, filiais, transportadoras, tabelas, importação, componentes e variáveis | **Entregue (v0.99.0)** |
-| 2 | Fórmulas, regras geográficas, cubagem, cotação, comparativo, histórico e reprodução | **Entregue (v0.99.0)**; cotação em lote por planilha fica para a próxima versão |
-| 3 | Pedidos e expedição (manual, planilha, Tcar), captura de CT-e (DF-e), certificado A1 | A fazer |
-| 4 | Faturas, conciliação automática por componente, tolerâncias, contestação, pagamentos | A fazer |
-| 5 | Relatórios gerenciais, alertas (vencimento, divergências), indicadores de desempenho | Parcial (painel e alertas de vigência) |
-| 6 | Correios, Mercado Livre ME1, Google Shopping, APIs de transportadoras, homologação | A fazer |
+| 2 | Fórmulas, regras geográficas, cubagem, cotação, comparativo, histórico e reprodução, cotação em lote | **Entregue (v0.99.0–v0.100.0)** |
+| 3 | Pedidos e expedição (manual, planilha, pela cotação), importação dos XMLs de CT-e | **Entregue (v0.100.0)**; captura automática na SEFAZ (DF-e, certificado A1) e pedidos da Tcar: a decidir |
+| 4 | Faturas, conciliação automática por componente, tolerâncias, contestação, pagamentos | **Entregue (v0.100.0)** |
+| 5 | Relatórios gerenciais, alertas, indicadores de desempenho, perfis prontos | **Entregue (v0.100.0)** |
+| 6 | Correios, Mercado Livre ME1, Google Shopping, APIs de transportadoras, homologação | A decidir (depende de contratos e credenciais) |
 
 ## 12. Riscos e dependências
 
 - **Formato das tabelas:** cada transportadora manda um layout; o mapeamento cobre a maioria, mas fórmulas
   especiais (ex.: TDE só acima de certo valor) precisam ser configuradas por tabela e conferidas no simulador.
 - **ICMS:** alíquota depende de origem, destino e regime da transportadora; o sistema usa o que a tabela informa.
-- **Feriados:** o prazo conta só dias úteis de segunda a sexta.
+- **Feriados:** o prazo conta dias úteis de segunda a sexta, sem os feriados nacionais (fixos e Sexta-feira Santa).
+  Feriados estaduais e municipais e o Carnaval não entram.
+- **Situação fiscal do CT-e:** sem a consulta à SEFAZ, o CT-e importado aparece como *Não conferido na SEFAZ*; o
+  cancelamento só é reconhecido quando o XML do evento é importado.
 - **CT-e:** depende de certificado A1 por CNPJ e das regras de consulta da SEFAZ.
 - **Integrações externas:** dependem de contrato e credenciais (Correios, Merchant Center, ML).
 

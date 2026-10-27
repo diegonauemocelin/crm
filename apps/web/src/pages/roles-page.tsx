@@ -41,7 +41,7 @@ type ActionKey = (typeof ACTIONS)[number]['key']
 const EMPTY: PermissionEntry = { view: false, create: false, edit: false, delete: false, export: false, scope: 'ALL' }
 
 /** Módulos em que faz sentido restringir a "somente os próprios registros". */
-const SCOPED_MODULES = new Set(['leads', 'pre_vendas', 'pos_vendas', 'chat', 'fretes_painel', 'fretes_cotacao', 'fretes_tabelas', 'fretes_transportadoras', 'fretes_filiais'])
+const SCOPED_MODULES = new Set(['leads', 'pre_vendas', 'pos_vendas', 'chat', 'fretes_painel', 'fretes_cotacao', 'fretes_tabelas', 'fretes_transportadoras', 'fretes_filiais', 'fretes_pedidos', 'fretes_cte', 'fretes_financeiro'])
 /** No módulo de fretes o escopo é por filial: não existe “somente os próprios”. */
 const UNIT_ONLY = (m: string) => m.startsWith('fretes_')
 

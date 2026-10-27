@@ -11,6 +11,7 @@ import { normalizeCep, normalizeUf, validCnpj, validCpf } from './cep'
 import type { QuoteResult } from './cotacao.service'
 import { parseNumber } from './importacao'
 import { addBusinessDays } from './motor'
+import { todayUtc } from './tabelas.service'
 
 export interface ShipmentInput {
   unitId: string
@@ -136,7 +137,7 @@ export class PedidosService {
     }
   }
 
-  async list(user: AuthUser, f: { unitId?: string; status?: string; carrierId?: string; from?: string; to?: string; search?: string; page?: number }) {
+  async list(user: AuthUser, f: { unitId?: string; status?: string; carrierId?: string; from?: string; to?: string; search?: string; page?: number; late?: boolean }) {
     assertCan(user, 'fretes_pedidos', 'view')
     const units = allowedUnits(user, 'fretes_pedidos')
     const and: Prisma.FreightShipmentWhereInput[] = [{ tenantId: user.tenantId }]
@@ -144,6 +145,8 @@ export class PedidosService {
     if (f.unitId) and.push({ unitId: f.unitId })
     if (f.status && (SHIPMENT_STATUS as readonly string[]).includes(f.status)) and.push({ status: f.status })
     if (f.carrierId) and.push({ carrierId: f.carrierId })
+    // Atrasados: previsão de entrega vencida e ainda não entregue (mesmo critério do alerta).
+    if (f.late) and.push({ status: { in: ['DESPACHADO', 'EM_TRANSITO', 'AGUARDANDO_COLETA'] }, expectedDeliveryAt: { lt: todayUtc() } })
     if (f.from) and.push({ createdAt: { gte: new Date(`${f.from}T00:00:00-03:00`) } })
     if (f.to) and.push({ createdAt: { lt: new Date(new Date(`${f.to}T00:00:00-03:00`).getTime() + 86_400_000) } })
     const term = f.search?.trim()

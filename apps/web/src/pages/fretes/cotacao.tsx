@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalculatorIcon, CheckCircle2Icon, ChevronDownIcon, ChevronRightIcon, DownloadIcon, HistoryIcon, Loader2Icon, PlusIcon, PrinterIcon, RefreshCwIcon, SearchIcon, Trash2Icon, TruckIcon } from 'lucide-react'
+import { CalculatorIcon, CheckCircle2Icon, ChevronDownIcon, ChevronRightIcon, DownloadIcon, HistoryIcon, Loader2Icon, PackageIcon, PlusIcon, PrinterIcon, RefreshCwIcon, SearchIcon, Trash2Icon, TruckIcon, UploadIcon } from 'lucide-react'
 import { type FormEvent, Fragment, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
@@ -58,6 +58,7 @@ function NewQuote() {
   const [volumes, setVolumes] = useState<VolumeRow[]>([emptyVolume()])
   const [goodsType, setGoodsType] = useState('')
   const [reference, setReference] = useState('')
+  const [batch, setBatch] = useState(false)
   const [notes, setNotes] = useState('')
   const [allowExpired, setAllowExpired] = useState(false)
   const [noInvoice, setNoInvoice] = useState(false)
@@ -137,6 +138,9 @@ function NewQuote() {
         actions={
           <>
             <FilialSwitch active={active} />
+            <Button variant="outline" onClick={() => setBatch(true)}>
+              <UploadIcon aria-hidden /> Cotação em lote
+            </Button>
             <Button variant="outline" asChild>
               <Link to="/fretes/cotacoes">
                 <HistoryIcon aria-hidden /> Histórico
@@ -145,6 +149,7 @@ function NewQuote() {
           </>
         }
       />
+      {batch && <BatchQuote defaultUnit={unitId || active.unitId || ctx?.units[0]?.id || ''} onClose={() => setBatch(false)} />}
       <form onSubmit={submit}>
         <Card>
           <CardHeader>
@@ -720,6 +725,7 @@ function QuoteDetail() {
   const print = new URLSearchParams(window.location.search).has('imprimir')
   const q = useQuery({ queryKey: ['fretes', 'cotacao', id], queryFn: () => api.get<Quote>(`/fretes/cotacoes/${id}`) })
   const [repro, setRepro] = useState<Reproduction | null>(null)
+  const [ordering, setOrdering] = useState(false)
   const reproduce = useMutation({ mutationFn: () => api.get<Reproduction>(`/fretes/cotacoes/${id}/reproduzir`), onSuccess: setRepro, onError: (e) => toast.error(errorMessage(e)) })
   const cancel = useMutation({
     mutationFn: () => api.post<Quote>(`/fretes/cotacoes/${id}/cancelar`),
@@ -749,6 +755,13 @@ function QuoteDetail() {
             <Button variant="outline" onClick={() => window.print()}>
               <PrinterIcon aria-hidden /> Imprimir
             </Button>
+            {d.status === 'SELECIONADA' && (
+              <Can module="fretes_pedidos" action="create">
+                <Button onClick={() => setOrdering(true)}>
+                  <PackageIcon aria-hidden /> Gerar pedido
+                </Button>
+              </Can>
+            )}
             {d.status !== 'CANCELADA' && (
               <Can module="fretes_cotacao" action="edit">
                 <Button variant="outline" onClick={() => cancel.mutate()} disabled={cancel.isPending}>
@@ -787,6 +800,183 @@ function QuoteDetail() {
         </Card>
       )}
       {d.notes && <p className="text-sm">Observações: {d.notes}</p>}
+      {ordering && <OrderFromQuote quote={d} onClose={() => setOrdering(false)} />}
     </div>
+  )
+}
+
+/** Gera o pedido de expedição a partir da cotação escolhida: o CT-e será comparado com este valor. */
+function OrderFromQuote({ quote, onClose }: { quote: Quote; onClose: () => void }) {
+  const navigate = useNavigate()
+  const qc = useQueryClient()
+  const [orderNumber, setOrderNumber] = useState(quote.reference ?? '')
+  const [invoiceNumber, setInvoiceNumber] = useState('')
+  const [invoiceKey, setInvoiceKey] = useState('')
+  const m = useMutation({
+    mutationFn: () => api.post<{ id: string; code: number }>(`/fretes/cotacoes/${quote.id}/pedido`, { orderNumber: orderNumber || null, invoiceNumber: invoiceNumber || null, invoiceKey: invoiceKey || null }),
+    onSuccess: (s) => {
+      qc.invalidateQueries({ queryKey: ['fretes', 'pedidos'] })
+      toast.success(`Pedido nº ${s.code} criado.`)
+      navigate(`/fretes/pedidos?busca=${s.code}`)
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Gerar pedido da cotação nº {quote.code}</DialogTitle>
+          <DialogDescription>Destino, valor, peso e a opção escolhida vêm da cotação. A chave da NF-e liga o CT-e ao pedido sozinho na importação.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="op-order">Pedido</Label>
+            <Input id="op-order" value={orderNumber} onChange={(e) => setOrderNumber(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="op-nf">Nota fiscal</Label>
+            <Input id="op-nf" value={invoiceNumber} onChange={(e) => setInvoiceNumber(e.target.value)} />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="op-key">Chave da NF-e</Label>
+            <Input id="op-key" inputMode="numeric" value={invoiceKey} onChange={(e) => setInvoiceKey(e.target.value.replace(/\D/g, '').slice(0, 44))} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button onClick={() => m.mutate()} disabled={m.isPending || (invoiceKey.length > 0 && invoiceKey.length !== 44)}>
+            {m.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Gerar pedido
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+interface BatchRow {
+  line: number
+  reference: string | null
+  destZip: string
+  destCity: string | null
+  destUf: string | null
+  weight: number | null
+  cargoValue: number | null
+  options: number
+  best: { carrierName: string; tableName: string | null; total: number; deadlineDays: number | null } | null
+  second: { carrierName: string; total: number } | null
+  error: string | null
+}
+
+/** Vários destinos de uma vez (planilha): a melhor opção de cada linha. Não grava no histórico. */
+function BatchQuote({ defaultUnit, onClose }: { defaultUnit: string; onClose: () => void }) {
+  const active = useActiveUnit()
+  const [unitId, setUnitId] = useState(defaultUnit)
+  const [file, setFile] = useState<File | null>(null)
+  const m = useMutation({
+    mutationFn: () => {
+      const fd = new FormData()
+      fd.append('arquivo', file!)
+      return api.post<{ rows: BatchRow[]; total: number }>(`/fretes/cotacoes/lote/${unitId}`, fd)
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const csv = () => {
+    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const n = (v: number | null | undefined) => (v === null || v === undefined ? '' : v.toFixed(2).replace('.', ','))
+    const lines = [
+      ['Linha', 'Referência', 'CEP', 'Cidade', 'UF', 'Peso', 'Valor NF', 'Melhor transportadora', 'Tabela', 'Frete', 'Prazo (dias úteis)', 'Segunda opção', 'Frete 2ª', 'Opções', 'Observação'].map(esc).join(';'),
+      ...(m.data?.rows ?? []).map((r) => [r.line, r.reference, formatCep(r.destZip), r.destCity, r.destUf, fmtNum(r.weight), n(r.cargoValue), r.best?.carrierName, r.best?.tableName, n(r.best?.total), r.best?.deadlineDays, r.second?.carrierName, n(r.second?.total), r.options, r.error].map(esc).join(';')),
+    ]
+    const url = URL.createObjectURL(new Blob([`\ufeff${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8' }))
+    Object.assign(document.createElement('a'), { href: url, download: 'cotacao-em-lote.csv' }).click()
+    URL.revokeObjectURL(url)
+  }
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>Cotação em lote</DialogTitle>
+          <DialogDescription>Planilha (.xlsx ou .csv) com uma linha por destino. Colunas pelo título: CEP e Peso (obrigatórias), Valor, Cidade, UF, Tipo (PF/PJ), CPF/CNPJ e Referência. Até 300 linhas. O resultado não vai para o histórico: para escolher a transportadora de um envio, faça a cotação normal.</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-wrap gap-2">
+          <Select value={unitId} onValueChange={setUnitId}>
+            <SelectTrigger className="w-56" aria-label="Filial de origem">
+              <SelectValue placeholder="Filial de origem" />
+            </SelectTrigger>
+            <SelectContent>
+              {active.ctx.data?.units.filter((u) => u.active).map((u) => (
+                <SelectItem key={u.id} value={u.id}>
+                  {u.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input type="file" className="w-auto flex-1" accept=".xlsx,.csv" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          <Button onClick={() => m.mutate()} disabled={!file || !unitId || m.isPending}>
+            {m.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Calcular
+          </Button>
+        </div>
+        {m.data && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span>
+                {m.data.rows.length} linha(s) · {m.data.rows.filter((r) => r.error).length} sem opção · soma das melhores opções {money(m.data.total)}
+              </span>
+              <Button size="sm" variant="outline" onClick={csv}>
+                <DownloadIcon aria-hidden /> CSV
+              </Button>
+            </div>
+            <div className="max-h-96 overflow-y-auto rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Linha</TableHead>
+                    <TableHead>Destino</TableHead>
+                    <TableHead className="text-right">Peso</TableHead>
+                    <TableHead>Melhor opção</TableHead>
+                    <TableHead className="text-right">Frete</TableHead>
+                    <TableHead className="hidden md:table-cell">2ª opção</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {m.data.rows.map((r) => (
+                    <TableRow key={r.line}>
+                      <TableCell className="text-sm">
+                        {r.line}
+                        {r.reference && <span className="block text-xs text-muted-foreground">{r.reference}</span>}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {r.destCity ?? formatCep(r.destZip)}
+                        {r.destUf ? `/${r.destUf}` : ''}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{fmtNum(r.weight)}</TableCell>
+                      <TableCell className="text-sm">
+                        {r.best ? (
+                          <>
+                            {r.best.carrierName}
+                            {r.best.deadlineDays !== null && <span className="block text-xs text-muted-foreground">{r.best.deadlineDays} dia(s) úteis</span>}
+                          </>
+                        ) : (
+                          <span className="text-destructive">{r.error}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{r.best ? money(r.best.total) : '—'}</TableCell>
+                      <TableCell className="hidden text-sm md:table-cell">{r.second ? `${r.second.carrierName} · ${money(r.second.total)}` : '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Fechar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common'
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
@@ -29,7 +29,7 @@ import type { AuthUser } from '../common/types'
 import { ICMS_MODES } from './catalogo'
 import { checkFormula } from './formula'
 import { CotacaoService } from './cotacao.service'
-import { IMPORT_MAX_BYTES, ImportacaoService } from './importacao.service'
+import { IMPORT_MAX_BYTES, ImportacaoService, readSheets } from './importacao.service'
 import { PainelService } from './painel.service'
 import { TabelasService } from './tabelas.service'
 import { TransportadorasService } from './transportadoras.service'
@@ -276,6 +276,12 @@ export class FretesController {
     return this.painel.updateUnit(user, id, dto, ctx)
   }
 
+  @Post('perfis/padrao')
+  @HttpCode(200)
+  seedRoles(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
+    return this.painel.seedRoles(user, ctx)
+  }
+
   @Post('filiais/padrao')
   @HttpCode(200)
   seedUnits(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
@@ -484,6 +490,16 @@ export class FretesController {
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   quote(@CurrentUser() user: AuthUser, @Body() dto: QuoteDto, @ReqContext() ctx: RequestCtx) {
     return this.quotes.quote(user, dto, ctx)
+  }
+
+  @Post('cotacoes/lote/:unitId')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('arquivo', { limits: { fileSize: IMPORT_MAX_BYTES } }))
+  async quoteBatch(@CurrentUser() user: AuthUser, @Param('unitId', ParseUUIDPipe) unitId: string, @UploadedFile() file: Express.Multer.File | undefined, @ReqContext() ctx: RequestCtx) {
+    if (!file?.buffer?.length) throw new BadRequestException('Envie a planilha de destinos (.xlsx ou .csv).')
+    const sheets = await readSheets(file.buffer, file.originalname)
+    return this.quotes.batch(user, unitId, sheets[0]?.rows ?? [], ctx)
   }
 
   @Post('simular')

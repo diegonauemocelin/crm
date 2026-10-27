@@ -125,8 +125,14 @@ export class ImportacaoService {
       const dest = fields.has('cep_start') || fields.has('cep') || fields.has('city') || fields.has('uf') ? 10 : 0
       return dest + guesses[i]!.mapping.filter((m) => m.field.startsWith('var:')).length + Math.min(5, sheets[i]!.rows.length / 100)
     }
-    const sheet = sheets.reduce((best, _, i) => (score(i) > score(best) ? i : best), 0)
-    const guess = guesses[sheet]!
+    let sheet = sheets.reduce((best, _, i) => (score(i) > score(best) ? i : best), 0)
+    let guess = guesses[sheet]!
+    // Mesmo layout de uma importação anterior da transportadora: reaproveita o mapeamento conferido daquela vez.
+    const previous = await this.previousLayout(user.tenantId, t.carrierId, sheets)
+    if (previous) {
+      sheet = previous.sheet
+      guess = { headerRow: previous.headerRow, mapping: previous.mapping }
+    }
     const imp = await this.prisma.freightImport.create({
       data: { tenantId: user.tenantId, tableId, fileId: asset.id, fileName, sheet, headerRow: guess.headerRow, mapping: guess.mapping as unknown as Prisma.InputJsonValue, createdById: user.id, createdByName: user.name },
     })
@@ -135,8 +141,40 @@ export class ImportacaoService {
       importId: imp.id,
       fileName,
       sheets: sheets.map((s, index) => ({ index, name: s.name, rowCount: s.rows.length, preview: s.rows.slice(0, PREVIEW_ROWS + 30) })),
-      suggested: { sheet, headerRow: guess.headerRow, mapping: guess.mapping },
+      suggested: { sheet, headerRow: guess.headerRow, mapping: guess.mapping, fromImport: previous ? { fileName: previous.fileName, createdAt: previous.createdAt } : null },
     }
+  }
+
+  /**
+   * Procura, nas últimas importações concluídas da transportadora, uma com o mesmo cabeçalho (mesmos títulos de
+   * coluna, na mesma linha) numa das abas do arquivo novo.
+   */
+  private async previousLayout(tenantId: string, carrierId: string, sheets: Sheet[]) {
+    const done = await this.prisma.freightImport.findMany({
+      where: { tenantId, status: 'CONCLUIDA', table: { carrierId } },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+    })
+    const sig = (row: unknown[] | undefined) =>
+      (row ?? [])
+        .map((c) => String(c ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim())
+        .join('|')
+        .replace(/\|+$/, '')
+    for (const imp of done) {
+      const mapping = imp.mapping as unknown as ColumnMap[] | null
+      if (!mapping?.length) continue
+      try {
+        const { content } = await this.files.read(imp.fileId)
+        const old = (await readSheets(content, imp.fileName))[imp.sheet]
+        const header = sig(old?.rows[imp.headerRow - 1])
+        if (!header) continue
+        const idx = sheets.findIndex((s) => sig(s.rows[imp.headerRow - 1]) === header)
+        if (idx >= 0) return { sheet: idx, headerRow: imp.headerRow, mapping, fileName: imp.fileName, createdAt: imp.createdAt }
+      } catch {
+        // Arquivo antigo ilegível ou removido: segue com a sugestão automática.
+      }
+    }
+    return null
   }
 
   /** Sugestão de mapeamento para outra aba ou outra linha de cabeçalho (0 = descobrir a linha). */

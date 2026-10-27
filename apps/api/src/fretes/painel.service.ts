@@ -13,6 +13,7 @@ import { BASE_FIELDS, FIELD_LABEL } from './importacao'
 import type { QuoteResult } from './cotacao.service'
 import { normalizeCep, normalizeUf, validCnpj } from './cep'
 import { todayUtc } from './tabelas.service'
+import { FREIGHT_ROLES, roleRows } from './perfis'
 
 const FREIGHT_MODULES: FreightModule[] = ['fretes_painel', 'fretes_cotacao', 'fretes_tabelas', 'fretes_transportadoras', 'fretes_filiais', 'fretes_pedidos', 'fretes_cte', 'fretes_financeiro']
 const DAY = 86_400_000
@@ -98,6 +99,21 @@ export class PainelService {
   }
 
   /** Cria as unidades da Usaparts que faltam (pela cidade) e completa CEP e endereço das existentes que estão vazios. */
+  /** Cria os perfis prontos de fretes que ainda não existem (pelo nome). Só o Administrador. */
+  async seedRoles(user: AuthUser, ctx: RequestCtx) {
+    if (!user.role.isSystem) throw new ForbiddenException('Só o Administrador cria perfis de acesso.')
+    const existing = await this.prisma.role.findMany({ where: { tenantId: user.tenantId }, select: { name: true } })
+    const names = new Set(existing.map((r) => r.name.trim().toLowerCase()))
+    const created: string[] = []
+    for (const t of FREIGHT_ROLES) {
+      if (names.has(t.name.toLowerCase())) continue
+      const role = await this.prisma.role.create({ data: { tenantId: user.tenantId, name: t.name, description: t.description, require2fa: false, active: true, permissions: { create: roleRows(t) } } })
+      await this.audit.byUser(user, ctx, 'role.created', 'role', role.id, { name: role.name, origem: 'perfis prontos de fretes' })
+      created.push(t.name)
+    }
+    return { created, existing: FREIGHT_ROLES.map((t) => t.name).filter((n) => !created.includes(n)) }
+  }
+
   async seedUsaparts(user: AuthUser, ctx: RequestCtx) {
     assertCan(user, 'fretes_filiais', 'edit')
     if (allowedUnits(user, 'fretes_filiais')) throw new ForbiddenException('Só quem tem acesso a todas as filiais cadastra as unidades.')

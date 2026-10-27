@@ -43,7 +43,7 @@ interface Analysis {
   importId: string
   fileName: string
   sheets: { index: number; name: string; rowCount: number; preview: Cell[][] }[]
-  suggested: { sheet: number; headerRow: number; mapping: Mapping[] }
+  suggested: { sheet: number; headerRow: number; mapping: Mapping[]; fromImport?: { fileName: string; createdAt: string } | null }
 }
 interface Issue {
   line: number
@@ -326,6 +326,11 @@ function ImportWizard({ table, onClose, onDone }: { table: FreightTable; onClose
 
         {step === 2 && analysis && (
           <div className="space-y-4">
+            {analysis.suggested.fromImport && (
+              <p className="rounded-md border border-sky-500/40 bg-sky-500/5 px-3 py-2 text-sm">
+                Mesmo layout da importação de {dateTime(analysis.suggested.fromImport.createdAt)} ({analysis.suggested.fromImport.fileName}): o mapeamento conferido daquela vez já veio preenchido. Confira mesmo assim.
+              </p>
+            )}
             <div className="flex flex-wrap items-end gap-3">
               {analysis.sheets.length > 1 && (
                 <div className="space-y-1.5">

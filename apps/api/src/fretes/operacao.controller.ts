@@ -57,6 +57,7 @@ class ShipmentListDto {
   @IsOptional() @Matches(DATE) ate?: string
   @IsOptional() @IsString() @MaxLength(100) busca?: string
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100_000) pagina?: number
+  @IsOptional() @bool @IsBoolean() atrasados?: boolean
 }
 
 class CteListDto extends ShipmentListDto {
@@ -142,7 +143,7 @@ export class FretesOperacaoController {
 
   @Get('pedidos')
   listShipments(@CurrentUser() user: AuthUser, @Query() q: ShipmentListDto) {
-    return this.shipments.list(user, { unitId: q.filial, status: q.situacao, carrierId: q.transportadora, from: q.de, to: q.ate, search: q.busca, page: q.pagina })
+    return this.shipments.list(user, { unitId: q.filial, status: q.situacao, carrierId: q.transportadora, from: q.de, to: q.ate, search: q.busca, page: q.pagina, late: q.atrasados })
   }
 
   @Get('pedidos/:id')

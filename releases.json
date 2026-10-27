@@ -2,6 +2,58 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.100.0",
+      "date": "2026-10-27",
+      "title": "Fretes: pedidos, CT-e, conciliação, faturas, relatórios e alertas",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Pedidos e expedição: pedido gerado pela cotação (guarda o valor escolhido), cadastrado à mão ou importado de planilha do ERP; situação do envio com histórico (coleta, despachado, em trânsito, ocorrência, entregue), previsão de entrega e filtro de atrasados."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "CT-e: importação dos XMLs (um a um ou em .zip, com eventos de cancelamento). O sistema acha a transportadora pelo CNPJ, a filial pelo CNPJ de quem enviou ou pagou e o pedido pela chave da NF-e; repetidos são pulados pela chave e o XML fica guardado."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Conciliação automática: o cobrado é comparado, componente por componente e no ICMS, com a cotação do pedido ou, sem ela, com a tabela publicada na data do CT-e. Dentro da tolerância o CT-e é aprovado sozinho; fora dela vai para a fila de Conciliação (divergência de valor ou peso, taxa não prevista ou duplicada), onde se aprova o cobrado, aprova o esperado contestando a diferença ou contesta tudo, e depois registra o crédito obtido."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Faturas de frete: lançar a fatura da transportadora marcando os CT-es (colando os números), ver o cobrado, o aprovado, o contestado em aberto e o que ficou sem CT-e; aprovar para pagamento (só com todos os CT-es decididos), registrar o pagamento ou cancelar."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Relatórios de frete (transportadoras, filiais, UF, mês, divergências, contestações, faturas e tabelas) com exportação em CSV, e central de alertas: tabelas vencendo, pedidos sem cotação ou sem CT-e, entregas atrasadas, CT-es divergentes, contestações paradas e faturas vencendo. O painel ganhou os números de CT-e, conciliação, entregas no prazo e faturas."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Cotação em lote: planilha com vários destinos (CEP, peso e valor) devolve a melhor e a segunda opção de cada linha, com CSV. Não grava no histórico."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Prazo de entrega em dias úteis agora pula os feriados nacionais (inclusive Sexta-feira Santa). Feriados estaduais e municipais ainda não entram."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Importação de tabela: arquivo novo da transportadora com o mesmo layout de uma importação anterior já vem com o mapeamento de colunas conferido daquela vez."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Perfis prontos (Gestor de logística, Operador de expedição, Financeiro de fretes), criados pelo Administrador em Fretes → Filiais; tolerâncias da conciliação (geral e por transportadora) e prazos dos alertas no mesmo lugar."
+        }
+      ]
+    },
+    {
       "version": "0.99.4",
       "date": "2026-10-27",
       "title": "Fretes: alíquotas de ICMS aprendidas pelos CT-e",

@@ -237,3 +237,52 @@ export const QUOTE_STATUS: Record<Quote['status'], { label: string; className: s
   SELECIONADA: { label: 'Transportadora escolhida', className: 'border-[#006300]/40 text-[#006300] dark:text-[#0ca30c]' },
   CANCELADA: { label: 'Cancelada', className: 'text-muted-foreground' },
 }
+
+export const SHIPMENT_STATUS: Record<string, { label: string; className: string }> = {
+  AGUARDANDO_COTACAO: { label: 'Aguardando cotação', className: 'border-amber-500/50 text-amber-700 dark:text-amber-300' },
+  COTADO: { label: 'Cotado', className: 'border-sky-500/40 text-sky-700 dark:text-sky-300' },
+  AGUARDANDO_APROVACAO: { label: 'Aguardando aprovação', className: 'border-amber-500/50 text-amber-700 dark:text-amber-300' },
+  APROVADO: { label: 'Aprovado', className: 'border-sky-500/40 text-sky-700 dark:text-sky-300' },
+  AGUARDANDO_COLETA: { label: 'Aguardando coleta', className: 'border-sky-500/40 text-sky-700 dark:text-sky-300' },
+  DESPACHADO: { label: 'Despachado', className: 'border-violet-500/40 text-violet-700 dark:text-violet-300' },
+  EM_TRANSITO: { label: 'Em trânsito', className: 'border-violet-500/40 text-violet-700 dark:text-violet-300' },
+  ENTREGUE: { label: 'Entregue', className: 'border-[#006300]/40 text-[#006300] dark:text-[#0ca30c]' },
+  COM_OCORRENCIA: { label: 'Com ocorrência', className: 'border-destructive/50 text-destructive' },
+  AGUARDANDO_CTE: { label: 'Aguardando CT-e', className: 'border-amber-500/50 text-amber-700 dark:text-amber-300' },
+  AGUARDANDO_CONCILIACAO: { label: 'Aguardando conciliação', className: 'border-amber-500/50 text-amber-700 dark:text-amber-300' },
+  CONCILIADO: { label: 'Conciliado', className: 'border-[#006300]/40 text-[#006300] dark:text-[#0ca30c]' },
+  CANCELADO: { label: 'Cancelado', className: 'text-muted-foreground line-through' },
+}
+
+export const REC_STATUS: Record<string, { label: string; className: string }> = {
+  PENDENTE: { label: 'Pendente', className: 'text-muted-foreground' },
+  CONCILIADO: { label: 'Conciliado', className: 'border-[#006300]/40 text-[#006300] dark:text-[#0ca30c]' },
+  DIVERGENTE: { label: 'Divergente', className: 'border-destructive/50 text-destructive' },
+  SEM_REFERENCIA: { label: 'Sem referência', className: 'border-amber-500/50 text-amber-700 dark:text-amber-300' },
+  CANCELADO: { label: 'CT-e cancelado', className: 'text-muted-foreground line-through' },
+}
+
+export const REC_TYPE: Record<string, string> = {
+  DIVERGENCIA_VALOR: 'Divergência de valor',
+  DIVERGENCIA_PESO: 'Divergência de peso',
+  TAXA_NAO_PREVISTA: 'Taxa não prevista',
+  TAXA_DUPLICADA: 'Taxa duplicada',
+  COBRADO_A_MENOR: 'Cobrado abaixo do cotado',
+}
+
+export const DECISION: Record<string, string> = {
+  APROVADO: 'Aprovado o cobrado',
+  APROVADO_COTADO: 'Aprovado o cotado (diferença contestada)',
+  CONTESTADO: 'Contestado',
+}
+export const CONTEST: Record<string, string> = { ABERTA: 'Contestação aberta', ACEITA: 'Contestação aceita', RECUSADA: 'Contestação recusada' }
+
+export const INVOICE_STATUS: Record<string, { label: string; className: string }> = {
+  ABERTA: { label: 'Aberta', className: 'border-amber-500/50 text-amber-700 dark:text-amber-300' },
+  APROVADA: { label: 'Aprovada para pagar', className: 'border-sky-500/40 text-sky-700 dark:text-sky-300' },
+  PAGA: { label: 'Paga', className: 'border-[#006300]/40 text-[#006300] dark:text-[#0ca30c]' },
+  CANCELADA: { label: 'Cancelada', className: 'text-muted-foreground line-through' },
+}
+
+/** Chave de 44 dígitos agrupada de 4 em 4 (como no DACTE/DANFE). */
+export const formatKey = (k: string | null | undefined) => (k ? k.replace(/(\d{4})(?=\d)/g, '$1 ') : '—')

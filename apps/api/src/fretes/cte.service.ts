@@ -338,6 +338,7 @@ export class CteService {
     assertCan(user, 'fretes_cte', 'edit')
     const c = await this.find(user, id)
     if (c.fiscalStatus === 'CANCELADO') throw new BadRequestException('CT-e cancelado.')
+    if (c.invoiceId && (await this.prisma.freightInvoice.count({ where: { id: c.invoiceId, status: { in: ['APROVADA', 'PAGA'] } } }))) throw new BadRequestException('CT-e de fatura aprovada ou paga: reabra a fatura para mudar a decisão.')
     const note = cleanText(d.note, 1000) || null
     if (d.decision !== 'APROVADO' && (!note || note.length < 5)) throw new BadRequestException('Explique o motivo (ex.: frete peso acima da tabela, TDE sem o cliente estar na lista).')
     let approvedValue: number | null

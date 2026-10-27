@@ -269,13 +269,46 @@ export function icmsRateFor(rule: RuleLike, settings: CalcSettings, input: Pick<
 }
 
 /** Data prevista somando dias úteis (sábado e domingo não contam; feriados não são conhecidos pelo sistema). */
+/** Domingo de Páscoa (algoritmo de Meeus/Jones/Butcher), em UTC. */
+function easter(year: number) {
+  const a = year % 19
+  const b = Math.floor(year / 100)
+  const c = year % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const month = Math.floor((h + l - 7 * m + 114) / 31)
+  const day = ((h + l - 7 * m + 114) % 31) + 1
+  return Date.UTC(year, month - 1, day)
+}
+
+const holidayCache = new Map<number, Set<string>>()
+/** Feriados nacionais (Lei 662/1949 e alterações, Lei 14.759/2023): fixos e a Sexta-feira Santa. Estaduais e municipais ficam de fora. */
+export function nationalHolidays(year: number) {
+  let set = holidayCache.get(year)
+  if (!set) {
+    const fixed = ['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25'].map((md) => `${year}-${md}`)
+    const goodFriday = new Date(easter(year) - 2 * 86_400_000).toISOString().slice(0, 10)
+    set = new Set([...fixed, goodFriday])
+    holidayCache.set(year, set)
+  }
+  return set
+}
+
+/** Soma dias úteis: pula sábados, domingos e feriados nacionais. */
 export function addBusinessDays(from: Date, days: number) {
   const d = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()))
   let left = Math.max(0, Math.trunc(days))
   while (left > 0) {
     d.setUTCDate(d.getUTCDate() + 1)
     const wd = d.getUTCDay()
-    if (wd !== 0 && wd !== 6) left--
+    if (wd !== 0 && wd !== 6 && !nationalHolidays(d.getUTCFullYear()).has(d.toISOString().slice(0, 10))) left--
   }
   return d
 }

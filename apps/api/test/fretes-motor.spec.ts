@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_COMPONENTS, DEFAULT_SETTINGS } from '../src/fretes/catalogo'
 import { normalizeCep, ufByCep } from '../src/fretes/cep'
-import { addBusinessDays, calculate, matchRule, measure, type RuleLike, weights } from '../src/fretes/motor'
+import { addBusinessDays, calculate, nationalHolidays, matchRule, measure, type RuleLike, weights } from '../src/fretes/motor'
 
 const rule = (p: Partial<RuleLike>): RuleLike => ({ cepStart: null, cepEnd: null, uf: null, city: null, weightMin: 0, weightMax: null, deadlineDays: null, restricted: false, values: {}, ...p })
 
@@ -107,6 +107,11 @@ describe('fretes: CEP e prazo', () => {
   it('dias úteis pulam o fim de semana', () => {
     // 23/10/2026 é sexta-feira
     expect(addBusinessDays(new Date('2026-10-23T12:00:00Z'), 1).toISOString().slice(0, 10)).toBe('2026-10-26')
-    expect(addBusinessDays(new Date('2026-10-23T12:00:00Z'), 6).toISOString().slice(0, 10)).toBe('2026-11-02')
+    expect([...nationalHolidays(2026)]).toContain('2026-04-03')
+    // 02/11 (Finados) é feriado nacional: pula para 03/11.
+    expect(addBusinessDays(new Date('2026-10-23T12:00:00Z'), 6).toISOString().slice(0, 10)).toBe('2026-11-03')
+    // Sexta-feira Santa de 2027 (26/03) e Tiradentes.
+    expect(addBusinessDays(new Date('2027-03-25T12:00:00Z'), 1).toISOString().slice(0, 10)).toBe('2027-03-29')
+    expect(addBusinessDays(new Date('2027-04-20T12:00:00Z'), 1).toISOString().slice(0, 10)).toBe('2027-04-22')
   })
 })
