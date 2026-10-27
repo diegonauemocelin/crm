@@ -13,6 +13,7 @@ import { dummyVerify, hashPassword, needsRehash, passwordProblems, verifyPasswor
 import { SecurityService } from './security.service'
 import { outsideHoursMessage, withinLoginHours } from '../common/horario-acesso'
 import { checkTotp } from './totp'
+import { refreshTtlSec } from './cookies'
 
 export const MAX_FAILED_LOGINS = 5
 const LOCK_MINUTES = [15, 60, 240]
@@ -55,7 +56,7 @@ export class AuthService {
     private readonly security: SecurityService,
   ) {}
 
-  async login(emailRaw: string, password: string, ctx: RequestCtx): Promise<LoginResult> {
+  async login(emailRaw: string, password: string, ctx: RequestCtx, app = false): Promise<LoginResult> {
     const email = emailRaw.trim().toLowerCase()
     const tenantId = await this.tenants.defaultId()
     const user = await this.prisma.user.findUnique({
@@ -98,12 +99,12 @@ export class AuthService {
       return { status: 'mfa_required', mfaToken }
     }
 
-    const session = await this.startSession(user.id, user.tenantId, user.email, ctx, 'auth.login')
+    const session = await this.startSession(user.id, user.tenantId, user.email, ctx, 'auth.login', app)
     const pending = user.role.require2fa
     return { status: pending ? 'mfa_setup_required' : 'ok', ...session }
   }
 
-  async verifyMfa(mfaToken: string | undefined, code: string, ctx: RequestCtx) {
+  async verifyMfa(mfaToken: string | undefined, code: string, ctx: RequestCtx, app = false) {
     if (!mfaToken) throw new UnauthorizedException('Sessão de verificação expirada. Faça login novamente.')
     let payload: MfaPayload
     try {
@@ -133,12 +134,12 @@ export class AuthService {
       // Relógio do celular ou do servidor fora da hora: aceita, mas avisa no log para corrigir.
       if (Math.abs(totp.driftSeconds) >= 60) this.logger.warn(`2FA aceito com ${totp.driftSeconds} s de diferença de relógio (${user.email}). Confira o horário do servidor (timedatectl) e do celular.`)
     }
-    const session = await this.startSession(user.id, user.tenantId, user.email, ctx, usedRecovery ? 'auth.login_recovery_code' : 'auth.login')
+    const session = await this.startSession(user.id, user.tenantId, user.email, ctx, usedRecovery ? 'auth.login_recovery_code' : 'auth.login', app)
     if (usedRecovery) this.security.alert(user.id, 'codigo_recuperacao', ctx)
     return { status: 'ok' as const, ...session }
   }
 
-  async refresh(refreshToken: string | undefined, ctx: RequestCtx) {
+  async refresh(refreshToken: string | undefined, ctx: RequestCtx, app = false) {
     if (!refreshToken) throw new UnauthorizedException()
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash: sha256(refreshToken) },
@@ -147,7 +148,11 @@ export class AuthService {
     if (!stored) throw new UnauthorizedException()
 
     // Token já trocado ou revogado sendo reapresentado: indício de roubo. Derruba a sessão inteira.
-    if (stored.revokedAt || stored.replacedAt) {
+    // Resposta perdida: o celular pausou o app no meio da renovação e o token novo nunca chegou nem foi usado. Não é
+    // roubo: cancela o novo que ficou sem dono e renova a partir deste (antes, derrubava a sessão do app).
+    const lost = !stored.revokedAt && stored.replacedAt ? await this.prisma.refreshToken.findFirst({ where: { familyId: stored.familyId, revokedAt: null, replacedAt: null, createdAt: { gte: new Date(stored.replacedAt.getTime() - 5_000), lte: new Date(stored.replacedAt.getTime() + 5_000) } } }) : null
+    if (lost) await this.prisma.refreshToken.update({ where: { id: lost.id }, data: { revokedAt: new Date() } })
+    else if (stored.revokedAt || stored.replacedAt) {
       await this.prisma.refreshToken.updateMany({ where: { familyId: stored.familyId, revokedAt: null }, data: { revokedAt: new Date() } })
       await this.audit.log({
         tenantId: stored.user.tenantId,
@@ -172,7 +177,7 @@ export class AuthService {
           userId: stored.userId,
           familyId: stored.familyId,
           tokenHash: sha256(newToken),
-          expiresAt: new Date(Date.now() + env.refreshTokenTtlSec * 1000),
+          expiresAt: new Date(Date.now() + refreshTtlSec(app) * 1000),
           ip: ctx.ip,
           userAgent: ctx.userAgent,
         },
@@ -286,7 +291,7 @@ export class AuthService {
     return this.jwt.signAsync(payload, { expiresIn: env.accessTokenTtlSec })
   }
 
-  private async startSession(userId: string, tenantId: string, email: string, ctx: RequestCtx, action: string) {
+  private async startSession(userId: string, tenantId: string, email: string, ctx: RequestCtx, action: string, app = false) {
     const user = await this.prisma.user.update({
       where: { id: userId },
       data: { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date(), lastLoginIp: ctx.ip },
@@ -300,7 +305,7 @@ export class AuthService {
         userId,
         familyId,
         tokenHash: sha256(refreshToken),
-        expiresAt: new Date(Date.now() + env.refreshTokenTtlSec * 1000),
+        expiresAt: new Date(Date.now() + refreshTtlSec(app) * 1000),
         ip: ctx.ip,
         userAgent: ctx.userAgent,
       },

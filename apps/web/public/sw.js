@@ -17,14 +17,19 @@ self.addEventListener('push', (event) => {
   }
   const title = data.title || 'Nova mensagem'
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body: data.body || '',
-      icon: '/api/app/icone.png',
-      badge: '/app-badge.png',
-      tag: data.tag || undefined,
-      renotify: !!data.tag,
-      data: { url: data.url || '/app' },
-    }),
+    (async () => {
+      await self.registration.showNotification(title, {
+        body: data.body || '',
+        icon: '/api/app/icone.png',
+        badge: '/app-badge.png',
+        tag: data.tag || undefined,
+        renotify: !!data.tag,
+        data: { url: data.url || '/app' },
+      })
+      // Bolinha no ícone do app: uma por conversa com aviso na bandeja (o app acerta o número ao abrir).
+      const shown = await self.registration.getNotifications()
+      if (self.navigator.setAppBadge) await self.navigator.setAppBadge(shown.length).catch(() => undefined)
+    })(),
   )
 })
 

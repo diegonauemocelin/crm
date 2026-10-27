@@ -47,6 +47,8 @@ function loadEnv() {
     whatsappMaxConnected: Math.max(1, Number(optional('WHATSAPP_MAX_CONNECTED', '3')) || 3),
     accessTokenTtlSec: 15 * 60,
     refreshTokenTtlSec: 12 * 60 * 60,
+    /** App instalado no celular: a sessão vale 30 dias sem uso (cada uso renova), para não pedir login toda hora. */
+    appRefreshTokenTtlSec: 30 * 24 * 60 * 60,
   }
 }
 

@@ -64,6 +64,13 @@ describe('Notificações do app', () => {
     expect(keys.privateKeyEnc).not.toContain(keys.publicKey)
   })
 
+  it('teste mostra o motivo quando a Apple recusa a notificação', async () => {
+    const { svc } = make([{ id: 's1', endpoint: 'https://web.push.apple.com/abc' }], { 'https://web.push.apple.com/abc': 403 })
+    const r = await svc.deliver('t1', ['u1'], { title: 'x', body: 'y', url: '/app' })
+    expect(r).toMatchObject({ devices: 1, sent: 0 })
+    expect(r.failures[0]).toMatch(/^Apple: 403/)
+  })
+
   it('sem ninguém para avisar não faz nada', async () => {
     const { svc } = make([])
     expect(await svc.notify('t1', [], { title: 'x', body: 'y', url: '/app' })).toBe(0)

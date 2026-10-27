@@ -64,32 +64,45 @@ export class PushService {
 
   /** Envia para todos os aparelhos dos usuários. Nunca derruba quem chamou. */
   async notify(tenantId: string, userIds: string[], msg: PushMessage) {
+    return (await this.deliver(tenantId, userIds, msg)).sent
+  }
+
+  /**
+   * Entrega com o resultado de cada aparelho: quantos receberam e, dos que não, o motivo que o serviço de notificação
+   * respondeu (Apple, Google...). O teste da tela Conta mostra isso para achar o problema.
+   */
+  async deliver(tenantId: string, userIds: string[], msg: PushMessage) {
     const ids = [...new Set(userIds)]
-    if (!ids.length) return 0
+    const result = { devices: 0, sent: 0, failures: [] as string[] }
+    if (!ids.length) return result
     try {
       const subs = await this.prisma.pushSubscription.findMany({ where: { tenantId, userId: { in: ids } } })
-      if (!subs.length) return 0
+      result.devices = subs.length
+      if (!subs.length) return result
       const k = await this.keys(tenantId)
       const subject = env.appUrl.startsWith('https://') ? env.appUrl : 'mailto:crm@localhost.invalid'
       const payload = JSON.stringify({ title: msg.title.slice(0, 80), body: msg.body.slice(0, 180), url: msg.url, tag: msg.tag })
-      let sent = 0
       await Promise.all(
         subs.map(async (s) => {
+          const where = s.endpoint.includes('apple.com') ? 'Apple' : s.endpoint.includes('google') ? 'Google' : s.endpoint.includes('mozilla') ? 'Firefox' : 'navegador'
           try {
             await this.sender({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { vapidDetails: { subject, publicKey: k.publicKey, privateKey: k.privateKey }, TTL: 3600, urgency: 'high', timeout: 10_000 })
-            sent++
+            result.sent++
             await this.prisma.pushSubscription.update({ where: { id: s.id }, data: { lastUsedAt: new Date() } })
           } catch (err) {
-            const code = (err as { statusCode?: number }).statusCode
-            if (code === 404 || code === 410) await this.prisma.pushSubscription.deleteMany({ where: { id: s.id } })
-            else this.logger.warn(`Notificação não saiu (${code ?? 'sem código'}): ${(err as Error).message}`)
+            const e = err as { statusCode?: number; body?: unknown }
+            const detail = `${where}: ${e.statusCode ?? 'sem resposta'} ${typeof e.body === 'string' ? e.body.slice(0, 200) : (err as Error).message}`.trim()
+            result.failures.push(detail)
+            if (e.statusCode === 404 || e.statusCode === 410) await this.prisma.pushSubscription.deleteMany({ where: { id: s.id } })
+            else this.logger.warn(`Notificação não saiu (${detail})`)
           }
         }),
       )
-      return sent
+      return result
     } catch (err) {
       this.logger.warn(`Notificações: ${(err as Error).message}`)
-      return 0
+      result.failures.push((err as Error).message)
+      return result
     }
   }
 }

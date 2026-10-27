@@ -17,6 +17,15 @@ function csrfToken(): string {
   return document.cookie.split('; ').find((c) => c.startsWith('crm_csrf='))?.split('=')[1] ?? ''
 }
 
+/**
+ * App instalado na tela inicial do celular: o servidor dá uma sessão mais longa (30 dias sem uso), para não pedir
+ * login toda hora.
+ */
+function appHeader(): Record<string, string> {
+  const app = window.matchMedia?.('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
+  return app ? { 'X-CRM-App': '1' } : {}
+}
+
 /** "unavailable": servidor fora do ar (reiniciando no deploy) — a sessão continua valendo, não é para ir ao login. */
 type RefreshResult = 'ok' | 'denied' | 'unavailable'
 let refreshing: Promise<RefreshResult> | null = null
@@ -25,7 +34,7 @@ async function refreshSession(): Promise<RefreshResult> {
   refreshing ??= fetch('/api/auth/refresh', {
     method: 'POST',
     credentials: 'same-origin',
-    headers: { 'X-CSRF-Token': csrfToken() },
+    headers: { 'X-CSRF-Token': csrfToken(), ...appHeader() },
   })
     .then((r): RefreshResult => (r.ok ? 'ok' : r.status >= 500 ? 'unavailable' : 'denied'))
     .catch((): RefreshResult => 'unavailable')
@@ -97,6 +106,7 @@ async function request<T>(method: string, path: string, body?: Body, retry = tru
       headers: {
         ...(method !== 'GET' ? { 'X-CSRF-Token': csrfToken() } : {}),
         ...(body && !isForm ? { 'Content-Type': 'application/json' } : {}),
+        ...appHeader(),
       },
       body: isForm ? body : body ? JSON.stringify(body) : undefined,
     })
@@ -155,7 +165,7 @@ async function download(path: string, fallbackName: string, init: { method?: str
     res = await fetch(`/api${path}`, {
       method,
       credentials: 'same-origin',
-      headers: { ...(method !== 'GET' ? { 'X-CSRF-Token': csrfToken() } : {}), ...(init.body ? { 'Content-Type': 'application/json' } : {}) },
+      headers: { ...(method !== 'GET' ? { 'X-CSRF-Token': csrfToken() } : {}), ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...appHeader() },
       body: init.body ? JSON.stringify(init.body) : undefined,
     })
   } catch {

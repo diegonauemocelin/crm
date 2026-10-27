@@ -93,7 +93,6 @@ export class AppMovelController {
   @Post('push/teste')
   @HttpCode(200)
   async test(@CurrentUser() user: AuthUser) {
-    const sent = await this.push.notify(user.tenantId, [user.id], { title: 'Notificações ligadas', body: 'É assim que as mensagens novas vão aparecer.', url: '/app', tag: 'teste' })
-    return { sent }
+    return this.push.deliver(user.tenantId, [user.id], { title: 'Notificações ligadas', body: 'É assim que as mensagens novas vão aparecer.', url: '/app', tag: 'teste' })
   }
 }

@@ -154,6 +154,13 @@ export function AppConversas() {
   }, [list.data?.numbers, numbers])
   const waitingNumber = !numbers || (!!numbers.length && !qs.includes('numero='))
   const items = waitingNumber ? [] : (list.data?.items ?? [])
+  // Bolinha no ícone do app (iPhone e Android): conversas com mensagem não lida.
+  const unreadCount = list.data?.unreadConversations
+  useEffect(() => {
+    if (unreadCount === undefined) return
+    const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> }
+    void (unreadCount ? nav.setAppBadge?.(unreadCount) : nav.clearAppBadge?.())?.catch(() => undefined)
+  }, [unreadCount])
   const hasQueue = !!list.data?.numbers.some((n) => n.splitAttendance)
   return (
     <div className="relative min-h-full">
@@ -310,6 +317,17 @@ export function AppPainelFrame() {
   )
 }
 
+/**
+ * Manda uma notificação de teste e mostra o resultado de verdade: chegou ao serviço de notificação do celular
+ * (Apple, Google) ou o motivo da recusa.
+ */
+async function testPush() {
+  const r = await api.post<{ devices: number; sent: number; failures: string[] }>('/app/push/teste')
+  if (r.sent > 0) toast.success('Notificação de teste enviada. Feche o app: ela deve aparecer em alguns segundos.')
+  else if (!r.devices) toast.error('Este celular não ficou cadastrado para notificações. Desligue e ligue de novo aqui, e toque em Permitir.', { duration: 15_000 })
+  else toast.error(`A notificação não saiu: ${r.failures.join(' · ') || 'sem resposta'}. Mande este texto para o suporte.`, { duration: 30_000 })
+}
+
 /** Conta: quem está usando, notificações, tema e sair. */
 export function AppConta() {
   const { me, logout } = useAuth()
@@ -324,8 +342,7 @@ export function AppConta() {
     try {
       if (on) {
         await enablePush()
-        await api.post('/app/push/teste')
-        toast.success('Notificações ligadas. Mandamos uma de teste.')
+        await testPush()
       } else {
         await disablePush()
         toast.success('Notificações desligadas neste celular.')
@@ -368,6 +385,11 @@ export function AppConta() {
                     : 'Este navegador não recebe notificações.'
                   : 'Ligue para receber as mensagens novas no celular.'}
           </p>
+          {push === 'ligado' && (
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void testPush().catch((err: unknown) => toast.error(errorMessage(err)))}>
+              <BellIcon /> Testar notificação
+            </Button>
+          )}
         </section>
 
         {!isInstalledApp() && <InstallHelp />}

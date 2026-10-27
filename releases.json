@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.99.4",
+      "date": "2026-10-27",
+      "title": "App no celular: não desconecta e notificações com diagnóstico",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "App no celular",
+          "text": "O app instalado no celular não desconecta mais à toa: a sessão vale 30 dias sem uso (cada uso renova), e uma renovação interrompida pelo celular (app pausado no meio) não derruba mais o acesso."
+        },
+        {
+          "type": "melhoria",
+          "area": "App no celular",
+          "text": "Em Conta, o botão Testar notificação mostra se a notificação saiu ou o motivo exato da recusa (ex.: Apple), e avisa quando o celular não ficou cadastrado."
+        },
+        {
+          "type": "novo",
+          "area": "App no celular",
+          "text": "Bolinha com o número de conversas não lidas no ícone do app (iPhone com iOS 16.4 ou mais novo e Android)."
+        }
+      ]
+    },
+    {
       "version": "0.99.3",
       "date": "2026-10-26",
       "title": "App no celular com o ícone da Usaparts",
