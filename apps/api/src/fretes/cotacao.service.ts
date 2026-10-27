@@ -134,15 +134,14 @@ export class CotacaoService {
 
   /**
    * Atualiza as alíquotas internas pelos XMLs de CT-e: cada frete dentro do mesmo estado com ICMS tributado vira a
-   * alíquota daquela UF (vale o CT-e mais recente). O que mudou fica na auditoria com a chave do CT-e. Quando a captura
-   * automática de CT-e entrar, ela chama este mesmo passo.
+   * alíquota daquela UF (vale o CT-e mais recente).
    */
   async learnIcmsFromCtes(user: AuthUser, files: Express.Multer.File[], ctx: RequestCtx) {
     assertCan(user, 'fretes_filiais', 'edit')
     if (allowedUnits(user, 'fretes_filiais')) throw new ForbiddenException('Só quem tem acesso a todas as filiais altera as alíquotas.')
     if (!files?.length) throw new BadRequestException('Envie os arquivos XML dos CT-es.')
     const ignored: { file: string; reason: string }[] = []
-    const best = new Map<string, Extract<RateLearning, { ok: true }>>()
+    const learnings: Extract<RateLearning, { ok: true }>[] = []
     for (const f of files.slice(0, 200)) {
       const name = cleanText(f.originalname, 120)
       let learned: RateLearning
@@ -152,27 +151,40 @@ export class CotacaoService {
         ignored.push({ file: name, reason: (e as Error).message })
         continue
       }
-      if (!learned.ok) {
-        ignored.push({ file: name, reason: learned.reason })
-        continue
-      }
-      const cur = best.get(learned.uf)
-      if (!cur || (learned.issuedAt ?? '') > (cur.issuedAt ?? '')) best.set(learned.uf, learned)
+      if (!learned.ok) ignored.push({ file: name, reason: learned.reason })
+      else learnings.push(learned)
+    }
+    const r = await this.applyIcmsLearnings(user, learnings, ctx)
+    return { read: files.length, ...r, ignored }
+  }
+
+  /**
+   * Grava as alíquotas internas aprendidas dos CT-es (vale o mais recente de cada UF). Chamado pelo botão da tela e
+   * pela importação de CT-e (automático, sem exigir a permissão de Filiais); fica na auditoria com a chave do CT-e.
+   */
+  async applyIcmsLearnings(user: AuthUser, learnings: Extract<RateLearning, { ok: true }>[], ctx: RequestCtx, automatic = false) {
+    const best = new Map<string, Extract<RateLearning, { ok: true }>>()
+    for (const l of learnings) {
+      const cur = best.get(l.uf)
+      if (!cur || (l.issuedAt ?? '') > (cur.issuedAt ?? '')) best.set(l.uf, l)
     }
     const table = await this.icmsRates(user.tenantId)
     const internas = { ...table.internas }
     const origem = { ...(table.origem ?? {}) }
     const updated: { uf: string; from: number | null; to: number; cte: string | null }[] = []
     for (const [uf, l] of best) {
+      // Na importação automática, um CT-e mais antigo que o já usado não volta a alíquota.
+      const prev = origem[uf]
+      if (automatic && prev?.fonte === 'cte' && prev.data && l.issuedAt && l.issuedAt.slice(0, 10) < prev.data) continue
       if (internas[uf] !== l.rate) updated.push({ uf, from: internas[uf] ?? null, to: l.rate, cte: l.key })
       internas[uf] = l.rate
       origem[uf] = { fonte: 'cte', cte: l.key, data: l.issuedAt?.slice(0, 10) ?? null, nota: l.note }
     }
     if (best.size) {
       await this.settings.set<IcmsTable>(user.tenantId, ICMS_KEY, { internas, origem })
-      await this.audit.byUser(user, ctx, 'frete.icms.aprendido_cte', 'tenant_setting', ICMS_KEY, { alteradas: updated, ctes: [...best.values()].map((l) => ({ uf: l.uf, aliquota: l.rate, chave: l.key })), ignorados: ignored.length })
+      if (updated.length || !automatic) await this.audit.byUser(user, ctx, 'frete.icms.aprendido_cte', 'tenant_setting', ICMS_KEY, { automatico: automatic, alteradas: updated, ctes: [...best.values()].map((l) => ({ uf: l.uf, aliquota: l.rate, chave: l.key })) })
     }
-    return { read: files.length, used: [...best.values()].map((l) => ({ uf: l.uf, rate: l.rate, cte: l.key, note: l.note })), updated, ignored, internas, origem }
+    return { used: [...best.values()].map((l) => ({ uf: l.uf, rate: l.rate, cte: l.key, note: l.note })), updated, internas, origem }
   }
 
   /** Cidade e UF do CEP: cache local; senão ViaCEP (serviço público). Sem resposta, a UF sai da faixa oficial de CEPs. */
@@ -241,7 +253,7 @@ export class CotacaoService {
     t: Prisma.FreightTableGetPayload<{ include: { carrier: true } }>,
     p: Awaited<ReturnType<CotacaoService['prepare']>>,
     d: QuoteInput,
-    opts: { allowExpired: boolean; forceVersionId?: string; fees?: ComponentDef[]; icmsRate?: number | null },
+    opts: { allowExpired: boolean; forceVersionId?: string; fees?: ComponentDef[]; icmsRate?: number | null; versionAt?: string | null },
   ): Promise<QuoteResult> {
     const base: QuoteResult = {
       tableId: t.id,
@@ -282,7 +294,7 @@ export class CotacaoService {
       if (t.valueMin !== null && d.cargoValue < Number(t.valueMin)) return no('NAO_APLICAVEL', `Valor abaixo do mínimo da tabela (R$ ${Number(t.valueMin).toFixed(2)}).`)
       if (t.valueMax !== null && d.cargoValue > Number(t.valueMax)) return no('NAO_APLICAVEL', `Valor acima do máximo da tabela (R$ ${Number(t.valueMax).toFixed(2)}).`)
     }
-    const versionId = opts.forceVersionId ?? t.publishedVersionId
+    const versionId = opts.forceVersionId ?? opts.versionAt ?? t.publishedVersionId
     if (!versionId) return no('SEM_VERSAO', 'Tabela sem versão publicada.')
     const v = await this.prisma.freightTableVersion.findUnique({ where: { id: versionId } })
     if (!v) return no('SEM_VERSAO', 'Versão da tabela não encontrada.')
@@ -583,6 +595,29 @@ export class CotacaoService {
       out.push({ tableId: o.tableId, carrierName: o.carrierName, versionNumber: o.versionNumber, original: o.total, recalculated: r.total, same: r.status === 'OK' && r.total === o.total, reason: r.status === 'OK' ? null : r.reason })
     }
     return { code: q.code, quoteDate: iso(q.quoteDate), allSame: out.every((x) => x.same), items: out }
+  }
+
+  /**
+   * Valor esperado de um CT-e sem cotação ligada: recalcula com as tabelas da transportadora vigentes na data do CT-e
+   * (a mais barata que atende, na versão publicada naquela data), com as taxas da lista do destinatário. null quando
+   * nenhuma tabela calcula.
+   */
+  async expectedByTable(user: AuthUser, d: { unitId: string; carrierId: string; destZip: string; destCity: string | null; destUf: string | null; personType: 'PF' | 'PJ'; recipientDoc: string | null; cargoValue: number; weight: number; date: Date }) {
+    const input: QuoteInput = { unitId: d.unitId, destZip: d.destZip, destCity: d.destCity, destUf: d.destUf, personType: d.personType, cargoValue: d.cargoValue, weight: d.weight, quoteDate: d.date.toISOString().slice(0, 10) }
+    let p: Awaited<ReturnType<CotacaoService['prepare']>>
+    try {
+      p = await this.prepare(user, input)
+    } catch {
+      return null
+    }
+    const tables = await this.prisma.freightTable.findMany({
+      where: { tenantId: user.tenantId, carrierId: d.carrierId, status: { not: 'RASCUNHO' }, OR: [{ unitIds: { isEmpty: true } }, { unitIds: { has: d.unitId } }] },
+      include: { carrier: true },
+    })
+    const fees = d.recipientDoc ? await this.prisma.freightRecipientFee.findMany({ where: { carrierId: d.carrierId, doc: d.recipientDoc } }) : []
+    const versions = await this.prisma.freightTableVersion.findMany({ where: { tableId: { in: tables.map((t) => t.id) }, publishedAt: { not: null, lte: d.date } }, orderBy: { publishedAt: 'desc' }, select: { id: true, tableId: true } })
+    const results = await Promise.all(tables.map((t) => this.evaluate(t, p, input, { allowExpired: false, fees: fees.map(feeComponent), versionAt: versions.find((v) => v.tableId === t.id)?.id ?? null })))
+    return results.filter((r) => r.status === 'OK' && r.total !== null).sort((a, b) => a.total! - b.total!)[0] ?? null
   }
 
   /** Simulador do editor de componentes: calcula com uma versão específica (inclusive rascunho), sem salvar. */

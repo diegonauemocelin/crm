@@ -2803,3 +2803,154 @@ model FreightRecipientFee {
   @@index([carrierId, doc])
   @@map("freight_recipient_fees")
 }
+
+/// Pedido expedido: liga a venda (pedido/NF) à cotação escolhida, à transportadora e ao CT-e.
+model FreightShipment {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  code          Int       @default(autoincrement())
+  unitId        String    @db.Uuid
+  orderNumber   String?
+  invoiceNumber String?
+  /// Chave da NF-e (44 dígitos).
+  invoiceKey    String?   @db.Char(44)
+  customerName  String?
+  customerDoc   String?
+  personType    String    @default("PJ")
+  destZip       String?   @db.Char(8)
+  destCity      String?
+  destUf        String?   @db.Char(2)
+  cargoValue    Decimal?  @db.Decimal(14, 2)
+  weight        Decimal?  @db.Decimal(12, 3)
+  volumesCount  Int?
+  carrierId     String?   @db.Uuid
+  quoteId       String?   @db.Uuid
+  /// Opção escolhida na cotação (tabela, versão, componentes e total): a referência da conciliação.
+  expected      Json?
+  expectedTotal Decimal?  @db.Decimal(14, 2)
+  /// AGUARDANDO_COTACAO | COTADO | AGUARDANDO_APROVACAO | APROVADO | AGUARDANDO_COLETA | DESPACHADO | EM_TRANSITO |
+  /// ENTREGUE | COM_OCORRENCIA | AGUARDANDO_CTE | AGUARDANDO_CONCILIACAO | CONCILIADO | CANCELADO
+  status        String    @default("AGUARDANDO_COTACAO")
+  collectedAt   DateTime?
+  shippedAt     DateTime?
+  expectedDeliveryAt DateTime? @db.Date
+  deliveredAt   DateTime?
+  trackingCode  String?
+  notes         String?
+  createdById   String    @db.Uuid
+  createdByName String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  events FreightShipmentEvent[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, unitId, createdAt])
+  @@index([tenantId, invoiceKey])
+  @@index([tenantId, invoiceNumber])
+  @@map("freight_shipments")
+}
+
+model FreightShipmentEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  shipmentId String   @db.Uuid
+  status     String
+  note       String?
+  userName   String
+  createdAt  DateTime @default(now())
+
+  shipment FreightShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId, createdAt])
+  @@map("freight_shipment_events")
+}
+
+/// CT-e recebido (XML). A situação fiscal só é "autorizado" quando conferida na SEFAZ; o protocolo do XML é informativo.
+model FreightCte {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  key           String    @db.Char(44)
+  number        String?
+  series        String?
+  issuedAt      DateTime?
+  emitCnpj      String?
+  emitName      String?
+  carrierId     String?   @db.Uuid
+  unitId        String?   @db.Uuid
+  tomadorDoc    String?
+  senderDoc     String?
+  recipientDoc  String?
+  recipientName String?
+  ufIni         String?   @db.Char(2)
+  ufFim         String?   @db.Char(2)
+  cityIni       String?
+  cityFim       String?
+  destZip       String?   @db.Char(8)
+  cfop          String?
+  total         Decimal   @db.Decimal(14, 2)
+  cargoValue    Decimal?  @db.Decimal(14, 2)
+  weight        Decimal?  @db.Decimal(12, 3)
+  components    Json      @default("[]")
+  icms          Json?
+  nfeKeys       String[]  @default([])
+  /// NAO_VERIFICADO | CANCELADO (evento de cancelamento importado). Conferência na SEFAZ entra com a integração.
+  fiscalStatus  String    @default("NAO_VERIFICADO")
+  protocol      String?
+  protocolStatus String?
+  shipmentId    String?   @db.Uuid
+  fileId        String?   @db.Uuid
+  importedByName String
+  createdAt     DateTime  @default(now())
+
+  /// Conciliação: PENDENTE | CONCILIADO | DIVERGENTE | SEM_REFERENCIA | CANCELADO
+  recStatus     String    @default("PENDENTE")
+  recTypes      String[]  @default([])
+  /// De onde veio o valor esperado: COTACAO (escolhida no pedido) | TABELA (recalculado pela tabela vigente na data do CT-e)
+  recSource     String?
+  expectedTotal Decimal?  @db.Decimal(14, 2)
+  difference    Decimal?  @db.Decimal(14, 2)
+  recDetail     Json?
+  recAt         DateTime?
+  /// Decisão: APROVADO (paga o cobrado) | APROVADO_COTADO (paga o cotado) | CONTESTADO
+  decision      String?
+  approvedValue Decimal?  @db.Decimal(14, 2)
+  decisionNote  String?
+  decidedByName String?
+  decidedAt     DateTime?
+  /// Contestação: ABERTA | ACEITA | RECUSADA
+  contestStatus String?
+  creditValue   Decimal?  @db.Decimal(14, 2)
+  contestNote   String?
+  invoiceId     String?   @db.Uuid
+
+  @@unique([tenantId, key])
+  @@index([tenantId, issuedAt])
+  @@index([tenantId, recStatus])
+  @@index([tenantId, carrierId])
+  @@map("freight_ctes")
+}
+
+/// Fatura (cobrança) da transportadora, com os CT-es que ela cobra e o pagamento.
+model FreightInvoice {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  carrierId   String    @db.Uuid
+  unitId      String?   @db.Uuid
+  number      String
+  issuedAt    DateTime? @db.Date
+  dueAt       DateTime  @db.Date
+  total       Decimal   @db.Decimal(14, 2)
+  /// ABERTA | APROVADA | PAGA | CANCELADA
+  status      String    @default("ABERTA")
+  paidAt      DateTime? @db.Date
+  paidValue   Decimal?  @db.Decimal(14, 2)
+  paymentNote String?
+  notes       String?
+  createdByName String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, carrierId, number])
+  @@index([tenantId, dueAt])
+  @@map("freight_invoices")
+}

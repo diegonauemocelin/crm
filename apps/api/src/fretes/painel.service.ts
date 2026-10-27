@@ -14,15 +14,15 @@ import type { QuoteResult } from './cotacao.service'
 import { normalizeCep, normalizeUf, validCnpj } from './cep'
 import { todayUtc } from './tabelas.service'
 
-const FREIGHT_MODULES: FreightModule[] = ['fretes_painel', 'fretes_cotacao', 'fretes_tabelas', 'fretes_transportadoras', 'fretes_filiais']
+const FREIGHT_MODULES: FreightModule[] = ['fretes_painel', 'fretes_cotacao', 'fretes_tabelas', 'fretes_transportadoras', 'fretes_filiais', 'fretes_pedidos', 'fretes_cte', 'fretes_financeiro']
 const DAY = 86_400_000
 
-/** Unidades da Usaparts (endereços das lojas). CNPJ de cada filial fica para o cadastro: não é inventado aqui. */
+/** Unidades da Usaparts: endereços das lojas e CNPJs que constam nos contratos e CT-es das transportadoras. */
 const USAPARTS_UNITS = [
-  { name: 'Matriz - Maravilha/SC', city: 'Maravilha', state: 'SC', zip: '89874000', address: 'Rod. BR 282, km 606, Industrial', isHeadquarters: true },
-  { name: 'Filial - Cascavel/PR', city: 'Cascavel', state: 'PR', zip: '85804606', address: 'R. Padre Pedro Canísio Henz, 164', isHeadquarters: false },
-  { name: 'Filial - Cachoeirinha/RS', city: 'Cachoeirinha', state: 'RS', zip: '94930625', address: 'R. Nelson Teichmann, 115, Cruzeiro', isHeadquarters: false },
-  { name: 'Filial - Itajaí/SC', city: 'Itajaí', state: 'SC', zip: '88316002', address: 'Rod. Dep. Antônio Heil, 4621, Itaipava', isHeadquarters: false },
+  { name: 'Matriz - Maravilha/SC', city: 'Maravilha', state: 'SC', zip: '89874000', address: 'Rod. BR 282, km 606, Industrial', isHeadquarters: true, cnpj: '01704079000102' },
+  { name: 'Filial - Cascavel/PR', city: 'Cascavel', state: 'PR', zip: '85804606', address: 'R. Padre Pedro Canísio Henz, 164', isHeadquarters: false, cnpj: '01704079000366' },
+  { name: 'Filial - Cachoeirinha/RS', city: 'Cachoeirinha', state: 'RS', zip: '94930625', address: 'R. Nelson Teichmann, 115, Cruzeiro', isHeadquarters: false, cnpj: '01704079000285' },
+  { name: 'Filial - Itajaí/SC', city: 'Itajaí', state: 'SC', zip: '88316002', address: 'Rod. Dep. Antônio Heil, 4621, Itaipava', isHeadquarters: false, cnpj: '01704079000447' },
 ]
 
 /** Contexto do módulo (filiais liberadas, listas e variáveis), filiais e painel de indicadores. */
@@ -109,8 +109,8 @@ export class PainelService {
       if (!same) {
         await this.prisma.unit.create({ data: { tenantId: user.tenantId, ...u } })
         created.push(u.name)
-      } else if (!same.zip || !same.address || !same.city || !same.state) {
-        await this.prisma.unit.update({ where: { id: same.id }, data: { zip: same.zip ?? u.zip, address: same.address ?? u.address, city: same.city ?? u.city, state: same.state ?? u.state } })
+      } else if (!same.zip || !same.address || !same.city || !same.state || !same.cnpj) {
+        await this.prisma.unit.update({ where: { id: same.id }, data: { zip: same.zip ?? u.zip, address: same.address ?? u.address, city: same.city ?? u.city, state: same.state ?? u.state, cnpj: same.cnpj ?? u.cnpj } })
         completed.push(same.name)
       }
     }
@@ -173,6 +173,18 @@ export class PainelService {
     ])
     const n = (d: Prisma.Decimal | null | undefined) => (d === null || d === undefined ? 0 : Number(d))
     const total = n(sel._sum.selectedTotal)
+    // CT-es (cobrado de verdade), faturas e entregas: os números que vêm depois da cotação.
+    const cteWhere: Prisma.FreightCteWhereInput = { tenantId: user.tenantId, fiscalStatus: { not: 'CANCELADO' }, issuedAt: { gte: from, lt: end }, ...(scope ? { unitId: { in: scope } } : {}) }
+    const shipWhere: Prisma.FreightShipmentWhereInput = { tenantId: user.tenantId, createdAt: { gte: from, lt: end }, ...(scope ? { unitId: { in: scope } } : {}) }
+    const [cteAgg, cteByStatus, pendingDecision, invOpen, invPaid, delivered] = await Promise.all([
+      this.prisma.freightCte.aggregate({ where: cteWhere, _count: { _all: true }, _sum: { total: true, expectedTotal: true, approvedValue: true, creditValue: true, difference: true } }),
+      this.prisma.freightCte.groupBy({ by: ['recStatus'], where: cteWhere, _count: { _all: true } }),
+      this.prisma.freightCte.count({ where: { ...cteWhere, decision: null, recStatus: { in: ['DIVERGENTE', 'SEM_REFERENCIA'] } } }),
+      this.prisma.freightInvoice.aggregate({ where: { tenantId: user.tenantId, status: { in: ['ABERTA', 'APROVADA'] }, ...(scope ? { unitId: { in: scope } } : {}) }, _count: { _all: true }, _sum: { total: true } }),
+      this.prisma.freightInvoice.aggregate({ where: { tenantId: user.tenantId, status: 'PAGA', paidAt: { gte: from, lt: end }, ...(scope ? { unitId: { in: scope } } : {}) }, _sum: { paidValue: true } }),
+      this.prisma.freightShipment.findMany({ where: { ...shipWhere, deliveredAt: { not: null }, expectedDeliveryAt: { not: null } }, select: { deliveredAt: true, expectedDeliveryAt: true }, take: 20_000 }),
+    ])
+    const onTime = delivered.filter((s) => s.deliveredAt!.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }) <= s.expectedDeliveryAt!.toISOString().slice(0, 10)).length
     return {
       period: { from: from.toISOString(), to: to.toISOString() },
       quotes: count,
@@ -194,6 +206,17 @@ export class PainelService {
         expired: expired.map((t) => ({ id: t.id, name: t.name, carrier: t.carrier.name, validTo: t.validTo.toISOString().slice(0, 10) })),
       },
       activeCarriers,
+      ctes: {
+        count: cteAgg._count._all,
+        charged: n(cteAgg._sum.total),
+        expected: n(cteAgg._sum.expectedTotal),
+        approved: n(cteAgg._sum.approvedValue),
+        recovered: n(cteAgg._sum.creditValue),
+        byStatus: Object.fromEntries(cteByStatus.map((s) => [s.recStatus, s._count._all])),
+        pendingDecision,
+      },
+      invoices: { open: invOpen._count._all, openTotal: n(invOpen._sum.total), paidInPeriod: n(invPaid._sum.paidValue) },
+      deliveries: { measured: delivered.length, onTime, pct: delivered.length ? (onTime / delivered.length) * 100 : null },
     }
   }
 }

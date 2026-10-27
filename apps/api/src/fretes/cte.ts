@@ -13,6 +13,19 @@ export interface CteData {
   cityIni: string | null
   cityFim: string | null
   cfop: string | null
+  emitName: string | null
+  senderDoc: string | null
+  recipientDoc: string | null
+  recipientName: string | null
+  /** Documento de quem paga o frete (tomador). */
+  tomadorDoc: string | null
+  destZip: string | null
+  cargoValue: number | null
+  /** Peso para o frete: peso base de cálculo, senão aferido, senão bruto (kg). */
+  weight: number | null
+  nfeKeys: string[]
+  protocol: string | null
+  protocolStatus: string | null
   total: number | null
   components: { name: string; value: number }[]
   icms: { cst: string | null; rate: number | null; base: number | null; value: number | null; baseReduction: number | null; group: string | null }
@@ -38,6 +51,21 @@ export function parseCteXml(raw: string): CteData {
   const emit = block(inf, 'emit') ?? ''
   const vPrest = block(inf, 'vPrest') ?? ''
   const components = [...vPrest.matchAll(/<(?:\w+:)?Comp>([\s\S]*?)<\/(?:\w+:)?Comp>/g)].map((m) => ({ name: tag(m[1]!, 'xNome') ?? '', value: num(tag(m[1]!, 'vComp')) ?? 0 }))
+  const doc = (b: string | null) => (b ? (tag(b, 'CNPJ') ?? tag(b, 'CPF')) : null)
+  const rem = block(inf, 'rem')
+  const dest = block(inf, 'dest')
+  const parties: Record<string, string | null> = { '0': doc(rem), '1': doc(block(inf, 'exped')), '2': doc(block(inf, 'receb')), '3': doc(dest) }
+  const toma3 = block(ide, 'toma3') ?? block(ide, 'toma03')
+  const toma4 = block(ide, 'toma4') ?? block(ide, 'toma04')
+  const tomaCode = toma3 ? tag(toma3, 'toma') : null
+  const tomadorDoc = toma4 ? doc(toma4) : tomaCode !== null ? (parties[tomaCode] ?? null) : null
+  const infCarga = block(inf, 'infCarga') ?? ''
+  const quants = [...infCarga.matchAll(/<(?:\w+:)?infQ>([\s\S]*?)<\/(?:\w+:)?infQ>/g)].map((m) => ({ unit: tag(m[1]!, 'cUnid'), kind: (tag(m[1]!, 'tpMed') ?? '').toUpperCase(), q: num(tag(m[1]!, 'qCarga')) }))
+  const kg = quants.filter((q) => q.unit === '01' && q.q !== null && q.q > 0)
+  const pick = (re: RegExp) => kg.find((q) => re.test(q.kind))?.q ?? null
+  const weight = pick(/BASE|CALC/) ?? pick(/AFERIDO/) ?? pick(/BRUTO/) ?? kg[0]?.q ?? null
+  const nfeKeys = [...inf.matchAll(/<(?:\w+:)?chave>(\d{44})<\/(?:\w+:)?chave>/g)].map((m) => m[1]!)
+  const prot = block(xml, 'infProt')
   const imp = block(inf, 'imp') ?? ''
   const icmsBlock = block(imp, 'ICMS') ?? ''
   const group = /<(?:\w+:)?(ICMS\w+)>/.exec(icmsBlock)?.[1] ?? null
@@ -52,6 +80,17 @@ export function parseCteXml(raw: string): CteData {
     cityIni: tag(ide, 'xMunIni'),
     cityFim: tag(ide, 'xMunFim'),
     cfop: tag(ide, 'CFOP'),
+    emitName: tag(emit, 'xNome'),
+    senderDoc: parties['0'] ?? null,
+    recipientDoc: parties['3'] ?? null,
+    recipientName: dest ? tag(dest, 'xNome') : null,
+    tomadorDoc,
+    destZip: dest ? (tag(block(dest, 'enderDest') ?? '', 'CEP') ?? null) : null,
+    cargoValue: num(tag(infCarga, 'vCarga')),
+    weight,
+    nfeKeys: [...new Set(nfeKeys)],
+    protocol: prot ? tag(prot, 'nProt') : null,
+    protocolStatus: prot ? tag(prot, 'cStat') : null,
     total: num(tag(vPrest, 'vTPrest')),
     components,
     icms: {
@@ -84,4 +123,12 @@ export function internalRateFrom(c: CteData): RateLearning {
     return { ok: true, uf: c.ufIni, rate: eff, key: c.key, issuedAt: c.issuedAt, note: `${rate}% com redução de base de ${baseReduction}%` }
   }
   return { ok: false, reason: `CST ${cst ?? '—'}: não é tributação normal, não serve de referência.`, key: c.key }
+}
+
+/** Evento de cancelamento do CT-e (procEventoCTe, tipo 110111): devolve a chave cancelada. Outro XML: null. */
+export function parseCteCancel(raw: string): { key: string; protocol: string | null } | null {
+  const ev = block(raw, 'infEvento')
+  if (!ev || tag(ev, 'tpEvento') !== '110111') return null
+  const key = tag(ev, 'chCTe')
+  return key && /^\d{44}$/.test(key) ? { key, protocol: tag(block(ev, 'evCancCTe') ?? ev, 'nProt') } : null
 }

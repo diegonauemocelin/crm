@@ -181,3 +181,36 @@ export const PERSON_TYPES = ['AMBOS', 'PF', 'PJ'] as const
 export const USAGES = ['COTACAO_CONCILIACAO', 'COTACAO', 'CONCILIACAO'] as const
 export const LOAD_TYPES = ['FRACIONADA', 'LOTACAO', 'DEDICADA'] as const
 export const GOODS_TYPES = ['Geral', 'Peças e componentes', 'Filtros', 'Material rodante', 'Volumosa', 'Perigosa', 'Frágil'] as const
+
+/** Situações do pedido expedido, na ordem em que normalmente acontecem. */
+export const SHIPMENT_STATUS = [
+  'AGUARDANDO_COTACAO',
+  'COTADO',
+  'AGUARDANDO_APROVACAO',
+  'APROVADO',
+  'AGUARDANDO_COLETA',
+  'DESPACHADO',
+  'EM_TRANSITO',
+  'ENTREGUE',
+  'COM_OCORRENCIA',
+  'AGUARDANDO_CTE',
+  'AGUARDANDO_CONCILIACAO',
+  'CONCILIADO',
+  'CANCELADO',
+] as const
+export type ShipmentStatus = (typeof SHIPMENT_STATUS)[number]
+export const SHIPMENT_STATUS_LABEL: Record<ShipmentStatus, string> = {
+  AGUARDANDO_COTACAO: 'Aguardando cotação',
+  COTADO: 'Cotado',
+  AGUARDANDO_APROVACAO: 'Aguardando aprovação',
+  APROVADO: 'Aprovado',
+  AGUARDANDO_COLETA: 'Aguardando coleta',
+  DESPACHADO: 'Despachado',
+  EM_TRANSITO: 'Em trânsito',
+  ENTREGUE: 'Entregue',
+  COM_OCORRENCIA: 'Com ocorrência',
+  AGUARDANDO_CTE: 'Aguardando CT-e',
+  AGUARDANDO_CONCILIACAO: 'Aguardando conciliação',
+  CONCILIADO: 'Conciliado',
+  CANCELADO: 'Cancelado',
+}

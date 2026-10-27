@@ -2,7 +2,7 @@ import { ForbiddenException } from '@nestjs/common'
 import { type Action, can } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 
-export type FreightModule = 'fretes_painel' | 'fretes_cotacao' | 'fretes_tabelas' | 'fretes_transportadoras' | 'fretes_filiais'
+export type FreightModule = 'fretes_painel' | 'fretes_cotacao' | 'fretes_tabelas' | 'fretes_transportadoras' | 'fretes_filiais' | 'fretes_pedidos' | 'fretes_cte' | 'fretes_financeiro'
 
 /**
  * Filiais que a pessoa enxerga no módulo: null = todas (visão global, escopo "Todos"); senão a unidade dela mais as
