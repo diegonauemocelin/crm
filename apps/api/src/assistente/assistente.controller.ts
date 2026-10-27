@@ -186,7 +186,7 @@ class AiSettingsDto {
   @Type(() => Number) @IsNumber() @Min(0.5) @Max(0.99) min_confidence!: number
   @IsBoolean() upsell_enabled!: boolean
   @IsString() @MaxLength(2000) upsell_rules!: string
-  @Type(() => Number) @IsInt() @Min(0) @Max(3) max_complementary!: number
+  @Type(() => Number) @IsInt() @Min(0) @Max(5) max_complementary!: number
   @IsString() @MaxLength(2000) request_info_when!: string
   @IsIn(['enviar', 'revisar']) request_info_mode!: 'enviar' | 'revisar'
   @IsString() @MaxLength(2000) forward_when!: string

@@ -394,12 +394,12 @@ function SettingsForm({ part }: { part: 'respostas' | 'motor' }) {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Venda adicional</CardTitle>
-          <CardDescription>Sugere peças com aplicação confirmada para a mesma máquina, de forma breve e opcional.</CardDescription>
+          <CardDescription>Ao responder, indica outros produtos da loja para a mesma máquina (ex.: pediu filtro de ar primário da JS200 → filtro de ar secundário e filtro de óleo da JS200). Usa as aplicações confirmadas e o modelo no título dos anúncios.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {toggle('upsell_enabled', 'Sugerir itens complementares')}
-          <Field label="Máximo de itens sugeridos">
-            <Input type="number" min={0} max={3} className="w-24" value={s.max_complementary} onChange={(e) => set('max_complementary', Number(e.target.value))} disabled={!edit} />
+          <Field label="Indicações por resposta (0 a 5)">
+            <Input type="number" min={0} max={5} className="w-24" value={s.max_complementary} onChange={(e) => set('max_complementary', Number(e.target.value))} disabled={!edit} />
           </Field>
           <Field label="Regras da sugestão">
             <Textarea rows={3} value={s.upsell_rules} onChange={(e) => set('upsell_rules', e.target.value)} disabled={!edit} />
