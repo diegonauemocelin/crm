@@ -8,6 +8,9 @@ import { cleanText } from '../sugestoes/sugestoes'
 import { allowedUnits, assertCan, assertUnitList, unitListWhere } from './acesso'
 import { MODALS } from './catalogo'
 import { normalizeCep, normalizeUf, validCnpj } from './cep'
+import { FEE_CODES, parseFeeSheet, type ParsedFee } from './taxas'
+import { FilesService } from '../files/files.service'
+import { IMPORT_MAX_BYTES, readSheets } from './importacao.service'
 
 export interface CarrierInput {
   cnpj: string
@@ -37,6 +40,7 @@ export class TransportadorasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly files: FilesService,
   ) {}
 
   private view(c: Prisma.FreightCarrierGetPayload<object>, extra: { tables?: number; activeTables?: number } = {}) {
@@ -173,5 +177,83 @@ export class TransportadorasService {
     const changed = Object.keys(data).filter((k) => JSON.stringify((cur as Record<string, unknown>)[k]) !== JSON.stringify((data as Record<string, unknown>)[k]))
     await this.audit.byUser(user, ctx, 'frete.transportadora.alterada', 'freight_carrier', id, { campos: changed, ...(changed.includes('active') ? { ativa: data.active } : {}) })
     return this.view(c)
+  }
+
+  // ─────────── Taxas por destinatário (TDA, TDE, TDC, TVD) ───────────
+
+  private async carrierFor(user: AuthUser, id: string) {
+    const c = await this.prisma.freightCarrier.findFirst({ where: { id, tenantId: user.tenantId, ...unitListWhere(allowedUnits(user, 'fretes_transportadoras')) } })
+    if (!c) throw new NotFoundException('Transportadora não encontrada.')
+    return c
+  }
+
+  /** Resumo das listas e, com documento, as taxas daquele destinatário. */
+  async fees(user: AuthUser, id: string, doc?: string) {
+    assertCan(user, 'fretes_transportadoras', 'view')
+    await this.carrierFor(user, id)
+    const [byCode, last] = await Promise.all([
+      this.prisma.freightRecipientFee.groupBy({ by: ['code'], where: { carrierId: id }, _count: { _all: true } }),
+      this.prisma.freightRecipientFee.findFirst({ where: { carrierId: id }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
+    ])
+    const digits = (doc ?? '').replace(/\D/g, '')
+    const matches = digits.length >= 11
+      ? await this.prisma.freightRecipientFee.findMany({ where: { carrierId: id, doc: digits.padStart(digits.length > 11 ? 14 : 11, '0') }, orderBy: { code: 'asc' } })
+      : []
+    return {
+      counts: Object.fromEntries(FEE_CODES.map((c) => [c, byCode.find((b) => b.code === c)?._count._all ?? 0])),
+      total: byCode.reduce((s, b) => s + b._count._all, 0),
+      importedAt: last?.createdAt ?? null,
+      matches: matches.map((m) => ({ code: m.code, fixed: Number(m.fixed), percent: m.percent === null ? null : Number(m.percent), city: m.city, uf: m.uf, since: m.since })),
+    }
+  }
+
+  /**
+   * Importa as listas (abas TDA, TDE, TDC e TVD da planilha da transportadora, ou qualquer aba com documento e taxa) e
+   * substitui as anteriores dessa transportadora. O nome do destinatário não é guardado.
+   */
+  async importFees(user: AuthUser, id: string, file: Express.Multer.File | undefined, ctx: RequestCtx) {
+    assertCan(user, 'fretes_transportadoras', 'edit')
+    const carrier = await this.carrierFor(user, id)
+    assertUnitList(user, 'fretes_transportadoras', carrier.unitIds)
+    if (!file?.buffer?.length) throw new BadRequestException('Envie a planilha com as listas de taxas.')
+    if (file.size > IMPORT_MAX_BYTES) throw new BadRequestException('Arquivo maior que 20 MB.')
+    const sheets = await readSheets(file.buffer, file.originalname)
+    const all: ParsedFee[] = []
+    let invalid = 0
+    const used: string[] = []
+    for (const s of sheets) {
+      const r = parseFeeSheet(s.rows)
+      if (!r || !r.fees.length) continue
+      all.push(...r.fees)
+      invalid += r.invalid
+      used.push(s.name)
+    }
+    if (!all.length) throw new BadRequestException('Nenhuma lista de taxas encontrada: a aba precisa das colunas CNPJ (ou CPF) e TAXA, com valores como "TAXA TDE 222/20%".')
+    // Mesmo documento e mesma taxa repetidos: fica a última linha.
+    const unique = new Map(all.map((f) => [`${f.doc}|${f.code}`, f]))
+    await this.prisma.$transaction(
+      async (tx) => {
+        await tx.freightRecipientFee.deleteMany({ where: { carrierId: id } })
+        const rows = [...unique.values()]
+        for (let i = 0; i < rows.length; i += 2000) {
+          await tx.freightRecipientFee.createMany({
+            data: rows.slice(i, i + 2000).map((f) => ({ tenantId: user.tenantId, carrierId: id, doc: f.doc, code: f.code, fixed: f.fixed, percent: f.percent, city: f.city, uf: f.uf, since: f.since })),
+          })
+        }
+      },
+      { timeout: 120_000 },
+    )
+    const counts = Object.fromEntries(FEE_CODES.map((c) => [c, [...unique.values()].filter((f) => f.code === c).length]))
+    await this.audit.byUser(user, ctx, 'frete.taxas_destinatario.importadas', 'freight_carrier', id, { arquivo: file.originalname.slice(0, 200), abas: used, quantidades: counts, linhasInvalidas: invalid })
+    return { counts, total: unique.size, invalid, sheets: used }
+  }
+
+  async clearFees(user: AuthUser, id: string, ctx: RequestCtx) {
+    assertCan(user, 'fretes_transportadoras', 'edit')
+    const carrier = await this.carrierFor(user, id)
+    assertUnitList(user, 'fretes_transportadoras', carrier.unitIds)
+    const r = await this.prisma.freightRecipientFee.deleteMany({ where: { carrierId: id } })
+    await this.audit.byUser(user, ctx, 'frete.taxas_destinatario.apagadas', 'freight_carrier', id, { quantidade: r.count })
+    return { ok: true, removed: r.count }
   }
 }

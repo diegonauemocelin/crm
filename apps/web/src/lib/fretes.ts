@@ -39,6 +39,7 @@ export type IcmsMode = 'SOMADO' | 'NAO_INCIDE' | 'INFORMATIVO'
 export interface CalcSettings {
   icmsMode: IcmsMode
   icmsRate: number | null
+  icmsRateIntra?: number | null
   cubageFactor: number
   useCubage: boolean
   cubageExemptM3?: number | null

@@ -227,6 +227,9 @@ function ImportWizard({ table, onClose, onDone }: { table: FreightTable; onClose
   const [mapping, setMapping] = useState<Mapping[]>([])
   const [validation, setValidation] = useState<Validation | null>(null)
   const [result, setResult] = useState<{ versionId: string; rules: number; importedLines: number; rejectedLines: number } | null>(null)
+  // Vigência da tabela informada pela transportadora: confirmada a cada importação.
+  const [validFrom, setValidFrom] = useState(table.validFrom)
+  const [validTo, setValidTo] = useState(table.validTo)
 
   const upload = useMutation({
     mutationFn: () => {
@@ -260,7 +263,7 @@ function ImportWizard({ table, onClose, onDone }: { table: FreightTable; onClose
     onError: (e) => toast.error(errorMessage(e)),
   })
   const confirmImport = useMutation({
-    mutationFn: () => api.post<{ versionId: string; rules: number; importedLines: number; rejectedLines: number }>(`/fretes/importacoes/${analysis!.importId}/confirmar`, { sheet, headerRow, mapping }),
+    mutationFn: () => api.post<{ versionId: string; rules: number; importedLines: number; rejectedLines: number }>(`/fretes/importacoes/${analysis!.importId}/confirmar`, { sheet, headerRow, mapping, validFrom, validTo }),
     onSuccess: (r) => {
       setResult(r)
       setStep(4)
@@ -503,6 +506,17 @@ function ImportWizard({ table, onClose, onDone }: { table: FreightTable; onClose
                 </Table>
               </div>
             )}
+            <div className="flex flex-wrap items-end gap-3 rounded-md border p-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="w-from">Vigência inicial</Label>
+                <Input id="w-from" type="date" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="w-to">Vigência final</Label>
+                <Input id="w-to" type="date" value={validTo} onChange={(e) => setValidTo(e.target.value)} />
+              </div>
+              <p className="flex-1 text-xs text-muted-foreground">Informe a vigência combinada com a transportadora para esta tabela. Ela vale para a tabela inteira e a mudança fica na auditoria.</p>
+            </div>
             {validation.errorLines > 0 && (
               <p className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-300">
                 <AlertTriangleIcon className="size-4" aria-hidden /> As linhas com erro ficam de fora. Para incluí-las, corrija a planilha e importe de novo (ou cadastre a regra à mão no rascunho).
@@ -512,7 +526,7 @@ function ImportWizard({ table, onClose, onDone }: { table: FreightTable; onClose
               <Button variant="outline" onClick={() => setStep(2)}>
                 Voltar ao mapeamento
               </Button>
-              <Button onClick={() => confirmImport.mutate()} disabled={confirmImport.isPending || !validation.rules}>
+              <Button onClick={() => confirmImport.mutate()} disabled={confirmImport.isPending || !validation.rules || !validFrom || !validTo || validTo < validFrom}>
                 {confirmImport.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Importar {validation.rules.toLocaleString('pt-BR')} regra(s) no rascunho
               </Button>
             </DialogFooter>

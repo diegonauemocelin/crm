@@ -145,6 +145,7 @@ const HEADER_RULES: [RegExp, string][] = [
   [/seguro/, 'var:insurance'],
   [/coleta/, 'var:collection'],
   [/aliq.*icms|icms.*(aliq|%)|^icms$/, 'var:icms_aliq'],
+  [/pequenos volumes|s\.?v\.?d\b|sem valor declarado/, 'var:svd'],
   [/^(frete|frete peso|valor|tarifa|valor frete|taxa|taxa fixa|taxa por cte)$/, 'var:freight'],
   [/^quilo$|frete quilo|valor quilo|^kg$/, 'var:freight_kg'],
 ]

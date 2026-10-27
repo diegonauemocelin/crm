@@ -60,6 +60,7 @@ function NewQuote() {
   const [reference, setReference] = useState('')
   const [notes, setNotes] = useState('')
   const [allowExpired, setAllowExpired] = useState(false)
+  const [noInvoice, setNoInvoice] = useState(false)
   const [expiredReason, setExpiredReason] = useState('')
   const [quote, setQuote] = useState<Quote | null>(null)
 
@@ -102,6 +103,7 @@ function NewQuote() {
       notes: notes || null,
       allowExpired,
       expiredReason: allowExpired ? expiredReason : null,
+      noInvoice,
     }
   }
 
@@ -217,7 +219,7 @@ function NewQuote() {
                 <Input id="q-name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} maxLength={160} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="q-doc">CPF/CNPJ</Label>
+                <Label htmlFor="q-doc" title="Algumas transportadoras cobram TDA/TDE de clientes específicos: com o documento, o sistema confere a lista.">CPF/CNPJ (confere TDA/TDE)</Label>
                 <Input id="q-doc" inputMode="numeric" value={customerDoc} onChange={(e) => setCustomerDoc(e.target.value.replace(/[^\d./-]/g, '').slice(0, 18))} />
               </div>
               <div className="space-y-1.5">
@@ -228,8 +230,11 @@ function NewQuote() {
 
             <div className="grid gap-4 md:grid-cols-4">
               <div className="space-y-1.5">
-                <Label htmlFor="q-value">Valor da NF (mercadoria) *</Label>
+                <Label htmlFor="q-value">{noInvoice ? 'Valor declarado *' : 'Valor da NF (mercadoria) *'}</Label>
                 <MoneyInput id="q-value" value={cargoValue} onChange={setCargoValue} />
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Checkbox checked={noInvoice} onCheckedChange={(c) => setNoInvoice(c === true)} /> Sem nota fiscal (SVD, com declaração de conteúdo)
+                </label>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="q-weight">Peso total (kg)</Label>

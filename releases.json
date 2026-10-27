@@ -2,6 +2,38 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.99.2",
+      "date": "2026-10-27",
+      "title": "Fretes: taxas por destinatário, envio sem nota (SVD), ICMS no mesmo estado e vigência na importação",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Taxas por destinatário: na ficha da transportadora, importe as listas de TDA, TDE, TDC e TVD (como as abas da Expresso São Miguel). Na cotação, a taxa entra sozinha quando o CPF/CNPJ do destinatário está na lista (ex.: TDE de R$ 222,00 ou 20% do frete, o maior). Só o documento, a cidade e a taxa são guardados, sem o nome."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Cotação de envio sem nota fiscal (SVD, com declaração de conteúdo): usa o preço SVD da tabela quando a transportadora tem."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Alíquota de ICMS própria para entregas no mesmo estado da filial de origem, além da interestadual."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "A vigência da tabela é informada no assistente de importação, a cada planilha nova (fica na auditoria)."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Importação reconhece a coluna \"Pequenos volumes S.V.D.\" (sem valor declarado)."
+        }
+      ]
+    },
+    {
       "version": "0.99.1",
       "date": "2026-10-27",
       "title": "Fretes: importação das tabelas da Expresso São Miguel e da Viopex",

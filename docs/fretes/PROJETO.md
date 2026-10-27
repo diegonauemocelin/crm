@@ -139,6 +139,17 @@ Componentes padrão de uma tabela nova (ajustar ao contrato de cada transportado
 | T-CPF | `$t_cpf$` com condição `$is_pf$` |
 | REENTREGA | `$total_value$ * ($redelivery$ / 100)` (desligado na cotação; serve para conferir CT-e) |
 
+### Taxas por destinatário, SVD e ICMS por estado (v0.99.2)
+
+- **Listas da transportadora** (TDA, TDE, TDC, TVD por CPF/CNPJ, como as da Expresso São Miguel): importadas na
+  ficha da transportadora (`freight_recipient_fees`, sem o nome da pessoa). Na cotação, com o documento do
+  destinatário informado, viram componentes depois dos da tabela: valor fixo ou o maior entre o fixo e o % do frete
+  (TDE "222/20%"), dentro da base do ICMS. A cotação guarda as taxas aplicadas para ser reproduzida igual.
+- **SVD (sem valor declarado):** envio sem nota fiscal, com declaração de conteúdo. A variável `$no_invoice$` e o
+  preço `$svd$` da regra; o Frete peso padrão usa o SVD quando os dois existem.
+- **ICMS:** alíquota padrão (interestadual) e alíquota para origem e destino no mesmo estado. Conferido com o CT-e
+  1.591.853 da São Miguel (12% por dentro: R$ 69,62 → R$ 79,11, ICMS R$ 9,49) em `test/fretes-taxas.spec.ts`.
+
 ## 9. Integração fiscal e certificados (fase 3)
 
 - **CT-e:** Distribuição DF-e da SEFAZ (NSU por CNPJ interessado, com certificado A1 de cada CNPJ). O sistema só

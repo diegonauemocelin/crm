@@ -183,11 +183,16 @@ export class ImportacaoService {
   }
 
   /** Etapas 9–10: grava as regras num rascunho de nova versão e guarda o relatório (linhas importadas, rejeitadas e alertas). */
-  async confirm(user: AuthUser, importId: string, d: { sheet: number; headerRow: number; mapping: ColumnMap[]; note?: string | null }, ctx: RequestCtx) {
+  async confirm(user: AuthUser, importId: string, d: { sheet: number; headerRow: number; mapping: ColumnMap[]; note?: string | null; validFrom?: string; validTo?: string }, ctx: RequestCtx) {
     assertCan(user, 'fretes_tabelas', 'create')
     const { imp, t, sheets } = await this.load(user, importId)
     assertUnitList(user, 'fretes_tabelas', t.unitIds)
     if (imp.status !== 'ANALISE') throw new BadRequestException('Esta importação já foi concluída ou cancelada.')
+    const validFrom = d.validFrom ? new Date(`${d.validFrom}T00:00:00Z`) : t.validFrom
+    const validTo = d.validTo ? new Date(`${d.validTo}T00:00:00Z`) : t.validTo
+    if (Number.isNaN(validFrom.getTime()) || Number.isNaN(validTo.getTime())) throw new BadRequestException('Vigência inválida.')
+    if (validTo < validFrom) throw new BadRequestException('A vigência final é anterior à inicial.')
+    const validityChanged = validFrom.getTime() !== t.validFrom.getTime() || validTo.getTime() !== t.validTo.getTime()
     const r = this.run(sheets, d.sheet, d.headerRow, d.mapping)
     if (!r.rules.length) throw new BadRequestException('Nenhuma linha válida para importar. Confira o mapeamento e os erros apontados.')
 
@@ -238,6 +243,7 @@ export class ImportacaoService {
           where: { id: target.id },
           data: { rulesCount: r.rules.length, source: 'IMPORTACAO', note: cleanText(d.note, 300) || `Importada de ${imp.fileName}` },
         })
+        if (validityChanged) await tx.freightTable.update({ where: { id: t.id }, data: { validFrom, validTo } })
         await tx.freightImport.update({
           where: { id: importId },
           data: {
@@ -258,7 +264,13 @@ export class ImportacaoService {
       },
       { timeout: 120_000 },
     )
-    await this.audit.byUser(user, ctx, 'frete.importacao.concluida', 'freight_table', t.id, { importacao: importId, arquivo: imp.fileName, regras: r.rules.length, linhasRejeitadas: r.errorLines })
+    await this.audit.byUser(user, ctx, 'frete.importacao.concluida', 'freight_table', t.id, {
+      importacao: importId,
+      arquivo: imp.fileName,
+      regras: r.rules.length,
+      linhasRejeitadas: r.errorLines,
+      ...(validityChanged ? { vigencia: { de: [t.validFrom.toISOString().slice(0, 10), t.validTo.toISOString().slice(0, 10)], para: [validFrom.toISOString().slice(0, 10), validTo.toISOString().slice(0, 10)] } } : {}),
+    })
     return { versionId, rules: r.rules.length, importedLines: r.importedLines, rejectedLines: r.errorLines, issueCount: r.issueCount }
   }
 

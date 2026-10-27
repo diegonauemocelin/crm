@@ -10,6 +10,8 @@ import { allowedUnits, assertCan, assertUnit, unitListWhere } from './acesso'
 import { cityKey, formatCep, normalizeCep, normalizeUf, ufByCep, validCnpj, validCpf } from './cep'
 import { addBusinessDays, calculate, type CalcResult, matchRule, type Measures, measure, type Volume, weights } from './motor'
 import { componentsOf, ruleFromRow, settingsOf, todayUtc } from './tabelas.service'
+import type { ComponentDef } from './catalogo'
+import { FEE_LABEL, FEE_ORDER, type FeeCode } from './taxas'
 
 export interface QuoteInput {
   unitId: string
@@ -30,6 +32,8 @@ export interface QuoteInput {
   notes?: string | null
   /** Liberar tabela vencida nesta cotação (exige permissão de editar tabelas e justificativa). */
   allowExpired?: boolean
+  /** Envio sem nota fiscal, só com declaração de conteúdo (preço SVD quando a tabela tem). */
+  noInvoice?: boolean
   expiredReason?: string | null
 }
 
@@ -56,9 +60,27 @@ export interface QuoteResult {
   rule: { id: string | null; by: string; label: string } | null
   warnings: string[]
   expiredUsed: boolean
+  /** Taxas da lista de destinatários da transportadora aplicadas (guardadas para reproduzir a cotação). */
+  recipientFees?: ComponentDef[]
 }
 
 const QUOTES_PAGE = 30
+
+/** Taxa da lista da transportadora como componente: fixo, ou o maior entre o fixo e o % do frete (TDE 222/20%). */
+export function feeComponent(f: { code: string; fixed: Prisma.Decimal | number; percent: Prisma.Decimal | number | null }): ComponentDef {
+  const code = f.code as FeeCode
+  const fixed = Number(f.fixed)
+  const pct = f.percent === null ? 0 : Number(f.percent)
+  return {
+    code: `${code}-DEST`,
+    name: `${FEE_LABEL[code] ?? code}: destinatário na lista`,
+    formula: pct > 0 ? `max(${fixed}, $subtotal$ * ${pct} / 100)` : `${fixed}`,
+    inTax: true,
+    cteName: code,
+    order: FEE_ORDER[code] ?? 960,
+    active: true,
+  }
+}
 const CEP_CACHE_DAYS = 90
 const iso = (d: Date) => d.toISOString().slice(0, 10)
 
@@ -139,7 +161,7 @@ export class CotacaoService {
     t: Prisma.FreightTableGetPayload<{ include: { carrier: true } }>,
     p: Awaited<ReturnType<CotacaoService['prepare']>>,
     d: QuoteInput,
-    opts: { allowExpired: boolean; forceVersionId?: string },
+    opts: { allowExpired: boolean; forceVersionId?: string; fees?: ComponentDef[] },
   ): Promise<QuoteResult> {
     const base: QuoteResult = {
       tableId: t.id,
@@ -211,7 +233,10 @@ export class CotacaoService {
     const note = rows.find((x) => x.id === r.id)?.note
     if (note) base.warnings.push(`Observação da transportadora: ${note}`)
     if (r.restricted) return no('RESTRITO', `A transportadora marcou restrição de atendimento para este destino.${note ? ` ${note}` : ''}`)
-    const res = calculate(componentsOf(v.components), settings, match, { cargoValue: d.cargoValue, totalValue: d.totalValue, personType: d.personType, measures: m })
+    const fees = opts.fees ?? []
+    if (fees.length) base.recipientFees = fees
+    const sameState = !!p.unit.state && !!p.destUf && p.unit.state === p.destUf
+    const res = calculate(componentsOf(v.components), settings, match, { cargoValue: d.cargoValue, totalValue: d.totalValue, personType: d.personType, measures: m, noInvoice: !!d.noInvoice, sameState, extraComponents: fees })
     base.weights = res.weights
     base.components = res.components
     base.warnings.push(...res.warnings)
@@ -239,7 +264,19 @@ export class CotacaoService {
       },
       include: { carrier: true },
     })
-    const results = await Promise.all(tables.map((t) => this.evaluate(t, p, d, { allowExpired })))
+    // Taxas por destinatário: só quando o CPF/CNPJ informado está na lista da transportadora.
+    const carrierIds = [...new Set(tables.map((t) => t.carrierId))]
+    const [fees, withLists] = await Promise.all([
+      p.doc ? this.prisma.freightRecipientFee.findMany({ where: { carrierId: { in: carrierIds }, doc: p.doc } }) : Promise.resolve([]),
+      p.doc ? Promise.resolve([]) : this.prisma.freightRecipientFee.groupBy({ by: ['carrierId'], where: { carrierId: { in: carrierIds } }, _count: { _all: true } }),
+    ])
+    const results = await Promise.all(
+      tables.map(async (t) => {
+        const r = await this.evaluate(t, p, d, { allowExpired, fees: fees.filter((f) => f.carrierId === t.carrierId).map(feeComponent) })
+        if (withLists.some((w) => w.carrierId === t.carrierId)) r.warnings.push('Esta transportadora cobra TDA/TDE/TDC/TVD de destinatários específicos: informe o CPF/CNPJ para conferir se este cliente está na lista.')
+        return r
+      }),
+    )
     // Transportadoras ativas da filial sem nenhuma tabela ativa: aparecem para ninguém achar que foram esquecidas.
     const withTable = new Set(tables.map((t) => t.carrierId))
     const carriers = await this.prisma.freightCarrier.findMany({
@@ -271,6 +308,7 @@ export class CotacaoService {
       weight: d.weight ?? null,
       volumes: d.volumes ?? [],
       goodsType: d.goodsType ?? null,
+      noInvoice: !!d.noInvoice,
       quoteDate: iso(p.quoteDate),
     }
   }
@@ -461,7 +499,7 @@ export class CotacaoService {
         out.push({ tableId: o.tableId, carrierName: o.carrierName, versionNumber: o.versionNumber, original: o.total, recalculated: null, same: false, reason: 'Tabela não encontrada.' })
         continue
       }
-      const r = await this.evaluate(t, p, input, { allowExpired: true, forceVersionId: o.versionId! })
+      const r = await this.evaluate(t, p, input, { allowExpired: true, forceVersionId: o.versionId!, fees: o.recipientFees })
       out.push({ tableId: o.tableId, carrierName: o.carrierName, versionNumber: o.versionNumber, original: o.total, recalculated: r.total, same: r.status === 'OK' && r.total === o.total, reason: r.status === 'OK' ? null : r.reason })
     }
     return { code: q.code, quoteDate: iso(q.quoteDate), allSame: out.every((x) => x.same), items: out }

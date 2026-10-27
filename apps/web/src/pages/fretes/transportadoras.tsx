@@ -307,6 +307,7 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
               <Switch checked={f.active} onCheckedChange={(v) => set('active', v)} /> Ativa
             </label>
           </fieldset>
+          {carrier && <RecipientFees carrierId={carrier.id} editable={can('fretes_transportadoras', 'edit')} />}
           {tables.length > 0 && (
             <div className="space-y-1 text-sm">
               <p className="font-medium">Tabelas</p>
@@ -335,3 +336,65 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
     </Sheet>
   )
 }
+
+interface FeesInfo {
+  counts: Record<string, number>
+  total: number
+  importedAt: string | null
+  matches: { code: string; fixed: number; percent: number | null; city: string | null; uf: string | null }[]
+}
+
+/** Listas de TDA/TDE/TDC/TVD que a transportadora cobra só de destinatários específicos. */
+function RecipientFees({ carrierId, editable }: { carrierId: string; editable: boolean }) {
+  const qc = useQueryClient()
+  const [doc, setDoc] = useState('')
+  const [checked, setChecked] = useState('')
+  const info = useQuery({ queryKey: ['fretes', 'taxas', carrierId, checked], queryFn: () => api.get<FeesInfo>(`/fretes/transportadoras/${carrierId}/taxas${checked ? `?documento=${checked}` : ''}`) })
+  const upload = useMutation({
+    mutationFn: (file: File) => {
+      const fd = new FormData()
+      fd.append('arquivo', file)
+      return api.post<{ total: number; invalid: number; sheets: string[] }>(`/fretes/transportadoras/${carrierId}/taxas`, fd)
+    },
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['fretes', 'taxas', carrierId] })
+      toast.success(`${r.total.toLocaleString('pt-BR')} destinatário(s) importado(s) das abas ${r.sheets.join(', ')}${r.invalid ? `; ${r.invalid} linha(s) sem documento ou taxa reconhecível` : ''}.`)
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const d = info.data
+  return (
+    <div className="space-y-2 rounded-md border p-3 text-sm">
+      <p className="font-medium">Taxas por destinatário (TDA, TDE, TDC, TVD)</p>
+      <p className="text-xs text-muted-foreground">
+        Listas que a transportadora manda com os clientes que pagam taxa extra. Na cotação, a taxa entra quando o CPF/CNPJ do destinatário está na lista. Só o documento, a cidade e a taxa são guardados.
+      </p>
+      {d && (
+        <p>
+          {d.total ? `${d.total.toLocaleString('pt-BR')} destinatário(s): ${Object.entries(d.counts).filter(([, n]) => n).map(([k, n]) => `${k} ${n.toLocaleString('pt-BR')}`).join(' · ')}` : 'Nenhuma lista importada.'}
+          {d.importedAt && <span className="text-xs text-muted-foreground"> (importada em {new Date(d.importedAt).toLocaleDateString('pt-BR')})</span>}
+        </p>
+      )}
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          setChecked(doc.replace(/\D/g, ''))
+        }}
+      >
+        <Input aria-label="CPF ou CNPJ para conferir" placeholder="Conferir um CPF/CNPJ" value={doc} onChange={(e) => setDoc(e.target.value)} />
+        <Button type="submit" variant="outline" size="sm">
+          Conferir
+        </Button>
+      </form>
+      {checked && d && (d.matches.length ? d.matches.map((m) => <p key={m.code}>{m.code}: {money(m.fixed)}{m.percent ? ` ou ${m.percent}% do frete (o maior)` : ''} · {m.city}/{m.uf}</p>) : <p className="text-muted-foreground">Não está nas listas.</p>)}
+      {editable && (
+        <label className="inline-flex cursor-pointer items-center gap-2 text-sm underline underline-offset-2">
+          {upload.isPending && <Loader2Icon className="size-4 animate-spin" aria-hidden />} Importar listas (Excel com as abas TDA, TDE, TDC, TVD)
+          <input type="file" className="sr-only" accept=".xlsx,.csv" onChange={(e) => e.target.files?.[0] && upload.mutate(e.target.files[0])} />
+        </label>
+      )}
+    </div>
+  )
+}
+

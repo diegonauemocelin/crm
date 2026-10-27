@@ -136,6 +136,12 @@ export interface CalcInput {
   totalValue?: number | null
   personType: 'PF' | 'PJ'
   measures: Measures
+  /** Sem nota fiscal (só declaração de conteúdo): vale o preço SVD quando a tabela tem. */
+  noInvoice?: boolean
+  /** Origem e destino no mesmo estado (ICMS interno). */
+  sameState?: boolean
+  /** Taxas extras deste envio (ex.: destinatário na lista de TDE da transportadora). */
+  extraComponents?: ComponentDef[]
 }
 
 export interface CalcResult {
@@ -166,6 +172,7 @@ export function calculate(components: ComponentDef[], settings: CalcSettings, ma
     volumes: input.measures.quantity,
     is_pf: input.personType === 'PF' ? 1 : 0,
     is_pj: input.personType === 'PJ' ? 1 : 0,
+    no_invoice: input.noInvoice ? 1 : 0,
     weight_limit: match.weightLimit,
     weight_start: rule.weightMin,
     deadline: rule.deadlineDays ?? 0,
@@ -191,7 +198,7 @@ export function calculate(components: ComponentDef[], settings: CalcSettings, ma
   }
 
   let subtotal = 0
-  for (const c of [...components].filter((x) => x.active).sort((a, b) => a.order - b.order)) {
+  for (const c of [...components, ...(input.extraComponents ?? [])].filter((x) => x.active).sort((a, b) => a.order - b.order)) {
     try {
       if (c.condition?.trim()) {
         const cond = evaluate(compileFormula(c.condition), vars)
@@ -214,7 +221,9 @@ export function calculate(components: ComponentDef[], settings: CalcSettings, ma
     }
   }
 
-  const rate = Number.isFinite(rule.values.icms_aliq) ? rule.values.icms_aliq! : settings.icmsRate
+  const intra = input.sameState && settings.icmsRateIntra !== null && settings.icmsRateIntra !== undefined
+  const rate = Number.isFinite(rule.values.icms_aliq) ? rule.values.icms_aliq! : intra ? settings.icmsRateIntra! : settings.icmsRate
+  if (input.sameState && !intra && !Number.isFinite(rule.values.icms_aliq) && settings.icmsMode !== 'NAO_INCIDE' && rate !== null) warnings.push('Origem e destino no mesmo estado, sem alíquota interna cadastrada: usada a alíquota padrão.')
   const base = money(out.filter((c) => c.inTax && !c.skipped).reduce((s, c) => s + c.value, 0))
   let icms = 0
   if (settings.icmsMode !== 'NAO_INCIDE') {

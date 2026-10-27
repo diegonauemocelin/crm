@@ -20,6 +20,7 @@ export const INPUT_VARIABLES: VariableDef[] = [
   { code: 'volumes', label: 'Quantidade de volumes', source: 'ENTRADA', unit: 'un' },
   { code: 'is_pf', label: 'Destinatário pessoa física', source: 'ENTRADA', unit: '0/1' },
   { code: 'is_pj', label: 'Destinatário pessoa jurídica', source: 'ENTRADA', unit: '0/1' },
+  { code: 'no_invoice', label: 'Envio sem nota fiscal (SVD, com declaração)', source: 'ENTRADA', unit: '0/1' },
   { code: 'weight_limit', label: 'Peso-limite da faixa', source: 'ENTRADA', unit: 'kg', help: 'Peso final da faixa usada (ou o inicial, na última faixa "acima de"). Base do excedente.' },
   { code: 'weight_start', label: 'Peso inicial da faixa', source: 'ENTRADA', unit: 'kg' },
   { code: 'deadline', label: 'Prazo da regra', source: 'ENTRADA', unit: 'dias' },
@@ -74,6 +75,7 @@ export const RULE_VARIABLES: VariableDef[] = [
   { code: 'extra_others', label: 'Extra outros', source: 'REGRA', unit: 'R$' },
   { code: 'others', label: 'Outros', source: 'REGRA', unit: 'R$' },
   { code: 'inv_above', label: 'Valor NF acima de', source: 'REGRA', unit: 'R$' },
+  { code: 'svd', label: 'Pequenos volumes sem valor declarado (SVD)', source: 'REGRA', unit: 'R$', help: 'Preço do envio sem nota fiscal, só com declaração de conteúdo.' },
   { code: 'icms_aliq', label: 'Alíquota de ICMS', source: 'REGRA', unit: '%', help: 'Quando vazia, vale a alíquota padrão dos parâmetros da versão.' },
 ]
 
@@ -105,11 +107,11 @@ export const DEFAULT_COMPONENTS: ComponentDef[] = [
   {
     code: 'FRETE_PESO',
     name: 'Frete peso',
-    formula: 'max($freight$ + $freight_kg$ * $weight$ + $over_weight$ * max($weight$ - $weight_limit$, 0), $min_freight$)',
+    formula: 'if($no_invoice$ && $svd$ > 0, $svd$, max($freight$ + $freight_kg$ * $weight$ + $over_weight$ * max($weight$ - $weight_limit$, 0), $min_freight$))',
     inTax: true,
     order: 10,
     active: true,
-    description: 'Valor da faixa + R$/kg + excedente acima da faixa, respeitando o frete mínimo.',
+    description: 'Valor da faixa + R$/kg + excedente acima da faixa, respeitando o frete mínimo. Sem nota fiscal (SVD): o preço SVD da tabela.',
   },
   { code: 'FRETE_VALOR', name: 'Frete valor', formula: '$cargo_value$ * ($freight_value$ / 100)', inTax: true, order: 20, active: true },
   { code: 'ADVALOREM', name: 'ADVALOREM', formula: 'max($cargo_value$ * ($advalorem$ / 100), $advalorem_min$)', inTax: true, order: 30, active: true },
@@ -150,8 +152,10 @@ export const ICMS_LABEL: Record<IcmsMode, string> = {
 
 export interface CalcSettings {
   icmsMode: IcmsMode
-  /** Alíquota padrão (%) quando a regra não traz icms_aliq. */
+  /** Alíquota padrão (%) quando a regra não traz icms_aliq (interestadual). */
   icmsRate: number | null
+  /** Alíquota (%) quando origem e destino ficam no mesmo estado. Vazia = a padrão. */
+  icmsRateIntra?: number | null
   /** kg por m³ (ex.: 300 no rodoviário). */
   cubageFactor: number
   /** false = cobra só pelo peso real. */
@@ -160,7 +164,7 @@ export interface CalcSettings {
   cubageExemptM3?: number | null
 }
 
-export const DEFAULT_SETTINGS: CalcSettings = { icmsMode: 'SOMADO', icmsRate: null, cubageFactor: 300, useCubage: true, cubageExemptM3: null }
+export const DEFAULT_SETTINGS: CalcSettings = { icmsMode: 'SOMADO', icmsRate: null, icmsRateIntra: null, cubageFactor: 300, useCubage: true, cubageExemptM3: null }
 
 export const TABLE_KINDS = ['COMPRA_VENDA', 'COMPRA', 'VENDA'] as const
 export const TABLE_STATUS = ['ATIVA', 'INATIVA', 'RASCUNHO'] as const

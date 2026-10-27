@@ -103,6 +103,7 @@ class ComponentDto {
 class SettingsDto {
   @IsOptional() @IsIn(ICMS_MODES) icmsMode?: (typeof ICMS_MODES)[number]
   @IsOptional() @nullable @IsNumber() icmsRate?: number | null
+  @IsOptional() @nullable @IsNumber() icmsRateIntra?: number | null
   @IsOptional() @IsNumber() cubageFactor?: number
   @IsOptional() @IsBoolean() useCubage?: boolean
   @IsOptional() @nullable @IsNumber() cubageExemptM3?: number | null
@@ -158,6 +159,9 @@ class ImportDto {
   @IsInt() @Min(1) headerRow!: number
   @IsArray() @ArrayMaxSize(300) @ValidateNested({ each: true }) @Type(() => MapDto) mapping!: MapDto[]
   @IsOptional() @nullable @IsString() @MaxLength(300) note?: string | null
+  /** Vigência informada na importação (a da transportadora): atualiza a tabela. */
+  @IsOptional() @Matches(DATE, { message: 'Vigência inicial inválida.' }) validFrom?: string
+  @IsOptional() @Matches(DATE, { message: 'Vigência final inválida.' }) validTo?: string
 }
 
 class SuggestDto {
@@ -192,6 +196,7 @@ class QuoteDto {
   @IsOptional() @nullable @IsString() @MaxLength(2000) notes?: string | null
   @IsOptional() @IsBoolean() allowExpired?: boolean
   @IsOptional() @nullable @IsString() @MaxLength(500) expiredReason?: string | null
+  @IsOptional() @IsBoolean() noInvoice?: boolean
 }
 
 class SimulateDto extends QuoteDto {
@@ -305,6 +310,24 @@ export class FretesController {
   @Put('transportadoras/:id')
   updateCarrier(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CarrierDto, @ReqContext() ctx: RequestCtx) {
     return this.carriers.update(user, id, dto, ctx)
+  }
+
+  @Get('transportadoras/:id/taxas')
+  fees(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Query('documento') doc?: string) {
+    return this.carriers.fees(user, id, doc?.slice(0, 20))
+  }
+
+  @Post('transportadoras/:id/taxas')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('arquivo', { limits: { fileSize: IMPORT_MAX_BYTES } }))
+  importFees(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File | undefined, @ReqContext() ctx: RequestCtx) {
+    return this.carriers.importFees(user, id, file, ctx)
+  }
+
+  @Delete('transportadoras/:id/taxas')
+  clearFees(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    return this.carriers.clearFees(user, id, ctx)
   }
 
   // ─────────── Tabelas ───────────

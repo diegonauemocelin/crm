@@ -248,8 +248,12 @@ export function ComponentsTab({ table, version }: { table: FreightTable; version
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="p-rate">Alíquota padrão (%)</Label>
+            <Label htmlFor="p-rate">Alíquota padrão / interestadual (%)</Label>
             <Input id="p-rate" inputMode="decimal" disabled={!editable} placeholder="Da regra (icms_aliq)" defaultValue={fmtNum(settings.icmsRate, 2)} onBlur={(e) => { const n = parseBr(e.target.value); if (!Number.isNaN(n)) { setSettings({ ...settings, icmsRate: n }); setDirty(true) } }} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="p-intra">Alíquota no mesmo estado (%)</Label>
+            <Input id="p-intra" inputMode="decimal" disabled={!editable} placeholder="Igual à padrão" defaultValue={fmtNum(settings.icmsRateIntra ?? null, 2)} onBlur={(e) => { const n = parseBr(e.target.value); if (!Number.isNaN(n)) { setSettings({ ...settings, icmsRateIntra: n }); setDirty(true) } }} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="p-cub">Fator de cubagem (kg/m³)</Label>
