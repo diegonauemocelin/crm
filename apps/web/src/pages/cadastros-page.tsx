@@ -1149,7 +1149,7 @@ export function SellerDigestCard({ config }: { config: AlertConfig }) {
       <CardHeader>
         <CardTitle>Resumo do dia para os vendedores</CardTitle>
         <CardDescription>
-          Todo dia, a partir do horário escolhido, cada vendedor recebe no WhatsApp dele os clientes da pré-venda repassados a ele naquele dia (telefone e nome), em vez de copiar e colar um por um. Quem não teve repasse no dia não recebe nada. O mesmo resumo fica em Pré-Vendas › Resumo do dia, para copiar.
+          Todo dia, a partir do horário escolhido, cada vendedor recebe no WhatsApp dele os clientes da pré-venda repassados a ele naquele dia (telefone, nome e situação: vendeu, não vendeu e o motivo, ou aguardando retorno do vendedor), em vez de copiar e colar um por um. Quem não teve repasse no dia não recebe nada. O mesmo resumo fica em Pré-Vendas › Resumo do dia, para copiar.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -1208,7 +1208,7 @@ export function SellerDigestCard({ config }: { config: AlertConfig }) {
         <div className="space-y-2">
           <Label htmlFor="dg-text">Abertura da mensagem</Label>
           <Textarea id="dg-text" rows={3} maxLength={1000} value={d.text} onChange={(e) => setD({ ...d, text: e.target.value })} disabled={!canEdit} />
-          <p className="text-xs text-muted-foreground">Use {'{vendedor}'}, {'{data}'} e {'{quantidade}'}. Os clientes (telefone e nome) vêm logo depois, sozinhos.</p>
+          <p className="text-xs text-muted-foreground">Use {'{vendedor}'}, {'{data}'} e {'{quantidade}'}. Os clientes (telefone, nome e situação) vêm logo depois, sozinhos.</p>
         </div>
       </CardContent>
       {canEdit && (

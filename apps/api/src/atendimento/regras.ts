@@ -288,18 +288,27 @@ export function readablePhone(phone: string | null) {
   return br ? `(${br[1]}) ${br[2]}-${br[3]}` : phone
 }
 
+/** Situação da pré-venda no resumo: Vendeu, Não vendeu (motivo) ou Aguardando retorno do vendedor. */
+export function saleSituation(saleStatus: string | null | undefined, lostReason?: string | null) {
+  if (saleStatus === 'SIM') return 'Vendeu'
+  if (saleStatus === 'NAO') return lostReason?.trim() ? `Não vendeu (${lostReason.trim()})` : 'Não vendeu'
+  return 'Aguardando retorno do vendedor'
+}
+
 /**
  * Mensagens do resumo: a abertura (com {vendedor}, {data} e {quantidade}) e os clientes, telefone primeiro (no
- * WhatsApp do vendedor o telefone fica clicável para "Conversar"). Separado: uma mensagem por cliente; senão, uma lista.
+ * WhatsApp do vendedor o telefone fica clicável para "Conversar") e a situação ao lado do nome.
+ * Separado: uma mensagem por cliente; senão, uma lista.
  */
-export function digestMessages(intro: string, seller: string, day: string, items: { name: string; phone: string | null }[], split: boolean) {
+export function digestMessages(intro: string, seller: string, day: string, items: { name: string; phone: string | null; situation?: string | null }[], split: boolean) {
   const [y, m, d] = day.split('-')
   const head = intro
     .replace(/\{vendedor\}/gi, seller.trim().split(/\s+/)[0] ?? '')
     .replace(/\{data\}/gi, `${d}/${m}/${y}`)
     .replace(/\{quantidade\}/gi, String(items.length))
-  const lines = items.map((r) => `${readablePhone(r.phone)}\n${r.name}`)
-  return split ? [head, ...lines] : [[head, '', ...items.map((r, i) => `${i + 1}. ${readablePhone(r.phone)} — ${r.name}`)].join('\n')]
+  const who = (r: (typeof items)[number]) => (r.situation ? `${r.name} — ${r.situation}` : r.name)
+  const lines = items.map((r) => `${readablePhone(r.phone)}\n${who(r)}`)
+  return split ? [head, ...lines] : [[head, '', ...items.map((r, i) => `${i + 1}. ${readablePhone(r.phone)} — ${who(r)}`)].join('\n')]
 }
 
 export const FIELD_LABELS: Record<string, string> = {

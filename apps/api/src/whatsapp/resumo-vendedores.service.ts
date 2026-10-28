@@ -1,6 +1,6 @@
 import { Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
 import { normalizePhone } from '../atendimento/br'
-import { cleanDigest, digestFor, digestMessages, type SellerDigest, todayWindow } from '../atendimento/regras'
+import { cleanDigest, digestFor, digestMessages, saleSituation, type SellerDigest, todayWindow } from '../atendimento/regras'
 import type { AtendimentoSettings } from '../atendimento/service-records.service'
 import type { Prisma } from '../generated/prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
@@ -17,7 +17,7 @@ interface DigestLog {
 
 /**
  * Resumo do dia para cada vendedor: a partir do horário configurado (Configurações › Mensagens automáticas, padrão 18h), cada vendedor
- * escolhido recebe no WhatsApp dele os clientes da pré-venda repassados a ele no dia (telefone e nome), uma vez por dia.
+ * escolhido recebe no WhatsApp dele os clientes da pré-venda repassados a ele no dia (telefone, nome e situação da venda), uma vez por dia.
  */
 @Injectable()
 export class ResumoVendedoresService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -63,14 +63,14 @@ export class ResumoVendedoresService implements OnApplicationBootstrap, OnModule
     const records = await this.prisma.serviceRecord.findMany({
       where: { tenantId, kind: 'PRE_VENDAS', deletedAt: null, forwarded: true, sellerId: { not: null }, forwardedAt: { gte: w.from, lt: w.to } },
       orderBy: { forwardedAt: 'asc' },
-      select: { name: true, phone: true, seller: { select: { id: true, name: true, phone: true, active: true } } },
+      select: { name: true, phone: true, saleStatus: true, lostReason: { select: { name: true } }, seller: { select: { id: true, name: true, phone: true, active: true } } },
     })
-    const groups = new Map<string, { seller: NonNullable<(typeof records)[number]['seller']>; items: { name: string; phone: string | null }[] }>()
+    const groups = new Map<string, { seller: NonNullable<(typeof records)[number]['seller']>; items: { name: string; phone: string | null; situation: string }[] }>()
     for (const r of records) {
       const status = r.seller ? done[r.seller.id] : undefined
       if (!r.seller || !r.seller.active || (status && !status.startsWith('ENVIANDO:')) || !digestFor(config, r.seller.id)) continue
       const g = groups.get(r.seller.id) ?? { seller: r.seller, items: [] }
-      g.items.push({ name: r.name, phone: r.phone })
+      g.items.push({ name: r.name, phone: r.phone, situation: saleSituation(r.saleStatus, r.lostReason?.name) })
       groups.set(r.seller.id, g)
     }
     if (!groups.size) return

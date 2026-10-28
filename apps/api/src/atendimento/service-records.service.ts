@@ -12,7 +12,7 @@ import { SettingsService } from '../settings/settings.service'
 import { normalizePhone, REGIONS, regionOf, UF_LIST, UFS } from './br'
 import { type BusinessHours, cleanRules, subBusinessMs, type WaRules } from '../whatsapp/envio'
 import { buildDashboard, type DashRow } from './dashboard'
-import { applyAutomaticFields, cleanDigest, deadline, DEFAULT_FORWARD_MESSAGE, type ForwardMessage, skipsPostSale, digestFor, DEFAULT_DIGEST, DEFAULT_NEXT_DAY, digestMessages, type SellerDigest, todayWindow, diffRecord, FIELD_LABELS, type FollowStatus, inNegotiation, isCallOverdue, isFollowOverdue, isOverdue, nextCallDue, type NextDayMessage, type RecordState, shouldCreatePostSale, validateFollow, validateRecord } from './regras'
+import { applyAutomaticFields, cleanDigest, deadline, DEFAULT_FORWARD_MESSAGE, type ForwardMessage, skipsPostSale, digestFor, DEFAULT_DIGEST, DEFAULT_NEXT_DAY, digestMessages, saleSituation, type SellerDigest, todayWindow, diffRecord, FIELD_LABELS, type FollowStatus, inNegotiation, isCallOverdue, isFollowOverdue, isOverdue, nextCallDue, type NextDayMessage, type RecordState, shouldCreatePostSale, validateFollow, validateRecord } from './regras'
 
 export const MODULE_BY_KIND: Record<ServiceKind, 'pre_vendas' | 'pos_vendas'> = { PRE_VENDAS: 'pre_vendas', POS_VENDAS: 'pos_vendas' }
 
@@ -557,7 +557,7 @@ export class ServiceRecordsService {
     const rows = await this.prisma.serviceRecord.findMany({
       where: { tenantId: user.tenantId, kind: 'PRE_VENDAS', deletedAt: null, forwarded: true, sellerId: { not: null }, forwardedAt: { gte: from, lt: new Date(from.getTime() + 86_400_000) }, ...this.scope(user, 'PRE_VENDAS') },
       orderBy: { forwardedAt: 'asc' },
-      select: { id: true, name: true, phone: true, forwardedAt: true, saleStatus: true, seller: { select: { id: true, name: true, phone: true } } },
+      select: { id: true, name: true, phone: true, forwardedAt: true, saleStatus: true, lostReason: { select: { name: true } }, seller: { select: { id: true, name: true, phone: true } } },
     })
     const [config, log] = await Promise.all([
       this.alertSettings(user.tenantId).then((s) => cleanDigest(s.sellerDigest)),
@@ -575,8 +575,8 @@ export class ServiceRecordsService {
         sellerId: g.seller.id,
         seller: g.seller.name,
         sellerPhone: g.seller.phone ? (normalizePhone(g.seller.phone) ?? g.seller.phone) : null,
-        items: g.items.map((r) => ({ id: r.id, name: r.name, phone: r.phone, forwardedAt: r.forwardedAt, saleStatus: r.saleStatus })),
-        messages: digestMessages(config.text, g.seller.name, day, g.items, config.split),
+        items: g.items.map((r) => ({ id: r.id, name: r.name, phone: r.phone, forwardedAt: r.forwardedAt, saleStatus: r.saleStatus, situation: saleSituation(r.saleStatus, r.lostReason?.name) })),
+        messages: digestMessages(config.text, g.seller.name, day, g.items.map((r) => ({ ...r, situation: saleSituation(r.saleStatus, r.lostReason?.name) })), config.split),
         status: log.day === day ? (log.sellers?.[g.seller.id] ?? null) : null,
         automatic: digestFor(config, g.seller.id),
       }))
