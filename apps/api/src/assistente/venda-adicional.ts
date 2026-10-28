@@ -12,9 +12,14 @@ const BRANDS = new Set('caterpillar cat komatsu volvo hyundai jcb john deere cas
 const UNIT = /^\d+(mm|cm|m|kg|g|v|w|l|ml|un|pc|pcs|pol|cv|hp)$/
 const QUALIFIERS = new Set('kit original paralela paralelo novo nova jogo par unidade compativel aplicacao linha amarela retroescavadeira escavadeira carregadeira trator motoniveladora'.split(' '))
 
-/** Tokens com cara de modelo de máquina: letras e até 4 dígitos (JS200, 320D, D6T, EC210), sem medidas. */
+/**
+ * Tokens com cara de modelo de máquina: letras e até 4 dígitos (JS200, 320D, D6T, EC210), sem medidas. Modelo curto
+ * (3C, 4C) só logo depois da marca ("JCB 3C"), para não pegar qualquer sigla.
+ */
 export function modelTokens(text: unknown) {
-  return searchTokens(text).filter((w) => /[a-z]/.test(w) && /\d/.test(w) && w.length >= 3 && w.length <= 10 && (w.match(/\d/g)?.length ?? 0) <= 4 && !UNIT.test(w))
+  const words = norm(text).replace(/[^a-z0-9]+/g, ' ').split(' ')
+  const short = new Set(words.filter((w, i) => /^\d[a-z]$/.test(w) && BRANDS.has(words[i - 1] ?? '')))
+  return searchTokens(text).filter((w) => /[a-z]/.test(w) && /\d/.test(w) && (w.length >= 3 || short.has(w)) && w.length <= 10 && (w.match(/\d/g)?.length ?? 0) <= 4 && !UNIT.test(w))
 }
 
 /** Tipo do produto pelo título: as primeiras palavras antes da marca e do modelo ("filtro ar primario"). */

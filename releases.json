@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.104.1",
+      "date": "2026-10-28",
+      "title": "Venda adicional reconhece modelos curtos (JCB 3C)",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Assistente ML",
+          "text": "A indicação de outros produtos para a mesma máquina não reconhecia modelos de 2 caracteres, como JCB 3C. Agora, numa pergunta como \"Filtro de ar do motor para JCB 3C\", a resposta indica os outros filtros da 3C (ex.: filtro de ar secundário e filtro de óleo do motor), sem misturar com a 3CX."
+        }
+      ]
+    },
+    {
       "version": "0.104.0",
       "date": "2026-10-28",
       "title": "Perguntas respondidas fora do CRM",

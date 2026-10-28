@@ -32,6 +32,21 @@ describe('venda adicional nas respostas do Mercado Livre', () => {
     expect(titleComplements('tem?', row('X', 'Filtro De Ar Universal'), rows, store, new Set())).toEqual([])
   })
 
+  it('JCB 3C (modelo curto): pergunta do filtro de ar do motor indica primário, secundário e óleo do motor', () => {
+    const c3 = [
+      row('MLB31', 'Filtro De Ar Primário Jcb 3c'),
+      row('MLB32', 'Filtro De Ar Secundário Jcb 3c'),
+      row('MLB33', 'Filtro De Óleo Do Motor Jcb 3c'),
+      row('MLB34', 'Filtro De Ar Primário Jcb 3cx'),
+    ]
+    const st = new Set(c3.map((r) => r.id))
+    expect(modelTokens('Filtro de Ar motor para JCB 3c')).toEqual(['3c'])
+    // Perguntou no anúncio do filtro de ar primário: indica o secundário e o de óleo (o 3CX é outra máquina).
+    expect(titleComplements('Filtro de Ar motor para JCB 3c', c3[0]!, c3, st, new Set()).map((c) => c.id)).toEqual(['MLB32', 'MLB33'])
+    // Sem anúncio (pergunta geral): os três da 3C.
+    expect(titleComplements('Filtro de Ar motor para JCB 3c', null, c3, st, new Set()).map((c) => c.id).sort()).toEqual(['MLB31', 'MLB32', 'MLB33'])
+  })
+
   const ctx = (ids: string[]) =>
     ({ anuncios_complementares: ids.map((id) => ({ id, titulo: `Produto ${id}`, codigo: '', sistema: null, aplicacao_confirmada: 'JS200' })), anuncios_com_link_permitido: ids }) as unknown as AssistContext
   const res = (o: Partial<AiResult>) => ({ decision: 'responder', answer: 'Bom dia!\nTemos sim: {{LINK:MLB1}}', complementary_item_ids: [], ...o }) as AiResult
