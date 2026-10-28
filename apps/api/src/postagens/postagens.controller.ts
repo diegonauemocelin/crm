@@ -58,6 +58,30 @@ class CaptionDto {
   @IsOptional() @IsUUID() productId?: string
   @IsOptional() @IsString() @MaxLength(2500) current?: string
   @IsOptional() @IsString() @MaxLength(400) instruction?: string
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(60, { each: true }) keywords?: string[]
+}
+
+class CaptionCheckDto {
+  @IsString() @MaxLength(5000) caption!: string
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(60, { each: true }) keywords?: string[]
+}
+
+class ReelsDto {
+  @IsOptional() @IsString() @MaxLength(500) topic?: string
+  @IsOptional() @IsUUID() productId?: string
+  @IsOptional() @IsInt() @Min(7) @Max(90) seconds?: number
+  @IsOptional() @IsString() @MaxLength(400) instruction?: string
+}
+
+class ReelsLineDto {
+  @IsString() @MaxLength(300) text!: string
+  @IsOptional() @IsString() @MaxLength(80) screen?: string
+}
+
+class ReelsCheckDto {
+  @IsArray() @ArrayMaxSize(6) @IsString({ each: true }) @MaxLength(200, { each: true }) hooks!: string[]
+  @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => ReelsLineDto) lines!: ReelsLineDto[]
+  @IsOptional() @IsInt() @Min(7) @Max(90) seconds?: number
 }
 
 class PlanDto {
@@ -204,6 +228,29 @@ export class PostagensController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   aiCaption(@CurrentUser() user: AuthUser, @Body() dto: CaptionDto) {
     return this.svc.aiCaption(user, dto)
+  }
+
+  @Post('ia/reels')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  aiReels(@CurrentUser() user: AuthUser, @Body() dto: ReelsDto) {
+    return this.svc.aiReels(user, dto)
+  }
+
+  /** Prévia do feed e conferência da legenda (sem IA, a cada mudança do texto). */
+  @Post('legenda/conferir')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  checkCaption(@CurrentUser() user: AuthUser, @Body() dto: CaptionCheckDto) {
+    return this.svc.checkCaption(user, dto)
+  }
+
+  /** Nota das aberturas e tempo das falas do roteiro (sem IA, depois de editar). */
+  @Post('reels/conferir')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  checkReels(@CurrentUser() user: AuthUser, @Body() dto: ReelsCheckDto) {
+    return this.svc.checkReels(user, dto)
   }
 
   @Post('ia/calendario')

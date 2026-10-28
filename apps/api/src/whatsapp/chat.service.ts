@@ -1446,6 +1446,39 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /**
+   * O contrário do "Enviar contato do vendedor": manda ao WhatsApp do vendedor o cartão do cliente desta conversa
+   * (nome e telefone), pelo mesmo número, com uma linha antes dizendo quem é (e o código, se tiver). O vendedor fica
+   * como colega na agenda: a resposta dele não vira lead nem pré-venda.
+   */
+  async sendClientToSeller(user: AuthUser, id: string, sellerId: string) {
+    this.assertAction(user, 'chat', 'create')
+    const conv = await this.load(user, id)
+    if (conv.category !== 'CLIENTE') throw new BadRequestException('Só conversas de cliente.')
+    if (!conv.phone) throw new BadRequestException('O cliente não tem telefone nesta conversa.')
+    const seller = await this.prisma.seller.findFirst({ where: { id: sellerId, tenantId: user.tenantId }, select: { name: true, phone: true } })
+    if (!seller) throw new BadRequestException('Vendedor inválido.')
+    const phone = seller.phone ? normalizePhone(seller.phone) : null
+    if (!phone) throw new BadRequestException('O vendedor não tem telefone no cadastro (Cadastros › Vendedores).')
+    const name = (conv.name?.trim() || phoneLabel(conv.phone)).slice(0, 80)
+    const card = contactCard(name, conv.phone)
+    if ('error' in card) throw new BadRequestException(card.error)
+    if (!(await this.prisma.whatsappContact.count({ where: { tenantId: user.tenantId, contactKey: { in: this.keysOf(phone) } } }))) {
+      await this.prisma.whatsappContact.create({ data: { tenantId: user.tenantId, scope: '', contactKey: phone, name: seller.name, category: 'COLEGA' } })
+    }
+    const before = await this.prisma.whatsappConversation.findFirst({ where: { numberId: conv.numberId, phone: { in: phoneVariants(phone) } }, select: { id: true } })
+    const target = await this.start(user, { numberId: conv.numberId, phone })
+    if (!before) await this.prisma.whatsappConversation.update({ where: { id: target.id }, data: { category: 'COLEGA', name: seller.name } })
+    const lead = conv.leadId ? await this.prisma.lead.findUnique({ where: { id: conv.leadId }, select: { customerCode: true } }) : null
+    const c = await this.sendContext(user, target.id)
+    const intro = `Contato do cliente ${name}${lead?.customerCode ? ` (código ${lead.customerCode})` : ''}, enviado pela pré-venda:`
+    const t = await c.client.sendText(c.number.instanceName, c.target, intro).catch((e: unknown) => this.fail(e))
+    await this.recordSent(user, c, t, { type: 'texto', text: intro })
+    const r = await c.client.sendContact(c.number.instanceName, c.target, card).catch((e: unknown) => this.fail(e))
+    await this.recordSent(user, c, r, { type: 'contato', text: card.text })
+    return { seller: seller.name, conversationId: target.id }
+  }
+
+  /**
    * Contatos para compartilhar: vendedores e colegas da agenda (com telefone) e, para quem vê a base, os leads.
    * Só nome e telefone, no máximo 20 por busca.
    */

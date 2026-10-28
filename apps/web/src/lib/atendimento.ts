@@ -111,6 +111,8 @@ export interface ServiceRecord {
   callDueAt?: string | null
   calledAt?: string | null
   callOverdue?: boolean
+  /** Fechado pela lista (pré-venda encerrada ou pós-venda resolvido). */
+  closedAt?: string | null
   /** Mensagem automática do dia seguinte: quando foi tentada e o resultado (ENVIADA ou ERRO: motivo). */
   autoMessageAt?: string | null
   autoMessageStatus?: string | null

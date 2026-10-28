@@ -29,6 +29,7 @@ import {
   profileStats,
   recommendTimes,
 } from './instagram'
+import { auditPosts } from './ig-analise'
 import { periods, pct } from './metricas'
 import { byFormat, rankPosts } from './plataformas'
 import { metaError } from './sync'
@@ -105,7 +106,7 @@ export class MarketingInstagramService {
       this.prisma.mktSocialProfileDay.findMany({ where: { tenantId: T, network: 'instagram', profileId: { in: ids }, date: prevRange } }),
       this.prisma.mktSocialProfileDay.findMany({ where: { tenantId: T, network: 'instagram', profileId: { in: ids }, followers: { not: null } }, orderBy: { date: 'desc' }, take: 400 * Math.max(1, ids.length), select: { profileId: true, date: true, followers: true } }),
       this.prisma.mktSocialPost.findMany({ where: { ...postWhere, publishedAt: { gte: p.start, lt: p.end } }, orderBy: { publishedAt: 'desc' }, take: 1000 }),
-      this.prisma.mktSocialPost.findMany({ where: { ...postWhere, publishedAt: { gte: since90 } }, select: { publishedAt: true, format: true, reach: true, likes: true, comments: true, shares: true, saves: true }, take: 3000 }),
+      this.prisma.mktSocialPost.findMany({ where: { ...postWhere, publishedAt: { gte: since90 } }, select: { profileId: true, publishedAt: true, format: true, reach: true, likes: true, comments: true, shares: true, saves: true }, take: 3000 }),
       this.settings.get<Partial<IgAudience>>(T, audienceKey(selected === 'todas' ? official : selected), {}),
       this.settings.get<SyncStates>(T, SYNC_KEY, {}),
     ])
@@ -154,6 +155,8 @@ export class MarketingInstagramService {
         postsPerWeek: r2((feed.length / Math.max(1, p.days)) * 7),
         reelsAvgWatchSec: reels.length ? r2(reels.reduce((s, x) => s + (x.extra?.avgWatchMs ?? 0), 0) / reels.length / 1000) : null,
       },
+      // Análise dos posts: cada um contra o alcance normal (mediana dos últimos 90 dias) do próprio perfil.
+      audit: auditPosts(posts, timedPosts, official),
       stories: {
         count: stories.length,
         perDay: r2(stories.length / Math.max(1, p.days)),

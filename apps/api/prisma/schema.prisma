@@ -431,6 +431,8 @@ model ServiceRecord {
   callDueAt      DateTime?
   /// Última vez que marcaram "Chamei o cliente" (ou responderam pelo chat do CRM) com a pré-venda em negociação.
   calledAt       DateTime?
+  /// Fechado (pré-venda encerrada ou pós-venda resolvido), em massa pela lista: o chat do cliente é finalizado junto.
+  closedAt       DateTime?
   /// Mensagem automática de WhatsApp do dia seguinte: quando foi tentada e o resultado (ENVIADA ou o motivo da falha).
   autoMessageAt     DateTime?
   autoMessageStatus String?

@@ -691,7 +691,7 @@ function useSaveAlerts(message: string) {
 
 const NO_OWNER = '__none__'
 
-/** Pré-venda com resultado gera o pós-venda: aqui se define quem recebe e o prazo do primeiro contato. */
+/** Pré-venda enviada ao pós-venda (pela lista): aqui se define quem recebe e o prazo do primeiro contato. */
 export function PostSaleCard({ config }: { config: AlertConfig }) {
   const { can } = useAuth()
   const options = useOptions()
@@ -720,9 +720,9 @@ export function PostSaleCard({ config }: { config: AlertConfig }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Pós-venda automático</CardTitle>
+        <CardTitle>Pós-venda</CardTitle>
         <CardDescription>
-          Quando a pré-venda é marcada como “Vendeu” ou “Perdida”, o cliente entra no Pós-Vendas para outra pessoa acompanhar. Ela precisa registrar o contato (com observação) dentro do prazo.
+          O pós-venda não abre sozinho: em Pré-Vendas, selecione os atendimentos e use “Enviar para Pós-Vendas”. O cliente entra no Pós-Vendas para outra pessoa acompanhar, que precisa registrar o contato (com observação) dentro do prazo.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -1105,7 +1105,7 @@ export function NoPostSaleCard({ config }: { config: AlertConfig }) {
       <CardHeader>
         <CardTitle>Venda perdida sem pós-venda</CardTitle>
         <CardDescription>
-          Quando a pré-venda é marcada como venda não realizada por um destes motivos (ex.: não temos o produto), ela não vai para o Pós-Vendas e o atendimento no chat é finalizado na hora, sem mensagem para o cliente.
+          Quando a pré-venda é marcada como venda não realizada por um destes motivos (ex.: não temos o produto), o atendimento no chat é finalizado na hora, sem mensagem para o cliente.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -1149,7 +1149,7 @@ export function SellerDigestCard({ config }: { config: AlertConfig }) {
       <CardHeader>
         <CardTitle>Resumo do dia para os vendedores</CardTitle>
         <CardDescription>
-          Todo dia, a partir do horário escolhido, cada vendedor recebe no WhatsApp dele os clientes da pré-venda repassados a ele naquele dia (telefone e nome), em vez de copiar e colar um por um. Quem não teve repasse no dia não recebe nada. O mesmo resumo fica em Pré-Vendas › Resumo do dia, para copiar.
+          Todo dia, a partir do horário escolhido, cada vendedor recebe no WhatsApp dele os clientes da pré-venda repassados a ele naquele dia (telefone, nome e situação: vendeu, não vendeu e o motivo, ou aguardando retorno do vendedor), em vez de copiar e colar um por um. Quem não teve repasse no dia não recebe nada. O mesmo resumo fica em Pré-Vendas › Resumo do dia, para copiar.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -1208,7 +1208,7 @@ export function SellerDigestCard({ config }: { config: AlertConfig }) {
         <div className="space-y-2">
           <Label htmlFor="dg-text">Abertura da mensagem</Label>
           <Textarea id="dg-text" rows={3} maxLength={1000} value={d.text} onChange={(e) => setD({ ...d, text: e.target.value })} disabled={!canEdit} />
-          <p className="text-xs text-muted-foreground">Use {'{vendedor}'}, {'{data}'} e {'{quantidade}'}. Os clientes (telefone e nome) vêm logo depois, sozinhos.</p>
+          <p className="text-xs text-muted-foreground">Use {'{vendedor}'}, {'{data}'} e {'{quantidade}'}. Os clientes (telefone, nome e situação) vêm logo depois, sozinhos.</p>
         </div>
       </CardContent>
       {canEdit && (

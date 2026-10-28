@@ -19,6 +19,11 @@ daquele computador.
 
 ## Entrega (toda mudança que vai para o usuário)
 
+Uma versão por dia, às 17h (decisão de 28/10/2026). Durante o dia, cada pedido pronto (testado) vai em commits
+`dia: <resumo>` num branch `dia/AAAA-MM-DD`, com push (para não depender do PC). Às 17h junta tudo do dia numa versão só
+(passos abaixo, no main, uma entrada no releases.json com todas as mudanças) e depois leva ao SaaS. Se o usuário pedir
+antes ("publica agora"), publica na hora.
+
 1. Entrada nova no topo de `releases.json` (tipos: `novo`, `melhoria`, `correcao`, `seguranca`, `infra`; texto simples, para quem usa o sistema).
 2. Versão nos 3 `package.json` (raiz, `apps/api`, `apps/web`) e no `package-lock.json` (as entradas dos 3 pacotes). Numeração (decisão de 28/10/2026, para o número não crescer): depois da v0.104.1 a próxima entrega é a **v1.0.0**, e cada entrega seguinte soma 1 no último número (v1.0.1, v1.0.2...), novidade ou correção.
 3. `node scripts/check-release.mjs`.

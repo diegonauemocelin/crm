@@ -2,6 +2,68 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "1.0.0",
+      "date": "2026-10-28",
+      "title": "Pré e pós-venda em massa, mapa do Brasil, situação no resumo do vendedor e Instagram mais inteligente",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Pré e Pós-Vendas",
+          "text": "O pós-venda não abre mais sozinho quando a pré-venda fica Vendeu ou Perdida. Para abrir, selecione os atendimentos em Pré-Vendas e use \"Enviar para Pós-Vendas\" (em massa). Quem já tem pós-venda não ganha outro."
+        },
+        {
+          "type": "novo",
+          "area": "Pré e Pós-Vendas",
+          "text": "Fechar em massa: selecione os atendimentos e use \"Fechar pré-venda\" ou \"Fechar pós-venda\". A pré-venda fica marcada como Fechada e o pós-venda como Resolvido; as conversas abertas desses clientes no chat são finalizadas, sem mensagem para eles."
+        },
+        {
+          "type": "melhoria",
+          "area": "Dashboard",
+          "text": "\"Por estado\" agora é um mapa do Brasil de verdade, com cada estado pintado pela quantidade de atendimentos. Toque ou passe o mouse sobre o estado para ver atendimentos e vendas."
+        },
+        {
+          "type": "melhoria",
+          "area": "Atendimento",
+          "text": "O resumo do dia enviado ao vendedor mostra, ao lado do nome de cada cliente, a situação: Vendeu, Não vendeu (com o motivo) ou Aguardando retorno do vendedor. A tela do resumo também mostra a situação, em cores."
+        },
+        {
+          "type": "novo",
+          "area": "Chat",
+          "text": "Na ficha do cliente da conversa, botão \"Enviar cliente ao vendedor\": manda ao vendedor, pelo mesmo número de WhatsApp, uma mensagem com o nome e o código do cliente e o cartão de contato dele, do mesmo jeito que já se envia ao cliente o contato do vendedor."
+        },
+        {
+          "type": "novo",
+          "area": "Marketing › Instagram",
+          "text": "Aba \"Análise dos posts\": cada post aparece com quantas vezes passou do alcance normal do próprio perfil (acima, normal ou abaixo), além de envios e salvamentos por mil alcançados. Mostra o resultado por formato e por dia da semana e, no topo, o que funcionou melhor. Exporta em CSV."
+        },
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "Prévia do feed: abaixo da legenda aparece o que o Instagram mostra antes do \"... mais\", e uma conferência que atualiza enquanto você digita (tamanho, primeira linha, gancho concreto, limite de 5 hashtags, um só pedido ao cliente e palavras de busca)."
+        },
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "Campo \"Palavras de busca\" no editor: a IA coloca essas palavras na legenda e a conferência avisa se faltar alguma."
+        },
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "Roteiro de Reels com IA: 3 aberturas com nota de 0 a 100 (forte, ok ou fraca) e o ponto mais fraco de cada uma, o roteiro com o tempo de cada fala e o texto da tela, avisos (abertura longa, fala longa, final que não retoma o começo) e a legenda sugerida. Dá para editar, conferir de novo, copiar ou usar a legenda na postagem."
+        },
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "Plano da semana: monta a próxima semana (segunda a sábado), dizendo o que postar, em qual formato e em qual dia, com base no que deu resultado no Instagram nos últimos 90 dias. As postagens viram rascunhos."
+        },
+        {
+          "type": "melhoria",
+          "area": "Postagens",
+          "text": "A IA de legendas segue as regras novas do Instagram: de 3 a 5 hashtags, primeira linha curta e concreta e um único pedido ao cliente. O Calendário com IA também passou a usar o que deu resultado nos posts."
+        }
+      ]
+    },
+    {
       "version": "0.104.1",
       "date": "2026-10-28",
       "title": "Venda adicional reconhece modelos curtos (JCB 3C)",

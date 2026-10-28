@@ -112,6 +112,10 @@ class MoveDto {
   @ApiProperty({ enum: KINDS }) @IsIn(KINDS) kind!: ServiceKind
 }
 
+class CloseDto {
+  @ApiProperty() @IsArray() @ArrayMaxSize(5000) @IsUUID('all', { each: true }) ids!: string[]
+}
+
 class ImportDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) url?: string
   @ApiPropertyOptional({ description: 'Conteúdo CSV (alternativa ao link)' }) @IsOptional() @IsString() @MaxLength(2 * 1024 * 1024) csv?: string
@@ -319,6 +323,13 @@ export class AtendimentoController {
   @HttpCode(200)
   move(@CurrentUser() user: AuthUser, @Body() dto: MoveDto, @ReqContext() ctx: RequestCtx) {
     return this.records.move(user, dto.ids, dto.kind, ctx)
+  }
+
+  /** Fecha em massa: pré-venda encerrada ou pós-venda resolvido, com o chat do cliente finalizado. */
+  @Post('fechar')
+  @HttpCode(200)
+  close(@CurrentUser() user: AuthUser, @Body() dto: CloseDto, @ReqContext() ctx: RequestCtx) {
+    return this.records.close(user, dto.ids, ctx)
   }
 
   @Post('importar')
