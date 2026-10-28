@@ -44,8 +44,8 @@ import { StartDialog } from '@/pages/chat-page'
 
 const NONE = '__none__'
 
-/** Resposta ao salvar: o que aconteceu com o pós-venda (gerado, ou encerrado sem pós-venda pelo motivo da perda). */
-type Saved = ServiceRecord & { postSale?: 'CRIADO' | 'ENCERRADO' | null }
+/** Resposta ao salvar: ENCERRADO quando o motivo da perda finaliza o atendimento no chat. */
+type Saved = ServiceRecord & { postSale?: 'ENCERRADO' | null }
 
 interface FormState {
   kind: Kind
@@ -248,7 +248,6 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
       void qc.invalidateQueries({ queryKey: ['atendimento-alertas'] })
       void qc.invalidateQueries({ queryKey: ['atendimento', saved.id] })
       toast.success(record ? 'Atendimento atualizado.' : 'Atendimento registrado.')
-      if (saved.postSale === 'CRIADO') toast.info('Pós-venda criado: o cliente já está na fila do pós-venda.')
       if (saved.postSale === 'ENCERRADO') {
         toast.info('Sem pós-venda (motivo da perda): o atendimento no chat foi finalizado.')
         void qc.invalidateQueries({ queryKey: ['chat-conversa'] })

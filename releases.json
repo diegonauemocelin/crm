@@ -4,8 +4,23 @@
     {
       "version": "1.0.0",
       "date": "2026-10-28",
-      "title": "Situação no resumo do vendedor, cliente ao vendedor e Instagram mais inteligente",
+      "title": "Pré e pós-venda em massa, mapa do Brasil, situação no resumo do vendedor e Instagram mais inteligente",
       "changes": [
+        {
+          "type": "melhoria",
+          "area": "Pré e Pós-Vendas",
+          "text": "O pós-venda não abre mais sozinho quando a pré-venda fica Vendeu ou Perdida. Para abrir, selecione os atendimentos em Pré-Vendas e use \"Enviar para Pós-Vendas\" (em massa). Quem já tem pós-venda não ganha outro."
+        },
+        {
+          "type": "novo",
+          "area": "Pré e Pós-Vendas",
+          "text": "Fechar em massa: selecione os atendimentos e use \"Fechar pré-venda\" ou \"Fechar pós-venda\". A pré-venda fica marcada como Fechada e o pós-venda como Resolvido; as conversas abertas desses clientes no chat são finalizadas, sem mensagem para eles."
+        },
+        {
+          "type": "melhoria",
+          "area": "Dashboard",
+          "text": "\"Por estado\" agora é um mapa do Brasil de verdade, com cada estado pintado pela quantidade de atendimentos. Toque ou passe o mouse sobre o estado para ver atendimentos e vendas."
+        },
         {
           "type": "melhoria",
           "area": "Atendimento",

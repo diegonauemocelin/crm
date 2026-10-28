@@ -466,22 +466,27 @@ export class ServiceRecordsService {
   }
 
   /**
-   * Pré-venda que passou a ter resultado: gera o pós-venda. Venda perdida por um motivo que não gera pós-venda (ex.:
-   * não temos o produto): não gera, e o atendimento no chat é finalizado (sem mensagem para o cliente).
-   * Devolve o que aconteceu: CRIADO (pós-venda gerado), ENCERRADO (sem pós-venda) ou null (nada).
+   * Pré-venda que passou a ter resultado. O pós-venda não é mais gerado sozinho (decisão de 28/10/2026): só vai para o
+   * pós-venda quem for enviado pela lista. Venda perdida por um motivo que não gera pós-venda (ex.: não temos o
+   * produto): o atendimento no chat é finalizado (sem mensagem para o cliente).
+   * Devolve o que aconteceu: ENCERRADO (chat finalizado pelo motivo) ou null (nada).
    */
   private async afterResult(user: AuthUser, record: Prisma.ServiceRecordGetPayload<object>, prevSale: Prisma.ServiceRecordGetPayload<object>['saleStatus'] | null, ctx: RequestCtx) {
     if (!shouldCreatePostSale(record.kind, prevSale, record.saleStatus)) return null
     const skip = record.saleStatus === 'NAO' && !!record.lostReasonId && (await this.noPostSaleReasons(user.tenantId)).includes(record.lostReasonId)
-    if (!skip) {
-      await this.createPostSale(user, record, ctx)
-      return 'CRIADO' as const
-    }
+    if (!skip) return null
     const reason = await this.prisma.lookupItem.findUnique({ where: { id: record.lostReasonId! }, select: { name: true } })
     const why = reason?.name ?? 'motivo da perda'
     await this.prisma.serviceRecordHistory.create({ data: { recordId: record.id, userId: user.id, userName: user.name, action: `encerrado sem pós-venda (${why})`, changes: {} } })
-    // O atendimento no chat termina junto (a conversa vai para as finalizadas; nada é enviado ao cliente).
-    const convs = await this.prisma.whatsappConversation.findMany({ where: { tenantId: user.tenantId, recordId: record.id, status: 'ABERTA' }, select: { id: true } })
+    const conversas = await this.closeChats(user, [record.id], `pré-venda sem venda (${why}), sem pós-venda`)
+    await this.audit.byUser(user, ctx, 'atendimento.closed_without_post_sale', 'service_record', record.id, { motivo: reason?.name ?? null, conversas })
+    return 'ENCERRADO' as const
+  }
+
+  /** Finaliza as conversas abertas dos atendimentos (vão para as finalizadas; nada é enviado ao cliente). */
+  private async closeChats(user: AuthUser, recordIds: string[], why: string) {
+    if (!recordIds.length) return 0
+    const convs = await this.prisma.whatsappConversation.findMany({ where: { tenantId: user.tenantId, recordId: { in: recordIds }, status: 'ABERTA' }, select: { id: true } })
     const now = new Date()
     for (const c of convs) {
       await this.prisma.whatsappConversation.update({
@@ -489,11 +494,47 @@ export class ServiceRecordsService {
         data: { status: 'ARQUIVADA', assignedUserId: null, sectorId: null, helperUserIds: [], botFlowId: null, botState: Prisma.DbNull, unread: 0, noReplyNeeded: true, closedAt: now, closedByName: user.name.slice(0, 120) },
       })
       await this.prisma.whatsappMessage.create({
-        data: { tenantId: user.tenantId, conversationId: c.id, waId: `nota:${randomUUID()}`, fromMe: true, type: 'nota', text: `Atendimento finalizado por ${user.name}: pré-venda sem venda (${why}), sem pós-venda.`, internal: true, sentById: user.id, sentByName: user.name.slice(0, 120), status: 'NOTA', sentAt: now },
+        data: { tenantId: user.tenantId, conversationId: c.id, waId: `nota:${randomUUID()}`, fromMe: true, type: 'nota', text: `Atendimento finalizado por ${user.name}: ${why}.`, internal: true, sentById: user.id, sentByName: user.name.slice(0, 120), status: 'NOTA', sentAt: now },
       })
     }
-    await this.audit.byUser(user, ctx, 'atendimento.closed_without_post_sale', 'service_record', record.id, { motivo: reason?.name ?? null, conversas: convs.length })
-    return 'ENCERRADO' as const
+    return convs.length
+  }
+
+  /**
+   * Fecha atendimentos em massa. Pré-venda: fica fechada (sem prazo para chamar o cliente, sem gerar pós-venda).
+   * Pós-venda: fica Resolvido. Nos dois, as conversas abertas do cliente são finalizadas.
+   */
+  async close(user: AuthUser, ids: string[], ctx: RequestCtx) {
+    const records = await this.prisma.serviceRecord.findMany({ where: { id: { in: ids }, tenantId: user.tenantId, deletedAt: null, closedAt: null } })
+    for (const r of records) {
+      this.assertCan(user, r.kind, 'edit')
+      if (!(await this.prisma.serviceRecord.count({ where: { id: r.id, ...this.scope(user, r.kind) } }))) throw new ForbiddenException('Seu perfil não permite fechar atendimentos de outros vendedores.')
+    }
+    const now = new Date()
+    const note = `Fechado em massa por ${user.name}.`
+    await this.prisma.$transaction(
+      records.map((r) => {
+        const post = r.kind === 'POS_VENDAS'
+        const changes: Record<string, { de: unknown; para: unknown }> = { closedAt: { de: null, para: now } }
+        if (post && r.followStatus !== 'RESOLVIDO') changes.followStatus = { de: r.followStatus, para: 'RESOLVIDO' }
+        return this.prisma.serviceRecord.update({
+          where: { id: r.id },
+          data: {
+            closedAt: now,
+            callDueAt: null,
+            updatedById: user.id,
+            ...(post ? { followStatus: 'RESOLVIDO' as const, followNote: r.followNote?.trim() ? r.followNote : note } : {}),
+            ...(r.firstActionAt ? {} : { firstActionAt: now }),
+            history: { create: { userId: user.id, userName: user.name, action: post ? 'pós-venda fechado' : 'pré-venda fechada', changes: changes as Prisma.InputJsonValue } },
+          },
+        })
+      }),
+    )
+    // A conversa pode estar ligada ao pós-venda ou à pré-venda que o originou.
+    const chatIds = [...new Set(records.flatMap((r) => (r.kind === 'POS_VENDAS' && r.parentId ? [r.id, r.parentId] : [r.id])))]
+    const conversas = await this.closeChats(user, chatIds, 'atendimento fechado')
+    await this.audit.byUser(user, ctx, 'atendimento.closed', 'service_record', undefined, { quantidade: records.length, conversas })
+    return { closed: records.length, chats: conversas }
   }
 
   /** Situação inicial e prazo de um pós-venda novo. */
@@ -503,11 +544,11 @@ export class ServiceRecordsService {
   }
 
   /**
-   * Pré-venda com resultado (vendeu ou não) gera o pós-venda para outra pessoa acompanhar,
-   * com os dados do cliente e o resultado copiados e prazo para o primeiro contato.
+   * Pós-venda de uma pré-venda enviada pela lista, para outra pessoa acompanhar, com os dados do cliente e o resultado
+   * copiados e prazo para o primeiro contato. Já tendo pós-venda, não gera outro (devolve false).
    */
   private async createPostSale(user: AuthUser, pre: Prisma.ServiceRecordGetPayload<object>, ctx: RequestCtx) {
-    if (await this.prisma.serviceRecord.count({ where: { parentId: pre.id, deletedAt: null } })) return
+    if (await this.prisma.serviceRecord.count({ where: { parentId: pre.id, deletedAt: null } })) return false
     const s = await this.alertSettings(user.tenantId)
     const ownerId = (pre.unitId ? s.postSaleOwnerByUnit[pre.unitId] : undefined) ?? s.postSaleOwnerId ?? null
     const owner = ownerId ? await this.prisma.seller.findFirst({ where: { id: ownerId, tenantId: user.tenantId, active: true }, select: { id: true } }) : null
@@ -536,7 +577,7 @@ export class ServiceRecordsService {
         lostReasonId: pre.lostReasonId,
         invoiceNumber: pre.invoiceNumber,
         saleValue: pre.saleValue,
-        notes: `Gerado automaticamente da pré-venda${preSeller ? ` de ${preSeller.name}` : ''} (${pre.saleStatus === 'SIM' ? 'venda realizada' : 'venda não realizada'}).`,
+        notes: `Enviado da pré-venda${preSeller ? ` de ${preSeller.name}` : ''} (${pre.saleStatus === 'SIM' ? 'venda realizada' : pre.saleStatus === 'NAO' ? 'venda não realizada' : 'em negociação'}).`,
         followStatus: 'PENDENTE',
         dueAt: deadline(new Date(), s.postSaleHours, await this.hours(user.tenantId)),
         createdById: user.id,
@@ -545,6 +586,7 @@ export class ServiceRecordsService {
       },
     })
     await this.audit.byUser(user, ctx, 'atendimento.post_sale_created', 'service_record', post.id, { preVenda: pre.id, responsavel: owner?.id ?? null })
+    return true
   }
 
   /**
@@ -617,7 +659,11 @@ export class ServiceRecordsService {
     await this.audit.byUser(user, ctx, 'atendimento.deleted', 'service_record', id, { nome: current.name })
   }
 
-  /** Move atendimentos entre Pré e Pós-Vendas (ex.: histórico importado sem separação). */
+  /**
+   * Pré-Vendas → Pós-Vendas: gera o pós-venda de cada pré-venda (responsável e prazo do primeiro contato, como era o
+   * automático); a pré-venda fica onde está, com o resultado. Pós → Pré: muda o registro de lugar (ex.: histórico
+   * importado sem separação).
+   */
   async move(user: AuthUser, ids: string[], kind: ServiceKind, ctx: RequestCtx) {
     const records = await this.prisma.serviceRecord.findMany({ where: { id: { in: ids }, tenantId: user.tenantId, deletedAt: null } })
     for (const r of records) {
@@ -625,6 +671,11 @@ export class ServiceRecordsService {
       if (this.scopeOf(user, r.kind) === 'OWN') throw new ForbiddenException('Seu perfil não permite mover atendimentos.')
     }
     this.assertCan(user, kind, 'edit')
+    if (kind === 'POS_VENDAS') {
+      let created = 0
+      for (const r of records.filter((x) => x.kind === 'PRE_VENDAS')) if (await this.createPostSale(user, r, ctx)) created++
+      return { moved: created }
+    }
     const toMove = records.filter((r) => r.kind !== kind)
     await this.prisma.$transaction(
       toMove.map((r) =>

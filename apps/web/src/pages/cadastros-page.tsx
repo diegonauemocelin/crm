@@ -691,7 +691,7 @@ function useSaveAlerts(message: string) {
 
 const NO_OWNER = '__none__'
 
-/** Pré-venda com resultado gera o pós-venda: aqui se define quem recebe e o prazo do primeiro contato. */
+/** Pré-venda enviada ao pós-venda (pela lista): aqui se define quem recebe e o prazo do primeiro contato. */
 export function PostSaleCard({ config }: { config: AlertConfig }) {
   const { can } = useAuth()
   const options = useOptions()
@@ -720,9 +720,9 @@ export function PostSaleCard({ config }: { config: AlertConfig }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Pós-venda automático</CardTitle>
+        <CardTitle>Pós-venda</CardTitle>
         <CardDescription>
-          Quando a pré-venda é marcada como “Vendeu” ou “Perdida”, o cliente entra no Pós-Vendas para outra pessoa acompanhar. Ela precisa registrar o contato (com observação) dentro do prazo.
+          O pós-venda não abre sozinho: em Pré-Vendas, selecione os atendimentos e use “Enviar para Pós-Vendas”. O cliente entra no Pós-Vendas para outra pessoa acompanhar, que precisa registrar o contato (com observação) dentro do prazo.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -1105,7 +1105,7 @@ export function NoPostSaleCard({ config }: { config: AlertConfig }) {
       <CardHeader>
         <CardTitle>Venda perdida sem pós-venda</CardTitle>
         <CardDescription>
-          Quando a pré-venda é marcada como venda não realizada por um destes motivos (ex.: não temos o produto), ela não vai para o Pós-Vendas e o atendimento no chat é finalizado na hora, sem mensagem para o cliente.
+          Quando a pré-venda é marcada como venda não realizada por um destes motivos (ex.: não temos o produto), o atendimento no chat é finalizado na hora, sem mensagem para o cliente.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
