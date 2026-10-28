@@ -587,6 +587,7 @@ interface AlertConfig {
   nextDayMessage?: NextDayMessage
   sellerDigest?: SellerDigest
   forwardMessage?: ForwardMessage
+  contactCheck?: ForwardMessage
   noPostSaleReasonIds?: string[]
 }
 
@@ -648,6 +649,7 @@ export function AlertsTab({ only }: { only?: 'prazos' | 'mensagens' }) {
         <>
           <NextDayMessageCard config={q.data} />
           <ForwardMessageCard config={q.data} />
+          <ForwardMessageCard config={q.data} field="contactCheck" />
           <SellerDigestCard config={q.data} />
         </>
       )}
@@ -1009,25 +1011,45 @@ export function NextDayMessageCard({ config }: { config: AlertConfig }) {
   )
 }
 
-/** Mensagem de WhatsApp para o cliente algum tempo depois do repasse ao vendedor (ex.: 2 horas). */
-export function ForwardMessageCard({ config }: { config: AlertConfig }) {
+const REPASSE_TEXT = {
+  forwardMessage: {
+    title: 'Mensagem do repasse ao vendedor',
+    description: 'Assim que o Pré-Vendas marca “Repassou ao vendedor” (ou depois do tempo escolhido), o cliente recebe esta mensagem pelo WhatsApp em que foi atendido. Vai uma vez só, e só se a pré-venda ainda estiver em negociação. Fica na conversa e no histórico da pré-venda.',
+    saved: 'Mensagem do repasse',
+    delay: 0,
+  },
+  contactCheck: {
+    title: 'O vendedor já entrou em contato?',
+    description: 'Depois do tempo escolhido (padrão: 30 minutos) do repasse, o cliente recebe esta pergunta pelo WhatsApp em que foi atendido, para saber se o vendedor já chamou. Vai uma vez só, só se a pré-venda ainda estiver em negociação e tiver vendedor. A resposta do cliente chega no chat.',
+    saved: 'Pergunta do contato do vendedor',
+    delay: 30,
+  },
+}
+
+/** Mensagens de WhatsApp para o cliente no repasse ao vendedor: o aviso (na hora) e a pergunta se o vendedor já chamou. */
+export function ForwardMessageCard({ config, field = 'forwardMessage' }: { config: AlertConfig; field?: 'forwardMessage' | 'contactCheck' }) {
   const { can } = useAuth()
   const canEdit = can('cadastros', 'edit')
-  const [m, setM] = useState<ForwardMessage>(config.forwardMessage ?? { enabled: false, delayMinutes: 120, text: '', numberIds: [], withoutChat: false, numberId: null, gapMin: 3, gapMax: 20 })
+  const t = REPASSE_TEXT[field]
+  // A pergunta ainda não configurada começa com os números da mensagem do repasse.
+  const [m, setM] = useState<ForwardMessage>(() => {
+    const saved = config[field] ?? { enabled: false, delayMinutes: t.delay, text: '', numberIds: [], withoutChat: false, numberId: null, gapMin: 3, gapMax: 20 }
+    const fresh = field === 'contactCheck' && !saved.enabled && !saved.numberIds.length
+    return fresh ? { ...saved, numberIds: config.forwardMessage?.numberIds ?? [] } : saved
+  })
   const numbers = useQuery({ queryKey: ['cadastros', 'alertas', 'numeros'], queryFn: () => api.get<{ id: string; name: string; phone: string | null; status: string }[]>('/cadastros/alertas/numeros') })
-  const save = useSaveAlerts(m.enabled ? 'Mensagem depois do repasse ligada.' : 'Mensagem depois do repasse salva (desligada).')
+  const save = useSaveAlerts(m.enabled ? `${t.saved} ligada.` : `${t.saved} salva (desligada).`)
   const chosen = m.numberIds
   const gapOk = [m.gapMin, m.gapMax].every((v) => Number.isInteger(v) && v >= 1 && v <= 120) && m.gapMin <= m.gapMax
-  const delayOk = Number.isInteger(m.delayMinutes) && m.delayMinutes >= 5 && m.delayMinutes <= 10080
+  const delayOk = Number.isInteger(m.delayMinutes) && m.delayMinutes >= 0 && m.delayMinutes <= 10080
   const valid = delayOk && gapOk && m.text.trim().length > 0 && m.text.length <= 1000 && (!m.enabled || chosen.length > 0)
   const hours = m.delayMinutes / 60
+  const id = (s: string) => `${field}-${s}`
   return (
     <Card className="h-fit">
       <CardHeader>
-        <CardTitle>Mensagem depois do repasse ao vendedor</CardTitle>
-        <CardDescription>
-          Depois do tempo escolhido, contado a partir de quando o Pré-Vendas marca “Repassou ao vendedor”, o cliente recebe esta mensagem pelo WhatsApp em que foi atendido. Vai uma vez só, e só se a pré-venda ainda estiver em negociação. Fica na conversa e no histórico da pré-venda.
-        </CardDescription>
+        <CardTitle>{t.title}</CardTitle>
+        <CardDescription>{t.description}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <label className="flex items-center justify-between gap-3 text-sm font-medium">
@@ -1035,12 +1057,12 @@ export function ForwardMessageCard({ config }: { config: AlertConfig }) {
           <Switch checked={m.enabled} onCheckedChange={(enabled) => setM({ ...m, enabled })} disabled={!canEdit} />
         </label>
         <div className="space-y-1.5">
-          <Label htmlFor="fw-delay">Tempo depois do repasse (minutos)</Label>
+          <Label htmlFor={id('delay')}>Tempo depois do repasse (minutos)</Label>
           <div className="flex items-center gap-2">
-            <Input id="fw-delay" type="number" min={5} max={10080} className="w-28" value={m.delayMinutes} onChange={(e) => setM({ ...m, delayMinutes: Number(e.target.value) })} disabled={!canEdit} />
-            <span className="text-sm text-muted-foreground">{delayOk && hours >= 1 ? `= ${hours.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} hora(s)` : ''}</span>
+            <Input id={id('delay')} type="number" min={0} max={10080} className="w-28" value={m.delayMinutes} onChange={(e) => setM({ ...m, delayMinutes: Number(e.target.value) })} disabled={!canEdit} />
+            <span className="text-sm text-muted-foreground">{delayOk && m.delayMinutes === 0 ? 'na hora do repasse' : delayOk && hours >= 1 ? `= ${hours.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} hora(s)` : ''}</span>
           </div>
-          <p className="text-xs text-muted-foreground">Conta só o horário comercial (WhatsApp › Regras e horário): almoço, noite e fim de semana ficam de fora. Ex.: repasse às 17h com 2 horas sai às 9h do próximo dia útil.</p>
+          <p className="text-xs text-muted-foreground">Conta só o horário comercial (WhatsApp › Regras e horário): almoço, noite e fim de semana ficam de fora. Use 0 para enviar na hora. Repasse fora do horário sai na abertura do próximo dia útil.</p>
         </div>
         <div className="space-y-1.5 rounded-md border p-3">
           <p className="text-sm">Atendimentos destes números de WhatsApp</p>
@@ -1075,14 +1097,14 @@ export function ForwardMessageCard({ config }: { config: AlertConfig }) {
           {!gapOk && <p className="text-xs text-destructive">Use de 1 a 120 minutos, com o mínimo menor ou igual ao máximo.</p>}
         </div>
         <div className="space-y-2">
-          <Label htmlFor="fw-text">Mensagem</Label>
-          <Textarea id="fw-text" rows={4} maxLength={1000} value={m.text} onChange={(e) => setM({ ...m, text: e.target.value })} disabled={!canEdit} />
+          <Label htmlFor={id('text')}>Mensagem</Label>
+          <Textarea id={id('text')} rows={4} maxLength={1000} value={m.text} onChange={(e) => setM({ ...m, text: e.target.value })} disabled={!canEdit} />
           <p className="text-xs text-muted-foreground">Use {'{nome}'} para o primeiro nome do cliente e {'{vendedor}'} para o primeiro nome do vendedor. Ao ligar, vale para os repasses dali em diante.</p>
         </div>
       </CardContent>
       {canEdit && (
         <CardFooter>
-          <Button onClick={() => save.mutate({ ...config, forwardMessage: { ...m, text: m.text.trim() } })} disabled={save.isPending || !valid}>
+          <Button onClick={() => save.mutate({ ...config, [field]: { ...m, text: m.text.trim() } })} disabled={save.isPending || !valid}>
             {save.isPending && <Loader2Icon className="animate-spin" />}
             Salvar
           </Button>
