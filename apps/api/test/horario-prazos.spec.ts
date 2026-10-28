@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanForwardMessage, deadline, isOverdue, nextCallDue, skipsPostSale } from '../src/atendimento/regras'
+import { cleanContactCheck, cleanForwardMessage, deadline, isOverdue, nextCallDue, skipsPostSale } from '../src/atendimento/regras'
 import { reportCycle, weeklyMessage, weeklyStats } from '../src/atendimento/semanal'
 import { addBusinessMs, businessMsBetween, cleanHours, describeHours, isOpen, subBusinessMs } from '../src/whatsapp/envio'
 
@@ -74,11 +74,20 @@ describe('Prazos da pré e da pós-venda no horário comercial', () => {
 })
 
 describe('Mensagem depois do repasse e motivos sem pós-venda', () => {
-  it('padrão de 2 horas, limites e texto', () => {
-    const c = cleanForwardMessage({ enabled: true, delayMinutes: 1, text: '  ' })
-    expect(c.delayMinutes).toBe(120)
+  it('padrão na hora do repasse, limites e texto', () => {
+    const c = cleanForwardMessage({ enabled: true, text: '  ' })
+    expect(c.delayMinutes).toBe(0)
     expect(c.text).toContain('{vendedor}')
+    expect(cleanForwardMessage({ delayMinutes: 0 }).delayMinutes).toBe(0)
+    expect(cleanForwardMessage({ delayMinutes: -5 }).delayMinutes).toBe(0)
     expect(cleanForwardMessage({ delayMinutes: 90, gapMin: 30, gapMax: 5 })).toMatchObject({ delayMinutes: 90, gapMin: 5, gapMax: 30, enabled: false })
+  })
+
+  it('pergunta se o vendedor entrou em contato: 30 minutos e texto próprio', () => {
+    const c = cleanContactCheck({ enabled: true, text: '' })
+    expect(c.delayMinutes).toBe(30)
+    expect(c.text).toMatch(/já entrou em contato/)
+    expect(cleanContactCheck({ delayMinutes: 45 }).delayMinutes).toBe(45)
   })
 
   it('motivos de produto em falta não geram pós-venda', () => {

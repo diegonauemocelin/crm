@@ -439,6 +439,9 @@ model ServiceRecord {
   /// Mensagem automática depois do repasse ao vendedor (ex.: 2 horas depois): quando foi tentada e o resultado.
   forwardMessageAt     DateTime?
   forwardMessageStatus String?
+  /// Pergunta ao cliente se o vendedor já entrou em contato (ex.: 30 minutos depois do repasse): quando foi tentada e o resultado.
+  contactCheckAt       DateTime?
+  contactCheckStatus   String?
   /// Chave de deduplicação da importação: reimportar a mesma planilha não duplica registros.
   externalKey    String?
   importBatch    String?

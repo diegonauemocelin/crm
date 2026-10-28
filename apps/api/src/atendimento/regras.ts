@@ -210,16 +210,22 @@ export interface ForwardMessage {
 export const DEFAULT_FORWARD_TEXT =
   'Olá, {nome}! Seu atendimento foi encaminhado para o vendedor {vendedor}, que vai dar continuidade ao seu pedido. Se precisar de algo, é só responder esta mensagem.'
 
-export const DEFAULT_FORWARD_MESSAGE: ForwardMessage = { enabled: false, delayMinutes: 120, text: DEFAULT_FORWARD_TEXT, numberIds: [], withoutChat: false, numberId: null, gapMin: 3, gapMax: 20, since: null }
+/** Na hora em que o Pré-Vendas marca "Repassou ao vendedor" (decisão de 28/10/2026); dá para pôr um tempo. */
+export const DEFAULT_FORWARD_MESSAGE: ForwardMessage = { enabled: false, delayMinutes: 0, text: DEFAULT_FORWARD_TEXT, numberIds: [], withoutChat: false, numberId: null, gapMin: 3, gapMax: 20, since: null }
 
-export function cleanForwardMessage(raw: Partial<ForwardMessage> | null | undefined): ForwardMessage {
+export const DEFAULT_CONTACT_CHECK_TEXT = 'Olá, {nome}! O vendedor {vendedor} já entrou em contato com você? Se ainda não, é só responder esta mensagem que a gente agiliza.'
+
+/** Pergunta ao cliente, 30 minutos depois do repasse, se o vendedor já entrou em contato. */
+export const DEFAULT_CONTACT_CHECK: ForwardMessage = { ...DEFAULT_FORWARD_MESSAGE, delayMinutes: 30, text: DEFAULT_CONTACT_CHECK_TEXT }
+
+export function cleanForwardMessage(raw: Partial<ForwardMessage> | null | undefined, fallback: ForwardMessage = DEFAULT_FORWARD_MESSAGE): ForwardMessage {
   const r = raw ?? {}
   const delay = Math.round(Number(r.delayMinutes))
   const numberId = typeof r.numberId === 'string' ? r.numberId : null
   return {
     enabled: r.enabled === true,
-    delayMinutes: Number.isFinite(delay) && delay >= 5 && delay <= 7 * 24 * 60 ? delay : DEFAULT_FORWARD_MESSAGE.delayMinutes,
-    text: typeof r.text === 'string' && r.text.trim() ? r.text.trim().slice(0, 1000) : DEFAULT_FORWARD_TEXT,
+    delayMinutes: r.delayMinutes !== undefined && r.delayMinutes !== null && Number.isFinite(delay) && delay >= 0 && delay <= 7 * 24 * 60 ? delay : fallback.delayMinutes,
+    text: typeof r.text === 'string' && r.text.trim() ? r.text.trim().slice(0, 1000) : fallback.text,
     numberIds: Array.isArray(r.numberIds) ? [...new Set(r.numberIds.filter((x): x is string => typeof x === 'string'))].slice(0, 50) : [],
     withoutChat: r.withoutChat === true,
     numberId,
@@ -227,6 +233,8 @@ export function cleanForwardMessage(raw: Partial<ForwardMessage> | null | undefi
     since: typeof r.since === 'string' && !Number.isNaN(Date.parse(r.since)) ? r.since : null,
   }
 }
+
+export const cleanContactCheck = (raw: Partial<ForwardMessage> | null | undefined) => cleanForwardMessage(raw, DEFAULT_CONTACT_CHECK)
 
 // ---------- Pré-venda perdida sem pós-venda ----------
 

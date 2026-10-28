@@ -12,7 +12,7 @@ import { SettingsService } from '../settings/settings.service'
 import { normalizePhone, REGIONS, regionOf, UF_LIST, UFS } from './br'
 import { type BusinessHours, cleanRules, subBusinessMs, type WaRules } from '../whatsapp/envio'
 import { buildDashboard, type DashRow } from './dashboard'
-import { applyAutomaticFields, cleanDigest, deadline, DEFAULT_FORWARD_MESSAGE, type ForwardMessage, skipsPostSale, digestFor, DEFAULT_DIGEST, DEFAULT_NEXT_DAY, digestMessages, saleSituation, type SellerDigest, todayWindow, diffRecord, FIELD_LABELS, type FollowStatus, inNegotiation, isCallOverdue, isFollowOverdue, isOverdue, nextCallDue, type NextDayMessage, type RecordState, shouldCreatePostSale, validateFollow, validateRecord } from './regras'
+import { applyAutomaticFields, cleanDigest, deadline, DEFAULT_CONTACT_CHECK, DEFAULT_FORWARD_MESSAGE, type ForwardMessage, skipsPostSale, digestFor, DEFAULT_DIGEST, DEFAULT_NEXT_DAY, digestMessages, saleSituation, type SellerDigest, todayWindow, diffRecord, FIELD_LABELS, type FollowStatus, inNegotiation, isCallOverdue, isFollowOverdue, isOverdue, nextCallDue, type NextDayMessage, type RecordState, shouldCreatePostSale, validateFollow, validateRecord } from './regras'
 
 export const MODULE_BY_KIND: Record<ServiceKind, 'pre_vendas' | 'pos_vendas'> = { PRE_VENDAS: 'pre_vendas', POS_VENDAS: 'pos_vendas' }
 
@@ -31,15 +31,17 @@ export interface AtendimentoSettings {
   nextDayMessage?: NextDayMessage
   /** Resumo do dia para cada vendedor: os clientes repassados a ele, pelo WhatsApp. */
   sellerDigest?: SellerDigest
-  /** Mensagem de WhatsApp para o cliente algum tempo depois do repasse ao vendedor (ex.: 2 horas). */
+  /** Mensagem de WhatsApp para o cliente quando o Pré-Vendas repassa ao vendedor (na hora ou depois de um tempo). */
   forwardMessage?: ForwardMessage
+  /** Pergunta ao cliente se o vendedor já entrou em contato (ex.: 30 minutos depois do repasse). */
+  contactCheck?: ForwardMessage
   /**
    * Motivos de perda que não geram pós-venda (ex.: "Não temos o produto"): a pré-venda fecha e o atendimento no chat
    * é finalizado. Sem configuração: os motivos que falam de produto em falta.
    */
   noPostSaleReasonIds?: string[]
 }
-export const DEFAULT_ATENDIMENTO: AtendimentoSettings = { alertHours: 24, newRecordMinutes: 10, postSaleHours: 24, postSaleOwnerId: null, postSaleOwnerByUnit: {}, callHours: 24, nextDayMessage: DEFAULT_NEXT_DAY, sellerDigest: DEFAULT_DIGEST, forwardMessage: DEFAULT_FORWARD_MESSAGE }
+export const DEFAULT_ATENDIMENTO: AtendimentoSettings = { alertHours: 24, newRecordMinutes: 10, postSaleHours: 24, postSaleOwnerId: null, postSaleOwnerByUnit: {}, callHours: 24, nextDayMessage: DEFAULT_NEXT_DAY, sellerDigest: DEFAULT_DIGEST, forwardMessage: DEFAULT_FORWARD_MESSAGE, contactCheck: DEFAULT_CONTACT_CHECK }
 export const callHoursOf = (s: AtendimentoSettings) => s.callHours ?? 24
 /** Pré-venda nova só conta como "aguardando" nos últimos dias (o histórico antigo não vira aviso). */
 const WAITING_WINDOW_MS = 7 * 86_400_000

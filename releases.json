@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "1.0.2",
+      "date": "2026-10-28",
+      "title": "Mensagem do repasse na hora e pergunta ao cliente se o vendedor já entrou em contato",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Mensagens automáticas",
+          "text": "A mensagem do repasse ao vendedor agora sai assim que o Pré-Vendas marca \"Repassou ao vendedor\" (respeitando o horário comercial e o intervalo entre mensagens). Quem quiser pode voltar a pôr um tempo de espera."
+        },
+        {
+          "type": "novo",
+          "area": "Mensagens automáticas",
+          "text": "Pergunta \"O vendedor já entrou em contato?\": 30 minutos depois do repasse (tempo ajustável), o cliente recebe uma mensagem perguntando se o vendedor já chamou. Vai uma vez só, só enquanto a pré-venda está em negociação, e a resposta chega no chat. Vem desligada: ligue em Configurações › Mensagens automáticas."
+        }
+      ]
+    },
+    {
       "version": "1.0.1",
       "date": "2026-10-28",
       "title": "Comparativo do mês com projeção, áudio em 1,5x e 2x e conversa não lida",

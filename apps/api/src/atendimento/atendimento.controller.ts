@@ -33,7 +33,7 @@ import { AuditService } from '../audit/audit.service'
 import { UFS, UF_LIST } from './br'
 import { CadastrosService, LOOKUP_TYPES } from './cadastros.service'
 import { ImportService } from './import.service'
-import { cleanDigest, cleanForwardMessage, cleanNextDay } from './regras'
+import { cleanContactCheck, cleanDigest, cleanForwardMessage, cleanNextDay, type ForwardMessage } from './regras'
 import { callHoursOf, DEFAULT_ATENDIMENTO, ServiceRecordsService, type RecordFilters } from './service-records.service'
 
 const KINDS = ['PRE_VENDAS', 'POS_VENDAS'] as const
@@ -180,7 +180,7 @@ class SellerDigestDto extends NextDayMessageDto {
 
 class ForwardMessageDto {
   @ApiProperty() @IsBoolean() enabled!: boolean
-  @ApiProperty({ description: 'Minutos depois do repasse (horário comercial)', minimum: 5, maximum: 10080 }) @IsInt() @Min(5) @Max(10080) delayMinutes!: number
+  @ApiProperty({ description: 'Minutos depois do repasse (horário comercial; 0 = na hora)', minimum: 0, maximum: 10080 }) @IsInt() @Min(0) @Max(10080) delayMinutes!: number
   @ApiProperty() @IsString() @Length(1, 1000) text!: string
   @ApiProperty() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) numberIds!: string[]
   @ApiPropertyOptional() @IsOptional() @IsBoolean() withoutChat?: boolean
@@ -201,6 +201,7 @@ class AlertSettingsDto {
   @ApiPropertyOptional({ type: NextDayMessageDto }) @IsOptional() @ValidateNested() @Type(() => NextDayMessageDto) nextDayMessage?: NextDayMessageDto
   @ApiPropertyOptional({ type: SellerDigestDto }) @IsOptional() @ValidateNested() @Type(() => SellerDigestDto) sellerDigest?: SellerDigestDto
   @ApiPropertyOptional({ type: ForwardMessageDto }) @IsOptional() @ValidateNested() @Type(() => ForwardMessageDto) forwardMessage?: ForwardMessageDto
+  @ApiPropertyOptional({ type: ForwardMessageDto, description: 'Pergunta se o vendedor já entrou em contato' }) @IsOptional() @ValidateNested() @Type(() => ForwardMessageDto) contactCheck?: ForwardMessageDto
   @ApiPropertyOptional({ description: 'Motivos de perda que não geram pós-venda (e finalizam o chat)' }) @IsOptional() @IsArray() @ArrayMaxSize(100) @IsUUID('all', { each: true }) noPostSaleReasonIds?: string[]
 }
 
@@ -405,7 +406,7 @@ export class CadastrosController {
   @RequirePermission('cadastros', 'view')
   async alertSettings(@CurrentUser() user: AuthUser) {
     const s = await this.settings.get(user.tenantId, 'atendimento', DEFAULT_ATENDIMENTO)
-    return { ...s, callHours: callHoursOf(s), nextDayMessage: cleanNextDay(s.nextDayMessage), sellerDigest: cleanDigest(s.sellerDigest), forwardMessage: cleanForwardMessage(s.forwardMessage), noPostSaleReasonIds: await this.records.noPostSaleReasons(user.tenantId, s) }
+    return { ...s, callHours: callHoursOf(s), nextDayMessage: cleanNextDay(s.nextDayMessage), sellerDigest: cleanDigest(s.sellerDigest), forwardMessage: cleanForwardMessage(s.forwardMessage), contactCheck: cleanContactCheck(s.contactCheck), noPostSaleReasonIds: await this.records.noPostSaleReasons(user.tenantId, s) }
   }
 
   /** Números de WhatsApp para escolher quem envia a mensagem do dia seguinte. */
@@ -427,12 +428,17 @@ export class CadastrosController {
     const nextDay = dto.nextDayMessage ? cleanNextDay(dto.nextDayMessage) : cleanNextDay(current.nextDayMessage)
     const digest = dto.sellerDigest ? cleanDigest(dto.sellerDigest) : cleanDigest(current.sellerDigest)
     const numberIds = (await this.cadastros.whatsappNumbers(user.tenantId)).map((n) => n.id)
-    const before = cleanForwardMessage(current.forwardMessage)
-    const forward = dto.forwardMessage ? cleanForwardMessage({ ...dto.forwardMessage, since: before.since }) : before
-    // Ligada agora: vale para os repasses daqui em diante (os antigos não recebem de uma vez).
-    if (forward.enabled && (!before.enabled || !forward.since)) forward.since = new Date().toISOString()
-    if (forward.enabled && !forward.numberIds.length) throw new BadRequestException('Escolha ao menos um número de WhatsApp para a mensagem depois do repasse.')
-    if ([nextDay.numberId, digest.numberId, forward.numberId, ...forward.numberIds].some((id) => id && !numberIds.includes(id))) throw new BadRequestException('Número de WhatsApp inválido.')
+    const repasse = (clean: (raw: Partial<ForwardMessage> | null | undefined) => ForwardMessage, saved: ForwardMessage | undefined, sent: ForwardMessageDto | undefined, what: string) => {
+      const before = clean(saved)
+      const m = sent ? clean({ ...sent, since: before.since }) : before
+      // Ligada agora: vale para os repasses daqui em diante (os antigos não recebem de uma vez).
+      if (m.enabled && (!before.enabled || !m.since)) m.since = new Date().toISOString()
+      if (m.enabled && !m.numberIds.length) throw new BadRequestException(`Escolha ao menos um número de WhatsApp para ${what}.`)
+      return m
+    }
+    const forward = repasse(cleanForwardMessage, current.forwardMessage, dto.forwardMessage, 'a mensagem do repasse')
+    const check = repasse(cleanContactCheck, current.contactCheck, dto.contactCheck, 'a pergunta se o vendedor já entrou em contato')
+    if ([nextDay.numberId, digest.numberId, forward.numberId, ...forward.numberIds, check.numberId, ...check.numberIds].some((id) => id && !numberIds.includes(id))) throw new BadRequestException('Número de WhatsApp inválido.')
     const reasons = dto.noPostSaleReasonIds ?? current.noPostSaleReasonIds
     if (reasons?.length && (await this.records.countLostReasons(user.tenantId, reasons)) !== new Set(reasons).size) throw new BadRequestException('Motivo de perda inválido.')
     if (digest.sellerIds.length && (await this.cadastros.countSellers(user.tenantId, digest.sellerIds)) !== digest.sellerIds.length) throw new BadRequestException('Vendedor inválido no resumo do dia.')
@@ -447,6 +453,7 @@ export class CadastrosController {
       nextDayMessage: nextDay,
       sellerDigest: digest,
       forwardMessage: forward,
+      contactCheck: check,
       ...(reasons ? { noPostSaleReasonIds: [...new Set(reasons)] } : {}),
     }
     const saved = await this.settings.set(user.tenantId, 'atendimento', next)
