@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { BriefcaseIcon, ContactIcon, Loader2Icon } from 'lucide-react'
+import { BriefcaseIcon, ContactIcon, Loader2Icon, SendIcon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,7 @@ import { useAuth } from '@/lib/auth'
 /**
  * Cliente no chat: código do cliente e vendedor (ficam na base de leads e na pré-venda em aberto; a próxima pré-venda
  * já vem com eles) e "cliente da carteira do vendedor": não é venda perdida, a pré-venda aberta sai e o WhatsApp não
- * abre outra; a conversa segue normal, e dá para mandar o contato do vendedor ao cliente.
+ * abre outra; a conversa segue normal, e dá para mandar o contato do vendedor ao cliente e o do cliente ao vendedor.
  */
 
 export interface ChatClient {
@@ -87,6 +87,14 @@ function ClientDialog({ conversationId, client, lastSeller, onClose }: { convers
     },
     onError: (err) => toast.error(errorMessage(err)),
   })
+  const sendToSeller = useMutation({
+    mutationFn: () => api.post<{ seller: string }>(`/chat/conversas/${conversationId}/contato-ao-vendedor`, { sellerId: seller!.id }),
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+      toast.success(`Contato do cliente enviado a ${r.seller}.`)
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
@@ -140,6 +148,9 @@ function ClientDialog({ conversationId, client, lastSeller, onClose }: { convers
               </span>
               <Button type="button" size="sm" variant="outline" disabled={sendContact.isPending} onClick={() => sendContact.mutate()} title="Manda o cartão de contato do vendedor nesta conversa">
                 {sendContact.isPending ? <Loader2Icon className="animate-spin" /> : <ContactIcon />} Enviar contato do vendedor
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={sendToSeller.isPending} onClick={() => sendToSeller.mutate()} title="Manda ao WhatsApp do vendedor o nome e o telefone deste cliente (cartão de contato)">
+                {sendToSeller.isPending ? <Loader2Icon className="animate-spin" /> : <SendIcon />} Enviar cliente ao vendedor
               </Button>
             </div>
           )}

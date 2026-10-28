@@ -87,6 +87,10 @@ class ContactDto {
   @IsString() @Length(8, 30) phone!: string
 }
 
+class ClientToSellerDto {
+  @IsUUID() sellerId!: string
+}
+
 class ShareSearchDto {
   @IsOptional() @IsString() @MaxLength(80) busca?: string
   /** Agenda do número de WhatsApp (nova conversa). */
@@ -398,6 +402,14 @@ export class ChatController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   sendContact(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ContactDto) {
     return this.chat.sendContact(user, id, dto)
+  }
+
+  /** Mandar ao vendedor o contato (nome e telefone) do cliente desta conversa. */
+  @Post('conversas/:id/contato-ao-vendedor')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  sendClientToSeller(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ClientToSellerDto) {
+    return this.chat.sendClientToSeller(user, id, dto.sellerId)
   }
 
   /** Sugestões de contatos para compartilhar (vendedores, agenda e leads). */
