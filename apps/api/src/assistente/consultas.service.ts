@@ -137,6 +137,12 @@ export class AssistQueriesService {
     return { rows: rows.slice((f.page - 1) * f.pageSize, f.page * f.pageSize), total: rows.length, page: f.page, pageSize: f.pageSize, stats: { semResposta, aguardandoAnalise, conhecimentoTecnico, encaminhadas, resolvidasHoje, mais24h }, reasons: REASONS }
   }
 
+  /** Número do menu: perguntas esperando resposta (as que aguardam o cliente não contam). */
+  async pendingCount(tenantId: string) {
+    const r = await this.prisma.$queryRaw<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM assist_questions WHERE "tenantId" = ${tenantId}::uuid AND status IN (${list(PENDING_STATUSES)}) AND status <> 'aguardando_cliente'`
+    return { pending: r[0]!.n }
+  }
+
   async meta(tenantId: string) {
     const users = await this.prisma.user.findMany({ where: { tenantId, active: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } })
     return { statuses: QUESTION_STATUSES, reasons: REASONS, users }

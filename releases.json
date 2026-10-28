@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.103.0",
+      "date": "2026-10-28",
+      "title": "Número de perguntas pendentes no menu",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Marketplaces",
+          "text": "No menu, ao lado de \"Perguntas pendentes\", aparece uma bolinha com o número de perguntas do Mercado Livre esperando resposta, como no chat. Atualiza sozinho a cada minuto."
+        }
+      ]
+    },
+    {
       "version": "0.102.0",
       "date": "2026-10-27",
       "title": "Código do cliente, prazos no horário comercial e mensagem depois do repasse",

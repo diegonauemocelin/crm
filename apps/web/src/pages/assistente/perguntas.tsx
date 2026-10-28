@@ -353,6 +353,7 @@ function Pergunta() {
     void qc.invalidateQueries({ queryKey: ['assist-pergunta', id] })
     void qc.invalidateQueries({ queryKey: ['assist-perguntas'] })
     void qc.invalidateQueries({ queryKey: ['assist-pendentes'] })
+    void qc.invalidateQueries({ queryKey: ['assist-pendentes-contagem'] })
   }
   const run = async (key: string, fn: () => Promise<unknown>, ok?: string) => {
     setBusy(key)

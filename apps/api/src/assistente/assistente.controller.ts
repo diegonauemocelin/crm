@@ -289,6 +289,13 @@ export class AssistenteController {
     return this.queries.pending(user.tenantId, q)
   }
 
+  /** Número ao lado de "Perguntas pendentes" no menu. */
+  @Get('perguntas/pendentes/contagem')
+  @RequirePermission('assist_atendimento', 'view')
+  pendingCount(@CurrentUser() user: AuthUser) {
+    return this.queries.pendingCount(user.tenantId)
+  }
+
   @Get('perguntas/meta')
   @RequirePermission('assist_atendimento', 'view')
   meta(@CurrentUser() user: AuthUser) {
