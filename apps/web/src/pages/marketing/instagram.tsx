@@ -68,6 +68,7 @@ interface IgView {
     series: { day: string; label: string; reach: number | null; views: number | null; interactions: number | null; follows: number | null; profileViews: number | null; followers: number | null }[]
   }
   content: { posts: IgPost[]; byFormat: { format: string; posts: number; engagement: number; reach: number | null; avgEngagement: number; engagementRate: number | null }[]; postsPerWeek: number; reelsAvgWatchSec: number | null }
+  audit: { posts: AuditRow[]; byFormat: AuditGroup[]; byWeekday: AuditGroup[]; measured: number; findings: string[] }
   stories: { count: number; perDay: number; avgReach: number | null; replies: number; exitRate: number | null; list: IgStory[] }
   times: { online: number[][] | null; peaks: OnlinePeaks | null; cells: TimeCell[]; best: TimeCell[]; recommendations: string[]; basedOnPosts: number }
   audience: { of: 'oficial' | 'perfil'; updatedAt: string | null; error: string | null; city: KV[]; age: KV[]; gender: KV[]; country: KV[] }
@@ -78,6 +79,29 @@ interface IgView {
   } | null
   site: { visits: number; visitors: number; paidVisits: number; organicVisits: number; identified: number; series: { day: string; label: string; visits: number }[]; pages: { path: string; visits: number }[] } | null
   leads: { leads: number; paid: number; organic: number; qualified: number; sales: number; revenue: number; conversionRate: number | null; qualificationRate: number | null; forms: { form: string; leads: number }[] } | null
+}
+interface AuditRow {
+  postId: string
+  publishedAt: string
+  format: string
+  caption: string
+  permalink: string | null
+  reach: number | null
+  baseline: number | null
+  multiple: number | null
+  verdict: 'acima' | 'normal' | 'abaixo' | null
+  sharesPer1k: number | null
+  savesPer1k: number | null
+  commentsPer1k: number | null
+}
+interface AuditGroup {
+  label: string
+  posts: number
+  medianMultiple: number
+  above: number
+  below: number
+  sharesPer1k: number | null
+  savesPer1k: number | null
 }
 interface KV {
   key: string
@@ -144,6 +168,7 @@ function Instagram() {
               <TabsList className="flex h-auto flex-wrap justify-start">
                 <TabsTrigger value="visao">Visão geral</TabsTrigger>
                 <TabsTrigger value="conteudo">Conteúdo</TabsTrigger>
+                <TabsTrigger value="analise">Análise dos posts</TabsTrigger>
                 <TabsTrigger value="stories">Stories</TabsTrigger>
                 <TabsTrigger value="horarios">Melhores horários</TabsTrigger>
                 <TabsTrigger value="publico">Público</TabsTrigger>
@@ -156,6 +181,9 @@ function Instagram() {
               </TabsContent>
               <TabsContent value="conteudo" className="space-y-4">
                 <Content d={d} />
+              </TabsContent>
+              <TabsContent value="analise" className="space-y-4">
+                <PostAudit d={d} />
               </TabsContent>
               <TabsContent value="stories" className="space-y-4">
                 <Stories d={d} />
@@ -257,6 +285,74 @@ function Content({ d }: { d: IgView }) {
       </div>
       <SimpleTable title="Por formato" rows={c.byFormat} rowKey={(r) => r.format} cols={[{ label: 'Formato', value: (r) => r.format }, { label: 'Publicações', value: (r) => num(r.posts), right: true }, { label: 'Alcance', value: (r) => optNum(r.reach), right: true }, { label: 'Engajamento médio', value: (r) => num(r.avgEngagement), right: true }, { label: 'Taxa', value: (r) => pct(r.engagementRate), right: true }]} />
       <SimpleTable title="Publicações (melhores primeiro, pela taxa de engajamento)" rows={c.posts} rowKey={(p) => p.postId} cols={POST_COLS} exportName="instagram-publicacoes" limit={20} empty="Nenhuma publicação sincronizada no período." />
+    </>
+  )
+}
+
+// ---------- Análise dos posts ----------
+
+const times = (v: number | null) => (v === null ? NA : `${v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}×`)
+const per1k = (v: number | null) => (v === null ? NA : v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }))
+const VERDICT = { acima: { label: 'Acima do normal', cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300' }, normal: { label: 'Normal', cls: 'bg-muted text-muted-foreground' }, abaixo: { label: 'Abaixo', cls: 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300' } } as const
+const GROUP_COLS = (first: string): Col<AuditGroup>[] => [
+  { label: first, value: (r) => r.label },
+  { label: 'Posts', value: (r) => num(r.posts), right: true },
+  { label: 'Mediana (× o normal)', value: (r) => times(r.medianMultiple), right: true, csv: (r) => r.medianMultiple },
+  { label: 'Acima', value: (r) => num(r.above), right: true },
+  { label: 'Abaixo', value: (r) => num(r.below), right: true },
+  { label: 'Envios / mil', value: (r) => per1k(r.sharesPer1k), right: true, csv: (r) => r.sharesPer1k },
+  { label: 'Salvos / mil', value: (r) => per1k(r.savesPer1k), right: true, csv: (r) => r.savesPer1k },
+]
+const AUDIT_COLS: Col<AuditRow>[] = [
+  {
+    label: 'Publicação',
+    value: (p) => (
+      <div className="min-w-0">
+        <p className="line-clamp-2 text-sm">{p.caption || '(sem texto)'}</p>
+        <p className="text-xs text-muted-foreground">
+          {p.format} · {formatDate(p.publishedAt)}
+          {p.permalink && (
+            <a href={p.permalink} target="_blank" rel="noreferrer noopener" className="ml-1 inline-flex items-center hover:underline">
+              abrir <ExternalLinkIcon className="ml-0.5 size-3" />
+            </a>
+          )}
+        </p>
+      </div>
+    ),
+    csv: (p) => p.caption,
+  },
+  { label: '× o normal', value: (p) => <span className="font-medium tabular-nums">{times(p.multiple)}</span>, right: true, csv: (p) => p.multiple },
+  { label: 'Situação', value: (p) => (p.verdict ? <span className={`rounded px-1.5 py-0.5 text-xs whitespace-nowrap ${VERDICT[p.verdict].cls}`}>{VERDICT[p.verdict].label}</span> : NA), csv: (p) => (p.verdict ? VERDICT[p.verdict].label : '') },
+  { label: 'Alcance', value: (p) => optNum(p.reach), right: true, csv: (p) => p.reach },
+  { label: 'Normal do perfil', value: (p) => optNum(p.baseline), right: true, csv: (p) => p.baseline },
+  { label: 'Envios / mil', value: (p) => per1k(p.sharesPer1k), right: true, csv: (p) => p.sharesPer1k },
+  { label: 'Salvos / mil', value: (p) => per1k(p.savesPer1k), right: true, csv: (p) => p.savesPer1k },
+]
+
+/** Cada post contra o alcance normal do próprio perfil (mediana dos últimos 90 dias), e não pelas visualizações soltas. */
+function PostAudit({ d }: { d: IgView }) {
+  const a = d.audit
+  return (
+    <>
+      <Card>
+        <CardContent className="space-y-2 pt-6">
+          <p className="text-sm font-medium">O que a análise mostra</p>
+          <ul className="list-disc space-y-1 pl-5 text-sm">
+            {a.findings.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+          <p className="text-xs text-muted-foreground">
+            "× o normal": quantas vezes o alcance do post passou do alcance normal do perfil (a mediana dos posts dos últimos 90 dias). Acima de 1,5× o post estourou; abaixo de 0,67× ficou fraco. Envios e salvamentos contam por mil pessoas
+            alcançadas: mostram o que as pessoas acharam útil a ponto de mandar para alguém ou guardar. Stories ficam de fora (estão na aba Stories). O plano da semana da IA, em Postagens, usa esta análise.
+          </p>
+        </CardContent>
+      </Card>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SimpleTable title="Por formato" rows={a.byFormat} rowKey={(r) => r.label} cols={GROUP_COLS('Formato')} empty="Sem posts com alcance no período." />
+        <SimpleTable title="Por dia da semana" rows={a.byWeekday} rowKey={(r) => r.label} cols={GROUP_COLS('Dia')} empty="Sem posts com alcance no período." />
+      </div>
+      <SimpleTable title="Posts, dos que mais passaram do normal aos mais fracos" rows={a.posts} rowKey={(p) => p.postId} cols={AUDIT_COLS} exportName="instagram-analise-posts" limit={30} empty="Nenhuma publicação sincronizada no período." />
     </>
   )
 }

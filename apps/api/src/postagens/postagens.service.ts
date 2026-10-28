@@ -10,6 +10,9 @@ import { EmailAiService } from '../email/ia.service'
 import { FilesService } from '../files/files.service'
 import { Prisma } from '../generated/prisma/client'
 import { DEFAULT_INTEGRATIONS, INTEGRATIONS_KEY, type IntegrationsConfig } from '../marketing/config'
+import { auditPosts, planInsights } from '../marketing/ig-analise'
+import { postTimes } from '../marketing/instagram'
+import { beatSheet, checkCaption, hookScore, parseReels, reelsPrompt } from './conteudo-ig'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { IG_CALLBACK_PATH, IG_GRAPH, IG_TOKENS_KEY, type IgApp, type IgToken, InstagramLogin, authorizeUrl, needsRenewal, POSTAGENS_ACCOUNTS_KEY } from './instagram-login'
@@ -662,10 +665,49 @@ export class PostagensService implements OnApplicationBootstrap, OnModuleDestroy
     return postSystem(b.shortName || b.appName, await this.ai.about(tenantId))
   }
 
-  async aiCaption(user: AuthUser, d: { topic?: string; network?: string; format?: string; productId?: string; current?: string; instruction?: string }) {
+  /** Prévia do feed e conferência da legenda (tamanho, primeira linha, gancho, hashtags, um pedido, palavras de busca). */
+  checkCaption(user: AuthUser, d: { caption?: string; keywords?: string[] }) {
+    this.assertCan(user, 'view')
+    return checkCaption((d.caption ?? '').slice(0, 5000), d.keywords ?? [])
+  }
+
+  /** Nota de cada abertura (melhor primeiro) e o tempo das falas do roteiro. */
+  checkReels(user: AuthUser, d: { hooks?: string[]; lines?: { text: string; screen?: string }[]; seconds?: number }) {
+    this.assertCan(user, 'view')
+    const hooks = (d.hooks ?? []).filter((h) => h.trim()).slice(0, 6).map(hookScore).sort((a, b) => b.score - a.score)
+    return { hooks, sheet: beatSheet((d.lines ?? []).slice(0, 20), Math.min(90, Math.max(7, Number(d.seconds) || 30))) }
+  }
+
+  /** Roteiro de Reels com a IA: 3 aberturas com nota, as falas com o tempo de cada uma e a legenda. */
+  async aiReels(user: AuthUser, d: { topic?: string; productId?: string; seconds?: number; instruction?: string }) {
+    this.assertCan(user, 'create')
+    const product = d.productId ? await this.prisma.storeProduct.findFirst({ where: { id: d.productId, tenantId: user.tenantId }, select: { name: true, brand: true, code: true } }) : null
+    if (!d.topic?.trim() && !product) throw new BadRequestException('Escreva o tema do Reels (ex.: sinais de que o filtro de ar da JS200 precisa de troca).')
+    const seconds = Math.min(90, Math.max(7, Number(d.seconds) || 30))
+    const raw = await this.ai.complete(user.tenantId, await this.system(user.tenantId), reelsPrompt({ topic: (d.topic ?? '').slice(0, 500), seconds, product, instruction: d.instruction?.slice(0, 400) }), 3000)
+    const r = parseReels(raw)
+    if (!r) throw new BadRequestException('A IA não devolveu um roteiro válido. Tente de novo.')
+    return { ...this.checkReels(user, { hooks: r.hooks, lines: r.lines, seconds }), lines: r.lines, caption: r.caption, seconds }
+  }
+
+  /** O que deu resultado no Instagram nos últimos 90 dias (para o plano da semana): formatos, dias, horários e posts. */
+  private async results(tenantId: string) {
+    const since = new Date(Date.now() - 90 * 86_400_000)
+    const posts = await this.prisma.mktSocialPost.findMany({
+      where: { tenantId, network: 'instagram', publishedAt: { gte: since } },
+      select: { postId: true, profileId: true, publishedAt: true, format: true, caption: true, permalink: true, reach: true, likes: true, comments: true, shares: true, saves: true },
+      take: 2000,
+    })
+    if (!posts.length) return { text: '', findings: [] as string[] }
+    const audit = auditPosts(posts, posts)
+    const times = postTimes(posts).best.map((b) => b.label)
+    return { text: planInsights(audit, times), findings: audit.measured >= 3 ? [...audit.findings, ...(times.length ? [`Horários com mais alcance: ${times.join('; ')}.`] : [])] : [] }
+  }
+
+  async aiCaption(user: AuthUser, d: { topic?: string; network?: string; format?: string; productId?: string; current?: string; instruction?: string; keywords?: string[] }) {
     this.assertCan(user, 'create')
     const product = d.productId ? await this.prisma.storeProduct.findFirst({ where: { id: d.productId, tenantId: user.tenantId }, select: { name: true, brand: true, code: true, url: true } }) : null
-    const prompt = captionPrompt({ topic: (d.topic ?? '').slice(0, 500), network: d.network === 'facebook' ? 'Facebook' : d.network === 'ambos' ? 'Instagram e Facebook' : 'Instagram', format: (FORMATS as readonly string[]).includes(d.format ?? '') ? d.format! : 'FEED', product, current: d.current?.slice(0, 2200), instruction: d.instruction?.slice(0, 400) })
+    const prompt = captionPrompt({ topic: (d.topic ?? '').slice(0, 500), network: d.network === 'facebook' ? 'Facebook' : d.network === 'ambos' ? 'Instagram e Facebook' : 'Instagram', format: (FORMATS as readonly string[]).includes(d.format ?? '') ? d.format! : 'FEED', product, current: d.current?.slice(0, 2200), instruction: d.instruction?.slice(0, 400), keywords: (d.keywords ?? []).slice(0, 10) })
     if (!d.topic?.trim() && !product && !d.current?.trim()) throw new BadRequestException('Escreva o tema, escolha um produto ou escreva a legenda para a IA melhorar.')
     const raw = await this.ai.complete(user.tenantId, await this.system(user.tenantId), prompt, 1500)
     return { caption: cleanCaption(raw) }
@@ -687,10 +729,13 @@ export class PostagensService implements OnApplicationBootstrap, OnModuleDestroy
     }
     if (!input.networks.length) input.networks = ['instagram', 'facebook']
     if (!input.formats.length) input.formats = ['FEED', 'STORIES']
+    // Com base no que deu resultado: a análise dos posts dos últimos 90 dias vai junto no pedido.
+    const results = await this.results(user.tenantId)
+    input.results = results.text
     const raw = await this.ai.complete(user.tenantId, await this.system(user.tenantId), planPrompt(input), 8000)
     const items = parsePlan(raw, input)
     if (!items.length) throw new BadRequestException('A IA não devolveu um calendário válido. Tente de novo (ou diminua o período).')
-    return { items }
+    return { items, basedOn: results.findings }
   }
 
   /** Cria os rascunhos do calendário sugerido (sem mídia: escolha as imagens em cada um). */

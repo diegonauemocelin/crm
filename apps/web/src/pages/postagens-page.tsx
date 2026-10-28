@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircleIcon, CalendarDaysIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, ExternalLinkIcon, Loader2Icon, PlusIcon, PlugZapIcon, SendIcon, SparklesIcon, Trash2Icon, UndoIcon } from 'lucide-react'
+import { AlertCircleIcon, CalendarDaysIcon, CalendarRangeIcon, CheckIcon, ClapperboardIcon, ChevronLeftIcon, ChevronRightIcon, ExternalLinkIcon, Loader2Icon, PlusIcon, PlugZapIcon, SendIcon, SparklesIcon, Trash2Icon, UndoIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm'
 import { Can, EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { CaptionCheckPanel, ReelsDialog, splitKeywords } from '@/components/postagens/conteudo'
 import { type Account, AccountPicker, AccountsTab, type InstagramLoginConfig, MetricsTab, NetBadge } from '@/components/postagens/contas'
 import { type Frame } from '@/components/postagens/imagem'
 import { LibraryTab, MediaPicker, mediaSrc, Thumb, useMediaLibrary } from '@/components/postagens/midias'
@@ -84,7 +85,8 @@ export function PostagensPage() {
     return new Date(d.getFullYear(), d.getMonth(), 1)
   })
   const [open, setOpen] = useState<{ id: string | null; date?: string } | null>(null)
-  const [plan, setPlan] = useState(false)
+  const [plan, setPlan] = useState<'calendario' | 'semana' | null>(null)
+  const [reels, setReels] = useState(false)
   const [test, setTest] = useState(false)
   const config = useQuery({ queryKey: ['postagens-config'], queryFn: () => api.get<Config>('/postagens/config') })
   const from = new Date(month.getFullYear(), month.getMonth(), 1 - 7)
@@ -111,7 +113,13 @@ export function PostagensPage() {
               </Button>
             </Can>
             <Can module="postagens" action="create">
-              <Button variant="outline" onClick={() => setPlan(true)}>
+              <Button variant="outline" onClick={() => setReels(true)}>
+                <ClapperboardIcon /> Roteiro de Reels
+              </Button>
+              <Button variant="outline" onClick={() => setPlan('semana')} title="A IA monta a próxima semana com base no que deu resultado no Instagram">
+                <CalendarRangeIcon /> Plano da semana
+              </Button>
+              <Button variant="outline" onClick={() => setPlan('calendario')}>
                 <SparklesIcon /> Calendário com IA
               </Button>
               <Button onClick={() => setOpen({ id: null })}>
@@ -164,7 +172,8 @@ export function PostagensPage() {
           }}
         />
       )}
-      <PlanDialog open={plan} onClose={() => setPlan(false)} accounts={c?.accounts ?? []} />
+      <PlanDialog open={!!plan} week={plan === 'semana'} onClose={() => setPlan(null)} accounts={c?.accounts ?? []} />
+      <ReelsDialog open={reels} onClose={() => setReels(false)} hasAi={!!c?.hasAi} />
       <TestDialog open={test} onClose={() => setTest(false)} />
     </RequirePermission>
   )
@@ -357,9 +366,11 @@ function PostSheet({ id, date, config, onClose, onChanged }: { id: string | null
   const [note, setNote] = useState('')
   const [rejecting, setRejecting] = useState(false)
   const [topic, setTopic] = useState('')
+  const [keywords, setKeywords] = useState('')
+  const [reels, setReels] = useState(false)
   const nets = [...new Set(f.accountIds.map((id) => config?.accounts.find((a) => a.id === id)?.network).filter((n): n is Network => !!n))]
   const ai = useMutation({
-    mutationFn: (improve: boolean) => api.post<{ caption: string }>('/postagens/ia/legenda', { topic: topic || f.title, network: nets.length === 2 ? 'ambos' : (nets[0] ?? 'instagram'), format: f.format, ...(improve ? { current: f.caption } : {}) }),
+    mutationFn: (improve: boolean) => api.post<{ caption: string }>('/postagens/ia/legenda', { topic: topic || f.title, network: nets.length === 2 ? 'ambos' : (nets[0] ?? 'instagram'), format: f.format, keywords: splitKeywords(keywords), ...(improve ? { current: f.caption } : {}) }),
     onSuccess: (r) => setF((x) => ({ ...x, caption: r.caption })),
     onError: (err) => toast.error(errorMessage(err), { duration: 10_000 }),
   })
@@ -440,8 +451,8 @@ function PostSheet({ id, date, config, onClose, onChanged }: { id: string | null
               <div className="space-y-1.5">
                 <div className="flex items-end justify-between gap-2">
                   <Label htmlFor="p-cap">Legenda</Label>
-                  <span className={cn('text-xs tabular-nums', f.caption.length > 2200 || hashtags > 30 ? 'text-destructive' : 'text-muted-foreground')}>
-                    {f.caption.length}/2200 · {hashtags}/30 hashtags
+                  <span className={cn('text-xs tabular-nums', f.caption.length > 2200 || hashtags > 30 ? 'text-destructive' : hashtags > 5 ? 'text-amber-600' : 'text-muted-foreground')}>
+                    {f.caption.length}/2200 · {hashtags}/5 hashtags
                   </span>
                 </div>
                 <Textarea id="p-cap" rows={8} value={f.caption} onChange={(e) => setF({ ...f, caption: e.target.value })} disabled={locked} />
@@ -454,9 +465,23 @@ function PostSheet({ id, date, config, onClose, onChanged }: { id: string | null
                     <Button type="button" size="sm" variant="ghost" onClick={() => ai.mutate(true)} disabled={ai.isPending || !config?.hasAi || !f.caption.trim()}>
                       Melhorar
                     </Button>
+                    {f.format === 'REELS' && (
+                      <Button type="button" size="sm" variant="outline" onClick={() => setReels(true)} disabled={!config?.hasAi}>
+                        <ClapperboardIcon /> Roteiro do Reels
+                      </Button>
+                    )}
                     {!config?.hasAi && <span className="text-xs text-muted-foreground">Cadastre a chave gratuita do Gemini em Configurações › E-mail marketing.</span>}
                   </div>
                 )}
+                {!locked && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="p-kw">Palavras de busca (opcional)</Label>
+                    <Input id="p-kw" value={keywords} onChange={(e) => setKeywords(e.target.value)} placeholder="Separadas por vírgula. Ex.: filtro de ar, JCB 3C" />
+                    <p className="text-xs text-muted-foreground">O que o cliente digitaria na busca do Instagram. A IA põe no texto e a conferência avisa se faltar.</p>
+                  </div>
+                )}
+                <CaptionCheckPanel caption={f.caption} keywords={keywords} />
+                <ReelsDialog open={reels} onClose={() => setReels(false)} defaultTopic={topic || f.title} hasAi={!!config?.hasAi} onUse={(caption) => caption && setF((x) => ({ ...x, caption }))} />
               </div>
             ) : null}
             {media.length > 0 && (
@@ -537,7 +562,16 @@ interface PlanItem {
   imageIdea: string
 }
 
-function PlanDialog({ open, onClose, accounts }: { open: boolean; onClose: () => void; accounts: Account[] }) {
+/** Próxima semana: segunda a sábado. */
+function nextWeek() {
+  const s = new Date()
+  s.setDate(s.getDate() + ((8 - s.getDay()) % 7 || 7))
+  const e = new Date(s)
+  e.setDate(e.getDate() + 5)
+  return { from: dayKey(s), to: dayKey(e) }
+}
+
+function PlanDialog({ open, week, onClose, accounts }: { open: boolean; week: boolean; onClose: () => void; accounts: Account[] }) {
   const qc = useQueryClient()
   const start = new Date()
   start.setDate(start.getDate() + 1)
@@ -547,10 +581,18 @@ function PlanDialog({ open, onClose, accounts }: { open: boolean; onClose: () =>
   useEffect(() => {
     if (open) setD((x) => ({ ...x, accountIds: x.accountIds.length ? x.accountIds : accounts.map((a) => a.id) }))
   }, [open, accounts])
+  // Plano da semana: a próxima semana (segunda a sábado), 4 postagens e os 3 formatos.
+  useEffect(() => {
+    if (open && week) setD((x) => ({ ...x, ...nextWeek(), perWeek: 4, formats: ['FEED', 'STORIES', 'REELS'] }))
+  }, [open, week])
+  const [basedOn, setBasedOn] = useState<string[]>([])
   const [items, setItems] = useState<(PlanItem & { on: boolean })[]>([])
   const gen = useMutation({
-    mutationFn: () => api.post<{ items: PlanItem[] }>('/postagens/ia/calendario', { ...d, times: d.times.split(/[,\s]+/).filter((t) => /^\d{2}:\d{2}$/.test(t)) }),
-    onSuccess: (r) => setItems(r.items.map((i) => ({ ...i, on: true }))),
+    mutationFn: () => api.post<{ items: PlanItem[]; basedOn?: string[] }>('/postagens/ia/calendario', { ...d, times: d.times.split(/[,\s]+/).filter((t) => /^\d{2}:\d{2}$/.test(t)) }),
+    onSuccess: (r) => {
+      setItems(r.items.map((i) => ({ ...i, on: true })))
+      setBasedOn(r.basedOn ?? [])
+    },
     onError: (err) => toast.error(errorMessage(err), { duration: 10_000 }),
   })
   const create = useMutation({
@@ -568,8 +610,11 @@ function PlanDialog({ open, onClose, accounts }: { open: boolean; onClose: () =>
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Calendário com IA</DialogTitle>
-          <DialogDescription>A IA gratuita (Gemini) sugere as postagens do período com legenda e ideia de imagem. Elas viram rascunhos: escolha as imagens e mande para aprovação.</DialogDescription>
+          <DialogTitle>{week ? 'Plano da semana' : 'Calendário com IA'}</DialogTitle>
+          <DialogDescription>
+            A IA gratuita (Gemini) sugere as postagens do período com legenda e ideia de imagem, dando mais espaço aos formatos, dias e assuntos que passaram do normal no Instagram nos últimos 90 dias (Marketing › Instagram › Análise dos posts). Elas viram rascunhos: escolha as imagens e mande
+            para aprovação.
+          </DialogDescription>
         </DialogHeader>
         {!items.length ? (
           <div className="space-y-3">
@@ -614,6 +659,16 @@ function PlanDialog({ open, onClose, accounts }: { open: boolean; onClose: () =>
           </div>
         ) : (
           <div className="space-y-2">
+            {basedOn.length > 0 && (
+              <div className="rounded-md bg-muted/50 p-3 text-sm">
+                <p className="font-medium">Com base no que deu resultado</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground">
+                  {basedOn.map((t) => (
+                    <li key={t}>{t}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {items.map((it, i) => (
               <label key={i} className="flex gap-3 rounded-md border p-2 text-sm">
                 <Checkbox checked={it.on} onCheckedChange={(v) => setItems(items.map((x, j) => (j === i ? { ...x, on: !!v } : x)))} className="mt-1" />
