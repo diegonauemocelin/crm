@@ -236,6 +236,82 @@ export function cleanForwardMessage(raw: Partial<ForwardMessage> | null | undefi
 
 export const cleanContactCheck = (raw: Partial<ForwardMessage> | null | undefined) => cleanForwardMessage(raw, DEFAULT_CONTACT_CHECK)
 
+// ---------- Chamar o cliente de novo depois que a pré-venda fechou ----------
+
+export interface ReactivationStep {
+  enabled: boolean
+  /** Dias corridos depois do resultado (venda ou perda). */
+  days: number
+  /** Texto com {nome}, {vendedor} e {marca} (marcas da máquina da pré-venda). */
+  text: string
+}
+
+export interface Reactivation {
+  enabled: boolean
+  /** Número fixo por onde todas saem. */
+  numberId: string | null
+  gapMin: number
+  gapMax: number
+  /** Quando foi ligada: só as mensagens que vencem daqui em diante (ligar não dispara para a base inteira). */
+  since: string | null
+  /** Até 3 mensagens para quem não comprou e até 3 para quem comprou (recompra). */
+  lost: ReactivationStep[]
+  sold: ReactivationStep[]
+}
+
+export const REACTIVATION_STEPS = 3
+
+export const DEFAULT_REACTIVATION: Reactivation = {
+  enabled: false,
+  numberId: null,
+  gapMin: 2,
+  gapMax: 10,
+  since: null,
+  lost: [
+    { enabled: true, days: 30, text: 'Olá, {nome}! Tudo bem? Aqui é da Usaparts. Conversamos há um tempo sobre peças para a sua máquina {marca}. Está precisando de alguma coisa? Filtros, material de desgaste, peças de manutenção... é só responder esta mensagem que a gente ajuda.' },
+    { enabled: true, days: 90, text: 'Olá, {nome}! Como está a sua máquina {marca}? Aqui é da Usaparts. Se estiver chegando a hora da manutenção, temos filtros, material de desgaste e peças de reposição. Quer que a gente faça um orçamento?' },
+    { enabled: true, days: 180, text: 'Olá, {nome}! Passando para saber se está precisando de alguma peça para a sua máquina {marca}: filtros, dentes, lâminas, material de desgaste... É só responder que a Usaparts ajuda.' },
+  ],
+  sold: [
+    { enabled: true, days: 60, text: 'Olá, {nome}! Tudo certo com as peças que você comprou com a gente? Aqui é da Usaparts. Se precisar de mais alguma coisa para a sua máquina {marca}, como filtros ou material de desgaste, é só responder esta mensagem.' },
+    { enabled: true, days: 120, text: 'Olá, {nome}! Já está chegando a hora da manutenção da sua máquina {marca}? Temos filtros, material de desgaste e peças de reposição. Quer um orçamento?' },
+    { enabled: true, days: 180, text: 'Olá, {nome}! Como está a sua máquina {marca}? Se estiver precisando de peças, filtros ou material de desgaste, a Usaparts está à disposição. É só responder.' },
+  ],
+}
+
+function cleanSteps(raw: unknown, fallback: ReactivationStep[]): ReactivationStep[] {
+  const list = Array.isArray(raw) ? (raw as Partial<ReactivationStep>[]) : []
+  const steps = fallback.map((f, i) => {
+    const r = list[i] ?? {}
+    const days = Math.round(Number(r.days))
+    return {
+      enabled: list[i] ? r.enabled === true : f.enabled,
+      days: Number.isFinite(days) && days >= 1 && days <= 1095 ? days : f.days,
+      text: typeof r.text === 'string' && r.text.trim() ? r.text.trim().slice(0, 1000) : f.text,
+    }
+  })
+  // Em ordem de dias: a 2ª nunca antes da 1ª.
+  return steps.sort((a, b) => a.days - b.days)
+}
+
+export function cleanReactivation(raw: Partial<Reactivation> | null | undefined): Reactivation {
+  const r = raw ?? {}
+  return {
+    enabled: r.enabled === true,
+    numberId: typeof r.numberId === 'string' ? r.numberId : null,
+    ...cleanGap(r.gapMin ?? DEFAULT_REACTIVATION.gapMin, r.gapMax ?? DEFAULT_REACTIVATION.gapMax),
+    since: typeof r.since === 'string' && !Number.isNaN(Date.parse(r.since)) ? r.since : null,
+    lost: cleanSteps(r.lost, DEFAULT_REACTIVATION.lost),
+    sold: cleanSteps(r.sold, DEFAULT_REACTIVATION.sold),
+  }
+}
+
+/** Texto da mensagem: {marca} vira as marcas da máquina (ou some, sem deixar espaço sobrando). */
+export function reactivationText(text: string, v: { nome?: string | null; vendedor?: string | null; marcas: string[] }) {
+  const marca = v.marcas.length > 1 ? `${v.marcas.slice(0, -1).join(', ')} e ${v.marcas.at(-1)}` : (v.marcas[0] ?? '')
+  return text.replace(/\{marca\}/gi, marca).replace(/[ \t]{2,}/g, ' ')
+}
+
 // ---------- Pré-venda perdida sem pós-venda ----------
 
 /** Motivo de perda que, por padrão, não gera pós-venda: produto que a empresa não tem ("Não temos o produto", "Sem estoque"). */

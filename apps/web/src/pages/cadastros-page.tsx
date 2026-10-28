@@ -588,7 +588,24 @@ interface AlertConfig {
   sellerDigest?: SellerDigest
   forwardMessage?: ForwardMessage
   contactCheck?: ForwardMessage
+  reactivation?: Reactivation
   noPostSaleReasonIds?: string[]
+}
+
+interface ReactivationStep {
+  enabled: boolean
+  days: number
+  text: string
+}
+
+interface Reactivation {
+  enabled: boolean
+  numberId: string | null
+  gapMin: number
+  gapMax: number
+  since?: string | null
+  lost: ReactivationStep[]
+  sold: ReactivationStep[]
 }
 
 interface ForwardMessage {
@@ -650,6 +667,7 @@ export function AlertsTab({ only }: { only?: 'prazos' | 'mensagens' }) {
           <NextDayMessageCard config={q.data} />
           <ForwardMessageCard config={q.data} />
           <ForwardMessageCard config={q.data} field="contactCheck" />
+          <ReactivationCard config={q.data} />
           <SellerDigestCard config={q.data} />
         </>
       )}
@@ -1105,6 +1123,114 @@ export function ForwardMessageCard({ config, field = 'forwardMessage' }: { confi
       {canEdit && (
         <CardFooter>
           <Button onClick={() => save.mutate({ ...config, [field]: { ...m, text: m.text.trim() } })} disabled={save.isPending || !valid}>
+            {save.isPending && <Loader2Icon className="animate-spin" />}
+            Salvar
+          </Button>
+        </CardFooter>
+      )}
+    </Card>
+  )
+}
+
+const REACTIVATION_GROUPS = [
+  { key: 'lost', title: 'Fechou sem venda', hint: 'Pré-venda marcada como venda não realizada.' },
+  { key: 'sold', title: 'Comprou (recompra)', hint: 'Pré-venda com venda realizada: oferecer de novo filtros e material de desgaste.' },
+] as const
+
+/** Chamar o cliente de novo depois que a pré-venda fechou: até 3 mensagens sem venda e até 3 de recompra, por um número fixo. */
+export function ReactivationCard({ config }: { config: AlertConfig }) {
+  const { can } = useAuth()
+  const canEdit = can('cadastros', 'edit')
+  const [m, setM] = useState<Reactivation | undefined>(config.reactivation)
+  const numbers = useQuery({ queryKey: ['cadastros', 'alertas', 'numeros'], queryFn: () => api.get<{ id: string; name: string; phone: string | null; status: string }[]>('/cadastros/alertas/numeros') })
+  const save = useSaveAlerts(m?.enabled ? 'Chamar o cliente de novo: ligado.' : 'Chamar o cliente de novo: salvo (desligado).')
+  if (!m) return null
+  const steps = [...m.lost, ...m.sold]
+  const gapOk = [m.gapMin, m.gapMax].every((v) => Number.isInteger(v) && v >= 1 && v <= 120) && m.gapMin <= m.gapMax
+  const stepsOk = steps.every((s) => Number.isInteger(s.days) && s.days >= 1 && s.days <= 1095 && s.text.trim().length > 0 && s.text.length <= 1000)
+  const valid = gapOk && stepsOk && (!m.enabled || (!!m.numberId && steps.some((s) => s.enabled)))
+  const setStep = (group: 'lost' | 'sold', i: number, patch: Partial<ReactivationStep>) => setM({ ...m, [group]: m[group].map((s, j) => (j === i ? { ...s, ...patch } : s)) })
+  return (
+    <Card className="h-fit xl:col-span-2">
+      <CardHeader>
+        <CardTitle>Chamar o cliente de novo</CardTitle>
+        <CardDescription>
+          Depois que a pré-venda fecha, o cliente recebe até 3 mensagens pelo WhatsApp, cada uma tantos dias depois do resultado: para quem não comprou e para quem comprou (recompra). A sequência para quando o
+          cliente responde ou volta a chamar (pré-venda nova). Só no horário comercial, e fica no histórico da pré-venda.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <label className="flex items-center justify-between gap-3 text-sm font-medium">
+          Enviar as mensagens
+          <Switch checked={m.enabled} onCheckedChange={(enabled) => setM({ ...m, enabled })} disabled={!canEdit} />
+        </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="reactivation-number">Número de WhatsApp que envia</Label>
+            <Select value={m.numberId ?? ''} onValueChange={(v) => setM({ ...m, numberId: v })} disabled={!canEdit}>
+              <SelectTrigger id="reactivation-number" className="w-full">
+                <SelectValue placeholder="Escolha o número" />
+              </SelectTrigger>
+              <SelectContent>
+                {(numbers.data ?? []).map((n) => (
+                  <SelectItem key={n.id} value={n.id}>
+                    {n.name}
+                    {n.status !== 'CONECTADO' ? ' (desconectado)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {m.enabled && !m.numberId && <p className="text-xs text-destructive">Escolha o número.</p>}
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium">Intervalo entre as mensagens</p>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              de
+              <Input aria-label="Intervalo mínimo (minutos)" type="number" min={1} max={120} className="w-20" value={m.gapMin} onChange={(e) => setM({ ...m, gapMin: Number(e.target.value) })} disabled={!canEdit} />
+              a
+              <Input aria-label="Intervalo máximo (minutos)" type="number" min={1} max={120} className="w-20" value={m.gapMax} onChange={(e) => setM({ ...m, gapMax: Number(e.target.value) })} disabled={!canEdit} />
+              minutos
+            </div>
+            {!gapOk && <p className="text-xs text-destructive">Use de 1 a 120 minutos, com o mínimo menor ou igual ao máximo.</p>}
+          </div>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {REACTIVATION_GROUPS.map((g) => (
+            <div key={g.key} className="space-y-3 rounded-md border p-3">
+              <div>
+                <p className="text-sm font-medium">{g.title}</p>
+                <p className="text-xs text-muted-foreground">{g.hint}</p>
+              </div>
+              {m[g.key].map((s, i) => (
+                <div key={i} className="space-y-2 border-t pt-3 first:border-t-0 first:pt-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <Checkbox checked={s.enabled} onCheckedChange={(on) => setStep(g.key, i, { enabled: on === true })} disabled={!canEdit} />
+                      {i + 1}ª mensagem
+                    </label>
+                    <div className="flex items-center gap-2 text-sm">
+                      <Input aria-label={`Dias da ${i + 1}ª mensagem (${g.title})`} type="number" min={1} max={1095} className="w-20" value={s.days} onChange={(e) => setStep(g.key, i, { days: Number(e.target.value) })} disabled={!canEdit} />
+                      dias depois
+                    </div>
+                  </div>
+                  <Textarea aria-label={`Texto da ${i + 1}ª mensagem (${g.title})`} rows={3} maxLength={1000} value={s.text} onChange={(e) => setStep(g.key, i, { text: e.target.value })} disabled={!canEdit || !s.enabled} />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        {!stepsOk && <p className="text-xs text-destructive">Cada mensagem precisa de texto e de 1 a 1095 dias.</p>}
+        <p className="text-xs text-muted-foreground">
+          Use {'{nome}'} para o primeiro nome do cliente, {'{vendedor}'} para o primeiro nome do vendedor e {'{marca}'} para as marcas da máquina da pré-venda. Ao ligar, vale para as mensagens que vencem dali em
+          diante: a base antiga não recebe tudo de uma vez.
+        </p>
+      </CardContent>
+      {canEdit && (
+        <CardFooter>
+          <Button
+            onClick={() => save.mutate({ ...config, reactivation: { ...m, lost: m.lost.map((s) => ({ ...s, text: s.text.trim() })), sold: m.sold.map((s) => ({ ...s, text: s.text.trim() })) } })}
+            disabled={save.isPending || !valid}
+          >
             {save.isPending && <Loader2Icon className="animate-spin" />}
             Salvar
           </Button>

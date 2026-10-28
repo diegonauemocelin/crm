@@ -12,7 +12,7 @@ import { SettingsService } from '../settings/settings.service'
 import { normalizePhone, REGIONS, regionOf, UF_LIST, UFS } from './br'
 import { type BusinessHours, cleanRules, subBusinessMs, type WaRules } from '../whatsapp/envio'
 import { buildDashboard, type DashRow } from './dashboard'
-import { applyAutomaticFields, cleanDigest, deadline, DEFAULT_CONTACT_CHECK, DEFAULT_FORWARD_MESSAGE, type ForwardMessage, skipsPostSale, digestFor, DEFAULT_DIGEST, DEFAULT_NEXT_DAY, digestMessages, saleSituation, type SellerDigest, todayWindow, diffRecord, FIELD_LABELS, type FollowStatus, inNegotiation, isCallOverdue, isFollowOverdue, isOverdue, nextCallDue, type NextDayMessage, type RecordState, shouldCreatePostSale, validateFollow, validateRecord } from './regras'
+import { applyAutomaticFields, cleanDigest, deadline, DEFAULT_CONTACT_CHECK, DEFAULT_FORWARD_MESSAGE, DEFAULT_REACTIVATION, type Reactivation, type ForwardMessage, skipsPostSale, digestFor, DEFAULT_DIGEST, DEFAULT_NEXT_DAY, digestMessages, saleSituation, type SellerDigest, todayWindow, diffRecord, FIELD_LABELS, type FollowStatus, inNegotiation, isCallOverdue, isFollowOverdue, isOverdue, nextCallDue, type NextDayMessage, type RecordState, shouldCreatePostSale, validateFollow, validateRecord } from './regras'
 
 export const MODULE_BY_KIND: Record<ServiceKind, 'pre_vendas' | 'pos_vendas'> = { PRE_VENDAS: 'pre_vendas', POS_VENDAS: 'pos_vendas' }
 
@@ -35,13 +35,14 @@ export interface AtendimentoSettings {
   forwardMessage?: ForwardMessage
   /** Pergunta ao cliente se o vendedor já entrou em contato (ex.: 30 minutos depois do repasse). */
   contactCheck?: ForwardMessage
+  reactivation?: Reactivation
   /**
    * Motivos de perda que não geram pós-venda (ex.: "Não temos o produto"): a pré-venda fecha e o atendimento no chat
    * é finalizado. Sem configuração: os motivos que falam de produto em falta.
    */
   noPostSaleReasonIds?: string[]
 }
-export const DEFAULT_ATENDIMENTO: AtendimentoSettings = { alertHours: 24, newRecordMinutes: 10, postSaleHours: 24, postSaleOwnerId: null, postSaleOwnerByUnit: {}, callHours: 24, nextDayMessage: DEFAULT_NEXT_DAY, sellerDigest: DEFAULT_DIGEST, forwardMessage: DEFAULT_FORWARD_MESSAGE, contactCheck: DEFAULT_CONTACT_CHECK }
+export const DEFAULT_ATENDIMENTO: AtendimentoSettings = { alertHours: 24, newRecordMinutes: 10, postSaleHours: 24, postSaleOwnerId: null, postSaleOwnerByUnit: {}, callHours: 24, nextDayMessage: DEFAULT_NEXT_DAY, sellerDigest: DEFAULT_DIGEST, forwardMessage: DEFAULT_FORWARD_MESSAGE, contactCheck: DEFAULT_CONTACT_CHECK, reactivation: DEFAULT_REACTIVATION }
 export const callHoursOf = (s: AtendimentoSettings) => s.callHours ?? 24
 /** Pré-venda nova só conta como "aguardando" nos últimos dias (o histórico antigo não vira aviso). */
 const WAITING_WINDOW_MS = 7 * 86_400_000
@@ -400,6 +401,7 @@ export class ServiceRecordsService {
       data: {
         ...(state as unknown as Prisma.ServiceRecordUncheckedCreateInput),
         callDueAt,
+        ...(state.saleStatus !== 'NEGOCIACAO' ? { resultAt: new Date() } : {}),
         tenantId: user.tenantId,
         kind: d.kind,
         leadAt: (base.leadAt as Date | undefined) ?? new Date(),
@@ -447,6 +449,8 @@ export class ServiceRecordsService {
     const data: Record<string, unknown> = {}
     for (const k of Object.keys(changes)) data[k] = (next as Record<string, unknown>)[k]
     for (const k of ['forwardedAt', 'returnedAt'] as const) data[k] = next[k]
+    // Resultado novo (ou de volta para negociação): a sequência de "chamar de novo" recomeça a contar dele.
+    if (changes.saleStatus) Object.assign(data, { resultAt: next.saleStatus === 'NEGOCIACAO' ? null : new Date(), reactivationStep: 0, reactivationAt: null, reactivationStatus: null })
     // Primeiro contato do pós-venda: é o que conta para o prazo.
     if (changes.followStatus && next.followStatus !== 'PENDENTE' && !current.firstActionAt) data.firstActionAt = new Date()
     // Pré-venda: a primeira alteração de uma pessoa tira o "aguardando atendimento".
