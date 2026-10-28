@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { ArrowRightIcon, BellRingIcon, CheckCircle2Icon, Loader2Icon, SparklesIcon, CircleAlertIcon, CirclePauseIcon, LightbulbIcon, XCircleIcon } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { Link } from 'react-router'
+import { ComparativoMensal } from '@/components/marketing/comparativo-mensal'
 import { MapaVendas } from '@/components/marketing/mapa-vendas'
 import { BreakdownTable, COLS, COMMERCIAL_COLS, CrmOnlyNotice, ExportButtons, FunnelView, Kpi, MEDIA_COLS, MktFilters, TrendChart, UpdatedLine } from '@/components/marketing/ui'
 import { EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -180,6 +181,7 @@ function Executivo({ d }: { d: Analysis }) {
         {k('Leads sem atendimento', 'notAttendedRate', pct, { lower: true, hint: `${num(n.leads - n.attended)} lead(s)` })}
         {k('Oportunidades perdidas', 'lostRate', pct, { lower: true, hint: 'perdidas ÷ decididas (vendeu + perdeu)' })}
       </div>
+      <ComparativoMensal />
       <MapaVendas />
       <div className="grid gap-4 lg:grid-cols-2">
         <TrendChart title="Investimento x faturamento atribuído" data={d.series} series={[{ key: 'mediaCost', label: 'Investimento em mídia', color: 'var(--chart-2)' }, { key: 'mktRevenue', label: 'Faturamento atribuído', color: 'var(--chart-1)' }]} format={moneyShort} />

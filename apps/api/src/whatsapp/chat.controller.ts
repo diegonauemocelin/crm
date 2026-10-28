@@ -333,6 +333,14 @@ export class ChatController {
     return this.chat.finishMany(user, dto.ids, ctx)
   }
 
+  /** Marcar como não lida (como no WhatsApp): conta como não lida até alguém abrir de novo. */
+  @Post('conversas/:id/nao-lida')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  markUnread(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.chat.markUnread(user, id)
+  }
+
   /** Não precisa responder: o cliente só se despediu; a conversa sai dos avisos de "cliente esperando". */
   @Post('conversas/:id/sem-resposta')
   @HttpCode(200)

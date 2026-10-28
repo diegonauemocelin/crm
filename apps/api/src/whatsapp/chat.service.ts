@@ -1761,6 +1761,14 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
    * "Não precisa responder": a conversa já terminou (ex.: o cliente mandou um áudio de despedida). Sai dos avisos de
    * cliente esperando até ele mandar outra mensagem.
    */
+  /** Marcar como não lida: a conversa volta a contar como não lida (pelo menos 1) até alguém abrir de novo. */
+  async markUnread(user: AuthUser, id: string) {
+    const conv = await this.load(user, id)
+    if (conv.unread > 0) return { id, unread: conv.unread }
+    await this.prisma.whatsappConversation.update({ where: { id }, data: { unread: 1 } })
+    return { id, unread: 1 }
+  }
+
   async noReply(user: AuthUser, id: string, ctx: RequestCtx) {
     this.assertAction(user, 'chat', 'create')
     const conv = await this.load(user, id)

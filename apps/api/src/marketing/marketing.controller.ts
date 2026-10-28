@@ -152,6 +152,12 @@ export class MarketingController {
     return this.mkt.map(user.tenantId, { from: q.de, to: q.ate, origin: q.origem })
   }
 
+  @Get('comparativo')
+  comparison(@CurrentUser() user: AuthUser, @Query() q: MapDto) {
+    this.mkt.assertCan(user, 'mi_executivo')
+    return this.mkt.comparison(user.tenantId, { origin: q.origem })
+  }
+
   @Get('email')
   email(@CurrentUser() user: AuthUser, @Query() q: PeriodDto) {
     this.mkt.assertCan(user, 'mi_comercial')

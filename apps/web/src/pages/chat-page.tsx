@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, AlertCircleIcon, BanIcon, CircleCheckBigIcon, FileTextIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ListChecksIcon, ReplyIcon, SmilePlusIcon, SmileIcon, StickerIcon, Loader2Icon, LockIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, AlertCircleIcon, BanIcon, CircleCheckBigIcon, FileTextIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ListChecksIcon, ReplyIcon, SmilePlusIcon, SmileIcon, StickerIcon, Loader2Icon, LockIcon, MailIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
 import { createContext, Fragment, type FormEvent, type KeyboardEvent, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -682,6 +682,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
       {!monitor && d.attendance && <HelpersPicker thread={d} />}
       {!monitor && d.conversation.category !== 'GRUPO' && d.conversation.phone && <SaveContactButton thread={d} />}
       {!monitor && can('chat', 'create') && d.conversation.category === 'CLIENTE' && d.conversation.status === 'ABERTA' && <FinishButton thread={d} />}
+      {!monitor && onBack && <MarkUnreadButton id={id} onDone={onBack} />}
       {!monitor && <ConversationActions thread={d} />}
     </>
   )
@@ -1813,6 +1814,29 @@ function FinishButton({ thread }: { thread: Thread }) {
 }
 
 /** Passar a conversa para um vendedor e arquivar/reabrir. */
+/**
+ * Marcar como não lida (como no WhatsApp): a conversa fecha e volta a aparecer como não lida na lista. Só onde dá para
+ * fechar a conversa, porque abrir de novo marca como lida.
+ */
+function MarkUnreadButton({ id, onDone }: { id: string; onDone: () => void }) {
+  const qc = useQueryClient()
+  const mark = useMutation({
+    mutationFn: () => api.post(`/chat/conversas/${id}/nao-lida`),
+    onSuccess: () => {
+      onDone()
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+      void qc.invalidateQueries({ queryKey: ['chat-alertas'] })
+      toast.success('Conversa marcada como não lida.')
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  return (
+    <Button size="sm" variant="outline" disabled={mark.isPending} onClick={() => mark.mutate()} title="Marcar como não lida: fecha a conversa e ela volta a aparecer como não lida" aria-label="Marcar como não lida">
+      {mark.isPending ? <Loader2Icon className="animate-spin" /> : <MailIcon />} <span className="hidden @4xl/head:inline">Não lida</span>
+    </Button>
+  )
+}
+
 function ConversationActions({ thread }: { thread: Thread }) {
   const { can } = useAuth()
   const qc = useQueryClient()
@@ -2129,6 +2153,45 @@ function waStyles(raw: string, leaf: (t: string) => ReactNode[] = (t) => [t]) {
   return out
 }
 
+const SPEEDS = [1, 1.5, 2]
+const SPEED_KEY = 'chat-audio-velocidade'
+const savedSpeed = () => {
+  try {
+    const v = Number(localStorage.getItem(SPEED_KEY))
+    return SPEEDS.includes(v) ? v : 1
+  } catch {
+    return 1
+  }
+}
+
+/** Áudio com velocidade 1x, 1,5x e 2x (como no WhatsApp); a última escolhida vale para os próximos áudios. */
+function AudioPlayer({ src }: { src: string }) {
+  const ref = useRef<HTMLAudioElement>(null)
+  const [speed, setSpeed] = useState(savedSpeed)
+  useEffect(() => {
+    if (!ref.current) return
+    ref.current.defaultPlaybackRate = speed
+    ref.current.playbackRate = speed
+  }, [speed])
+  const next = () => {
+    const v = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]!
+    setSpeed(v)
+    try {
+      localStorage.setItem(SPEED_KEY, String(v))
+    } catch {
+      // Sem armazenamento: a velocidade vale só para este áudio.
+    }
+  }
+  return (
+    <div className="flex max-w-full items-center gap-1.5">
+      <audio ref={ref} controls preload="none" src={src} className="max-w-full min-w-0" onPlay={(e) => (e.currentTarget.playbackRate = speed)} />
+      <Button type="button" size="sm" variant="secondary" className="h-7 min-w-11 shrink-0 rounded-full px-2 text-xs tabular-nums" onClick={next} title="Velocidade do áudio" aria-label={`Velocidade do áudio: ${String(speed).replace('.', ',')}x`}>
+        {String(speed).replace('.', ',')}x
+      </Button>
+    </div>
+  )
+}
+
 /** Transcrição do áudio: o texto, se já existe; senão o botão "Transcrever" (Gemini, com a chave do e-mail marketing). */
 function Transcript({ m }: { m: Message }) {
   const monitor = useContext(MonitorContext)
@@ -2226,7 +2289,7 @@ function Bubble({ m }: { m: Message }) {
   if (m.type === 'audio') {
     return m.hasFile ? (
       <div className="space-y-1">
-        <audio controls preload="none" src={src} className="max-w-full" />
+        <AudioPlayer src={src} />
         <Transcript m={m} />
       </div>
     ) : (

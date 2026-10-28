@@ -54,6 +54,7 @@ import {
   series,
 } from './metricas'
 import { buildLive, type LiveSale } from './ao-vivo'
+import { buildComparison, comparisonRange, type SaleRow } from './comparativo'
 import { aggregateMap, MAP_ORIGINS, type MapOrigin, type MapRow, orderSource } from './mapa'
 import { DEFAULT_ALERT_WORDS, negativeSuggestions } from '../googleads/detalhes'
 import { fatigue } from './plataformas'
@@ -573,6 +574,21 @@ export class MarketingService {
       ...orders.map((o) => ({ source: orderSource(o.channel), at: o.orderedAt, value: Number(o.total), title: o.lead?.name ? `${o.lead.name} · pedido ${o.code}` : `Pedido ${o.code}`, city: o.lead?.city ?? null, state: o.lead?.state ?? null, who: o.channel })),
     ]
     return { origin, ...buildLive(sales, origin, now) }
+  }
+
+  /** Comparativo mensal do Dashboard executivo: mês anterior x mês em andamento e a projeção, por canal ou no total. */
+  async comparison(tenantId: string, q: { origin?: string }, now = new Date()) {
+    const channel: MapOrigin = (MAP_ORIGINS as readonly string[]).includes(q.origin ?? '') ? (q.origin as MapOrigin) : 'tudo'
+    const { start, end } = comparisonRange(now)
+    const [records, orders] = await Promise.all([
+      this.prisma.serviceRecord.findMany({ where: { tenantId, deletedAt: null, kind: 'PRE_VENDAS', saleStatus: 'SIM', leadAt: { gte: start, lt: end } }, select: { leadAt: true, saleValue: true } }),
+      this.prisma.ecommerceOrder.findMany({ where: { tenantId, statusGroup: 'pago', orderedAt: { gte: start, lt: end } }, select: { orderedAt: true, total: true, channel: true } }),
+    ])
+    const rows: SaleRow[] = [
+      ...records.map((r) => ({ source: 'atendimento' as const, at: r.leadAt, value: Number(r.saleValue ?? 0) })),
+      ...orders.map((o) => ({ source: orderSource(o.channel), at: o.orderedAt, value: Number(o.total) })),
+    ]
+    return buildComparison(rows, channel, now)
   }
 
   /** Mapa de vendas do Dashboard executivo: atendimentos do Pré-Vendas e pedidos pagos da loja (e-commerce e marketplace). */
