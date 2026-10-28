@@ -37,6 +37,8 @@ interface QuestionRow {
   attemptText: string | null
   attemptStatus: string | null
   attemptOrigin: string | null
+  /** Quem respondeu primeiro: ia, atendente, externa (Magazord ou direto no ML) ou sem_resposta. */
+  answerOrigin?: string | null
   salesCount: number
   salesTotal: number | null
   abandonCount: number
@@ -168,7 +170,7 @@ function QuestionsTable({ query, page, onPage, showPriority }: { query: { data?:
                 <StatusBadge status={r.status} />
                 {r.pendingReason && !FINAL.includes(r.status) && <p className="mt-0.5 text-xs text-muted-foreground">Motivo {r.pendingReason}</p>}
               </TableCell>
-              <TableCell>{r.attemptStatus ? <SendBadge status={r.attemptStatus} /> : '—'}</TableCell>
+              <TableCell>{r.answerOrigin === 'externa' ? <ExternalBadge /> : r.attemptStatus ? <SendBadge status={r.attemptStatus} /> : '—'}</TableCell>
               <TableCell className="whitespace-nowrap">{formatDateTime(r.receivedAt)}</TableCell>
             </TableRow>
           ))}
@@ -312,7 +314,7 @@ interface Attempt {
   knowledge: { id: number; version: number; title: string | null; currentVersion: number | null; status: string | null }[]
 }
 interface Detail {
-  question: QuestionRow & { mlQuestionId: string; relevance: number; purchaseIntent: boolean; processingState: string; answeredAt: string | null; assignedToId: string | null; priority: { score: number; level: string; ageHours: number } }
+  question: QuestionRow & { externalAnswer?: string | null; externalAnsweredAt?: string | null; mlQuestionId: string; relevance: number; purchaseIntent: boolean; processingState: string; answeredAt: string | null; assignedToId: string | null; priority: { score: number; level: string; ageHours: number } }
   item: { id: string; title: string | null; permalink: string | null; price: number | null; status: string | null; partNumber: string | null; sellerSku: string | null; availableQuantity: number | null } | null
   attempts: Attempt[]
   events: { id: number; type: string; fromStatus: string | null; toStatus: string | null; userName: string | null; note: string | null; createdAt: string }[]
@@ -438,6 +440,20 @@ function Pergunta() {
                 {!!d.analysis.missing?.length && <p className="text-muted-foreground">Faltou: {d.analysis.missing.join('; ')}</p>}
                 {d.analysis.routing && <p className="text-muted-foreground">Encaminhar para: {d.analysis.routing}</p>}
               </CardContent>
+            </Card>
+          )}
+
+          {(qq.externalAnswer || qq.externalAnsweredAt) && (
+            <Card className="border-sky-300 dark:border-sky-500/40">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  Respondida fora do CRM <ExternalBadge />
+                </CardTitle>
+                <CardDescription>
+                  Pela Magazord ou direto no Mercado Livre{qq.externalAnsweredAt ? `, em ${formatDateTime(qq.externalAnsweredAt)}` : ''}. A resposta entrou na base de conhecimento.
+                </CardDescription>
+              </CardHeader>
+              {qq.externalAnswer && <CardContent className="text-sm whitespace-pre-wrap">{qq.externalAnswer}</CardContent>}
             </Card>
           )}
 
@@ -730,5 +746,14 @@ function Pergunta() {
         </div>
       </div>
     </div>
+  )
+}
+
+/** Resposta dada fora do CRM: o Mercado Livre não diz se foi pela Magazord ou direto no site, só que não foi pelo CRM. */
+function ExternalBadge() {
+  return (
+    <Badge variant="outline" className="border-sky-300 text-sky-800 dark:border-sky-500/40 dark:text-sky-300" title="Respondida pela Magazord ou direto no Mercado Livre">
+      Fora do CRM
+    </Badge>
   )
 }

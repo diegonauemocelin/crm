@@ -33,7 +33,7 @@ const VIEWS: Record<string, Prisma.Sql | null> = {
 
 const SELECT_ROW = Prisma.sql`
   SELECT q.*, i.title AS "itemTitle", i.permalink AS "itemPermalink",
-         a.id AS "attemptId", a.text AS "attemptText", a."sendStatus" AS "attemptStatus", a.origin AS "attemptOrigin", a.reviewed AS "attemptReviewed", a.confidence AS "attemptConfidence",
+         a.id AS "attemptId", a.text AS "attemptText", a."sendStatus" AS "attemptStatus", a.origin AS "attemptOrigin", a.reviewed AS "attemptReviewed", a.confidence AS "attemptConfidence", ${ANSWER_ORIGIN} AS "answerOrigin",
          (SELECT COUNT(*)::int FROM assist_sales s WHERE s."questionId" = q.id AND ${SOLD}) AS "salesCount",
          (SELECT SUM(s.total)::float FROM assist_sales s WHERE s."questionId" = q.id AND ${SOLD}) AS "salesTotal",
          (SELECT COUNT(*)::int FROM assist_sales s WHERE s."questionId" = q.id AND ${ABANDON}) AS "abandonCount",

@@ -2077,6 +2077,8 @@ model AssistQuestion {
   answeredAt          DateTime?
   resolvedAt          DateTime?
   externalAnsweredAt  DateTime?
+  /// Resposta dada fora do CRM (pela Magazord ou direto no Mercado Livre), como está no Mercado Livre.
+  externalAnswer      String?
   updatedAt           DateTime  @updatedAt
 
   @@unique([tenantId, mlQuestionId])

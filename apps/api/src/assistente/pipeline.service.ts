@@ -229,7 +229,7 @@ export class AssistPipelineService {
         return existing.id
       }
       if (mlQ.status === 'ANSWERED' && !sent && !FINAL_STATUSES.includes(existing.status)) {
-        await this.assist.setStatus(tenantId, existing.id, 'respondida', { note: 'Respondida diretamente no Mercado Livre (fora do sistema).', type: 'respondida_externamente' })
+        await this.assist.setStatus(tenantId, existing.id, 'respondida', { note: 'Respondida fora do CRM (pela Magazord ou direto no Mercado Livre).', type: 'respondida_externamente' })
         await this.markExternalAnswer(existing.id, mlQ.answer)
         if (mlQ.answer?.text) await this.safeLearn(tenantId, existing.id, mlQ.answer.text, 'externa')
       }
@@ -528,10 +528,15 @@ export class AssistPipelineService {
     }
   }
 
+  /** Resposta dada fora do CRM (Magazord ou direto no Mercado Livre): guarda quando e o texto, para mostrar na pergunta. */
   private async markExternalAnswer(questionId: number, answer: MlQuestionApi['answer']) {
-    if (!answer?.date_created) return
-    const q = await this.prisma.assistQuestion.findUnique({ where: { id: questionId }, select: { externalAnsweredAt: true } })
-    if (!q?.externalAnsweredAt) await this.prisma.assistQuestion.update({ where: { id: questionId }, data: { externalAnsweredAt: new Date(answer.date_created) } })
+    if (!answer?.date_created && !answer?.text) return
+    const q = await this.prisma.assistQuestion.findUnique({ where: { id: questionId }, select: { externalAnsweredAt: true, externalAnswer: true } })
+    if (!q || (q.externalAnsweredAt && q.externalAnswer)) return
+    await this.prisma.assistQuestion.update({
+      where: { id: questionId },
+      data: { externalAnsweredAt: q.externalAnsweredAt ?? (answer.date_created ? new Date(answer.date_created) : new Date()), externalAnswer: q.externalAnswer ?? (answer.text ? String(answer.text).slice(0, 5000) : null) },
+    })
   }
 
   private async safeLearn(tenantId: string, questionId: number, answerText: string, how: 'manual' | 'aprovada' | 'externa' | 'ia', actor?: Actor) {
@@ -562,7 +567,7 @@ export class AssistPipelineService {
           if (norm(cur.answer?.text) === norm(a.text)) await this.confirmSent(tenantId, a, q, cur, null)
           else {
             await this.prisma.assistAttempt.update({ where: { id: a.id }, data: { sendStatus: 'descartada', error: 'Pergunta respondida por outra via.' } })
-            await this.assist.setStatus(tenantId, q.id, 'respondida', { note: 'Respondida fora do sistema.', type: 'respondida_externamente' })
+            await this.assist.setStatus(tenantId, q.id, 'respondida', { note: 'Respondida fora do CRM (pela Magazord ou direto no Mercado Livre).', type: 'respondida_externamente' })
             await this.markExternalAnswer(q.id, cur.answer)
             if (cur.answer?.text) await this.safeLearn(tenantId, q.id, cur.answer.text, 'externa')
           }

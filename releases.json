@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.104.0",
+      "date": "2026-10-28",
+      "title": "Perguntas respondidas fora do CRM",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Assistente ML",
+          "text": "Pergunta respondida fora do CRM (pela Magazord ou direto no Mercado Livre) aparece marcada como \"Fora do CRM\" em Perguntas e respostas, e a ficha mostra a resposta dada e quando. O Mercado Livre não informa se foi pela Magazord ou pelo site, só que não foi pelo CRM."
+        },
+        {
+          "type": "melhoria",
+          "area": "Assistente ML",
+          "text": "Toda resposta dada fora do CRM entra sozinha na base de conhecimento, já ativa, mesmo com o aprendizado automático desligado ou em revisão."
+        }
+      ]
+    },
+    {
       "version": "0.103.1",
       "date": "2026-10-28",
       "title": "Respostas do Mercado Livre só contam quando aparecem lá",

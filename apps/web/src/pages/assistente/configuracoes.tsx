@@ -265,7 +265,7 @@ function SettingsForm({ part }: { part: 'respostas' | 'motor' }) {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Aprendizado</CardTitle>
-            <CardDescription>Respostas enviadas viram conhecimento para as próximas perguntas. Preço, estoque e frete nunca viram conhecimento (mudam com o tempo).</CardDescription>
+            <CardDescription>Respostas enviadas viram conhecimento para as próximas perguntas. Preço, estoque e frete nunca viram conhecimento (mudam com o tempo). Respostas dadas fora do CRM (pela Magazord ou direto no Mercado Livre) entram sempre, já ativas.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {toggle('auto_learn', 'Aprender com as respostas enviadas')}

@@ -52,7 +52,7 @@ interface KMeta {
 }
 
 const statusVariant = (s: string) => (s === 'ativo' ? 'secondary' : s === 'em_revisao' ? 'default' : 'outline')
-const ORIGIN_LEARNED: Record<string, string> = { ia: 'aprendido da IA', atendente: 'aprendido do atendente', externa: 'aprendido do Mercado Livre', manual: 'aprendido' }
+const ORIGIN_LEARNED: Record<string, string> = { ia: 'aprendido da IA', atendente: 'aprendido do atendente', externa: 'aprendido de resposta fora do CRM', manual: 'aprendido' }
 
 export function AssistenteConhecimentoPage() {
   return (
