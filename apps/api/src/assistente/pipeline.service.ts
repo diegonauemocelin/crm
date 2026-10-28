@@ -217,6 +217,17 @@ export class AssistPipelineService {
     if (existing) {
       await this.prisma.assistQuestion.update({ where: { id: existing.id }, data: { mlStatus: mlQ.status } })
       const sent = await this.prisma.assistAttempt.findFirst({ where: { questionId: existing.id, sendStatus: 'enviada' }, select: { id: true } })
+      // O CRM dá a pergunta por resolvida, mas no Mercado Livre ela continua sem resposta: a resposta não chegou lá
+      // (ou alguém fechou sem responder). Volta para a fila de pendentes, uma vez (ou sempre que houver envio "confirmado").
+      if (mlQ.status === 'UNANSWERED' && FINAL_STATUSES.includes(existing.status)) {
+        const reopened = await this.prisma.assistEvent.findFirst({ where: { questionId: existing.id, type: 'reaberta_ml' }, select: { id: true } })
+        if (sent || !reopened) {
+          await this.prisma.assistAttempt.updateMany({ where: { questionId: existing.id, sendStatus: 'enviada' }, data: { sendStatus: 'falha', error: 'O Mercado Livre não registrou esta resposta: a pergunta continua aberta lá.' } })
+          await this.assist.setStatus(tenantId, existing.id, 'aguardando_analise', { reason: 'F', note: 'A pergunta continua sem resposta no Mercado Livre. Responda de novo.', type: 'reaberta_ml' })
+          await this.assist.log(tenantId, 'warn', `Pergunta ${mlId} estava como ${existing.status} no CRM, mas continua sem resposta no Mercado Livre: voltou para as pendentes.`)
+        }
+        return existing.id
+      }
       if (mlQ.status === 'ANSWERED' && !sent && !FINAL_STATUSES.includes(existing.status)) {
         await this.assist.setStatus(tenantId, existing.id, 'respondida', { note: 'Respondida diretamente no Mercado Livre (fora do sistema).', type: 'respondida_externamente' })
         await this.markExternalAnswer(existing.id, mlQ.answer)
@@ -481,11 +492,16 @@ export class AssistPipelineService {
       const status = (e as { status?: number }).status
       return this.failSend(tenantId, a, q, e as Error, status === undefined || status === 0)
     }
-    const confirmed = res?.status === 'ANSWERED' || !!res?.answer?.text || !!res?.id
+    // Só vale como enviada quando o Mercado Livre mostra a pergunta respondida. A volta do POST não basta: ela traz o
+    // id mesmo quando a resposta fica em análise ou não é publicada.
+    const after = await this.ml.getQuestion(tenantId, q.mlQuestionId).catch(() => null)
+    const confirmed = after?.status === 'ANSWERED' || (!after && res?.status === 'ANSWERED')
     if (!confirmed) {
-      await this.prisma.assistAttempt.update({ where: { id: a.id }, data: { sendStatus: 'pendente_confirmacao', mlResponse: res as unknown as Prisma.InputJsonValue } })
-      await this.assist.addEvent(tenantId, q.id, 'envio_sem_confirmacao', { note: 'O Mercado Livre não confirmou o envio; verificação automática agendada.' })
-      return { sent: false, pendingConfirmation: true }
+      const situation = after?.status ?? res?.status ?? 'desconhecida'
+      await this.prisma.assistAttempt.update({ where: { id: a.id }, data: { sendStatus: 'pendente_confirmacao', mlResponse: { post: res, depois: after } as unknown as Prisma.InputJsonValue } })
+      await this.assist.addEvent(tenantId, q.id, 'envio_sem_confirmacao', { note: `O Mercado Livre recebeu a resposta, mas a pergunta ainda aparece como ${situation}; verificação automática nos próximos minutos.` })
+      await this.assist.log(tenantId, 'warn', `Resposta #${a.id} (pergunta ${q.mlQuestionId}) sem confirmação: situação ${situation}. Volta do Mercado Livre: ${JSON.stringify(res).slice(0, 500)}`)
+      return { sent: false, pendingConfirmation: true, situation }
     }
     await this.confirmSent(tenantId, a, q, res, actor)
     return { sent: true }
@@ -550,9 +566,11 @@ export class AssistPipelineService {
             await this.markExternalAnswer(q.id, cur.answer)
             if (cur.answer?.text) await this.safeLearn(tenantId, q.id, cur.answer.text, 'externa')
           }
-        } else if (cur.status === 'UNANSWERED' && a.sendRequestedAt && Date.now() - a.sendRequestedAt.getTime() > 10 * 60_000) {
-          await this.prisma.assistAttempt.update({ where: { id: a.id }, data: { sendStatus: 'falha', error: 'Envio não confirmado pelo Mercado Livre. Nova tentativa liberada.' } })
-          await this.markPending(tenantId, q, 'F', 'Envio não confirmado pelo Mercado Livre.')
+        } else if (a.sendRequestedAt && Date.now() - a.sendRequestedAt.getTime() > 10 * 60_000) {
+          // Continua aberta (ou em análise, bloqueada...) no Mercado Livre: a resposta não foi publicada.
+          const why = cur.status === 'UNANSWERED' ? 'Envio não confirmado pelo Mercado Livre.' : `Resposta não publicada pelo Mercado Livre (situação ${cur.status}).`
+          await this.prisma.assistAttempt.update({ where: { id: a.id }, data: { sendStatus: 'falha', error: `${why} Nova tentativa liberada.` } })
+          await this.markPending(tenantId, q, 'F', why)
         }
       } catch (e) {
         await this.assist.log(tenantId, 'warn', `Verificação da resposta #${a.id}: ${(e as Error).message}`)

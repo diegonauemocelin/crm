@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "0.103.1",
+      "date": "2026-10-28",
+      "title": "Respostas do Mercado Livre só contam quando aparecem lá",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Assistente ML",
+          "text": "Resposta só fica como Enviada quando o Mercado Livre mostra a pergunta respondida. Antes, bastava o Mercado Livre receber o pedido, e havia resposta marcada como enviada que não aparecia para o cliente."
+        },
+        {
+          "type": "correcao",
+          "area": "Assistente ML",
+          "text": "Pergunta dada como respondida ou resolvida no CRM que continua sem resposta no Mercado Livre volta sozinha para Perguntas pendentes, para responder de novo."
+        }
+      ]
+    },
+    {
       "version": "0.103.0",
       "date": "2026-10-28",
       "title": "Número de perguntas pendentes no menu",
