@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "1.0.3",
+      "date": "2026-10-29",
+      "title": "Chamar o cliente de novo depois que a pré-venda fechou",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Mensagens automáticas",
+          "text": "Chamar o cliente de novo: depois que a pré-venda fecha, o cliente recebe até 3 mensagens pelo WhatsApp, cada uma tantos dias depois do resultado. Uma sequência para quem não comprou (padrão 30, 90 e 180 dias) e outra de recompra para quem comprou (60, 120 e 180 dias), com textos prontos que perguntam como está o cliente e oferecem filtros, material de desgaste e peças. Dias e textos ajustáveis, {marca} vira a marca da máquina da pré-venda, sai por um número escolhido, só no horário comercial e com intervalo entre as mensagens. Para quando o cliente responde ou volta a chamar. Vem desligada: ligue em Configurações › Mensagens automáticas."
+        }
+      ]
+    },
+    {
       "version": "1.0.2",
       "date": "2026-10-28",
       "title": "Mensagem do repasse na hora e pergunta ao cliente se o vendedor já entrou em contato",

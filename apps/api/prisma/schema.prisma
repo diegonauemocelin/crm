@@ -442,6 +442,12 @@ model ServiceRecord {
   /// Pergunta ao cliente se o vendedor já entrou em contato (ex.: 30 minutos depois do repasse): quando foi tentada e o resultado.
   contactCheckAt       DateTime?
   contactCheckStatus   String?
+  /// Quando a venda ou a perda foi marcada (a pré-venda saiu de "em negociação").
+  resultAt             DateTime?
+  /// Chamar o cliente de novo depois do resultado: quantas mensagens da sequência já foram (3 = acabou ou parou), a última tentativa e o resultado.
+  reactivationStep     Int       @default(0)
+  reactivationAt       DateTime?
+  reactivationStatus   String?
   /// Chave de deduplicação da importação: reimportar a mesma planilha não duplica registros.
   externalKey    String?
   importBatch    String?
@@ -485,6 +491,7 @@ model ServiceRecord {
   @@index([phone])
   @@index([parentId])
   @@index([tenantId, kind, followStatus, dueAt])
+  @@index([tenantId, kind, saleStatus, resultAt])
   @@map("service_records")
 }
 
