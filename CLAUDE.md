@@ -30,6 +30,9 @@ tudo numa versão (v1.0.4) e leva ao SaaS (1.0.27).
 
 1. Entrada nova no topo de `releases.json` (tipos: `novo`, `melhoria`, `correcao`, `seguranca`, `infra`; texto simples, para quem usa o sistema).
 2. Versão nos 3 `package.json` (raiz, `apps/api`, `apps/web`) e no `package-lock.json` (as entradas dos 3 pacotes). Numeração (decisão de 28/10/2026, para o número não crescer): depois da v0.104.1 a próxima entrega é a **v1.0.0**, e cada entrega seguinte soma 1 no último número (v1.0.1, v1.0.2...), novidade ou correção.
+   A versão que trouxer o módulo de fretes é a **v2.0.0** (decisão de 30/10/2026), e as seguintes somam 1 no último
+   número (v2.0.1, v2.0.2...). Se os fretes entrarem na versão de terça (03/11), ela é a v2.0.0 em vez da v1.0.4.
+   O SaaS continua na sua numeração (1.0.N).
 3. `node scripts/check-release.mjs`.
 4. Commit `vX.Y.Z: <resumo em português>`, tag `vX.Y.Z` no próprio commit, `git push origin main --tags`.
    Commits que não são versão: `docs:`, `deps:`, `deploy:`. Detalhes em `docs/RELEASES.md`.
