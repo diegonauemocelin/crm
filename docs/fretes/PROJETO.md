@@ -5,7 +5,7 @@ Módulo **separado** dentro do CRM Usaparts (mesmo login, mesmos perfis, mesma a
 histórico de importação, vigência e filiais). Nada do sistema de referência é copiado: o código é próprio.
 
 Este documento responde à seção 24 do pedido (o que apresentar antes de programar) e registra o que já está
-entregue na v1.0.4.
+entregue na v2.0.0.
 
 ## 1. Arquitetura
 
@@ -190,11 +190,11 @@ Na tela **Filiais e integrações** todas aparecem como *Não conectada* até es
 
 | Fase | Conteúdo | Situação |
 |---|---|---|
-| 1 | Permissões por filial, filiais, transportadoras, tabelas, importação, componentes e variáveis | **Entregue (v1.0.4)** |
-| 2 | Fórmulas, regras geográficas, cubagem, cotação, comparativo, histórico e reprodução, cotação em lote | **Entregue (v1.0.4)** |
-| 3 | Pedidos e expedição (manual, planilha, pela cotação), importação dos XMLs de CT-e | **Entregue (v1.0.4)**; captura automática na SEFAZ (DF-e, certificado A1) e pedidos da Tcar: a decidir |
-| 4 | Faturas, conciliação automática por componente, tolerâncias, contestação, pagamentos | **Entregue (v1.0.4)** |
-| 5 | Relatórios gerenciais, alertas, indicadores de desempenho, perfis prontos | **Entregue (v1.0.4)** |
+| 1 | Permissões por filial, filiais, transportadoras, tabelas, importação, componentes e variáveis | **Entregue (v2.0.0)** |
+| 2 | Fórmulas, regras geográficas, cubagem, cotação, comparativo, histórico e reprodução, cotação em lote | **Entregue (v2.0.0)** |
+| 3 | Pedidos e expedição (manual, planilha, pela cotação), importação dos XMLs de CT-e | **Entregue (v2.0.0)**; captura automática na SEFAZ (DF-e, certificado A1) e pedidos da Tcar: a decidir |
+| 4 | Faturas, conciliação automática por componente, tolerâncias, contestação, pagamentos | **Entregue (v2.0.0)** |
+| 5 | Relatórios gerenciais, alertas, indicadores de desempenho, perfis prontos | **Entregue (v2.0.0)** |
 | 6 | Correios, Mercado Livre ME1, Google Shopping, APIs de transportadoras, homologação | A decidir (depende de contratos e credenciais) |
 
 ## 12. Riscos e dependências

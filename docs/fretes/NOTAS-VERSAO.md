@@ -1,8 +1,8 @@
-# Notas de fretes para a v1.0.4
+# Notas de fretes para a v2.0.0
 
-O módulo de fretes (PR diegonauemocelin/crm#1) entra na **v1.0.4** (terça, 03/11/2026), junto com o que ficar pronto
-até lá. Ao montar a versão, junte estes itens na entrada da v1.0.4 do `releases.json` (com a data do dia) e apague este
-arquivo.
+O módulo de fretes (PR diegonauemocelin/crm#1) entra na **v2.0.0** (decisão de 30/10/2026). Se for na versão de terça
+(03/11/2026), ela é a v2.0.0 em vez da v1.0.4, junto com o que ficar pronto até lá. Ao montar a versão, junte estes itens
+na entrada da v2.0.0 do `releases.json` (com a data do dia) e apague este arquivo.
 
 ```json
 [

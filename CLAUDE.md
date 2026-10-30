@@ -27,7 +27,7 @@ antes ("publica agora"), publica na hora.
 **Pausa (pedido de 29/10/2026, depois da v1.0.3):** novas versões só na terça-feira, 03/11/2026. Até lá, o que ficar
 pronto vai só em commits `dia:` no branch do dia (com push), sem versão, sem deploy e sem levar ao SaaS; na terça junta
 tudo numa versão (v1.0.4) e leva ao SaaS (1.0.27).
-Na v1.0.4 entra também o módulo de fretes (PR #1, branch `claude/tender-brown-6n5q8f`): as notas estão em
+A versão com o módulo de fretes é a v2.0.0 (item 2 abaixo; PR #1, branch `claude/tender-brown-6n5q8f`): as notas estão em
 `docs/fretes/NOTAS-VERSAO.md`.
 
 1. Entrada nova no topo de `releases.json` (tipos: `novo`, `melhoria`, `correcao`, `seguranca`, `infra`; texto simples, para quem usa o sistema).
