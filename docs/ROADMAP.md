@@ -11,6 +11,7 @@ O que já está em produção fica em [`releases.json`](../releases.json) (tela 
 | Fase 8 | Segurança final: aparelhos conectados, avisos por e-mail, revisão OWASP, limite por usuário, fail2ban, teste de carga e de restauração do backup | Entregue (v0.9.0); fail2ban depende de rodar o script na VPS |
 | Final | **Editor visual de pop-ups e formulários**: blocos (imagem, título, texto, formulário, cupom, espaço, divisor, “Não, obrigado”), cores, fontes, tamanho, posição, cantos, sombra, versão celular, prévia ao vivo e modelos prontos. Pendente: gerar landing page inteira em HTML | Entregue (v0.10.0) |
 | Google Ads | Retorno dos atendimentos (contato, retorno do vendedor, venda com valor, perda por motivo) para as campanhas pela Data Manager API, com reconhecimento por clique ou telefone/e-mail | Entregue (v0.11.0); falta conectar a conta do Google Ads |
+| Fretes | Módulo de gestão de fretes (ver [fretes/PROJETO.md](fretes/PROJETO.md)): transportadoras, tabelas versionadas, importação, motor de cálculo, cotação por filial e em lote, pedidos, CT-e com conciliação automática, faturas, relatórios, alertas e perfis prontos. A decidir: captura de CT-e na SEFAZ (certificado A1), Tcar, Correios, Mercado Livre ME1 e Google Shopping | Entregue (v2.0.0) |
 | Fase 9 | Chat WhatsApp (Evolution API, chip dedicado) — por último, a pedido; reavaliar RAM da VPS (4 GB) | A fazer |
 
 ## Editor visual de pop-ups e formulários (detalhe do pedido)

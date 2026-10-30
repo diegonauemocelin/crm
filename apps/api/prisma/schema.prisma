@@ -199,6 +199,8 @@ model User {
   /// Unidade do usuário: base do escopo "somente da sua unidade" nos perfis de acesso.
   unitId String? @db.Uuid
   unit   Unit?   @relation(fields: [unitId], references: [id])
+  /// Outras unidades que a pessoa também acessa no escopo "da unidade" (ex.: gestor de duas filiais). Usado pelo módulo de fretes.
+  extraUnitIds String[] @default([]) @db.Uuid
 
   /// Excluído: some das listas e não entra mais; o nome fica no histórico (conversas, auditoria, atendimentos).
   deletedAt DateTime?
@@ -335,6 +337,11 @@ model Unit {
   state          String?  @db.Char(2)
   isHeadquarters Boolean  @default(false)
   active         Boolean  @default(true)
+  /// Dados fiscais e de expedição (módulo de fretes).
+  cnpj           String?
+  legalName      String?
+  zip            String?  @db.Char(8)
+  address        String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -2566,6 +2573,412 @@ model SocialPost {
   @@index([tenantId, scheduledAt])
   @@index([status, scheduledAt])
   @@map("social_posts")
+}
+
+// ───────────────────────────── Fretes ─────────────────────────────
+// Transportadoras, tabelas de frete versionadas, regras por destino e faixa de peso, importações e cotações.
+// Versão publicada não muda: alterar = criar nova versão. A cotação guarda a versão usada e o cálculo completo.
+
+/// Transportadora parceira.
+model FreightCarrier {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  cnpj        String   @db.Char(14)
+  legalName   String
+  name        String
+  /// Nome que aparece na cotação (vazio = nome).
+  quoteName   String?
+  zip         String?  @db.Char(8)
+  address     String?
+  city        String?
+  state       String?  @db.Char(2)
+  phone       String?
+  email       String?
+  /// [{ name, role, phone, email }]
+  contacts    Json     @default("[]")
+  modes       String[] @default([])
+  /// Filiais atendidas. Vazio = todas.
+  unitIds     String[] @default([]) @db.Uuid
+  useReceiverAsRecipient Boolean @default(false)
+  /// Códigos nos sistemas externos (ERP, e-commerce, Mercado Livre...).
+  externalCodes Json   @default("{}")
+  notes       String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tables FreightTable[]
+
+  @@unique([tenantId, cnpj])
+  @@index([tenantId, active])
+  @@map("freight_carriers")
+}
+
+/// Tabela de frete negociada. Os dados de cálculo (componentes, parâmetros e regras) ficam nas versões.
+model FreightTable {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  carrierId   String   @db.Uuid
+  name        String
+  quoteName   String?
+  /// COMPRA_VENDA | COMPRA | VENDA
+  kind        String   @default("COMPRA_VENDA")
+  /// ATIVA | INATIVA | RASCUNHO
+  status      String   @default("RASCUNHO")
+  modal       String   @default("RODOVIARIO")
+  validFrom   DateTime @db.Date
+  validTo     DateTime @db.Date
+  /// Filiais de origem onde vale. Vazio = todas.
+  unitIds     String[] @default([]) @db.Uuid
+  goodsTypes  String[] @default([])
+  /// AMBOS | PF | PJ
+  personType  String   @default("AMBOS")
+  /// COTACAO_CONCILIACAO | COTACAO | CONCILIACAO
+  usage       String   @default("COTACAO_CONCILIACAO")
+  weightMin   Decimal? @db.Decimal(12, 3)
+  weightMax   Decimal? @db.Decimal(12, 3)
+  valueMin    Decimal? @db.Decimal(14, 2)
+  valueMax    Decimal? @db.Decimal(14, 2)
+  /// FRACIONADA | LOTACAO | DEDICADA
+  loadType    String   @default("FRACIONADA")
+  /// Dias úteis de expedição somados ao prazo da transportadora (vazio = padrão da empresa, hoje 0).
+  dispatchDays Int?
+  serviceCode String?
+  /// Tabela exclusiva para uma integração/parceiro (vazio = todos).
+  partner     String?
+  notes       String?
+  publishedVersionId String? @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  carrier  FreightCarrier       @relation(fields: [carrierId], references: [id])
+  versions FreightTableVersion[]
+  imports  FreightImport[]
+
+  @@index([tenantId, status])
+  @@index([carrierId])
+  @@map("freight_tables")
+}
+
+/// Versão da tabela. RASCUNHO é editável; PUBLICADA é a que calcula; SUBSTITUIDA fica para auditoria e reprodução.
+model FreightTableVersion {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  tableId     String    @db.Uuid
+  number      Int
+  /// RASCUNHO | PUBLICADA | SUBSTITUIDA | DESCARTADA
+  status      String    @default("RASCUNHO")
+  /// ComponentDef[] (catalogo.ts)
+  components  Json
+  /// CalcSettings (catalogo.ts)
+  settings    Json
+  /// MANUAL | IMPORTACAO | COPIA
+  source      String    @default("MANUAL")
+  note        String?
+  rulesCount  Int       @default(0)
+  createdById   String? @db.Uuid
+  createdByName String?
+  publishedAt   DateTime?
+  publishedById String? @db.Uuid
+  publishedByName String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  table FreightTable  @relation(fields: [tableId], references: [id])
+  rules FreightRule[]
+
+  @@unique([tableId, number])
+  @@map("freight_table_versions")
+}
+
+/// Regra da versão: destino (faixa de CEP, cidade ou UF) + faixa de peso + valores das variáveis.
+model FreightRule {
+  id          String   @id @default(uuid()) @db.Uuid
+  versionId   String   @db.Uuid
+  /// Linha de origem na planilha (0 = cadastro manual).
+  line        Int      @default(0)
+  cepStart    Int?
+  cepEnd      Int?
+  uf          String?  @db.Char(2)
+  city        String?
+  cityKey     String?
+  weightMin   Decimal  @default(0) @db.Decimal(12, 3)
+  weightMax   Decimal? @db.Decimal(12, 3)
+  deadlineDays Int?
+  restricted  Boolean  @default(false)
+  /// { freight: 20.5, gris: 0.1, ... }
+  values      Json     @default("{}")
+  note        String?
+
+  version FreightTableVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([versionId, cepStart, cepEnd])
+  @@index([versionId, uf, cityKey])
+  @@map("freight_rules")
+}
+
+/// Histórico de importação de planilhas (arquivo original guardado para baixar depois).
+model FreightImport {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  tableId     String   @db.Uuid
+  versionId   String?  @db.Uuid
+  fileId      String   @db.Uuid
+  fileName    String
+  /// ANALISE | CONCLUIDA | CANCELADA
+  status      String   @default("ANALISE")
+  sheet       Int      @default(0)
+  headerRow   Int      @default(1)
+  mapping     Json?
+  readLines   Int      @default(0)
+  importedLines Int    @default(0)
+  rejectedLines Int    @default(0)
+  rulesCount  Int      @default(0)
+  /// Erros e alertas por linha (até 500).
+  report      Json?
+  createdById   String @db.Uuid
+  createdByName String
+  createdAt   DateTime @default(now())
+  finishedAt  DateTime?
+
+  table FreightTable @relation(fields: [tableId], references: [id])
+
+  @@index([tableId, createdAt])
+  @@map("freight_imports")
+}
+
+/// Cotação: entradas, todas as opções calculadas (com versão de tabela e componentes) e a escolha.
+model FreightQuote {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  code        Int      @default(autoincrement())
+  unitId      String   @db.Uuid
+  reference   String?
+  customerName String?
+  customerDoc String?
+  personType  String   @default("PJ")
+  originZip   String   @db.Char(8)
+  destZip     String   @db.Char(8)
+  destCity    String?
+  destUf      String?  @db.Char(2)
+  cargoValue  Decimal  @db.Decimal(14, 2)
+  realWeight  Decimal  @db.Decimal(12, 3)
+  cubicMeters Decimal  @db.Decimal(12, 6)
+  volumes     Json     @default("[]")
+  quoteDate   DateTime @db.Date
+  /// Entradas completas para reproduzir o cálculo.
+  input       Json
+  /// Uma linha por tabela avaliada (ok ou motivo).
+  results     Json
+  bestTotal   Decimal? @db.Decimal(14, 2)
+  /// CALCULADA | SELECIONADA | CANCELADA
+  status      String   @default("CALCULADA")
+  selectedTableId   String? @db.Uuid
+  selectedVersionId String? @db.Uuid
+  selectedCarrierId String? @db.Uuid
+  selectedTotal     Decimal? @db.Decimal(14, 2)
+  selectedAt        DateTime?
+  selectedByName    String?
+  selectionNote     String?
+  /// Cotação liberada a usar tabela vencida: quem autorizou e por quê.
+  expiredAllowedReason String?
+  notes       String?
+  createdById   String @db.Uuid
+  createdByName String
+  createdAt   DateTime @default(now())
+
+  @@unique([tenantId, code])
+  @@index([tenantId, unitId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("freight_quotes")
+}
+
+/// Cache das consultas de CEP (ViaCEP): cidade e UF do destino.
+model FreightCep {
+  cep       String   @id @db.Char(8)
+  city      String?
+  uf        String?  @db.Char(2)
+  district  String?
+  street    String?
+  found     Boolean  @default(true)
+  fetchedAt DateTime @default(now())
+
+  @@map("freight_ceps")
+}
+
+/// Taxas que a transportadora cobra só de destinatários específicos (TDA, TDE, TDC, TVD), pelas listas que ela envia.
+/// LGPD: guarda só o documento, a cidade e a taxa (sem o nome da pessoa).
+model FreightRecipientFee {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @db.Uuid
+  carrierId  String    @db.Uuid
+  /// CPF (11) ou CNPJ (14), só números.
+  doc        String
+  /// TDA | TDE | TDC | TVD
+  code       String
+  /// Valor fixo (ou mínimo, quando há percentual).
+  fixed      Decimal   @db.Decimal(12, 2)
+  /// % sobre o frete (cobra o maior entre o fixo e o percentual).
+  percent    Decimal?  @db.Decimal(7, 3)
+  city       String?
+  uf         String?   @db.Char(2)
+  /// Data em que a transportadora incluiu o destinatário na lista.
+  since      DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([carrierId, doc])
+  @@map("freight_recipient_fees")
+}
+
+/// Pedido expedido: liga a venda (pedido/NF) à cotação escolhida, à transportadora e ao CT-e.
+model FreightShipment {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  code          Int       @default(autoincrement())
+  unitId        String    @db.Uuid
+  orderNumber   String?
+  invoiceNumber String?
+  /// Chave da NF-e (44 dígitos).
+  invoiceKey    String?   @db.Char(44)
+  customerName  String?
+  customerDoc   String?
+  personType    String    @default("PJ")
+  destZip       String?   @db.Char(8)
+  destCity      String?
+  destUf        String?   @db.Char(2)
+  cargoValue    Decimal?  @db.Decimal(14, 2)
+  weight        Decimal?  @db.Decimal(12, 3)
+  volumesCount  Int?
+  carrierId     String?   @db.Uuid
+  quoteId       String?   @db.Uuid
+  /// Opção escolhida na cotação (tabela, versão, componentes e total): a referência da conciliação.
+  expected      Json?
+  expectedTotal Decimal?  @db.Decimal(14, 2)
+  /// AGUARDANDO_COTACAO | COTADO | AGUARDANDO_APROVACAO | APROVADO | AGUARDANDO_COLETA | DESPACHADO | EM_TRANSITO |
+  /// ENTREGUE | COM_OCORRENCIA | AGUARDANDO_CTE | AGUARDANDO_CONCILIACAO | CONCILIADO | CANCELADO
+  status        String    @default("AGUARDANDO_COTACAO")
+  collectedAt   DateTime?
+  shippedAt     DateTime?
+  expectedDeliveryAt DateTime? @db.Date
+  deliveredAt   DateTime?
+  trackingCode  String?
+  notes         String?
+  createdById   String    @db.Uuid
+  createdByName String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  events FreightShipmentEvent[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, unitId, createdAt])
+  @@index([tenantId, invoiceKey])
+  @@index([tenantId, invoiceNumber])
+  @@map("freight_shipments")
+}
+
+model FreightShipmentEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  shipmentId String   @db.Uuid
+  status     String
+  note       String?
+  userName   String
+  createdAt  DateTime @default(now())
+
+  shipment FreightShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId, createdAt])
+  @@map("freight_shipment_events")
+}
+
+/// CT-e recebido (XML). A situação fiscal só é "autorizado" quando conferida na SEFAZ; o protocolo do XML é informativo.
+model FreightCte {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  key           String    @db.Char(44)
+  number        String?
+  series        String?
+  issuedAt      DateTime?
+  emitCnpj      String?
+  emitName      String?
+  carrierId     String?   @db.Uuid
+  unitId        String?   @db.Uuid
+  tomadorDoc    String?
+  senderDoc     String?
+  recipientDoc  String?
+  recipientName String?
+  ufIni         String?   @db.Char(2)
+  ufFim         String?   @db.Char(2)
+  cityIni       String?
+  cityFim       String?
+  destZip       String?   @db.Char(8)
+  cfop          String?
+  total         Decimal   @db.Decimal(14, 2)
+  cargoValue    Decimal?  @db.Decimal(14, 2)
+  weight        Decimal?  @db.Decimal(12, 3)
+  components    Json      @default("[]")
+  icms          Json?
+  nfeKeys       String[]  @default([])
+  /// NAO_VERIFICADO | CANCELADO (evento de cancelamento importado). Conferência na SEFAZ entra com a integração.
+  fiscalStatus  String    @default("NAO_VERIFICADO")
+  protocol      String?
+  protocolStatus String?
+  shipmentId    String?   @db.Uuid
+  fileId        String?   @db.Uuid
+  importedByName String
+  createdAt     DateTime  @default(now())
+
+  /// Conciliação: PENDENTE | CONCILIADO | DIVERGENTE | SEM_REFERENCIA | CANCELADO
+  recStatus     String    @default("PENDENTE")
+  recTypes      String[]  @default([])
+  /// De onde veio o valor esperado: COTACAO (escolhida no pedido) | TABELA (recalculado pela tabela vigente na data do CT-e)
+  recSource     String?
+  expectedTotal Decimal?  @db.Decimal(14, 2)
+  difference    Decimal?  @db.Decimal(14, 2)
+  recDetail     Json?
+  recAt         DateTime?
+  /// Decisão: APROVADO (paga o cobrado) | APROVADO_COTADO (paga o cotado) | CONTESTADO
+  decision      String?
+  approvedValue Decimal?  @db.Decimal(14, 2)
+  decisionNote  String?
+  decidedByName String?
+  decidedAt     DateTime?
+  /// Contestação: ABERTA | ACEITA | RECUSADA
+  contestStatus String?
+  creditValue   Decimal?  @db.Decimal(14, 2)
+  contestNote   String?
+  invoiceId     String?   @db.Uuid
+
+  @@unique([tenantId, key])
+  @@index([tenantId, issuedAt])
+  @@index([tenantId, recStatus])
+  @@index([tenantId, carrierId])
+  @@map("freight_ctes")
+}
+
+/// Fatura (cobrança) da transportadora, com os CT-es que ela cobra e o pagamento.
+model FreightInvoice {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  carrierId   String    @db.Uuid
+  unitId      String?   @db.Uuid
+  number      String
+  issuedAt    DateTime? @db.Date
+  dueAt       DateTime  @db.Date
+  total       Decimal   @db.Decimal(14, 2)
+  /// ABERTA | APROVADA | PAGA | CANCELADA
+  status      String    @default("ABERTA")
+  paidAt      DateTime? @db.Date
+  paidValue   Decimal?  @db.Decimal(14, 2)
+  paymentNote String?
+  notes       String?
+  createdByName String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([tenantId, carrierId, number])
+  @@index([tenantId, dueAt])
+  @@map("freight_invoices")
 }
 
 /// Celular ou computador que aceitou receber as notificações do app (Web Push).

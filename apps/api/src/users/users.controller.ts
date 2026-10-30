@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
 import { ApiProperty, ApiTags } from '@nestjs/swagger'
-import { IsBoolean, IsEmail, IsIn, IsOptional, IsString, IsUUID, Length, MaxLength, ValidateIf } from 'class-validator'
+import { ArrayMaxSize, IsArray, IsBoolean, IsEmail, IsIn, IsOptional, IsString, IsUUID, Length, MaxLength, ValidateIf } from 'class-validator'
 import { SecurityService } from '../auth/security.service'
 import { TwoFactorService } from '../auth/two-factor.service'
 import { CurrentUser, ReqContext, type RequestCtx, RequirePermission } from '../common/decorators'
@@ -17,6 +17,7 @@ class CreateUserDto {
   @ApiProperty() @IsEmail({}, { message: 'E-mail inválido.' }) @MaxLength(200) email!: string
   @ApiProperty() @IsUUID() roleId!: string
   @ApiProperty({ required: false }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() unitId?: string | null
+  @ApiProperty({ required: false, description: 'Outras unidades que a pessoa acessa (fretes)' }) @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) extraUnitIds?: string[]
   @ApiProperty({ required: false }) @IsOptional() @IsString() @Length(1, 128) password?: string
   @ApiProperty() @IsBoolean() sendInvite!: boolean
 }
@@ -26,6 +27,7 @@ class UpdateUserDto {
   @ApiProperty({ required: false }) @IsOptional() @IsEmail({}, { message: 'E-mail inválido.' }) @MaxLength(200) email?: string
   @ApiProperty({ required: false }) @IsOptional() @IsUUID() roleId?: string
   @ApiProperty({ required: false }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() unitId?: string | null
+  @ApiProperty({ required: false, description: 'Outras unidades que a pessoa acessa (fretes)' }) @IsOptional() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) extraUnitIds?: string[]
   @ApiProperty({ required: false }) @IsOptional() @IsBoolean() active?: boolean
 }
 

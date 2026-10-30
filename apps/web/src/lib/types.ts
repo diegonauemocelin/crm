@@ -101,6 +101,8 @@ export interface UserRow {
   avatarUrl: string | null
   role: { id: string; name: string; isSystem: boolean }
   unit: { id: string; name: string } | null
+  /** Outras unidades que a pessoa acessa (módulo de fretes). */
+  extraUnitIds?: string[]
 }
 
 export interface RoleRow {

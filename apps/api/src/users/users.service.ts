@@ -14,6 +14,7 @@ export interface CreateUserInput {
   email: string
   roleId: string
   unitId?: string | null
+  extraUnitIds?: string[]
   password?: string
   sendInvite: boolean
 }
@@ -23,6 +24,7 @@ export interface UpdateUserInput {
   email?: string
   roleId?: string
   unitId?: string | null
+  extraUnitIds?: string[]
   active?: boolean
 }
 
@@ -39,6 +41,7 @@ const USER_SELECT = {
   createdAt: true,
   role: { select: { id: true, name: true, isSystem: true } },
   unit: { select: { id: true, name: true } },
+  extraUnitIds: true,
 } satisfies Prisma.UserSelect
 
 @Injectable()
@@ -99,6 +102,7 @@ export class UsersService {
     const email = input.email.trim().toLowerCase()
     await this.assertRole(actor.tenantId, input.roleId)
     await this.assertUnit(actor.tenantId, input.unitId)
+    const extraUnitIds = await this.extraUnits(actor.tenantId, input.extraUnitIds, input.unitId)
     if (await this.prisma.user.findUnique({ where: { tenantId_email: { tenantId: actor.tenantId, email } } })) {
       throw new ConflictException('Já existe um usuário com este e-mail.')
     }
@@ -117,6 +121,7 @@ export class UsersService {
         tenantId: actor.tenantId,
         roleId: input.roleId,
         unitId: input.unitId || null,
+        extraUnitIds: extraUnitIds ?? [],
         name: input.name.trim(),
         email,
         passwordHash,
@@ -139,6 +144,7 @@ export class UsersService {
     }
     if (input.roleId) await this.assertRole(actor.tenantId, input.roleId)
     await this.assertUnit(actor.tenantId, input.unitId)
+    const extraUnitIds = await this.extraUnits(actor.tenantId, input.extraUnitIds, input.unitId === undefined ? current.unitId : input.unitId)
 
     const losingAdmin =
       current.role.isSystem && current.active && (input.active === false || (input.roleId !== undefined && input.roleId !== current.roleId))
@@ -152,7 +158,7 @@ export class UsersService {
 
     const user = await this.prisma.user.update({
       where: { id },
-      data: { name: input.name?.trim(), email, roleId: input.roleId, active: input.active, unitId: input.unitId },
+      data: { name: input.name?.trim(), email, roleId: input.roleId, active: input.active, unitId: input.unitId, extraUnitIds },
       select: USER_SELECT,
     })
     // Desativar ou trocar o perfil encerra as sessões abertas na hora.
@@ -192,6 +198,14 @@ export class UsersService {
   private async assertRole(tenantId: string, roleId: string) {
     const role = await this.prisma.role.findFirst({ where: { id: roleId, tenantId, active: true } })
     if (!role) throw new BadRequestException('Perfil de acesso inválido.')
+  }
+
+  /** Outras unidades que a pessoa acessa (sem repetir a principal). undefined = não mexe. */
+  private async extraUnits(tenantId: string, ids: string[] | undefined, mainUnitId: string | null | undefined) {
+    if (ids === undefined) return undefined
+    const unique = [...new Set(ids)].filter((id) => id !== mainUnitId)
+    if (unique.length && (await this.prisma.unit.count({ where: { tenantId, id: { in: unique } } })) !== unique.length) throw new BadRequestException('Unidade inválida.')
+    return unique
   }
 
   private async assertUnit(tenantId: string, unitId: string | null | undefined) {
