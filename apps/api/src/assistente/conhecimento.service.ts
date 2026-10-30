@@ -190,7 +190,8 @@ export class AssistKnowledgeService {
    */
   async learn(tenantId: string, o: { questionId: number; answerText: string; how: 'manual' | 'aprovada' | 'externa' | 'ia'; actor?: Actor }) {
     const s = await this.assist.ai(tenantId)
-    if (s.auto_learn === false) return null
+    // Resposta dada fora do CRM (Magazord ou direto no Mercado Livre) entra sempre: é de uma pessoa da empresa.
+    if (s.auto_learn === false && o.how !== 'externa') return null
     if (o.how === 'ia' && s.auto_learn_from_ai === false) return null
     const q = await this.prisma.assistQuestion.findFirst({ where: { id: o.questionId, tenantId } })
     if (!q?.text || !o.answerText) return null
@@ -204,7 +205,7 @@ export class AssistKnowledgeService {
     if (answer.length < 10) return null
     const item = q.mlItemId ? await this.prisma.assistItem.findUnique({ where: { tenantId_id: { tenantId, id: q.mlItemId } }, select: { id: true, title: true, partNumber: true, sellerSku: true } }) : null
     const itemScope = cls.scoped && item ? item.id : null
-    const label = { manual: 'Resposta manual', aprovada: 'Sugestão da IA aprovada', externa: 'Respondida no Mercado Livre', ia: 'Resposta automática da IA' }[o.how]
+    const label = { manual: 'Resposta manual', aprovada: 'Sugestão da IA aprovada', externa: 'Respondida fora do CRM (Magazord ou Mercado Livre)', ia: 'Resposta automática da IA' }[o.how]
     const actor = o.actor ?? { id: null, name: null }
     const d: KnowledgeData = {
       title: `${item?.title ? `${item.title} — ` : ''}${q.text.replace(/\s+/g, ' ').slice(0, 90)}`.slice(0, 200),
@@ -218,7 +219,7 @@ export class AssistKnowledgeService {
       answer,
       source: `Aprendido automaticamente: ${label}${actor.name ? ` por ${actor.name}` : ''} em ${new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })} (pergunta ML ${q.mlQuestionId})`,
     }
-    const status = s.auto_learn_status === 'em_revisao' ? 'em_revisao' : 'ativo'
+    const status = s.auto_learn_status === 'em_revisao' && o.how !== 'externa' ? 'em_revisao' : 'ativo'
     const candidates = await this.prisma.assistKnowledge.findMany({ where: { tenantId, autoLearned: true, deletedAt: null, mlItemId: itemScope }, select: { id: true, question: true, learnedFrom: true } })
     const same = candidates.find((k) => questionSimilarity(q.text, k.question) >= 0.85)
     // resposta de pessoa tem prioridade: a IA nunca sobrescreve o que uma pessoa respondeu ou aprovou

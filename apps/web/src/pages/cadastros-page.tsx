@@ -586,6 +586,38 @@ interface AlertConfig {
   callHours?: number
   nextDayMessage?: NextDayMessage
   sellerDigest?: SellerDigest
+  forwardMessage?: ForwardMessage
+  contactCheck?: ForwardMessage
+  reactivation?: Reactivation
+  noPostSaleReasonIds?: string[]
+}
+
+interface ReactivationStep {
+  enabled: boolean
+  days: number
+  text: string
+}
+
+interface Reactivation {
+  enabled: boolean
+  numberId: string | null
+  gapMin: number
+  gapMax: number
+  since?: string | null
+  lost: ReactivationStep[]
+  sold: ReactivationStep[]
+}
+
+interface ForwardMessage {
+  enabled: boolean
+  delayMinutes: number
+  text: string
+  numberIds: string[]
+  withoutChat: boolean
+  numberId: string | null
+  gapMin: number
+  gapMax: number
+  since?: string | null
 }
 
 interface SellerDigest extends NextDayMessage {
@@ -627,11 +659,15 @@ export function AlertsTab({ only }: { only?: 'prazos' | 'mensagens' }) {
           <ReturnAlertCard config={q.data} />
           <CallAlertCard config={q.data} />
           <PostSaleCard config={q.data} />
+          <NoPostSaleCard config={q.data} />
         </>
       )}
       {only !== 'prazos' && (
         <>
           <NextDayMessageCard config={q.data} />
+          <ForwardMessageCard config={q.data} />
+          <ForwardMessageCard config={q.data} field="contactCheck" />
+          <ReactivationCard config={q.data} />
           <SellerDigestCard config={q.data} />
         </>
       )}
@@ -675,7 +711,7 @@ function useSaveAlerts(message: string) {
 
 const NO_OWNER = '__none__'
 
-/** Pré-venda com resultado gera o pós-venda: aqui se define quem recebe e o prazo do primeiro contato. */
+/** Pré-venda enviada ao pós-venda (pela lista): aqui se define quem recebe e o prazo do primeiro contato. */
 export function PostSaleCard({ config }: { config: AlertConfig }) {
   const { can } = useAuth()
   const options = useOptions()
@@ -704,9 +740,9 @@ export function PostSaleCard({ config }: { config: AlertConfig }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Pós-venda automático</CardTitle>
+        <CardTitle>Pós-venda</CardTitle>
         <CardDescription>
-          Quando a pré-venda é marcada como “Vendeu” ou “Perdida”, o cliente entra no Pós-Vendas para outra pessoa acompanhar. Ela precisa registrar o contato (com observação) dentro do prazo.
+          O pós-venda não abre sozinho: em Pré-Vendas, selecione os atendimentos e use “Enviar para Pós-Vendas”. O cliente entra no Pós-Vendas para outra pessoa acompanhar, que precisa registrar o contato (com observação) dentro do prazo.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -993,6 +1029,257 @@ export function NextDayMessageCard({ config }: { config: AlertConfig }) {
   )
 }
 
+const REPASSE_TEXT = {
+  forwardMessage: {
+    title: 'Mensagem do repasse ao vendedor',
+    description: 'Assim que o Pré-Vendas marca “Repassou ao vendedor” (ou depois do tempo escolhido), o cliente recebe esta mensagem pelo WhatsApp em que foi atendido. Vai uma vez só, e só se a pré-venda ainda estiver em negociação. Fica na conversa e no histórico da pré-venda.',
+    saved: 'Mensagem do repasse',
+    delay: 0,
+  },
+  contactCheck: {
+    title: 'O vendedor já entrou em contato?',
+    description: 'Depois do tempo escolhido (padrão: 30 minutos) do repasse, o cliente recebe esta pergunta pelo WhatsApp em que foi atendido, para saber se o vendedor já chamou. Vai uma vez só, só se a pré-venda ainda estiver em negociação e tiver vendedor. A resposta do cliente chega no chat.',
+    saved: 'Pergunta do contato do vendedor',
+    delay: 30,
+  },
+}
+
+/** Mensagens de WhatsApp para o cliente no repasse ao vendedor: o aviso (na hora) e a pergunta se o vendedor já chamou. */
+export function ForwardMessageCard({ config, field = 'forwardMessage' }: { config: AlertConfig; field?: 'forwardMessage' | 'contactCheck' }) {
+  const { can } = useAuth()
+  const canEdit = can('cadastros', 'edit')
+  const t = REPASSE_TEXT[field]
+  // A pergunta ainda não configurada começa com os números da mensagem do repasse.
+  const [m, setM] = useState<ForwardMessage>(() => {
+    const saved = config[field] ?? { enabled: false, delayMinutes: t.delay, text: '', numberIds: [], withoutChat: false, numberId: null, gapMin: 3, gapMax: 20 }
+    const fresh = field === 'contactCheck' && !saved.enabled && !saved.numberIds.length
+    return fresh ? { ...saved, numberIds: config.forwardMessage?.numberIds ?? [] } : saved
+  })
+  const numbers = useQuery({ queryKey: ['cadastros', 'alertas', 'numeros'], queryFn: () => api.get<{ id: string; name: string; phone: string | null; status: string }[]>('/cadastros/alertas/numeros') })
+  const save = useSaveAlerts(m.enabled ? `${t.saved} ligada.` : `${t.saved} salva (desligada).`)
+  const chosen = m.numberIds
+  const gapOk = [m.gapMin, m.gapMax].every((v) => Number.isInteger(v) && v >= 1 && v <= 120) && m.gapMin <= m.gapMax
+  const delayOk = Number.isInteger(m.delayMinutes) && m.delayMinutes >= 0 && m.delayMinutes <= 10080
+  const valid = delayOk && gapOk && m.text.trim().length > 0 && m.text.length <= 1000 && (!m.enabled || chosen.length > 0)
+  const hours = m.delayMinutes / 60
+  const id = (s: string) => `${field}-${s}`
+  return (
+    <Card className="h-fit">
+      <CardHeader>
+        <CardTitle>{t.title}</CardTitle>
+        <CardDescription>{t.description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <label className="flex items-center justify-between gap-3 text-sm font-medium">
+          Enviar a mensagem
+          <Switch checked={m.enabled} onCheckedChange={(enabled) => setM({ ...m, enabled })} disabled={!canEdit} />
+        </label>
+        <div className="space-y-1.5">
+          <Label htmlFor={id('delay')}>Tempo depois do repasse (minutos)</Label>
+          <div className="flex items-center gap-2">
+            <Input id={id('delay')} type="number" min={0} max={10080} className="w-28" value={m.delayMinutes} onChange={(e) => setM({ ...m, delayMinutes: Number(e.target.value) })} disabled={!canEdit} />
+            <span className="text-sm text-muted-foreground">{delayOk && m.delayMinutes === 0 ? 'na hora do repasse' : delayOk && hours >= 1 ? `= ${hours.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} hora(s)` : ''}</span>
+          </div>
+          <p className="text-xs text-muted-foreground">Conta só o horário comercial (WhatsApp › Regras e horário): almoço, noite e fim de semana ficam de fora. Use 0 para enviar na hora. Repasse fora do horário sai na abertura do próximo dia útil.</p>
+        </div>
+        <div className="space-y-1.5 rounded-md border p-3">
+          <p className="text-sm">Atendimentos destes números de WhatsApp</p>
+          <div className="flex flex-col gap-2">
+            {(numbers.data ?? []).map((n) => (
+              <label key={n.id} className="flex items-center gap-2 text-sm">
+                <Checkbox checked={chosen.includes(n.id)} onCheckedChange={(on) => setM({ ...m, numberIds: on ? [...chosen, n.id] : chosen.filter((x) => x !== n.id) })} disabled={!canEdit} />
+                {n.name}
+                {n.status !== 'CONECTADO' && <span className="text-xs text-muted-foreground">(desconectado)</span>}
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">Sai pelo mesmo número em que o cliente foi atendido. Conversa finalizada ou arquivada não recebe.</p>
+          {m.enabled && !chosen.length && <p className="text-xs text-destructive">Marque ao menos um número.</p>}
+          <label className="flex items-start justify-between gap-3 pt-1 text-sm">
+            <span>
+              Também para quem não chamou por WhatsApp
+              <span className="block text-xs text-muted-foreground">Cliente que veio de formulário: sai pelo primeiro dos números marcados.</span>
+            </span>
+            <Switch checked={m.withoutChat} onCheckedChange={(withoutChat) => setM({ ...m, withoutChat })} disabled={!canEdit} />
+          </label>
+        </div>
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium">Intervalo entre as mensagens</p>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            de
+            <Input aria-label="Intervalo mínimo (minutos)" type="number" min={1} max={120} className="w-20" value={m.gapMin} onChange={(e) => setM({ ...m, gapMin: Number(e.target.value) })} disabled={!canEdit} />
+            a
+            <Input aria-label="Intervalo máximo (minutos)" type="number" min={1} max={120} className="w-20" value={m.gapMax} onChange={(e) => setM({ ...m, gapMax: Number(e.target.value) })} disabled={!canEdit} />
+            minutos
+          </div>
+          {!gapOk && <p className="text-xs text-destructive">Use de 1 a 120 minutos, com o mínimo menor ou igual ao máximo.</p>}
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor={id('text')}>Mensagem</Label>
+          <Textarea id={id('text')} rows={4} maxLength={1000} value={m.text} onChange={(e) => setM({ ...m, text: e.target.value })} disabled={!canEdit} />
+          <p className="text-xs text-muted-foreground">Use {'{nome}'} para o primeiro nome do cliente e {'{vendedor}'} para o primeiro nome do vendedor. Ao ligar, vale para os repasses dali em diante.</p>
+        </div>
+      </CardContent>
+      {canEdit && (
+        <CardFooter>
+          <Button onClick={() => save.mutate({ ...config, [field]: { ...m, text: m.text.trim() } })} disabled={save.isPending || !valid}>
+            {save.isPending && <Loader2Icon className="animate-spin" />}
+            Salvar
+          </Button>
+        </CardFooter>
+      )}
+    </Card>
+  )
+}
+
+const REACTIVATION_GROUPS = [
+  { key: 'lost', title: 'Fechou sem venda', hint: 'Pré-venda marcada como venda não realizada.' },
+  { key: 'sold', title: 'Comprou (recompra)', hint: 'Pré-venda com venda realizada: oferecer de novo filtros e material de desgaste.' },
+] as const
+
+/** Chamar o cliente de novo depois que a pré-venda fechou: até 3 mensagens sem venda e até 3 de recompra, por um número fixo. */
+export function ReactivationCard({ config }: { config: AlertConfig }) {
+  const { can } = useAuth()
+  const canEdit = can('cadastros', 'edit')
+  const [m, setM] = useState<Reactivation | undefined>(config.reactivation)
+  const numbers = useQuery({ queryKey: ['cadastros', 'alertas', 'numeros'], queryFn: () => api.get<{ id: string; name: string; phone: string | null; status: string }[]>('/cadastros/alertas/numeros') })
+  const save = useSaveAlerts(m?.enabled ? 'Chamar o cliente de novo: ligado.' : 'Chamar o cliente de novo: salvo (desligado).')
+  if (!m) return null
+  const steps = [...m.lost, ...m.sold]
+  const gapOk = [m.gapMin, m.gapMax].every((v) => Number.isInteger(v) && v >= 1 && v <= 120) && m.gapMin <= m.gapMax
+  const stepsOk = steps.every((s) => Number.isInteger(s.days) && s.days >= 1 && s.days <= 1095 && s.text.trim().length > 0 && s.text.length <= 1000)
+  const valid = gapOk && stepsOk && (!m.enabled || (!!m.numberId && steps.some((s) => s.enabled)))
+  const setStep = (group: 'lost' | 'sold', i: number, patch: Partial<ReactivationStep>) => setM({ ...m, [group]: m[group].map((s, j) => (j === i ? { ...s, ...patch } : s)) })
+  return (
+    <Card className="h-fit xl:col-span-2">
+      <CardHeader>
+        <CardTitle>Chamar o cliente de novo</CardTitle>
+        <CardDescription>
+          Depois que a pré-venda fecha, o cliente recebe até 3 mensagens pelo WhatsApp, cada uma tantos dias depois do resultado: para quem não comprou e para quem comprou (recompra). A sequência para quando o
+          cliente responde ou volta a chamar (pré-venda nova). Só no horário comercial, e fica no histórico da pré-venda.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <label className="flex items-center justify-between gap-3 text-sm font-medium">
+          Enviar as mensagens
+          <Switch checked={m.enabled} onCheckedChange={(enabled) => setM({ ...m, enabled })} disabled={!canEdit} />
+        </label>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="reactivation-number">Número de WhatsApp que envia</Label>
+            <Select value={m.numberId ?? ''} onValueChange={(v) => setM({ ...m, numberId: v })} disabled={!canEdit}>
+              <SelectTrigger id="reactivation-number" className="w-full">
+                <SelectValue placeholder="Escolha o número" />
+              </SelectTrigger>
+              <SelectContent>
+                {(numbers.data ?? []).map((n) => (
+                  <SelectItem key={n.id} value={n.id}>
+                    {n.name}
+                    {n.status !== 'CONECTADO' ? ' (desconectado)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {m.enabled && !m.numberId && <p className="text-xs text-destructive">Escolha o número.</p>}
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium">Intervalo entre as mensagens</p>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              de
+              <Input aria-label="Intervalo mínimo (minutos)" type="number" min={1} max={120} className="w-20" value={m.gapMin} onChange={(e) => setM({ ...m, gapMin: Number(e.target.value) })} disabled={!canEdit} />
+              a
+              <Input aria-label="Intervalo máximo (minutos)" type="number" min={1} max={120} className="w-20" value={m.gapMax} onChange={(e) => setM({ ...m, gapMax: Number(e.target.value) })} disabled={!canEdit} />
+              minutos
+            </div>
+            {!gapOk && <p className="text-xs text-destructive">Use de 1 a 120 minutos, com o mínimo menor ou igual ao máximo.</p>}
+          </div>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {REACTIVATION_GROUPS.map((g) => (
+            <div key={g.key} className="space-y-3 rounded-md border p-3">
+              <div>
+                <p className="text-sm font-medium">{g.title}</p>
+                <p className="text-xs text-muted-foreground">{g.hint}</p>
+              </div>
+              {m[g.key].map((s, i) => (
+                <div key={i} className="space-y-2 border-t pt-3 first:border-t-0 first:pt-0">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <Checkbox checked={s.enabled} onCheckedChange={(on) => setStep(g.key, i, { enabled: on === true })} disabled={!canEdit} />
+                      {i + 1}ª mensagem
+                    </label>
+                    <div className="flex items-center gap-2 text-sm">
+                      <Input aria-label={`Dias da ${i + 1}ª mensagem (${g.title})`} type="number" min={1} max={1095} className="w-20" value={s.days} onChange={(e) => setStep(g.key, i, { days: Number(e.target.value) })} disabled={!canEdit} />
+                      dias depois
+                    </div>
+                  </div>
+                  <Textarea aria-label={`Texto da ${i + 1}ª mensagem (${g.title})`} rows={3} maxLength={1000} value={s.text} onChange={(e) => setStep(g.key, i, { text: e.target.value })} disabled={!canEdit || !s.enabled} />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+        {!stepsOk && <p className="text-xs text-destructive">Cada mensagem precisa de texto e de 1 a 1095 dias.</p>}
+        <p className="text-xs text-muted-foreground">
+          Use {'{nome}'} para o primeiro nome do cliente, {'{vendedor}'} para o primeiro nome do vendedor e {'{marca}'} para as marcas da máquina da pré-venda. Ao ligar, vale para as mensagens que vencem dali em
+          diante: a base antiga não recebe tudo de uma vez.
+        </p>
+      </CardContent>
+      {canEdit && (
+        <CardFooter>
+          <Button
+            onClick={() => save.mutate({ ...config, reactivation: { ...m, lost: m.lost.map((s) => ({ ...s, text: s.text.trim() })), sold: m.sold.map((s) => ({ ...s, text: s.text.trim() })) } })}
+            disabled={save.isPending || !valid}
+          >
+            {save.isPending && <Loader2Icon className="animate-spin" />}
+            Salvar
+          </Button>
+        </CardFooter>
+      )}
+    </Card>
+  )
+}
+
+/** Motivos de perda que encerram a pré-venda sem gerar pós-venda (e finalizam o atendimento no chat). */
+export function NoPostSaleCard({ config }: { config: AlertConfig }) {
+  const { can } = useAuth()
+  const canEdit = can('cadastros', 'edit')
+  const options = useOptions()
+  const [ids, setIds] = useState<string[]>(config.noPostSaleReasonIds ?? [])
+  const save = useSaveAlerts('Motivos sem pós-venda salvos.')
+  const reasons = (options.data?.lostReasons ?? []).filter((r) => r.active || ids.includes(r.id))
+  return (
+    <Card className="h-fit">
+      <CardHeader>
+        <CardTitle>Venda perdida sem pós-venda</CardTitle>
+        <CardDescription>
+          Quando a pré-venda é marcada como venda não realizada por um destes motivos (ex.: não temos o produto), o atendimento no chat é finalizado na hora, sem mensagem para o cliente.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {reasons.length ? (
+          reasons.map((r) => (
+            <label key={r.id} className="flex items-center gap-2 text-sm">
+              <Checkbox checked={ids.includes(r.id)} onCheckedChange={(on) => setIds(on ? [...ids, r.id] : ids.filter((x) => x !== r.id))} disabled={!canEdit} />
+              {r.name}
+            </label>
+          ))
+        ) : (
+          <p className="text-sm text-muted-foreground">Nenhum motivo de perda cadastrado (Cadastros › Listas › Motivos de perda).</p>
+        )}
+      </CardContent>
+      {canEdit && (
+        <CardFooter>
+          <Button onClick={() => save.mutate({ ...config, noPostSaleReasonIds: ids })} disabled={save.isPending}>
+            {save.isPending && <Loader2Icon className="animate-spin" />}
+            Salvar
+          </Button>
+        </CardFooter>
+      )}
+    </Card>
+  )
+}
+
 /** Resumo do dia para cada vendedor: os clientes da pré-venda repassados a ele, pelo WhatsApp, a partir das 18h. */
 export function SellerDigestCard({ config }: { config: AlertConfig }) {
   const { can } = useAuth()
@@ -1010,7 +1297,7 @@ export function SellerDigestCard({ config }: { config: AlertConfig }) {
       <CardHeader>
         <CardTitle>Resumo do dia para os vendedores</CardTitle>
         <CardDescription>
-          Todo dia, a partir do horário escolhido, cada vendedor recebe no WhatsApp dele os clientes da pré-venda repassados a ele naquele dia (telefone e nome), em vez de copiar e colar um por um. Quem não teve repasse no dia não recebe nada. O mesmo resumo fica em Pré-Vendas › Resumo do dia, para copiar.
+          Todo dia, a partir do horário escolhido, cada vendedor recebe no WhatsApp dele os clientes da pré-venda repassados a ele naquele dia (telefone, nome e situação: vendeu, não vendeu e o motivo, ou aguardando retorno do vendedor), em vez de copiar e colar um por um. Quem não teve repasse no dia não recebe nada. O mesmo resumo fica em Pré-Vendas › Resumo do dia, para copiar.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -1069,7 +1356,7 @@ export function SellerDigestCard({ config }: { config: AlertConfig }) {
         <div className="space-y-2">
           <Label htmlFor="dg-text">Abertura da mensagem</Label>
           <Textarea id="dg-text" rows={3} maxLength={1000} value={d.text} onChange={(e) => setD({ ...d, text: e.target.value })} disabled={!canEdit} />
-          <p className="text-xs text-muted-foreground">Use {'{vendedor}'}, {'{data}'} e {'{quantidade}'}. Os clientes (telefone e nome) vêm logo depois, sozinhos.</p>
+          <p className="text-xs text-muted-foreground">Use {'{vendedor}'}, {'{data}'} e {'{quantidade}'}. Os clientes (telefone, nome e situação) vêm logo depois, sozinhos.</p>
         </div>
       </CardContent>
       {canEdit && (

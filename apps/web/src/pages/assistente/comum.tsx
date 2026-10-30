@@ -34,7 +34,7 @@ export const SEND_LABELS: Record<string, string> = {
 export const KNOWLEDGE_LABELS: Record<string, string> = { ativo: 'Ativo', em_revisao: 'Em revisão', inativo: 'Inativo', rascunho: 'Rascunho' }
 export const VALIDATION_LABELS: Record<string, string> = { confirmada: 'Confirmada', pendente: 'Pendente', nao_confirmada: 'Não confirmada' }
 export const PRIORITY_LABELS: Record<string, string> = { alta: 'Alta', media: 'Média', baixa: 'Baixa' }
-export const ORIGIN_LABELS: Record<string, string> = { ia: 'IA', atendente: 'Atendente', externa: 'Direto no Mercado Livre', sem_resposta: 'Sem resposta' }
+export const ORIGIN_LABELS: Record<string, string> = { ia: 'IA', atendente: 'Atendente', externa: 'Fora do CRM (Magazord ou ML)', sem_resposta: 'Sem resposta' }
 
 export function StatusBadge({ status }: { status: string }) {
   const variant = FINAL.includes(status) ? 'secondary' : status === 'nova' || status === 'aguardando_analise' ? 'default' : 'outline'

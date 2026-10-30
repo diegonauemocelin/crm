@@ -4,6 +4,7 @@ import { decrypt } from '../common/crypto'
 import type { RequestCtx } from '../common/decorators'
 import { can } from '../common/permissions'
 import type { AuthUser } from '../common/types'
+import { IG_TOKENS_KEY, type IgToken, igLoginAccounts, POSTAGENS_ACCOUNTS_KEY } from '../postagens/instagram-login'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { CONFIG_KEY, DEFAULT_CONFIG, DEFAULT_INTEGRATIONS, GRAPH, INTEGRATIONS_KEY, type IntegrationsConfig, type MarketingConfig } from './config'
@@ -28,6 +29,7 @@ import {
   profileStats,
   recommendTimes,
 } from './instagram'
+import { auditPosts } from './ig-analise'
 import { periods, pct } from './metricas'
 import { byFormat, rankPosts } from './plataformas'
 import { metaError } from './sync'
@@ -80,7 +82,10 @@ export class MarketingInstagramService {
     const integ = { ...DEFAULT_INTEGRATIONS, ...(await this.settings.get<IntegrationsConfig>(tenantId, INTEGRATIONS_KEY, DEFAULT_INTEGRATIONS)) }
     const official = integ.metaOrganic.instagramId
     const extra = cleanIgAccounts((await this.settings.get<{ list?: unknown }>(tenantId, IG_ACCOUNTS_KEY, {})).list, official)
-    const all = [...(official ? [{ id: official, username: '', label: 'Usaparts (oficial)', owner: 'empresa' as const, sellerId: null, official: true }] : []), ...extra.map((a) => ({ ...a, official: false }))]
+    // contas conectadas pelo login do Instagram em Postagens › Contas também têm análise própria
+    const login = igLoginAccounts((await this.settings.get<{ accounts?: { network: string; externalId: string; name: string; via?: string }[] }>(tenantId, POSTAGENS_ACCOUNTS_KEY, {})).accounts, await this.settings.get<Record<string, IgToken>>(tenantId, IG_TOKENS_KEY, {}))
+    const fromLogin = login.filter((l) => l.id !== official && !extra.some((a) => a.id === l.id)).map((l) => ({ id: l.id, username: l.username, label: `@${l.username}`, owner: 'empresa' as const, sellerId: null, official: false }))
+    const all = [...(official ? [{ id: official, username: '', label: 'Usaparts (oficial)', owner: 'empresa' as const, sellerId: null, official: true }] : []), ...extra.map((a) => ({ ...a, official: false })), ...fromLogin]
     return { integ, official, all, connected: all.filter((a) => a.id) }
   }
 
@@ -101,7 +106,7 @@ export class MarketingInstagramService {
       this.prisma.mktSocialProfileDay.findMany({ where: { tenantId: T, network: 'instagram', profileId: { in: ids }, date: prevRange } }),
       this.prisma.mktSocialProfileDay.findMany({ where: { tenantId: T, network: 'instagram', profileId: { in: ids }, followers: { not: null } }, orderBy: { date: 'desc' }, take: 400 * Math.max(1, ids.length), select: { profileId: true, date: true, followers: true } }),
       this.prisma.mktSocialPost.findMany({ where: { ...postWhere, publishedAt: { gte: p.start, lt: p.end } }, orderBy: { publishedAt: 'desc' }, take: 1000 }),
-      this.prisma.mktSocialPost.findMany({ where: { ...postWhere, publishedAt: { gte: since90 } }, select: { publishedAt: true, format: true, reach: true, likes: true, comments: true, shares: true, saves: true }, take: 3000 }),
+      this.prisma.mktSocialPost.findMany({ where: { ...postWhere, publishedAt: { gte: since90 } }, select: { profileId: true, publishedAt: true, format: true, reach: true, likes: true, comments: true, shares: true, saves: true }, take: 3000 }),
       this.settings.get<Partial<IgAudience>>(T, audienceKey(selected === 'todas' ? official : selected), {}),
       this.settings.get<SyncStates>(T, SYNC_KEY, {}),
     ])
@@ -150,6 +155,8 @@ export class MarketingInstagramService {
         postsPerWeek: r2((feed.length / Math.max(1, p.days)) * 7),
         reelsAvgWatchSec: reels.length ? r2(reels.reduce((s, x) => s + (x.extra?.avgWatchMs ?? 0), 0) / reels.length / 1000) : null,
       },
+      // Análise dos posts: cada um contra o alcance normal (mediana dos últimos 90 dias) do próprio perfil.
+      audit: auditPosts(posts, timedPosts, official),
       stories: {
         count: stories.length,
         perDay: r2(stories.length / Math.max(1, p.days)),

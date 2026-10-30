@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import type { RequestCtx } from '../common/decorators'
@@ -9,8 +10,9 @@ import { adsName, OrigemAdsService } from '../leads/origem-ads.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { normalizePhone, REGIONS, regionOf, UF_LIST, UFS } from './br'
+import { type BusinessHours, cleanRules, subBusinessMs, type WaRules } from '../whatsapp/envio'
 import { buildDashboard, type DashRow } from './dashboard'
-import { applyAutomaticFields, cleanDigest, digestFor, DEFAULT_DIGEST, DEFAULT_NEXT_DAY, digestMessages, type SellerDigest, todayWindow, diffRecord, FIELD_LABELS, type FollowStatus, inNegotiation, isCallOverdue, isFollowOverdue, isOverdue, nextCallDue, type NextDayMessage, type RecordState, shouldCreatePostSale, validateFollow, validateRecord } from './regras'
+import { applyAutomaticFields, cleanDigest, deadline, DEFAULT_CONTACT_CHECK, DEFAULT_FORWARD_MESSAGE, DEFAULT_REACTIVATION, type Reactivation, type ForwardMessage, skipsPostSale, digestFor, DEFAULT_DIGEST, DEFAULT_NEXT_DAY, digestMessages, saleSituation, type SellerDigest, todayWindow, diffRecord, FIELD_LABELS, type FollowStatus, inNegotiation, isCallOverdue, isFollowOverdue, isOverdue, nextCallDue, type NextDayMessage, type RecordState, shouldCreatePostSale, validateFollow, validateRecord } from './regras'
 
 export const MODULE_BY_KIND: Record<ServiceKind, 'pre_vendas' | 'pos_vendas'> = { PRE_VENDAS: 'pre_vendas', POS_VENDAS: 'pos_vendas' }
 
@@ -29,8 +31,18 @@ export interface AtendimentoSettings {
   nextDayMessage?: NextDayMessage
   /** Resumo do dia para cada vendedor: os clientes repassados a ele, pelo WhatsApp. */
   sellerDigest?: SellerDigest
+  /** Mensagem de WhatsApp para o cliente quando o Pré-Vendas repassa ao vendedor (na hora ou depois de um tempo). */
+  forwardMessage?: ForwardMessage
+  /** Pergunta ao cliente se o vendedor já entrou em contato (ex.: 30 minutos depois do repasse). */
+  contactCheck?: ForwardMessage
+  reactivation?: Reactivation
+  /**
+   * Motivos de perda que não geram pós-venda (ex.: "Não temos o produto"): a pré-venda fecha e o atendimento no chat
+   * é finalizado. Sem configuração: os motivos que falam de produto em falta.
+   */
+  noPostSaleReasonIds?: string[]
 }
-export const DEFAULT_ATENDIMENTO: AtendimentoSettings = { alertHours: 24, newRecordMinutes: 10, postSaleHours: 24, postSaleOwnerId: null, postSaleOwnerByUnit: {}, callHours: 24, nextDayMessage: DEFAULT_NEXT_DAY, sellerDigest: DEFAULT_DIGEST }
+export const DEFAULT_ATENDIMENTO: AtendimentoSettings = { alertHours: 24, newRecordMinutes: 10, postSaleHours: 24, postSaleOwnerId: null, postSaleOwnerByUnit: {}, callHours: 24, nextDayMessage: DEFAULT_NEXT_DAY, sellerDigest: DEFAULT_DIGEST, forwardMessage: DEFAULT_FORWARD_MESSAGE, contactCheck: DEFAULT_CONTACT_CHECK, reactivation: DEFAULT_REACTIVATION }
 export const callHoursOf = (s: AtendimentoSettings) => s.callHours ?? 24
 /** Pré-venda nova só conta como "aguardando" nos últimos dias (o histórico antigo não vira aviso). */
 const WAITING_WINDOW_MS = 7 * 86_400_000
@@ -145,6 +157,24 @@ export class ServiceRecordsService {
     return this.settings.get(tenantId, 'atendimento', DEFAULT_ATENDIMENTO)
   }
 
+  /** Horário comercial (WhatsApp › Regras): os prazos da pré e da pós-venda só contam dentro dele. Desligado: null. */
+  async hours(tenantId: string): Promise<BusinessHours | null> {
+    const h = cleanRules(await this.settings.get<Partial<WaRules>>(tenantId, 'whatsapp_regras', {})).businessHours
+    return h.enabled ? h : null
+  }
+
+  countLostReasons(tenantId: string, ids: string[]) {
+    return this.prisma.lookupItem.count({ where: { tenantId, type: 'MOTIVO_PERDA', id: { in: [...new Set(ids)] } } })
+  }
+
+  /** Motivos de perda que encerram sem pós-venda: os escolhidos ou, sem escolha, os de produto em falta. */
+  async noPostSaleReasons(tenantId: string, s?: AtendimentoSettings): Promise<string[]> {
+    const settings = s ?? (await this.alertSettings(tenantId))
+    if (Array.isArray(settings.noPostSaleReasonIds)) return settings.noPostSaleReasonIds
+    const reasons = await this.prisma.lookupItem.findMany({ where: { tenantId, type: 'MOTIVO_PERDA' }, select: { id: true, name: true } })
+    return reasons.filter((r) => skipsPostSale(r.name)).map((r) => r.id)
+  }
+
   /** Pré-venda nova que ninguém atendeu: criada sozinha (formulário, WhatsApp, chat) e sem nenhuma alteração de uma pessoa. */
   private waitingWhere(now: number): Prisma.ServiceRecordWhereInput {
     return { kind: 'PRE_VENDAS', firstActionAt: null, forwarded: false, saleStatus: 'NEGOCIACAO', createdAt: { gte: new Date(now - WAITING_WINDOW_MS) } }
@@ -192,8 +222,8 @@ export class ServiceRecordsService {
     if (f.adsVia === 'ads') and.push({ adsVia: { in: ['ANUNCIO', 'ORIGEM'] } })
     if (f.adsVia === 'nao') and.push({ OR: [{ adsVia: null }, { adsVia: { notIn: ['ANUNCIO', 'ORIGEM'] } }] })
     if (f.overdue === 'true') {
-      const { alertHours } = await this.alertSettings(user.tenantId)
-      and.push({ forwarded: true, returnStatus: 'PENDENTE', forwardedAt: { lt: new Date(Date.now() - alertHours * 3_600_000) } })
+      const [{ alertHours }, hours] = await Promise.all([this.alertSettings(user.tenantId), this.hours(user.tenantId)])
+      and.push({ forwarded: true, returnStatus: 'PENDENTE', forwardedAt: { lt: this.overdueLimit(alertHours, hours) } })
     }
     return { AND: and }
   }
@@ -202,18 +232,24 @@ export class ServiceRecordsService {
     this.assertCan(user, f.kind, 'view')
     const where = await this.where(user, f)
     const orderBy = SORTABLE.has(sort) ? [{ [sort]: dir }, { createdAt: 'desc' as const }] : [{ leadAt: 'desc' as const }]
-    const [total, rows, { alertHours }, names] = await Promise.all([
+    const [total, rows, { alertHours }, names, hours] = await Promise.all([
       this.prisma.serviceRecord.count({ where }),
       this.prisma.serviceRecord.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize }),
       this.alertSettings(user.tenantId),
       this.origemAds.names(user.tenantId),
+      this.hours(user.tenantId),
     ])
-    return { total, page, pageSize, alertHours, items: rows.map((r) => ({ ...this.view(r, alertHours), adsLabel: recordAdsLabel(names, r) })) }
+    return { total, page, pageSize, alertHours, items: rows.map((r) => ({ ...this.view(r, alertHours, hours), adsLabel: recordAdsLabel(names, r) })) }
   }
 
-  private view(r: Prisma.ServiceRecordGetPayload<object>, alertHours: number) {
+  /** Repassado antes disto e ainda sem retorno: passou do prazo (contado no horário comercial). */
+  private overdueLimit(alertHours: number, hours: BusinessHours | null, now = new Date()) {
+    return hours ? subBusinessMs(hours, now, alertHours * 3_600_000) : new Date(now.getTime() - alertHours * 3_600_000)
+  }
+
+  private view(r: Prisma.ServiceRecordGetPayload<object>, alertHours: number, hours: BusinessHours | null = null) {
     const { tenantId: _t, externalKey: _e, deletedAt: _d, ...rest } = r
-    return { ...rest, saleValue: r.saleValue === null ? null : Number(r.saleValue), region: regionOf(r.state), overdue: isOverdue(r, alertHours), followOverdue: isFollowOverdue(r), callOverdue: isCallOverdue(r) }
+    return { ...rest, saleValue: r.saleValue === null ? null : Number(r.saleValue), region: regionOf(r.state), overdue: isOverdue(r, alertHours, undefined, hours), followOverdue: isFollowOverdue(r), callOverdue: isCallOverdue(r) }
   }
 
   private async load(user: AuthUser, id: string) {
@@ -228,13 +264,13 @@ export class ServiceRecordsService {
   async get(user: AuthUser, id: string) {
     const r = await this.load(user, id)
     this.assertCan(user, r.kind, 'view')
-    const { alertHours } = await this.alertSettings(user.tenantId)
+    const [{ alertHours }, hours] = await Promise.all([this.alertSettings(user.tenantId), this.hours(user.tenantId)])
     // Ligação pré-venda <-> pós-venda, para a ficha mostrar o outro lado.
     const [parent, children] = await Promise.all([
       r.parentId ? this.prisma.serviceRecord.findFirst({ where: { id: r.parentId, deletedAt: null }, select: { id: true, sellerId: true, leadAt: true, saleStatus: true } }) : null,
       this.prisma.serviceRecord.findMany({ where: { parentId: r.id, deletedAt: null }, select: { id: true, sellerId: true, followStatus: true, followNote: true, dueAt: true, firstActionAt: true } }),
     ])
-    return { ...this.view(r, alertHours), parent, children, googleAds: await this.googleAdsOf(r) }
+    return { ...this.view(r, alertHours, hours), parent, children, googleAds: await this.googleAdsOf(r) }
   }
 
   /**
@@ -358,12 +394,14 @@ export class ServiceRecordsService {
     )
     const problem = validateRecord(state)
     if (problem) throw new BadRequestException(problem)
-    const callDueAt = nextCallDue({ ...state, kind: d.kind }, null, callHoursOf(await this.alertSettings(user.tenantId)), base.callDueAt as Date | null | undefined)
+    const hours = await this.hours(user.tenantId)
+    const callDueAt = nextCallDue({ ...state, kind: d.kind }, null, callHoursOf(await this.alertSettings(user.tenantId)), base.callDueAt as Date | null | undefined, undefined, hours)
 
     const record = await this.prisma.serviceRecord.create({
       data: {
         ...(state as unknown as Prisma.ServiceRecordUncheckedCreateInput),
         callDueAt,
+        ...(state.saleStatus !== 'NEGOCIACAO' ? { resultAt: new Date() } : {}),
         tenantId: user.tenantId,
         kind: d.kind,
         leadAt: (base.leadAt as Date | undefined) ?? new Date(),
@@ -379,9 +417,9 @@ export class ServiceRecordsService {
     })
     await this.audit.byUser(user, ctx, 'atendimento.created', 'service_record', record.id, { kind: d.kind })
     await this.leadSync.syncRecord(record)
-    if (shouldCreatePostSale(record.kind, null, record.saleStatus)) await this.createPostSale(user, record, ctx)
+    const postSale = await this.afterResult(user, record, null, ctx)
     const { alertHours } = await this.alertSettings(user.tenantId)
-    return this.view(record, alertHours)
+    return { ...this.view(record, alertHours, hours), postSale }
   }
 
   async update(user: AuthUser, id: string, d: RecordInput, ctx: RequestCtx) {
@@ -400,16 +438,19 @@ export class ServiceRecordsService {
       next.followStatus = current.followStatus
       next.followNote = current.followNote
     }
-    next.callDueAt = nextCallDue(next, current, callHoursOf(await this.alertSettings(user.tenantId)), base.callDueAt as Date | null | undefined)
+    const hours = await this.hours(user.tenantId)
+    next.callDueAt = nextCallDue(next, current, callHoursOf(await this.alertSettings(user.tenantId)), base.callDueAt as Date | null | undefined, undefined, hours)
 
     const changes = diffRecord(prev, next)
     if (Object.keys(changes).length === 0) {
       const { alertHours } = await this.alertSettings(user.tenantId)
-      return this.view(current, alertHours)
+      return this.view(current, alertHours, hours)
     }
     const data: Record<string, unknown> = {}
     for (const k of Object.keys(changes)) data[k] = (next as Record<string, unknown>)[k]
     for (const k of ['forwardedAt', 'returnedAt'] as const) data[k] = next[k]
+    // Resultado novo (ou de volta para negociação): a sequência de "chamar de novo" recomeça a contar dele.
+    if (changes.saleStatus) Object.assign(data, { resultAt: next.saleStatus === 'NEGOCIACAO' ? null : new Date(), reactivationStep: 0, reactivationAt: null, reactivationStatus: null })
     // Primeiro contato do pós-venda: é o que conta para o prazo.
     if (changes.followStatus && next.followStatus !== 'PENDENTE' && !current.firstActionAt) data.firstActionAt = new Date()
     // Pré-venda: a primeira alteração de uma pessoa tira o "aguardando atendimento".
@@ -425,23 +466,95 @@ export class ServiceRecordsService {
     })
     await this.audit.byUser(user, ctx, 'atendimento.updated', 'service_record', id, { campos: Object.keys(changes) })
     await this.leadSync.syncRecord(record, { saleStatus: current.saleStatus })
-    if (shouldCreatePostSale(record.kind, current.saleStatus, record.saleStatus)) await this.createPostSale(user, record, ctx)
+    const postSale = await this.afterResult(user, record, current.saleStatus, ctx)
     const { alertHours } = await this.alertSettings(user.tenantId)
-    return this.view(record, alertHours)
+    return { ...this.view(record, alertHours, hours), postSale }
+  }
+
+  /**
+   * Pré-venda que passou a ter resultado. O pós-venda não é mais gerado sozinho (decisão de 28/10/2026): só vai para o
+   * pós-venda quem for enviado pela lista. Venda perdida por um motivo que não gera pós-venda (ex.: não temos o
+   * produto): o atendimento no chat é finalizado (sem mensagem para o cliente).
+   * Devolve o que aconteceu: ENCERRADO (chat finalizado pelo motivo) ou null (nada).
+   */
+  private async afterResult(user: AuthUser, record: Prisma.ServiceRecordGetPayload<object>, prevSale: Prisma.ServiceRecordGetPayload<object>['saleStatus'] | null, ctx: RequestCtx) {
+    if (!shouldCreatePostSale(record.kind, prevSale, record.saleStatus)) return null
+    const skip = record.saleStatus === 'NAO' && !!record.lostReasonId && (await this.noPostSaleReasons(user.tenantId)).includes(record.lostReasonId)
+    if (!skip) return null
+    const reason = await this.prisma.lookupItem.findUnique({ where: { id: record.lostReasonId! }, select: { name: true } })
+    const why = reason?.name ?? 'motivo da perda'
+    await this.prisma.serviceRecordHistory.create({ data: { recordId: record.id, userId: user.id, userName: user.name, action: `encerrado sem pós-venda (${why})`, changes: {} } })
+    const conversas = await this.closeChats(user, [record.id], `pré-venda sem venda (${why}), sem pós-venda`)
+    await this.audit.byUser(user, ctx, 'atendimento.closed_without_post_sale', 'service_record', record.id, { motivo: reason?.name ?? null, conversas })
+    return 'ENCERRADO' as const
+  }
+
+  /** Finaliza as conversas abertas dos atendimentos (vão para as finalizadas; nada é enviado ao cliente). */
+  private async closeChats(user: AuthUser, recordIds: string[], why: string) {
+    if (!recordIds.length) return 0
+    const convs = await this.prisma.whatsappConversation.findMany({ where: { tenantId: user.tenantId, recordId: { in: recordIds }, status: 'ABERTA' }, select: { id: true } })
+    const now = new Date()
+    for (const c of convs) {
+      await this.prisma.whatsappConversation.update({
+        where: { id: c.id },
+        data: { status: 'ARQUIVADA', assignedUserId: null, sectorId: null, helperUserIds: [], botFlowId: null, botState: Prisma.DbNull, unread: 0, noReplyNeeded: true, closedAt: now, closedByName: user.name.slice(0, 120) },
+      })
+      await this.prisma.whatsappMessage.create({
+        data: { tenantId: user.tenantId, conversationId: c.id, waId: `nota:${randomUUID()}`, fromMe: true, type: 'nota', text: `Atendimento finalizado por ${user.name}: ${why}.`, internal: true, sentById: user.id, sentByName: user.name.slice(0, 120), status: 'NOTA', sentAt: now },
+      })
+    }
+    return convs.length
+  }
+
+  /**
+   * Fecha atendimentos em massa. Pré-venda: fica fechada (sem prazo para chamar o cliente, sem gerar pós-venda).
+   * Pós-venda: fica Resolvido. Nos dois, as conversas abertas do cliente são finalizadas.
+   */
+  async close(user: AuthUser, ids: string[], ctx: RequestCtx) {
+    const records = await this.prisma.serviceRecord.findMany({ where: { id: { in: ids }, tenantId: user.tenantId, deletedAt: null, closedAt: null } })
+    for (const r of records) {
+      this.assertCan(user, r.kind, 'edit')
+      if (!(await this.prisma.serviceRecord.count({ where: { id: r.id, ...this.scope(user, r.kind) } }))) throw new ForbiddenException('Seu perfil não permite fechar atendimentos de outros vendedores.')
+    }
+    const now = new Date()
+    const note = `Fechado em massa por ${user.name}.`
+    await this.prisma.$transaction(
+      records.map((r) => {
+        const post = r.kind === 'POS_VENDAS'
+        const changes: Record<string, { de: unknown; para: unknown }> = { closedAt: { de: null, para: now } }
+        if (post && r.followStatus !== 'RESOLVIDO') changes.followStatus = { de: r.followStatus, para: 'RESOLVIDO' }
+        return this.prisma.serviceRecord.update({
+          where: { id: r.id },
+          data: {
+            closedAt: now,
+            callDueAt: null,
+            updatedById: user.id,
+            ...(post ? { followStatus: 'RESOLVIDO' as const, followNote: r.followNote?.trim() ? r.followNote : note } : {}),
+            ...(r.firstActionAt ? {} : { firstActionAt: now }),
+            history: { create: { userId: user.id, userName: user.name, action: post ? 'pós-venda fechado' : 'pré-venda fechada', changes: changes as Prisma.InputJsonValue } },
+          },
+        })
+      }),
+    )
+    // A conversa pode estar ligada ao pós-venda ou à pré-venda que o originou.
+    const chatIds = [...new Set(records.flatMap((r) => (r.kind === 'POS_VENDAS' && r.parentId ? [r.id, r.parentId] : [r.id])))]
+    const conversas = await this.closeChats(user, chatIds, 'atendimento fechado')
+    await this.audit.byUser(user, ctx, 'atendimento.closed', 'service_record', undefined, { quantidade: records.length, conversas })
+    return { closed: records.length, chats: conversas }
   }
 
   /** Situação inicial e prazo de um pós-venda novo. */
   private async followStart(tenantId: string) {
-    const { postSaleHours } = await this.alertSettings(tenantId)
-    return { followStatus: 'PENDENTE' as const, dueAt: new Date(Date.now() + postSaleHours * 3_600_000) }
+    const [{ postSaleHours }, hours] = await Promise.all([this.alertSettings(tenantId), this.hours(tenantId)])
+    return { followStatus: 'PENDENTE' as const, dueAt: deadline(new Date(), postSaleHours, hours) }
   }
 
   /**
-   * Pré-venda com resultado (vendeu ou não) gera o pós-venda para outra pessoa acompanhar,
-   * com os dados do cliente e o resultado copiados e prazo para o primeiro contato.
+   * Pós-venda de uma pré-venda enviada pela lista, para outra pessoa acompanhar, com os dados do cliente e o resultado
+   * copiados e prazo para o primeiro contato. Já tendo pós-venda, não gera outro (devolve false).
    */
   private async createPostSale(user: AuthUser, pre: Prisma.ServiceRecordGetPayload<object>, ctx: RequestCtx) {
-    if (await this.prisma.serviceRecord.count({ where: { parentId: pre.id, deletedAt: null } })) return
+    if (await this.prisma.serviceRecord.count({ where: { parentId: pre.id, deletedAt: null } })) return false
     const s = await this.alertSettings(user.tenantId)
     const ownerId = (pre.unitId ? s.postSaleOwnerByUnit[pre.unitId] : undefined) ?? s.postSaleOwnerId ?? null
     const owner = ownerId ? await this.prisma.seller.findFirst({ where: { id: ownerId, tenantId: user.tenantId, active: true }, select: { id: true } }) : null
@@ -470,15 +583,16 @@ export class ServiceRecordsService {
         lostReasonId: pre.lostReasonId,
         invoiceNumber: pre.invoiceNumber,
         saleValue: pre.saleValue,
-        notes: `Gerado automaticamente da pré-venda${preSeller ? ` de ${preSeller.name}` : ''} (${pre.saleStatus === 'SIM' ? 'venda realizada' : 'venda não realizada'}).`,
+        notes: `Enviado da pré-venda${preSeller ? ` de ${preSeller.name}` : ''} (${pre.saleStatus === 'SIM' ? 'venda realizada' : pre.saleStatus === 'NAO' ? 'venda não realizada' : 'em negociação'}).`,
         followStatus: 'PENDENTE',
-        dueAt: new Date(Date.now() + s.postSaleHours * 3_600_000),
+        dueAt: deadline(new Date(), s.postSaleHours, await this.hours(user.tenantId)),
         createdById: user.id,
         updatedById: user.id,
         history: { create: { userId: user.id, userName: user.name, action: 'criado automaticamente', changes: { parentId: { de: null, para: pre.id } } } },
       },
     })
     await this.audit.byUser(user, ctx, 'atendimento.post_sale_created', 'service_record', post.id, { preVenda: pre.id, responsavel: owner?.id ?? null })
+    return true
   }
 
   /**
@@ -491,7 +605,7 @@ export class ServiceRecordsService {
     const rows = await this.prisma.serviceRecord.findMany({
       where: { tenantId: user.tenantId, kind: 'PRE_VENDAS', deletedAt: null, forwarded: true, sellerId: { not: null }, forwardedAt: { gte: from, lt: new Date(from.getTime() + 86_400_000) }, ...this.scope(user, 'PRE_VENDAS') },
       orderBy: { forwardedAt: 'asc' },
-      select: { id: true, name: true, phone: true, forwardedAt: true, saleStatus: true, seller: { select: { id: true, name: true, phone: true } } },
+      select: { id: true, name: true, phone: true, forwardedAt: true, saleStatus: true, lostReason: { select: { name: true } }, seller: { select: { id: true, name: true, phone: true } } },
     })
     const [config, log] = await Promise.all([
       this.alertSettings(user.tenantId).then((s) => cleanDigest(s.sellerDigest)),
@@ -509,8 +623,8 @@ export class ServiceRecordsService {
         sellerId: g.seller.id,
         seller: g.seller.name,
         sellerPhone: g.seller.phone ? (normalizePhone(g.seller.phone) ?? g.seller.phone) : null,
-        items: g.items.map((r) => ({ id: r.id, name: r.name, phone: r.phone, forwardedAt: r.forwardedAt, saleStatus: r.saleStatus })),
-        messages: digestMessages(config.text, g.seller.name, day, g.items, config.split),
+        items: g.items.map((r) => ({ id: r.id, name: r.name, phone: r.phone, forwardedAt: r.forwardedAt, saleStatus: r.saleStatus, situation: saleSituation(r.saleStatus, r.lostReason?.name) })),
+        messages: digestMessages(config.text, g.seller.name, day, g.items.map((r) => ({ ...r, situation: saleSituation(r.saleStatus, r.lostReason?.name) })), config.split),
         status: log.day === day ? (log.sellers?.[g.seller.id] ?? null) : null,
         automatic: digestFor(config, g.seller.id),
       }))
@@ -524,7 +638,8 @@ export class ServiceRecordsService {
     if (!inNegotiation(current)) throw new BadRequestException('Só pré-vendas repassadas ao vendedor e ainda em negociação têm prazo para chamar o cliente.')
     const settings = await this.alertSettings(user.tenantId)
     const now = new Date()
-    const callDueAt = new Date(now.getTime() + callHoursOf(settings) * 3_600_000)
+    const hours = await this.hours(user.tenantId)
+    const callDueAt = deadline(now, callHoursOf(settings), hours)
     const record = await this.prisma.serviceRecord.update({
       where: { id },
       data: {
@@ -536,7 +651,7 @@ export class ServiceRecordsService {
       },
     })
     await this.audit.byUser(user, ctx, 'atendimento.client_called', 'service_record', id, {})
-    return this.view(record, settings.alertHours)
+    return this.view(record, settings.alertHours, hours)
   }
 
   /** Exclusão lógica: some das telas e relatórios, mas continua no banco e na auditoria. */
@@ -550,7 +665,11 @@ export class ServiceRecordsService {
     await this.audit.byUser(user, ctx, 'atendimento.deleted', 'service_record', id, { nome: current.name })
   }
 
-  /** Move atendimentos entre Pré e Pós-Vendas (ex.: histórico importado sem separação). */
+  /**
+   * Pré-Vendas → Pós-Vendas: gera o pós-venda de cada pré-venda (responsável e prazo do primeiro contato, como era o
+   * automático); a pré-venda fica onde está, com o resultado. Pós → Pré: muda o registro de lugar (ex.: histórico
+   * importado sem separação).
+   */
   async move(user: AuthUser, ids: string[], kind: ServiceKind, ctx: RequestCtx) {
     const records = await this.prisma.serviceRecord.findMany({ where: { id: { in: ids }, tenantId: user.tenantId, deletedAt: null } })
     for (const r of records) {
@@ -558,6 +677,11 @@ export class ServiceRecordsService {
       if (this.scopeOf(user, r.kind) === 'OWN') throw new ForbiddenException('Seu perfil não permite mover atendimentos.')
     }
     this.assertCan(user, kind, 'edit')
+    if (kind === 'POS_VENDAS') {
+      let created = 0
+      for (const r of records.filter((x) => x.kind === 'PRE_VENDAS')) if (await this.createPostSale(user, r, ctx)) created++
+      return { moved: created }
+    }
     const toMove = records.filter((r) => r.kind !== kind)
     await this.prisma.$transaction(
       toMove.map((r) =>
@@ -572,8 +696,8 @@ export class ServiceRecordsService {
   }
 
   async alerts(user: AuthUser) {
-    const { alertHours, newRecordMinutes = 10 } = await this.alertSettings(user.tenantId)
-    const limit = new Date(Date.now() - alertHours * 3_600_000)
+    const [{ alertHours, newRecordMinutes = 10 }, hours] = await Promise.all([this.alertSettings(user.tenantId), this.hours(user.tenantId)])
+    const limit = this.overdueLimit(alertHours, hours)
     // Pré-vendas novas (para o aviso na tela) e as que passaram do prazo sem ninguém atender.
     let fresh: { id: string; name: string; leadAt: Date; createdAt: Date; origin: string | null; channel: string | null }[] = []
     let waiting = 0
@@ -678,15 +802,16 @@ export class ServiceRecordsService {
     if (days < 1 || days > 1100) throw new BadRequestException('Período inválido (máximo de 3 anos).')
     const prevTo = new Date(dayStart(f.from).getTime() - 86_400_000).toISOString().slice(0, 10)
     const prevFrom = new Date(dayStart(f.from).getTime() - days * 86_400_000).toISOString().slice(0, 10)
-    const [current, previous, { alertHours }] = await Promise.all([
+    const [current, previous, { alertHours }, hours] = await Promise.all([
       this.rows(await this.where(user, f)),
       this.rows(await this.where(user, { ...f, from: prevFrom, to: prevTo })),
       this.alertSettings(user.tenantId),
+      this.hours(user.tenantId),
     ])
     return {
       period: { from: f.from, to: f.to, days },
       previousPeriod: { from: prevFrom, to: prevTo },
-      ...buildDashboard(current, previous, { from: f.from, to: f.to, alertHours }),
+      ...buildDashboard(current, previous, { from: f.from, to: f.to, alertHours, hours }),
       regions: REGIONS,
     }
   }

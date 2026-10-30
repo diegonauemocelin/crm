@@ -299,3 +299,21 @@ sudo bash /opt/usaparts-crm/deploy/enxugar-servidor.sh apagar     # 3. remove de
 - O que a verificação lista em "Outros containers", "Serviços próprios" e "Bancos fora do Docker" não é tocado: confira e decida um a um.
 
 Para voltar um sistema depois do **desligar** (antes do apagar): `cd /opt/usaparts-bi && sudo docker compose up -d` (BI) ou `sudo systemctl enable --now usaparts.service` (painel; no CRM, Liberar o atendimento antes); as tarefas do cron pausadas ficam com `#enxugar#` no começo (`sudo crontab -e` e tire o prefixo), e os sites do Nginx guardados em `/opt/usaparts-crm/.deploy/enxugar/nginx` voltam para `/etc/nginx/sites-enabled/` (depois `sudo nginx -t && sudo systemctl reload nginx`).
+
+## Outro sistema na VPS (separado do CRM)
+
+Para instalar nesta VPS um sistema diferente (outro repositório no GitHub, outro subdomínio), sem misturar com o CRM. Exemplo: o sistema **importacao** em `importacao.usaparts.com.br`.
+
+1. No DNS, crie o registro A do subdomínio apontando para o IP da VPS.
+2. Na VPS (o script vem direto do GitHub, sem atualizar o CRM):
+
+```bash
+cd /opt/usaparts-crm && sudo git fetch origin main && sudo git show origin/main:deploy/novo-sistema.sh | sudo bash -s -- importacao importacao.usaparts.com.br SEU-EMAIL
+```
+
+Ele cria a pasta `/opt/importacao`, reserva uma porta local livre (a partir de 8280, só em 127.0.0.1), cria um site próprio no Nginx com HTTPS só para o subdomínio e deixa em `/opt/importacao` as regras (`SEPARACAO.md`) e um `docker-compose.exemplo.yml` com projeto, rede, banco e volumes próprios. Não altera o CRM, outros sites, firewall nem Docker. Rodar de novo não estraga nada: o que já existe é mantido.
+
+3. Clone o repositório do outro sistema em `/opt/importacao` e suba-o publicando só em `127.0.0.1:<porta>` (a porta fica em `/opt/importacao/.porta`). Até lá, o endereço mostra "502 Bad Gateway".
+
+- Memória: cada sistema a mais divide a mesma VPS. Dê limite de memória a cada container do outro sistema e confira com `sudo bash deploy/raio-x.sh`.
+- O backup completo do servidor (`deploy/backup-servidor.sh`) já inclui `/opt` e os volumes do Docker. O enxugar-servidor só lista o outro sistema em "Outros containers", sem tocar nele.

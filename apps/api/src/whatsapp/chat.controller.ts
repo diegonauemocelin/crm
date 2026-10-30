@@ -53,6 +53,12 @@ class ReactionDto {
   @IsString() @MaxLength(16) emoji!: string
 }
 
+class ClientDto {
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(60) customerCode?: string | null
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() sellerId?: string | null
+  @IsOptional() @IsBoolean() walletOnly?: boolean
+}
+
 class SaveAsContactDto {
   @IsString() @Length(1, 120) name!: string
   @IsIn(['CLIENTE', 'COLEGA', 'FORNECEDOR', 'OUTRO']) category!: 'CLIENTE' | 'COLEGA' | 'FORNECEDOR' | 'OUTRO'
@@ -79,6 +85,10 @@ class ForwardManyDto extends ForwardDto {
 class ContactDto {
   @IsString() @Length(1, 80) name!: string
   @IsString() @Length(8, 30) phone!: string
+}
+
+class ClientToSellerDto {
+  @IsUUID() sellerId!: string
 }
 
 class ShareSearchDto {
@@ -323,6 +333,14 @@ export class ChatController {
     return this.chat.finishMany(user, dto.ids, ctx)
   }
 
+  /** Marcar como não lida (como no WhatsApp): conta como não lida até alguém abrir de novo. */
+  @Post('conversas/:id/nao-lida')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  markUnread(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.chat.markUnread(user, id)
+  }
+
   /** Não precisa responder: o cliente só se despediu; a conversa sai dos avisos de "cliente esperando". */
   @Post('conversas/:id/sem-resposta')
   @HttpCode(200)
@@ -359,6 +377,12 @@ export class ChatController {
     return this.chat.update(user, id, dto)
   }
 
+  /** Código e vendedor do cliente; cliente da carteira do vendedor (não abre pré-venda). */
+  @Put('conversas/:id/cliente')
+  setClient(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ClientDto, @ReqContext() ctx: RequestCtx) {
+    return this.chat.setClient(user, id, dto, ctx)
+  }
+
   @Put('conversas/:id/tipo')
   setCategory(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CategoryDto) {
     return this.chat.setCategory(user, id, dto)
@@ -386,6 +410,14 @@ export class ChatController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   sendContact(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ContactDto) {
     return this.chat.sendContact(user, id, dto)
+  }
+
+  /** Mandar ao vendedor o contato (nome e telefone) do cliente desta conversa. */
+  @Post('conversas/:id/contato-ao-vendedor')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  sendClientToSeller(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ClientToSellerDto) {
+    return this.chat.sendClientToSeller(user, id, dto.sellerId)
   }
 
   /** Sugestões de contatos para compartilhar (vendedores, agenda e leads). */

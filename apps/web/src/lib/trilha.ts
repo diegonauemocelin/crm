@@ -79,7 +79,7 @@ export const TRAIL: TrailModule[] = [
         title: 'Ajuda da tela e avisos',
         steps: [
           'Clique no “?” do topo: abre o passo a passo da tela em que você está.',
-          'O sino mostra os avisos: lembretes do chat, pré-vendas paradas, prazos vencidos e respostas às suas sugestões.',
+          'O sino mostra os avisos: pré-vendas paradas, prazos vencidos e respostas às suas sugestões.',
           'Os avisos vermelhos no canto (ex.: “clientes sem resposta no WhatsApp”) têm o botão para ir direto ao que precisa.',
         ],
       },
@@ -241,11 +241,10 @@ export const TRAIL: TrailModule[] = [
       },
       {
         id: 'chat.organizar',
-        title: 'Organizar: tipo de contato, etiquetas, lembrete e arquivo',
+        title: 'Organizar: tipo de contato, etiquetas e arquivo',
         steps: [
           'Marque o tipo do contato (cliente, colega, fornecedor ou outro): só cliente vira lead e pré-venda.',
           'Use Etiquetas para separar as conversas (ex.: Orçamento, Urgente) e filtre a lista por elas.',
-          'Crie um Lembrete para retornar depois (1 hora, amanhã ou uma data): ele aparece no sino.',
           'Arquive a conversa resolvida: se o cliente escrever de novo, ela volta para a lista.',
         ],
       },
@@ -1225,7 +1224,7 @@ export const TRAIL: TrailModule[] = [
         steps: [
           'A lista mostra as conversas como no WhatsApp: em verde, quantas mensagens não lidas.',
           'Toque na conversa para abrir; a seta volta para a lista.',
-          'No ⋮ (ou tocando no nome) ficam transferir, participantes, etiquetas, lembrete, pré-venda e finalizar.',
+          'No ⋮ (ou tocando no nome) ficam transferir, participantes, etiquetas, cliente (código e vendedor), pré-venda e finalizar.',
           'O botão verde no canto começa uma conversa nova.',
         ],
       },

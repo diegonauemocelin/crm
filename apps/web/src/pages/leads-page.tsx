@@ -24,7 +24,7 @@ import { GRADE_CLASS, type Lead, type LeadStage, STAGE_LABEL, STAGES, useTags } 
 import { cn } from '@/lib/utils'
 
 const ALL = '__all__'
-const FILTERS = ['search', 'stage', 'grade', 'tag', 'state', 'ownerId', 'unitId', 'originId', 'emailOptIn', 'hasPhone', 'from', 'to'] as const
+const FILTERS = ['search', 'stage', 'grade', 'tag', 'state', 'ownerId', 'unitId', 'originId', 'emailOptIn', 'hasPhone', 'hasCode', 'serviceResult', 'lostReasonId', 'from', 'to'] as const
 
 interface Page {
   total: number
@@ -206,7 +206,7 @@ function LeadsContent() {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="relative min-w-56 flex-1">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Buscar por nome, e-mail, telefone, empresa ou cidade" className="h-8 pl-8" aria-label="Buscar leads" />
+          <Input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Buscar por nome, e-mail, telefone, empresa, cidade ou código do cliente" className="h-8 pl-8" aria-label="Buscar leads" />
         </div>
         <Select value={sort} onValueChange={(v) => setFilter('sort', v === 'recent' ? null : v)}>
           <SelectTrigger size="sm" className="w-48" aria-label="Ordenar">
@@ -230,6 +230,9 @@ function LeadsContent() {
         <Filter label="Origem" value={params.get('originId')} onChange={(v) => setFilter('originId', v)} items={o?.origins ?? []} withNone />
         <Filter label="E-mail marketing" value={params.get('emailOptIn')} onChange={(v) => setFilter('emailOptIn', v)} items={[{ id: 'true', name: 'Aceita receber' }, { id: 'false', name: 'Não aceita' }]} />
         <Filter label="Telefone" value={params.get('hasPhone')} onChange={(v) => setFilter('hasPhone', v)} items={[{ id: 'true', name: 'Com telefone' }, { id: 'false', name: 'Sem telefone' }]} />
+        <Filter label="Código do cliente" value={params.get('hasCode')} onChange={(v) => setFilter('hasCode', v)} items={[{ id: 'true', name: 'Com código do cliente' }, { id: 'false', name: 'Sem código do cliente' }]} />
+        <Filter label="Atendimento" value={params.get('serviceResult')} onChange={(v) => setFilter('serviceResult', v)} items={[{ id: 'SIM', name: 'Venda realizada' }, { id: 'NAO', name: 'Sem venda' }, { id: 'NEGOCIACAO', name: 'Em negociação' }]} />
+        <Filter label="Motivo da perda" value={params.get('lostReasonId')} onChange={(v) => setFilter('lostReasonId', v)} items={o?.lostReasons ?? []} />
         <Input type="date" className="h-8" aria-label="Cadastrado a partir de" value={params.get('from') ?? ''} onChange={(e) => setFilter('from', e.target.value || null)} />
         <Input type="date" className="h-8" aria-label="Cadastrado até" value={params.get('to') ?? ''} onChange={(e) => setFilter('to', e.target.value || null)} />
         {active > 0 && (
@@ -345,7 +348,7 @@ function LeadsContent() {
                     )}
                     <TableCell className="max-w-72">
                       <p className="truncate font-medium">{l.anonymizedAt ? 'Dados removidos (LGPD)' : (l.name ?? l.email ?? formatPhone(l.phone))}</p>
-                      <p className="truncate text-xs text-muted-foreground">{[l.email, formatPhone(l.phone)].filter(Boolean).join(' · ') || '—'}</p>
+                      <p className="truncate text-xs text-muted-foreground">{[l.customerCode && `Cód. ${l.customerCode}`, l.email, formatPhone(l.phone)].filter(Boolean).join(' · ') || '—'}</p>
                       {l.adsLabel && (
                         <p className="truncate text-xs text-sky-700 dark:text-sky-300" title={`Google Ads: ${l.adsLabel}`}>
                           Google Ads · {l.adsLabel}

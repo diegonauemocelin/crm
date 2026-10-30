@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanDigest, DEFAULT_DIGEST_TEXT, digestFor, digestMessages, readablePhone, todayWindow } from '../src/atendimento/regras'
+import { cleanDigest, DEFAULT_DIGEST_TEXT, digestFor, digestMessages, readablePhone, saleSituation, todayWindow } from '../src/atendimento/regras'
 
 const items = [
   { name: 'João da Silva', phone: '+5549991848098' },
@@ -30,6 +30,16 @@ describe('resumo do dia para o vendedor', () => {
   it('lista única numa mensagem só', () => {
     const [m] = digestMessages('{vendedor}: {quantidade}', 'Ana', '2026-10-19', items.slice(0, 2), false)
     expect(m).toBe('Ana: 2\n\n1. (49) 99184-8098 — João da Silva\n2. (27) 9881-3902 — Maria Souza')
+  })
+
+  it('situação ao lado do nome: vendeu, não vendeu e motivo, aguardando retorno do vendedor', () => {
+    expect(saleSituation('SIM')).toBe('Vendeu')
+    expect(saleSituation('NAO', 'Preço')).toBe('Não vendeu (Preço)')
+    expect(saleSituation('NAO', null)).toBe('Não vendeu')
+    expect(saleSituation('NEGOCIACAO')).toBe('Aguardando retorno do vendedor')
+    const list = [{ ...items[0]!, situation: 'Vendeu' }, { ...items[1]!, situation: 'Aguardando retorno do vendedor' }]
+    expect(digestMessages('{vendedor}', 'Ana', '2026-10-19', list, false)[0]).toBe('Ana\n\n1. (49) 99184-8098 — João da Silva — Vendeu\n2. (27) 9881-3902 — Maria Souza — Aguardando retorno do vendedor')
+    expect(digestMessages('{vendedor}', 'Ana', '2026-10-19', list, true)[1]).toBe('(49) 99184-8098\nJoão da Silva — Vendeu')
   })
 
   it('telefone legível e dia de São Paulo', () => {

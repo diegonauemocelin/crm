@@ -4,6 +4,7 @@ import {
   ArrowLeftRightIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  CircleCheckIcon,
   ClockAlertIcon,
   DownloadIcon,
   EraserIcon,
@@ -200,9 +201,26 @@ export function RecordsList({ kind }: { kind: Kind }) {
   const move = useMutation({
     mutationFn: () => api.post<{ moved: number }>('/atendimentos/mover', { ids: [...selected], kind: info.other }),
     onSuccess: (r) => {
-      toast.success(`${int.format(r.moved)} atendimento(s) movido(s) para ${KIND_INFO[info.other].title}.`)
+      toast.success(
+        kind === 'PRE_VENDAS'
+          ? `${int.format(r.moved)} pós-venda(s) aberto(s). Quem já tinha pós-venda não ganha outro.`
+          : `${int.format(r.moved)} atendimento(s) movido(s) para ${KIND_INFO[info.other].title}.`,
+      )
       setSelected(new Set())
       void qc.invalidateQueries({ queryKey: ['atendimentos'] })
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+
+  /** Fechar em massa: pré-venda encerrada ou pós-venda resolvido, e o chat do cliente finalizado. */
+  const close = useMutation({
+    mutationFn: () => api.post<{ closed: number; chats: number }>('/atendimentos/fechar', { ids: [...selected] }),
+    onSuccess: (r) => {
+      toast.success(`${int.format(r.closed)} atendimento(s) fechado(s)${r.chats ? `, ${int.format(r.chats)} conversa(s) finalizada(s)` : ''}.`)
+      setSelected(new Set())
+      void qc.invalidateQueries({ queryKey: ['atendimentos'] })
+      void qc.invalidateQueries({ queryKey: ['atendimento-alertas'] })
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
     },
     onError: (err) => toast.error(errorMessage(err)),
   })
@@ -371,7 +389,21 @@ export function RecordsList({ kind }: { kind: Kind }) {
           {canMove && (
             <Button size="sm" variant="outline" onClick={() => move.mutate()} disabled={move.isPending}>
               {move.isPending ? <Loader2Icon className="animate-spin" /> : <ArrowLeftRightIcon />}
-              Mover para {KIND_INFO[info.other].title}
+              {kind === 'PRE_VENDAS' ? 'Enviar para Pós-Vendas' : `Mover para ${KIND_INFO[info.other].title}`}
+            </Button>
+          )}
+          {canEdit && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={close.isPending}
+              onClick={() => {
+                const what = kind === 'PRE_VENDAS' ? 'pré-venda(s)' : 'pós-venda(s)'
+                if (window.confirm(`Fechar ${int.format(selected.size)} ${what}? ${kind === 'POS_VENDAS' ? 'Ficam como Resolvido e a' : 'A'}s conversas abertas desses clientes são finalizadas (nada é enviado a eles).`)) close.mutate()
+              }}
+            >
+              {close.isPending ? <Loader2Icon className="animate-spin" /> : <CircleCheckIcon />}
+              Fechar {kind === 'PRE_VENDAS' ? 'pré-venda' : 'pós-venda'}
             </Button>
           )}
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
@@ -403,7 +435,7 @@ export function RecordsList({ kind }: { kind: Kind }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  {canMove && (
+                  {canEdit && (
                     <TableHead className="w-10">
                       <Checkbox
                         checked={allOnPage}
@@ -428,7 +460,7 @@ export function RecordsList({ kind }: { kind: Kind }) {
               <TableBody>
                 {data.items.map((r) => (
                   <TableRow key={r.id} className={cn('cursor-pointer', r.overdue && 'bg-amber-500/5', waitingMin(r) !== null && waitingMin(r)! >= newMinutes && 'bg-rose-500/5')} onClick={() => setOpen(r)}>
-                    {canMove && (
+                    {canEdit && (
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           checked={selected.has(r.id)}
@@ -546,6 +578,11 @@ export function RecordsList({ kind }: { kind: Kind }) {
                       </Badge>
                       {r.saleStatus === 'SIM' && r.saleValue !== null && <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">{brl.format(r.saleValue)}</p>}
                       {r.saleStatus === 'NAO' && r.lostReasonId && <p className="mt-0.5 truncate text-xs text-muted-foreground">{names.get(r.lostReasonId)}</p>}
+                      {r.closedAt && kind === 'PRE_VENDAS' && (
+                        <p className="mt-0.5 text-xs text-muted-foreground" title={`Fechada em ${dateTime(r.closedAt)}`}>
+                          Fechada
+                        </p>
+                      )}
                     </TableCell>
                     {kind === 'POS_VENDAS' && (
                       <TableCell>

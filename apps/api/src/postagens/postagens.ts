@@ -33,6 +33,8 @@ export interface Account {
   name: string
   /** Grupo para escolher várias de uma vez e somar as métricas (ex.: Oficial, Vendedores). */
   group: string
+  /** Conectada pelo login do Instagram (publica com o token da própria conta, não com o da Meta). */
+  via?: 'instagram'
 }
 
 /** Limpa a lista de contas que vem da tela: rede válida, ID numérico, sem repetir. No máximo 30. */
@@ -48,7 +50,8 @@ export function cleanAccounts(list: unknown): Account[] | { error: string } {
     if (out.some((a) => a.network === network && a.externalId === externalId)) continue
     const id = /^[a-z0-9-]{4,40}$/.test(String(raw.id ?? '')) ? String(raw.id) : `${network === 'instagram' ? 'ig' : 'fb'}-${externalId}`
     const group = String(raw.group ?? '').trim().slice(0, 40) || 'Geral'
-    out.push({ id, network: network as Network, externalId, name: name || (network === 'instagram' ? `Instagram ${externalId}` : `Página ${externalId}`), group })
+    const via = network === 'instagram' && raw.via === 'instagram' ? { via: 'instagram' as const } : {}
+    out.push({ id, network: network as Network, externalId, name: name || (network === 'instagram' ? `Instagram ${externalId}` : `Página ${externalId}`), group, ...via })
   }
   return out
 }
@@ -168,20 +171,23 @@ export function postSystem(company: string, about: string) {
     about ? `Sobre a empresa: ${about}` : '',
     'Público: donos de máquinas pesadas, mecânicos, compradores de oficinas e construtoras. Tom profissional, direto e próximo, sem exagero.',
     'Regras: nunca invente preço, desconto, prazo, estoque, garantia, frete ou compatibilidade. Onde faltar um dado, escreva [conferir: ...].',
-    'Não prometa o que a empresa não confirmou. Use poucos emojis (no máximo 3) e hashtags relevantes (de 5 a 12), no fim.',
+    'Não prometa o que a empresa não confirmou. Use poucos emojis (no máximo 3) e de 3 a 5 hashtags relevantes, no fim (o Instagram aceita no máximo 5).',
+    'A primeira linha (até 125 caracteres, o que o feed mostra antes do "mais") começa pelo assunto, sem cumprimento, e traz algo concreto: o modelo da máquina, a peça ou um número.',
+    'Termine com um único pedido (um só: WhatsApp, site ou direct).',
   ]
     .filter(Boolean)
     .join('\n')
 }
 
-export function captionPrompt(d: { topic: string; network: string; format: string; product?: { name: string; brand: string | null; code: string; url: string | null } | null; current?: string; instruction?: string }) {
+export function captionPrompt(d: { topic: string; network: string; format: string; product?: { name: string; brand: string | null; code: string; url: string | null } | null; current?: string; instruction?: string; keywords?: string[] }) {
   return [
     `Escreva a legenda de uma postagem (${d.format === 'STORIES' ? 'Stories: texto curto, de 1 a 2 frases' : d.format === 'REELS' ? 'Reels: gancho forte na primeira linha' : 'feed'}) para ${d.network}.`,
     `Tema: ${d.topic || '(livre)'}`,
     d.product ? `Produto: ${d.product.name}${d.product.brand ? ` · marca ${d.product.brand}` : ''} · código ${d.product.code}${d.product.url ? ` · link ${d.product.url}` : ''}` : '',
     d.current ? `Legenda atual (melhore a partir dela):\n${d.current}` : '',
     d.instruction ? `Instrução: ${d.instruction}` : '',
-    'Termine com uma chamada para ação (WhatsApp, site ou direct) e as hashtags.',
+    d.keywords?.length ? `Palavras de busca que precisam aparecer no texto (não só nas hashtags): ${d.keywords.join(', ')}` : '',
+    'Termine com um único pedido (WhatsApp, site ou direct) e as hashtags.',
     'Responda só com a legenda pronta, sem comentários antes ou depois.',
   ]
     .filter(Boolean)
@@ -207,6 +213,8 @@ export interface PlanInput {
   networks: Network[]
   formats: PostFormat[]
   times: string[]
+  /** O que deu resultado no Instagram (análise dos posts dos últimos 90 dias), quando há dados. */
+  results?: string
 }
 
 export interface PlanItem {
@@ -227,9 +235,13 @@ export function planPrompt(d: PlanInput) {
     `Redes: ${d.networks.map((n) => NETWORK_LABEL[n]).join(' e ')}. Formatos possíveis: ${d.formats.map((f) => FORMAT_LABEL[f]).join(', ')}.`,
     `Temas e campanhas do período: ${d.themes || 'peças e filtros para máquinas pesadas, dicas de manutenção, marcas atendidas, institucional'}.`,
     `Horários preferidos: ${d.times.join(', ') || '09:00, 12:00, 18:00'}. Varie os temas e os formatos; evite domingos.`,
+    d.results ? `O que deu resultado no Instagram da empresa nos últimos 90 dias (dê mais espaço aos formatos, dias e assuntos que passaram do normal, e menos aos mais fracos):\n${d.results}` : '',
+    'Em cada legenda: primeira linha de até 125 caracteres com algo concreto, um único pedido e de 3 a 5 hashtags.',
     'Responda SÓ com JSON, sem texto fora dele, no formato:',
     '{"posts":[{"date":"AAAA-MM-DD","time":"HH:MM","format":"FEED|STORIES|REELS","title":"título curto interno","caption":"legenda pronta com chamada e hashtags","imageIdea":"descrição da imagem ou vídeo a usar"}]}',
-  ].join('\n')
+  ]
+    .filter(Boolean)
+    .join('\n')
 }
 
 /** Lê o JSON do calendário sugerido: só datas dentro do período e formatos pedidos; no máximo 40 postagens. */

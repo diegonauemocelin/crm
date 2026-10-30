@@ -25,6 +25,16 @@ class PostDto {
   @ApiPropertyOptional({ nullable: true }) @IsOptional() @ValidateIf((o: PostDto) => o.scheduledAt !== null) @IsISO8601() scheduledAt?: string | null
 }
 
+class IgAppDto {
+  @Matches(/^\d{5,25}$/) appId!: string
+  @IsOptional() @IsString() @MaxLength(200) secret?: string
+}
+
+class IgCallbackDto {
+  @IsString() @MaxLength(2000) code!: string
+  @IsString() @MaxLength(200) state!: string
+}
+
 class NoteDto {
   @IsOptional() @IsString() @MaxLength(500) nota?: string
 }
@@ -48,6 +58,30 @@ class CaptionDto {
   @IsOptional() @IsUUID() productId?: string
   @IsOptional() @IsString() @MaxLength(2500) current?: string
   @IsOptional() @IsString() @MaxLength(400) instruction?: string
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(60, { each: true }) keywords?: string[]
+}
+
+class CaptionCheckDto {
+  @IsString() @MaxLength(5000) caption!: string
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(60, { each: true }) keywords?: string[]
+}
+
+class ReelsDto {
+  @IsOptional() @IsString() @MaxLength(500) topic?: string
+  @IsOptional() @IsUUID() productId?: string
+  @IsOptional() @IsInt() @Min(7) @Max(90) seconds?: number
+  @IsOptional() @IsString() @MaxLength(400) instruction?: string
+}
+
+class ReelsLineDto {
+  @IsString() @MaxLength(300) text!: string
+  @IsOptional() @IsString() @MaxLength(80) screen?: string
+}
+
+class ReelsCheckDto {
+  @IsArray() @ArrayMaxSize(6) @IsString({ each: true }) @MaxLength(200, { each: true }) hooks!: string[]
+  @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => ReelsLineDto) lines!: ReelsLineDto[]
+  @IsOptional() @IsInt() @Min(7) @Max(90) seconds?: number
 }
 
 class PlanDto {
@@ -129,6 +163,24 @@ export class PostagensController {
     return this.svc.discoverAccounts(user)
   }
 
+  @Put('instagram/app')
+  saveIgApp(@CurrentUser() user: AuthUser, @Body() dto: IgAppDto, @ReqContext() ctx: RequestCtx) {
+    return this.svc.saveIgApp(user, dto.appId, dto.secret, ctx)
+  }
+
+  @Post('instagram/conectar')
+  @HttpCode(200)
+  startInstagram(@CurrentUser() user: AuthUser) {
+    return this.svc.startInstagram(user)
+  }
+
+  @Post('instagram/retorno')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  completeInstagram(@CurrentUser() user: AuthUser, @Body() dto: IgCallbackDto, @ReqContext() ctx: RequestCtx) {
+    return this.svc.completeInstagram(user, dto.code, dto.state, ctx)
+  }
+
   @Get('metricas')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   metrics(@CurrentUser() user: AuthUser, @Query('atualizar') atualizar?: string) {
@@ -176,6 +228,29 @@ export class PostagensController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   aiCaption(@CurrentUser() user: AuthUser, @Body() dto: CaptionDto) {
     return this.svc.aiCaption(user, dto)
+  }
+
+  @Post('ia/reels')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  aiReels(@CurrentUser() user: AuthUser, @Body() dto: ReelsDto) {
+    return this.svc.aiReels(user, dto)
+  }
+
+  /** Prévia do feed e conferência da legenda (sem IA, a cada mudança do texto). */
+  @Post('legenda/conferir')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  checkCaption(@CurrentUser() user: AuthUser, @Body() dto: CaptionCheckDto) {
+    return this.svc.checkCaption(user, dto)
+  }
+
+  /** Nota das aberturas e tempo das falas do roteiro (sem IA, depois de editar). */
+  @Post('reels/conferir')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  checkReels(@CurrentUser() user: AuthUser, @Body() dto: ReelsCheckDto) {
+    return this.svc.checkReels(user, dto)
   }
 
   @Post('ia/calendario')

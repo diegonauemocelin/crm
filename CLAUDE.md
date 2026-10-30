@@ -19,8 +19,19 @@ daquele computador.
 
 ## Entrega (toda mudança que vai para o usuário)
 
+Uma versão por dia, às 17h (decisão de 28/10/2026). Durante o dia, cada pedido pronto (testado) vai em commits
+`dia: <resumo>` num branch `dia/AAAA-MM-DD`, com push (para não depender do PC). Às 17h junta tudo do dia numa versão só
+(passos abaixo, no main, uma entrada no releases.json com todas as mudanças) e depois leva ao SaaS. Se o usuário pedir
+antes ("publica agora"), publica na hora.
+
+**Pausa (pedido de 29/10/2026, depois da v1.0.3):** novas versões só na terça-feira, 03/11/2026. Até lá, o que ficar
+pronto vai só em commits `dia:` no branch do dia (com push), sem versão, sem deploy e sem levar ao SaaS; na terça junta
+tudo numa versão (v1.0.4) e leva ao SaaS (1.0.27).
+Na v1.0.4 entra também o módulo de fretes (PR #1, branch `claude/tender-brown-6n5q8f`): as notas estão em
+`docs/fretes/NOTAS-VERSAO.md`.
+
 1. Entrada nova no topo de `releases.json` (tipos: `novo`, `melhoria`, `correcao`, `seguranca`, `infra`; texto simples, para quem usa o sistema).
-2. Versão nos 3 `package.json` (raiz, `apps/api`, `apps/web`) e no `package-lock.json` (as entradas dos 3 pacotes). Semver: minor = novidade, patch = correção.
+2. Versão nos 3 `package.json` (raiz, `apps/api`, `apps/web`) e no `package-lock.json` (as entradas dos 3 pacotes). Numeração (decisão de 28/10/2026, para o número não crescer): depois da v0.104.1 a próxima entrega é a **v1.0.0**, e cada entrega seguinte soma 1 no último número (v1.0.1, v1.0.2...), novidade ou correção.
 3. `node scripts/check-release.mjs`.
 4. Commit `vX.Y.Z: <resumo em português>`, tag `vX.Y.Z` no próprio commit, `git push origin main --tags`.
    Commits que não são versão: `docs:`, `deps:`, `deploy:`. Detalhes em `docs/RELEASES.md`.

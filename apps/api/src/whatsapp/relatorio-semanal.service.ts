@@ -3,7 +3,7 @@ import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator'
 import { AuditService } from '../audit/audit.service'
 import { normalizePhone } from '../atendimento/br'
-import { cleanWeekly, loadWeekly, managerMessage, type SellerWeekly, weeklyGapMs, WEEKLY_SECTIONS, type WeeklySection, weeklyCycle, weeklyFor } from '../atendimento/semanal'
+import { cleanWeekly, FREQUENCIES, loadWeekly, managerMessage, reportCycle, type ReportFrequency, type SellerWeekly, weeklyGapMs, WEEKLY_SECTIONS, type WeeklySection, weeklyFor } from '../atendimento/semanal'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import { type Action, can } from '../common/permissions'
 import type { AuthUser } from '../common/types'
@@ -13,7 +13,7 @@ import { SettingsService } from '../settings/settings.service'
 import { ChatService } from './chat.service'
 
 const TICK_MS = 60_000
-const LABEL = 'Resumo do vendedor (semanal, automático)'
+const LABEL = 'Resumo do vendedor (automático)'
 export const WEEKLY_KEY = 'seller_weekly'
 export const WEEKLY_LOG_KEY = 'seller_weekly_log'
 
@@ -66,7 +66,7 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
   async view(user: AuthUser, ref?: string) {
     this.assertCan(user, 'view')
     const config = await this.config(user.tenantId)
-    const cycle = weeklyCycle(config.time, ref ? new Date(`${ref}T12:00:00-03:00`) : new Date())
+    const cycle = reportCycle(config.frequency, config.time, ref ? new Date(`${ref}T12:00:00-03:00`) : new Date())
     const [reports, log, numbers, sellers] = await Promise.all([
       loadWeekly(this.prisma, user.tenantId, cycle, config.sections),
       this.settings.get<WeeklyLog>(user.tenantId, WEEKLY_LOG_KEY, {}),
@@ -82,7 +82,7 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
       lastRun: log.cycle ? { cycle: log.cycle, at: log.at ?? null, sellers: log.sellers ?? {} } : null,
       // Prévia do que o gestor recebe (os vendedores do envio, com ou sem telefone).
       manager: {
-        message: managerMessage(cycle.label, this.scope(config, reports).map((r) => ({ seller: r.seller.name, stats: r.stats })), config.sections),
+        message: managerMessage(cycle.label, this.scope(config, reports).map((r) => ({ seller: r.seller.name, stats: r.stats })), config.sections, cycle.word),
         status: log.cycle === cycle.key ? Object.fromEntries(config.managerPhones.map((ph) => [ph, log.sellers?.[`gestor:${ph}`] ?? null])) : {},
       },
       reports: reports.map((r) => ({
@@ -105,6 +105,7 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
     if (next.numberId && !(await this.prisma.whatsappNumber.count({ where: { id: next.numberId, tenantId: user.tenantId, deletedAt: null } }))) throw new BadRequestException('Número de WhatsApp inválido.')
     if (next.sellerIds.length && (await this.prisma.seller.count({ where: { tenantId: user.tenantId, id: { in: next.sellerIds } } })) !== next.sellerIds.length) throw new BadRequestException('Vendedor inválido.')
     if (!next.allSellers && !next.sellerIds.length) throw new BadRequestException('Escolha ao menos um vendedor.')
+    if (!next.toSellers && !next.managerPhones.length) throw new BadRequestException('Sem enviar aos vendedores, informe ao menos um número para receber o resumo.')
     const bad = (d.managerPhones ?? []).find((x) => String(x).trim() && !normalizePhone(String(x)))
     if (bad) throw new BadRequestException(`Número do gestor inválido: ${bad}. Use DDD + número (ex.: 47 99999-8888).`)
     if (!Array.isArray(d.sections) || !d.sections.length) throw new BadRequestException('Escolha ao menos uma informação para o resumo.')
@@ -129,13 +130,14 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
   }
 
   private async runTenant(tenantId: string, config: SellerWeekly, now: Date) {
-    const cycle = weeklyCycle(config.time, now)
+    const cycle = reportCycle(config.frequency, config.time, now)
     if (!cycle.due) return
     const saved = await this.prisma.tenantSetting.findUnique({ where: { tenantId_key: { tenantId, key: WEEKLY_LOG_KEY } } })
     const log: WeeklyLog = (saved?.value as WeeklyLog | null)?.cycle === cycle.key ? (saved!.value as WeeklyLog) : { cycle: cycle.key, sellers: {} }
     const done = log.sellers ?? {}
     const inScope = this.scope(config, await loadWeekly(this.prisma, tenantId, cycle, config.sections))
-    const reports = inScope.filter((r) => !done[r.seller.id])
+    // Só os números informados: os vendedores não recebem o deles.
+    const reports = config.toSellers ? inScope.filter((r) => !done[r.seller.id]) : []
     const managers = inScope.length ? config.managerPhones.filter((ph) => !done[`gestor:${ph}`]) : []
     if (!reports.length && !managers.length) return
     // Intervalo entre as mensagens (sorteado a cada envio): a próxima só depois do horário marcado.
@@ -154,7 +156,7 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
     const queue: { key: string; phone: string | null; message: string; name: string }[] = [
       ...reports.map((r) => ({ key: r.seller.id, phone: r.seller.phone ? normalizePhone(r.seller.phone) : null, message: r.message, name: r.seller.name })),
       ...(managers.length ? (() => {
-        const message = managerMessage(cycle.label, inScope.map((r) => ({ seller: r.seller.name, stats: r.stats })), config.sections)
+        const message = managerMessage(cycle.label, inScope.map((r) => ({ seller: r.seller.name, stats: r.stats })), config.sections, cycle.word)
         return managers.map((ph) => ({ key: `gestor:${ph}`, phone: ph, message, name: 'Gestor' }))
       })() : []),
     ]
@@ -183,6 +185,8 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
 
 class WeeklyDto {
   @ApiProperty() @IsBoolean() enabled!: boolean
+  @ApiPropertyOptional({ enum: FREQUENCIES }) @IsOptional() @IsIn(FREQUENCIES) frequency?: ReportFrequency
+  @ApiPropertyOptional({ description: 'false = só os números informados recebem (resumo da equipe)' }) @IsOptional() @IsBoolean() toSellers?: boolean
   @ApiProperty({ example: '08:00' }) @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'Horário inválido (use HH:MM).' }) time!: string
   @ApiPropertyOptional() @ValidateIf((_, v) => v !== null) @IsUUID() numberId!: string | null
   @ApiProperty({ description: 'true = todos os vendedores com repasse; false = só os de sellerIds' }) @IsBoolean() allSellers!: boolean

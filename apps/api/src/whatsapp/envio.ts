@@ -171,9 +171,16 @@ export function retentionCutoffs(r: Retention, now = Date.now()) {
   const ago = (m: number) => new Date(now - m * 30 * 86_400_000)
   return { client: ago(r.clientMonths), other: ago(r.otherMonths), media: ago(r.mediaMonths) }
 }
+/** Um dia de atendimento: abre, fecha e, se houver, a pausa do almoço (fora do horário). */
+export interface BusinessDay {
+  start: string
+  end: string
+  pauseStart?: string
+  pauseEnd?: string
+}
 export interface BusinessHours {
   enabled: boolean
-  days: ({ start: string; end: string } | null)[]
+  days: (BusinessDay | null)[]
 }
 export const DEFAULT_HOURS: BusinessHours = {
   enabled: false,
@@ -200,19 +207,106 @@ export function cleanHours(raw: Partial<BusinessHours> | null | undefined): Busi
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = Array.isArray(raw?.days) ? raw!.days[i] : DEFAULT_HOURS.days[i]
     if (!d || typeof d !== 'object' || !HHMM.test(String(d.start)) || !HHMM.test(String(d.end)) || minutesOf(d.end) <= minutesOf(d.start)) return null
-    return { start: d.start, end: d.end }
+    const day: BusinessDay = { start: d.start, end: d.end }
+    // Pausa (almoço): só vale inteira dentro do dia e com início antes do fim.
+    const ps = String(d.pauseStart ?? '')
+    const pe = String(d.pauseEnd ?? '')
+    if (HHMM.test(ps) && HHMM.test(pe) && minutesOf(ps) > minutesOf(d.start) && minutesOf(pe) < minutesOf(d.end) && minutesOf(pe) > minutesOf(ps)) Object.assign(day, { pauseStart: ps, pauseEnd: pe })
+    return day
   })
   return { enabled: raw?.enabled === true, days }
+}
+
+const BRT_MS = 3 * 3_600_000
+const DAY_MS = 86_400_000
+
+/** Períodos abertos de um dia (minutos desde a meia-noite): o dia inteiro ou manhã e tarde, sem a pausa. */
+function openSpans(d: BusinessDay | null | undefined): [number, number][] {
+  if (!d) return []
+  const s = minutesOf(d.start)
+  const e = minutesOf(d.end)
+  if (d.pauseStart && d.pauseEnd) return [[s, minutesOf(d.pauseStart)], [minutesOf(d.pauseEnd), e]]
+  return [[s, e]]
 }
 
 /** Aberto agora pelo horário comercial (horário de Brasília, sem horário de verão). Desligado = sempre aberto. */
 export function isOpen(h: BusinessHours, now = new Date()) {
   if (!h.enabled) return true
-  const sp = new Date(now.getTime() - 3 * 3_600_000)
-  const d = h.days[sp.getUTCDay()]
-  if (!d) return false
+  const sp = new Date(now.getTime() - BRT_MS)
   const m = sp.getUTCHours() * 60 + sp.getUTCMinutes()
-  return m >= minutesOf(d.start) && m < minutesOf(d.end)
+  return openSpans(h.days[sp.getUTCDay()]).some(([s, e]) => m >= s && m < e)
+}
+
+/** "seg. das 08:00 às 12:00 e das 13:30 às 18:00; sáb. das 08:00 às 12:00" (dias iguais seguidos ficam juntos). */
+export function describeHours(h: BusinessHours) {
+  const names = ['dom.', 'seg.', 'ter.', 'qua.', 'qui.', 'sex.', 'sáb.']
+  const text = (d: BusinessDay) => (d.pauseStart ? `das ${d.start} às ${d.pauseStart} e das ${d.pauseEnd} às ${d.end}` : `das ${d.start} às ${d.end}`)
+  const groups: { from: number; to: number; text: string }[] = []
+  // Segunda a domingo, nessa ordem.
+  for (const i of [1, 2, 3, 4, 5, 6, 0]) {
+    const d = h.days[i]
+    if (!d) continue
+    const last = groups.at(-1)
+    if (last && last.text === text(d) && (last.to + 1) % 7 === i) last.to = i
+    else groups.push({ from: i, to: i, text: text(d) })
+  }
+  return groups.map((g) => `${g.from === g.to ? names[g.from] : `${names[g.from]} a ${names[g.to]}`} ${g.text}`).join('; ') || 'sem dias abertos'
+}
+
+/** Trechos abertos (em ms, UTC) de cada dia entre dois instantes. */
+function* openWindows(h: BusinessHours, from: number, to: number) {
+  let day = Math.floor((from - BRT_MS) / DAY_MS) * DAY_MS + BRT_MS
+  for (let guard = 0; day < to && guard < 800; guard++, day += DAY_MS) {
+    const wd = new Date(day - BRT_MS).getUTCDay()
+    for (const [s, e] of openSpans(h.days[wd])) {
+      const a = Math.max(day + s * 60_000, from)
+      const b = Math.min(day + e * 60_000, to)
+      if (b > a) yield [a, b] as const
+    }
+  }
+}
+
+/**
+ * Tempo de atendimento entre dois instantes: só o horário comercial conta (sem a pausa do almoço, a noite e os dias
+ * fechados). Horário comercial desligado: o tempo corrido.
+ */
+export function businessMsBetween(h: BusinessHours, a: Date, b: Date) {
+  if (b <= a) return 0
+  if (!h.enabled) return b.getTime() - a.getTime()
+  let total = 0
+  for (const [s, e] of openWindows(h, a.getTime(), b.getTime())) total += e - s
+  return total
+}
+
+/** Prazo contado em horário comercial: o instante em que se completam `ms` de atendimento a partir de `from`. */
+export function addBusinessMs(h: BusinessHours, from: Date, ms: number) {
+  if (!h.enabled || !h.days.some(Boolean)) return new Date(from.getTime() + ms)
+  let left = ms
+  // Até 2 anos à frente (prazo enorme com um dia aberto por semana ainda cabe).
+  for (const [s, e] of openWindows(h, from.getTime(), from.getTime() + 730 * DAY_MS)) {
+    if (e - s >= left) return new Date(s + left)
+    left -= e - s
+  }
+  return new Date(from.getTime() + ms)
+}
+
+/** O contrário: o instante antes de `to` com exatamente `ms` de atendimento até ele (base dos filtros "atrasado"). */
+export function subBusinessMs(h: BusinessHours, to: Date, ms: number) {
+  if (!h.enabled || !h.days.some(Boolean)) return new Date(to.getTime() - ms)
+  let left = ms
+  // Dia a dia, para trás.
+  let day = Math.floor((to.getTime() - BRT_MS) / DAY_MS) * DAY_MS + BRT_MS
+  for (let guard = 0; guard < 800; guard++, day -= DAY_MS) {
+    const wd = new Date(day - BRT_MS).getUTCDay()
+    for (const [s, e] of openSpans(h.days[wd]).reverse()) {
+      const a = day + s * 60_000
+      const b = Math.min(day + e * 60_000, to.getTime())
+      if (b <= a) continue
+      if (b - a >= left) return new Date(b - left)
+      left -= b - a
+    }
+  }
+  return new Date(to.getTime() - ms)
 }
 
 export type ReceiptStatus = 'ENVIADA' | 'ENTREGUE' | 'LIDA' | 'ERRO'

@@ -438,9 +438,23 @@ model ServiceRecord {
   callDueAt      DateTime?
   /// Última vez que marcaram "Chamei o cliente" (ou responderam pelo chat do CRM) com a pré-venda em negociação.
   calledAt       DateTime?
+  /// Fechado (pré-venda encerrada ou pós-venda resolvido), em massa pela lista: o chat do cliente é finalizado junto.
+  closedAt       DateTime?
   /// Mensagem automática de WhatsApp do dia seguinte: quando foi tentada e o resultado (ENVIADA ou o motivo da falha).
   autoMessageAt     DateTime?
   autoMessageStatus String?
+  /// Mensagem automática depois do repasse ao vendedor (ex.: 2 horas depois): quando foi tentada e o resultado.
+  forwardMessageAt     DateTime?
+  forwardMessageStatus String?
+  /// Pergunta ao cliente se o vendedor já entrou em contato (ex.: 30 minutos depois do repasse): quando foi tentada e o resultado.
+  contactCheckAt       DateTime?
+  contactCheckStatus   String?
+  /// Quando a venda ou a perda foi marcada (a pré-venda saiu de "em negociação").
+  resultAt             DateTime?
+  /// Chamar o cliente de novo depois do resultado: quantas mensagens da sequência já foram (3 = acabou ou parou), a última tentativa e o resultado.
+  reactivationStep     Int       @default(0)
+  reactivationAt       DateTime?
+  reactivationStatus   String?
   /// Chave de deduplicação da importação: reimportar a mesma planilha não duplica registros.
   externalKey    String?
   importBatch    String?
@@ -484,6 +498,7 @@ model ServiceRecord {
   @@index([phone])
   @@index([parentId])
   @@index([tenantId, kind, followStatus, dueAt])
+  @@index([tenantId, kind, saleStatus, resultAt])
   @@map("service_records")
 }
 
@@ -549,6 +564,12 @@ model Lead {
   importBatch String?
   /// Id do cliente na loja virtual (Magazord), quando ele tem cadastro lá.
   ecommerceId String?
+  /// Código do cliente (sistema da empresa): vem das pré-vendas ou do chat e preenche a próxima pré-venda.
+  customerCode   String?
+  /// Vendedor do cliente (carteira): vem da pré-venda com código ou do chat; a próxima pré-venda já vem com ele.
+  clientSellerId String?   @db.Uuid
+  /// Cliente já atendido pelo vendedor dele: o WhatsApp não abre pré-venda (a conversa segue normal no chat).
+  walletOnly     Boolean   @default(false)
   /// Dados pessoais apagados a pedido do titular (LGPD): o registro fica só para estatística.
   anonymizedAt DateTime?
 
@@ -583,6 +604,7 @@ model Lead {
 
   @@unique([tenantId, email])
   @@index([tenantId, ecommerceId])
+  @@index([tenantId, customerCode])
   @@index([tenantId, phone])
   @@index([tenantId, stage])
   @@index([tenantId, scoreGrade])
@@ -2074,6 +2096,8 @@ model AssistQuestion {
   answeredAt          DateTime?
   resolvedAt          DateTime?
   externalAnsweredAt  DateTime?
+  /// Resposta dada fora do CRM (pela Magazord ou direto no Mercado Livre), como está no Mercado Livre.
+  externalAnswer      String?
   updatedAt           DateTime  @updatedAt
 
   @@unique([tenantId, mlQuestionId])

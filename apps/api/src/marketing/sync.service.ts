@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
 import { decrypt } from '../common/crypto'
 import type { AuthUser } from '../common/types'
+import { IG_GRAPH, IG_TOKENS_KEY, type IgToken, igLoginAccounts, POSTAGENS_ACCOUNTS_KEY } from '../postagens/instagram-login'
 import { PrismaService } from '../prisma/prisma.service'
 import { DEFAULT_GA4, type Ga4Settings, GA_TOKEN_URL, signJwt } from '../relatorios/ga4'
 import { SettingsService } from '../settings/settings.service'
@@ -48,6 +49,9 @@ export type SyncStates = Partial<Record<IntegrationKey, SyncState>>
 const today = () => new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)
 const addDays = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+/** Endereço da Graph API: a da Meta, ou a do Instagram com o token no endereço (conta conectada pelo login do Instagram). */
+const igUrl = (viaLogin: boolean, token: string) => (path: string) => (viaLogin ? `${IG_GRAPH}/${path}${path.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(token)}` : `${GRAPH}/${path}`)
+const IG_ROOT = IG_GRAPH.replace(/\/v[\d.]+$/, '')
 
 /** Explica o erro de permissão da Meta (#10/#200) dizendo o que acrescentar ao token. */
 function permissionHint(message: string) {
@@ -169,10 +173,12 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
     const out: Record<string, unknown>[] = []
     let next: string | null = url
     for (let page = 0; next && page < 40; page++) {
-      const body = await this.getJson(next, { headers: { Authorization: `Bearer ${token}` } }, metaError)
+      // API do Instagram: o token já vai no endereço (e no "next")
+      const ig = next.startsWith(IG_ROOT)
+      const body = await this.getJson(next, ig ? {} : { headers: { Authorization: `Bearer ${token}` } }, metaError)
       out.push(...((body.data as Record<string, unknown>[] | undefined) ?? []))
       const n = (body.paging as { next?: string } | undefined)?.next
-      next = n && n.startsWith(GRAPH.replace(/\/v[\d.]+$/, '')) ? n : null
+      next = n && n.startsWith(ig ? IG_ROOT : GRAPH.replace(/\/v[\d.]+$/, '')) ? n : null
     }
     return out
   }
@@ -273,6 +279,20 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
         errors.push(`Instagram ${label}: ${permissionHint((err as Error).message)}`)
       }
     }
+    // Contas conectadas pelo login do Instagram (Postagens › Contas): cada uma com o próprio token.
+    const login = igLoginAccounts(
+      (await this.settings.get<{ accounts?: { network: string; externalId: string; name: string; via?: string }[] }>(tenantId, POSTAGENS_ACCOUNTS_KEY, {})).accounts,
+      await this.settings.get<Record<string, IgToken>>(tenantId, IG_TOKENS_KEY, {}),
+    )
+    for (const a of login.filter((x) => !connected.includes(x.id))) {
+      try {
+        const warnings: string[] = []
+        rows += await this.syncIgAccount(tenantId, a.id, decrypt(a.tokenEnc), {}, day, since, until, posts, warnings, true)
+        if (warnings.length) errors.push(`Instagram @${a.username}: ${warnings.join('; ')}`)
+      } catch (err) {
+        errors.push(`Instagram @${a.username}: ${(err as Error).message}`)
+      }
+    }
     // Concorrentes e perfis só públicos (vendedores fora do Gerenciador): lidos pela conta oficial.
     if (official) {
       try {
@@ -329,14 +349,16 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
   }
 
   /** Um perfil do Instagram com acesso completo: dias, publicações, stories e público. */
-  private async syncIgAccount(tenantId: string, ig: string, token: string, auth: RequestInit, day: string, since: number, until: number, posts: SocialPostRow[], warnings: string[]) {
+  private async syncIgAccount(tenantId: string, ig: string, token: string, auth: RequestInit, day: string, since: number, until: number, posts: SocialPostRow[], warnings: string[], viaLogin = false) {
+    // conta conectada pelo login do Instagram: API do Instagram, com o token no endereço
+    const u = igUrl(viaLogin, token)
     let rows = 0
-    const profile = await this.getJson(`${GRAPH}/${ig}?fields=followers_count,media_count`, auth, metaError)
+    const profile = await this.getJson(u(`${ig}?fields=followers_count,media_count`), auth, metaError)
     const daily = new Map<string, Record<string, number>>()
     const merge = (d: string, v: Record<string, number>) => daily.set(d, { ...(daily.get(d) ?? {}), ...v })
     for (const metric of ['reach', 'follower_count']) {
       try {
-        const r = await this.getJson(`${GRAPH}/${ig}/insights?metric=${metric}&period=day&since=${since}&until=${until}`, auth, metaError)
+        const r = await this.getJson(u(`${ig}/insights?metric=${metric}&period=day&since=${since}&until=${until}`), auth, metaError)
         for (const [d, v] of parseDailyInsights(r.data)) merge(d, v)
       } catch {
         // Métrica que a conta ou a versão da API não oferece: fica "Não disponível" (follower_count pede 100+ seguidores).
@@ -350,14 +372,14 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
       const range = `period=day&metric_type=total_value&since=${s0}&until=${s0 + 86_400}`
       for (const metrics of ['accounts_engaged,total_interactions,profile_links_taps,views,profile_views,website_clicks', 'accounts_engaged,total_interactions']) {
         try {
-          merge(d, parseTotalValues((await this.getJson(`${GRAPH}/${ig}/insights?metric=${metrics}&${range}`, auth, metaError)).data))
+          merge(d, parseTotalValues((await this.getJson(u(`${ig}/insights?metric=${metrics}&${range}`), auth, metaError)).data))
           break
         } catch {
           // tenta a lista menor
         }
       }
       try {
-        merge(d, parseTotalValues((await this.getJson(`${GRAPH}/${ig}/insights?metric=follows_and_unfollows&breakdown=follow_type&${range}`, auth, metaError)).data))
+        merge(d, parseTotalValues((await this.getJson(u(`${ig}/insights?metric=follows_and_unfollows&breakdown=follow_type&${range}`), auth, metaError)).data))
       } catch {
         // conta sem a métrica
       }
@@ -373,7 +395,7 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
     // Sem a permissão de publicações, o resto (seguidores, público) é gravado assim mesmo e o aviso diz o que falta.
     let media: Record<string, unknown>[] = []
     try {
-      media = (await this.graphAll(`${GRAPH}/${ig}/media?fields=id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count,media_url,thumbnail_url&limit=50`, token)).slice(0, 100)
+      media = (await this.graphAll(u(`${ig}/media?fields=id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count,media_url,thumbnail_url&limit=50`), token)).slice(0, 100)
     } catch (err) {
       warnings.push(`publicações não lidas (${permissionHint((err as Error).message)})`)
     }
@@ -383,7 +405,7 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
       let insights: Record<string, number> = {}
       for (const metrics of [reels ? 'reach,saved,shares,views,total_interactions,ig_reels_avg_watch_time' : 'reach,saved,shares,views,total_interactions', 'reach,saved,shares,views', 'reach,saved']) {
         try {
-          insights = parsePostInsights((await this.getJson(`${GRAPH}/${m.id}/insights?metric=${metrics}`, auth, metaError)).data)
+          insights = parsePostInsights((await this.getJson(u(`${m.id}/insights?metric=${metrics}`), auth, metaError)).data)
           break
         } catch {
           // tenta a lista menor (publicações antigas não têm "views").
@@ -394,19 +416,19 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
     }
     // Stories ficam 24 h na API: a sincronização a cada 6 h guarda cada um antes de sumir.
     try {
-      const stories = await this.graphAll(`${GRAPH}/${ig}/stories?fields=id,caption,media_type,media_product_type,permalink,timestamp,media_url,thumbnail_url&limit=50`, token)
+      const stories = await this.graphAll(u(`${ig}/stories?fields=id,caption,media_type,media_product_type,permalink,timestamp,media_url,thumbnail_url&limit=50`), token)
       for (const st0 of stories) {
         let insights: Record<string, number> = {}
         for (const metrics of ['reach,replies,shares,views,total_interactions', 'reach,replies']) {
           try {
-            insights = parsePostInsights((await this.getJson(`${GRAPH}/${st0.id}/insights?metric=${metrics}`, auth, metaError)).data)
+            insights = parsePostInsights((await this.getJson(u(`${st0.id}/insights?metric=${metrics}`), auth, metaError)).data)
             break
           } catch {
             // idem
           }
         }
         try {
-          insights = { ...insights, ...parseTotalValues((await this.getJson(`${GRAPH}/${st0.id}/insights?metric=navigation&breakdown=story_navigation_action_type`, auth, metaError)).data) }
+          insights = { ...insights, ...parseTotalValues((await this.getJson(u(`${st0.id}/insights?metric=navigation&breakdown=story_navigation_action_type`), auth, metaError)).data) }
         } catch {
           // sem navegação
         }
@@ -416,7 +438,7 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
     } catch {
       // conta sem permissão para stories
     }
-    await this.syncIgAudience(tenantId, ig, auth)
+    await this.syncIgAudience(tenantId, ig, auth, u)
     return rows
   }
 
@@ -434,11 +456,11 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
   }
 
   /** Público do Instagram: horas em que os seguidores ficam online e cidade, idade, gênero e país (só totais). */
-  private async syncIgAudience(tenantId: string, ig: string, auth: RequestInit) {
+  private async syncIgAudience(tenantId: string, ig: string, auth: RequestInit, u: (path: string) => string = igUrl(false, '')) {
     const out: IgAudience = { updatedAt: new Date().toISOString(), online: null, city: [], age: [], gender: [], country: [], error: null }
     const errors: string[] = []
     try {
-      out.online = parseOnlineFollowers((await this.getJson(`${GRAPH}/${ig}/insights?metric=online_followers&period=lifetime`, auth, metaError)).data)
+      out.online = parseOnlineFollowers((await this.getJson(u(`${ig}/insights?metric=online_followers&period=lifetime`), auth, metaError)).data)
     } catch (err) {
       // A Meta não oferece em toda conta/versão: a tela usa o desempenho das publicações.
       errors.push(`horários online: ${(err as Error).message}`)
@@ -448,7 +470,7 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
       let last = ''
       for (const extra of ['', '&timeframe=last_90_days', '&timeframe=last_30_days', '&timeframe=this_month']) {
         try {
-          const list = parseDemographics((await this.getJson(`${GRAPH}/${ig}/insights?metric=follower_demographics&period=lifetime&metric_type=total_value&breakdown=${b}${extra}`, auth, metaError)).data)
+          const list = parseDemographics((await this.getJson(u(`${ig}/insights?metric=follower_demographics&period=lifetime&metric_type=total_value&breakdown=${b}${extra}`), auth, metaError)).data)
           if (list.length) {
             out[b] = list
             last = ''

@@ -22,6 +22,8 @@ interface RecordShape {
   saleStatus: 'SIM' | 'NAO' | 'NEGOCIACAO'
   saleValue: Prisma.Decimal | number | null
   leadId: string | null
+  /** Código do cliente: vai para o lead (e, na pré-venda, o vendedor vira o vendedor do cliente). */
+  customerCode?: string | null
 }
 
 const KIND_LABEL: Record<ServiceKind, string> = { PRE_VENDAS: 'Pré-Vendas', POS_VENDAS: 'Pós-Vendas' }
@@ -97,6 +99,10 @@ export class LeadSyncService {
     if (!lead.unitId && record.unitId) data.unitId = record.unitId
     if (!lead.ownerId && record.sellerId) data.ownerId = record.sellerId
     if (!lead.lastActivityAt || lead.lastActivityAt < record.leadAt) data.lastActivityAt = record.leadAt
+    // Pré-venda com código do cliente: o código e o vendedor ficam no lead e preenchem a próxima pré-venda.
+    const code = record.customerCode?.trim()
+    if (code && lead.customerCode !== code) data.customerCode = code
+    if (code && record.kind === 'PRE_VENDAS' && record.sellerId && lead.clientSellerId !== record.sellerId) data.clientSellerId = record.sellerId
 
     const soldNow = record.saleStatus === 'SIM' && previous?.saleStatus !== 'SIM'
     if (soldNow) {

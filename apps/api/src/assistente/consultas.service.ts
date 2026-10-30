@@ -33,7 +33,7 @@ const VIEWS: Record<string, Prisma.Sql | null> = {
 
 const SELECT_ROW = Prisma.sql`
   SELECT q.*, i.title AS "itemTitle", i.permalink AS "itemPermalink",
-         a.id AS "attemptId", a.text AS "attemptText", a."sendStatus" AS "attemptStatus", a.origin AS "attemptOrigin", a.reviewed AS "attemptReviewed", a.confidence AS "attemptConfidence",
+         a.id AS "attemptId", a.text AS "attemptText", a."sendStatus" AS "attemptStatus", a.origin AS "attemptOrigin", a.reviewed AS "attemptReviewed", a.confidence AS "attemptConfidence", ${ANSWER_ORIGIN} AS "answerOrigin",
          (SELECT COUNT(*)::int FROM assist_sales s WHERE s."questionId" = q.id AND ${SOLD}) AS "salesCount",
          (SELECT SUM(s.total)::float FROM assist_sales s WHERE s."questionId" = q.id AND ${SOLD}) AS "salesTotal",
          (SELECT COUNT(*)::int FROM assist_sales s WHERE s."questionId" = q.id AND ${ABANDON}) AS "abandonCount",
@@ -135,6 +135,12 @@ export class AssistQueriesService {
       n(Prisma.sql`${pend} AND status <> 'aguardando_cliente' AND "receivedAt" < ${new Date(Date.now() - 86_400_000)}`),
     ])
     return { rows: rows.slice((f.page - 1) * f.pageSize, f.page * f.pageSize), total: rows.length, page: f.page, pageSize: f.pageSize, stats: { semResposta, aguardandoAnalise, conhecimentoTecnico, encaminhadas, resolvidasHoje, mais24h }, reasons: REASONS }
+  }
+
+  /** Número do menu: perguntas esperando resposta (as que aguardam o cliente não contam). */
+  async pendingCount(tenantId: string) {
+    const r = await this.prisma.$queryRaw<{ n: number }[]>`SELECT COUNT(*)::int AS n FROM assist_questions WHERE "tenantId" = ${tenantId}::uuid AND status IN (${list(PENDING_STATUSES)}) AND status <> 'aguardando_cliente'`
+    return { pending: r[0]!.n }
   }
 
   async meta(tenantId: string) {

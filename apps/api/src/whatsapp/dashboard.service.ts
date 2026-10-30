@@ -5,6 +5,7 @@ import type { Prisma } from '../generated/prisma/client'
 import { panelPeriod } from '../googleads/painel'
 import { PrismaService } from '../prisma/prisma.service'
 import { ChatService } from './chat.service'
+import { describeHours } from './envio'
 import { analyze, inBusiness, insights, localSlot, type Msg, SESSION_GAP_MS, slaBuckets, stats, waitingBuckets } from './metricas'
 
 const DAY = 86_400_000
@@ -46,7 +47,8 @@ export class WhatsappDashboardService {
           select: { conversationId: true, fromMe: true, sentAt: true, sentById: true, type: true },
         })
       : []
-    const { sessions, turns } = analyze(msgs)
+    const hours = (await this.chat.rules(user.tenantId)).businessHours
+    const { sessions, turns } = analyze(msgs, hours)
     const inP = (d: Date) => d >= start && d < end
     const inPrev = (d: Date) => d >= prevStart && d < start
 
@@ -176,12 +178,12 @@ export class WhatsappDashboardService {
     ])
     const calls = inbound.filter((m) => m.type === 'chamada').length
 
-    const outside = inbound.length ? inbound.filter((m) => !inBusiness(m.sentAt)).length / inbound.length : null
+    const outside = inbound.length ? inbound.filter((m) => !inBusiness(m.sentAt, hours)).length / inbound.length : null
     const conversion = records.length >= 5 ? sold.length / records.length : null
     return {
       from,
       to,
-      businessHours: 'seg. a sex. das 8h às 18h e sáb. das 8h às 12h',
+      businessHours: hours.enabled ? describeHours(hours) : 'seg. a sex. das 8h às 18h e sáb. das 8h às 12h',
       totals: {
         received: received.length,
         initiated: initiated.length,

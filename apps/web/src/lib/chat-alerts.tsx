@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { api } from './api'
 import { useAuth } from './auth'
+import type { BusinessHours } from './horario'
 
 export interface ChatAlerts {
   unreadConversations: number
@@ -12,7 +13,7 @@ export interface ChatAlerts {
   dueReminders: { id: string; conversationId: string; name: string; note: string | null; dueAt: string; notified: boolean }[]
   upcomingReminders: number
   /** Clientes esperando resposta além do prazo amarelo (últimas 24 h), os mais antigos primeiro. */
-  waiting?: { yellowMinutes: number; redMinutes: number; count: number; red: number; items: { conversationId: string; name: string; preview: string | null; since: string }[] }
+  waiting?: { yellowMinutes: number; redMinutes: number; hours?: BusinessHours; count: number; red: number; items: { conversationId: string; name: string; preview: string | null; since: string }[] }
 }
 
 const waitText = (m: number) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60 ? `${m % 60} min` : ''}`.trim())

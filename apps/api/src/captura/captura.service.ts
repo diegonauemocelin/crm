@@ -368,10 +368,11 @@ export class CapturaService {
       select: { id: true },
     })
     if (recent) return recent.id
-    const lead = await this.prisma.lead.findUnique({ where: { id: leadId }, select: { name: true, email: true, phone: true, state: true, city: true, ownerId: true, unitId: true } })
-    // Sem vendedor definido: volta para quem atendeu este cliente da última vez (histórico de atendimentos).
-    const last = ownerId || lead?.ownerId ? null : await this.prisma.serviceRecord.findFirst({ where: { tenantId, leadId, deletedAt: null, sellerId: { not: null } }, orderBy: { leadAt: 'desc' }, select: { sellerId: true } })
-    const sellerId = ownerId ?? lead?.ownerId ?? last?.sellerId ?? null
+    const lead = await this.prisma.lead.findUnique({ where: { id: leadId }, select: { name: true, email: true, phone: true, state: true, city: true, ownerId: true, unitId: true, customerCode: true, clientSellerId: true } })
+    // Cliente com vendedor (código do cliente cadastrado): a pré-venda já vem com o vendedor dele. Sem vendedor
+    // definido: volta para quem atendeu este cliente da última vez (histórico de atendimentos).
+    const last = lead?.clientSellerId || ownerId || lead?.ownerId ? null : await this.prisma.serviceRecord.findFirst({ where: { tenantId, leadId, deletedAt: null, sellerId: { not: null } }, orderBy: { leadAt: 'desc' }, select: { sellerId: true } })
+    const sellerId = lead?.clientSellerId ?? ownerId ?? lead?.ownerId ?? last?.sellerId ?? null
     const seller = sellerId ? await this.prisma.seller.findFirst({ where: { id: sellerId, tenantId }, select: { id: true, unitId: true } }) : null
     const origin =
       (await this.prisma.lookupItem.findFirst({ where: { tenantId, type: 'ORIGEM', name: { equals: originName, mode: 'insensitive' } }, select: { id: true } })) ??
@@ -384,6 +385,7 @@ export class CapturaService {
         kind: 'PRE_VENDAS',
         leadAt: new Date(),
         name: (c.name ?? lead?.name ?? c.email ?? lead?.email ?? 'Contato do site').slice(0, 160),
+        customerCode: lead?.customerCode ?? null,
         phone: c.phone ?? lead?.phone ?? null,
         email: c.email ?? lead?.email ?? null,
         state: c.state ?? lead?.state ?? null,

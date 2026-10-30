@@ -1,6 +1,8 @@
 /**
- * Resumo do vendedor (semanal, WhatsApp): ciclo de sexta a quinta, enviado na sexta seguinte para cada vendedor que
- * recebeu clientes da pré-venda repassados no ciclo, com as informações escolhidas em Marketing › Relatórios e alertas.
+ * Resumo do vendedor (WhatsApp): semanal (ciclo de sexta a quinta, enviado na sexta seguinte), quinzenal (1 a 15,
+ * enviado no dia 16; 16 ao fim do mês, enviado no dia 1º) ou mensal (enviado no dia 1º), para cada vendedor que
+ * recebeu clientes da pré-venda repassados no ciclo e para os números informados, com as informações escolhidas em
+ * Marketing › Relatórios e alertas.
  * Funções puras (testadas em test/relatorio-semanal.spec.ts) e a leitura do banco (loadWeekly).
  */
 import type { PrismaService } from '../prisma/prisma.service'
@@ -28,10 +30,18 @@ export type WeeklySection = (typeof WEEKLY_SECTIONS)[number]['key']
 const SECTION_KEYS = new Set<string>(WEEKLY_SECTIONS.map((s) => s.key))
 export const DEFAULT_SECTIONS: WeeklySection[] = ['repassados', 'vendas', 'conversao', 'valor', 'negociacao', 'anterior', 'equipe', 'fechadas', 'sugestoes']
 
+export type ReportFrequency = 'SEMANAL' | 'QUINZENAL' | 'MENSAL'
+export const FREQUENCIES: ReportFrequency[] = ['SEMANAL', 'QUINZENAL', 'MENSAL']
+const FREQUENCY_WORD: Record<ReportFrequency, string> = { SEMANAL: 'semanal', QUINZENAL: 'quinzenal', MENSAL: 'mensal' }
+
 export interface SellerWeekly {
   enabled: boolean
-  /** Horário de São Paulo (HH:MM) a partir do qual o resumo sai, na sexta-feira. */
+  /** Semanal (sexta), quinzenal (dias 1º e 16) ou mensal (dia 1º). */
+  frequency: ReportFrequency
+  /** Horário de São Paulo (HH:MM) a partir do qual o resumo sai, no dia do envio. */
   time: string
+  /** Cada vendedor recebe o dele. Desligado: só os números informados (managerPhones) recebem o resumo da equipe. */
+  toSellers: boolean
   /** Número da empresa que envia (vazio: o primeiro conectado). */
   numberId: string | null
   /** Todos os vendedores com repasse no ciclo ou só os escolhidos em sellerIds. */
@@ -45,13 +55,15 @@ export interface SellerWeekly {
   gapMax: number
 }
 
-export const DEFAULT_WEEKLY: SellerWeekly = { enabled: false, time: '08:00', numberId: null, allSellers: true, sellerIds: [], sections: DEFAULT_SECTIONS, managerPhones: [], gapMin: 2, gapMax: 10 }
+export const DEFAULT_WEEKLY: SellerWeekly = { enabled: false, frequency: 'SEMANAL', toSellers: true, time: '08:00', numberId: null, allSellers: true, sellerIds: [], sections: DEFAULT_SECTIONS, managerPhones: [], gapMin: 2, gapMax: 10 }
 
 export function cleanWeekly(raw: Partial<SellerWeekly> | null | undefined): SellerWeekly {
   const r = raw ?? {}
   const sections = Array.isArray(r.sections) ? WEEKLY_SECTIONS.map((s) => s.key).filter((k) => (r.sections as string[]).includes(k)) : DEFAULT_SECTIONS
   return {
     enabled: r.enabled === true,
+    frequency: FREQUENCIES.includes(r.frequency as ReportFrequency) ? (r.frequency as ReportFrequency) : 'SEMANAL',
+    toSellers: r.toSellers !== false,
     time: typeof r.time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(r.time) ? r.time : DEFAULT_WEEKLY.time,
     numberId: typeof r.numberId === 'string' ? r.numberId : null,
     allSellers: r.allSellers !== false,
@@ -77,7 +89,7 @@ export const weeklyGapMs = (c: Pick<SellerWeekly, 'gapMin' | 'gapMax'>, random =
 
 export const isWeeklySection = (k: string): k is WeeklySection => SECTION_KEYS.has(k)
 
-export const weeklyFor = (c: SellerWeekly, sellerId: string) => c.enabled && (c.allSellers || c.sellerIds.includes(sellerId))
+export const weeklyFor = (c: SellerWeekly, sellerId: string) => c.enabled && c.toSellers && (c.allSellers || c.sellerIds.includes(sellerId))
 
 const DAY = 86_400_000
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
@@ -104,6 +116,53 @@ export function weeklyCycle(time: string, now = new Date()) {
     prevFrom: new Date(from.getTime() - 7 * DAY),
     label: `${ddmm(fromDay)} a ${ddmm(toDay)}`,
     due: weekday === 5 && today === sendDay && local.toISOString().slice(11, 16) >= time,
+  }
+}
+
+export type ReportCycle = ReturnType<typeof weeklyCycle> & { word: string }
+
+const shiftMonth = (iso: string, n: number) => {
+  const d = new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1 + n, 1))
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Ciclo do resumo na frequência escolhida (horário de São Paulo). Quinzenal: 1 a 15 (sai no dia 16) e 16 ao fim do
+ * mês (sai no dia 1º). Mensal: o mês anterior (sai no dia 1º). "due" só no dia do envio, a partir do horário.
+ */
+export function reportCycle(frequency: ReportFrequency, time: string, now = new Date()): ReportCycle {
+  if (frequency === 'SEMANAL') return { ...weeklyCycle(time, now), word: 'semanal' }
+  const local = new Date(now.getTime() - 3 * 3_600_000).toISOString()
+  const today = local.slice(0, 10)
+  const day = Number(today.slice(8, 10))
+  const month = `${today.slice(0, 7)}-01`
+  const at = (iso: string) => new Date(`${iso}T00:00:00-03:00`)
+  const dayOf = (monthIso: string, d: number) => `${monthIso.slice(0, 8)}${String(d).padStart(2, '0')}`
+  let fromDay: string
+  let sendDay: string
+  let prevFromDay: string
+  if (frequency === 'MENSAL') {
+    sendDay = month
+    fromDay = shiftMonth(month, -1)
+    prevFromDay = shiftMonth(month, -2)
+  } else if (day >= 16) {
+    sendDay = dayOf(month, 16)
+    fromDay = month
+    prevFromDay = dayOf(shiftMonth(month, -1), 16)
+  } else {
+    sendDay = month
+    fromDay = dayOf(shiftMonth(month, -1), 16)
+    prevFromDay = shiftMonth(month, -1)
+  }
+  const toDay = new Date(Date.parse(`${sendDay}T00:00:00Z`) - DAY).toISOString().slice(0, 10)
+  return {
+    key: sendDay,
+    from: at(fromDay),
+    to: at(sendDay),
+    prevFrom: at(prevFromDay),
+    label: `${ddmm(fromDay)} a ${ddmm(toDay)}`,
+    due: today === sendDay && local.slice(11, 16) >= time,
+    word: FREQUENCY_WORD[frequency],
   }
 }
 
@@ -199,12 +258,13 @@ const brl = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigi
 const list = (l: { name: string; count: number }[]) => l.map((x) => `${x.name} (${x.count})`).join(', ')
 
 /** Mensagem do WhatsApp (negrito com *texto*), só com as informações escolhidas. */
-export function weeklyMessage(o: { seller: string; label: string; stats: WeeklyStats; prev: WeeklyStats | null; team: { conversion: number | null }; closedInWeek: number; suggestions: string[]; sections?: WeeklySection[] }) {
+export function weeklyMessage(o: { seller: string; label: string; stats: WeeklyStats; prev: WeeklyStats | null; team: { conversion: number | null }; closedInWeek: number; suggestions: string[]; sections?: WeeklySection[]; word?: string }) {
   const s = o.stats
   const has = (k: WeeklySection) => (o.sections ?? DEFAULT_SECTIONS).includes(k)
   const first = o.seller.trim().split(/\s+/)[0] ?? o.seller
   const vs = (before: number | null | undefined, kind: 'n' | '%' = 'n') => (!has('anterior') || before === null || before === undefined ? '' : ` (ciclo anterior: ${kind === '%' ? fmtPct(before) : before})`)
-  const lines = [`*Resumo semanal: ${o.label}*`, `Olá, ${first}! Seu resultado com os clientes da pré-venda repassados para você:`, '']
+  const word = o.word ?? 'semanal'
+  const lines = [`*Resumo ${word}: ${o.label}*`, `Olá, ${first}! Seu resultado com os clientes da pré-venda repassados para você:`, '']
   if (has('repassados')) lines.push(`📥 Leads repassados: *${s.forwarded}*${vs(o.prev?.forwarded)}`)
   if (has('vendas')) lines.push(`✅ Vendas realizadas: *${s.sales}*${vs(o.prev?.sales)}`)
   if (has('conversao')) lines.push(`📈 Conversão (vendas ÷ leads): *${fmtPct(s.conversion)}*${vs(o.prev?.conversion, '%')}`)
@@ -213,7 +273,7 @@ export function weeklyMessage(o: { seller: string; label: string; stats: WeeklyS
   if (has('motivos') && s.lostReasons.length) lines.push(`❌ Motivos de perda: ${list(s.lostReasons)}`)
   if (has('retorno')) lines.push(`📞 Retorno ao cliente: ${fmtPct(s.returnRate)}${s.returnHours !== null ? ` · em média ${fmtHours(s.returnHours)} depois do repasse` : ''}`)
   if (has('equipe') && o.team.conversion !== null) lines.push(`👥 Média da equipe: ${fmtPct(o.team.conversion)}`)
-  if (has('fechadas') && o.closedInWeek > s.sales) lines.push(`🔁 Na semana você também fechou ${o.closedInWeek - s.sales} venda(s) de repasses anteriores.`)
+  if (has('fechadas') && o.closedInWeek > s.sales) lines.push(`🔁 ${word === 'semanal' ? 'Na semana' : 'No período'} você também fechou ${o.closedInWeek - s.sales} venda(s) de repasses anteriores.`)
   if (has('marcas') && s.brands.length) lines.push(`🚜 Marcas mais pedidas: ${list(s.brands)}`)
   if (has('pecas') && s.partTypes.length) lines.push(`🔧 Peças mais pedidas: ${list(s.partTypes)}`)
   if (has('origens') && s.origins.length) lines.push(`📣 Origem dos leads: ${list(s.origins)}`)
@@ -232,14 +292,14 @@ export interface ManagerLine {
  * Resumo da equipe para o gestor: os totais do ciclo e uma linha por vendedor (leads, vendas, conversão e, se
  * escolhidos, valor vendido e quem ainda está sem contato), com os destaques da semana.
  */
-export function managerMessage(label: string, lines: ManagerLine[], sections: WeeklySection[] = DEFAULT_SECTIONS) {
+export function managerMessage(label: string, lines: ManagerLine[], sections: WeeklySection[] = DEFAULT_SECTIONS, word = 'semanal') {
   const has = (k: WeeklySection) => sections.includes(k)
   const sum = (f: (s: WeeklyStats) => number) => lines.reduce((a, l) => a + f(l.stats), 0)
   const forwarded = sum((s) => s.forwarded)
   const sales = sum((s) => s.sales)
   const revenue = Math.round(sum((s) => s.revenue) * 100) / 100
   const noContact = sum((s) => s.noContact.length)
-  const out = [`*Resumo semanal da equipe: ${label}*`, '', `📥 Leads repassados: *${forwarded}*`, `✅ Vendas realizadas: *${sales}*`, `📈 Conversão (vendas ÷ leads): *${fmtPct(pct(sales, forwarded))}*`]
+  const out = [`*Resumo ${word} da equipe: ${label}*`, '', `📥 Leads repassados: *${forwarded}*`, `✅ Vendas realizadas: *${sales}*`, `📈 Conversão (vendas ÷ leads): *${fmtPct(pct(sales, forwarded))}*`]
   if (has('valor') && revenue) out.push(`💰 Valor vendido: ${brl(revenue)}`)
   if ((has('sem_contato') || has('sugestoes')) && noContact) out.push(`⚠️ Clientes ainda sem contato registrado: ${noContact}`)
   out.push('', '*Por vendedor*')
@@ -258,7 +318,7 @@ export function managerMessage(label: string, lines: ManagerLine[], sections: We
 }
 
 /** Leitura do ciclo: repasses por vendedor (ciclo e anterior), média da equipe e vendas fechadas na semana. */
-export async function loadWeekly(prisma: PrismaService, tenantId: string, cycle: ReturnType<typeof weeklyCycle>, sections: WeeklySection[] = DEFAULT_SECTIONS) {
+export async function loadWeekly(prisma: PrismaService, tenantId: string, cycle: ReturnType<typeof weeklyCycle> & { word?: string }, sections: WeeklySection[] = DEFAULT_SECTIONS) {
   const select = { sellerId: true, name: true, saleStatus: true, saleValue: true, returnStatus: true, calledAt: true, forwardedAt: true, returnedAt: true, brandIds: true, partTypeIds: true, origin: { select: { name: true } }, lostReason: { select: { name: true } }, seller: { select: { id: true, name: true, phone: true, active: true } } } as const
   const base = { tenantId, kind: 'PRE_VENDAS' as const, deletedAt: null, forwarded: true, sellerId: { not: null } }
   const [now, before, closed] = await Promise.all([
@@ -305,7 +365,7 @@ export async function loadWeekly(prisma: PrismaService, tenantId: string, cycle:
       const prev = prevRows ? weeklyStats(prevRows) : null
       const seller = sellers.get(sellerId)!
       const suggestions = weeklySuggestions(stats, { conversion: team.conversion }, prev)
-      return { seller, stats, prev, message: weeklyMessage({ seller: seller.name, label: cycle.label, stats, prev, team: { conversion: team.conversion }, closedInWeek: closedBy.get(sellerId) ?? 0, suggestions, sections }) }
+      return { seller, stats, prev, message: weeklyMessage({ seller: seller.name, label: cycle.label, stats, prev, team: { conversion: team.conversion }, closedInWeek: closedBy.get(sellerId) ?? 0, suggestions, sections, word: cycle.word }) }
     })
     .sort((a, b) => a.seller.name.localeCompare(b.seller.name, 'pt-BR'))
 }

@@ -2,159 +2,298 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
-      "version": "0.100.0",
-      "date": "2026-10-27",
-      "title": "Gestão de fretes: tabelas, cotação, pedidos, CT-e, conciliação e faturas por filial",
+      "version": "1.0.3",
+      "date": "2026-10-29",
+      "title": "Chamar o cliente de novo depois que a pré-venda fechou",
       "changes": [
         {
           "type": "novo",
-          "area": "Fretes",
-          "text": "Novo módulo Fretes, separado no menu e com permissões próprias (painel, cotações, tabelas, transportadoras e filiais). Cada pessoa vê as suas filiais; quem tem acesso a todas escolhe \"Todas as filiais (visão global)\" no seletor de filial do cabeçalho."
+          "area": "Mensagens automáticas",
+          "text": "Chamar o cliente de novo: depois que a pré-venda fecha, o cliente recebe até 3 mensagens pelo WhatsApp, cada uma tantos dias depois do resultado. Uma sequência para quem não comprou (padrão 30, 90 e 180 dias) e outra de recompra para quem comprou (60, 120 e 180 dias), com textos prontos que perguntam como está o cliente e oferecem filtros, material de desgaste e peças. Dias e textos ajustáveis, {marca} vira a marca da máquina da pré-venda, sai por um número escolhido, só no horário comercial e com intervalo entre as mensagens. Para quando o cliente responde ou volta a chamar. Vem desligada: ligue em Configurações › Mensagens automáticas."
+        }
+      ]
+    },
+    {
+      "version": "1.0.2",
+      "date": "2026-10-28",
+      "title": "Mensagem do repasse na hora e pergunta ao cliente se o vendedor já entrou em contato",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Mensagens automáticas",
+          "text": "A mensagem do repasse ao vendedor agora sai assim que o Pré-Vendas marca \"Repassou ao vendedor\" (respeitando o horário comercial e o intervalo entre mensagens). Quem quiser pode voltar a pôr um tempo de espera."
         },
         {
           "type": "novo",
-          "area": "Fretes",
-          "text": "Transportadoras: CNPJ, razão social, nome na cotação, contatos, modalidades, filiais atendidas, códigos nos sistemas externos e \"usar recebedor como destinatário\", com as tabelas vinculadas e quantas vezes cada uma foi cotada e escolhida."
+          "area": "Mensagens automáticas",
+          "text": "Pergunta \"O vendedor já entrou em contato?\": 30 minutos depois do repasse (tempo ajustável), o cliente recebe uma mensagem perguntando se o vendedor já chamou. Vai uma vez só, só enquanto a pré-venda está em negociação, e a resposta chega no chat. Vem desligada: ligue em Configurações › Mensagens automáticas."
+        }
+      ]
+    },
+    {
+      "version": "1.0.1",
+      "date": "2026-10-28",
+      "title": "Comparativo do mês com projeção, áudio em 1,5x e 2x e conversa não lida",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Dashboard executivo",
+          "text": "Comparativo do mês: gráfico do faturamento acumulado dia a dia do mês anterior e do mês em andamento, com a projeção até o fim do mês pelo ritmo de hoje. Dá para ver o total ou cada canal (atendimento, e-commerce, marketplace), e a tabela mostra todos lado a lado: mês anterior, mesmo ponto do mês anterior, mês atual, ritmo, projeção e crescimento possível."
         },
         {
           "type": "novo",
-          "area": "Fretes",
-          "text": "Tabelas de frete com vigência, filiais, tipo de pessoa, faixas de peso e valor, modal, tabela de carga, expedição e código de serviço. Os valores ficam em versões: a publicada calcula, alterar cria um rascunho, e as versões anteriores ficam guardadas para auditoria."
+          "area": "Chat",
+          "text": "Áudio com velocidade: botão 1x, 1,5x e 2x ao lado de cada áudio. A última velocidade escolhida vale para os próximos áudios."
         },
         {
           "type": "novo",
-          "area": "Fretes",
-          "text": "Importação da planilha da transportadora (Excel ou CSV): o sistema acha o cabeçalho, sugere o que é cada coluna (inclusive faixas de peso em colunas, como \"Até 10 kg | Até 30 kg\"), valida CEPs, números, percentuais e duplicidades linha a linha e mostra o relatório antes de gravar. A planilha vira rascunho; o original fica para baixar no Histórico de Importação."
+          "area": "Chat",
+          "text": "Marcar como não lida: botão \"Não lida\" no topo da conversa. Ela fecha e volta a aparecer como não lida na lista, até alguém abrir de novo."
+        }
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "date": "2026-10-28",
+      "title": "Pré e pós-venda em massa, mapa do Brasil, situação no resumo do vendedor e Instagram mais inteligente",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Pré e Pós-Vendas",
+          "text": "O pós-venda não abre mais sozinho quando a pré-venda fica Vendeu ou Perdida. Para abrir, selecione os atendimentos em Pré-Vendas e use \"Enviar para Pós-Vendas\" (em massa). Quem já tem pós-venda não ganha outro."
         },
         {
           "type": "novo",
-          "area": "Fretes",
-          "text": "Componentes do frete com fórmulas (ad valorem, GRIS, pedágio por fração, TAS, T-CPF, TDA, TRT, TDE, despacho, reentrega e outros), condição de incidência, ordem de aplicação, \"soma no imposto\" e nome no CT-e, com variáveis clicáveis, validação da fórmula e simulador. O editor aceita só variáveis, operadores e funções autorizadas."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Cotação de frete: filial de origem, CEP de destino (cidade e UF pelo CEP), PF/PJ, valor da NF e vários volumes com medidas. Calcula peso cubado e taxado, a regra do destino, cada componente e o ICMS, e compara as transportadoras por preço ou prazo, com o motivo de quem não atende (sem cobertura, restrição, tabela vencida, fora da faixa)."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Toda cotação fica salva com a versão de tabela usada e pode ser reproduzida depois com os mesmos valores. Escolher uma transportadora que não é a mais barata pede o motivo; tabela vencida só entra com liberação justificada, registrada na auditoria."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Painel de fretes com cotações, frete escolhido, custo por kg, frete sobre o valor da mercadoria, economia estimada, tabelas vencidas ou vencendo, e rankings por transportadora, filial e UF, só com números calculados dos registros."
+          "area": "Pré e Pós-Vendas",
+          "text": "Fechar em massa: selecione os atendimentos e use \"Fechar pré-venda\" ou \"Fechar pós-venda\". A pré-venda fica marcada como Fechada e o pós-venda como Resolvido; as conversas abertas desses clientes no chat são finalizadas, sem mensagem para eles."
         },
         {
           "type": "melhoria",
-          "area": "Usuários",
-          "text": "Cadastro do usuário com \"Outras unidades que acessa\": gestores de mais de uma filial enxergam todas elas no módulo de fretes."
+          "area": "Dashboard",
+          "text": "\"Por estado\" agora é um mapa do Brasil de verdade, com cada estado pintado pela quantidade de atendimentos. Toque ou passe o mouse sobre o estado para ver atendimentos e vendas."
         },
         {
           "type": "melhoria",
-          "area": "Fretes",
-          "text": "Importação escolhe sozinha a aba com a tabela (planilhas com abas de contrato, generalidades e taxas, como as da Expresso São Miguel) e reconhece TAXA, QUILO, % NF, GRIS e GRIS %, pedágio por fração e prazo mínimo/máximo."
+          "area": "Atendimento",
+          "text": "O resumo do dia enviado ao vendedor mostra, ao lado do nome de cada cliente, a situação: Vendeu, Não vendeu (com o motivo) ou Aguardando retorno do vendedor. A tela do resumo também mostra a situação, em cores."
+        },
+        {
+          "type": "novo",
+          "area": "Chat",
+          "text": "Na ficha do cliente da conversa, botão \"Enviar cliente ao vendedor\": manda ao vendedor, pelo mesmo número de WhatsApp, uma mensagem com o nome e o código do cliente e o cartão de contato dele, do mesmo jeito que já se envia ao cliente o contato do vendedor."
+        },
+        {
+          "type": "novo",
+          "area": "Marketing › Instagram",
+          "text": "Aba \"Análise dos posts\": cada post aparece com quantas vezes passou do alcance normal do próprio perfil (acima, normal ou abaixo), além de envios e salvamentos por mil alcançados. Mostra o resultado por formato e por dia da semana e, no topo, o que funcionou melhor. Exporta em CSV."
+        },
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "Prévia do feed: abaixo da legenda aparece o que o Instagram mostra antes do \"... mais\", e uma conferência que atualiza enquanto você digita (tamanho, primeira linha, gancho concreto, limite de 5 hashtags, um só pedido ao cliente e palavras de busca)."
+        },
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "Campo \"Palavras de busca\" no editor: a IA coloca essas palavras na legenda e a conferência avisa se faltar alguma."
+        },
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "Roteiro de Reels com IA: 3 aberturas com nota de 0 a 100 (forte, ok ou fraca) e o ponto mais fraco de cada uma, o roteiro com o tempo de cada fala e o texto da tela, avisos (abertura longa, fala longa, final que não retoma o começo) e a legenda sugerida. Dá para editar, conferir de novo, copiar ou usar a legenda na postagem."
+        },
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "Plano da semana: monta a próxima semana (segunda a sábado), dizendo o que postar, em qual formato e em qual dia, com base no que deu resultado no Instagram nos últimos 90 dias. As postagens viram rascunhos."
         },
         {
           "type": "melhoria",
-          "area": "Fretes",
-          "text": "Coluna com texto (ex.: ICMS \"CONFORME LEGISLAÇÃO\", \"De 2 a 6 dias\") não é mais sugerida como valor, evitando erro em todas as linhas."
-        },
+          "area": "Postagens",
+          "text": "A IA de legendas segue as regras novas do Instagram: de 3 a 5 hashtags, primeira linha curta e concreta e um único pedido ao cliente. O Calendário com IA também passou a usar o que deu resultado nos posts."
+        }
+      ]
+    },
+    {
+      "version": "0.104.1",
+      "date": "2026-10-28",
+      "title": "Venda adicional reconhece modelos curtos (JCB 3C)",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Assistente ML",
+          "text": "A indicação de outros produtos para a mesma máquina não reconhecia modelos de 2 caracteres, como JCB 3C. Agora, numa pergunta como \"Filtro de ar do motor para JCB 3C\", a resposta indica os outros filtros da 3C (ex.: filtro de ar secundário e filtro de óleo do motor), sem misturar com a 3CX."
+        }
+      ]
+    },
+    {
+      "version": "0.104.0",
+      "date": "2026-10-28",
+      "title": "Perguntas respondidas fora do CRM",
+      "changes": [
         {
           "type": "novo",
-          "area": "Fretes",
-          "text": "Isenção de cubagem por volume na versão da tabela (ex.: São Miguel cobra pelo peso real até 0,30 m³)."
+          "area": "Assistente ML",
+          "text": "Pergunta respondida fora do CRM (pela Magazord ou direto no Mercado Livre) aparece marcada como \"Fora do CRM\" em Perguntas e respostas, e a ficha mostra a resposta dada e quando. O Mercado Livre não informa se foi pela Magazord ou pelo site, só que não foi pelo CRM."
         },
         {
           "type": "melhoria",
-          "area": "Fretes",
-          "text": "A observação da transportadora para o destino (taxa por volume, dias de entrega) aparece como aviso na cotação."
+          "area": "Assistente ML",
+          "text": "Toda resposta dada fora do CRM entra sozinha na base de conhecimento, já ativa, mesmo com o aprendizado automático desligado ou em revisão."
+        }
+      ]
+    },
+    {
+      "version": "0.103.1",
+      "date": "2026-10-28",
+      "title": "Respostas do Mercado Livre só contam quando aparecem lá",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Assistente ML",
+          "text": "Resposta só fica como Enviada quando o Mercado Livre mostra a pergunta respondida. Antes, bastava o Mercado Livre receber o pedido, e havia resposta marcada como enviada que não aparecia para o cliente."
+        },
+        {
+          "type": "correcao",
+          "area": "Assistente ML",
+          "text": "Pergunta dada como respondida ou resolvida no CRM que continua sem resposta no Mercado Livre volta sozinha para Perguntas pendentes, para responder de novo."
+        }
+      ]
+    },
+    {
+      "version": "0.103.0",
+      "date": "2026-10-28",
+      "title": "Número de perguntas pendentes no menu",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Marketplaces",
+          "text": "No menu, ao lado de \"Perguntas pendentes\", aparece uma bolinha com o número de perguntas do Mercado Livre esperando resposta, como no chat. Atualiza sozinho a cada minuto."
+        }
+      ]
+    },
+    {
+      "version": "0.102.0",
+      "date": "2026-10-27",
+      "title": "Código do cliente, prazos no horário comercial e mensagem depois do repasse",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Chat WhatsApp",
+          "text": "Botão Cliente na conversa: informe o código do cliente e o vendedor dele. Eles vão para a base de leads e para a pré-venda em aberto, e na próxima vez que o cliente chamar a pré-venda já vem com o código e o vendedor. As pré-vendas antigas que já tinham código passaram o código e o vendedor para a base de leads."
         },
         {
           "type": "novo",
-          "area": "Fretes",
-          "text": "Taxas por destinatário: na ficha da transportadora, importe as listas de TDA, TDE, TDC e TVD (como as abas da Expresso São Miguel). Na cotação, a taxa entra sozinha quando o CPF/CNPJ do destinatário está na lista (ex.: TDE de R$ 222,00 ou 20% do frete, o maior). Só o documento, a cidade e a taxa são guardados, sem o nome."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Cotação de envio sem nota fiscal (SVD, com declaração de conteúdo): usa o preço SVD da tabela quando a transportadora tem."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Alíquota de ICMS própria para entregas no mesmo estado da filial de origem, além da interestadual."
+          "area": "Chat WhatsApp",
+          "text": "Cliente da carteira do vendedor: marcando no botão Cliente, não conta como venda perdida, a pré-venda aberta sai e as próximas mensagens dele não abrem outra. A conversa continua normal, e o botão \"Enviar contato do vendedor\" manda o cartão do vendedor para o cliente."
         },
         {
           "type": "melhoria",
-          "area": "Fretes",
-          "text": "A vigência da tabela é informada no assistente de importação, a cada planilha nova (fica na auditoria)."
+          "area": "Chat WhatsApp",
+          "text": "Marcar o contato como \"Outro (não é venda)\" já exclui a pré-venda aberta (ainda não repassada), sem perguntar."
         },
         {
           "type": "melhoria",
-          "area": "Fretes",
-          "text": "Importação reconhece a coluna \"Pequenos volumes S.V.D.\" (sem valor declarado)."
+          "area": "Chat WhatsApp",
+          "text": "Saiu o lembrete de retorno do chat (botão, faixa e filtro). Lembretes já criados ainda avisam no horário."
         },
         {
           "type": "novo",
-          "area": "Fretes",
-          "text": "ICMS do frete automático: entre estados, 7% ou 12% pela Resolução do Senado 22/1989; dentro do mesmo estado, a alíquota interna da tabela de ICMS em Fretes → Filiais (SC 17% já cadastrada, conferida em CT-e). UF sem alíquota fica em aberto e a cotação avisa, sem calcular imposto inventado."
+          "area": "Pré-Vendas",
+          "text": "Mensagem depois do repasse ao vendedor (Configurações › Mensagens automáticas): um tempo depois de marcar \"Repassou ao vendedor\" (padrão 2 horas), o cliente recebe uma mensagem personalizada pelo WhatsApp, como a do dia seguinte. Só sai em horário comercial e só para pré-vendas em negociação."
+        },
+        {
+          "type": "novo",
+          "area": "Pré-Vendas",
+          "text": "Venda perdida sem pós-venda (Configurações › Prazos e alertas): pré-venda marcada como não vendida por \"Sem produto disponível\" (ou os motivos escolhidos) não vai para o Pós-Vendas e o atendimento no chat é finalizado na hora."
         },
         {
           "type": "melhoria",
-          "area": "Fretes",
-          "text": "A tabela de frete ainda pode fixar a alíquota (aba Componentes) ou trazer a coluna de alíquota por destino, que valem mais que a regra automática. A cotação antiga é reproduzida com a alíquota da época."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Em Fretes → Filiais → ICMS do frete, \"Atualizar pelos CT-e (XML)\": envie os XMLs e cada frete dentro de um mesmo estado com ICMS tributado atualiza a alíquota interna daquela UF (vale o CT-e mais recente; redução de base vira a alíquota efetiva). Cada alíquota mostra se veio do cadastro manual ou de qual CT-e, e a mudança fica na auditoria."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Pedidos e expedição: pedido gerado pela cotação (guarda o valor escolhido), cadastrado à mão ou importado de planilha do ERP; situação do envio com histórico (coleta, despachado, em trânsito, ocorrência, entregue), previsão de entrega e filtro de atrasados."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "CT-e: importação dos XMLs (um a um ou em .zip, com eventos de cancelamento). O sistema acha a transportadora pelo CNPJ, a filial pelo CNPJ de quem enviou ou pagou e o pedido pela chave da NF-e; repetidos são pulados pela chave e o XML fica guardado."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Conciliação automática: o cobrado é comparado, componente por componente e no ICMS, com a cotação do pedido ou, sem ela, com a tabela publicada na data do CT-e. Dentro da tolerância o CT-e é aprovado sozinho; fora dela vai para a fila de Conciliação (divergência de valor ou peso, taxa não prevista ou duplicada), onde se aprova o cobrado, aprova o esperado contestando a diferença ou contesta tudo, e depois registra o crédito obtido."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Faturas de frete: lançar a fatura da transportadora marcando os CT-es (colando os números), ver o cobrado, o aprovado, o contestado em aberto e o que ficou sem CT-e; aprovar para pagamento (só com todos os CT-es decididos), registrar o pagamento ou cancelar."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Relatórios de frete (transportadoras, filiais, UF, mês, divergências, contestações, faturas e tabelas) com exportação em CSV, e central de alertas: tabelas vencendo, pedidos sem cotação ou sem CT-e, entregas atrasadas, CT-es divergentes, contestações paradas e faturas vencendo. O painel ganhou os números de CT-e, conciliação, entregas no prazo e faturas."
-        },
-        {
-          "type": "novo",
-          "area": "Fretes",
-          "text": "Cotação em lote: planilha com vários destinos (CEP, peso e valor) devolve a melhor e a segunda opção de cada linha, com CSV. Não grava no histórico."
+          "area": "Pré e Pós-Vendas",
+          "text": "Os prazos (retorno do vendedor, chamar o cliente, primeiro contato do pós-venda), o tempo médio de retorno e o tempo de espera do chat contam só o horário comercial: almoço, noite e fim de semana ficam de fora. Ligue o horário comercial e coloque o almoço em WhatsApp › Regras e horário."
         },
         {
           "type": "melhoria",
-          "area": "Fretes",
-          "text": "Prazo de entrega em dias úteis agora pula os feriados nacionais (inclusive Sexta-feira Santa). Feriados estaduais e municipais ainda não entram."
+          "area": "Chat WhatsApp",
+          "text": "Horário comercial com pausa para o almoço. No almoço também sai a mensagem de ausência (quando ligada), como fora do horário."
+        },
+        {
+          "type": "novo",
+          "area": "Base de leads",
+          "text": "Novos filtros: Atendimento (venda realizada, sem venda, em negociação), Motivo da perda e Código do cliente. A busca também acha pelo código. A exportação traz o código e o vendedor do cliente e o atendimento (resultado, motivo da perda, vendedor e observação)."
         },
         {
           "type": "melhoria",
-          "area": "Fretes",
-          "text": "Importação de tabela: arquivo novo da transportadora com o mesmo layout de uma importação anterior já vem com o mapeamento de colunas conferido daquela vez."
+          "area": "Base de leads",
+          "text": "Na ficha do lead dá para editar o código do cliente, o vendedor do cliente e marcar se é da carteira do vendedor."
         },
         {
+          "type": "novo",
+          "area": "Relatórios e alertas",
+          "text": "Resumo do vendedor semanal, quinzenal (dias 1º e 16) ou mensal (dia 1º), e a opção de mandar só para os números informados (gestor, diretoria), sem enviar a cada vendedor."
+        }
+      ]
+    },
+    {
+      "version": "0.101.1",
+      "date": "2026-10-27",
+      "title": "Backups não enchem mais o disco",
+      "changes": [
+        {
+          "type": "infra",
+          "area": "Servidor",
+          "text": "O backup guarda no máximo as 7 cópias mais recentes (ajustável com BACKUP_KEEP no .env), além do limite de 30 dias. Cada atualização também faz um backup, e com várias atualizações os backups chegaram a ocupar 44 GB e travar a atualização por falta de espaço."
+        }
+      ]
+    },
+    {
+      "version": "0.101.0",
+      "date": "2026-10-27",
+      "title": "Instagram: análise de cada perfil e geral",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Marketing Inteligente",
+          "text": "Em Marketing Inteligente › Instagram, logo acima das abas, escolha Geral (todos os perfis somados) ou um perfil: visão geral, conteúdo, stories, melhores horários e público mostram os números só daquele perfil."
+        },
+        {
+          "type": "novo",
+          "area": "Marketing Inteligente",
+          "text": "As contas conectadas pelo login do Instagram em Postagens › Contas entram na sincronização e ganham análise própria (alcance, interações, publicações, stories e público), sem precisar estar no Gerenciador de Negócios."
+        }
+      ]
+    },
+    {
+      "version": "0.100.1",
+      "date": "2026-10-27",
+      "title": "Conectar Instagram em uma aba nova",
+      "changes": [
+        {
           "type": "melhoria",
-          "area": "Fretes",
-          "text": "Perfis prontos (Gestor de logística, Operador de expedição, Financeiro de fretes), criados pelo Administrador em Fretes → Filiais; tolerâncias da conciliação (geral e por transportadora) e prazos dos alertas no mesmo lugar."
+          "area": "Postagens",
+          "text": "Conectar conta do Instagram abre o login do Instagram em uma aba nova, sem sair do CRM. Ao terminar, a aba fecha sozinha e a lista de contas se atualiza."
+        }
+      ]
+    },
+    {
+      "version": "0.100.0",
+      "date": "2026-10-27",
+      "title": "Postagens: várias contas do Instagram pelo login do Instagram",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "Em Postagens › Contas, o botão Conectar conta do Instagram abre a tela do próprio Instagram: entre com o usuário e a senha da conta e autorize. Dá para conectar várias contas, uma de cada vez. A senha fica só no Instagram e o CRM renova o acesso sozinho antes de vencer."
+        },
+        {
+          "type": "novo",
+          "area": "Postagens",
+          "text": "As contas conectadas pelo login do Instagram publicam Feed, Carrossel, Reels e Stories com aprovação e agendamento, e aparecem no Testar publicação e nas Métricas, sem precisar do token da Meta."
+        },
+        {
+          "type": "correcao",
+          "area": "App no celular",
+          "text": "O app instalado no iPhone não pede mais login a cada vez que é reaberto: o iPhone apagava um cookie de segurança ao fechar o app e a renovação da sessão era recusada."
         }
       ]
     },

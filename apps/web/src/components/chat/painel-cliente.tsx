@@ -11,6 +11,7 @@ import { formatPhone, type Kind, type ServiceRecord, useOptions } from '@/lib/at
 import { useAuth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 import { type ChatService, quickPrefill, stageText } from './atendimento-chat'
+import { type ChatClient, ClientButton } from './cliente-chat'
 import { type ChatLabel, LabelChip } from './organizar'
 
 /**
@@ -22,6 +23,7 @@ interface PanelThread {
   conversation: { id: string; name: string | null; phone: string | null; category: string; labels?: ChatLabel[] }
   lead: { id: string; name: string | null; email: string | null; phone: string | null } | null
   service?: ChatService
+  client?: ChatClient | null
   record: { adsVia: string | null; adsCampaign: string | null; adsCampaignId: string | null; entryChannel: string | null } | null
   messages: { fromMe: boolean; internal?: boolean; text: string | null }[]
 }
@@ -138,6 +140,23 @@ export function ClientPanel({ id, monitor }: { id: string; monitor: boolean }) {
           <Button size="sm" variant="outline" className="w-full" onClick={() => void show('POS_VENDAS', pos.id)} disabled={loading === pos.id}>
             {loading === pos.id ? <Loader2Icon className="animate-spin" /> : <ClipboardListIcon />} Abrir a pós-venda
           </Button>
+        </Box>
+      )}
+
+      {isClient && (d.client || (can('chat', 'edit') && !monitor)) && (
+        <Box title="Cliente">
+          {d.client?.customerCode || d.client?.seller ? (
+            <>
+              {d.client.customerCode && <p className="text-sm font-medium">Código {d.client.customerCode}</p>}
+              {d.client.seller && <p className="text-sm">{d.client.walletOnly ? 'Carteira de' : 'Vendedor:'} {d.client.seller.name}</p>}
+              {d.client.walletOnly && <p className="text-xs text-muted-foreground">Não abre pré-venda pelo WhatsApp.</p>}
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">Sem código do cliente.</p>
+          )}
+          {can('chat', 'edit') && !monitor && (
+            <ClientButton conversationId={d.conversation.id} client={d.client} lastSeller={d.service?.lastSeller?.name} wide />
+          )}
         </Box>
       )}
 

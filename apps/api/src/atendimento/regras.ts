@@ -1,5 +1,12 @@
 /** Regras dos atendimentos de Pré/Pós-Vendas. Funções puras (testadas em test/atendimento.spec.ts). */
 
+import { addBusinessMs, type BusinessHours } from '../whatsapp/envio'
+
+/** Prazo em horas contado no horário comercial (sem almoço, noite e dias fechados); sem horário, o tempo corrido. */
+export function deadline(from: Date, hours: number, h?: BusinessHours | null) {
+  return h ? addBusinessMs(h, from, hours * 3_600_000) : new Date(from.getTime() + hours * 3_600_000)
+}
+
 export type SaleStatus = 'SIM' | 'NAO' | 'NEGOCIACAO'
 export type ReturnStatus = 'SIM' | 'NAO' | 'PENDENTE'
 
@@ -54,9 +61,9 @@ export function applyAutomaticFields<T extends RecordState & { forwardedAt?: Dat
   return out
 }
 
-/** Atendimento repassado, ainda sem retorno do vendedor, há mais tempo que o limite configurado. */
-export function isOverdue(r: { forwarded: boolean; returnStatus: ReturnStatus | null; forwardedAt: Date | null }, alertHours: number, now = new Date()) {
-  return r.forwarded && r.returnStatus === 'PENDENTE' && !!r.forwardedAt && now.getTime() - r.forwardedAt.getTime() > alertHours * 3_600_000
+/** Atendimento repassado, ainda sem retorno do vendedor, há mais tempo que o limite configurado (em horário comercial). */
+export function isOverdue(r: { forwarded: boolean; returnStatus: ReturnStatus | null; forwardedAt: Date | null }, alertHours: number, now = new Date(), h?: BusinessHours | null) {
+  return r.forwarded && r.returnStatus === 'PENDENTE' && !!r.forwardedAt && now.getTime() > deadline(r.forwardedAt, alertHours, h).getTime()
 }
 
 // ---------- Em negociação: prazo para chamar o cliente ----------
@@ -79,10 +86,11 @@ export function nextCallDue(
   callHours: number,
   chosen?: Date | null,
   now = new Date(),
+  h?: BusinessHours | null,
 ): Date | null {
   if (!inNegotiation(next)) return null
   if (chosen) return chosen
-  const fresh = new Date(now.getTime() + callHours * 3_600_000)
+  const fresh = deadline(now, callHours, h)
   if (!prev || !inNegotiation(prev)) return fresh
   return prev.callDueAt ?? fresh
 }
@@ -180,6 +188,138 @@ export function nextDayWindow(time: string, now = new Date()): { from: Date; to:
   return { from, to, day: new Date(from.getTime() - 3 * 3_600_000).toISOString().slice(0, 10) }
 }
 
+// ---------- Mensagem depois do repasse ao vendedor ----------
+
+export interface ForwardMessage {
+  enabled: boolean
+  /** Quanto tempo depois do repasse (minutos de horário comercial, quando ele está ligado). */
+  delayMinutes: number
+  /** Texto com {nome} (primeiro nome do cliente) e {vendedor} (primeiro nome do vendedor). */
+  text: string
+  /** Números de WhatsApp cujos atendimentos recebem a mensagem; sai pelo mesmo número. */
+  numberIds: string[]
+  /** Também para quem não chamou por WhatsApp (veio de formulário): sai pelo numberId. */
+  withoutChat: boolean
+  numberId: string | null
+  gapMin: number
+  gapMax: number
+  /** Quando foi ligada: só repasses a partir daqui (ligar não dispara para os repasses antigos). */
+  since: string | null
+}
+
+export const DEFAULT_FORWARD_TEXT =
+  'Olá, {nome}! Seu atendimento foi encaminhado para o vendedor {vendedor}, que vai dar continuidade ao seu pedido. Se precisar de algo, é só responder esta mensagem.'
+
+/** Na hora em que o Pré-Vendas marca "Repassou ao vendedor" (decisão de 28/10/2026); dá para pôr um tempo. */
+export const DEFAULT_FORWARD_MESSAGE: ForwardMessage = { enabled: false, delayMinutes: 0, text: DEFAULT_FORWARD_TEXT, numberIds: [], withoutChat: false, numberId: null, gapMin: 3, gapMax: 20, since: null }
+
+export const DEFAULT_CONTACT_CHECK_TEXT = 'Olá, {nome}! O vendedor {vendedor} já entrou em contato com você? Se ainda não, é só responder esta mensagem que a gente agiliza.'
+
+/** Pergunta ao cliente, 30 minutos depois do repasse, se o vendedor já entrou em contato. */
+export const DEFAULT_CONTACT_CHECK: ForwardMessage = { ...DEFAULT_FORWARD_MESSAGE, delayMinutes: 30, text: DEFAULT_CONTACT_CHECK_TEXT }
+
+export function cleanForwardMessage(raw: Partial<ForwardMessage> | null | undefined, fallback: ForwardMessage = DEFAULT_FORWARD_MESSAGE): ForwardMessage {
+  const r = raw ?? {}
+  const delay = Math.round(Number(r.delayMinutes))
+  const numberId = typeof r.numberId === 'string' ? r.numberId : null
+  return {
+    enabled: r.enabled === true,
+    delayMinutes: r.delayMinutes !== undefined && r.delayMinutes !== null && Number.isFinite(delay) && delay >= 0 && delay <= 7 * 24 * 60 ? delay : fallback.delayMinutes,
+    text: typeof r.text === 'string' && r.text.trim() ? r.text.trim().slice(0, 1000) : fallback.text,
+    numberIds: Array.isArray(r.numberIds) ? [...new Set(r.numberIds.filter((x): x is string => typeof x === 'string'))].slice(0, 50) : [],
+    withoutChat: r.withoutChat === true,
+    numberId,
+    ...cleanGap(r.gapMin, r.gapMax),
+    since: typeof r.since === 'string' && !Number.isNaN(Date.parse(r.since)) ? r.since : null,
+  }
+}
+
+export const cleanContactCheck = (raw: Partial<ForwardMessage> | null | undefined) => cleanForwardMessage(raw, DEFAULT_CONTACT_CHECK)
+
+// ---------- Chamar o cliente de novo depois que a pré-venda fechou ----------
+
+export interface ReactivationStep {
+  enabled: boolean
+  /** Dias corridos depois do resultado (venda ou perda). */
+  days: number
+  /** Texto com {nome}, {vendedor} e {marca} (marcas da máquina da pré-venda). */
+  text: string
+}
+
+export interface Reactivation {
+  enabled: boolean
+  /** Número fixo por onde todas saem. */
+  numberId: string | null
+  gapMin: number
+  gapMax: number
+  /** Quando foi ligada: só as mensagens que vencem daqui em diante (ligar não dispara para a base inteira). */
+  since: string | null
+  /** Até 3 mensagens para quem não comprou e até 3 para quem comprou (recompra). */
+  lost: ReactivationStep[]
+  sold: ReactivationStep[]
+}
+
+export const REACTIVATION_STEPS = 3
+
+export const DEFAULT_REACTIVATION: Reactivation = {
+  enabled: false,
+  numberId: null,
+  gapMin: 2,
+  gapMax: 10,
+  since: null,
+  lost: [
+    { enabled: true, days: 30, text: 'Olá, {nome}! Tudo bem? Aqui é da Usaparts. Conversamos há um tempo sobre peças para a sua máquina {marca}. Está precisando de alguma coisa? Filtros, material de desgaste, peças de manutenção... é só responder esta mensagem que a gente ajuda.' },
+    { enabled: true, days: 90, text: 'Olá, {nome}! Como está a sua máquina {marca}? Aqui é da Usaparts. Se estiver chegando a hora da manutenção, temos filtros, material de desgaste e peças de reposição. Quer que a gente faça um orçamento?' },
+    { enabled: true, days: 180, text: 'Olá, {nome}! Passando para saber se está precisando de alguma peça para a sua máquina {marca}: filtros, dentes, lâminas, material de desgaste... É só responder que a Usaparts ajuda.' },
+  ],
+  sold: [
+    { enabled: true, days: 60, text: 'Olá, {nome}! Tudo certo com as peças que você comprou com a gente? Aqui é da Usaparts. Se precisar de mais alguma coisa para a sua máquina {marca}, como filtros ou material de desgaste, é só responder esta mensagem.' },
+    { enabled: true, days: 120, text: 'Olá, {nome}! Já está chegando a hora da manutenção da sua máquina {marca}? Temos filtros, material de desgaste e peças de reposição. Quer um orçamento?' },
+    { enabled: true, days: 180, text: 'Olá, {nome}! Como está a sua máquina {marca}? Se estiver precisando de peças, filtros ou material de desgaste, a Usaparts está à disposição. É só responder.' },
+  ],
+}
+
+function cleanSteps(raw: unknown, fallback: ReactivationStep[]): ReactivationStep[] {
+  const list = Array.isArray(raw) ? (raw as Partial<ReactivationStep>[]) : []
+  const steps = fallback.map((f, i) => {
+    const r = list[i] ?? {}
+    const days = Math.round(Number(r.days))
+    return {
+      enabled: list[i] ? r.enabled === true : f.enabled,
+      days: Number.isFinite(days) && days >= 1 && days <= 1095 ? days : f.days,
+      text: typeof r.text === 'string' && r.text.trim() ? r.text.trim().slice(0, 1000) : f.text,
+    }
+  })
+  // Em ordem de dias: a 2ª nunca antes da 1ª.
+  return steps.sort((a, b) => a.days - b.days)
+}
+
+export function cleanReactivation(raw: Partial<Reactivation> | null | undefined): Reactivation {
+  const r = raw ?? {}
+  return {
+    enabled: r.enabled === true,
+    numberId: typeof r.numberId === 'string' ? r.numberId : null,
+    ...cleanGap(r.gapMin ?? DEFAULT_REACTIVATION.gapMin, r.gapMax ?? DEFAULT_REACTIVATION.gapMax),
+    since: typeof r.since === 'string' && !Number.isNaN(Date.parse(r.since)) ? r.since : null,
+    lost: cleanSteps(r.lost, DEFAULT_REACTIVATION.lost),
+    sold: cleanSteps(r.sold, DEFAULT_REACTIVATION.sold),
+  }
+}
+
+/** Texto da mensagem: {marca} vira as marcas da máquina (ou some, sem deixar espaço sobrando). */
+export function reactivationText(text: string, v: { nome?: string | null; vendedor?: string | null; marcas: string[] }) {
+  const marca = v.marcas.length > 1 ? `${v.marcas.slice(0, -1).join(', ')} e ${v.marcas.at(-1)}` : (v.marcas[0] ?? '')
+  return text.replace(/\{marca\}/gi, marca).replace(/[ \t]{2,}/g, ' ')
+}
+
+// ---------- Pré-venda perdida sem pós-venda ----------
+
+/** Motivo de perda que, por padrão, não gera pós-venda: produto que a empresa não tem ("Não temos o produto", "Sem estoque"). */
+export function skipsPostSale(reason: string) {
+  const n = reason.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  return /(sem|nao (tem|temos|possui|possuimos|trabalha|trabalhamos)|falta|em falta|fora de linha).*(produto|peca|estoque)|(produto|peca).*(indisponivel|em falta|nao encontrad|fora de linha)|sem estoque/.test(n)
+}
+
 // ---------- Resumo do dia para cada vendedor ----------
 
 export interface SellerDigest {
@@ -232,18 +372,27 @@ export function readablePhone(phone: string | null) {
   return br ? `(${br[1]}) ${br[2]}-${br[3]}` : phone
 }
 
+/** Situação da pré-venda no resumo: Vendeu, Não vendeu (motivo) ou Aguardando retorno do vendedor. */
+export function saleSituation(saleStatus: string | null | undefined, lostReason?: string | null) {
+  if (saleStatus === 'SIM') return 'Vendeu'
+  if (saleStatus === 'NAO') return lostReason?.trim() ? `Não vendeu (${lostReason.trim()})` : 'Não vendeu'
+  return 'Aguardando retorno do vendedor'
+}
+
 /**
  * Mensagens do resumo: a abertura (com {vendedor}, {data} e {quantidade}) e os clientes, telefone primeiro (no
- * WhatsApp do vendedor o telefone fica clicável para "Conversar"). Separado: uma mensagem por cliente; senão, uma lista.
+ * WhatsApp do vendedor o telefone fica clicável para "Conversar") e a situação ao lado do nome.
+ * Separado: uma mensagem por cliente; senão, uma lista.
  */
-export function digestMessages(intro: string, seller: string, day: string, items: { name: string; phone: string | null }[], split: boolean) {
+export function digestMessages(intro: string, seller: string, day: string, items: { name: string; phone: string | null; situation?: string | null }[], split: boolean) {
   const [y, m, d] = day.split('-')
   const head = intro
     .replace(/\{vendedor\}/gi, seller.trim().split(/\s+/)[0] ?? '')
     .replace(/\{data\}/gi, `${d}/${m}/${y}`)
     .replace(/\{quantidade\}/gi, String(items.length))
-  const lines = items.map((r) => `${readablePhone(r.phone)}\n${r.name}`)
-  return split ? [head, ...lines] : [[head, '', ...items.map((r, i) => `${i + 1}. ${readablePhone(r.phone)} — ${r.name}`)].join('\n')]
+  const who = (r: (typeof items)[number]) => (r.situation ? `${r.name} — ${r.situation}` : r.name)
+  const lines = items.map((r) => `${readablePhone(r.phone)}\n${who(r)}`)
+  return split ? [head, ...lines] : [[head, '', ...items.map((r, i) => `${i + 1}. ${readablePhone(r.phone)} — ${who(r)}`)].join('\n')]
 }
 
 export const FIELD_LABELS: Record<string, string> = {

@@ -30,12 +30,24 @@ function appHeader(): Record<string, string> {
 type RefreshResult = 'ok' | 'denied' | 'unavailable'
 let refreshing: Promise<RefreshResult> | null = null
 
+/**
+ * Renova a sessão. Sem o cookie CSRF (o iPhone apaga ao fechar o app) busca um novo antes; se a renovação for
+ * recusada pelo CSRF (cookie trocado no meio), busca de novo e tenta mais uma vez, em vez de mandar para o login.
+ */
 async function refreshSession(): Promise<RefreshResult> {
-  refreshing ??= fetch('/api/auth/refresh', {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'X-CSRF-Token': csrfToken(), ...appHeader() },
-  })
+  const attempt = () =>
+    fetch('/api/auth/refresh', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'X-CSRF-Token': csrfToken(), ...appHeader() },
+    })
+  refreshing ??= ensureCsrf()
+    .then(attempt)
+    .then(async (r) => {
+      if (r.status !== 403) return r
+      await fetch('/api/system/version', { credentials: 'same-origin' })
+      return attempt()
+    })
     .then((r): RefreshResult => (r.ok ? 'ok' : r.status >= 500 ? 'unavailable' : 'denied'))
     .catch((): RefreshResult => 'unavailable')
     .finally(() => setTimeout(() => (refreshing = null), 0))

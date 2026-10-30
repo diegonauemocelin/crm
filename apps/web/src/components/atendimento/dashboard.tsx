@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { AlertTriangleIcon, ArrowDownRightIcon, ArrowRightIcon, ArrowUpRightIcon, MinusIcon } from 'lucide-react'
-import { type ReactNode, useMemo, useState } from 'react'
+import brazil from '@svg-maps/brazil'
+import { type ReactNode, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { Bar, BarChart, CartesianGrid, LabelList, Line, LineChart, XAxis, YAxis } from 'recharts'
 import { ErrorState, TableSkeleton } from '@/components/page'
@@ -236,50 +237,88 @@ export function HBar({ title, description, data, valueLabel = 'Atendimentos', fo
   )
 }
 
-/** Mapa do Brasil em grade (cada quadrado é um estado), em escala sequencial de um só tom. */
-const UF_GRID: Record<string, [number, number]> = {
-  RR: [2, 0], AP: [4, 0],
-  AM: [1, 1], PA: [3, 1], MA: [4, 1], CE: [5, 1], RN: [6, 1],
-  AC: [0, 2], RO: [1, 2], MT: [2, 2], TO: [3, 2], PI: [4, 2], PE: [5, 2], PB: [6, 2],
-  MS: [2, 3], GO: [3, 3], DF: [4, 3], BA: [5, 3], AL: [6, 3],
-  SP: [3, 4], MG: [4, 4], ES: [5, 4], SE: [6, 4],
-  PR: [3, 5], RJ: [4, 5],
-  SC: [3, 6],
-  RS: [3, 7],
-}
+/** Estados pequenos demais para a sigla caber dentro: só aparecem ao passar o mouse (ou tocar). */
+/** Ajuste do centro (em unidades do mapa) onde o meio do contorno cai fora do estado ou em cima de outro. */
+const UF_NUDGE: Record<string, [number, number]> = { GO: [-12, 8], MG: [0, 8], BA: [6, 0], PI: [6, 8], SP: [8, 4], MT: [0, -10], PA: [0, 10] }
 
+const SMALL_UF = new Set(['DF', 'SE', 'AL', 'PB', 'RN', 'RJ', 'ES', 'PE'])
+
+/**
+ * Mapa do Brasil (contornos dos estados de @svg-maps/brazil, CC BY 4.0, Victor Cazanave), em escala sequencial de um
+ * só tom. A sigla e o número ficam no centro de cada estado; o detalhe aparece abaixo ao passar o mouse ou tocar.
+ */
 function StateMap({ data }: { data: Group[] }) {
   const byUf = new Map(data.map((d) => [d.id, d]))
-  const max = Math.max(1, ...data.filter((d) => d.id in UF_GRID).map((d) => d.leads))
+  const max = Math.max(1, ...data.filter((d) => d.id in UF_NAMES).map((d) => d.leads))
   const abroad = byUf.get('EX')?.leads ?? 0
   const unknown = byUf.get('none')?.leads ?? 0
   const steps = [1, 2, 3, 4, 5, 6, 7]
+  const [hover, setHover] = useState<string | null>(null)
+  const refs = useRef(new Map<string, SVGPathElement>())
+  const [centers, setCenters] = useState<Record<string, [number, number]>>({})
+  useLayoutEffect(() => {
+    const c: Record<string, [number, number]> = {}
+    for (const [uf, el] of refs.current) {
+      const b = el.getBBox()
+      c[uf] = [b.x + b.width / 2 + (UF_NUDGE[uf]?.[0] ?? 0), b.y + b.height / 2 + (UF_NUDGE[uf]?.[1] ?? 0)]
+    }
+    setCenters(c)
+  }, [])
+  const stepOf = (uf: string) => {
+    const leads = byUf.get(uf)?.leads ?? 0
+    return leads ? Math.max(1, Math.ceil((leads / max) * 7)) : 0
+  }
+  const ink = (step: number) => (step === 0 ? 'var(--muted-foreground)' : step <= 3 ? 'var(--seq-ink-light)' : step === 4 ? '#ffffff' : 'var(--seq-ink-dark)')
+  const h = hover ? byUf.get(hover) : null
   return (
     <div>
-      <div className="mx-auto grid max-w-sm grid-cols-7 gap-1" role="img" aria-label="Atendimentos por estado">
-        {Array.from({ length: 8 * 7 }, (_, i) => {
-          const col = i % 7
-          const row = Math.floor(i / 7)
-          const uf = Object.entries(UF_GRID).find(([, [c, r]]) => c === col && r === row)?.[0]
-          if (!uf) return <div key={i} />
-          const leads = byUf.get(uf)?.leads ?? 0
-          const step = leads ? Math.max(1, Math.ceil((leads / max) * 7)) : 0
+      <svg viewBox={brazil.viewBox} className="mx-auto block h-auto w-full max-w-md" role="img" aria-label="Atendimentos por estado" onMouseLeave={() => setHover(null)}>
+        {(brazil as unknown as { locations: { id: string; path: string }[] }).locations.map((l) => {
+          const uf = l.id.toUpperCase()
+          const step = stepOf(uf)
           return (
-            <div
-              key={i}
-              title={`${UF_NAMES[uf]}: ${int.format(leads)} atendimento(s), ${int.format(byUf.get(uf)?.sales ?? 0)} venda(s)`}
-              className="flex aspect-square flex-col items-center justify-center rounded-md text-xs leading-tight"
-              style={{
-                background: step ? `var(--seq-${step})` : 'var(--muted)',
-                color: step === 0 ? 'var(--muted-foreground)' : step <= 3 ? 'var(--seq-ink-light)' : step === 4 ? '#ffffff' : 'var(--seq-ink-dark)',
+            <path
+              key={uf}
+              ref={(el) => {
+                if (el) refs.current.set(uf, el)
+                else refs.current.delete(uf)
               }}
+              d={l.path}
+              fill={step ? `var(--seq-${step})` : 'var(--muted)'}
+              stroke={hover === uf ? 'var(--foreground)' : 'var(--background)'}
+              strokeWidth={hover === uf ? 2 : 1}
+              className="cursor-pointer transition-[stroke]"
+              onMouseEnter={() => setHover(uf)}
+              onClick={() => setHover(uf)}
             >
-              <span className="font-semibold">{uf}</span>
-              <span className="tabular-nums">{leads ? int.format(leads) : ''}</span>
-            </div>
+              <title>{`${UF_NAMES[uf]}: ${int.format(byUf.get(uf)?.leads ?? 0)} atendimento(s), ${int.format(byUf.get(uf)?.sales ?? 0)} venda(s)`}</title>
+            </path>
           )
         })}
-      </div>
+        {Object.entries(centers).map(([uf, [x, y]]) => {
+          if (SMALL_UF.has(uf)) return null
+          const leads = byUf.get(uf)?.leads ?? 0
+          return (
+            <text key={uf} x={x} y={y} textAnchor="middle" className="pointer-events-none text-[15px] font-semibold" fill={ink(stepOf(uf))}>
+              {uf}
+              {leads > 0 && (
+                <tspan x={x} dy="1.1em" className="font-normal tabular-nums">
+                  {int.format(leads)}
+                </tspan>
+              )}
+            </text>
+          )
+        })}
+      </svg>
+      <p className="mt-1 h-5 text-center text-sm">
+        {hover ? (
+          <>
+            <span className="font-medium">{UF_NAMES[hover]}</span>: {int.format(h?.leads ?? 0)} atendimento(s), {int.format(h?.sales ?? 0)} venda(s)
+          </>
+        ) : (
+          <span className="text-muted-foreground">Toque ou passe o mouse sobre um estado</span>
+        )}
+      </p>
       <div className="mt-3 flex items-center justify-center gap-1 text-xs text-muted-foreground">
         <span>menos</span>
         {steps.map((s) => (

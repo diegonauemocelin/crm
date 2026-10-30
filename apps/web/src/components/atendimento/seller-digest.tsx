@@ -20,7 +20,7 @@ interface Digest {
     sellerId: string
     seller: string
     sellerPhone: string | null
-    items: { id: string; name: string; phone: string | null }[]
+    items: { id: string; name: string; phone: string | null; saleStatus?: string; situation?: string }[]
     messages: string[]
     /** Envio automático de hoje: ENVIADA, SEM_TELEFONE, ENVIANDO:n ou ERRO: motivo. */
     status: string | null
@@ -94,6 +94,7 @@ export function SellerDigestDialog({ onClose }: { onClose: () => void }) {
                       <li key={i.id} className="flex gap-2">
                         <span className="w-36 shrink-0 tabular-nums">{i.phone ? formatPhone(i.phone) : '—'}</span>
                         <span className="truncate text-muted-foreground">{i.name}</span>
+                        {i.situation && <span className={`ml-auto shrink-0 text-xs ${i.saleStatus === 'SIM' ? 'text-emerald-600' : i.saleStatus === 'NAO' ? 'text-destructive' : 'text-amber-600'}`}>{i.situation}</span>}
                       </li>
                     ))}
                   </ol>

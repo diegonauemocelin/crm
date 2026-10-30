@@ -1,5 +1,6 @@
 /** Indicadores do dashboard de Pré/Pós-Vendas. Função pura sobre as linhas já filtradas (testada). */
 import { regionOf } from './br'
+import { type BusinessHours, businessMsBetween } from '../whatsapp/envio'
 import { isOverdue, type ReturnStatus, type SaleStatus } from './regras'
 
 export interface DashRow {
@@ -30,7 +31,7 @@ const NONE = 'none'
 const pct = (part: number, total: number) => (total > 0 ? part / total : null)
 const round2 = (n: number) => Math.round(n * 100) / 100
 
-export function kpis(rows: DashRow[], alertHours: number, now = new Date()) {
+export function kpis(rows: DashRow[], alertHours: number, now = new Date(), h?: BusinessHours | null) {
   const total = rows.length
   const forwarded = rows.filter((r) => r.forwarded).length
   const returned = rows.filter((r) => r.returnStatus === 'SIM').length
@@ -38,7 +39,7 @@ export function kpis(rows: DashRow[], alertHours: number, now = new Date()) {
   const revenue = round2(sales.reduce((s, r) => s + (r.saleValue ?? 0), 0))
   const times = rows
     .filter((r) => r.forwardedAt && r.returnedAt && r.returnedAt >= r.forwardedAt)
-    .map((r) => (r.returnedAt!.getTime() - r.forwardedAt!.getTime()) / 3_600_000)
+    .map((r) => (h ? businessMsBetween(h, r.forwardedAt!, r.returnedAt!) : r.returnedAt!.getTime() - r.forwardedAt!.getTime()) / 3_600_000)
   return {
     total,
     forwarded,
@@ -52,7 +53,7 @@ export function kpis(rows: DashRow[], alertHours: number, now = new Date()) {
     ticket: sales.length ? round2(revenue / sales.length) : null,
     lost: rows.filter((r) => r.saleStatus === 'NAO').length,
     negotiating: rows.filter((r) => r.saleStatus === 'NEGOCIACAO').length,
-    overdue: rows.filter((r) => isOverdue(r, alertHours, now)).length,
+    overdue: rows.filter((r) => isOverdue(r, alertHours, now, h)).length,
   }
 }
 
@@ -106,7 +107,7 @@ export function adsComparison(rows: DashRow[], alertHours: number) {
   }
 }
 
-export function buildDashboard(current: DashRow[], previous: DashRow[], opts: { from: string; to: string; alertHours: number }) {
+export function buildDashboard(current: DashRow[], previous: DashRow[], opts: { from: string; to: string; alertHours: number; hours?: BusinessHours | null }) {
   const days = Math.round((Date.parse(opts.to) - Date.parse(opts.from)) / 86_400_000) + 1
   const granularity = days <= 62 ? 'dia' : days <= 400 ? 'semana' : 'mes'
 
@@ -131,22 +132,22 @@ export function buildDashboard(current: DashRow[], previous: DashRow[], opts: { 
 
   const sellers = countBy(current, (r) => r.sellerId).map((e) => {
     const mine = current.filter((r) => (r.sellerId ?? NONE) === e.id)
-    const k = kpis(mine, opts.alertHours)
+    const k = kpis(mine, opts.alertHours, undefined, opts.hours)
     return { id: e.id, leads: k.total, forwarded: k.forwarded, returned: k.returned, returnRate: k.returnRate, avgReturnHours: k.avgReturnHours, sales: k.sales, revenue: k.revenue, conversion: k.conversion }
   })
   sellers.sort((a, b) => b.revenue - a.revenue || b.sales - a.sales || b.leads - a.leads)
 
   const units = countBy(current, (r) => r.unitId).map((e) => {
     const mine = current.filter((r) => (r.unitId ?? NONE) === e.id)
-    const k = kpis(mine, opts.alertHours)
+    const k = kpis(mine, opts.alertHours, undefined, opts.hours)
     return { id: e.id, leads: k.total, sales: k.sales, revenue: k.revenue, conversion: k.conversion, returnRate: k.returnRate }
   })
 
   return {
     granularity,
     byUnit: units,
-    kpis: kpis(current, opts.alertHours),
-    previousKpis: kpis(previous, opts.alertHours),
+    kpis: kpis(current, opts.alertHours, undefined, opts.hours),
+    previousKpis: kpis(previous, opts.alertHours, undefined, opts.hours),
     timeline: [...timelineMap.values()].sort((a, b) => a.bucket.localeCompare(b.bucket)),
     byOrigin: countBy(current, (r) => r.originId),
     byCustomerType: countBy(current, (r) => r.customerTypeId),

@@ -33,7 +33,7 @@ import { AuditService } from '../audit/audit.service'
 import { UFS, UF_LIST } from './br'
 import { CadastrosService, LOOKUP_TYPES } from './cadastros.service'
 import { ImportService } from './import.service'
-import { cleanDigest, cleanNextDay } from './regras'
+import { cleanContactCheck, cleanDigest, cleanForwardMessage, cleanNextDay, type ForwardMessage, cleanReactivation, type Reactivation } from './regras'
 import { callHoursOf, DEFAULT_ATENDIMENTO, ServiceRecordsService, type RecordFilters } from './service-records.service'
 
 const KINDS = ['PRE_VENDAS', 'POS_VENDAS'] as const
@@ -112,6 +112,10 @@ class MoveDto {
   @ApiProperty({ enum: KINDS }) @IsIn(KINDS) kind!: ServiceKind
 }
 
+class CloseDto {
+  @ApiProperty() @IsArray() @ArrayMaxSize(5000) @IsUUID('all', { each: true }) ids!: string[]
+}
+
 class ImportDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) url?: string
   @ApiPropertyOptional({ description: 'Conteúdo CSV (alternativa ao link)' }) @IsOptional() @IsString() @MaxLength(2 * 1024 * 1024) csv?: string
@@ -174,6 +178,36 @@ class SellerDigestDto extends NextDayMessageDto {
   @ApiProperty() @IsArray() @ArrayMaxSize(500) @IsUUID('all', { each: true }) sellerIds!: string[]
 }
 
+class ForwardMessageDto {
+  @ApiProperty() @IsBoolean() enabled!: boolean
+  @ApiProperty({ description: 'Minutos depois do repasse (horário comercial; 0 = na hora)', minimum: 0, maximum: 10080 }) @IsInt() @Min(0) @Max(10080) delayMinutes!: number
+  @ApiProperty() @IsString() @Length(1, 1000) text!: string
+  @ApiProperty() @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) numberIds!: string[]
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() withoutChat?: boolean
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() numberId?: string | null
+  @ApiPropertyOptional({ minimum: 1, maximum: 120 }) @IsOptional() @IsInt() @Min(1) @Max(120) gapMin?: number
+  @ApiPropertyOptional({ minimum: 1, maximum: 120 }) @IsOptional() @IsInt() @Min(1) @Max(120) gapMax?: number
+  /** Quando foi ligada (só leitura: o servidor mantém o valor gravado). */
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() since?: string | null
+}
+
+class ReactivationStepDto {
+  @ApiProperty() @IsBoolean() enabled!: boolean
+  @ApiProperty({ minimum: 1, maximum: 1095, description: 'Dias depois do resultado' }) @IsInt() @Min(1) @Max(1095) days!: number
+  @ApiProperty() @IsString() @Length(1, 1000) text!: string
+}
+
+class ReactivationDto {
+  @ApiProperty() @IsBoolean() enabled!: boolean
+  @ApiProperty() @ValidateIf((_, v) => v !== null) @IsUUID() numberId!: string | null
+  @ApiPropertyOptional({ minimum: 1, maximum: 120 }) @IsOptional() @IsInt() @Min(1) @Max(120) gapMin?: number
+  @ApiPropertyOptional({ minimum: 1, maximum: 120 }) @IsOptional() @IsInt() @Min(1) @Max(120) gapMax?: number
+  /** Quando foi ligada (só leitura: o servidor mantém o valor gravado). */
+  @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() since?: string | null
+  @ApiProperty({ type: [ReactivationStepDto], description: 'Sem venda' }) @IsArray() @ArrayMaxSize(3) @ValidateNested({ each: true }) @Type(() => ReactivationStepDto) lost!: ReactivationStepDto[]
+  @ApiProperty({ type: [ReactivationStepDto], description: 'Comprou (recompra)' }) @IsArray() @ArrayMaxSize(3) @ValidateNested({ each: true }) @Type(() => ReactivationStepDto) sold!: ReactivationStepDto[]
+}
+
 class AlertSettingsDto {
   @ApiProperty() @Type(() => Number) @IsInt() @Min(1) @Max(720) alertHours!: number
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1440) newRecordMinutes?: number
@@ -183,6 +217,10 @@ class AlertSettingsDto {
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(720) callHours?: number
   @ApiPropertyOptional({ type: NextDayMessageDto }) @IsOptional() @ValidateNested() @Type(() => NextDayMessageDto) nextDayMessage?: NextDayMessageDto
   @ApiPropertyOptional({ type: SellerDigestDto }) @IsOptional() @ValidateNested() @Type(() => SellerDigestDto) sellerDigest?: SellerDigestDto
+  @ApiPropertyOptional({ type: ForwardMessageDto }) @IsOptional() @ValidateNested() @Type(() => ForwardMessageDto) forwardMessage?: ForwardMessageDto
+  @ApiPropertyOptional({ type: ForwardMessageDto, description: 'Pergunta se o vendedor já entrou em contato' }) @IsOptional() @ValidateNested() @Type(() => ForwardMessageDto) contactCheck?: ForwardMessageDto
+  @ApiPropertyOptional({ type: ReactivationDto, description: 'Chamar o cliente de novo depois que a pré-venda fechou' }) @IsOptional() @ValidateNested() @Type(() => ReactivationDto) reactivation?: ReactivationDto
+  @ApiPropertyOptional({ description: 'Motivos de perda que não geram pós-venda (e finalizam o chat)' }) @IsOptional() @IsArray() @ArrayMaxSize(100) @IsUUID('all', { each: true }) noPostSaleReasonIds?: string[]
 }
 
 class DigestDto {
@@ -306,6 +344,13 @@ export class AtendimentoController {
     return this.records.move(user, dto.ids, dto.kind, ctx)
   }
 
+  /** Fecha em massa: pré-venda encerrada ou pós-venda resolvido, com o chat do cliente finalizado. */
+  @Post('fechar')
+  @HttpCode(200)
+  close(@CurrentUser() user: AuthUser, @Body() dto: CloseDto, @ReqContext() ctx: RequestCtx) {
+    return this.records.close(user, dto.ids, ctx)
+  }
+
   @Post('importar')
   @HttpCode(200)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -321,6 +366,7 @@ export class CadastrosController {
     private readonly cadastros: CadastrosService,
     private readonly settings: SettingsService,
     private readonly audit: AuditService,
+    private readonly records: ServiceRecordsService,
   ) {}
 
   /** Listas para formulários e filtros: liberado para quem usa Pré ou Pós-Vendas (ou gerencia os cadastros). */
@@ -378,7 +424,7 @@ export class CadastrosController {
   @RequirePermission('cadastros', 'view')
   async alertSettings(@CurrentUser() user: AuthUser) {
     const s = await this.settings.get(user.tenantId, 'atendimento', DEFAULT_ATENDIMENTO)
-    return { ...s, callHours: callHoursOf(s), nextDayMessage: cleanNextDay(s.nextDayMessage), sellerDigest: cleanDigest(s.sellerDigest) }
+    return { ...s, callHours: callHoursOf(s), nextDayMessage: cleanNextDay(s.nextDayMessage), sellerDigest: cleanDigest(s.sellerDigest), forwardMessage: cleanForwardMessage(s.forwardMessage), contactCheck: cleanContactCheck(s.contactCheck), reactivation: cleanReactivation(s.reactivation), noPostSaleReasonIds: await this.records.noPostSaleReasons(user.tenantId, s) }
   }
 
   /** Números de WhatsApp para escolher quem envia a mensagem do dia seguinte. */
@@ -400,7 +446,20 @@ export class CadastrosController {
     const nextDay = dto.nextDayMessage ? cleanNextDay(dto.nextDayMessage) : cleanNextDay(current.nextDayMessage)
     const digest = dto.sellerDigest ? cleanDigest(dto.sellerDigest) : cleanDigest(current.sellerDigest)
     const numberIds = (await this.cadastros.whatsappNumbers(user.tenantId)).map((n) => n.id)
-    if ([nextDay.numberId, digest.numberId].some((id) => id && !numberIds.includes(id))) throw new BadRequestException('Número de WhatsApp inválido.')
+    const repasse = (clean: (raw: Partial<ForwardMessage> | null | undefined) => ForwardMessage, saved: ForwardMessage | undefined, sent: ForwardMessageDto | undefined, what: string) => {
+      const before = clean(saved)
+      const m = sent ? clean({ ...sent, since: before.since }) : before
+      // Ligada agora: vale para os repasses daqui em diante (os antigos não recebem de uma vez).
+      if (m.enabled && (!before.enabled || !m.since)) m.since = new Date().toISOString()
+      if (m.enabled && !m.numberIds.length) throw new BadRequestException(`Escolha ao menos um número de WhatsApp para ${what}.`)
+      return m
+    }
+    const forward = repasse(cleanForwardMessage, current.forwardMessage, dto.forwardMessage, 'a mensagem do repasse')
+    const check = repasse(cleanContactCheck, current.contactCheck, dto.contactCheck, 'a pergunta se o vendedor já entrou em contato')
+    const reactivation = this.reactivation(current.reactivation, dto.reactivation)
+    if ([nextDay.numberId, digest.numberId, reactivation.numberId, forward.numberId, ...forward.numberIds, check.numberId, ...check.numberIds].some((id) => id && !numberIds.includes(id))) throw new BadRequestException('Número de WhatsApp inválido.')
+    const reasons = dto.noPostSaleReasonIds ?? current.noPostSaleReasonIds
+    if (reasons?.length && (await this.records.countLostReasons(user.tenantId, reasons)) !== new Set(reasons).size) throw new BadRequestException('Motivo de perda inválido.')
     if (digest.sellerIds.length && (await this.cadastros.countSellers(user.tenantId, digest.sellerIds)) !== digest.sellerIds.length) throw new BadRequestException('Vendedor inválido no resumo do dia.')
     const next = {
       ...current,
@@ -412,10 +471,24 @@ export class CadastrosController {
       callHours: dto.callHours ?? callHoursOf(current),
       nextDayMessage: nextDay,
       sellerDigest: digest,
+      forwardMessage: forward,
+      contactCheck: check,
+      reactivation,
+      ...(reasons ? { noPostSaleReasonIds: [...new Set(reasons)] } : {}),
     }
     const saved = await this.settings.set(user.tenantId, 'atendimento', next)
     await this.audit.byUser(user, ctx, 'settings.atendimento_updated', 'settings', 'atendimento', { ...next })
     return saved
+  }
+
+  private reactivation(saved: Reactivation | undefined, sent: ReactivationDto | undefined) {
+    const before = cleanReactivation(saved)
+    const m = sent ? cleanReactivation({ ...sent, since: before.since }) : before
+    // Ligada agora: só as mensagens que vencem daqui em diante (a base antiga não recebe tudo de uma vez).
+    if (m.enabled && (!before.enabled || !m.since)) m.since = new Date().toISOString()
+    if (m.enabled && !m.numberId) throw new BadRequestException('Escolha o número de WhatsApp para chamar o cliente de novo.')
+    if (m.enabled && ![...m.lost, ...m.sold].some((s) => s.enabled)) throw new BadRequestException('Ligue ao menos uma mensagem para chamar o cliente de novo.')
+    return m
   }
 
   @Get('listas/:tipo')
