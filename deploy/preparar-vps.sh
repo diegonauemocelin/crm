@@ -63,7 +63,13 @@ fi
 
 info "2/5 Docker"
 if ! command -v docker >/dev/null; then
-  curl -fsSL https://get.docker.com | sh >/dev/null
+  # Ubuntu muito novo (ex.: 26.04) pode ainda não ter o repositório oficial do Docker: usa o Docker do próprio Ubuntu.
+  if ! curl -fsSL https://get.docker.com | sh >/dev/null 2>&1 || ! command -v docker >/dev/null; then
+    aviso "Instalador oficial do Docker indisponível para ${PRETTY_NAME:-este sistema}: usando o pacote do Ubuntu"
+    rm -f /etc/apt/sources.list.d/docker.list /etc/apt/sources.list.d/docker.sources
+    apt-get update -qq
+    "${APT[@]}" install docker.io docker-compose-v2 >/dev/null || fatal "Não foi possível instalar o Docker."
+  fi
 fi
 docker compose version >/dev/null || fatal "Docker Compose não ficou disponível."
 if [ ! -f /etc/docker/daemon.json ]; then
