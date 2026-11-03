@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, AlertCircleIcon, BanIcon, CircleCheckBigIcon, FileTextIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ListChecksIcon, ReplyIcon, SmilePlusIcon, SmileIcon, StickerIcon, Loader2Icon, LockIcon, MailIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, AlertCircleIcon, BanIcon, ChevronLeftIcon, ChevronRightIcon, CircleCheckBigIcon, FileTextIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ListChecksIcon, ReplyIcon, SmilePlusIcon, SmileIcon, StickerIcon, Loader2Icon, LockIcon, MailIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
 import { createContext, Fragment, type FormEvent, type KeyboardEvent, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -234,6 +234,8 @@ function useScreens() {
 
 /** Monitoramento (ler as conversas da equipe sem responder e sem marcar como lidas): a mídia usa a mesma regra. */
 const MonitorContext = createContext(false)
+/** Fotos da conversa aberta (da mais antiga para a mais nova), para passar de uma para outra no visualizador. */
+const GalleryContext = createContext<{ id: string; alt: string }[]>([])
 /** Número de WhatsApp da conversa aberta: telefone clicado na mensagem abre a conversa por ele. */
 const ThreadNumberContext = createContext<string | null>(null)
 
@@ -640,6 +642,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
   if (q.error) return <div className="p-4"><ErrorState error={q.error} onRetry={() => q.refetch()} /></div>
   const d = q.data!
   const messages = [...older, ...d.messages]
+  const gallery = messages.filter((m) => m.type === 'imagem' && m.hasFile && !m.deleted).map((m) => ({ id: m.id, alt: m.text ?? 'Foto' }))
   const loadOlder = async () => {
     if (!messages[0]) return
     setLoadingOlder(true)
@@ -783,6 +786,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
             </Button>
           </div>
         )}
+        <GalleryContext.Provider value={gallery}>
         {messages.map((m, i) => {
           const showDay = i === 0 || dayKey(messages[i - 1]!.sentAt) !== dayKey(m.sentAt)
           // Primeiro balão de uma sequência do mesmo lado: ganha o "rabinho" e um respiro maior antes.
@@ -838,6 +842,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
             </div>
           )
         })}
+        </GalleryContext.Provider>
         <div ref={end} />
       </div>
       {colors && !monitor && d.conversation.category === 'CLIENTE' && d.conversation.status !== 'ARQUIVADA' && !d.conversation.noReplyNeeded && <WaitingBar id={d.conversation.id} since={d.conversation.lastInboundAt ?? null} answered={!!messages.findLast((m) => !m.internal)?.fromMe} yellowMinutes={alerts?.waiting?.yellowMinutes} hours={alerts?.waiting?.hours} />}
@@ -2222,29 +2227,68 @@ function Transcript({ m }: { m: Message }) {
   )
 }
 
-/** Foto da conversa: abre grande por cima do chat (sem sair do CRM), com zoom e botão para baixar. */
-function ImageViewer({ src, alt, sticker }: { src: string; alt: string; sticker?: boolean }) {
+/** Foto da conversa: abre grande por cima do chat (sem sair do CRM), com zoom, botão para baixar e setas para as outras fotos. */
+function ImageViewer({ id, src, alt, sticker }: { id: string; src: string; alt: string; sticker?: boolean }) {
+  const monitor = useContext(MonitorContext)
+  const gallery = useContext(GalleryContext)
   const [open, setOpen] = useState(false)
   const [zoom, setZoom] = useState(false)
+  const [index, setIndex] = useState(0)
+  // Figurinha não entra na galeria: abre sozinha.
+  const list = sticker ? [{ id, alt }] : gallery.length ? gallery : [{ id, alt }]
+  const at = Math.min(Math.max(index, 0), list.length - 1)
+  const cur = list[at] ?? { id, alt }
+  const curSrc = cur.id === id ? src : `/api/chat/midias/${cur.id}${monitor ? '?monitorar=true' : ''}`
+  const go = (step: number) => {
+    setZoom(false)
+    setIndex((i) => Math.min(Math.max(i + step, 0), list.length - 1))
+  }
+  const openIt = () => {
+    setZoom(false)
+    setIndex(Math.max(list.findIndex((x) => x.id === id), 0))
+    setOpen(true)
+  }
+  const many = list.length > 1
   return (
     <>
-      <button type="button" onClick={() => (setZoom(false), setOpen(true))} className="block cursor-zoom-in rounded focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" aria-label="Ver a foto maior">
+      <button type="button" onClick={openIt} className="block cursor-zoom-in rounded focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none" aria-label="Ver a foto maior">
         <img src={src} alt={alt} className={cn('rounded', sticker ? 'size-32 object-contain' : 'max-h-72 w-auto')} loading="lazy" />
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="flex max-h-[95vh] w-auto max-w-[95vw] flex-col gap-2 p-3 sm:max-w-[95vw]">
+        <DialogContent
+          className="flex max-h-[95vh] w-auto max-w-[95vw] flex-col gap-2 p-3 sm:max-w-[95vw]"
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowLeft') go(-1)
+            else if (e.key === 'ArrowRight') go(1)
+          }}
+        >
           <DialogHeader className="sr-only">
             <DialogTitle>Foto da conversa</DialogTitle>
-            <DialogDescription>{alt}</DialogDescription>
+            <DialogDescription>{cur.alt}</DialogDescription>
           </DialogHeader>
-          <div className={cn('min-h-0 flex-1 overflow-auto rounded bg-muted/40', zoom ? 'cursor-zoom-out' : 'cursor-zoom-in')} onClick={() => setZoom((z) => !z)}>
-            <img src={src} alt={alt} className={cn('mx-auto', zoom ? 'max-w-none' : 'max-h-[80vh] max-w-full object-contain')} />
+          <div className="relative min-h-0 flex-1">
+            <div className={cn('h-full overflow-auto rounded bg-muted/40', zoom ? 'cursor-zoom-out' : 'cursor-zoom-in')} onClick={() => setZoom((z) => !z)}>
+              <img src={curSrc} alt={cur.alt} className={cn('mx-auto', zoom ? 'max-w-none' : 'max-h-[80vh] max-w-full object-contain')} />
+            </div>
+            {many && (
+              <>
+                <Button type="button" size="icon" variant="secondary" className="absolute top-1/2 left-2 size-11 -translate-y-1/2 rounded-full shadow" onClick={() => go(-1)} disabled={at === 0} aria-label="Foto anterior">
+                  <ChevronLeftIcon className="size-6" />
+                </Button>
+                <Button type="button" size="icon" variant="secondary" className="absolute top-1/2 right-2 size-11 -translate-y-1/2 rounded-full shadow" onClick={() => go(1)} disabled={at === list.length - 1} aria-label="Próxima foto">
+                  <ChevronRightIcon className="size-6" />
+                </Button>
+              </>
+            )}
           </div>
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">{zoom ? 'Tamanho real: clique para ajustar à tela.' : 'Clique na foto para ver no tamanho real.'}</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              {many && <span className="mr-2 font-semibold text-foreground tabular-nums">{at + 1} de {list.length}</span>}
+              {zoom ? 'Tamanho real: clique para ajustar à tela.' : many ? 'Use as setas (ou as do teclado) para passar as fotos.' : 'Clique na foto para ver no tamanho real.'}
+            </p>
             <div className="flex gap-2">
               <Button asChild size="sm" variant="outline">
-                <a href={src} download>
+                <a href={curSrc} download>
                   <DownloadIcon /> Baixar
                 </a>
               </Button>
@@ -2278,7 +2322,7 @@ function Bubble({ m }: { m: Message }) {
     return (
       <div className="space-y-1">
         {m.hasFile ? (
-          <ImageViewer src={src} alt={m.text ?? (m.type === 'figurinha' ? 'Figurinha' : 'Foto')} sticker={m.type === 'figurinha'} />
+          <ImageViewer id={m.id} src={src} alt={m.text ?? (m.type === 'figurinha' ? 'Figurinha' : 'Foto')} sticker={m.type === 'figurinha'} />
         ) : (
           pending || missing || <p className="text-xs italic opacity-70">Foto</p>
         )}
