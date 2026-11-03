@@ -24,6 +24,8 @@ info() { cor "1;34" "==> $*"; }
 ok() { cor "1;32" "  ✔ $*"; }
 aviso() { cor "1;33" "  ! $*"; }
 fatal() { cor "1;31" "  ✖ $*" >&2; exit 1; }
+# Nunca para calado: mostra o comando que falhou.
+trap 'cor "1;31" "  ✖ Parou na linha $LINENO: $BASH_COMMAND" >&2' ERR
 
 [ "$(id -u)" -eq 0 ] || fatal "Rode como root (sudo)."
 [ -r /etc/os-release ] && . /etc/os-release
@@ -39,11 +41,11 @@ done
 
 export DEBIAN_FRONTEND=noninteractive
 APT=(apt-get -y -qq -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
-SSH_PORTA="$(sshd -T 2>/dev/null | awk '/^port /{print $2; exit}')"
+SSH_PORTA="$(sshd -T 2>/dev/null | awk '/^port /{print $2; exit}' || true)"
 SSH_PORTA="${SSH_PORTA:-22}"
 MEU_IP="${SSH_CLIENT:-${SSH_CONNECTION:-}}"
 MEU_IP="${MEU_IP%% *}"
-[ -n "$MEU_IP" ] || MEU_IP="$(who -m 2>/dev/null | sed -nE 's/.*\(([0-9a-fA-F:.]+)\).*/\1/p')"
+[ -n "$MEU_IP" ] || MEU_IP="$(who -m 2>/dev/null | sed -nE 's/.*\(([0-9a-fA-F:.]+)\).*/\1/p' || true)"
 
 info "1/5 Atualizando o sistema (${PRETTY_NAME:-})"
 apt-get update -qq
