@@ -114,6 +114,8 @@ trap falhou ERR
 info "5/8 Copiando a pasta do CRM (código e .env)"
 remoto "mkdir -p $RAIZ && chmod 750 $RAIZ"
 rsync -aHAX --numeric-ids -e "${SSH[*]}" --exclude 'backups/' --exclude 'node_modules/' "$RAIZ/" "$DESTINO:$RAIZ/"
+# Os backups antigos ficam nesta VPS; na nova, a pasta vazia com o dono do container de backup (usuário postgres, 70).
+remoto "mkdir -p $RAIZ/backups && chown 70:70 $RAIZ/backups && chmod 700 $RAIZ/backups"
 [ -f /root/.docker/config.json ] && { remoto 'mkdir -p /root/.docker && chmod 700 /root/.docker'; rsync -a -e "${SSH[*]}" /root/.docker/config.json "$DESTINO:/root/.docker/config.json"; }
 ok "Copiada"
 
