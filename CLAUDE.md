@@ -70,8 +70,9 @@ Coisas só da Usaparts (dados, scripts da VPS dela, importação do painel antig
   `sistema-v1`, projeto Docker `usaparts_imp`, porta `127.0.0.1:8280` (`APP_PORTA` no `.env` de lá), chave de leitura
   `/root/.ssh/importacao_deploy` (deploy key do repositório). Depois o CRM migra para outra VPS
   (decisão de 03/11/2026); o importacao fica nesta.
-- Migração do CRM para a VPS nova **vps73010.publiccloud.com.br (201.76.41.87)** marcada para a noite de 03/11/2026,
-  com `deploy/migrar.sh` (rodado na vps70600). Depois dela, deploy e WhatsApp do CRM são na vps73010.
+- **O CRM está na vps73010.publiccloud.com.br (201.76.41.87)** desde 03/11/2026 (migrado com `deploy/migrar.sh`; v1.0.5
+  instalada lá). Deploy, WhatsApp e backups do CRM são nela. A vps70600 (201.76.43.98) ficou com o CRM parado (`.env`
+  renomeado para `.env.migrado`, backups antigos em `/opt/usaparts-crm/backups`) e com o sistema importacao.
 
 ## Projeto separado
 
