@@ -324,7 +324,9 @@ Ele cria a pasta `/opt/importacao`, reserva uma porta local livre (a partir de 8
 `.env` com os segredos, banco, arquivos enviados, sessões do WhatsApp (os números voltam conectados, sem QR Code), site do
 Nginx com o certificado HTTPS e os agendamentos. Não mexe em outros sistemas da VPS atual.
 
-1. VPS nova com Ubuntu, acesso de root por SSH e de preferência 4 GB ou mais de memória. Se puder, baixe antes o TTL do
+1. VPS nova com Ubuntu, acesso de root por SSH e de preferência 4 GB ou mais de memória. Prepare-a antes com
+   `deploy/preparar-vps.sh` (atualiza o sistema, instala Docker, Nginx e Certbot, liga firewall, fail2ban e atualizações
+   automáticas de segurança; veja o começo do script). Se puder, baixe antes o TTL do
    DNS de `crm.usaparts.com.br` (e do domínio das landing pages) para 5 minutos.
 2. Na VPS atual, baixe o script e confira (só confere, não para nada):
 
