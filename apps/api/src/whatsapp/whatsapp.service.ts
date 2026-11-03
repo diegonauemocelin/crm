@@ -7,7 +7,8 @@ import { env } from '../config/env'
 import { PrismaService } from '../prisma/prisma.service'
 import { ChatService } from './chat.service'
 import type { Prisma } from '../generated/prisma/client'
-import { DISCONNECTED_BY_CRM, EvolutionClient, EvolutionError, SESSION_DEAD_REASON, acceptedStatus, cleanQr, type NumberStatus } from './evolution'
+import { DISCONNECTED_BY_CRM, EvolutionClient, EvolutionError, SESSION_DEAD_REASON, acceptedStatus, cleanQr, type NumberStatus, silentTooLong } from './evolution'
+import { isOpen } from './envio'
 
 export interface NumberInput {
   name: string
@@ -62,6 +63,10 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
 
   /** Testes encurtam a espera depois de reiniciar a conexão. */
   restartWaitMs = RESTART_WAIT_MS
+  /** Último evento de mensagem de cada número e a última renovação por falta de mensagens (em memória). */
+  private readonly traffic = new Map<string, number>()
+  private readonly refreshed = new Map<string, number>()
+  private readonly bootAt = Date.now()
 
   /**
    * Sessão morta por dentro da Evolution (ela ainda diz "conectado"): o número passa a aparecer desconectado,
@@ -368,6 +373,7 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
     const n = await this.prisma.whatsappNumber.findUnique({ where: { instanceName: b.instance } })
     if (!n || n.deletedAt) return true
     const event = String(b.event ?? '').toLowerCase().replace(/_/g, '.')
+    if (event.startsWith('messages.') || event === 'send.message') this.traffic.set(n.id, Date.now())
     // Mensagem recebida, enviada pelo celular (upsert com fromMe) ou pelo CRM (send.message).
     if (event === 'messages.upsert' || event === 'send.message') {
       const list = Array.isArray(b.data) ? b.data : [b.data]
@@ -407,6 +413,16 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
       }
     }
     return true
+  }
+
+  private async refreshIfSilent(n: { id: string; tenantId: string; name: string; instanceName: string }) {
+    const now = Date.now()
+    const open = isOpen((await this.chat.rules(n.tenantId)).businessHours, new Date(now))
+    if (!this.client || !silentTooLong(this.traffic.get(n.id) ?? this.bootAt, this.refreshed.get(n.id) ?? 0, now, open)) return
+    this.refreshed.set(n.id, now)
+    this.traffic.set(n.id, now)
+    await this.client.restart(n.instanceName).catch(() => undefined)
+    this.logger.warn(`Número ${n.name}: sem mensagens há 45 min com a conexão aberta; conexão renovada (sem QR Code).`)
   }
 
   /** Cancela conexões sem leitura do QR Code e confere de tempos em tempos os conectados (caso um evento se perca). */
@@ -452,6 +468,9 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
             const info = await this.client.info(n.instanceName).catch(() => null)
             if (info?.phone) await this.prisma.whatsappNumber.update({ where: { id: n.id }, data: { phone: info.phone, profileName: info.profileName ?? n.profileName } })
           }
+          // "Conectado", mas sem receber nada há muito tempo no horário de atendimento (já aconteceu: o WhatsApp diz que
+          // está aberto e as mensagens não chegam): renova a conexão, sem QR Code. As pendentes chegam na volta.
+          if (state === 'open') await this.refreshIfSilent(n)
         }
       }
       if (Date.now() - this.lastOrphanCheck >= ORPHAN_CHECK_MS) {

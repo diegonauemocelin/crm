@@ -58,6 +58,17 @@ export const SESSION_DEAD_REASON = 'A sessão caiu no serviço de WhatsApp (Conn
 export const DISCONNECTED_BY_CRM = 'Desconectado pelo CRM'
 
 /**
+ * Conexão "aberta" que parou de receber: sem nenhum evento de mensagem (recebida, enviada ou confirmação) por este
+ * tempo, no horário de atendimento, o CRM renova a conexão (reinício com a credencial salva, sem QR Code).
+ */
+export const SILENT_REFRESH_MS = 45 * 60_000
+
+/** Hora de renovar: em horário de atendimento, sem mensagens há SILENT_REFRESH_MS e sem renovar nesse tempo. */
+export function silentTooLong(lastTraffic: number, lastRefresh: number, now: number, open: boolean) {
+  return open && now - lastTraffic >= SILENT_REFRESH_MS && now - lastRefresh >= SILENT_REFRESH_MS
+}
+
+/**
  * Situação que um evento da Evolution pode gravar no número (null = ignora):
  * - evento de uma instância que não é mais a do número (sessão trocada pelo Desconectar ou pelo QR Code novo) não vale;
  * - "connecting" vem também nas reconexões automáticas: só vale durante a leitura do QR Code, que quem começa é o Conectar;

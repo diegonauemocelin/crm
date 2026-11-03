@@ -209,3 +209,14 @@ describe('Desconectar e QR Code novo', () => {
     expect(calls.some((c) => c.endsWith('/crm-reconecta1') || c.endsWith('/outro-sistema'))).toBe(false)
   })
 })
+
+describe('conexão aberta que parou de receber', () => {
+  it('renova só no horário de atendimento, depois de 45 min sem mensagens e no máximo a cada 45 min', async () => {
+    const { silentTooLong, SILENT_REFRESH_MS } = await import('../src/whatsapp/evolution')
+    const now = 10 * SILENT_REFRESH_MS
+    expect(silentTooLong(now - SILENT_REFRESH_MS, 0, now, true)).toBe(true)
+    expect(silentTooLong(now - SILENT_REFRESH_MS + 60_000, 0, now, true)).toBe(false)
+    expect(silentTooLong(now - 2 * SILENT_REFRESH_MS, now - 60_000, now, true)).toBe(false)
+    expect(silentTooLong(now - 2 * SILENT_REFRESH_MS, 0, now, false)).toBe(false)
+  })
+})
