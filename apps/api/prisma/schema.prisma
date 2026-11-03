@@ -2585,3 +2585,51 @@ model PushSubscription {
   @@index([userId])
   @@map("push_subscriptions")
 }
+
+/// Lojas concorrentes no Mercado Livre, informadas pelo link, para comparar preços pelo código de referência.
+model MlCompetitor {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  input          String
+  sellerId       String
+  nickname       String?
+  officialStoreId String?
+  permalink      String?
+  /// Anúncios ativos que o Mercado Livre informa para a loja.
+  activeItems    Int?
+  /// Anúncios lidos e, deles, quantos têm código (número de peça, modelo, OEM ou código no título).
+  itemsRead      Int       @default(0)
+  itemsWithCode  Int       @default(0)
+  lastSyncAt     DateTime?
+  lastError      String?
+  createdByName  String?
+  createdAt      DateTime  @default(now())
+
+  items MlCompetitorItem[]
+
+  @@unique([tenantId, sellerId])
+  @@map("ml_competitors")
+}
+
+/// Anúncio de um concorrente com os códigos de referência (normalizados, sem barra, traço ou ponto).
+model MlCompetitorItem {
+  id             String       @id @default(uuid()) @db.Uuid
+  tenantId       String       @db.Uuid
+  competitorId   String       @db.Uuid
+  competitor     MlCompetitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  itemId         String
+  title          String?
+  permalink      String?
+  price          Decimal?     @db.Decimal(14, 2)
+  /// Preço da leitura anterior, quando mudou (para o aviso de baixa de preço).
+  previousPrice  Decimal?     @db.Decimal(14, 2)
+  priceChangedAt DateTime?
+  freeShipping   Boolean      @default(false)
+  status         String?
+  codes          String[]     @default([])
+  syncedAt       DateTime
+
+  @@unique([competitorId, itemId])
+  @@index([tenantId])
+  @@map("ml_competitor_items")
+}
