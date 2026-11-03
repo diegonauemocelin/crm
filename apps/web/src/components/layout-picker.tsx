@@ -39,6 +39,24 @@ function ContentPreview({ screens }: { screens: ScreenModel }) {
 
 /** Miniatura de cada modelo, desenhada com as cores do whitelabel. */
 function ModelPreview({ layout, screens }: { layout: LayoutMode; screens: ScreenModel }) {
+  if (layout === 'SISTEMAS') {
+    return (
+      <div className="flex h-28 flex-col gap-1.5 overflow-hidden rounded-md border bg-background p-2">
+        <div className="flex h-3 items-center gap-1">
+          <div className="size-2.5 rounded-sm" style={{ background: 'var(--brand)' }} />
+          <div className={cn(bar, 'h-1.5 w-1/3')} />
+        </div>
+        <div className="grid flex-1 grid-cols-4 gap-1">
+          {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <div key={i} className="flex flex-col gap-0.5 rounded-sm border bg-card p-1" style={i === 0 ? { borderColor: 'var(--brand)' } : undefined}>
+              <div className="size-2 rounded-[2px]" style={{ background: i === 0 ? 'var(--brand)' : 'var(--brand-nav)' }} />
+              <div className={cn(bar, 'h-1 w-3/4')} />
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
   if (layout === 'MODERN') {
     return (
       <div className="flex h-28 overflow-hidden rounded-md border bg-background">
@@ -98,9 +116,15 @@ const OPTIONS: (ModelChoice & { title: string; text: string })[] = [
     text: 'Menu lateral, Minha fila no início, Pré-Vendas em quadro e chat com painel do cliente e cores de espera.',
   },
   { layout: 'CLASSIC', screens: 'NOVO', title: 'Clássico com telas novas', text: 'Menu superior, Minha fila no início, Pré-Vendas em quadro e chat com painel do cliente.' },
+  {
+    layout: 'SISTEMAS',
+    screens: 'NOVO',
+    title: 'Por sistema (novo visual)',
+    text: 'Depois do login, escolhe o sistema (Atendimento, Marketing...); o menu mostra só as telas dele, com troca rápida no topo. Telas novas.',
+  },
 ]
 
-/** Os 4 modelos: layout (Moderno ou Clássico) combinado com as telas (de sempre ou novas). */
+/** Os modelos: layout (Moderno, Clássico ou Por sistema) combinado com as telas (de sempre ou novas). */
 export function LayoutPicker({ value, onChange, disabled }: { value: ModelChoice; onChange: (m: ModelChoice) => void; disabled?: boolean }) {
   return (
     <div role="radiogroup" aria-label="Modelo do sistema" className="grid gap-3 sm:grid-cols-2">

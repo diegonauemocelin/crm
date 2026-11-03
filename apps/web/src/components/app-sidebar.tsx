@@ -16,11 +16,19 @@ import {
 import { useAuth } from '@/lib/auth'
 import { useBranding } from '@/lib/branding'
 import { visibleNavigation } from '@/lib/navigation'
+import { useSistemaAtual } from '@/lib/sistema-atual'
+import { menuDoSistema } from '@/lib/sistemas'
+import { SistemaSwitcher } from './layout/sistemas-menu'
 
-/** Sidebar do layout Moderno, baseada no block sidebar-07 (recolhe para ícones). */
-export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
+/**
+ * Sidebar do layout Moderno, baseada no block sidebar-07 (recolhe para ícones). No visual "Por sistema", mostra só o
+ * sistema aberto, com a troca de sistema no topo.
+ */
+export function AppSidebar({ porSistema = false, ...props }: React.ComponentProps<typeof Sidebar> & { porSistema?: boolean }) {
   const { can, me } = useAuth()
   const branding = useBranding()
+  const { atual } = useSistemaAtual()
+  const groups = visibleNavigation(can, !!me?.role.isSystem)
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -38,9 +46,10 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        {porSistema && <SistemaSwitcher />}
       </SidebarHeader>
       <SidebarContent>
-        <NavMain groups={visibleNavigation(can, !!me?.role.isSystem)} />
+        <NavMain groups={porSistema ? menuDoSistema(groups, atual) : groups} />
       </SidebarContent>
       <SidebarFooter>
         <NavUser />

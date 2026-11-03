@@ -22,7 +22,7 @@ import { GlobalSearch } from './global-search'
 import { ThemeToggle } from './theme-toggle'
 import { ChatNotifier } from '@/lib/chat-alerts'
 
-const EXTRA_TITLES: Record<string, string> = { '/meu-perfil': 'Meu perfil' }
+const EXTRA_TITLES: Record<string, string> = { '/meu-perfil': 'Meu perfil', '/sistemas': 'Escolher o sistema' }
 
 export interface Crumb {
   title: string
@@ -47,11 +47,11 @@ export function useBreadcrumb(): Crumb[] {
 }
 
 /** Layout Moderno: shadcn/ui SidebarProvider + sidebar-07 (recolhível), cabeçalho com breadcrumb e busca. */
-export function ModernLayout() {
+export function ModernLayout({ porSistema = false }: { porSistema?: boolean }) {
   const crumbs = useBreadcrumb()
   return (
     <SidebarProvider>
-      <AppSidebar />
+      <AppSidebar porSistema={porSistema} />
       <SidebarInset className="min-w-0">
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <SidebarTrigger className="-ml-1" aria-label="Recolher ou expandir menu" />

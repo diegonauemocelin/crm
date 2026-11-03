@@ -35,7 +35,7 @@ class BrandingDto {
   @ApiPropertyOptional() @IsOptional() @Matches(/^(#[0-9a-fA-F]{6})?$/, { message: 'Cor da marca inválida. Use o formato #RRGGBB.' }) brandColor?: string
   @ApiProperty() @IsString() @MaxLength(80) loginTitle!: string
   @ApiProperty() @IsString() @MaxLength(160) loginSubtitle!: string
-  @ApiProperty({ enum: ['MODERN', 'CLASSIC'] }) @IsIn(['MODERN', 'CLASSIC']) defaultLayout!: 'MODERN' | 'CLASSIC'
+  @ApiProperty({ enum: ['MODERN', 'CLASSIC', 'SISTEMAS'] }) @IsIn(['MODERN', 'CLASSIC', 'SISTEMAS']) defaultLayout!: 'MODERN' | 'CLASSIC' | 'SISTEMAS'
   @ApiProperty() @IsBoolean() allowLayoutChoice!: boolean
   @ApiPropertyOptional({ enum: ['ATUAL', 'NOVO'] }) @IsOptional() @IsIn(['ATUAL', 'NOVO']) defaultScreens?: 'ATUAL' | 'NOVO'
   @ApiProperty() @ValidateIf((o: BrandingDto) => o.supportEmail !== '') @IsEmail() supportEmail!: string

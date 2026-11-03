@@ -1,4 +1,4 @@
-export type LayoutMode = 'MODERN' | 'CLASSIC'
+export type LayoutMode = 'MODERN' | 'CLASSIC' | 'SISTEMAS'
 export type ThemeMode = 'LIGHT' | 'DARK' | 'SYSTEM'
 /** Modelo das telas: ATUAL (de sempre) ou NOVO (Minha fila, quadro de pré-vendas, chat com painel do cliente). */
 export type ScreenModel = 'ATUAL' | 'NOVO'

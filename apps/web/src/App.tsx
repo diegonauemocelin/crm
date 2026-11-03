@@ -1,6 +1,6 @@
 import { Loader2Icon } from 'lucide-react'
 import { type ComponentType, lazy, type ReactNode, Suspense, useEffect } from 'react'
-import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router'
+import { createBrowserRouter, Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 import { RouterProvider } from 'react-router/dom'
 import { ClassicLayout } from '@/components/layout/classic-layout'
 import { ModernLayout } from '@/components/layout/modern-layout'
@@ -8,6 +8,8 @@ import { useAuth } from '@/lib/auth'
 import { ReauthDialog } from '@/components/reauth-dialog'
 import { isInstalledApp } from '@/lib/app-movel'
 import { NAVIGATION } from '@/lib/navigation'
+import { prefsSistema, useSistemaAtual } from '@/lib/sistema-atual'
+import { destinoAoEntrar } from '@/lib/sistemas'
 import { LoginPage } from '@/pages/auth/login-page'
 
 const RELOAD_FLAG = 'crm-reloaded-after-update'
@@ -94,6 +96,7 @@ const pages = {
   landingPages: () => page(() => import('@/pages/landing-pages-page'), 'LandingPagesPage'),
   seoEcommerce: () => page(() => import('@/pages/seo-ecommerce-page'), 'SeoEcommercePage'),
   postagens: () => page(() => import('@/pages/postagens-page'), 'PostagensPage'),
+  sistemas: () => page(() => import('@/pages/sistemas-page'), 'SistemasPage'),
   postagensIgRetorno: () => page(() => import('@/components/postagens/contas'), 'InstagramRetornoPage'),
   landingEditor: () => page(() => import('@/pages/landing-editor-page'), 'LandingEditorPage'),
   sugestoes: () => page(() => import('@/pages/sugestoes-page'), 'SugestoesPage'),
@@ -200,7 +203,36 @@ function Protected() {
 /** Layout escolhido pelo usuário (ou o padrão definido pelo administrador). */
 function AppShell() {
   const { me } = useAuth()
-  return me?.layout === 'CLASSIC' ? <ClassicLayout /> : <ModernLayout />
+  const porSistema = me?.layout === 'SISTEMAS'
+  useEntradaPorSistema(porSistema)
+  useEffect(() => {
+    document.documentElement.classList.toggle('layout-sistemas', porSistema)
+  }, [porSistema])
+  if (me?.layout === 'CLASSIC') return <ClassicLayout />
+  return <ModernLayout porSistema={porSistema} />
+}
+
+/**
+ * Visual "Por sistema": logo depois de entrar (uma vez por aba), quem tem vários sistemas vai para a escolha, ou direto
+ * para o último usado se marcou essa opção; quem tem um só vai direto para ele.
+ */
+function useEntradaPorSistema(ativo: boolean) {
+  const { grupos } = useSistemaAtual()
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+  useEffect(() => {
+    if (!ativo || pathname !== '/') return
+    try {
+      if (sessionStorage.getItem('crm-sistema-entrada')) return
+      sessionStorage.setItem('crm-sistema-entrada', '1')
+    } catch {
+      return
+    }
+    const destino = destinoAoEntrar(grupos, { ultimo: prefsSistema.ultimo(), direto: prefsSistema.direto() })
+    if (destino && destino !== '/') navigate(destino, { replace: true })
+    // só na primeira tela depois do login
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ativo])
 }
 
 const comingSoon = NAVIGATION.flatMap((g) => g.items)
@@ -254,6 +286,7 @@ const router = createBrowserRouter([
           { path: 'auditoria', element: <Lazy>{pages.audit()}</Lazy> },
           { path: 'atualizacoes', element: <Lazy>{pages.updates()}</Lazy> },
           { path: 'meu-perfil', element: <Lazy>{pages.profile()}</Lazy> },
+          { path: 'sistemas', element: <Lazy>{pages.sistemas()}</Lazy> },
           { path: 'pre-vendas', element: <Lazy>{pages.preVendas()}</Lazy> },
           { path: 'pos-vendas', element: <Lazy>{pages.posVendas()}</Lazy> },
           { path: 'cadastros-atendimento', element: <Navigate to="/configuracoes?secao=listas" replace /> },

@@ -40,7 +40,7 @@ export const TRAIL: TrailModule[] = [
   {
     key: 'primeiros-passos',
     title: 'Primeiros passos',
-    routes: ['/meu-perfil', '/atualizacoes', '/trilha'],
+    routes: ['/meu-perfil', '/atualizacoes', '/trilha', '/sistemas'],
     purpose: 'Deixar sua conta segura e o sistema do seu jeito.',
     howItWorks: 'Cada pessoa entra com o próprio e-mail e senha (e, se o perfil exigir, um código do celular). O menu mostra só as telas que o seu perfil de acesso libera. Em qualquer tela, o botão “?” no topo abre a ajuda daquela tela, e esta Trilha guarda o que você já aprendeu.',
     media: { src: '/trilha/primeiros-passos.jpg', alt: 'Tela Meu perfil' },
@@ -62,6 +62,7 @@ export const TRAIL: TrailModule[] = [
         steps: [
           'Em Meu perfil, ajuste seu nome e a foto.',
           'Escolha o tema (claro, escuro ou do sistema) e, se liberado, um dos 4 modelos: Moderno (menu ao lado) ou Clássico (menu no topo), com as telas de sempre ou com as telas novas (Minha fila, quadro de pré-vendas e chat com painel do cliente).',
+          'No modelo Por sistema, depois do login você escolhe onde vai trabalhar (Atendimento, Marketing...) e o menu mostra só as telas dele. Para trocar, use o botão do sistema no topo do menu; marque Entrar direto no último sistema usado para pular a escolha.',
           'Se você usa o chat, defina como seu nome aparece nas mensagens do WhatsApp (ex.: Diego - Vendas).',
         ],
       },

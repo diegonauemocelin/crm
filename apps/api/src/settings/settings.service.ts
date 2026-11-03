@@ -17,7 +17,7 @@ export interface BrandingSettings {
   appIconFileId?: string | null
   loginTitle: string
   loginSubtitle: string
-  defaultLayout: 'MODERN' | 'CLASSIC'
+  defaultLayout: 'MODERN' | 'CLASSIC' | 'SISTEMAS'
   allowLayoutChoice: boolean
   /** Modelo das telas padrão: ATUAL ou NOVO (Minha fila, quadro de pré-vendas, chat com painel). */
   defaultScreens: 'ATUAL' | 'NOVO'
