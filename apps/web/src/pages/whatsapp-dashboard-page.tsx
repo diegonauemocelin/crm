@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { api } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 import { brl, int, pctFmt, todaySP } from '@/lib/atendimento'
 import { cn } from '@/lib/utils'
 
@@ -134,8 +135,10 @@ function Dashboard() {
 function Body({ d }: { d: Dash }) {
   const t = d.times
   const firstNoReply = d.totals.firstTurns ? d.totals.unansweredFirst / d.totals.firstTurns : null
+  const { me } = useAuth()
   return (
     <>
+      {me?.layout === 'SISTEMAS' && <AgoraPanel d={d} />}
       {d.insights.length > 0 && (
         <Card>
           <CardHeader>
@@ -459,3 +462,95 @@ function Heatmap({ heat }: { heat: number[][] }) {
     </Card>
   )
 }
+
+/** Minutos desde a última mensagem do cliente (para as cores da espera). */
+const waitMin = (iso: string) => (Date.now() - new Date(iso).getTime()) / 60_000
+
+/**
+ * Visual "Por sistema" (tela aprovada para a direção): o atendimento agora, com quem está esperando resposta em
+ * destaque (amarelo depois de 15 min, vermelho depois de 30), e o que espera em cada número.
+ */
+function AgoraPanel({ d }: { d: Dash }) {
+  const alarm = d.now.awaiting > 0
+  const late = d.now.oldest.filter((o) => waitMin(o.since) >= 30).length
+  const kpi = (label: string, value: string, note: string, hot = false) => (
+    <div className={cn('flex flex-col gap-1.5 rounded-2xl bg-card p-4', hot ? 'border-2 border-destructive' : 'border')}>
+      <span className={cn('text-sm font-bold', hot ? 'text-destructive' : 'text-muted-foreground')}>{label}</span>
+      <span className="text-3xl font-extrabold tracking-tight tabular-nums">{value}</span>
+      <span className={cn('text-sm', hot ? 'text-destructive' : 'text-muted-foreground')}>{note}</span>
+    </div>
+  )
+  return (
+    <section aria-label="Atendimento agora" className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-xl font-extrabold tracking-tight">Atendimento agora</h2>
+        <span className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span className="size-2.5 rounded-full bg-emerald-500" aria-hidden="true" /> Ao vivo · atualiza a cada minuto
+        </span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {kpi('Esperando resposta', int.format(d.now.awaiting), late ? `${late} há mais de 30 min` : 'ninguém há mais de 30 min', alarm && late > 0)}
+        {kpi('Conversas em aberto', int.format(d.now.open), `${int.format(d.now.closedInPeriod)} encerradas no período`)}
+        {kpi('1ª resposta (típica)', dur(d.times.frtBusiness.median), 'no horário de atendimento')}
+        {kpi('Sem nenhuma resposta', pct(d.totals.firstTurns ? d.totals.unansweredFirst / d.totals.firstTurns : null), `${int.format(d.totals.unansweredFirst)} atendimento(s)`, d.totals.unansweredFirst > 0)}
+        {kpi('Recebidos no período', int.format(d.totals.received), `+ ${int.format(d.totals.initiated)} iniciados pela empresa`)}
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Clientes esperando resposta</CardTitle>
+            <CardDescription>Do mais antigo para o mais novo · amarelo depois de 15 min, vermelho depois de 30 min.</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ul className="divide-y">
+              {d.now.oldest.map((o) => {
+                const m = waitMin(o.since)
+                return (
+                  <li key={o.conversationId}>
+                    <Link to={`/chat?conversa=${o.conversationId}`} className="flex min-h-12 items-center gap-3 px-4 py-2 hover:bg-muted/50">
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-semibold">{o.name}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{o.number ?? '—'}</span>
+                      </span>
+                      <span
+                        className={cn(
+                          'shrink-0 rounded-full px-2.5 py-1 text-xs font-bold tabular-nums',
+                          m >= 30 ? 'bg-red-100 text-red-900 dark:bg-red-500/20 dark:text-red-200' : m >= 15 ? 'bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-200' : 'bg-muted text-foreground',
+                        )}
+                      >
+                        {since(o.since)}
+                      </span>
+                    </Link>
+                  </li>
+                )
+              })}
+              {!d.now.oldest.length && <li className="px-4 py-6 text-center text-sm text-muted-foreground">Ninguém esperando resposta agora.</li>}
+            </ul>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Por número</CardTitle>
+            <CardDescription>Quem está esperando e a 1ª resposta típica de cada número.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {d.numbers.map((n) => (
+              <div key={n.id} className="flex items-center gap-3 rounded-xl border px-3 py-2.5">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold">{n.name}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {int.format(n.received)} recebidos · 1ª resposta {dur(n.frtMedian)}
+                  </span>
+                </span>
+                <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-xs font-bold', n.awaiting ? 'bg-red-100 text-red-900 dark:bg-red-500/20 dark:text-red-200' : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-500/20 dark:text-emerald-200')}>
+                  {n.awaiting ? `${int.format(n.awaiting)} esperando` : 'em dia'}
+                </span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    </section>
+  )
+}
+
