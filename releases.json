@@ -2,6 +2,33 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.1",
+      "date": "2026-11-03",
+      "title": "Concorrentes do Mercado Livre e números de monitoramento",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Marketplaces",
+          "text": "Marketplaces › Concorrentes: cole o link da loja do concorrente no Mercado Livre (página da loja, perfil ou um anúncio dela) e o CRM lê os anúncios dela todo dia pela conexão oficial do Mercado Livre."
+        },
+        {
+          "type": "novo",
+          "area": "Marketplaces",
+          "text": "A comparação mostra só os produtos com o mesmo código de referência nos dois lados (Número de peça, Modelo, OEM ou o código no título; 32/925682 e 32925682 contam como o mesmo), com o preço da Usaparts, o de cada concorrente, a diferença em % e quem baixou o preço nos últimos 7 dias."
+        },
+        {
+          "type": "novo",
+          "area": "WhatsApp",
+          "text": "Ao cadastrar um número, escolha se ele é de Atendimento ou de Monitoramento. O de monitoramento não aparece no chat e não dispara nada (robô, ausência, pré-venda, mensagens automáticas, notificação): a direção acompanha pelo painel do WhatsApp e por Monitorar conversas, só leitura."
+        },
+        {
+          "type": "melhoria",
+          "area": "WhatsApp",
+          "text": "Até 40 números de WhatsApp cadastrados e conectados. No painel da direção, a lista Por número mostra primeiro quem tem cliente esperando."
+        }
+      ]
+    },
+    {
       "version": "2.0.0",
       "date": "2026-11-03",
       "title": "Fretes e o novo visual em todas as telas",
