@@ -53,7 +53,7 @@ export function SistemaSwitcher() {
       <SidebarMenuItem>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <SidebarMenuButton size="lg" tooltip={`Sistema: ${s.nome}`} className="border bg-background data-[state=open]:bg-sidebar-accent">
+            <SidebarMenuButton size="lg" tooltip={`Sistema: ${s.nome}`} className="border border-sidebar-border bg-sidebar-accent data-[state=open]:bg-sidebar-accent">
               <span className="flex size-8 items-center justify-center rounded-md" style={{ background: 'var(--brand)', color: 'var(--brand-foreground, #0D0D0D)' }}>
                 <Icon className="size-4" />
               </span>

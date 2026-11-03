@@ -208,10 +208,70 @@
   }
 }
 
-/* Visual "Por sistema": a letra das telas novas (Plus Jakarta Sans). */
+/*
+ * Visual "Por sistema" (telas aprovadas em 03/11/2026): letra Plus Jakarta Sans, menu lateral na cor do menu da marca com
+ * o item aberto na cor principal, fundo claro, cartões planos de cantos arredondados e gráficos nas cores da marca.
+ * Tudo pelas cores do whitelabel (--brand, --brand-nav), então serve para qualquer empresa.
+ */
 html.layout-sistemas {
   font-family: 'Plus Jakarta Sans Variable', sans-serif;
+  --radius: 0.875rem;
+  --sidebar: var(--brand-nav);
+  --sidebar-foreground: var(--brand-nav-foreground);
+  --sidebar-accent: color-mix(in oklch, var(--brand-nav-foreground) 12%, var(--brand-nav));
+  --sidebar-accent-foreground: var(--brand-nav-foreground);
+  --sidebar-border: color-mix(in oklch, var(--brand-nav-foreground) 14%, var(--brand-nav));
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: var(--brand-foreground);
+  --sidebar-ring: var(--brand);
+  --chart-1: var(--brand-nav);
+  --chart-2: var(--brand);
+  --chart-3: color-mix(in oklch, var(--brand) 45%, #ffffff);
+}
+html.layout-sistemas:not(.dark) {
+  --background: #f5f4f3;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --border: #e8e4e1;
+  --input: #e2dedb;
+  --muted: #f1eeec;
+  --muted-foreground: #5e5859;
+  --secondary: #f1eeec;
+  --accent: #f5f1ee;
 }
 html.layout-sistemas .font-sans {
   font-family: inherit;
+}
+/* Menu lateral escuro: textos claros e o item aberto na cor principal da marca. */
+html.layout-sistemas [data-sidebar="sidebar"] .text-muted-foreground,
+html.layout-sistemas [data-sidebar="group-label"] {
+  color: color-mix(in oklch, var(--brand-nav-foreground) 72%, transparent);
+}
+html.layout-sistemas [data-sidebar="group-label"] {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+html.layout-sistemas [data-sidebar="menu-button"][data-active="true"] {
+  background: var(--brand);
+  color: var(--brand-foreground);
+  font-weight: 700;
+}
+html.layout-sistemas [data-sidebar="menu-button"] {
+  min-height: 2.5rem;
+}
+/* Cartões planos (sem sombra), com a borda suave e os cantos mais arredondados. */
+html.layout-sistemas [data-slot="card"] {
+  box-shadow: none;
+  border-color: var(--border);
+  border-radius: 1rem;
+}
+/* Títulos das telas mais fortes, como nas telas aprovadas. */
+html.layout-sistemas main h1 {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+html.layout-sistemas [data-slot="card-title"] {
+  font-weight: 700;
 }
