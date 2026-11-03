@@ -317,6 +317,10 @@ export class EvolutionClient {
 
   /** Cartão de contato (vCard): no WhatsApp aparece com os botões "Conversar" e "Adicionar". */
   async sendContact(instanceName: string, number: string, c: { fullName: string; wuid: string; phoneNumber: string }) {
+    // O botão "Conversar" do cartão abre o WhatsApp do waid: precisa ser o número que o WhatsApp tem para a conta
+    // (celular antigo do Brasil pode estar sem o 9). Pergunta ao WhatsApp; sem resposta, vai como foi digitado.
+    const real = await this.checkNumbers(instanceName, [c.wuid]).then((r) => r.find((x) => x.exists)?.jid?.split('@')[0]).catch(() => undefined)
+    if (real && /^\d{10,15}$/.test(real)) c = { ...c, wuid: real }
     return this.sent(await this.send(instanceName, `/message/sendContact/${encodeURIComponent(instanceName)}`, { number, contact: [{ fullName: c.fullName, wuid: c.wuid, phoneNumber: c.phoneNumber }] }, 30_000))
   }
 
