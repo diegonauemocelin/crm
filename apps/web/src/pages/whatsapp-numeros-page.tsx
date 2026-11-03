@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { formatPhone, namesOf, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
+import { cn } from '@/lib/utils'
 import type { BusinessDay, BusinessHours } from '@/lib/horario'
 
 type Status = 'CONECTADO' | 'CONECTANDO' | 'DESCONECTADO'
@@ -38,6 +39,8 @@ interface WaNumber {
   defaultUserId?: string | null
   createRecords: boolean
   signMessages: boolean
+  /** ATENDIMENTO (chat) ou MONITORAMENTO (só a direção acompanha; fora do chat). */
+  purpose?: 'ATENDIMENTO' | 'MONITORAMENTO'
   connectedAt: string | null
   disconnectedAt: string | null
 }
@@ -160,9 +163,12 @@ export function Numbers() {
                         {n.profileName ? ` · ${n.profileName}` : ''}
                       </CardDescription>
                     </div>
-                    <Badge variant="outline" className={STATUS[n.status].className}>
-                      {STATUS[n.status].label}
-                    </Badge>
+                    <span className="flex shrink-0 flex-wrap justify-end gap-1">
+                      {n.purpose === 'MONITORAMENTO' && <Badge variant="secondary">Monitoramento</Badge>}
+                      <Badge variant="outline" className={STATUS[n.status].className}>
+                        {STATUS[n.status].label}
+                      </Badge>
+                    </span>
                   </CardHeader>
                   <CardContent className="space-y-3 text-sm">
                     <p className="text-muted-foreground">
@@ -261,13 +267,15 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
   const [defaultUserId, setDefaultUserId] = useState<string | null>(number?.defaultUserId ?? null)
   const [createRecords, setCreateRecords] = useState(number?.createRecords ?? true)
   const [signMessages, setSignMessages] = useState(number?.signMessages ?? true)
+  const [purpose, setPurpose] = useState<'ATENDIMENTO' | 'MONITORAMENTO'>(number?.purpose ?? 'ATENDIMENTO')
+  const monitor = purpose === 'MONITORAMENTO'
   const [error, setError] = useState<string | null>(null)
-  const current = { name, unitId, sellerIds, userIds, split, defaultUserId, createRecords, signMessages }
+  const current = { name, unitId, sellerIds, userIds, split, defaultUserId, createRecords, signMessages, purpose }
   const [initial] = useState(current)
   const guard = useCloseGuard(isDirty(initial, current), onClose, 'o número')
   const save = useMutation({
     mutationFn: () => {
-      const body = { name, unitId, sellerIds, userIds, splitAttendance: split, defaultUserId: split && defaultUserId && userIds.includes(defaultUserId) ? defaultUserId : null, createRecords, signMessages }
+      const body = { name, unitId, sellerIds, userIds, splitAttendance: split && !monitor, defaultUserId: !monitor && split && defaultUserId && userIds.includes(defaultUserId) ? defaultUserId : null, createRecords, signMessages, purpose }
       return number ? api.put(`/whatsapp/numeros/${number.id}`, body) : api.post('/whatsapp/numeros', body)
     },
     onSuccess: () => {
@@ -296,6 +304,28 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
             <Label htmlFor="wa-n-name" required>Nome</Label>
             <Input id="wa-n-name" required minLength={2} maxLength={80} placeholder="Ex.: Vendas Paraná" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </div>
+          <fieldset className="space-y-1.5">
+            <legend className="text-sm font-medium">Este número é de</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {(
+                [
+                  ['ATENDIMENTO', 'Atendimento', 'Aparece no chat: a equipe conversa por ele, com robô, pré-venda e mensagens automáticas.'],
+                  ['MONITORAMENTO', 'Monitoramento', 'Não aparece no chat. A direção acompanha no painel do WhatsApp e em Monitorar conversas (só leitura).'],
+                ] as const
+              ).map(([v, t, desc]) => (
+                <button
+                  key={v}
+                  type="button"
+                  aria-pressed={purpose === v}
+                  onClick={() => setPurpose(v)}
+                  className={cn('min-h-11 rounded-md border p-3 text-left text-sm transition-colors', purpose === v ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:bg-muted')}
+                >
+                  <span className="block font-medium">{t}</span>
+                  <span className="block text-xs text-muted-foreground">{desc}</span>
+                </button>
+              ))}
+            </div>
+          </fieldset>
           <div className="space-y-1.5">
             <Label htmlFor="wa-n-unit">Unidade</Label>
             <Select value={unitId ?? NONE} onValueChange={(v) => setUnitId(v === NONE ? null : v)}>
@@ -322,6 +352,7 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
             <MultiSelect id="wa-n-users" items={users} value={userIds} onChange={setUserIds} placeholder="Selecione os usuários" />
             <p className="text-xs text-muted-foreground">Quem tem a permissão Chat WhatsApp como “Próprios” só vê os números ligados a ele (ou ao vendedor dele). Administrador e Gestor comercial veem todos.</p>
           </div>
+          {!monitor && (
           <div className="space-y-3 rounded-md border p-3 text-sm">
             <label className="flex items-start justify-between gap-3">
               <span>
@@ -363,6 +394,9 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
               </p>
             )}
           </div>
+          )}
+          {!monitor && (
+          <>
           <label className="flex items-start justify-between gap-3 rounded-md border p-3 text-sm">
             <span>
               Este número abre pré-venda
@@ -377,6 +411,8 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
             </span>
             <Switch checked={signMessages} onCheckedChange={setSignMessages} />
           </label>
+          </>
+          )}
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => void guard()}>

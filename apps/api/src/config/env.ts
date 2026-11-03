@@ -43,7 +43,7 @@ function loadEnv() {
     evolutionWebhookSecret: process.env.EVOLUTION_WEBHOOK_SECRET || null,
     /** Endereço da API do CRM visto de dentro da rede do Docker (a Evolution manda os eventos para cá). */
     internalApiUrl: optional('INTERNAL_API_URL', 'http://api:3000').replace(/\/+$/, ''),
-    whatsappMaxNumbers: Math.max(1, Number(optional('WHATSAPP_MAX_NUMBERS', '10')) || 10),
+    whatsappMaxNumbers: Math.max(1, Number(optional('WHATSAPP_MAX_NUMBERS', '40')) || 40),
     whatsappMaxConnected: Math.max(1, Number(optional('WHATSAPP_MAX_CONNECTED', '3')) || 3),
     accessTokenTtlSec: 15 * 60,
     refreshTokenTtlSec: 12 * 60 * 60,

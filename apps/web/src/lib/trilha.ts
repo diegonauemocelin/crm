@@ -1099,7 +1099,7 @@ export const TRAIL: TrailModule[] = [
     key: 'marketplaces',
     title: 'Marketplaces: Mercado Livre Ads',
     module: 'marketplaces',
-    routes: ['/marketplaces', '/configuracoes?secao=marketplaces-conexoes'],
+    routes: ['/marketplaces', '/marketplaces/concorrentes', '/configuracoes?secao=marketplaces-conexoes'],
     purpose: 'Acompanhar a publicidade e as vendas nos marketplaces: hoje o Mercado Livre (Product Ads e Display Ads); depois, a Shopee.',
     howItWorks:
       'O CRM lê as campanhas do Mercado Livre a cada 6 horas, só leitura: nunca altera anúncio, preço ou orçamento. A receita é a que o Mercado Livre atribui aos anúncios (até 14 dias depois do clique), por isso os últimos 15 dias são refeitos a cada sincronização. A Visão geral junta a publicidade com as vendas por canal da loja virtual (Magazord).',

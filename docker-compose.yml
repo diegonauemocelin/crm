@@ -74,7 +74,7 @@ services:
       # WhatsApp (Evolution API). Vazio = módulo desligado. Gerados por deploy/whatsapp.sh ativar.
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
       EVOLUTION_WEBHOOK_SECRET: ${EVOLUTION_WEBHOOK_SECRET:-}
-      WHATSAPP_MAX_NUMBERS: ${WHATSAPP_MAX_NUMBERS:-10}
+      WHATSAPP_MAX_NUMBERS: ${WHATSAPP_MAX_NUMBERS:-40}
       WHATSAPP_MAX_CONNECTED: ${WHATSAPP_MAX_CONNECTED:-3}
     volumes:
       - uploads:/data/uploads

@@ -346,7 +346,9 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     }
     const decided = decide(rules, { marked: contact?.category ?? null, hasLead: !!lead, idle, fromMe: p.fromMe, hasPhone: !!phone, numberOpensRecords: n.createRecords })
     // Cliente da carteira de um vendedor: a conversa entra no histórico do lead, mas não abre pré-venda.
-    const plan = lead?.walletOnly ? { ...decided, openRecord: false } : decided
+    // Número de monitoramento: só guarda a conversa (sem lead novo, pré-venda, robô, ausência, atendente nem notificação).
+    const monitorOnly = n.purpose === 'MONITORAMENTO'
+    const plan = monitorOnly ? { ...decided, createLead: false, openRecord: false } : lead?.walletOnly ? { ...decided, openRecord: false } : decided
     const category = plan.category
     if (!plan.linkLead) leadId = null
     if (plan.createLead || plan.openRecord) {
@@ -359,7 +361,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
 
     const later = !conv.lastMessageAt || p.at >= conv.lastMessageAt
     // Atendimento dividido com atendente padrão: todo cliente sem atendente vai para ele (sem passar pela fila).
-    const toDefault = n.splitAttendance && n.defaultUserId && !conv.assignedUserId && !p.fromMe && category === 'CLIENTE' && n.userIds.includes(n.defaultUserId)
+    const toDefault = !monitorOnly && n.splitAttendance && n.defaultUserId && !conv.assignedUserId && !p.fromMe && category === 'CLIENTE' && n.userIds.includes(n.defaultUserId)
     await this.prisma.whatsappConversation.update({
       where: { id: conv.id },
       data: {
@@ -382,12 +384,12 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (p.fromMe && conv.botFlowId) await this.prisma.whatsappConversation.update({ where: { id: conv.id }, data: { botFlowId: null, botState: Prisma.DbNull } })
     // Chatbot: continua o fluxo ou começa um (cliente sem atendente). Com o robô atendendo, não vai a mensagem de ausência.
     const botHandled =
-      !p.fromMe && !goodbye && category === 'CLIENTE' && client && n.status === 'CONECTADO' && Date.now() - p.at.getTime() < 10 * 60_000
+      !monitorOnly && !p.fromMe && !goodbye && category === 'CLIENTE' && client && n.status === 'CONECTADO' && Date.now() - p.at.getTime() < 10 * 60_000
         ? await this.runBot(n, { ...conv, assignedUserId: toDefault ? n.defaultUserId : conv.assignedUserId }, p, rules, idle, client).catch((err: unknown) => (this.logger.warn(`Chatbot (${n.name}): ${(err as Error).message}`), false))
         : false
-    if (!botHandled && !p.fromMe && !goodbye && category === 'CLIENTE' && client) void this.sendAway(n, conv, p, rules, client).catch((err: unknown) => this.logger.warn(`Mensagem de ausência não enviada (${n.name}): ${(err as Error).message}`))
+    if (!monitorOnly && !botHandled && !p.fromMe && !goodbye && category === 'CLIENTE' && client) void this.sendAway(n, conv, p, rules, client).catch((err: unknown) => this.logger.warn(`Mensagem de ausência não enviada (${n.name}): ${(err as Error).message}`))
     // Notificação no celular: mensagem nova do contato (não a do robô nem um agradecimento de atendimento já finalizado).
-    if (!p.fromMe && !botHandled && !staysClosed && Date.now() - p.at.getTime() < 10 * 60_000) {
+    if (!monitorOnly && !p.fromMe && !botHandled && !staysClosed && Date.now() - p.at.getTime() < 10 * 60_000) {
       void this.notifyNew(n, { ...conv, assignedUserId: toDefault ? n.defaultUserId : conv.assignedUserId }, p, phone)
     }
   }
@@ -734,6 +736,13 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     }
   }
 
+  /** Escopo do chat: o de cima sem os números de monitoramento (esses só aparecem no painel e em Monitorar conversas). */
+  private async chatWhere(user: AuthUser): Promise<Prisma.WhatsappConversationWhereInput> {
+    const scope = await this.where(user)
+    const mon = await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, purpose: 'MONITORAMENTO' }, select: { id: true } })
+    return mon.length ? { AND: [scope, { numberId: { notIn: mon.map((n) => n.id) } }] } : scope
+  }
+
   /** Números do usuário: ligados ao login dele ou ao vendedor dele (cadastro do número em Números de WhatsApp). */
   private async ownNumbers(user: AuthUser) {
     const seller = await this.prisma.seller.findUnique({ where: { userId: user.id }, select: { id: true } })
@@ -776,7 +785,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   async conversations(user: AuthUser, q: { numberId?: string; unread?: boolean; archived?: boolean; search?: string; page?: number; category?: string; leadId?: string; reminders?: boolean; monitor?: boolean; sellerId?: string; awaiting?: boolean; queue?: boolean; labelId?: string; waitingSeller?: boolean }) {
     if (!q.monitor) this.assertCan(user)
     // Monitorar: tudo (permissão de monitoramento) ou só a equipe do gestor.
-    const scope: Prisma.WhatsappConversationWhereInput = q.monitor ? await this.assertMonitor(user) : await this.where(user)
+    const scope: Prisma.WhatsappConversationWhereInput = q.monitor ? await this.assertMonitor(user) : await this.chatWhere(user)
     // Na ficha do lead aparecem todas as conversas dele (abertas e arquivadas).
     const and: Prisma.WhatsappConversationWhereInput[] = q.leadId ? [scope, { leadId: q.leadId }] : [scope, { lastMessageAt: { not: null } }, { status: q.archived ? 'ARQUIVADA' : 'ABERTA' }]
     if (q.numberId) and.push({ numberId: q.numberId })
@@ -885,7 +894,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   private async visibleNumbers(user: AuthUser, scope: Prisma.WhatsappConversationWhereInput) {
-    const all = await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, deletedAt: null }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, phone: true, status: true, splitAttendance: true } })
+    const all = await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, deletedAt: null, purpose: 'ATENDIMENTO' }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, phone: true, status: true, splitAttendance: true } })
     // attends: números em que a pessoa atende (o app no celular abre só neles).
     const mine = (await this.ownNumbers(user)).numberIds
     const marked = all.map((n) => ({ ...n, attends: mine.includes(n.id) }))
@@ -896,7 +905,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
 
   private async load(user: AuthUser, id: string) {
     this.assertCan(user)
-    const conv = await this.prisma.whatsappConversation.findFirst({ where: { AND: [{ id }, await this.where(user)] } })
+    const conv = await this.prisma.whatsappConversation.findFirst({ where: { AND: [{ id }, await this.chatWhere(user)] } })
     if (!conv) throw new NotFoundException('Conversa não encontrada.')
     return conv
   }
@@ -1239,6 +1248,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const client = this.clientOf()
     if (!client) throw new Error('O WhatsApp não está ativo no servidor.')
     if (n.status !== 'CONECTADO') throw new Error(`O número ${n.name} está desconectado.`)
+    if (n.purpose === 'MONITORAMENTO') throw new Error(`O número ${n.name} é de monitoramento: não envia mensagens.`)
     if (this.rate.check(n.id)) return null
     const jid = `${phone.replace(/\D/g, '')}@s.whatsapp.net`
     // Colega (ex.: o vendedor recebendo o resumo do dia): entra na agenda geral, e a resposta dele não vira lead nem pré-venda.
@@ -1624,7 +1634,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   /** Números em que o usuário pode iniciar conversa (próprios: os ligados a ele ou ao vendedor dele; unidade: da unidade). */
   private async numbersForStart(user: AuthUser) {
     const s = this.scopeOf(user)
-    const where: Prisma.WhatsappNumberWhereInput = { tenantId: user.tenantId, deletedAt: null }
+    const where: Prisma.WhatsappNumberWhereInput = { tenantId: user.tenantId, deletedAt: null, purpose: 'ATENDIMENTO' }
     if (s === 'UNIT') where.unitId = user.unitId ?? '00000000-0000-0000-0000-000000000000'
     if (s === 'OWN') where.id = { in: (await this.ownNumbers(user)).numberIds }
     return this.prisma.whatsappNumber.findMany({ where, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, phone: true, status: true } })
@@ -2376,7 +2386,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
    */
   async alerts(user: AuthUser) {
     this.assertCan(user)
-    const scope = await this.where(user)
+    const scope = await this.chatWhere(user)
     const unreadWhere = { AND: [scope, { unread: { gt: 0 } }, { status: 'ABERTA' }, { category: { not: 'GRUPO' } }] }
     const [count, sum, latest, due, upcoming] = await Promise.all([
       this.prisma.whatsappConversation.count({ where: unreadWhere }),

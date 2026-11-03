@@ -533,8 +533,8 @@ function AgoraPanel({ d }: { d: Dash }) {
             <CardTitle className="text-base">Por número</CardTitle>
             <CardDescription>Quem está esperando e a 1ª resposta típica de cada número.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {d.numbers.map((n) => (
+          <CardContent className="max-h-[32rem] space-y-2 overflow-y-auto">
+            {[...d.numbers].sort((x, y) => y.awaiting - x.awaiting || x.name.localeCompare(y.name)).map((n) => (
               <div key={n.id} className="flex items-center gap-3 rounded-xl border px-3 py-2.5">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold">{n.name}</span>

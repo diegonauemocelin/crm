@@ -4,7 +4,7 @@
 #   sudo bash deploy/whatsapp.sh reiniciar                   -> reinicia a Evolution: os números voltam sozinhos, sem QR Code
 #   sudo bash deploy/whatsapp.sh ativar [--forcar]           -> gera as chaves, cria o banco e sobe a Evolution
 #   sudo bash deploy/whatsapp.sh desativar                   -> para a Evolution (as sessões ficam guardadas)
-#   sudo bash deploy/whatsapp.sh limite 5                    -> números conectados ao mesmo tempo (depois do upgrade da VPS)
+#   sudo bash deploy/whatsapp.sh limite 40                   -> números conectados ao mesmo tempo (até 40; cada um usa ~150 MB)
 #   sudo bash deploy/whatsapp.sh atualizar                   -> instala a versão estável mais nova da Evolution (só 2.x), com volta automática
 #   sudo bash deploy/whatsapp.sh atualizacao-automatica ligar|desligar  -> confere toda semana (domingo, 4h)
 #
@@ -55,7 +55,7 @@ cmd_status() {
   echo "  Versão configurada: $(env_get EVOLUTION_VERSION || true)"
   local v; v="$(versao_rodando)"
   if [ -n "$v" ]; then ok "Evolution respondendo, versão $v"; else aviso "Evolution não está respondendo: $(diagnostico)"; fi
-  echo "  Limites: $(env_get WHATSAPP_MAX_NUMBERS || true) números cadastrados (padrão 10), $(env_get WHATSAPP_MAX_CONNECTED || true) conectados ao mesmo tempo (padrão 3)"
+  echo "  Limites: $(env_get WHATSAPP_MAX_NUMBERS || true) números cadastrados (padrão 40), $(env_get WHATSAPP_MAX_CONNECTED || true) conectados ao mesmo tempo (padrão 3)"
   echo "  Memória livre na VPS: $(memoria_livre_mb) MB"
   dc ps evolution evolution-redis 2>/dev/null || true
   diagnostico_quedas
@@ -97,7 +97,7 @@ cmd_ativar() {
   [ -n "$(env_get EVOLUTION_API_KEY)" ] || env_set EVOLUTION_API_KEY "$(openssl rand -hex 32)"
   [ -n "$(env_get EVOLUTION_WEBHOOK_SECRET)" ] || env_set EVOLUTION_WEBHOOK_SECRET "$(openssl rand -hex 24)"
   [ -n "$(env_get EVOLUTION_VERSION)" ] || env_set EVOLUTION_VERSION "$VERSAO_PADRAO"
-  [ -n "$(env_get WHATSAPP_MAX_NUMBERS)" ] || env_set WHATSAPP_MAX_NUMBERS 10
+  [ -n "$(env_get WHATSAPP_MAX_NUMBERS)" ] || env_set WHATSAPP_MAX_NUMBERS 40
   [ -n "$(env_get WHATSAPP_MAX_CONNECTED)" ] || env_set WHATSAPP_MAX_CONNECTED 3
   chmod 600 .env
   local perfis; perfis="$(env_get COMPOSE_PROFILES)"
@@ -126,12 +126,16 @@ cmd_desativar() {
 
 cmd_limite() {
   local n="${1:-}"
-  [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le 10 ] || fatal "Informe de 1 a 10. Ex.: sudo bash deploy/whatsapp.sh limite 5"
+  [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le 40 ] || fatal "Informe de 1 a 40. Ex.: sudo bash deploy/whatsapp.sh limite 40"
   if [ "$n" -gt 3 ]; then
     aviso "Cada número conectado usa memória. Com $n conectados, recomendo a VPS com 4 GB ou mais (livre agora: $(memoria_livre_mb) MB)."
     [ "$n" -le 5 ] || env_set EVOLUTION_MEMORY "$((n * 150 + 200))m"
   fi
   env_set WHATSAPP_MAX_CONNECTED "$n"
+  # Cadastrados nunca abaixo dos conectados.
+  local cad; cad="$(env_get WHATSAPP_MAX_NUMBERS)"
+  [[ "$cad" =~ ^[0-9]+$ ]] && [ "$cad" -ge "$n" ] || env_set WHATSAPP_MAX_NUMBERS "$(( n > 40 ? n : 40 ))"
+  [ "$n" -le 5 ] || { info "Reiniciando a Evolution com a memória nova ($(env_get EVOLUTION_MEMORY))"; dc up -d evolution; }
   recarregar_api
   ok "Limite de números conectados ao mesmo tempo: $n."
 }

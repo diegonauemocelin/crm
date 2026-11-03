@@ -4,6 +4,8 @@ import { RastreamentoModule } from '../rastreamento/rastreamento.module'
 import { AssistService } from './assist.service'
 import { AssistMlService } from './assist-ml.service'
 import { AssistenteController, MercadoLivreWebhookController } from './assistente.controller'
+import { ConcorrentesController } from './concorrentes.controller'
+import { ConcorrentesService } from './concorrentes.service'
 import { AssistKnowledgeService } from './conhecimento.service'
 import { AssistQueriesService } from './consultas.service'
 import { AssistImportService } from './importacao.service'
@@ -17,7 +19,7 @@ import { AssistSalesService } from './vendas.service'
  */
 @Module({
   imports: [MarketplacesModule, RastreamentoModule],
-  controllers: [AssistenteController, MercadoLivreWebhookController],
-  providers: [AssistService, AssistMlService, AssistKnowledgeService, AssistPipelineService, AssistSalesService, AssistImportService, AssistQueriesService, AssistIntegrationService],
+  controllers: [AssistenteController, MercadoLivreWebhookController, ConcorrentesController],
+  providers: [AssistService, AssistMlService, AssistKnowledgeService, AssistPipelineService, AssistSalesService, AssistImportService, AssistQueriesService, AssistIntegrationService, ConcorrentesService],
 })
 export class AssistenteModule {}

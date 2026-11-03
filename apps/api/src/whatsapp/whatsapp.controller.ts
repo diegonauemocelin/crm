@@ -19,6 +19,7 @@ class NumberDto {
   @ApiPropertyOptional({ description: 'Ignorado: os setores agora são da empresa (/whatsapp/setores)' }) @IsOptional() @IsArray() @ArrayMaxSize(20) sectors?: unknown[]
   @ApiPropertyOptional() @IsOptional() @IsBoolean() createRecords?: boolean
   @ApiPropertyOptional() @IsOptional() @IsBoolean() signMessages?: boolean
+  @ApiPropertyOptional({ enum: ['ATENDIMENTO', 'MONITORAMENTO'] }) @IsOptional() @IsIn(['ATENDIMENTO', 'MONITORAMENTO']) purpose?: 'ATENDIMENTO' | 'MONITORAMENTO'
 }
 
 /** Eventos da Evolution API (só pela rede interna do Docker; o segredo vai no caminho). */

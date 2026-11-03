@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { compareByCode, competitorCodes, usableCode } from '../src/assistente/concorrentes'
+import { compareByCode, competitorCodes, ownCodes, usableCode } from '../src/assistente/concorrentes'
 
 describe('concorrentes do Mercado Livre', () => {
   it('pega o código dos campos Número de peça, Modelo e OEM e do título, sem modelo de máquina curto', () => {
@@ -32,5 +32,10 @@ describe('concorrentes do Mercado Livre', () => {
     expect(rows[0]).toMatchObject({ cheaper: true, worst: -0.15 })
     expect(rows[0]!.offers[0]).toMatchObject({ itemId: 'MLBB2', dropped: true })
     expect(rows[1]!.offers.map((o) => [o.itemId, o.diff])).toEqual([['MLBA1', -0.1], ['MLBB1', 0.04]])
+  })
+
+  it('acha o código no título do anúncio da própria loja (32/925682 = 32925682)', () => {
+    expect(ownCodes({ title: 'Filtro Ar Primario Jcb 3c 3cx 4cx 32925682' })).toContain('32925682')
+    expect(competitorCodes([{ id: 'PART_NUMBER', value_name: '32/925682' }], 'Filtro de ar')).toContain('32925682')
   })
 })

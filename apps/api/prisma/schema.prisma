@@ -1397,6 +1397,9 @@ model WhatsappNumber {
   createRecords  Boolean   @default(true)
   /// Mensagens enviadas pelo CRM começam com o nome de quem enviou (*Diego:*), para o cliente saber com quem fala.
   signMessages   Boolean   @default(true)
+  /// ATENDIMENTO (aparece no chat) ou MONITORAMENTO (só a direção acompanha: fora do chat, sem robô, sem pré-venda,
+  /// sem mensagem automática; entra no painel do WhatsApp e em Monitorar conversas, só leitura).
+  purpose        String    @default("ATENDIMENTO")
   connectingAt   DateTime?
   connectedAt    DateTime?
   disconnectedAt DateTime?

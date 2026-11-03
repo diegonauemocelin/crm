@@ -178,7 +178,7 @@ sudo bash deploy/whatsapp.sh desativar     # para a Evolution; as sessões ficam
 
 - **Memória:** o `ativar` recusa com menos de 700 MB livres (`--forcar` passa por cima, por sua conta). Evolution + Redis usam
   por volta de 400-600 MB com 3 números conectados.
-- **Limites:** `WHATSAPP_MAX_NUMBERS` (padrão 10 cadastrados) e `WHATSAPP_MAX_CONNECTED` (padrão 3 conectados ao mesmo tempo).
+- **Limites:** `WHATSAPP_MAX_NUMBERS` (padrão 40 cadastrados; `deploy/whatsapp.sh limite N` aceita até 40 conectados) e `WHATSAPP_MAX_CONNECTED` (padrão 3 conectados ao mesmo tempo).
   Depois do upgrade da VPS: `sudo bash deploy/whatsapp.sh limite 5`.
 - **Números:** cadastrados e conectados no CRM (Atendimento → Números de WhatsApp), lendo o QR Code no WhatsApp Business do
   celular. Para conectar um 4º, desconecte um (voltar exige ler o QR Code de novo).
