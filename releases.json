@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "1.0.5",
+      "date": "2026-11-03",
+      "title": "Visual Por sistema e setas nas fotos do chat",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Aparência",
+          "text": "Novo visual Por sistema (Configurações › Aparência ou Meu perfil): depois do login você escolhe onde vai trabalhar (Atendimento, Dashboards, Marketing, Marketplaces...) e o menu mostra só as telas daquele sistema. Para trocar, use o botão do sistema no topo do menu. Quem tem um sistema só entra direto nele, e dá para marcar Entrar direto no último sistema usado."
+        },
+        {
+          "type": "melhoria",
+          "area": "Chat",
+          "text": "Ao abrir uma foto da conversa, as setas (na tela ou no teclado) passam para a foto anterior ou a próxima, com a posição (ex.: 3 de 8)."
+        }
+      ]
+    },
+    {
       "version": "1.0.4",
       "date": "2026-11-03",
       "title": "WhatsApp: conexão que se recupera sozinha e cartão de contato que abre a conversa",
