@@ -10,6 +10,7 @@ import {
   SettingsIcon,
   ShoppingCartIcon,
   StoreIcon,
+  TruckIcon,
   UsersRoundIcon,
 } from 'lucide-react'
 import { Link } from 'react-router'
@@ -27,6 +28,7 @@ export const SISTEMA_ICONES: Record<string, LucideIcon> = {
   mi: BrainCircuitIcon,
   ecommerce: ShoppingCartIcon,
   marketplaces: StoreIcon,
+  fretes: TruckIcon,
   admin: SettingsIcon,
 }
 

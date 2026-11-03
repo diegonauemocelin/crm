@@ -20,6 +20,7 @@ export const SISTEMAS: SistemaDef[] = [
   { id: 'mi', nome: 'Marketing Inteligente', descricao: 'Anúncios, Instagram, SEO, funil e recomendações da IA.', grupos: ['Marketing Inteligente'] },
   { id: 'ecommerce', nome: 'E-commerce', descricao: 'Catálogo, carrinhos abandonados e SEO dos produtos.', grupos: ['E-commerce'] },
   { id: 'marketplaces', nome: 'Marketplaces', descricao: 'Mercado Livre Ads e o Assistente das perguntas.', grupos: ['Marketplaces'] },
+  { id: 'fretes', nome: 'Fretes', descricao: 'Cotação de frete, tabelas das transportadoras, CT-e, faturas e conciliação.', grupos: ['Fretes'] },
   { id: 'admin', nome: 'Administração', descricao: 'Configurações, usuários, perfis e auditoria.', grupos: ['Administração'] },
 ]
 
