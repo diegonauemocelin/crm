@@ -14,7 +14,7 @@ cd "$RAIZ"
 exigir_root
 
 DOMINIO="${1:?Informe o subdomínio. Ex.: lp.usaparts.com.br}"
-EMAIL="${2:?Informe o e-mail para o aviso do certificado (Let's Encrypt)}"
+EMAIL="${2:?Informe o e-mail para os avisos do certificado HTTPS}"
 VHOST="/etc/nginx/sites-available/usaparts-crm-lp"
 PORTA="$(porta_http)"
 

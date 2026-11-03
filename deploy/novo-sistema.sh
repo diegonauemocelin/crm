@@ -25,7 +25,7 @@ fatal() { cor "1;31" "  ✖ $*" >&2; exit 1; }
 
 NOME="${1:?Informe o nome do sistema. Ex.: importacao}"
 DOMINIO="${2:?Informe o subdomínio. Ex.: importacao.usaparts.com.br}"
-EMAIL="${3:?Informe o e-mail para o aviso do certificado (Let's Encrypt)}"
+EMAIL="${3:?Informe o e-mail para os avisos do certificado HTTPS}"
 PORTA="${4:-}"
 PASTA="/opt/$NOME"
 VHOST="/etc/nginx/sites-available/$NOME"
@@ -46,7 +46,7 @@ porta_ocupada() {
 }
 
 info "1/5 Conferindo o DNS de $DOMINIO"
-IP_DNS="$(getent ahostsv4 "$DOMINIO" | awk 'NR==1{print $1}')"
+IP_DNS="$(getent ahostsv4 "$DOMINIO" 2>/dev/null | awk 'NR==1{print $1}' || true)"
 IP_VPS="$(curl -fsS --max-time 10 https://api.ipify.org || true)"
 [ -n "$IP_DNS" ] || fatal "$DOMINIO ainda não resolve. Crie o registro A apontando para esta VPS e espere propagar."
 if [ -n "$IP_VPS" ] && [ "$IP_DNS" != "$IP_VPS" ]; then

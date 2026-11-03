@@ -317,3 +317,28 @@ Ele cria a pasta `/opt/importacao`, reserva uma porta local livre (a partir de 8
 
 - Memória: cada sistema a mais divide a mesma VPS. Dê limite de memória a cada container do outro sistema e confira com `sudo bash deploy/raio-x.sh`.
 - O backup completo do servidor (`deploy/backup-servidor.sh`) já inclui `/opt` e os volumes do Docker. O enxugar-servidor só lista o outro sistema em "Outros containers", sem tocar nele.
+
+## Migrar o CRM para outra VPS
+
+`deploy/migrar.sh` leva o CRM inteiro, pela conexão SSH entre as duas VPS (nada passa pelo seu computador): código,
+`.env` com os segredos, banco, arquivos enviados, sessões do WhatsApp (os números voltam conectados, sem QR Code), site do
+Nginx com o certificado HTTPS e os agendamentos. Não mexe em outros sistemas da VPS atual.
+
+1. VPS nova com Ubuntu, acesso de root por SSH e de preferência 4 GB ou mais de memória. Prepare-a antes com
+   `deploy/preparar-vps.sh` (atualiza o sistema, instala Docker, Nginx e Certbot, liga firewall, fail2ban e atualizações
+   automáticas de segurança; veja o começo do script). Se puder, baixe antes o TTL do
+   DNS de `crm.usaparts.com.br` (e do domínio das landing pages) para 5 minutos.
+2. Na VPS atual, baixe o script e confira (só confere, não para nada):
+
+```bash
+cd /opt/usaparts-crm && sudo git fetch origin main && sudo git show origin/main:deploy/migrar.sh > /root/migrar.sh
+sudo bash /root/migrar.sh root@IP-DA-VPS-NOVA
+```
+
+3. Migre (o CRM fica fora do ar enquanto copia, alguns minutos por GB): `sudo bash /root/migrar.sh root@IP-DA-VPS-NOVA --executar`.
+   Ele instala Docker, Nginx e Certbot na nova, faz um backup, para o CRM na atual, copia tudo e sobe o CRM na nova.
+4. Aponte o DNS para o IP novo. Depois, na nova: `certbot renew --dry-run` e `cd /opt/usaparts-crm && sudo bash deploy/seguranca-vps.sh`.
+
+A VPS atual fica com o CRM parado e o `.env` renomeado para `.env.migrado` (o CRM nunca sobe nas duas: o WhatsApp
+derrubaria as sessões). Os dados e os backups continuam lá. Para desistir e voltar: `sudo bash /root/migrar.sh --voltar`
+(e pare o CRM na nova com `docker compose down`). Daí em diante, as atualizações (`deploy/deploy.sh`) são na VPS nova.
