@@ -70,7 +70,9 @@ Coisas só da Usaparts (dados, scripts da VPS dela, importação do painel antig
 - Edição de mensagem criptografada no chat às vezes não abre ("a chave da mensagem original não abriu"); falta o log da VPS para achar a causa.
 - VPS: `deploy/enxugar-servidor.sh apagar` ainda não foi rodado (o `desligar` já foi).
 - VPS atual (vps70600): vai receber o sistema **importacao** (repositório `Usaparts/imp`, `importacao.usaparts.com.br`,
-  pasta `/opt/importacao`, preparado com `deploy/novo-sistema.sh`), separado do CRM. Depois o CRM migra para outra VPS
+  pasta `/opt/importacao`, preparado com `deploy/novo-sistema.sh`), separado do CRM. Instalado em 03/11/2026: branch
+  `sistema-v1`, projeto Docker `usaparts_imp`, porta `127.0.0.1:8280` (`APP_PORTA` no `.env` de lá), chave de leitura
+  `/root/.ssh/importacao_deploy` (deploy key do repositório). Depois o CRM migra para outra VPS
   (decisão de 03/11/2026); o importacao fica nesta.
 
 ## Projeto separado
