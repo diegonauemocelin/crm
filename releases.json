@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.23",
+      "date": "2026-11-04",
+      "title": "Dashboard executivo na TV em apresentação",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Marketing",
+          "text": "Link da TV do dashboard executivo: o painel vira uma apresentação. Cada parte (indicadores, comparativo mensal, mapa, gráficos, canais e campanhas, vendedores e regiões, estados, marcas e peças) ocupa a tela inteira, reduzida para caber sem rolar, e elas se alternam sozinhas a cada 20 segundos."
+        },
+        {
+          "type": "melhoria",
+          "area": "Marketing",
+          "text": "Na TV, os dados do dashboard executivo são recarregados de hora em hora. O tempo de cada tela pode mudar no link (ex.: ?tempo=30 para 30 segundos)."
+        }
+      ]
+    },
+    {
       "version": "2.0.22",
       "date": "2026-11-04",
       "title": "SEFAZ até 30 dias e taxas por cidade (EMEX)",
