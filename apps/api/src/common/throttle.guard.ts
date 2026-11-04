@@ -2,7 +2,8 @@ import { Inject, Injectable } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { ThrottlerGuard } from '@nestjs/throttler'
 import type { Request } from 'express'
-import { ACCESS_COOKIE } from '../auth/cookies'
+import { createHash } from 'node:crypto'
+import { ACCESS_COOKIE, REFRESH_COOKIE } from '../auth/cookies'
 
 /**
  * Limite de requisições por usuário logado (e não por IP): no escritório todos saem pelo mesmo IP da internet,
@@ -22,9 +23,13 @@ export class UserThrottlerGuard extends ThrottlerGuard {
         const payload = await this.jwt.verifyAsync<{ sub?: string }>(token, { algorithms: ['HS256'] })
         if (payload.sub) return `u:${payload.sub}`
       } catch {
-        // Token vencido ou inválido: cai no limite por IP.
+        // Token vencido ou inválido: cai no limite da sessão (abaixo) ou por IP.
       }
     }
+    // Renovação da sessão (token de acesso vencido): conta por sessão, não pelo IP do escritório (com a equipe toda
+    // renovando a cada 15 minutos, o limite por IP recusava a renovação e o app/tela ia para o login).
+    const refresh = r.cookies?.[REFRESH_COOKIE] as string | undefined
+    if (refresh) return `r:${createHash('sha256').update(refresh).digest('hex').slice(0, 32)}`
     return r.ip ?? 'desconhecido'
   }
 }

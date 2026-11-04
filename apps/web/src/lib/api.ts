@@ -48,7 +48,8 @@ async function refreshSession(): Promise<RefreshResult> {
       await fetch('/api/system/version', { credentials: 'same-origin' })
       return attempt()
     })
-    .then((r): RefreshResult => (r.ok ? 'ok' : r.status >= 500 ? 'unavailable' : 'denied'))
+    // 429 (muitas renovações de uma vez) não é sessão recusada: tenta de novo depois, sem mandar para o login.
+    .then((r): RefreshResult => (r.ok ? 'ok' : r.status >= 500 || r.status === 429 ? 'unavailable' : 'denied'))
     .catch((): RefreshResult => 'unavailable')
     .finally(() => setTimeout(() => (refreshing = null), 0))
   return refreshing

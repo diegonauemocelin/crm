@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.3",
+      "date": "2026-11-04",
+      "title": "App no iPhone sem cair a sessão",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "App no celular",
+          "text": "O app no iPhone não desconecta mais sozinho: a chave da sessão do app só troca a cada 12 horas. Antes trocava a cada 15 minutos, e quando o iPhone fechava o app antes de guardar a chave nova, a sessão caía."
+        },
+        {
+          "type": "correcao",
+          "area": "Acesso",
+          "text": "Duas renovações da sessão ao mesmo tempo (ao voltar com o app do segundo plano) não derrubam mais o login, e o limite de renovações passou a contar por sessão, não pelo IP do escritório."
+        },
+        {
+          "type": "correcao",
+          "area": "Acesso",
+          "text": "Servidor reiniciando ou ocupado na hora de renovar a sessão não manda mais para a tela de login: o sistema tenta de novo."
+        }
+      ]
+    },
+    {
       "version": "2.0.2",
       "date": "2026-11-04",
       "title": "Backup mais rápido",

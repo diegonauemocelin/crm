@@ -42,6 +42,8 @@ export function lockDurationMinutes(failedLogins: number): number | null {
   return LOCK_MINUTES[Math.min(round, LOCK_MINUTES.length - 1)]!
 }
 
+/** App no celular: intervalo mínimo entre trocas do token de renovação. */
+const APP_ROTATE_MS = 12 * 3_600_000
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name)
@@ -151,8 +153,12 @@ export class AuthService {
     // Resposta perdida: o celular pausou o app no meio da renovação e o token novo nunca chegou nem foi usado. Não é
     // roubo: cancela o novo que ficou sem dono e renova a partir deste (antes, derrubava a sessão do app).
     const lost = !stored.revokedAt && stored.replacedAt ? await this.prisma.refreshToken.findFirst({ where: { familyId: stored.familyId, revokedAt: null, replacedAt: null, createdAt: { gte: new Date(stored.replacedAt.getTime() - 5_000), lte: new Date(stored.replacedAt.getTime() + 5_000) } } }) : null
-    if (lost) await this.prisma.refreshToken.update({ where: { id: lost.id }, data: { revokedAt: new Date() } })
-    else if (stored.revokedAt || stored.replacedAt) {
+    // Duas renovações ao mesmo tempo (o app volta do segundo plano e várias telas pedem juntas): a primeira já trocou o
+    // token e o cookie novo está chegando. Esta só ganha o acesso e não mexe no cookie (antes, uma cancelava a outra e,
+    // se o cookie cancelado chegasse por último, a sessão caía na renovação seguinte).
+    const concurrent = !!lost && Date.now() - lost.createdAt.getTime() < 30_000
+    if (lost && !concurrent) await this.prisma.refreshToken.update({ where: { id: lost.id }, data: { revokedAt: new Date() } })
+    if (!lost && (stored.revokedAt || stored.replacedAt)) {
       await this.prisma.refreshToken.updateMany({ where: { familyId: stored.familyId, revokedAt: null }, data: { revokedAt: new Date() } })
       await this.audit.log({
         tenantId: stored.user.tenantId,
@@ -169,6 +175,13 @@ export class AuthService {
       throw new UnauthorizedException(outsideHoursMessage(stored.user.role.loginHours))
     }
 
+    const pending = stored.user.role.require2fa && !stored.user.totpEnabled
+    const access = () => this.signAccess({ sub: stored.userId, tid: stored.user.tenantId, fam: stored.familyId, p2fa: pending })
+    if (concurrent) return { accessToken: await access(), refreshToken: null }
+    // App no celular: o token de renovação só troca a cada 12 horas. O iPhone às vezes fecha o app antes de gravar o
+    // cookie novo e, ao abrir, manda o anterior; trocando a cada 15 minutos isso derrubava a sessão em menos de 1 hora.
+    if (app && Date.now() - stored.createdAt.getTime() < APP_ROTATE_MS) return { accessToken: await access(), refreshToken }
+
     const newToken = randomToken()
     await this.prisma.$transaction([
       this.prisma.refreshToken.update({ where: { id: stored.id }, data: { replacedAt: new Date() } }),
@@ -183,9 +196,7 @@ export class AuthService {
         },
       }),
     ])
-    const pending = stored.user.role.require2fa && !stored.user.totpEnabled
-    const accessToken = await this.signAccess({ sub: stored.userId, tid: stored.user.tenantId, fam: stored.familyId, p2fa: pending })
-    return { accessToken, refreshToken: newToken }
+    return { accessToken: await access(), refreshToken: newToken }
   }
 
   async logout(refreshToken: string | undefined, familyId: string | undefined, ctx: RequestCtx) {

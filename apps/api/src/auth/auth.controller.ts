@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, Post, Req, Res } from '@nestjs/common'
+import { Body, Controller, Get, Headers, HttpCode, Post, Req, Res, UnauthorizedException } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import type { Request, Response } from 'express'
@@ -56,7 +56,8 @@ export class AuthController {
       setSessionCookies(res, result.accessToken, result.refreshToken, app)
       return { ok: true }
     } catch (err) {
-      clearSessionCookies(res)
+      // Só apaga a sessão quando ela foi recusada; erro do servidor (ex.: reiniciando) não desconecta ninguém.
+      if (err instanceof UnauthorizedException) clearSessionCookies(res)
       throw err
     }
   }
