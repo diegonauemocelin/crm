@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkMapping, parseCepRange, parseNumber, parseRows, suggestMapping, weightBand, cubageFactorOf } from '../src/fretes/importacao'
+import { checkMapping, parseCepRange, parseNumber, parseRows, suggestMapping, weightBand, cubageFactorOf, tableNotes } from '../src/fretes/importacao'
 
 describe('fretes: leitura da planilha', () => {
   it('números no formato brasileiro', () => {
@@ -119,6 +119,25 @@ describe('fretes: layouts reais das transportadoras', () => {
     })
     const r = parseRows(data, m, 2)
     expect(r.rules[0]).toMatchObject({ cepStart: 86460000, cepEnd: 86464999, deadlineDays: 6, values: { freight: 41.11, freight_kg: 0.941, freight_value: 0.5, gris: 0.17, gris_min: 3.79, toll: 3.79, tas: 3 } })
+  })
+
+  it('Viopex: destino por UF, % guardado como fração, excedente em R$/ton, faixa "–" vale a de cima e observações', () => {
+    const headers = ['Item', 'Código', 'Origem', 'Destino', 'Mercadoria', 'Ida/Volta', 'TRT mínimo (R$)', 'Adic. valor mercadoria (%)', 'Até 5 kg (R$)', 'Até 10 kg (R$)', 'Até 20 kg (R$)', 'Até 30 kg (R$)', 'Excedente (R$/ton)']
+    const data = [
+      [7, 'CO184349', 'SC', 'MT', 'TODAS', 'IDA/VOLTA', 80, 0.008014, 71.28, 83.16, '–', 95.04, 1097.24],
+      [14, 'CO184353', 'SC', 'SC', 'TODAS', 'IDA/VOLTA', 80, 0.005724, 33.26, 35.64, 38.02, 40.39, 1088.16],
+      ['“–” = faixa não existe na tabela daquele destino (vale a próxima faixa acima).', null, null, null, null, null, null, null, null, null, null, null, null],
+    ]
+    const m = suggestMapping(headers, data)
+    expect(m.find((x) => headers[x.column] === 'Destino')?.field).toBe('uf')
+    expect(m.some((x) => headers[x.column] === 'Origem')).toBe(false)
+    expect(m.find((x) => headers[x.column] === 'Adic. valor mercadoria (%)')).toMatchObject({ field: 'var:freight_value', scale: 100 })
+    expect(m.find((x) => headers[x.column] === 'Excedente (R$/ton)')).toMatchObject({ field: 'var:over_weight', scale: 0.001 })
+    const r = parseRows(data, m, 2)
+    expect(r.issues).toEqual([])
+    expect(r.rules.filter((x) => x.uf === 'MT').map((x) => [x.weightMin, x.weightMax, x.values.freight])).toEqual([[0, 5, 71.28], [5, 10, 83.16], [10, 30, 95.04]])
+    expect(r.rules.find((x) => x.uf === 'SC')!.values).toMatchObject({ freight_value: 0.5724, over_weight: 1.08816 })
+    expect(tableNotes([{ rows: [['ICMS', 'Já incluso no valor do frete calculado pela tabela'], ['Cubagem', '300,00 kg/m³']] }])).toEqual({ icmsIncluded: true, cubage: 300 })
   })
 
   it('São Miguel: o fator de cubagem (MERC. VOLUMOSA kg³) vira parâmetro da versão', () => {

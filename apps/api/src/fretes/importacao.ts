@@ -33,6 +33,8 @@ export interface ColumnMap {
   /** Coluna que é uma faixa de peso ("Até 10 kg"): a linha vira uma regra por faixa. */
   weightMin?: number | null
   weightMax?: number | null
+  /** Multiplica o valor lido: 0,001 para R$/ton (vira R$/kg), 100 para % que o Excel guarda como fração (0,032 = 3,2%). */
+  scale?: number | null
 }
 
 export interface ParsedRule {
@@ -126,7 +128,7 @@ const HEADER_RULES: [RegExp, string][] = [
   [/^obs|observ/, 'note'],
   [/frete min|^minimo|valor min|^fm$/, 'var:min_freight'],
   [/excedente|kg adicional|kg extra|^acima|^\+ ?\d/, 'var:over_weight'],
-  [/frete valor|frete-valor|^fv$|% ?nf|frete %/, 'var:freight_value'],
+  [/frete valor|frete-valor|^fv$|% ?nf|frete %|adic.* valor|valor (da )?mercadoria/, 'var:freight_value'],
   [/frete (por )?kg|r\$ ?\/ ?kg|^\/ ?kg|valor (por )?kg|por kg|^kg$/, 'var:freight_kg'],
   [/frete base/, 'var:base_freight'],
   [/ad ?-?valorem min|adv min/, 'var:advalorem_min'],
@@ -190,6 +192,16 @@ export function suggestMapping(headers: unknown[], samples: unknown[][] = []): C
     const values = samples.map((r) => r?.[column]).filter((v) => v !== null && v !== undefined && String(v).trim() !== '').slice(0, 8)
     return values.length > 0 && values.filter((v) => Number.isNaN(parseNumber(v))).length > values.length / 2
   }
+  const nums = (column: number) => samples.map((r) => parseNumber(r?.[column])).filter((v): v is number => v !== null && !Number.isNaN(v))
+  const ufColumn = (column: number) => {
+    const v = samples.map((r) => String(r?.[column] ?? '').trim()).filter(Boolean).slice(0, 8)
+    return v.length > 0 && v.every((x) => !!normalizeUf(x))
+  }
+  // Todos os percentuais abaixo de 0,1: o Excel guardou "3,20%" como 0,032.
+  const fractionPercent = (column: number) => {
+    const v = nums(column)
+    return v.length > 0 && v.every((x) => x > 0 && x < 0.1)
+  }
   let lastMax = 0
   headers.forEach((raw, column) => {
     const band = weightBand(raw)
@@ -206,8 +218,15 @@ export function suggestMapping(headers: unknown[], samples: unknown[][] = []): C
     else if (grisPct && h === 'gris') field = 'var:gris_min'
     else field = HEADER_RULES.find(([re, f]) => re.test(h) && !used.has(f) && !(NUMERIC(f) && textColumn(column)))?.[1]
     if (!field || used.has(field) || (NUMERIC(field) && textColumn(column))) return
+    // "Destino"/"Origem" com siglas de estado (BA, SC...): é a UF, não a cidade (a origem não entra na regra).
+    if (field === 'city' && ufColumn(column)) {
+      if (/^origem/.test(h) || used.has('uf')) return
+      field = 'uf'
+    }
     used.add(field)
-    out.push({ column, field })
+    // Excedente em R$/ton (ex.: 1.800/ton = R$ 1,80 por kg) e % guardado como fração no Excel (0,032 = 3,2%).
+    const scale = field === 'var:over_weight' && /\bton|tonelada/.test(h) ? 0.001 : isVarField(field) && PERCENT.has(varCode(field)) && /%/.test(String(raw)) && fractionPercent(column) ? 100 : null
+    out.push({ column, field, ...(scale ? { scale } : {}) })
   })
   // Região só é o destino quando a tabela não traz CEP nem cidade (com eles, a coluna Região é só informativa).
   return out.some((m) => m.field === 'cep_start' || m.field === 'cep' || m.field === 'city') ? out.filter((m) => m.field !== 'region') : out
@@ -275,6 +294,9 @@ export function parseRows(rows: unknown[][], mapping: ColumnMap[], firstLine: nu
   rows.forEach((row, idx) => {
     const line = firstLine + idx
     if (!row || row.every((c) => c === null || c === undefined || String(c).trim() === '')) return
+    // Nota no fim da tabela ("“–” = faixa não existe..."): só a primeira coluna com texto, sem número nenhum.
+    const filled = row.filter((c) => c !== null && c !== undefined && String(c).trim() !== '')
+    if (filled.length === 1 && typeof filled[0] === 'string' && filled[0].length > 25 && row.findIndex((c) => c === filled[0]) === 0) return
     readLines++
     const errs: string[] = []
     const warn = (message: string) => push({ line, level: 'alerta', message })
@@ -324,7 +346,8 @@ export function parseRows(rows: unknown[][], mapping: ColumnMap[], firstLine: nu
     const shared: Record<string, number> = {}
     for (const m of plain.filter((x) => isVarField(x.field))) {
       const code = varCode(m.field)
-      const v = parseNumber(row[m.column])
+      const raw = parseNumber(row[m.column])
+      const v = raw === null || Number.isNaN(raw) || !m.scale ? raw : Math.round(raw * m.scale * 1e6) / 1e6
       if (v === null) continue
       if (Number.isNaN(v)) errs.push(`${labelOf(m.field)}: "${text(row[m.column], 30)}" não é número.`)
       else if (v < 0) errs.push(`${labelOf(m.field)} negativo.`)
@@ -354,6 +377,12 @@ export function parseRows(rows: unknown[][], mapping: ColumnMap[], firstLine: nu
         }
         out.push({ ...base, weightMin: m.weightMin ?? 0, weightMax: m.weightMax!, values: { ...shared, [varCode(m.field)]: v } })
       }
+      // Faixa sem valor ("–" = a faixa não existe para este destino): vale a próxima faixa acima, então cada faixa
+      // começa onde termina a anterior que existe.
+      out.sort((x, y) => (x.weightMax ?? Infinity) - (y.weightMax ?? Infinity))
+      out.forEach((r, i) => {
+        if (i > 0) r.weightMin = out[i - 1]!.weightMax ?? r.weightMin
+      })
       if (!out.length && !restricted && !errs.length) errs.push('Nenhuma faixa de peso com valor.')
     } else {
       out.push({ ...base, weightMin: Number.isNaN(wMin) ? 0 : (wMin ?? 0), weightMax: Number.isNaN(wMax) ? null : wMax, values: shared })
@@ -431,4 +460,25 @@ export function cubageFactorOf(header: unknown[], rows: unknown[][]): number | n
   if (!n) return null
   const [value, times] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]!
   return times / n >= 0.9 && value >= 50 && value <= 1000 ? value : null
+}
+
+/**
+ * Observações da proposta (aba de observações ou texto na planilha): "ICMS já incluso no valor do frete" e
+ * "Cubagem 300 kg/m³" viram os parâmetros da versão, sem ajuste manual.
+ */
+export function tableNotes(sheets: { rows: unknown[][] }[]): { icmsIncluded: boolean; cubage: number | null } {
+  let icmsIncluded = false
+  let cubage: number | null = null
+  for (const s of sheets) {
+    for (const r of s.rows.slice(0, 400)) {
+      const line = normalizeHeader((r ?? []).map((c) => String(c ?? '')).join(' '))
+      if (/icms/.test(line) && /inclus|embutid/.test(line)) icmsIncluded = true
+      const m = /cubagem\D{0,20}?(\d{2,4}(?:[.,]\d+)?) ?kg/.exec(line)
+      if (m && cubage === null) {
+        const v = parseNumber(m[1])
+        if (v !== null && !Number.isNaN(v) && v >= 50 && v <= 1000) cubage = v
+      }
+    }
+  }
+  return { icmsIncluded, cubage }
 }

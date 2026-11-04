@@ -11,7 +11,7 @@ import { cleanText } from '../sugestoes/sugestoes'
 import { uploadName } from '../whatsapp/envio'
 import { allowedUnits, assertCan, assertUnitList, unitListWhere } from './acesso'
 import { DEFAULT_COMPONENTS, DEFAULT_SETTINGS } from './catalogo'
-import { checkMapping, type ColumnMap, cubageFactorOf, labelOf, parseRows, suggestMapping, type RegionCity } from './importacao'
+import { checkMapping, type ColumnMap, cubageFactorOf, labelOf, parseRows, suggestMapping, tableNotes, type RegionCity } from './importacao'
 
 export const IMPORT_MAX_BYTES = 20 * 1024 * 1024
 const MAX_ROWS = 100_000
@@ -289,8 +289,15 @@ export class ImportacaoService {
         }
         // Fator de cubagem da planilha (ex.: "MERC. VOLUMOSA - kg³" = 265) vai para os parâmetros da versão.
         const sh = sheets[d.sheet]
-        const factor = sh ? cubageFactorOf(sh.rows[d.headerRow - 1] ?? [], sh.rows.slice(d.headerRow)) : null
-        if (factor) await tx.freightTableVersion.update({ where: { id: target.id }, data: { settings: { ...((target.settings ?? DEFAULT_SETTINGS) as object), cubageFactor: factor } as Prisma.InputJsonValue } })
+        // Observações da proposta (em qualquer aba): ICMS já incluso no frete e cubagem em kg/m³.
+        const notes = tableNotes(sheets)
+        const factor = (sh ? cubageFactorOf(sh.rows[d.headerRow - 1] ?? [], sh.rows.slice(d.headerRow)) : null) ?? notes.cubage
+        if (factor || notes.icmsIncluded) {
+          await tx.freightTableVersion.update({
+            where: { id: target.id },
+            data: { settings: { ...((target.settings ?? DEFAULT_SETTINGS) as object), ...(factor ? { cubageFactor: factor } : {}), ...(notes.icmsIncluded ? { icmsMode: 'INFORMATIVO' } : {}) } as Prisma.InputJsonValue },
+          })
+        }
         await tx.freightTableVersion.update({
           where: { id: target.id },
           data: { rulesCount: r.rules.length, source: 'IMPORTACAO', note: cleanText(d.note, 300) || `Importada de ${imp.fileName}` },
