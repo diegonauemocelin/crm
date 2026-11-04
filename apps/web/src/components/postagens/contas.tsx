@@ -92,6 +92,19 @@ function InstagramConnect({ ig }: { ig: InstagramLoginConfig }) {
           <p className="text-sm text-muted-foreground">
             Abre a tela do Instagram: entre com o usuário e a senha da conta e autorize. A senha fica só no Instagram; o CRM recebe o acesso para publicar, que é renovado sozinho. Repita para cada conta (a conta precisa ser profissional: Empresa ou Criador de conteúdo).
           </p>
+          <details className="mt-2 text-sm">
+            <summary className="cursor-pointer font-medium text-foreground">O Instagram disse que a conta não é desenvolvedora ou testadora?</summary>
+            <div className="mt-2 space-y-1.5 text-muted-foreground">
+              <p>Enquanto o app da empresa na Meta estiver em modo de desenvolvimento, só entram contas convidadas como testadoras:</p>
+              <ol className="list-decimal space-y-1 pl-5">
+                <li>Quem administra o app abre developers.facebook.com › Meus apps › o app da empresa › Funções do app › Funções.</li>
+                <li>Em Testadores do Instagram, clica em Adicionar e digita o @ da conta.</li>
+                <li>A conta aceita o convite no instagram.com (pelo navegador): Configurações › Apps e sites › Convites de testador.</li>
+                <li>Depois, aqui, clique de novo em Conectar conta do Instagram.</li>
+              </ol>
+              <p>Para qualquer conta entrar sem convite, o app precisa ser publicado na Meta (verificação da empresa e análise das permissões).</p>
+            </div>
+          </details>
         </div>
         <div className="flex gap-2">
           {ready && (
