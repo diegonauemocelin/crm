@@ -113,6 +113,8 @@ const pages = {
   unsubscribe: () => page(() => import('@/pages/unsubscribe-page'), 'UnsubscribePage'),
   mktVisao: () => page(() => import('@/pages/marketing/paineis'), 'VisaoGeralPage'),
   mktExecutivo: () => page(() => import('@/pages/marketing/paineis'), 'ExecutivoPage'),
+  tvExecutivo: () => page(() => import('@/pages/marketing/paineis'), 'ExecutivoTvPublicPage'),
+  tvColetas: () => page(() => import('@/pages/fretes/tv'), 'FretesTvPublicPage'),
   mktGoogle: () => page(() => import('@/pages/marketing/plataformas'), 'GoogleAdsMktPage'),
   mktMeta: () => page(() => import('@/pages/marketing/plataformas'), 'MetaAdsPage'),
   mktTiktok: () => page(() => import('@/pages/marketing/plataformas'), 'TikTokAdsPage'),
@@ -266,6 +268,9 @@ const router = createBrowserRouter([
   { path: '/redefinir-senha', element: <Lazy fullscreen>{pages.reset()}</Lazy> },
   { path: '/configurar-conta', element: <Lazy fullscreen>{pages.setup()}</Lazy> },
   { path: '/descadastro/:token', element: <Lazy fullscreen>{pages.unsubscribe()}</Lazy> },
+  // Painéis abertos pelo link da TV: sem login, só leitura (o código do link é a permissão).
+  { path: '/tv/coletas/:token', element: <Lazy fullscreen>{pages.tvColetas()}</Lazy> },
+  { path: '/tv/executivo/:token', element: <Lazy fullscreen>{pages.tvExecutivo()}</Lazy> },
   {
     element: <Protected />,
     errorElement: <RouteError />,

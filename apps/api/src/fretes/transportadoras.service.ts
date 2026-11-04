@@ -179,8 +179,17 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
     assertCan(user, 'fretes_painel', 'view')
     const allowed = allowedUnits(user, 'fretes_painel')
     if (unitId && allowed && !allowed.includes(unitId)) throw new NotFoundException('Filial não encontrada.')
-    const carriers = await this.prisma.freightCarrier.findMany({ where: { tenantId: user.tenantId, active: true }, select: { id: true, name: true, quoteName: true, pickups: true }, orderBy: { name: 'asc' } })
-    const units = await this.prisma.unit.findMany({ where: { tenantId: user.tenantId }, select: { id: true, name: true } })
+    return this.boardOf(user.tenantId, unitId, allowed)
+  }
+
+  /** Painel pelo link da TV (sem login, só leitura): a empresa e a filial vêm do link. */
+  async publicBoard(tenantId: string, unitId: string | null) {
+    return this.boardOf(tenantId, unitId, null)
+  }
+
+  private async boardOf(tenantId: string, unitId: string | null, allowed: string[] | null) {
+    const carriers = await this.prisma.freightCarrier.findMany({ where: { tenantId, active: true }, select: { id: true, name: true, quoteName: true, pickups: true }, orderBy: { name: 'asc' } })
+    const units = await this.prisma.unit.findMany({ where: { tenantId }, select: { id: true, name: true } })
     const unitName = new Map(units.map((u) => [u.id, u.name]))
     const rows = carriers.flatMap((c) =>
       ((c.pickups ?? []) as unknown as Pickup[])

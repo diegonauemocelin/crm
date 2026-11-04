@@ -108,7 +108,22 @@ export function friendlyMessage(status: number, message: string | undefined) {
   return STATUS_MESSAGE[status] ?? (status >= 500 ? 'Erro inesperado no servidor. Tente de novo; se continuar, avise o TI.' : 'Não foi possível concluir. Tente de novo.')
 }
 
+/**
+ * Painel aberto pelo link da TV (sem login): os pedidos de leitura vão para as rotas públicas do link
+ * (ex.: /marketing/analise → /marketing/tv/<código>/analise) e não tentam renovar sessão.
+ */
+let apiRewrite: ((path: string) => string | null) | null = null
+export function setApiRewrite(fn: ((path: string) => string | null) | null) {
+  apiRewrite = fn
+}
+
 async function request<T>(method: string, path: string, body?: Body, retry = true): Promise<T> {
+  if (apiRewrite) {
+    const p = method === 'GET' ? apiRewrite(path) : null
+    if (!p) throw new ApiError(path.startsWith('/auth/') ? 401 : 403, 'Painel da TV: só leitura.')
+    path = p
+    retry = false
+  }
   if (method !== 'GET') await ensureCsrf()
   const isForm = body instanceof FormData
   let res: Response
@@ -127,7 +142,7 @@ async function request<T>(method: string, path: string, body?: Body, retry = tru
     throw new ApiError(503, UNAVAILABLE_MESSAGE)
   }
 
-  if (res.status === 401 && retry && !path.startsWith('/auth/')) {
+  if (res.status === 401 && retry && !path.startsWith('/auth/') && !apiRewrite) {
     const r = await refreshSession()
     if (r === 'ok') return request<T>(method, path, body, false)
     if (r === 'unavailable') throw new ApiError(503, UNAVAILABLE_MESSAGE)

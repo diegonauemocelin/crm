@@ -24,7 +24,7 @@ import {
   ValidateNested,
 } from 'class-validator'
 import type { Response } from 'express'
-import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
+import { CurrentUser, Public, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { ICMS_MODES } from './catalogo'
 import { checkFormula } from './formula'
@@ -33,6 +33,7 @@ import { IMPORT_MAX_BYTES, ImportacaoService, readSheets } from './importacao.se
 import { PainelService } from './painel.service'
 import { TabelasService } from './tabelas.service'
 import { TransportadorasService } from './transportadoras.service'
+import { TvService } from '../tv/tv.service'
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const nullable = ValidateIf((_, v) => v !== null)
@@ -267,6 +268,7 @@ export class FretesController {
     private readonly tables: TabelasService,
     private readonly imports: ImportacaoService,
     private readonly quotes: CotacaoService,
+    private readonly tv: TvService,
   ) {}
 
   @Get('contexto')
@@ -346,6 +348,15 @@ export class FretesController {
   @Put('transportadoras/:id')
   updateCarrier(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CarrierDto, @ReqContext() ctx: RequestCtx) {
     return this.carriers.update(user, id, dto, ctx)
+  }
+
+  /** Painel de coletas pelo link da TV: sem login, só leitura, pelo código do link. */
+  @Public()
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Get('tv/:token')
+  async publicTvBoard(@Param('token') token: string) {
+    const link = await this.tv.resolve(token, 'COLETAS')
+    return this.carriers.publicBoard(link.tenantId, link.unitId)
   }
 
   @Get('painel-tv')

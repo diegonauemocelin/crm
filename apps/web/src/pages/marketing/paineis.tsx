@@ -1,7 +1,7 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRightIcon, BellRingIcon, CheckCircle2Icon, Loader2Icon, SparklesIcon, CircleAlertIcon, CirclePauseIcon, LightbulbIcon, XCircleIcon } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
-import { Link } from 'react-router'
+import { type ReactNode, useEffect, useState } from 'react'
+import { Link, useParams } from 'react-router'
 import { ComparativoMensal } from '@/components/marketing/comparativo-mensal'
 import { MapaVendas } from '@/components/marketing/mapa-vendas'
 import { BreakdownTable, COLS, COMMERCIAL_COLS, CrmOnlyNotice, ExportButtons, FunnelView, Kpi, MEDIA_COLS, MktFilters, TrendChart, UpdatedLine } from '@/components/marketing/ui'
@@ -12,7 +12,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { api, errorMessage } from '@/lib/api'
+import { TvLinksButton } from '@/components/tv-links'
+import { api, errorMessage, setApiRewrite } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { type Analysis, type BreakdownRow, downloadCsv, hours, money, moneyShort, num, pct, type Recommendation, times, useAnalysis, useMktFilters } from '@/lib/marketing'
 import { cn } from '@/lib/utils'
@@ -138,12 +139,15 @@ function RecentAlerts() {
 // ---------- 2. Dashboard executivo ----------
 
 export function ExecutivoPage() {
+  const { can } = useAuth()
+  const tv = can('mi_executivo', 'edit') || can('mi_executivo', 'export')
   return (
     <RequirePermission module="mi_executivo">
       <Screen title="Dashboard executivo" description="Investimento, leads, vendas e retorno de todos os canais, com comparação ao período anterior.">
         {(d) => (
           <>
-            <div className="flex justify-end">
+            <div className="flex flex-wrap justify-end gap-2">
+              {tv && <TvLinksButton kind="EXECUTIVO" />}
               <ExportButtons sections={['kpis', 'plataformas', 'campanhas', 'funil', 'vendedores', 'regioes', 'marcas', 'categorias', 'origens', 'recomendacoes']} />
             </div>
             <Executivo d={d} />
@@ -151,6 +155,36 @@ export function ExecutivoPage() {
         )}
       </Screen>
     </RequirePermission>
+  )
+}
+
+const TV_PATHS = /^\/marketing\/(analise|opcoes|mapa|comparativo)(\?.*)?$/
+
+/**
+ * Dashboard executivo aberto pelo link da TV (/tv/executivo/:token), sem login: os pedidos de leitura vão para as
+ * rotas do link e a tela se atualiza a cada minuto.
+ */
+export function ExecutivoTvPublicPage() {
+  const { token = '' } = useParams()
+  // Antes de a tela pedir os dados (no primeiro desenho), para nenhum pedido sair pela rota com login.
+  useState(() =>
+    setApiRewrite((p) => {
+      const m = TV_PATHS.exec(p)
+      return m ? `/marketing/tv/${encodeURIComponent(token)}/${m[1]}${m[2] ?? ''}` : null
+    }),
+  )
+  useEffect(() => () => setApiRewrite(null), [])
+  const qc = useQueryClient()
+  useEffect(() => {
+    const t = setInterval(() => void qc.invalidateQueries({ predicate: (q) => /^(mkt-|marketing-)/.test(String(q.queryKey[0])) }), 60_000)
+    return () => clearInterval(t)
+  }, [qc])
+  return (
+    <div className="min-h-dvh bg-background p-4 md:p-6">
+      <Screen title="Dashboard executivo" description="Investimento, leads, vendas e retorno de todos os canais · atualiza sozinho a cada minuto." filters="period">
+        {(d) => <Executivo d={d} />}
+      </Screen>
+    </div>
   )
 }
 

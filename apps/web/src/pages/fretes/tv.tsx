@@ -1,19 +1,21 @@
 import { useQuery } from '@tanstack/react-query'
 import { MaximizeIcon, TruckIcon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { Link, useParams } from 'react-router'
 import { FilialSwitch } from '@/components/fretes/filial-switch'
 import { ErrorState, RequirePermission } from '@/components/page'
+import { TvLinksButton } from '@/components/tv-links'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 import { board, type BoardItem, type PickupRow, span } from '@/lib/coletas'
 import { ALL_UNITS, useActiveUnit } from '@/lib/fretes'
 import { cn } from '@/lib/utils'
 
 /**
  * Painel de coletas para a TV do comercial: quais transportadoras estão carregando, qual chega agora e qual em seguida,
- * e até que horas dá para tirar pedido para cada uma. O relógio é o do computador; os horários são recarregados a
- * cada 5 minutos.
+ * e até que horas dá para tirar pedido para cada uma. O relógio é o do computador (a situação muda na hora); os
+ * horários cadastrados são recarregados a cada 30 segundos.
  */
 export function FretesTvPage() {
   return (
@@ -32,14 +34,44 @@ const STATUS: Record<BoardItem['status'], { label: string; chip: string; card: s
   COLETADO: { label: 'Coletado', chip: 'bg-white/10 text-white/60', card: 'border-white/5 bg-transparent opacity-60' },
 }
 
+type PanelData = { unit: string | null; rows: PickupRow[] }
+const REFRESH = 30_000
+
 function Tv() {
   const active = useActiveUnit()
+  const { can } = useAuth()
   const unit = active.value && active.value !== ALL_UNITS ? active.value : null
   const q = useQuery({
     queryKey: ['fretes', 'painel-tv', unit],
-    queryFn: () => api.get<{ unit: string | null; rows: PickupRow[] }>(`/fretes/painel-tv${unit ? `?filial=${unit}` : ''}`),
-    refetchInterval: 5 * 60_000,
+    queryFn: () => api.get<PanelData>(`/fretes/painel-tv${unit ? `?filial=${unit}` : ''}`),
+    refetchInterval: REFRESH,
   })
+  return (
+    <Board q={q} linkHint>
+      <FilialSwitch active={active} />
+      {can('fretes_painel', 'edit') && <TvLinksButton kind="COLETAS" variant="secondary" units={active.ctx.data?.units.filter((u) => u.active)} />}
+    </Board>
+  )
+}
+
+/** Painel aberto pelo link da TV (/tv/coletas/:token), sem login. */
+export function FretesTvPublicPage() {
+  const { token = '' } = useParams()
+  const q = useQuery({
+    queryKey: ['fretes', 'tv-publico', token],
+    queryFn: () => api.get<PanelData>(`/fretes/tv/${encodeURIComponent(token)}`),
+    refetchInterval: REFRESH,
+    refetchIntervalInBackground: true,
+    retry: (n, err) => (err as { status?: number }).status !== 404 && n < 3,
+  })
+  return (
+    <div className="min-h-dvh bg-[#0d1117] p-4 md:p-6">
+      <Board q={q} />
+    </div>
+  )
+}
+
+function Board({ q, children, linkHint }: { q: { data?: PanelData; error: Error | null; refetch: () => unknown }; children?: ReactNode; linkHint?: boolean }) {
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000)
@@ -56,7 +88,7 @@ function Tv() {
           <p className="text-lg text-white/70 capitalize">{now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 [&_[data-slot=select-trigger]]:bg-white/10 [&_[data-slot=select-trigger]]:text-white">
-          <FilialSwitch active={active} />
+          {children}
           <Button variant="secondary" onClick={() => void root.current?.requestFullscreen?.()}>
             <MaximizeIcon aria-hidden /> Tela cheia
           </Button>
@@ -68,9 +100,11 @@ function Tv() {
         <div className="rounded-2xl border border-white/10 p-10 text-center text-white/70">
           <TruckIcon className="mx-auto mb-3 size-10" aria-hidden />
           <p className="text-xl font-semibold text-white">Nenhuma coleta hoje</p>
-          <p className="mt-1">
-            Cadastre os horários em <Link to="/fretes/transportadoras" className="underline">Fretes › Transportadoras</Link> › Coletas (ponto de corte e hora da coleta).
-          </p>
+          {linkHint && (
+            <p className="mt-1">
+              Cadastre os horários em <Link to="/fretes/transportadoras" className="underline">Fretes › Transportadoras</Link> › Coletas (ponto de corte e hora da coleta).
+            </p>
+          )}
         </div>
       )}
 
