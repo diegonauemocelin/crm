@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.15",
+      "date": "2026-11-04",
+      "title": "Cotação pela cidade quando o CEP mudou",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Cotação acha a regra pela cidade quando a cidade trocou de CEP e a tabela da transportadora ainda traz a faixa antiga (ex.: Guaíra/PR, que trocou o CEP único 85980-000 pela faixa 85980-001 a 85987-999)."
+        }
+      ]
+    },
+    {
       "version": "2.0.14",
       "date": "2026-11-04",
       "title": "Cidades atendidas pelo site da transportadora",
