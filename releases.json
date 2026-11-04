@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.12",
+      "date": "2026-11-04",
+      "title": "Publicar a tabela direto da importação",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "No fim da importação da tabela da transportadora há o botão Publicar agora: a tabela já entra nas cotações (se estava em rascunho, passa a Ativa)."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "O fator de cubagem da planilha (coluna como MERC. VOLUMOSA kg³ = 265) vai sozinho para os parâmetros da versão, sem ajuste manual."
+        }
+      ]
+    },
+    {
       "version": "2.0.11",
       "date": "2026-11-04",
       "title": "Cidades atendidas da transportadora",

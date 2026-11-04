@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkMapping, parseCepRange, parseNumber, parseRows, suggestMapping, weightBand } from '../src/fretes/importacao'
+import { checkMapping, parseCepRange, parseNumber, parseRows, suggestMapping, weightBand, cubageFactorOf } from '../src/fretes/importacao'
 
 describe('fretes: leitura da planilha', () => {
   it('números no formato brasileiro', () => {
@@ -119,6 +119,13 @@ describe('fretes: layouts reais das transportadoras', () => {
     })
     const r = parseRows(data, m, 2)
     expect(r.rules[0]).toMatchObject({ cepStart: 86460000, cepEnd: 86464999, deadlineDays: 6, values: { freight: 41.11, freight_kg: 0.941, freight_value: 0.5, gris: 0.17, gris_min: 3.79, toll: 3.79, tas: 3 } })
+  })
+
+  it('São Miguel: o fator de cubagem (MERC. VOLUMOSA kg³) vira parâmetro da versão', () => {
+    const headers = ['CIDADE', 'TAXA', 'MERC. VOLUMOSA -  kg³', 'ICMS']
+    expect(cubageFactorOf(headers, [['A', 1, 265, 'X'], ['B', 2, 265, 'X'], ['C', 3, '265', 'X']])).toBe(265)
+    expect(cubageFactorOf(headers, [['A', 1, 265, 'X'], ['B', 2, 300, 'X']])).toBeNull()
+    expect(cubageFactorOf(['CIDADE', 'TAXA'], [['A', 1]])).toBeNull()
   })
 })
 

@@ -412,3 +412,23 @@ export function parseRows(rows: unknown[][], mapping: ColumnMap[], firstLine: nu
     importedLines: new Set(finalRules.map((r) => r.line)).size,
   }
 }
+
+/**
+ * Fator de cubagem da tabela ("MERC. VOLUMOSA - kg³: 265", "CUBAGEM kg/m³"): a mesma coluna em todas as linhas vira o
+ * parâmetro da versão (kg por m³), em vez de regra. Só quando o valor é o mesmo em quase todas as linhas.
+ */
+export function cubageFactorOf(header: unknown[], rows: unknown[][]): number | null {
+  const col = header.findIndex((h) => /volumos|cubag|kg ?(³|3)$|kg ?\/ ?m ?(³|3)/.test(normalizeHeader(h).replace(/\s+/g, ' ')))
+  if (col < 0) return null
+  const counts = new Map<number, number>()
+  let n = 0
+  for (const r of rows) {
+    const v = parseNumber(r?.[col])
+    if (v === null || Number.isNaN(v)) continue
+    n++
+    counts.set(v, (counts.get(v) ?? 0) + 1)
+  }
+  if (!n) return null
+  const [value, times] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]!
+  return times / n >= 0.9 && value >= 50 && value <= 1000 ? value : null
+}

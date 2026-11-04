@@ -295,6 +295,18 @@ function ImportWizard({ table, onClose, onDone }: { table: FreightTable; onClose
       return [...rest, { column, field: 'var:freight', ...cur, ...patch }].sort((a, b) => a.column - b.column)
     })
   const mapped = useMemo(() => new Map(mapping.map((m) => [m.column, m])), [mapping])
+  const { can } = useAuth()
+  // Publicar direto do fim da importação: a versão passa a calcular as cotações (tabela em rascunho vira Ativa).
+  const publish = useMutation({
+    mutationFn: (versionId: string) => api.post(`/fretes/tabelas/${table.id}/versoes/${versionId}/publicar`),
+    onSuccess: (_r, versionId) => {
+      void qc.invalidateQueries({ queryKey: ['fretes'] })
+      toast.success('Versão publicada: a tabela já entra nas cotações.')
+      onDone(versionId)
+      onClose()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
   // Lista de taxas ou regiões enviada aqui por engano: vai direto para a transportadora, sem mapear colunas.
   const sendToCarrier = useMutation({
     mutationFn: (kind: 'taxas' | 'regioes') => {
@@ -588,16 +600,22 @@ function ImportWizard({ table, onClose, onDone }: { table: FreightTable; onClose
             <p className="font-medium">
               {result.rules.toLocaleString('pt-BR')} regra(s) importada(s) de {result.importedLines} linha(s){result.rejectedLines ? `; ${result.rejectedLines} linha(s) rejeitada(s)` : ''}.
             </p>
-            <p className="text-sm text-muted-foreground">Confira as regras e simule na aba Componentes. Depois publique a versão na aba Versões para valer nas cotações.</p>
-            <DialogFooter>
+            <p className="text-sm text-muted-foreground">Publique agora para a tabela já entrar nas cotações (uma tabela em rascunho passa a Ativa), ou confira as regras antes e publique depois na aba Versões.</p>
+            <DialogFooter className="gap-2 sm:justify-center">
               <Button
+                variant="outline"
                 onClick={() => {
                   onDone(result.versionId)
                   onClose()
                 }}
               >
-                Ver as regras
+                Ver as regras antes
               </Button>
+              {can('fretes_tabelas', 'edit') && (
+                <Button disabled={publish.isPending} onClick={() => publish.mutate(result.versionId)}>
+                  {publish.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Publicar agora
+                </Button>
+              )}
             </DialogFooter>
           </div>
         )}
