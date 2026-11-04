@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.2",
+      "date": "2026-11-04",
+      "title": "Backup mais rápido",
+      "changes": [
+        {
+          "type": "infra",
+          "area": "Servidor",
+          "text": "Backup mais rápido: o banco é comprimido num nível mais leve e as fotos, áudios e vídeos entram sem comprimir de novo (já vêm comprimidos)."
+        },
+        {
+          "type": "infra",
+          "area": "Servidor",
+          "text": "Na atualização do sistema, o backup guarda só o banco quando já existe cópia dos arquivos enviados das últimas 24 horas. O backup diário das 3h continua completo, e a restauração acha a cópia dos arquivos sozinha."
+        }
+      ]
+    },
+    {
       "version": "2.0.1",
       "date": "2026-11-03",
       "title": "Concorrentes do Mercado Livre e números de monitoramento",
