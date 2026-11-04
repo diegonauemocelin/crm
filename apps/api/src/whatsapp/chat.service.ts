@@ -612,6 +612,14 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         where: { id: conv.id },
         data: { lastMessageAt: c.at, lastPreview: c.isVideo ? 'Ligação de vídeo recebida' : 'Ligação de voz recebida', lastFromMe: false, noReplyNeeded: false, lastInboundAt: c.at, unread: { increment: 1 }, status: 'ABERTA' },
       })
+      // Ligação chegando agora: avisa no celular de quem atende o número (a chamada é atendida no WhatsApp desse celular).
+      if (this.push && n.purpose !== 'MONITORAMENTO' && Date.now() - c.at.getTime() < 2 * 60_000) {
+        const who = conv.name || (phone ? `+${phone.replace(/\D/g, '')}` : 'Contato')
+        const to = conv.assignedUserId ? [conv.assignedUserId, ...conv.helperUserIds] : [...(await this.numberTeam(n.tenantId, n.id)).ids]
+        void this.push
+          .notify(n.tenantId, to, { title: `${c.isVideo ? 'Videochamada' : 'Ligação'} no WhatsApp · ${n.name}`, body: `${who} está ligando. Atenda no WhatsApp do celular deste número.`, url: `/app/conversa/${conv.id}`, tag: `call-${c.callId}` })
+          .catch((err: unknown) => this.logger.warn(`Aviso de ligação não saiu: ${(err as Error).message}`))
+      }
     }
   }
 

@@ -731,6 +731,29 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
             <span className="block truncate font-medium leading-tight">{title}</span>
             <span className="block truncate text-xs text-muted-foreground">{d.conversation.assignedUserName ? `com ${d.conversation.assignedUserName}` : (d.number?.name ?? formatPhone(d.conversation.phone))}</span>
           </button>
+          {!monitor && d.conversation.phone && d.conversation.category !== 'GRUPO' && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="icon" variant="ghost" className="size-10 shrink-0" aria-label="Ligar">
+                  <PhoneIcon className="size-5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Ligar para {formatPhone(d.conversation.phone)}</DropdownMenuLabel>
+                <DropdownMenuItem asChild className="min-h-11">
+                  {/* Abre a conversa no app do WhatsApp do celular: lá, o botão de ligação faz a chamada. */}
+                  <a href={`https://wa.me/${d.conversation.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">
+                    <MessageCircleIcon /> Ligar pelo WhatsApp
+                  </a>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild className="min-h-11">
+                  <a href={`tel:+${d.conversation.phone.replace(/\D/g, '')}`}>
+                    <PhoneOutgoingIcon /> Ligar pelo telefone
+                  </a>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <Button size="icon" variant="ghost" className="size-10 shrink-0" onClick={() => setOptionsOpen(true)} aria-label="Opções da conversa">
             <EllipsisVerticalIcon className="size-5" />
           </Button>

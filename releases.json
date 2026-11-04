@@ -2,6 +2,38 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.6",
+      "date": "2026-11-04",
+      "title": "Painéis do app sem rolar para o lado, Monitoramento WhatsApp e ligar pelo app",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "App no celular",
+          "text": "Os painéis do app cabem na tela do celular: as tabelas viram cartões (cada linha um cartão, com o nome de cada coluna), o mapa de horários encolhe e os filtros quebram linha, sem precisar rolar para o lado."
+        },
+        {
+          "type": "melhoria",
+          "area": "App no celular",
+          "text": "Vendas em tempo real no app usa a versão em lista, que cabe no telefone (o painel escuro de TV continua no computador)."
+        },
+        {
+          "type": "novo",
+          "area": "App no celular",
+          "text": "Painel Monitoramento WhatsApp no app: escolha o número e o atendente (ou todos), veja há quanto tempo cada cliente espera e abra a conversa só para leitura, sem marcar como lida."
+        },
+        {
+          "type": "novo",
+          "area": "App no celular",
+          "text": "Botão de ligar na conversa do app: Ligar pelo WhatsApp (abre o contato no app do WhatsApp do celular, que faz a chamada) ou Ligar pelo telefone."
+        },
+        {
+          "type": "novo",
+          "area": "App no celular",
+          "text": "Ligação recebida no WhatsApp avisa no celular de quem atende o número, com o nome do contato. A chamada é atendida no WhatsApp do celular desse número."
+        }
+      ]
+    },
+    {
       "version": "2.0.5",
       "date": "2026-11-04",
       "title": "Visual Por sistema padronizado nos dashboards",
