@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.17",
+      "date": "2026-11-04",
+      "title": "Correção na importação da tabela de frete",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Importação da tabela de frete não recusa mais a planilha com excedente em R$/ton ou percentual guardado como fração (\"O campo scale não é aceito aqui\")."
+        }
+      ]
+    },
+    {
       "version": "2.0.16",
       "date": "2026-11-04",
       "title": "Tabela de frete por estado lida sozinha",
