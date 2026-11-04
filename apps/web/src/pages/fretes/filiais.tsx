@@ -491,6 +491,11 @@ function SefazCapture() {
                     {c.maxNsu ? ` de ${c.maxNsu}` : ''} · última busca {fmt(c.lastRunAt)}
                     {c.lastMessage ? ` · ${c.lastMessage}` : ''}
                   </p>
+                  {c.maxNsu && BigInt(c.lastNsu || '0') < BigInt(c.maxNsu) && (
+                    <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                      Ainda há {(BigInt(c.maxNsu) - BigInt(c.lastNsu || '0')).toLocaleString('pt-BR')} documento(s) na SEFAZ para ler (a leitura começa pelos mais antigos). Com a busca automática ligada, o CRM continua sozinho a cada 10 minutos até chegar aos de hoje; sem ela, clique em Buscar agora de novo.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <p className="text-muted-foreground">
@@ -584,7 +589,7 @@ function SefazCapture() {
                         <span>{r.trigger === 'AUTO' ? 'Automática' : `Manual${r.byName ? ` (${r.byName})` : ''}`}</span>
                         <span className={r.status === 'ERRO' ? 'font-medium text-destructive' : ''}>{RUN_STATUS[r.status] ?? r.status}</span>
                         <span className="text-muted-foreground">
-                          {r.documents} documento(s) · {r.imported} novo(s) · {r.duplicated} repetido(s) · {r.cancelled} cancelado(s) · {r.skippedOld} fora do período{r.ignored ? ` · ${r.ignored} ignorado(s)` : ''}
+                          {r.documents} documento(s) · {r.imported} novo(s) · {r.duplicated} repetido(s) · {r.cancelled} cancelado(s) · {r.skippedOld} fora do período{r.ignored ? ` · ${r.ignored} evento(s) ou resumo(s) sem uso` : ''}
                         </span>
                         {r.message && <span className="text-muted-foreground">{r.message}</span>}
                       </li>

@@ -12,7 +12,8 @@ import { distEnvelope, docKind, MAX_LOOKBACK_DAYS, nsuLess, parseDistResponse, p
 
 const TICK_MS = 10 * 60_000
 /** Consultas por rodada (cada uma traz até 50 documentos). */
-const MAX_CALLS = 20
+/** Consultas por rodada (50 documentos cada). Atrás do último NSU, o agendador emenda rodadas a cada 10 minutos. */
+const MAX_CALLS = 60
 const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000000'
 
 export interface SefazInput {
@@ -193,7 +194,9 @@ export class SefazService implements OnApplicationBootstrap, OnModuleDestroy {
       for (const c of due) {
         if (this.running.has(c.id)) continue
         if (c.nextAllowedAt && c.nextAllowedAt.getTime() > Date.now()) continue
-        if (c.lastRunAt && Date.now() - c.lastRunAt.getTime() < c.intervalHours * 3_600_000) continue
+        // Ainda há documentos na SEFAZ (NSU atrás do máximo): continua já, sem esperar o intervalo.
+        const behind = !!c.maxNsu && nsuLess(c.lastNsu, c.maxNsu)
+        if (!behind && c.lastRunAt && Date.now() - c.lastRunAt.getTime() < c.intervalHours * 3_600_000) continue
         await this.run(c.id, 'AUTO').catch((err: unknown) => this.logger.warn(`SEFAZ: ${(err as Error).message}`))
       }
     } catch (err) {
