@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { companyRoles } from '../src/fretes/cte'
-import { distEnvelope, docKind, nsuLess, parseDistResponse, pfxToPem, readCertificate, unzipDoc, withinDays } from '../src/fretes/sefaz'
+import { distEnvelope, docKind, emittedAt, MAX_LOOKBACK_DAYS, nsuLess, parseDistResponse, pfxToPem, readCertificate, unzipDoc, withinDays } from '../src/fretes/sefaz'
 
 const zip = (xml: string) => gzipSync(Buffer.from(xml, 'utf8')).toString('base64')
 
@@ -37,6 +37,10 @@ describe('fretes: captura de CT-e na SEFAZ (Distribuição DF-e)', () => {
     const now = new Date('2026-11-04T12:00:00-03:00')
     expect(withinDays('<dhEmi>2026-10-30T10:00:00-03:00</dhEmi>', 7, now)).toBe(true)
     expect(withinDays('<dhEmi>2026-10-20T10:00:00-03:00</dhEmi>', 7, now)).toBe(false)
+    expect(withinDays('<dhEmi>2026-10-20T10:00:00-03:00</dhEmi>', 30, now)).toBe(true)
+    expect(MAX_LOOKBACK_DAYS).toBe(30)
+    expect(emittedAt('<dhEmi>2026-10-20T10:00:00-03:00</dhEmi>')?.toISOString()).toBe('2026-10-20T13:00:00.000Z')
+    expect(emittedAt('<x/>')).toBeNull()
     expect(withinDays('<x/>', 7, now)).toBe(true)
   })
 

@@ -276,9 +276,9 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
         used.push(files.length > 1 ? `${file.originalname} › ${s.name}` : s.name)
       }
     }
-    if (!all.length) throw new BadRequestException('Nenhuma lista de taxas encontrada: a aba precisa das colunas CNPJ (ou CPF) e TAXA ("TAXA TDE 222/20%"), ou CNPJ, CPF, TIPO VALOR e VALOR com a taxa (TDA, TDE, TDC ou TVD) no nome do arquivo.')
-    // Mesmo documento e mesma taxa repetidos: fica a última linha.
-    const unique = new Map(all.map((f) => [`${f.doc}|${f.code}`, f]))
+    if (!all.length) throw new BadRequestException('Nenhuma lista de taxas encontrada: a aba precisa das colunas CNPJ (ou CPF) e TAXA ("TAXA TDE 222/20%"), ou do formato Restrições (CNPJ/CPF, COD IBGE, CEP, REGIAO ou UF, com TIPO VALOR e VALOR) com a taxa (TDA, TDE, TDC, TVD, EMEX ou TRT) no nome do arquivo.')
+    // Mesmo documento (ou destino) e mesma taxa repetidos: fica a última linha.
+    const unique = new Map(all.map((f) => [`${f.doc ?? `${f.ibge ?? ''}:${f.cepStart ?? ''}-${f.cepEnd ?? ''}:${f.region ?? ''}:${f.uf ?? ''}`}|${f.code}`, f]))
     await this.prisma.$transaction(
       async (tx) => {
         // Só as listas que vieram agora são trocadas (ex.: o arquivo da TDE não apaga a TDA já importada).
@@ -286,7 +286,7 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
         const rows = [...unique.values()]
         for (let i = 0; i < rows.length; i += 2000) {
           await tx.freightRecipientFee.createMany({
-            data: rows.slice(i, i + 2000).map((f) => ({ tenantId: user.tenantId, carrierId: id, doc: f.doc, code: f.code, fixed: f.fixed, percent: f.percent, city: f.city, uf: f.uf, since: f.since })),
+            data: rows.slice(i, i + 2000).map((f) => ({ tenantId: user.tenantId, carrierId: id, doc: f.doc, code: f.code, fixed: f.fixed, percent: f.percent, basis: f.basis ?? 'FRETE', ibge: f.ibge ?? null, cepStart: f.cepStart ?? null, cepEnd: f.cepEnd ?? null, region: f.region ?? null, city: f.city, uf: f.uf, since: f.since })),
           })
         }
       },

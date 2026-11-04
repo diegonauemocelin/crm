@@ -403,6 +403,7 @@ interface SefazView {
   runs: { id: string; trigger: string; byName: string | null; startedAt: string; finishedAt: string | null; status: string; message: string | null; documents: number; imported: number; duplicated: number; cancelled: number; skippedOld: number; ignored: number }[]
   intervals: number[]
   maxLookbackDays: number
+  lookbackOptions?: number[]
   canManage: boolean
 }
 
@@ -454,6 +455,11 @@ function SefazCapture() {
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
+  const restart = useMutation({
+    mutationFn: () => api.post<SefazView>('/fretes/sefaz/reler'),
+    onSuccess: (v) => (refresh(v), toast.success('Pronto: a próxima busca lê de novo desde o começo do que a SEFAZ guarda. Clique em Buscar agora.')),
+    onError: (e) => toast.error(errorMessage(e)),
+  })
   const days = c?.certValidTo ? Math.floor((new Date(c.certValidTo).getTime() - Date.now()) / 86_400_000) : null
   const waitMin = c?.nextAllowedAt ? Math.ceil((new Date(c.nextAllowedAt).getTime() - Date.now()) / 60_000) : 0
   return (
@@ -494,6 +500,19 @@ function SefazCapture() {
                   {c.maxNsu && BigInt(c.lastNsu || '0') < BigInt(c.maxNsu) && (
                     <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
                       Ainda há {(BigInt(c.maxNsu) - BigInt(c.lastNsu || '0')).toLocaleString('pt-BR')} documento(s) na SEFAZ para ler (a leitura começa pelos mais antigos). Com a busca automática ligada, o CRM continua sozinho a cada 10 minutos até chegar aos de hoje; sem ela, clique em Buscar agora de novo.
+                    </p>
+                  )}
+                  {d.canManage && c.lastNsu !== '0' && (
+                    <p className="text-xs text-muted-foreground">
+                      Aumentou os dias e quer os CT-es que ficaram para trás?{' '}
+                      <button
+                        type="button"
+                        className="font-medium underline disabled:opacity-50"
+                        disabled={restart.isPending || run.isPending}
+                        onClick={() => confirm(`Ler de novo desde o começo do que a SEFAZ guarda? Entram os CT-es emitidos nos últimos ${c.lookbackDays} dia(s); os que já estão no CRM contam como repetidos.`) && restart.mutate()}
+                      >
+                        Ler de novo desde o começo
+                      </button>
                     </p>
                   )}
                 </div>
@@ -543,7 +562,7 @@ function SefazCapture() {
                   <div className="space-y-1.5">
                     <Label htmlFor="sefaz-dias">CT-es emitidos nos últimos</Label>
                     <select id="sefaz-dias" className="h-9 w-full rounded-md border bg-transparent px-2" disabled={!d.canManage || save.isPending} value={c.lookbackDays} onChange={(e) => save.mutate({ lookbackDays: Number(e.target.value) })}>
-                      {Array.from({ length: d.maxLookbackDays }, (_, i) => i + 1).map((n) => (
+                      {[...new Set([...(d.lookbackOptions ?? Array.from({ length: d.maxLookbackDays }, (_, i) => i + 1)), c.lookbackDays])].sort((a, b) => a - b).map((n) => (
                         <option key={n} value={n}>
                           {n} dia(s)
                         </option>

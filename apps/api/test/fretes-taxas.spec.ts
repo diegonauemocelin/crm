@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_COMPONENTS, DEFAULT_SETTINGS } from '../src/fretes/catalogo'
-import { feeComponent } from '../src/fretes/cotacao.service'
+import { feeComponent, pickFees } from '../src/fretes/cotacao.service'
 import { calculate, measure, type RuleLike } from '../src/fretes/motor'
 import { interstateIcms } from '../src/fretes/cep'
 import { feeCodeFromName, normalizeDoc, parseFeeSheet, parseFeeText } from '../src/fretes/taxas'
@@ -55,11 +55,44 @@ describe('fretes: taxas por destinatário (listas da transportadora)', () => {
     ]
     expect(parseFeeSheet(rows)).toBeNull()
     const r = parseFeeSheet(rows, 'TDE')!
-    expect(r.invalid).toBe(1)
+    // Percentual sobre a nota também vale (TIPO VALOR PERCENTUAL_NF).
+    expect(r.invalid).toBe(0)
     expect(r.fees).toEqual([
-      { doc: '00035282940', code: 'TDE', fixed: 43, percent: null, city: null, uf: null, since: null },
-      { doc: '00286528000683', code: 'TDE', fixed: 222, percent: 20, city: null, uf: null, since: null },
+      { doc: '00035282940', code: 'TDE', fixed: 43, percent: null, basis: 'FRETE', city: null, uf: null, since: null },
+      { doc: '00286528000683', code: 'TDE', fixed: 222, percent: 20, basis: 'FRETE', city: null, uf: null, since: null },
+      { doc: '00017242070', code: 'TDE', fixed: 0, percent: 1, basis: 'NF', city: null, uf: null, since: null },
     ])
+  })
+})
+
+describe('fretes: taxas por destino (Restrições por cidade, CEP, região ou UF)', () => {
+  it('EMEX da Atual Cargas: COD IBGE, 20% do frete com mínimo de R$ 89,61', () => {
+    const rows = [
+      ['UF', 'COD IBGE', 'CEP INICIAL', 'CEP FINAL', 'REGIAO', 'CNPJ', 'CPF', 'TIPO VALOR', 'VALOR', 'VALOR MINIMO'],
+      [null, '3300456', null, null, null, null, null, 'PERCENTUAL_FR', 20, 89.61],
+      ['SP', null, '01000000', '01099999', null, null, null, 'FIXO', 30, null],
+      [null, null, null, null, 'RJ1P', null, null, 'PERCENTUAL_NF', 0.5, 40],
+      [null, '9999999', null, null, null, null, null, 'PERCENTUAL_FR', 20, 89.61],
+    ]
+    expect(feeCodeFromName('..._2026_Restricoes - EMEX.xlsx')).toBe('EMEX')
+    const r = parseFeeSheet(rows, 'EMEX')!
+    expect(r.invalid).toBe(1)
+    expect(r.fees[0]).toMatchObject({ doc: null, code: 'EMEX', ibge: '3300456', uf: 'RJ', fixed: 89.61, percent: 20, basis: 'FRETE' })
+    expect(r.fees[1]).toMatchObject({ doc: null, uf: 'SP', cepStart: 1000000, cepEnd: 1099999, fixed: 30, percent: null })
+    expect(r.fees[2]).toMatchObject({ region: 'RJ1P', basis: 'NF', percent: 0.5, fixed: 40 })
+    expect(feeComponent({ code: 'EMEX', fixed: 89.61, percent: 20, doc: null }).formula).toBe('max(89.61, $subtotal$ * 20 / 100)')
+    expect(feeComponent({ code: 'EMEX', fixed: 89.61, percent: 20, doc: null }).name).toBe('EMEX: destino na lista')
+    expect(feeComponent({ code: 'TDA', fixed: 40, percent: 0.5, basis: 'NF' }).formula).toBe('max(40, $cargo_value$ * 0.5 / 100)')
+  })
+
+  it('uma taxa de cada tipo: destinatário > cidade/CEP > região > UF', () => {
+    const f = pickFees([
+      { code: 'TDA', fixed: 10, percent: null, doc: null, uf: 'RJ' },
+      { code: 'TDA', fixed: 20, percent: null, doc: null, ibge: '3300456' },
+      { code: 'EMEX', fixed: 5, percent: null, doc: null, region: 'RJ1P' },
+      { code: 'TDA', fixed: 30, percent: null, doc: '12345678000190' },
+    ] as never[]) as { code: string; fixed: number }[]
+    expect(f.map((x) => `${x.code}:${x.fixed}`).sort()).toEqual(['EMEX:5', 'TDA:30'])
   })
 })
 

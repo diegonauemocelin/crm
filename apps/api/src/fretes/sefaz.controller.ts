@@ -6,14 +6,14 @@ import { Type } from 'class-transformer'
 import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
-import { SEFAZ_INTERVALS } from './sefaz'
+import { MAX_LOOKBACK_DAYS, SEFAZ_INTERVALS } from './sefaz'
 import { SefazService } from './sefaz.service'
 
 class SefazSettingsDto {
   @ApiPropertyOptional({ enum: ['PRODUCAO', 'HOMOLOGACAO'] }) @IsOptional() @IsIn(['PRODUCAO', 'HOMOLOGACAO']) env?: 'PRODUCAO' | 'HOMOLOGACAO'
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(11) @Max(53) ufCode?: number
   @ApiPropertyOptional({ enum: SEFAZ_INTERVALS }) @IsOptional() @Type(() => Number) @IsIn([...SEFAZ_INTERVALS]) intervalHours?: number
-  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(7) lookbackDays?: number
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(MAX_LOOKBACK_DAYS) lookbackDays?: number
 }
 
 class SefazCertDto extends SefazSettingsDto {
@@ -48,6 +48,13 @@ export class FretesSefazController {
   @Delete('certificado')
   remove(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
     return this.sefaz.removeCertificate(user, ctx)
+  }
+
+  @Post('reler')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  restart(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
+    return this.sefaz.restart(user, ctx)
   }
 
   @Post('buscar')

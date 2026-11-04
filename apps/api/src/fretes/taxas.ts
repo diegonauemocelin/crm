@@ -2,10 +2,11 @@
 // CPF/CNPJ com a taxa ("TAXA TDE 222/20%" = R$ 222,00 ou 20% do frete, o maior). Sem banco e sem rede
 // (test/fretes-taxas.spec.ts). LGPD: o nome do destinatário não é lido.
 
-import { normalizeHeader, parseNumber } from './importacao'
+import { normalizeHeader, parseCepRange, parseNumber } from './importacao'
+import { ufByIbge } from './regioes'
 import { normalizeUf } from './cep'
 
-export const FEE_CODES = ['TDA', 'TDE', 'TDC', 'TVD'] as const
+export const FEE_CODES = ['TDA', 'TDE', 'TDC', 'TVD', 'EMEX', 'TRT'] as const
 export type FeeCode = (typeof FEE_CODES)[number]
 
 export const FEE_LABEL: Record<FeeCode, string> = {
@@ -13,16 +14,27 @@ export const FEE_LABEL: Record<FeeCode, string> = {
   TDE: 'TDE (difícil entrega)',
   TDC: 'TDC (difícil coleta)',
   TVD: 'TVD (veículo dedicado)',
+  EMEX: 'EMEX',
+  TRT: 'TRT (restrição de trânsito)',
 }
 
 /** Ordem de aplicação: TDE (percentual sobre o frete) antes das outras, para o % não incidir sobre taxa. */
-export const FEE_ORDER: Record<FeeCode, number> = { TDE: 951, TDA: 952, TDC: 953, TVD: 954 }
+export const FEE_ORDER: Record<FeeCode, number> = { EMEX: 950, TDE: 951, TDA: 952, TDC: 953, TVD: 954, TRT: 955 }
+
+/** Base do percentual da taxa: sobre o frete, sobre a nota ou valor por kg. */
+export type FeeBasis = 'FRETE' | 'NF' | 'KG'
 
 export interface ParsedFee {
-  doc: string
+  /** CPF/CNPJ do destinatário; null = taxa pelo destino (ibge, CEP, região ou UF). */
+  doc: string | null
   code: FeeCode
   fixed: number
   percent: number | null
+  basis?: FeeBasis
+  ibge?: string | null
+  cepStart?: number | null
+  cepEnd?: number | null
+  region?: string | null
   city: string | null
   uf: string | null
   since: Date | null
@@ -58,7 +70,7 @@ export function normalizeDoc(raw: unknown, personHint: unknown): string | null {
  * Taxa pelo nome do arquivo ou da aba ("..._Restricoes_TDE.xlsx", "TcD", aba "TVD"). TCD é a mesma TDC (difícil coleta).
  */
 export function feeCodeFromName(name: unknown): FeeCode | null {
-  const m = /(?:^|[^a-z])(tda|tde|tdc|tcd|tvd)(?:[^a-z]|$)/i.exec(String(name ?? ''))
+  const m = /(?:^|[^a-z])(tda|tde|tdc|tcd|tvd|emex|trt)(?:[^a-z]|$)/i.exec(String(name ?? ''))
   if (!m) return null
   const c = m[1]!.toUpperCase()
   return (c === 'TCD' ? 'TDC' : c) as FeeCode
@@ -66,8 +78,9 @@ export function feeCodeFromName(name: unknown): FeeCode | null {
 
 /**
  * Lista no formato "Planilha Restrições" exportado por sistemas de frete: uma taxa por arquivo, colunas CNPJ e CPF
- * separadas, TIPO VALOR (FIXO ou PERCENTUAL_FR), VALOR e VALOR MINIMO. PERCENTUAL_FR 20 com mínimo 222 = R$ 222,00 ou
- * 20% do frete, o maior. Outros tipos (sobre a nota, por kg, por m³) não são aceitos e contam como linha inválida.
+ * separadas, TIPO VALOR (FIXO, PERCENTUAL_FR, PERCENTUAL_NF ou KG), VALOR e VALOR MINIMO. PERCENTUAL_FR 20 com mínimo
+ * 222 = R$ 222,00 ou 20% do frete, o maior. Sem CNPJ/CPF, a linha vale pelo destino: COD IBGE, CEP INICIAL e FINAL,
+ * REGIAO ou só a UF (ex.: EMEX 20% do frete nas cidades da lista). Por m³ não é aceito e conta como linha inválida.
  */
 function parseRestrictionSheet(rows: unknown[][], headerIdx: number, code: FeeCode) {
   const h = rows[headerIdx]!.map(normalizeHeader)
@@ -79,8 +92,13 @@ function parseRestrictionSheet(rows: unknown[][], headerIdx: number, code: FeeCo
   const cValue = col(/^valor$/)
   const cMin = col(/^valor ?minimo$/)
   const cUf = col(/^uf$/)
+  const cIbge = col(/ibge/)
+  const cCepA = col(/^cep ?(inicial|inicio|de)$/)
+  const cCepB = col(/^cep ?(final|fim|ate)$/)
+  const cRegion = col(/^regiao$/)
   const fees: ParsedFee[] = []
   let invalid = 0
+  const filled = (r: unknown[], i: number) => i >= 0 && r[i] !== null && r[i] !== undefined && String(r[i]).trim() !== ''
   for (const r of rows.slice(headerIdx + 1)) {
     if (!r || r.every((c) => c === null || c === undefined || String(c).trim() === '')) continue
     const doc =
@@ -91,14 +109,26 @@ function parseRestrictionSheet(rows: unknown[][], headerIdx: number, code: FeeCo
     const num = (v: unknown) => (v === null || v === undefined || String(v).trim() === '' ? null : typeof v === 'number' ? v : parseNumber(String(v)))
     const value = num(r[cValue])
     const min = cMin >= 0 ? num(r[cMin]) : null
-    let fee: { fixed: number; percent: number | null } | null = null
-    if (kind === 'fixo' && value !== null && value >= 0) fee = { fixed: value, percent: null }
-    else if ((kind === 'percentual_fr' || kind === 'percentual') && value !== null && value > 0) fee = { fixed: min !== null && min > 0 ? min : 0, percent: value }
-    if (!doc || !fee) {
+    const floor = min !== null && min > 0 ? min : 0
+    let fee: { fixed: number; percent: number | null; basis: FeeBasis } | null = null
+    if (kind === 'fixo' && value !== null && value >= 0) fee = { fixed: value, percent: null, basis: 'FRETE' }
+    else if ((kind === 'percentual_fr' || kind === 'percentual') && value !== null && value > 0) fee = { fixed: floor, percent: value, basis: 'FRETE' }
+    else if (kind === 'percentual_nf' && value !== null && value > 0) fee = { fixed: floor, percent: value, basis: 'NF' }
+    else if (kind === 'kg' && value !== null && value > 0) fee = { fixed: floor, percent: value, basis: 'KG' }
+    const uf = cUf >= 0 ? normalizeUf(r[cUf]) : null
+    // Pelo destino (sem documento): cidade pelo IBGE, faixa de CEP, região da transportadora ou o estado inteiro.
+    const ibgeRaw = filled(r, cIbge) ? String(r[cIbge]).replace(/\D/g, '') : ''
+    const ibge = ibgeRaw.length === 7 && ufByIbge(ibgeRaw) ? ibgeRaw : null
+    const a = filled(r, cCepA) ? parseCepRange(r[cCepA]) : null
+    const b = filled(r, cCepB) ? parseCepRange(r[cCepB]) : null
+    const ceps = a && b && a !== 'invalido' && b !== 'invalido' && a.start <= b.end ? { cepStart: a.start, cepEnd: b.end } : null
+    const region = filled(r, cRegion) ? String(r[cRegion]).trim().toUpperCase().slice(0, 40) : null
+    const where = doc ? null : ibge || ceps || region || uf ? { ibge, cepStart: ceps?.cepStart ?? null, cepEnd: ceps?.cepEnd ?? null, region } : null
+    if ((!doc && !where) || !fee || (filled(r, cIbge) && !ibge) || ((a || b) && !ceps)) {
       invalid++
       continue
     }
-    fees.push({ doc, code, ...fee, city: null, uf: cUf >= 0 ? normalizeUf(r[cUf]) : null, since: null })
+    fees.push({ doc, code, ...fee, ...(where ?? {}), city: null, uf: uf ?? (ibge ? ufByIbge(ibge) : null), since: null })
   }
   return { fees, invalid }
 }
@@ -108,7 +138,7 @@ function parseRestrictionSheet(rows: unknown[][], headerIdx: number, code: FeeCo
  * "Planilha Restrições" (TIPO VALOR e VALOR), em que a taxa vem do nome da aba ou do arquivo (`code`).
  */
 export function parseFeeSheet(rows: unknown[][], code?: FeeCode | null) {
-  const restrIdx = rows.slice(0, 10).findIndex((r) => r.some((c) => /^(cnpj|cpf)$/.test(normalizeHeader(c))) && r.some((c) => /^tipo ?valor$/.test(normalizeHeader(c))) && r.some((c) => normalizeHeader(c) === 'valor'))
+  const restrIdx = rows.slice(0, 10).findIndex((r) => r.some((c) => /^(cnpj|cpf|uf|cod ibge|ibge|regiao|cep inicial)$/.test(normalizeHeader(c))) && r.some((c) => /^tipo ?valor$/.test(normalizeHeader(c))) && r.some((c) => normalizeHeader(c) === 'valor'))
   if (restrIdx >= 0) return code ? parseRestrictionSheet(rows, restrIdx, code) : null
   const headerIdx = rows.slice(0, 10).findIndex((r) => r.some((c) => /^(cnpj|cpf|cnpj ?\/ ?cpf|cpf ?\/ ?cnpj|documento)$/.test(normalizeHeader(c))) && r.some((c) => /taxa/.test(normalizeHeader(c))))
   if (headerIdx < 0) return null

@@ -14,6 +14,7 @@ import { addBusinessDays, calculate, type CalcResult, matchRule, type Measures, 
 import { componentsOf, ruleFromRow, settingsOf, todayUtc } from './tabelas.service'
 import type { ComponentDef } from './catalogo'
 import { FEE_LABEL, FEE_ORDER, type FeeCode } from './taxas'
+import { ibgeByCity } from './regioes'
 import { internalRateFrom, parseCteXml, type RateLearning } from './cte'
 import { parseNumber } from './importacao'
 
@@ -89,21 +90,38 @@ interface IcmsTable {
 /** SC 17%: conferido no CT-e 340.989 da Expresso São Miguel (Maravilha → Palhoça). As demais UFs a empresa cadastra. */
 const DEFAULT_ICMS: IcmsTable = { internas: { SC: 17 }, origem: { SC: { fonte: 'cte', cte: 'CT-e 340.989 (Expresso São Miguel, Maravilha → Palhoça)', data: null, nota: null } } }
 
-/** Taxa da lista da transportadora como componente: fixo, ou o maior entre o fixo e o % do frete (TDE 222/20%). */
-export function feeComponent(f: { code: string; fixed: Prisma.Decimal | number; percent: Prisma.Decimal | number | null }): ComponentDef {
+type FeeRow = { code: string; fixed: Prisma.Decimal | number; percent: Prisma.Decimal | number | null; doc?: string | null; basis?: string | null; ibge?: string | null; cepStart?: number | null; region?: string | null }
+
+/**
+ * Taxa da lista da transportadora como componente: fixo, ou o maior entre o fixo (mínimo) e o percentual — sobre o
+ * frete (TDE 222/20%, EMEX 20% mín. 89,61), sobre a nota ou por kg.
+ */
+export function feeComponent(f: FeeRow): ComponentDef {
   const code = f.code as FeeCode
   const fixed = Number(f.fixed)
   const pct = f.percent === null ? 0 : Number(f.percent)
+  const base = f.basis === 'NF' ? `$cargo_value$ * ${pct} / 100` : f.basis === 'KG' ? `$weight$ * ${pct}` : `$subtotal$ * ${pct} / 100`
   return {
     code: `${code}-DEST`,
-    name: `${FEE_LABEL[code] ?? code}: destinatário na lista`,
-    formula: pct > 0 ? `max(${fixed}, $subtotal$ * ${pct} / 100)` : `${fixed}`,
+    name: `${FEE_LABEL[code] ?? code}: ${f.doc ? 'destinatário na lista' : 'destino na lista'}`,
+    formula: pct > 0 ? `max(${fixed}, ${base})` : `${fixed}`,
     inTax: true,
     cteName: code,
     order: FEE_ORDER[code] ?? 960,
     active: true,
   }
 }
+/** Uma taxa de cada tipo: a do destinatário vale mais que a da cidade/CEP, que vale mais que a da região e a da UF. */
+export function pickFees<T extends FeeRow>(rows: T[]): T[] {
+  const rank = (f: FeeRow) => (f.doc ? 0 : f.ibge || f.cepStart !== null && f.cepStart !== undefined ? 1 : f.region ? 2 : 3)
+  const best = new Map<string, T>()
+  for (const f of rows) {
+    const cur = best.get(f.code)
+    if (!cur || rank(f) < rank(cur)) best.set(f.code, f)
+  }
+  return [...best.values()]
+}
+
 const CEP_CACHE_DAYS = 90
 const iso = (d: Date) => d.toISOString().slice(0, 10)
 
@@ -359,6 +377,29 @@ export class CotacaoService {
     }
   }
 
+  /** Taxas das listas que valem para este envio: pelo CPF/CNPJ do destinatário ou pelo destino (cidade, CEP, região, UF). */
+  private async feesFor(carrierIds: string[], p: { doc: string | null; destZip: string; destCity: string | null; destUf: string | null }) {
+    if (!carrierIds.length) return []
+    const zip = Number(p.destZip)
+    const ibge = p.destUf && p.destCity ? ibgeByCity(p.destUf, p.destCity) : null
+    const regions = ibge ? await this.prisma.freightCarrierRegion.findMany({ where: { carrierId: { in: carrierIds }, ibge }, select: { carrierId: true, code: true } }) : []
+    const rows = await this.prisma.freightRecipientFee.findMany({
+      where: {
+        carrierId: { in: carrierIds },
+        OR: [
+          ...(p.doc ? [{ doc: p.doc }] : []),
+          ...(ibge ? [{ doc: null, ibge }] : []),
+          ...(Number.isFinite(zip) ? [{ doc: null, cepStart: { lte: zip }, cepEnd: { gte: zip } }] : []),
+          ...(regions.length ? [{ doc: null, region: { in: [...new Set(regions.map((r) => r.code))] } }] : []),
+          ...(p.destUf ? [{ doc: null, uf: p.destUf, ibge: null, cepStart: null, region: null }] : []),
+        ],
+      },
+    })
+    // Região é da transportadora: só vale a da própria.
+    const ok = rows.filter((f) => !f.region || f.doc || f.ibge || f.cepStart !== null || regions.some((r) => r.carrierId === f.carrierId && r.code === f.region))
+    return carrierIds.flatMap((id) => pickFees(ok.filter((f) => f.carrierId === id)))
+  }
+
   private async compute(user: AuthUser, d: QuoteInput, allowExpired: boolean) {
     const p = await this.prepare(user, d)
     const tables = await this.prisma.freightTable.findMany({
@@ -374,8 +415,8 @@ export class CotacaoService {
     // Taxas por destinatário: só quando o CPF/CNPJ informado está na lista da transportadora.
     const carrierIds = [...new Set(tables.map((t) => t.carrierId))]
     const [fees, withLists] = await Promise.all([
-      p.doc ? this.prisma.freightRecipientFee.findMany({ where: { carrierId: { in: carrierIds }, doc: p.doc } }) : Promise.resolve([]),
-      p.doc ? Promise.resolve([]) : this.prisma.freightRecipientFee.groupBy({ by: ['carrierId'], where: { carrierId: { in: carrierIds } }, _count: { _all: true } }),
+      this.feesFor(carrierIds, p),
+      p.doc ? Promise.resolve([]) : this.prisma.freightRecipientFee.groupBy({ by: ['carrierId'], where: { carrierId: { in: carrierIds }, doc: { not: null } }, _count: { _all: true } }),
     ])
     const results = await Promise.all(
       tables.map(async (t) => {
@@ -692,7 +733,7 @@ export class CotacaoService {
       where: { tenantId: user.tenantId, carrierId: d.carrierId, status: { not: 'RASCUNHO' }, OR: [{ unitIds: { isEmpty: true } }, { unitIds: { has: d.unitId } }] },
       include: { carrier: true },
     })
-    const fees = d.recipientDoc ? await this.prisma.freightRecipientFee.findMany({ where: { carrierId: d.carrierId, doc: d.recipientDoc } }) : []
+    const fees = await this.feesFor([d.carrierId], { doc: d.recipientDoc, destZip: p.destZip, destCity: p.destCity, destUf: p.destUf })
     const versions = await this.prisma.freightTableVersion.findMany({ where: { tableId: { in: tables.map((t) => t.id) }, publishedAt: { not: null, lte: d.date } }, orderBy: { publishedAt: 'desc' }, select: { id: true, tableId: true } })
     const results = await Promise.all(tables.map((t) => this.evaluate(t, p, input, { allowExpired: false, fees: fees.map(feeComponent), versionAt: versions.find((v) => v.tableId === t.id)?.id ?? null })))
     return results.filter((r) => r.status === 'OK' && r.total !== null).sort((a, b) => a.total! - b.total!)[0] ?? null

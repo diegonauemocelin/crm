@@ -8,7 +8,7 @@ import type { AuthUser } from '../common/types'
 import { PrismaService } from '../prisma/prisma.service'
 import { assertCan } from './acesso'
 import { CteService } from './cte.service'
-import { distEnvelope, docKind, MAX_LOOKBACK_DAYS, nsuLess, parseDistResponse, pfxToPem, readCertificate, SEFAZ_ENDPOINT, SEFAZ_INTERVALS, SEFAZ_WAIT_MS, type SefazEnv, SOAP_ACTION, UF_CODE, withinDays } from './sefaz'
+import { distEnvelope, docKind, emittedAt, LOOKBACK_OPTIONS, MAX_LOOKBACK_DAYS, nsuLess, parseDistResponse, pfxToPem, readCertificate, SEFAZ_ENDPOINT, SEFAZ_INTERVALS, SEFAZ_WAIT_MS, type SefazEnv, SOAP_ACTION, UF_CODE, withinDays } from './sefaz'
 
 const TICK_MS = 10 * 60_000
 /** Consultas por rodada (cada uma traz até 50 documentos). */
@@ -92,6 +92,7 @@ export class SefazService implements OnApplicationBootstrap, OnModuleDestroy {
       runs,
       intervals: SEFAZ_INTERVALS,
       maxLookbackDays: MAX_LOOKBACK_DAYS,
+      lookbackOptions: LOOKBACK_OPTIONS,
       canManage: user.role.isSystem || can(user.permissions, false, 'fretes_filiais', 'edit'),
     }
   }
@@ -171,6 +172,20 @@ export class SefazService implements OnApplicationBootstrap, OnModuleDestroy {
     if (!cur) return this.view(user)
     await this.prisma.freightSefazConfig.update({ where: { id: cur.id }, data: { certEnc: null, passEnc: null, certSubject: null, certCnpj: null, certValidTo: null, intervalHours: 0 } })
     await this.audit.byUser(user, ctx, 'frete.sefaz.certificado_removido', 'freight_sefaz_config', cur.id, { cnpj: cur.cnpj })
+    return this.view(user)
+  }
+
+  /**
+   * Ler de novo desde o começo do que a SEFAZ guarda (NSU zero): traz os CT-es do período que ficaram para trás (ex.:
+   * depois de aumentar os dias). Os que já estão no CRM contam como repetidos.
+   */
+  async restart(user: AuthUser, ctx: RequestCtx) {
+    this.assertManage(user)
+    const cur = await this.config(user.tenantId)
+    if (!cur) throw new BadRequestException('Envie primeiro o certificado A1 da matriz.')
+    if (this.running.has(cur.id)) throw new BadRequestException('Já existe uma busca em andamento.')
+    await this.prisma.freightSefazConfig.update({ where: { id: cur.id }, data: { lastNsu: '0', maxNsu: null, updatedByName: user.name.slice(0, 120) } })
+    await this.audit.byUser(user, ctx, 'frete.sefaz.reler', 'freight_sefaz_config', cur.id, { nsuAnterior: cur.lastNsu })
     return this.view(user)
   }
 
@@ -263,6 +278,7 @@ export class SefazService implements OnApplicationBootstrap, OnModuleDestroy {
     let ultNsu = c.lastNsu
     let maxNsu = c.maxNsu
     let wait = false
+    let newest: Date | null = null
     try {
       if (!c.certEnc || !c.passEnc) throw new Error('Sem certificado A1.')
       const pfx = Buffer.from(decrypt(c.certEnc), 'base64')
@@ -293,6 +309,8 @@ export class SefazService implements OnApplicationBootstrap, OnModuleDestroy {
         const docs: { name: string; text: string }[] = []
         for (const d of r.docs) {
           const kind = docKind(d)
+          const at = kind === 'CTE' ? emittedAt(d.xml) : null
+          if (at && (!newest || at > newest)) newest = at
           if (kind === 'OUTRO') totals.ignored++
           else if (kind === 'CTE' && !withinDays(d.xml, c.lookbackDays)) totals.skippedOld++
           else docs.push({ name: `NSU ${d.nsu}`, text: d.xml })
@@ -321,12 +339,14 @@ export class SefazService implements OnApplicationBootstrap, OnModuleDestroy {
       this.running.delete(configId)
     }
     const now = new Date()
-    const summary = status === 'ERRO' ? message : `${message}${totals.imported ? ` · ${totals.imported} CT-e(s) novo(s)` : ''}`
+    // Até que data de emissão a leitura chegou (a SEFAZ entrega do mais antigo para o mais novo).
+    const upTo = newest ? ` · lidos até os emitidos em ${newest.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` : ''
+    const summary = status === 'ERRO' ? message : `${message}${totals.imported ? ` · ${totals.imported} CT-e(s) novo(s)` : ''}${upTo}`
     await this.prisma.freightSefazConfig.update({
       where: { id: c.id },
       data: { lastNsu: ultNsu, maxNsu, lastRunAt: now, lastStatus: status, lastMessage: summary.slice(0, 300), nextAllowedAt: wait ? new Date(now.getTime() + SEFAZ_WAIT_MS) : null },
     })
-    const done = await this.prisma.freightSefazRun.update({ where: { id: run.id }, data: { ...totals, status, cStat, message: message.slice(0, 300), finishedAt: now, endNsu: ultNsu } })
+    const done = await this.prisma.freightSefazRun.update({ where: { id: run.id }, data: { ...totals, status, cStat, message: `${message}${status === 'ERRO' ? '' : upTo}`.slice(0, 300), finishedAt: now, endNsu: ultNsu } })
     await this.audit.log({ tenantId: c.tenantId, userId: by?.id ?? null, userEmail: by?.email ?? null, action: 'frete.sefaz.busca', entity: 'freight_sefaz_run', entityId: run.id, data: { origem: trigger, situacao: status, cStat, ...totals } })
     return done
   }

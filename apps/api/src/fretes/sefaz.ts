@@ -16,7 +16,9 @@ export type SefazEnv = keyof typeof SEFAZ_ENDPOINT
 export const SEFAZ_INTERVALS = [0, 4, 8, 12, 24] as const
 /** Depois de "nenhum documento" (137) ou de consumo indevido (656), a SEFAZ pede 1 hora antes da próxima consulta. */
 export const SEFAZ_WAIT_MS = 60 * 60_000
-export const MAX_LOOKBACK_DAYS = 7
+export const MAX_LOOKBACK_DAYS = 30
+/** Opções de "CT-es emitidos nos últimos" (dias). */
+export const LOOKBACK_OPTIONS = [1, 3, 5, 7, 10, 15, 20, 30] as const
 
 /** Código IBGE das UFs (cUFAutor). */
 export const UF_CODE: Record<string, number> = {
@@ -93,6 +95,13 @@ export function withinDays(xml: string, days: number, now = new Date()) {
   if (!dh) return true
   const t = Date.parse(dh)
   return Number.isNaN(t) || t >= now.getTime() - days * 86_400_000
+}
+
+/** Data de emissão (dhEmi) do CT-e, ou null. */
+export function emittedAt(xml: string): Date | null {
+  const dh = tag(xml, 'dhEmi')
+  const t = dh ? Date.parse(dh) : NaN
+  return Number.isNaN(t) ? null : new Date(t)
 }
 
 /** Compara NSUs (texto com zeros à esquerda). */

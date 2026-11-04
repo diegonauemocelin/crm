@@ -323,10 +323,10 @@ function ImportWizard({ table, onClose, onDone }: { table: FreightTable; onClose
   })
   // Planilha de regiões (código, cidades pelo IBGE e prazo, sem preço): é importada na transportadora, não aqui.
   const norm = (c: Cell) => cellText(c).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
-  // Lista de taxas por destinatário ("Planilha Restrições": CNPJ, CPF, TIPO VALOR, VALOR), da TDA/TDE/TDC/TVD.
-  const isFeesSheet = header.some((c) => norm(c) === 'cnpj') && header.some((c) => norm(c) === 'cpf') && header.some((c) => norm(c) === 'tipo valor')
+  // Lista de taxas por destinatário ou destino ("Planilha Restrições": CNPJ, CPF, COD IBGE, CEP, TIPO VALOR, VALOR): TDA, TDE, TDC, TVD, EMEX, TRT.
+  const isFeesSheet = header.some((c) => /^(cnpj|cpf|cod ibge)$/.test(norm(c))) && header.some((c) => norm(c) === 'tipo valor') && header.some((c) => norm(c) === 'valor')
   const feeCode = (() => {
-    const m = /(?:^|[^a-z])(tda|tde|tdc|tcd|tvd)(?:[^a-z]|$)/i.exec(file?.name ?? '')
+    const m = /(?:^|[^a-z])(tda|tde|tdc|tcd|tvd|emex|trt)(?:[^a-z]|$)/i.exec(file?.name ?? '')
     return m ? (m[1]!.toUpperCase() === 'TCD' ? 'TDC' : m[1]!.toUpperCase()) : null
   })()
   const isRegionsSheet = header.some((c) => norm(c) === 'codigo') && header.some((c) => /^cidades?$/.test(norm(c))) && header.some((c) => /prazo/.test(norm(c))) && !header.some((c) => /frete|valor|kg|r\$/.test(norm(c)))
@@ -409,7 +409,7 @@ function ImportWizard({ table, onClose, onDone }: { table: FreightTable; onClose
                   </p>
                 )}
                 {isFeesSheet && !feeCode ? (
-                  <p className="text-xs">O nome do arquivo não diz qual taxa é (TDA, TDE, TDC ou TVD). Renomeie (ex.: …_TDE.xlsx) ou importe em Fretes › Transportadoras.</p>
+                  <p className="text-xs">O nome do arquivo não diz qual taxa é (TDA, TDE, TDC, TVD, EMEX ou TRT). Renomeie (ex.: …_TDE.xlsx) ou importe em Fretes › Transportadoras.</p>
                 ) : (
                   <Button type="button" size="sm" disabled={sendToCarrier.isPending} onClick={() => sendToCarrier.mutate(isFeesSheet ? 'taxas' : 'regioes')}>
                     {sendToCarrier.isPending && <Loader2Icon className="animate-spin" aria-hidden />} {isFeesSheet ? `Importar como lista ${feeCode} da transportadora` : 'Importar como regiões da transportadora'}

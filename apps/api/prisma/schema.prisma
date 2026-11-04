@@ -2824,10 +2824,17 @@ model FreightRecipientFee {
   id         String    @id @default(uuid()) @db.Uuid
   tenantId   String    @db.Uuid
   carrierId  String    @db.Uuid
-  /// CPF (11) ou CNPJ (14), só números.
-  doc        String
-  /// TDA | TDE | TDC | TVD
+  /// CPF (11) ou CNPJ (14), só números. Vazio = taxa por destino (cidade, CEP, região ou UF).
+  doc        String?
+  /// TDA | TDE | TDC | TVD | EMEX | TRT
   code       String
+  /// Destino da taxa quando não é por destinatário: código IBGE da cidade, faixa de CEP ou região da transportadora.
+  ibge       String?   @db.VarChar(7)
+  cepStart   Int?
+  cepEnd     Int?
+  region     String?   @db.VarChar(40)
+  /// Base do percentual: FRETE (sobre o frete), NF (sobre a nota) ou KG (valor por kg).
+  basis      String    @default("FRETE")
   /// Valor fixo (ou mínimo, quando há percentual).
   fixed      Decimal   @db.Decimal(12, 2)
   /// % sobre o frete (cobra o maior entre o fixo e o percentual).
@@ -2839,6 +2846,7 @@ model FreightRecipientFee {
   createdAt  DateTime  @default(now())
 
   @@index([carrierId, doc])
+  @@index([carrierId, ibge])
   @@map("freight_recipient_fees")
 }
 
@@ -2886,7 +2894,7 @@ model FreightSefazConfig {
   /// Busca automática a cada N horas (4, 8, 12 ou 24). 0 = desligada.
   intervalHours Int       @default(0)
   /// CT-es emitidos há mais de N dias (até 7) ficam de fora.
-  lookbackDays  Int       @default(7)
+  lookbackDays  Int       @default(30)
   certEnc       String?
   passEnc       String?
   certSubject   String?

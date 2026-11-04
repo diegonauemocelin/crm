@@ -568,13 +568,13 @@ export function RecipientFees({ carrierId, editable }: { carrierId: string; edit
   const d = info.data
   return (
     <div className="space-y-2 rounded-md border p-3 text-sm">
-      <p className="font-medium">Taxas por destinatário (TDA, TDE, TDC, TVD)</p>
+      <p className="font-medium">Taxas por destinatário ou destino (TDA, TDE, TDC, TVD, EMEX, TRT)</p>
       <p className="text-xs text-muted-foreground">
-        Listas que a transportadora manda com os clientes que pagam taxa extra. Na cotação, a taxa entra quando o CPF/CNPJ do destinatário está na lista. Só o documento, a cidade e a taxa são guardados.
+        Listas que a transportadora manda com os clientes que pagam taxa extra. Na cotação, a taxa entra quando o CPF/CNPJ do destinatário está na lista ou quando a cidade (IBGE), o CEP, a região ou a UF do destino está nela. Só o documento, o destino e a taxa são guardados.
       </p>
       {d && (
         <p>
-          {d.total ? `${d.total.toLocaleString('pt-BR')} destinatário(s): ${Object.entries(d.counts).filter(([, n]) => n).map(([k, n]) => `${k} ${n.toLocaleString('pt-BR')}`).join(' · ')}` : 'Nenhuma lista importada.'}
+          {d.total ? `${d.total.toLocaleString('pt-BR')} registro(s): ${Object.entries(d.counts).filter(([, n]) => n).map(([k, n]) => `${k} ${n.toLocaleString('pt-BR')}`).join(' · ')}` : 'Nenhuma lista importada.'}
           {d.importedAt && <span className="text-xs text-muted-foreground"> (importada em {new Date(d.importedAt).toLocaleDateString('pt-BR')})</span>}
         </p>
       )}
@@ -592,7 +592,7 @@ export function RecipientFees({ carrierId, editable }: { carrierId: string; edit
       </form>
       {checked && d && (d.matches.length ? d.matches.map((m) => <p key={m.code}>{m.code}: {money(m.fixed)}{m.percent ? ` ou ${m.percent}% do frete (o maior)` : ''} · {m.city}/{m.uf}</p>) : <p className="text-muted-foreground">Não está nas listas.</p>)}
       {editable && (
-        <p className="text-xs text-muted-foreground">Arquivos “Planilha Restrições” (colunas CNPJ, CPF, TIPO VALOR, VALOR e VALOR MINIMO) também valem: a taxa vem do nome do arquivo (…_TDE.xlsx). Cada lista enviada substitui só a mesma lista que já existia.</p>
+        <p className="text-xs text-muted-foreground">Arquivos “Planilha Restrições” (CNPJ, CPF ou o destino — COD IBGE, CEP INICIAL/FINAL, REGIAO, UF — com TIPO VALOR, VALOR e VALOR MINIMO) também valem: a taxa vem do nome do arquivo (…_TDE.xlsx, …_EMEX.xlsx). Cada lista enviada substitui só a mesma lista que já existia.</p>
       )}
       {editable && (
         <label className="inline-flex cursor-pointer items-center gap-2 text-sm underline underline-offset-2">
