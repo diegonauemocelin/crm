@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRightIcon, BellRingIcon, CheckCircle2Icon, Loader2Icon, SparklesIcon, CircleAlertIcon, CirclePauseIcon, LightbulbIcon, XCircleIcon } from 'lucide-react'
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { ComparativoMensal } from '@/components/marketing/comparativo-mensal'
 import { MapaVendas } from '@/components/marketing/mapa-vendas'
@@ -162,42 +162,184 @@ const TV_PATHS = /^\/marketing\/(analise|opcoes|mapa|comparativo)(\?.*)?$/
 
 /**
  * Dashboard executivo aberto pelo link da TV (/tv/executivo/:token), sem login: os pedidos de leitura vão para as
- * rotas do link e a tela se atualiza a cada minuto.
+ * rotas do link. Na TV vira uma apresentação: cada parte do painel ocupa a tela inteira (reduzida para caber, sem
+ * rolar) e elas se alternam sozinhas. Os dados são recarregados de hora em hora.
  */
 export function ExecutivoTvPublicPage() {
   const { token = '' } = useParams()
   // Antes de a tela pedir os dados (no primeiro desenho), para nenhum pedido sair pela rota com login.
-  useState(() =>
-    setApiRewrite((p) => {
-      const m = TV_PATHS.exec(p)
-      return m ? `/marketing/tv/${encodeURIComponent(token)}/${m[1]}${m[2] ?? ''}` : null
-    }),
-  )
-  useEffect(() => () => setApiRewrite(null), [])
+  const rewrite = (p: string) => {
+    const m = TV_PATHS.exec(p)
+    return m ? `/marketing/tv/${encodeURIComponent(token)}/${m[1]}${m[2] ?? ''}` : null
+  }
+  useState(() => setApiRewrite(rewrite))
+  // Também no efeito: no modo de desenvolvimento o React desmonta e monta de novo, e a limpeza apagaria o desvio.
+  useEffect(() => {
+    setApiRewrite(rewrite)
+    return () => setApiRewrite(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token])
   const qc = useQueryClient()
   useEffect(() => {
-    const t = setInterval(() => void qc.invalidateQueries({ predicate: (q) => /^(mkt-|marketing-)/.test(String(q.queryKey[0])) }), 60_000)
+    const t = setInterval(() => void qc.invalidateQueries({ predicate: (q) => /^(mkt-|marketing-)/.test(String(q.queryKey[0])) }), TV_REFRESH)
     return () => clearInterval(t)
   }, [qc])
+  const f = useMktFilters()
+  const a = useAnalysis(f.query)
   return (
-    <div className="min-h-dvh bg-background p-4 md:p-6">
-      <Screen title="Dashboard executivo" description="Investimento, leads, vendas e retorno de todos os canais · atualiza sozinho a cada minuto." filters="period">
-        {(d) => <Executivo d={d} />}
-      </Screen>
+    <div className="flex h-dvh flex-col overflow-hidden bg-background p-4 md:p-6">
+      {a.error && !a.data ? <ErrorState error={a.error} onRetry={() => a.refetch()} /> : !a.data ? <TableSkeleton rows={8} /> : <ExecutivoSlides d={a.data} />}
     </div>
   )
 }
 
-function Executivo({ d }: { d: Analysis }) {
+const TV_REFRESH = 60 * 60_000
+
+/** Tempo de cada tela na TV (segundos): ?tempo=30 no link muda (de 5 a 300). */
+function slideSeconds() {
+  const v = Number(new URLSearchParams(window.location.search).get('tempo'))
+  return Number.isFinite(v) && v >= 5 && v <= 300 ? v : 20
+}
+
+function ExecutivoSlides({ d }: { d: Analysis }) {
+  const slides: { title: string; body: ReactNode }[] = [
+    { title: 'Indicadores', body: <ExecKpis d={d} className="lg:grid-cols-4" /> },
+    { title: 'Comparativo mensal', body: <ComparativoMensal /> },
+    { title: 'Mapa de vendas', body: <MapaVendas /> },
+    {
+      title: 'Investimento, leads e vendas',
+      body: (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <TrendChart title="Investimento x faturamento atribuído" data={d.series} series={[{ key: 'mediaCost', label: 'Investimento em mídia', color: 'var(--chart-2)' }, { key: 'mktRevenue', label: 'Faturamento atribuído', color: 'var(--chart-1)' }]} format={moneyShort} />
+          <TrendChart title="Leads e vendas" kind="bar" data={d.series} series={[{ key: 'leads', label: 'Leads', color: 'var(--chart-1)' }, { key: 'sales', label: 'Vendas', color: 'var(--chart-3)' }]} />
+        </div>
+      ),
+    },
+    {
+      title: 'Canais e campanhas',
+      body: (
+        <div className="space-y-4">
+          <BreakdownTable title="Por plataforma (retorno por canal)" rows={d.byPlatform} columns={MEDIA_COLS} limit={6} />
+          <BreakdownTable title="Receita por campanha" rows={d.byCampaign} columns={MEDIA_COLS} limit={8} />
+        </div>
+      ),
+    },
+    {
+      title: 'Vendedores e regiões',
+      body: (
+        <div className="grid gap-4 xl:grid-cols-2">
+          <BreakdownTable title="Receita por vendedor" rows={d.bySeller} columns={[COLS.leads, COLS.sales, COLS.conversionRate, COLS.revenue, COLS.ticket]} limit={12} />
+          <BreakdownTable title="Receita por região" rows={d.byRegion} columns={[COLS.leads, COLS.sales, COLS.conversionRate, COLS.revenue, COLS.ticket]} limit={12} />
+        </div>
+      ),
+    },
+    {
+      title: 'Estados, marcas e peças',
+      body: (
+        <div className="grid gap-4 xl:grid-cols-2">
+          <BreakdownTable title="Receita por estado" rows={d.byState} columns={[COLS.leads, COLS.sales, COLS.conversionRate, COLS.revenue, COLS.ticket]} limit={8} />
+          <BreakdownTable title="Cliente novo ou recorrente" rows={d.byCliente} columns={[COLS.leads, COLS.sales, COLS.conversionRate, COLS.revenue, COLS.ticket]} limit={8} />
+          <BreakdownTable title="Por marca da máquina" rows={d.byBrand} columns={[COLS.leads, COLS.sales, COLS.conversionRate, COLS.revenue]} limit={8} multi />
+          <BreakdownTable title="Por tipo de peça" rows={d.byPartType} columns={[COLS.leads, COLS.sales, COLS.conversionRate, COLS.revenue]} limit={8} multi />
+        </div>
+      ),
+    },
+  ]
+  const [i, setI] = useState(0)
+  const [paused, setPaused] = useState(false)
+  const [now, setNow] = useState(() => new Date())
+  const seconds = useState(slideSeconds)[0]
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(t)
+  }, [])
+  useEffect(() => {
+    if (paused) return
+    const t = setTimeout(() => setI((x) => (x + 1) % slides.length), seconds * 1000)
+    return () => clearTimeout(t)
+  }, [i, paused, seconds, slides.length])
+  // Setas do controle/teclado passam a tela; espaço pausa.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') setI((x) => (x + 1) % slides.length)
+      else if (e.key === 'ArrowLeft') setI((x) => (x - 1 + slides.length) % slides.length)
+      else if (e.key === ' ') setPaused((p) => !p)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [slides.length])
+  return (
+    <>
+      <header className="mb-3 flex shrink-0 flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">Dashboard executivo · {slides[i]!.title}</p>
+          <p className="text-sm text-muted-foreground">
+            {d.period.from.split('-').reverse().join('/')} a {d.period.to.split('-').reverse().join('/')} · dados de {formatDateTime(d.updatedAt.crm)} (atualiza de hora em hora)
+          </p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex gap-1.5" aria-label="Telas">
+            {slides.map((s, j) => (
+              <button key={s.title} type="button" title={s.title} aria-label={s.title} onClick={() => setI(j)} className={cn('size-2.5 rounded-full transition-colors', j === i ? 'bg-primary' : 'bg-muted-foreground/30')} />
+            ))}
+          </div>
+          <button type="button" onClick={() => setPaused((p) => !p)} className="text-xs text-muted-foreground underline">
+            {paused ? 'Continuar' : 'Pausar'}
+          </button>
+          <p className="text-3xl font-bold tabular-nums">{now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+        </div>
+      </header>
+      <div className="relative min-h-0 flex-1">
+        {slides.map((s, j) => (
+          // Todas ficam montadas (sem buscar de novo a cada troca); só a atual aparece.
+          <div key={s.title} aria-hidden={j !== i} className={cn('absolute inset-0 transition-opacity duration-700', j === i ? 'opacity-100' : 'pointer-events-none opacity-0')}>
+            <FitToBox>{s.body}</FitToBox>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
+/** Reduz o conteúdo (escala) para caber inteiro na área, sem barra de rolagem; nunca aumenta. */
+function FitToBox({ children }: { children: ReactNode }) {
+  const outer = useRef<HTMLDivElement>(null)
+  const inner = useRef<HTMLDivElement>(null)
+  const [scale, setScale] = useState(1)
+  useEffect(() => {
+    const o = outer.current
+    const n = inner.current
+    if (!o || !n) return
+    const fit = () => {
+      const h = n.scrollHeight
+      const w = n.scrollWidth
+      if (!h || !w) return
+      setScale(Math.min(1, o.clientHeight / h, o.clientWidth / w))
+    }
+    fit()
+    const ro = new ResizeObserver(fit)
+    ro.observe(o)
+    ro.observe(n)
+    return () => ro.disconnect()
+  }, [])
+  return (
+    <div ref={outer} className="h-full w-full overflow-hidden">
+      <div ref={inner} style={{ transform: `scale(${scale})`, transformOrigin: 'top center' }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+/** Os 16 indicadores do dashboard executivo. */
+function ExecKpis({ d, className }: { d: Analysis; className?: string }) {
   const n = d.now
   const b = d.before
-  const drill = useDrill()
   const k = (label: string, key: keyof Analysis['now'], fmt: (v: number | null) => string, o: { lower?: boolean; spark?: keyof Analysis['series'][number]; hint?: string } = {}) => (
     <Kpi label={label} value={fmt(n[key] as number | null)} before={fmt(b[key] as number | null)} delta={d.deltas[key]} lowerIsBetter={o.lower} spark={o.spark ? spark(d, o.spark) : undefined} hint={o.hint} />
   )
   return (
-    <>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className={cn('grid grid-cols-2 gap-3 lg:grid-cols-4', className)}>
         {k('Investimento total em marketing', 'totalCost', money, { lower: true, spark: 'totalCost', hint: `mídia ${money(n.mediaCost)}${n.fixedCost ? ` + fixos ${money(n.fixedCost)}` : ''}` })}
         {k('Leads gerados', 'leads', num, { spark: 'leads' })}
         {k('Leads qualificados', 'qualified', num, { spark: 'qualified', hint: d.rules.qualified === 'repassado' ? 'repassados ao vendedor' : 'repassados com retorno do vendedor' })}
@@ -214,7 +356,15 @@ function Executivo({ d }: { d: Analysis }) {
         {k('Leads atendidos', 'attendedRate', pct)}
         {k('Leads sem atendimento', 'notAttendedRate', pct, { lower: true, hint: `${num(n.leads - n.attended)} lead(s)` })}
         {k('Oportunidades perdidas', 'lostRate', pct, { lower: true, hint: 'perdidas ÷ decididas (vendeu + perdeu)' })}
-      </div>
+    </div>
+  )
+}
+
+function Executivo({ d }: { d: Analysis }) {
+  const drill = useDrill()
+  return (
+    <>
+      <ExecKpis d={d} />
       <ComparativoMensal />
       <MapaVendas />
       <div className="grid gap-4 lg:grid-cols-2">
