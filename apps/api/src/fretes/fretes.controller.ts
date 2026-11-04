@@ -250,6 +250,10 @@ function sendFile(res: Response, fileName: string, mime: string, content: Buffer
 }
 
 /** Módulo de fretes: contexto, filiais, painel, transportadoras, tabelas, importação e cotações. Permissões em cada serviço. */
+class CitiesSiteDto {
+  @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsString() @MaxLength(500) url?: string | null
+}
+
 @ApiTags('Fretes')
 @Controller('fretes')
 export class FretesController {
@@ -362,6 +366,18 @@ export class FretesController {
   @Get('transportadoras/:id/regioes')
   regions(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.carriers.regions(user, id)
+  }
+
+  @Put('transportadoras/:id/regioes/site')
+  setCitiesSite(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CitiesSiteDto, @ReqContext() ctx: RequestCtx) {
+    return this.carriers.setSite(user, id, dto.url ?? null, ctx)
+  }
+
+  @Post('transportadoras/:id/regioes/site/atualizar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 6, ttl: 60_000 } })
+  syncCitiesSite(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    return this.carriers.syncSiteNow(user, id, ctx)
   }
 
   @Get('transportadoras/:id/regioes/cidades')

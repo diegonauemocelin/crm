@@ -2608,6 +2608,10 @@ model FreightCarrier {
   /// Códigos nos sistemas externos (ERP, e-commerce, Mercado Livre...).
   externalCodes Json   @default("{}")
   notes       String?
+  /// Endereço da lista de cidades atendidas no site da transportadora (Excel ou tabela HTML): o CRM relê todo dia.
+  citiesUrl       String?
+  citiesSyncedAt  DateTime?
+  citiesSyncError String?
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -2852,6 +2856,12 @@ model FreightCarrierRegion {
   businessDays Boolean  @default(true)
   /// Dias da semana com entrega: SEG, TER, QUA, QUI, SEX, SAB, DOM.
   weekdays     String[] @default([])
+  /// Lista de cidades atendidas com a base responsável: a transportadora coleta na cidade?
+  pickup       Boolean?
+  /// Endereço, responsável e telefone da base que atende a cidade.
+  contact      String?
+  /// Observações da transportadora para a cidade (ex.: só com frete pago pelo remetente).
+  note         String?
   createdAt    DateTime @default(now())
 
   @@index([carrierId, code])

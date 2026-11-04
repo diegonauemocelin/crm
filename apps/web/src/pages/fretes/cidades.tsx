@@ -21,6 +21,9 @@ interface CityRow {
   deadlineDays: number | null
   businessDays: boolean
   weekdays: string[]
+  pickup: boolean | null
+  contact: string | null
+  note: string | null
 }
 
 /** Fretes › Cidades atendidas: por transportadora, as bases de entrega com as cidades, o prazo e as listas de taxas. */
@@ -121,7 +124,9 @@ function CityTable({ carrierId }: { carrierId: string }) {
                   <TableHead>Base de entrega</TableHead>
                   <TableHead>Prazo</TableHead>
                   <TableHead>Dias de entrega</TableHead>
+                  <TableHead>Atendimento</TableHead>
                   <TableHead className="hidden md:table-cell">IBGE</TableHead>
+                  <TableHead>Observações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -132,7 +137,12 @@ function CityTable({ carrierId }: { carrierId: string }) {
                     <TableCell>{r.code}</TableCell>
                     <TableCell>{r.deadlineDays === null ? '—' : `${r.deadlineDays} dia(s) ${r.businessDays ? 'úteis' : 'corridos'}`}</TableCell>
                     <TableCell className="text-xs">{r.weekdays.length === 0 ? '—' : r.weekdays.length >= 5 && DAYS.slice(0, 5).every((x) => r.weekdays.includes(x)) ? 'Todos os dias úteis' : r.weekdays.map((w) => w.charAt(0) + w.slice(1).toLowerCase()).join(', ')}</TableCell>
+                    <TableCell className="text-xs">
+                      {r.pickup === null ? '—' : r.pickup ? 'Coleta e entrega' : <span className="font-medium text-amber-700 dark:text-amber-300">Somente retirada</span>}
+                      {r.contact && <span className="block text-muted-foreground">{r.contact}</span>}
+                    </TableCell>
                     <TableCell className="hidden text-xs text-muted-foreground md:table-cell">{r.ibge ?? '—'}</TableCell>
+                    <TableCell className="max-w-md text-xs whitespace-normal text-muted-foreground">{r.note ?? '—'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, Injectable, NotFoundException, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import type { RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
@@ -9,7 +9,8 @@ import { allowedUnits, assertCan, assertUnitList, unitListWhere } from './acesso
 import { MODALS } from './catalogo'
 import { normalizeCep, normalizeUf, validCnpj } from './cep'
 import { FEE_CODES, feeCodeFromName, parseFeeSheet, type ParsedFee } from './taxas'
-import { parseIbgeSheet, parseRegionsSheet, type ParsedRegion } from './regioes'
+import { htmlTableRows, parseIbgeSheet, parseRegionsSheet, type ParsedRegion } from './regioes'
+import { downloadPublic } from './download'
 import { FilesService } from '../files/files.service'
 import { IMPORT_MAX_BYTES, readSheets } from './importacao.service'
 
@@ -37,7 +38,10 @@ const opt = (v: string | null | undefined, max: number) => (v === undefined ? un
 
 /** Transportadoras parceiras: cadastro, contatos, filiais atendidas e indicadores. */
 @Injectable()
-export class TransportadorasService {
+export class TransportadorasService implements OnApplicationBootstrap, OnModuleDestroy {
+  private sitesTimer: NodeJS.Timeout | null = null
+  private sitesRunning = false
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -272,7 +276,9 @@ export class TransportadorasService {
     const rows = await this.prisma.freightCarrierRegion.findMany({ where: { carrierId: id }, orderBy: [{ code: 'asc' }, { city: 'asc' }], select: { code: true, city: true, uf: true, deadlineDays: true, businessDays: true, weekdays: true, createdAt: true } })
     const byCode = new Map<string, typeof rows>()
     for (const r of rows) byCode.set(r.code, [...(byCode.get(r.code) ?? []), r])
+    const site = await this.prisma.freightCarrier.findUnique({ where: { id }, select: { citiesUrl: true, citiesSyncedAt: true, citiesSyncError: true } })
     return {
+      site,
       total: rows.length,
       importedAt: rows.reduce<Date | null>((m, r) => (!m || r.createdAt > m ? r.createdAt : m), null),
       regions: [...byCode.entries()].map(([code, list]) => ({
@@ -298,20 +304,22 @@ export class TransportadorasService {
     const page = Math.max(1, Math.min(1000, q.page ?? 1))
     const [total, rows] = await Promise.all([
       this.prisma.freightCarrierRegion.count({ where }),
-      this.prisma.freightCarrierRegion.findMany({ where, orderBy: [{ uf: 'asc' }, { city: 'asc' }], skip: (page - 1) * 100, take: 100, select: { code: true, ibge: true, city: true, uf: true, deadlineDays: true, businessDays: true, weekdays: true } }),
+      this.prisma.freightCarrierRegion.findMany({ where, orderBy: [{ uf: 'asc' }, { city: 'asc' }], skip: (page - 1) * 100, take: 100, select: { code: true, ibge: true, city: true, uf: true, deadlineDays: true, businessDays: true, weekdays: true, pickup: true, contact: true, note: true } }),
     ])
     return { total, page, rows }
   }
 
   /** Importa a planilha de regiões e substitui as regiões anteriores dessa transportadora. */
-  async importRegions(user: AuthUser, id: string, file: Express.Multer.File | undefined, ctx: RequestCtx) {
-    assertCan(user, 'fretes_transportadoras', 'edit')
-    const carrier = await this.carrierFor(user, id)
-    assertUnitList(user, 'fretes_transportadoras', carrier.unitIds)
-    if (!file?.buffer?.length) throw new BadRequestException('Envie a planilha de regiões.')
-    if (file.size > IMPORT_MAX_BYTES) throw new BadRequestException('Arquivo maior que 20 MB.')
-    const sheets = await readSheets(file.buffer, file.originalname)
-    // Nomes das cidades pelo código do IBGE, quando a planilha traz essa aba.
+  /** Planilha (xlsx/csv) ou tabela HTML (o ".xls" que o site da transportadora baixa) → cidades. */
+  private async regionsFromBuffer(buf: Buffer, fileName: string) {
+    const head = buf.subarray(0, 4096).toString('latin1')
+    let sheets: { name: string; rows: unknown[][] }[]
+    if (/<(html|table|tr|style|body)\b/i.test(head)) {
+      // HTML: UTF-8 quando é válido, senão latin1 (o padrão dos sites em ASP).
+      const utf8 = buf.toString('utf8')
+      const text = utf8.includes('\ufffd') ? buf.toString('latin1') : utf8
+      sheets = [{ name: 'HTML', rows: htmlTableRows(text) }]
+    } else sheets = await readSheets(buf, fileName)
     const ibge = sheets.map((s) => parseIbgeSheet(s.rows)).find(Boolean) ?? null
     const all: ParsedRegion[] = []
     let invalid = 0
@@ -321,20 +329,102 @@ export class TransportadorasService {
       all.push(...r.regions)
       invalid += r.invalid
     }
-    if (!all.length) throw new BadRequestException('Nenhuma região encontrada: a planilha precisa das colunas Código, Cidades (código do IBGE) e Dias Prazo.')
-    const unique = [...new Map(all.map((r) => [`${r.code}|${r.ibge}`, r])).values()]
+    if (!all.length) throw new BadRequestException('Nenhuma cidade encontrada: a planilha precisa das colunas Código, Cidades (código do IBGE) e Dias Prazo, ou das colunas Cidade, Estado e Base responsável.')
+    return { regions: [...new Map(all.map((r) => [`${r.code}|${r.ibge ?? `${r.uf}:${r.cityKey}`}`, r])).values()], invalid }
+  }
+
+  private async replaceRegions(tenantId: string, carrierId: string, regions: ParsedRegion[]) {
     await this.prisma.$transaction(
       async (tx) => {
-        await tx.freightCarrierRegion.deleteMany({ where: { carrierId: id } })
-        for (let i = 0; i < unique.length; i += 2000) {
-          await tx.freightCarrierRegion.createMany({ data: unique.slice(i, i + 2000).map((r) => ({ tenantId: user.tenantId, carrierId: id, ...r })) })
+        await tx.freightCarrierRegion.deleteMany({ where: { carrierId } })
+        for (let i = 0; i < regions.length; i += 2000) {
+          await tx.freightCarrierRegion.createMany({ data: regions.slice(i, i + 2000).map((r) => ({ tenantId, carrierId, ...r })) })
         }
       },
       { timeout: 120_000 },
     )
-    const codes = new Set(unique.map((r) => r.code)).size
-    await this.audit.byUser(user, ctx, 'frete.regioes.importadas', 'freight_carrier', id, { arquivo: file.originalname.slice(0, 200), regioes: codes, cidades: unique.length, linhasInvalidas: invalid })
-    return { regions: codes, cities: unique.length, invalid }
+    return { regions: new Set(regions.map((r) => r.code)).size, cities: regions.length, withIbge: regions.filter((r) => r.ibge).length }
+  }
+
+  /** Importa a planilha de regiões (ou a lista de cidades atendidas) e substitui as anteriores dessa transportadora. */
+  async importRegions(user: AuthUser, id: string, file: Express.Multer.File | undefined, ctx: RequestCtx) {
+    assertCan(user, 'fretes_transportadoras', 'edit')
+    const carrier = await this.carrierFor(user, id)
+    assertUnitList(user, 'fretes_transportadoras', carrier.unitIds)
+    if (!file?.buffer?.length) throw new BadRequestException('Envie a planilha de regiões.')
+    if (file.size > IMPORT_MAX_BYTES) throw new BadRequestException('Arquivo maior que 20 MB.')
+    const { regions, invalid } = await this.regionsFromBuffer(file.buffer, file.originalname)
+    const r = await this.replaceRegions(user.tenantId, id, regions)
+    await this.audit.byUser(user, ctx, 'frete.regioes.importadas', 'freight_carrier', id, { arquivo: file.originalname.slice(0, 200), regioes: r.regions, cidades: r.cities, linhasInvalidas: invalid })
+    return { ...r, invalid }
+  }
+
+  // ─────────── Cidades atendidas pelo site da transportadora (relidas todo dia) ───────────
+
+  onApplicationBootstrap() {
+    this.sitesTimer = setInterval(() => void this.refreshSites(), 3 * 3_600_000)
+    this.sitesTimer.unref()
+  }
+
+  onModuleDestroy() {
+    if (this.sitesTimer) clearInterval(this.sitesTimer)
+  }
+
+  /** Relê as listas dos sites com mais de 24 h (uma transportadora por vez). */
+  async refreshSites() {
+    if (this.sitesRunning) return
+    this.sitesRunning = true
+    try {
+      const due = await this.prisma.freightCarrier.findMany({ where: { citiesUrl: { not: null }, active: true, OR: [{ citiesSyncedAt: null }, { citiesSyncedAt: { lt: new Date(Date.now() - 86_400_000) } }] }, select: { id: true }, take: 20 })
+      for (const c of due) await this.syncSite(c.id).catch(() => undefined)
+    } finally {
+      this.sitesRunning = false
+    }
+  }
+
+  /** Baixa a lista do site e troca as cidades da transportadora. Erro fica guardado (as cidades anteriores continuam). */
+  async syncSite(carrierId: string) {
+    const c = await this.prisma.freightCarrier.findUnique({ where: { id: carrierId }, select: { id: true, tenantId: true, citiesUrl: true } })
+    if (!c?.citiesUrl) throw new BadRequestException('Informe o endereço da lista de cidades no site da transportadora.')
+    try {
+      const buf = await downloadPublic(c.citiesUrl, IMPORT_MAX_BYTES)
+      const { regions } = await this.regionsFromBuffer(buf, c.citiesUrl.split('?')[0]!.split('/').pop() || 'lista')
+      const r = await this.replaceRegions(c.tenantId, c.id, regions)
+      await this.prisma.freightCarrier.update({ where: { id: c.id }, data: { citiesSyncedAt: new Date(), citiesSyncError: null } })
+      return r
+    } catch (err) {
+      const msg = (err as Error).message.slice(0, 300)
+      await this.prisma.freightCarrier.update({ where: { id: c.id }, data: { citiesSyncedAt: new Date(), citiesSyncError: msg } })
+      throw new BadRequestException(`Não deu para ler a lista do site: ${msg}`)
+    }
+  }
+
+  /** Guarda o endereço da lista no site (vazio = parar de buscar) e já busca uma vez. */
+  async setSite(user: AuthUser, id: string, url: string | null, ctx: RequestCtx) {
+    assertCan(user, 'fretes_transportadoras', 'edit')
+    const carrier = await this.carrierFor(user, id)
+    assertUnitList(user, 'fretes_transportadoras', carrier.unitIds)
+    const clean = url?.trim() || null
+    if (clean) {
+      let u: URL
+      try {
+        u = new URL(clean)
+      } catch {
+        throw new BadRequestException('Endereço inválido.')
+      }
+      if (u.protocol !== 'https:') throw new BadRequestException('Use um endereço https://.')
+    }
+    await this.prisma.freightCarrier.update({ where: { id }, data: { citiesUrl: clean, citiesSyncError: null, ...(clean ? {} : { citiesSyncedAt: null }) } })
+    await this.audit.byUser(user, ctx, 'frete.regioes.site', 'freight_carrier', id, { endereco: clean })
+    return clean ? { ok: true, ...(await this.syncSite(id)) } : { ok: true }
+  }
+
+  async syncSiteNow(user: AuthUser, id: string, ctx: RequestCtx) {
+    assertCan(user, 'fretes_transportadoras', 'edit')
+    await this.carrierFor(user, id)
+    const r = await this.syncSite(id)
+    await this.audit.byUser(user, ctx, 'frete.regioes.site_atualizado', 'freight_carrier', id, { cidades: r.cities })
+    return r
   }
 
   async clearRegions(user: AuthUser, id: string, ctx: RequestCtx) {

@@ -348,6 +348,7 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
 }
 
 interface RegionsInfo {
+  site: { citiesUrl: string | null; citiesSyncedAt: string | null; citiesSyncError: string | null } | null
   total: number
   importedAt: string | null
   regions: { code: string; cities: number; ufs: string[]; deadlines: number[]; sample: string[] }[]
@@ -369,6 +370,22 @@ export function CarrierRegions({ carrierId, editable }: { carrierId: string; edi
       toast.success(`${r.regions} região(ões) com ${r.cities.toLocaleString('pt-BR')} cidade(s) importada(s)${r.invalid ? `; ${r.invalid} linha(s) sem código ou cidade reconhecível` : ''}.`)
     },
     onError: (e) => toast.error(errorMessage(e)),
+  })
+  const [url, setUrl] = useState<string | null>(null)
+  const site = useMutation({
+    mutationFn: (kind: 'salvar' | 'atualizar') =>
+      kind === 'salvar'
+        ? api.put<{ cities?: number; withIbge?: number }>(`/fretes/transportadoras/${carrierId}/regioes/site`, { url: url ?? '' })
+        : api.post<{ cities?: number; withIbge?: number }>(`/fretes/transportadoras/${carrierId}/regioes/site/atualizar`, {}),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['fretes', 'regioes', carrierId] })
+      setUrl(null)
+      toast.success(r.cities !== undefined ? `Lista do site lida: ${r.cities.toLocaleString('pt-BR')} cidade(s), ${(r.withIbge ?? 0).toLocaleString('pt-BR')} com código do IBGE.` : 'Endereço retirado: as cidades não serão mais buscadas no site.')
+    },
+    onError: (e) => {
+      qc.invalidateQueries({ queryKey: ['fretes', 'regioes', carrierId] })
+      toast.error(errorMessage(e))
+    },
   })
   const d = info.data
   const prazo = (list: number[]) => (!list.length ? 'sem prazo' : list.length === 1 ? `${list[0]} dia(s)` : `${list[0]} a ${list[list.length - 1]} dias`)
@@ -399,13 +416,38 @@ export function CarrierRegions({ carrierId, editable }: { carrierId: string; edi
           ))}
         </ul>
       )}
+      <div className="space-y-1.5 border-t pt-2">
+        <p className="text-xs text-muted-foreground">
+          Lista do site da transportadora (relida todo dia): o endereço do arquivo de cidades atendidas, como o “Baixar cidades atendidas” do site. O código do IBGE de cada cidade é completado pelo nome e pela UF.
+        </p>
+        {editable ? (
+          <div className="flex flex-wrap gap-2">
+            <Input className="min-w-0 flex-[1_1_16rem]" aria-label="Endereço da lista de cidades no site" placeholder="https://… (vazio = não buscar no site)" value={url ?? d?.site?.citiesUrl ?? ''} onChange={(e) => setUrl(e.target.value)} />
+            <Button type="button" size="sm" variant="outline" disabled={site.isPending || url === null} onClick={() => site.mutate('salvar')}>
+              Salvar e buscar
+            </Button>
+            {d?.site?.citiesUrl && (
+              <Button type="button" size="sm" disabled={site.isPending} onClick={() => site.mutate('atualizar')}>
+                {site.isPending && <Loader2Icon className="size-4 animate-spin" aria-hidden />} Buscar do site agora
+              </Button>
+            )}
+          </div>
+        ) : (
+          d?.site?.citiesUrl && <p className="truncate text-xs">{d.site.citiesUrl}</p>
+        )}
+        {d?.site?.citiesSyncedAt && (
+          <p className={d.site.citiesSyncError ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
+            {d.site.citiesSyncError ? `Última tentativa em ${new Date(d.site.citiesSyncedAt).toLocaleString('pt-BR')}: ${d.site.citiesSyncError}` : `Lida do site em ${new Date(d.site.citiesSyncedAt).toLocaleString('pt-BR')}.`}
+          </p>
+        )}
+      </div>
       {editable && (
         <label className="inline-flex cursor-pointer items-center gap-2 text-sm underline underline-offset-2">
-          {upload.isPending && <Loader2Icon className="size-4 animate-spin" aria-hidden />} Importar regiões (substitui as atuais)
+          {upload.isPending && <Loader2Icon className="size-4 animate-spin" aria-hidden />} Importar regiões ou lista de cidades (substitui as atuais)
           <input
             type="file"
             className="sr-only"
-            accept=".xlsx,.csv"
+            accept=".xlsx,.xls,.csv,.html"
             onChange={(e) => {
               const f = e.target.files?.[0]
               e.target.value = ''

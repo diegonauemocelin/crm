@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.14",
+      "date": "2026-11-04",
+      "title": "Cidades atendidas pelo site da transportadora",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Cidades atendidas direto do site da transportadora: informe o endereço da lista (por exemplo o \"Baixar cidades atendidas\" do site da Viação Ouro e Prata) e o CRM relê todo dia, com o botão Buscar do site agora."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Lista de cidades atendidas com a base responsável (cidade, estado, base, endereço, responsável, telefone, coleta e observações), por arquivo ou pelo site. O código do IBGE de cada cidade é completado sozinho pelo nome e pela UF."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Cidades atendidas mostram o atendimento (coleta e entrega ou somente retirada), o contato da base e as observações da transportadora (como retirar na rodoviária ou só com frete pago pelo remetente)."
+        }
+      ]
+    },
+    {
       "version": "2.0.13",
       "date": "2026-11-04",
       "title": "Captura de CT-e na SEFAZ",
