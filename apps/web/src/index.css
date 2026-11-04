@@ -398,3 +398,112 @@ html.layout-sistemas .delta-tag[data-good="0"] {
 html.layout-sistemas .delta-tag[data-good] > span {
   font-weight: 500;
 }
+
+/*
+ * Painéis no app do celular (04/11/2026): tudo cabe na largura do telefone, sem rolar para o lado. Tabelas viram
+ * cartões (uma linha por cartão, cada valor com o nome da coluna), filtros quebram linha e campos ocupam a largura.
+ */
+.app-painel {
+  overflow-x: hidden;
+}
+.app-painel * {
+  min-width: 0;
+}
+.app-painel [data-slot="table-container"] {
+  overflow: visible;
+}
+.app-painel table:not([data-heat]),
+.app-painel table:not([data-heat]) > tbody {
+  display: block;
+  width: 100%;
+  min-width: 0 !important;
+}
+.app-painel table:not([data-heat]) > thead {
+  display: none;
+}
+.app-painel table:not([data-heat]) > tbody tr {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 0.75rem;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  background: var(--card);
+}
+.app-painel table:not([data-heat]) > tbody tr:hover {
+  background: var(--card);
+}
+.app-painel table:not([data-heat]) > tbody td {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: 0 !important;
+  white-space: normal !important;
+  text-align: left !important;
+  border: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.app-painel table:not([data-heat]) > tbody td::before {
+  content: attr(data-label);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.app-painel table:not([data-heat]) > tbody td[data-label=""]::before {
+  display: none;
+}
+/* A primeira coluna (nome da campanha, produto, vendedor...) é o título do cartão, na largura toda. */
+.app-painel table:not([data-heat]) > tbody td:first-child {
+  grid-column: 1 / -1;
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+.app-painel table:not([data-heat]) > tbody td:first-child::before {
+  display: none;
+}
+.app-painel table:not([data-heat]) > tbody td:empty {
+  display: none;
+}
+/* Filtros e escolhas quebram linha; campos e seletores ocupam a largura. */
+.app-painel [data-slot="toggle-group"],
+.app-painel [data-slot="tabs-list"] {
+  flex-wrap: wrap;
+  height: auto;
+  width: 100%;
+}
+.app-painel [data-slot="tabs-trigger"],
+.app-painel [data-slot="toggle-group-item"] {
+  min-height: 2.5rem;
+}
+.app-painel [data-slot="select-trigger"],
+.app-painel input[type="date"] {
+  width: 100% !important;
+  min-height: 2.75rem;
+}
+.app-painel input[type="date"] {
+  flex: 1 1 8rem;
+}
+/* Mapa de calor (dias x horas): continua tabela, mas encolhe para caber. */
+.app-painel table[data-heat] {
+  min-width: 0 !important;
+  border-spacing: 1px;
+  font-size: 0.5625rem;
+}
+.app-painel table[data-heat] td {
+  height: 1.125rem;
+}
+.app-painel svg {
+  max-width: 100%;
+}
+.app-painel h1 {
+  font-size: 1.5rem !important;
+  line-height: 2rem !important;
+}
+/* Mini gráfico ao lado do número do indicador: no celular tira, para o número caber inteiro. */
+.app-painel [data-slot="card"] [data-slot="chart"].h-8 {
+  display: none;
+}

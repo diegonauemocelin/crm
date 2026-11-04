@@ -430,7 +430,7 @@ function Heatmap({ heat }: { heat: number[][] }) {
         <CardDescription>Mensagens recebidas por dia da semana e hora (horário de Brasília). Mais escuro = mais mensagens; ajuda a escalar a equipe.</CardDescription>
       </CardHeader>
       <CardContent className="overflow-x-auto">
-        <table className="w-full min-w-[640px] border-separate border-spacing-[2px] text-xs">
+        <table data-heat className="w-full min-w-[640px] border-separate border-spacing-[2px] text-xs">
           <thead>
             <tr>
               <th className="w-10" />

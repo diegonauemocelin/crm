@@ -1,3 +1,4 @@
+import { useLocation } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { ActivityIcon, MaximizeIcon, ShoppingCartIcon, StoreIcon, UserRoundCheckIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -71,7 +72,9 @@ export function VendasAoVivoPage() {
 
   const d = q.data
   const { me } = useAuth()
-  if (me?.layout === 'SISTEMAS') {
+  // No app do celular fica a versão de lista (o painel de TV é largo para a tela do telefone).
+  const inApp = useLocation().pathname.startsWith('/app')
+  if (me?.layout === 'SISTEMAS' && !inApp) {
     return (
       <RequirePermission module="relatorios">
         <PainelTv d={d} origin={origin} setOrigin={setOrigin} loading={q.isLoading} error={q.error} retry={() => void q.refetch()} fetching={q.isFetching} fresh={fresh} keyOf={keyOf} />

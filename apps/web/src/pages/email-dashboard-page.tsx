@@ -425,7 +425,7 @@ function Heatmap({ heat, best }: { heat: number[][]; best: Dash['bestSlot'] }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="overflow-x-auto">
-        <table className="w-full min-w-[640px] border-separate border-spacing-[2px] text-xs">
+        <table data-heat className="w-full min-w-[640px] border-separate border-spacing-[2px] text-xs">
           <thead>
             <tr>
               <th className="w-10" />

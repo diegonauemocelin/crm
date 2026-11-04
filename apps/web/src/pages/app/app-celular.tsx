@@ -1,12 +1,13 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { ActivityIcon, BarChart3Icon, BellIcon, BellOffIcon, CheckCheckIcon, ChevronRightIcon, DownloadIcon, LayoutGridIcon, Loader2Icon, LogOutIcon, MailIcon, MessageCircleIcon, MessageSquarePlusIcon, PresentationIcon, SearchIcon, ShareIcon, SquarePlusIcon, UserIcon, XIcon } from 'lucide-react'
-import { type ReactNode, useEffect, useState } from 'react'
+import { ActivityIcon, BarChart3Icon, EyeIcon, BellIcon, BellOffIcon, CheckCheckIcon, ChevronRightIcon, DownloadIcon, LayoutGridIcon, Loader2Icon, LogOutIcon, MailIcon, MessageCircleIcon, MessageSquarePlusIcon, PresentationIcon, SearchIcon, ShareIcon, SquarePlusIcon, UserIcon, XIcon } from 'lucide-react'
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { BrandMark } from '@/components/layout/brand-logo'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { api, errorMessage } from '@/lib/api'
 import { disablePush, enablePush, isAndroid, isInstalledApp, isIOS, type PushState, pushState, refreshPushOwner } from '@/lib/app-movel'
@@ -30,9 +31,13 @@ export const APP_PANELS = [
   { key: 'email', title: 'Resultados do e-mail', description: 'Aberturas, cliques e vendas dos e-mails', icon: MailIcon, module: 'email_marketing' },
 ] as const
 
+/** Monitoramento do WhatsApp: só para quem pode monitorar (permissão de monitoramento ou gestor de equipe). */
+const MONITOR_PANEL = { key: 'monitoramento', title: 'Monitoramento WhatsApp', description: 'Conversas por número e atendente, só para leitura', icon: EyeIcon, module: 'chat' } as const
+
 function usePanels() {
   const { can } = useAuth()
-  return APP_PANELS.filter((p) => can(p.module))
+  const access = useQuery({ queryKey: ['chat-monitoramento'], queryFn: () => api.get<{ scope: 'TODOS' | 'EQUIPE' | null }>('/chat/monitoramento'), staleTime: 5 * 60_000, enabled: can('chat') || can('monitoramento') })
+  return [...APP_PANELS.filter((p) => can(p.module)), ...(access.data?.scope ? [MONITOR_PANEL] : [])]
 }
 
 /** Moldura do app: conteúdo e a barra de baixo (some dentro de uma conversa, como no WhatsApp). */
@@ -40,7 +45,7 @@ export function AppShell() {
   const location = useLocation()
   const navigate = useNavigate()
   const panels = usePanels()
-  const inThread = location.pathname.startsWith('/app/conversa/')
+  const inThread = location.pathname.startsWith('/app/conversa/') || location.pathname.startsWith('/app/monitor/')
   // Tocar na notificação com o app aberto: vai para a conversa.
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
@@ -272,6 +277,145 @@ export function AppConversa() {
   )
 }
 
+/** Conversa aberta pelo monitoramento: só leitura, não marca como lida. */
+export function AppMonitorConversa() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  if (!id) return null
+  return (
+    <div className="h-dvh">
+      <ThreadView id={id} compact monitor onBack={() => navigate(-1)} />
+    </div>
+  )
+}
+
+const ALL = '__todos'
+const MONITOR_KEY = 'app-monitor'
+
+/**
+ * Monitoramento do WhatsApp no celular: escolhe o número e o atendente (ou todos), vê quem está esperando resposta
+ * e abre a conversa só para ler. As escolhas ficam salvas no aparelho.
+ */
+export function AppMonitor() {
+  const saved = (() => {
+    try {
+      return JSON.parse(localStorage.getItem(MONITOR_KEY) ?? '{}') as { n?: string | null; s?: string | null; w?: boolean }
+    } catch {
+      return {}
+    }
+  })()
+  const [numberId, setNumberId] = useState<string | null>(saved.n ?? null)
+  const [sellerId, setSellerId] = useState<string | null>(saved.s ?? null)
+  const [awaiting, setAwaiting] = useState(saved.w ?? false)
+  const [search, setSearch] = useState('')
+  const [q, setQ] = useState('')
+  useEffect(() => {
+    try {
+      localStorage.setItem(MONITOR_KEY, JSON.stringify({ n: numberId, s: sellerId, w: awaiting }))
+    } catch {
+      /* sem armazenamento: vale só nesta abertura */
+    }
+  }, [numberId, sellerId, awaiting])
+  useEffect(() => {
+    const t = setTimeout(() => setQ(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
+  const qs = new URLSearchParams({ monitorar: 'true', ...(numberId ? { numero: numberId } : {}), ...(sellerId ? { vendedor: sellerId } : {}), ...(awaiting ? { aguardando: 'true' } : {}), ...(q ? { busca: q } : {}) }).toString()
+  const list = useQuery({ queryKey: ['app-monitor', qs], queryFn: () => api.get<ListData>(`/chat/conversas?${qs}`), refetchInterval: 10_000, placeholderData: keepPreviousData })
+  const d = list.data
+  const numberName = new Map((d?.numbers ?? []).map((n) => [n.id, n.name]))
+  const waitMin = (iso: string | null | undefined) => (iso ? Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000)) : 0)
+  const waitLabel = (m: number) => (m < 60 ? `${m} min` : m < 1440 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${Math.round(m / 1440)} dia(s)`)
+  return (
+    <div className="min-h-full">
+      <TopBar
+        title={
+          <span className="flex items-center gap-1">
+            <Link to="/app/paineis" aria-label="Voltar para os painéis" className="-ml-2 flex size-10 items-center justify-center rounded-full active:bg-muted">
+              <ChevronRightIcon className="size-5 rotate-180" />
+            </Link>
+            Monitoramento
+          </span>
+        }
+      >
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <Select value={numberId ?? ALL} onValueChange={(v) => setNumberId(v === ALL ? null : v)}>
+            <SelectTrigger className="h-11 w-full min-w-0" aria-label="Número">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Todos os números</SelectItem>
+              {(d?.numbers ?? []).map((n) => (
+                <SelectItem key={n.id} value={n.id}>
+                  {n.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={sellerId ?? ALL} onValueChange={(v) => setSellerId(v === ALL ? null : v)}>
+            <SelectTrigger className="h-11 w-full min-w-0" aria-label="Atendente">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Todos os atendentes</SelectItem>
+              {(d?.sellers ?? []).map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <label className="relative mt-2 block">
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Pesquisar contato" className="h-11 rounded-full border-0 bg-muted pl-9" aria-label="Pesquisar conversas" />
+        </label>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <label className="flex min-h-11 items-center gap-2 text-sm">
+            <Switch checked={awaiting} onCheckedChange={setAwaiting} aria-label="Só esperando resposta" /> Só esperando resposta
+          </label>
+          {d && <span className="text-sm text-muted-foreground tabular-nums">{d.total} conversa(s)</span>}
+        </div>
+      </TopBar>
+      {list.isLoading && (
+        <p className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
+          <Loader2Icon className="size-4 animate-spin" /> Carregando…
+        </p>
+      )}
+      {list.error && <p className="p-6 text-center text-sm text-destructive">{errorMessage(list.error)}</p>}
+      {d && d.items.length === 0 && <p className="p-8 text-center text-sm text-muted-foreground">{awaiting ? 'Ninguém esperando resposta agora.' : 'Nenhuma conversa com esses filtros.'}</p>}
+      <ul className="pb-6">
+        {(d?.items ?? []).map((c) => {
+          const name = c.name || (c.phone ? `+${c.phone.replace(/\D/g, '')}` : 'Contato')
+          const waiting = !!c.lastInboundAt && !c.noReplyNeeded && !c.lastFromMe
+          const m = waiting ? waitMin(c.lastInboundAt) : 0
+          return (
+            <li key={c.id}>
+              <Link to={`/app/monitor/${c.id}`} className="flex items-center gap-3 px-4 py-2.5 active:bg-muted">
+                <Avatar name={c.name} group={c.category === 'GRUPO'} className="size-12 text-base" />
+                <span className="min-w-0 flex-1 border-b py-1.5">
+                  <span className="flex items-baseline gap-2">
+                    <span className="min-w-0 flex-1 truncate text-[16px] font-medium">{name}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{when(c.lastMessageAt)}</span>
+                  </span>
+                  <span className="mt-0.5 flex items-center gap-1 truncate text-sm text-muted-foreground">
+                    {c.lastFromMe && <CheckCheckIcon className="size-4 shrink-0" />}
+                    <span className="truncate">{c.lastPreview ?? ''}</span>
+                  </span>
+                  <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                    {waiting && <span className={cn('rounded-full px-2 py-0.5 font-semibold', m >= 30 ? 'bg-red-100 text-red-900 dark:bg-red-500/20 dark:text-red-200' : m >= 15 ? 'bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-200' : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-500/20 dark:text-emerald-200')}>esperando {waitLabel(m)}</span>}
+                    <span className="truncate">{[c.assignedUserName ?? c.attendant ?? 'sem atendente', numberName.get(c.numberId)].filter(Boolean).join(' · ')}</span>
+                  </span>
+                </span>
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
 /** Lista dos painéis que o perfil da pessoa libera. */
 export function AppPaineis() {
   const panels = usePanels()
@@ -282,7 +426,7 @@ export function AppPaineis() {
       <ul className="space-y-2 px-4 pb-6">
         {panels.map((p) => (
           <li key={p.key}>
-            <Link to={`/app/paineis/${p.key}`} className="flex items-center gap-3 rounded-xl border bg-card p-4 active:bg-muted">
+            <Link to={`/app/paineis/${p.key}`} className="flex min-h-16 items-center gap-3 rounded-xl border bg-card p-4 active:bg-muted">
               <span className="flex size-10 items-center justify-center rounded-full bg-[#d8fdd2] text-[#0a3d2e] dark:bg-[#103529] dark:text-[#d8fdd2]">
                 <p.icon className="size-5" />
               </span>
@@ -299,9 +443,37 @@ export function AppPaineis() {
   )
 }
 
-/** Painel aberto: a mesma tela do computador, com voltar. */
+/**
+ * Tabelas no celular viram cartões (uma linha = um cartão, cada valor com o nome da coluna), em vez de rolar para o
+ * lado: põe o nome da coluna em cada célula (data-label) sempre que a tela muda.
+ */
+function useCardTables(root: RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    const el = root.current
+    if (!el) return
+    const label = () => {
+      for (const table of el.querySelectorAll('table')) {
+        const heads = [...table.querySelectorAll('thead tr:last-child > *')].map((th) => th.textContent?.trim() ?? '')
+        for (const row of table.querySelectorAll('tbody tr')) {
+          ;[...row.children].forEach((td, i) => {
+            const l = heads[i] ?? ''
+            if (td.getAttribute('data-label') !== l) td.setAttribute('data-label', l)
+          })
+        }
+      }
+    }
+    label()
+    const obs = new MutationObserver(label)
+    obs.observe(el, { childList: true, subtree: true })
+    return () => obs.disconnect()
+  }, [root])
+}
+
+/** Painel aberto: a mesma tela do computador, com voltar, ajustada à largura do celular. */
 export function AppPainelFrame() {
   const navigate = useNavigate()
+  const root = useRef<HTMLDivElement>(null)
+  useCardTables(root)
   return (
     <div className="min-h-full">
       <div className="sticky top-0 z-10 flex items-center gap-1 border-b bg-background px-1.5 pt-[max(0.375rem,env(safe-area-inset-top))] pb-1.5">
@@ -310,7 +482,7 @@ export function AppPainelFrame() {
         </Button>
         <span className="font-medium">Painéis</span>
       </div>
-      <div className="p-3">
+      <div ref={root} className="app-painel p-3">
         <Outlet />
       </div>
     </div>

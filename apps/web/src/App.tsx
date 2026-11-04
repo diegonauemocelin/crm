@@ -69,6 +69,8 @@ const pages = {
   appConversas: () => page(() => import('@/pages/app/app-celular'), 'AppConversas'),
   appConversa: () => page(() => import('@/pages/app/app-celular'), 'AppConversa'),
   appPaineis: () => page(() => import('@/pages/app/app-celular'), 'AppPaineis'),
+  appMonitor: () => page(() => import('@/pages/app/app-celular'), 'AppMonitor'),
+  appMonitorConversa: () => page(() => import('@/pages/app/app-celular'), 'AppMonitorConversa'),
   appPainelFrame: () => page(() => import('@/pages/app/app-celular'), 'AppPainelFrame'),
   appConta: () => page(() => import('@/pages/app/app-celular'), 'AppConta'),
   home: () => page(() => import('@/pages/home-page'), 'HomePage'),
@@ -273,10 +275,12 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <Lazy>{pages.appConversas()}</Lazy> },
           { path: '/app/conversa/:id', element: <Lazy>{pages.appConversa()}</Lazy> },
+          { path: '/app/monitor/:id', element: <Lazy>{pages.appMonitorConversa()}</Lazy> },
           {
             path: '/app/paineis',
             children: [
               { index: true, element: <Lazy>{pages.appPaineis()}</Lazy> },
+              { path: '/app/paineis/monitoramento', element: <Lazy>{pages.appMonitor()}</Lazy> },
               {
                 element: <Lazy>{pages.appPainelFrame()}</Lazy>,
                 children: [
