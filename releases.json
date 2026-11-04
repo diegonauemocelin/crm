@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.25",
+      "date": "2026-11-04",
+      "title": "Conciliação explica o CT-e sem referência",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "CT-e sem referência: a conciliação mostra, para cada tabela da transportadora, por que ela não calculou o frete (não vale para a filial do CT-e, vencida na data, sem versão publicada, destino sem regra — com a cidade, UF e CEP —, peso ou valor fora dos limites)."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Botão \"Conciliar sem referência\" na lista de CT-e: depois de cadastrar ou corrigir tabelas, compara de novo de uma vez todos os CT-es que estão sem referência."
+        }
+      ]
+    },
+    {
       "version": "2.0.24",
       "date": "2026-11-04",
       "title": "Senha nos links da TV",
