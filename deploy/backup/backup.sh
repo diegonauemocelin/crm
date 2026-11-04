@@ -17,24 +17,35 @@ mkdir -p "$TMP"
 trap 'rm -rf "$TMP"' EXIT
 
 echo "[backup] $(date -Iseconds) iniciando"
-pg_dump --format=custom --compress=9 --no-owner | age -r "$BACKUP_AGE_RECIPIENT" -o "$TMP/crm-db-$STAMP.dump.age"
-if [ -d /data/uploads ]; then
+# Compressão 1: bem mais rápida que a 9 e o arquivo fica só um pouco maior.
+pg_dump --format=custom --compress=1 --no-owner | age -r "$BACKUP_AGE_RECIPIENT" -o "$TMP/crm-db-$STAMP.dump.age"
+# Atualização (BACKUP_SO_BANCO=1): os arquivos enviados só entram se não houver cópia deles das últimas 24 h.
+recente="$(find "$DEST" -maxdepth 1 -type f -name 'crm-uploads-*' -mmin -1440 2>/dev/null | head -1)"
+if [ "${BACKUP_SO_BANCO:-0}" = "1" ] && [ -n "$recente" ]; then
+  echo "[backup] arquivos enviados: já copiados nas últimas 24 h ($(basename "$recente")), só o banco agora"
+elif [ -d /data/uploads ]; then
   # Falha nos arquivos não invalida o backup do banco, que é o mais importante.
   # Planilhas de importação em andamento ficam de fora: são temporárias, só a API pode lê-las e são apagadas ao terminar.
-  tar -C /data --exclude=importacoes -cz uploads | age -r "$BACKUP_AGE_RECIPIENT" -o "$TMP/crm-uploads-$STAMP.tar.gz.age" \
-    || { echo "[backup] AVISO: falha ao copiar os arquivos enviados" >&2; rm -f "$TMP/crm-uploads-$STAMP.tar.gz.age"; }
+  # Sem gzip: fotos, áudios, vídeos e PDFs já vêm comprimidos (comprimir de novo só gasta tempo).
+  tar -C /data --exclude=importacoes -c uploads | age -r "$BACKUP_AGE_RECIPIENT" -o "$TMP/crm-uploads-$STAMP.tar.age" \
+    || { echo "[backup] AVISO: falha ao copiar os arquivos enviados" >&2; rm -f "$TMP/crm-uploads-$STAMP.tar.age"; }
 fi
 
 ( cd "$TMP" && sha256sum ./*.age > "crm-$STAMP.sha256" )
 mv "$TMP"/* "$DEST"/
-echo "[backup] concluído: $(ls -1 "$DEST" | grep -c "$STAMP") arquivo(s) em $DEST"
+echo "[backup] $(date -Iseconds) concluído: $(ls -1 "$DEST" | grep -c "$STAMP") arquivo(s) em $DEST"
 
 # Retenção: apaga apenas arquivos de backup deste sistema mais antigos que N dias.
 find "$DEST" -maxdepth 1 -type f \( -name 'crm-*.age' -o -name 'crm-*.sha256' \) -mtime "+$RETENTION" -print -delete
-# Limite de cópias: apaga os conjuntos (banco, arquivos e conferência) além das KEEP mais recentes.
+# Limite de cópias: apaga os conjuntos (banco e conferência) além das KEEP mais recentes. A cópia dos arquivos enviados
+# do conjunto só sai se não for uma das 2 mais recentes (as atualizações podem guardar só o banco).
+manter="$(ls -1t "$DEST"/crm-uploads-*.age 2>/dev/null | head -2)"
 ls -1t "$DEST"/crm-*.sha256 2>/dev/null | tail -n +"$((KEEP + 1))" | while read -r f; do
   s="$(basename "$f" .sha256)"
   s="${s#crm-}"
   echo "[backup] apagando cópia antiga $s"
-  rm -f -- "$DEST/crm-db-$s.dump.age" "$DEST/crm-uploads-$s.tar.gz.age" "$f"
+  rm -f -- "$DEST/crm-db-$s.dump.age" "$f"
+  for u in "$DEST/crm-uploads-$s.tar.gz.age" "$DEST/crm-uploads-$s.tar.age"; do
+    [ -f "$u" ] && ! echo "$manter" | grep -qxF "$u" && rm -f -- "$u"
+  done
 done

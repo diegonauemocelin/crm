@@ -33,7 +33,7 @@ info "Versão atual: ${ATUAL_TAG:-nenhuma}  ->  nova: $VERSAO"
 
 if [ -n "$ATUAL_TAG" ] && dc ps --status running --services 2>/dev/null | grep -q '^db$'; then
   info "Backup de segurança antes de atualizar"
-  dc run --rm --no-deps backup /usr/local/bin/backup.sh || fatal "Backup falhou. Atualização cancelada."
+  dc run --rm --no-deps -e BACKUP_SO_BANCO=1 backup /usr/local/bin/backup.sh || fatal "Backup falhou. Atualização cancelada."
 fi
 
 info "Preparando a versão $VERSAO"

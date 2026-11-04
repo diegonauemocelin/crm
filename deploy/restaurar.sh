@@ -53,11 +53,17 @@ if [ "$TESTE" -eq 1 ]; then
   exit 0
 fi
 
-UPLOADS="$DIR/crm-uploads-$STAMP.tar.gz.age"
-if [ -f "$UPLOADS" ]; then
-  info "Restaurando arquivos enviados"
+# Arquivos enviados: os do mesmo backup ou, se ele guardou só o banco (atualização), a cópia mais recente até ele.
+UPLOADS=""
+for u in $(ls -1 "$DIR"/crm-uploads-*.age 2>/dev/null | sort); do
+  us="$(basename "$u" | sed -E 's/^crm-uploads-([0-9-]+)\..*$/\1/')"
+  [[ "$us" > "$STAMP" ]] || UPLOADS="$u"
+done
+if [ -n "$UPLOADS" ]; then
+  info "Restaurando arquivos enviados ($(basename "$UPLOADS"))"
+  case "$UPLOADS" in *.tar.gz.age) TAR="tar -C /data -xz" ;; *) TAR="tar -C /data -x" ;; esac
   docker run --rm -i -v "$(realpath "$CHAVE")":/chave:ro alpine:3 sh -c "apk add --no-cache age >/dev/null && age -d -i /chave" < "$UPLOADS" \
-    | docker run --rm -i -v usaparts-crm_uploads:/data/uploads alpine:3 sh -c "rm -rf /data/uploads/* && tar -C /data -xz && chown -R 1000:1000 /data/uploads"
+    | docker run --rm -i -v usaparts-crm_uploads:/data/uploads alpine:3 sh -c "rm -rf /data/uploads/* && $TAR && chown -R 1000:1000 /data/uploads"
 fi
 
 dc up -d --wait
