@@ -98,9 +98,19 @@ export function matchRule(rules: RuleLike[], dest: Destination, weight: number):
     group = best.filter((r) => `${r.cepStart}-${r.cepEnd}` === key)
   } else {
     const noCep = rules.filter((r) => r.cepStart === null)
-    const byCity = city ? noCep.filter((r) => r.city && cityKey(r.city) === city && (!r.uf || !dest.uf || r.uf === dest.uf)) : []
-    if (byCity.length) {
-      group = byCity
+    const sameCity = (r: RuleLike) => !!r.city && cityKey(r.city) === city && (!r.uf || !dest.uf || r.uf === dest.uf)
+    const byCity = city ? noCep.filter(sameCity) : []
+    // A cidade mudou de CEP (ex.: Guaíra/PR trocou o CEP único 85980-000 por uma faixa por rua) e a tabela ainda traz a
+    // faixa antiga: sem faixa que sirva, vale a regra da mesma cidade e UF, mesmo que ela tenha CEP.
+    const byCityWithCep = city && !byCity.length ? rules.filter((r) => r.cepStart !== null && sameCity(r)) : []
+    if (byCity.length || byCityWithCep.length) {
+      if (byCity.length) group = byCity
+      else {
+        // Mais de uma faixa da mesma cidade: a mais larga (a da cidade inteira, não a de um bairro).
+        const width = Math.max(...byCityWithCep.map((r) => r.cepEnd! - r.cepStart!))
+        const key = byCityWithCep.find((r) => r.cepEnd! - r.cepStart! === width)!
+        group = byCityWithCep.filter((r) => r.cepStart === key.cepStart && r.cepEnd === key.cepEnd)
+      }
       by = 'CIDADE'
     } else {
       group = dest.uf ? noCep.filter((r) => !r.city && r.uf === dest.uf) : []

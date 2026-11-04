@@ -310,7 +310,8 @@ export class CotacaoService {
         OR: [
           { cepStart: { lte: zip }, cepEnd: { gte: zip } },
           ...(p.destUf ? [{ cepStart: null, uf: p.destUf }] : []),
-          ...(key ? [{ cepStart: null, cityKey: key }] : []),
+          // A cidade também pelas regras com CEP: a cidade pode ter trocado de CEP (faixa nova por rua).
+          ...(key ? [{ cityKey: key }] : []),
         ],
       },
       take: 2000,

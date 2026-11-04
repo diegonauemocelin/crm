@@ -32,6 +32,10 @@ describe('fretes: escolha da regra', () => {
   it('faixa de CEP mais estreita, depois cidade, depois UF', () => {
     expect(matchRule(rules, { zip: 89874000, uf: 'SC', city: 'Maravilha' }, 5)).toMatchObject({ by: 'CEP', rule: { values: { freight: 20 } } })
     expect(matchRule(rules, { zip: 88301000, uf: 'SC', city: 'Itajaí' }, 5)).toMatchObject({ by: 'CEP', rule: { values: { freight: 40 } } })
+    // Guaíra/PR trocou o CEP único 85980-000 pela faixa 85980-001 a 85987-999: a tabela com o CEP antigo vale pela cidade.
+    const guaira: RuleLike = { cepStart: 85980000, cepEnd: 85980000, uf: 'PR', city: 'GUAIRA', weightMin: 0, weightMax: null, deadlineDays: 3, restricted: false, values: { freight: 55 } }
+    expect(matchRule([guaira], { zip: 85985120, uf: 'PR', city: 'Guaíra' }, 5)).toMatchObject({ by: 'CIDADE', rule: { values: { freight: 55 } } })
+    expect(matchRule([guaira], { zip: 85985120, uf: 'SP', city: 'Guaíra' }, 5)).toMatchObject({ rule: null })
     expect(matchRule(rules, { zip: 1310100, uf: 'SP', city: 'SAO PAULO - SP' }, 5)).toMatchObject({ by: 'CIDADE' })
     expect(matchRule(rules, { zip: 80000000, uf: 'PR', city: 'Curitiba' }, 5)).toMatchObject({ rule: null })
   })
