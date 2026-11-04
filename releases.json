@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.13",
+      "date": "2026-11-04",
+      "title": "Captura de CT-e na SEFAZ",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Captura de CT-e na SEFAZ: em Fretes › Filiais e integrações, envie o certificado A1 (e-CNPJ) da matriz e a senha. O CRM busca na SEFAZ os CT-es em que a empresa aparece e eles entram como na importação de XML, já conciliados. O CNPJ da matriz vale para todas as filiais."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Busca automática a cada 4, 8, 12 ou 24 horas (ou desligada), botão Buscar agora e escolha de quantos dias para trás buscar (até 7). Cada busca fica registrada com quantos CT-es novos, repetidos, cancelados e fora do período vieram."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Cada CT-e mostra o papel da empresa (tomador, remetente, destinatário, expedidor ou recebedor) e se foi capturado na SEFAZ. O cancelamento publicado na SEFAZ marca o CT-e como cancelado."
+        }
+      ]
+    },
+    {
       "version": "2.0.12",
       "date": "2026-11-04",
       "title": "Publicar a tabela direto da importação",
