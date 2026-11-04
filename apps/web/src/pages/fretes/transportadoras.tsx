@@ -351,14 +351,14 @@ function RecipientFees({ carrierId, editable }: { carrierId: string; editable: b
   const [checked, setChecked] = useState('')
   const info = useQuery({ queryKey: ['fretes', 'taxas', carrierId, checked], queryFn: () => api.get<FeesInfo>(`/fretes/transportadoras/${carrierId}/taxas${checked ? `?documento=${checked}` : ''}`) })
   const upload = useMutation({
-    mutationFn: (file: File) => {
+    mutationFn: (files: File[]) => {
       const fd = new FormData()
-      fd.append('arquivo', file)
+      for (const f of files) fd.append('arquivo', f)
       return api.post<{ total: number; invalid: number; sheets: string[] }>(`/fretes/transportadoras/${carrierId}/taxas`, fd)
     },
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['fretes', 'taxas', carrierId] })
-      toast.success(`${r.total.toLocaleString('pt-BR')} destinatário(s) importado(s) das abas ${r.sheets.join(', ')}${r.invalid ? `; ${r.invalid} linha(s) sem documento ou taxa reconhecível` : ''}.`)
+      toast.success(`${r.total.toLocaleString('pt-BR')} destinatário(s) importado(s) de ${r.sheets.join(', ')}${r.invalid ? `; ${r.invalid} linha(s) sem documento ou taxa reconhecível` : ''}.`)
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -389,9 +389,22 @@ function RecipientFees({ carrierId, editable }: { carrierId: string; editable: b
       </form>
       {checked && d && (d.matches.length ? d.matches.map((m) => <p key={m.code}>{m.code}: {money(m.fixed)}{m.percent ? ` ou ${m.percent}% do frete (o maior)` : ''} · {m.city}/{m.uf}</p>) : <p className="text-muted-foreground">Não está nas listas.</p>)}
       {editable && (
+        <p className="text-xs text-muted-foreground">Arquivos “Planilha Restrições” (colunas CNPJ, CPF, TIPO VALOR, VALOR e VALOR MINIMO) também valem: a taxa vem do nome do arquivo (…_TDE.xlsx). Cada lista enviada substitui só a mesma lista que já existia.</p>
+      )}
+      {editable && (
         <label className="inline-flex cursor-pointer items-center gap-2 text-sm underline underline-offset-2">
-          {upload.isPending && <Loader2Icon className="size-4 animate-spin" aria-hidden />} Importar listas (Excel com as abas TDA, TDE, TDC, TVD)
-          <input type="file" className="sr-only" accept=".xlsx,.csv" onChange={(e) => e.target.files?.[0] && upload.mutate(e.target.files[0])} />
+          {upload.isPending && <Loader2Icon className="size-4 animate-spin" aria-hidden />} Importar listas (um Excel com as abas TDA, TDE, TDC e TVD, ou um arquivo por taxa, até 8 de uma vez)
+          <input
+            type="file"
+            multiple
+            className="sr-only"
+            accept=".xlsx,.xls,.csv"
+            onChange={(e) => {
+              const files = [...(e.target.files ?? [])]
+              e.target.value = ''
+              if (files.length) upload.mutate(files)
+            }}
+          />
         </label>
       )}
     </div>

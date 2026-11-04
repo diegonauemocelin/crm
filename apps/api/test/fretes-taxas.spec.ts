@@ -3,7 +3,7 @@ import { DEFAULT_COMPONENTS, DEFAULT_SETTINGS } from '../src/fretes/catalogo'
 import { feeComponent } from '../src/fretes/cotacao.service'
 import { calculate, measure, type RuleLike } from '../src/fretes/motor'
 import { interstateIcms } from '../src/fretes/cep'
-import { normalizeDoc, parseFeeSheet, parseFeeText } from '../src/fretes/taxas'
+import { feeCodeFromName, normalizeDoc, parseFeeSheet, parseFeeText } from '../src/fretes/taxas'
 
 const rule = (values: Record<string, number>): RuleLike => ({ cepStart: null, cepEnd: null, uf: 'SC', city: null, weightMin: 0, weightMax: null, deadlineDays: 1, restricted: false, values })
 const match = (r: RuleLike) => ({ rule: r, by: 'UF' as const, exceeded: false, weightLimit: 0 })
@@ -41,6 +41,25 @@ describe('fretes: taxas por destinatário (listas da transportadora)', () => {
     expect(tde.icms.base).toBe(1800)
     const small = calculate(DEFAULT_COMPONENTS, settings, match(rule({ freight: 100 })), { cargoValue: 0, personType: 'PJ', measures: measure([], 10), extraComponents: [feeComponent({ code: 'TDE', fixed: 222, percent: 20 })] })
     expect(small.components.find((c) => c.code === 'TDE-DEST')!.value).toBe(222)
+  })
+
+  it('lê a "Planilha Restrições" (um arquivo por taxa) com CNPJ e CPF separados', () => {
+    expect(feeCodeFromName('00428307000350_2025_Restricoes_TDE.xlsx')).toBe('TDE')
+    expect(feeCodeFromName('00428307000350_2025_Restricoes_TcD_.xlsx')).toBe('TDC')
+    expect(feeCodeFromName('Planilha Restrições')).toBeNull()
+    const rows = [
+      ['UF', 'COD IBGE', 'CEP INICIAL', 'CEP FINAL', 'REGIAO', 'CNPJ', 'CPF', 'TIPO VALOR', 'VALOR', 'VALOR MINIMO'],
+      [null, null, null, null, null, null, 35282940, 'FIXO', 43, null],
+      [null, null, null, null, null, 286528000683, null, 'PERCENTUAL_FR', 20, 222],
+      [null, null, null, null, null, null, 17242070, 'PERCENTUAL_NF', 1, null],
+    ]
+    expect(parseFeeSheet(rows)).toBeNull()
+    const r = parseFeeSheet(rows, 'TDE')!
+    expect(r.invalid).toBe(1)
+    expect(r.fees).toEqual([
+      { doc: '00035282940', code: 'TDE', fixed: 43, percent: null, city: null, uf: null, since: null },
+      { doc: '00286528000683', code: 'TDE', fixed: 222, percent: 20, city: null, uf: null, since: null },
+    ])
   })
 })
 

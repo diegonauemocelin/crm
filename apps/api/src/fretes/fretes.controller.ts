@@ -348,9 +348,10 @@ export class FretesController {
   @Post('transportadoras/:id/taxas')
   @HttpCode(200)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  @UseInterceptors(FileInterceptor('arquivo', { limits: { fileSize: IMPORT_MAX_BYTES } }))
-  importFees(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File | undefined, @ReqContext() ctx: RequestCtx) {
-    return this.carriers.importFees(user, id, file, ctx)
+  // Um arquivo com as abas TDA, TDE, TDC e TVD ou vários (um por taxa), todos no campo "arquivo".
+  @UseInterceptors(FilesInterceptor('arquivo', 8, { limits: { fileSize: IMPORT_MAX_BYTES } }))
+  importFees(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @UploadedFiles() files: Express.Multer.File[] | undefined, @ReqContext() ctx: RequestCtx) {
+    return this.carriers.importFees(user, id, files, ctx)
   }
 
   @Delete('transportadoras/:id/taxas')

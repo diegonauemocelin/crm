@@ -8,7 +8,7 @@ import { cleanText } from '../sugestoes/sugestoes'
 import { allowedUnits, assertCan, assertUnitList, unitListWhere } from './acesso'
 import { MODALS } from './catalogo'
 import { normalizeCep, normalizeUf, validCnpj } from './cep'
-import { FEE_CODES, parseFeeSheet, type ParsedFee } from './taxas'
+import { FEE_CODES, feeCodeFromName, parseFeeSheet, type ParsedFee } from './taxas'
 import { FilesService } from '../files/files.service'
 import { IMPORT_MAX_BYTES, readSheets } from './importacao.service'
 
@@ -211,29 +211,34 @@ export class TransportadorasService {
    * Importa as listas (abas TDA, TDE, TDC e TVD da planilha da transportadora, ou qualquer aba com documento e taxa) e
    * substitui as anteriores dessa transportadora. O nome do destinatário não é guardado.
    */
-  async importFees(user: AuthUser, id: string, file: Express.Multer.File | undefined, ctx: RequestCtx) {
+  async importFees(user: AuthUser, id: string, input: Express.Multer.File | Express.Multer.File[] | undefined, ctx: RequestCtx) {
     assertCan(user, 'fretes_transportadoras', 'edit')
     const carrier = await this.carrierFor(user, id)
     assertUnitList(user, 'fretes_transportadoras', carrier.unitIds)
-    if (!file?.buffer?.length) throw new BadRequestException('Envie a planilha com as listas de taxas.')
-    if (file.size > IMPORT_MAX_BYTES) throw new BadRequestException('Arquivo maior que 20 MB.')
-    const sheets = await readSheets(file.buffer, file.originalname)
+    const files = (Array.isArray(input) ? input : input ? [input] : []).filter((f) => f?.buffer?.length)
+    if (!files.length) throw new BadRequestException('Envie a planilha com as listas de taxas.')
+    if (files.some((f) => f.size > IMPORT_MAX_BYTES)) throw new BadRequestException('Arquivo maior que 20 MB.')
     const all: ParsedFee[] = []
     let invalid = 0
     const used: string[] = []
-    for (const s of sheets) {
-      const r = parseFeeSheet(s.rows)
-      if (!r || !r.fees.length) continue
-      all.push(...r.fees)
-      invalid += r.invalid
-      used.push(s.name)
+    for (const file of files) {
+      const sheets = await readSheets(file.buffer, file.originalname)
+      for (const s of sheets) {
+        // Formato "Planilha Restrições" (um arquivo por taxa): a taxa vem do nome da aba ou do arquivo.
+        const r = parseFeeSheet(s.rows, feeCodeFromName(s.name) ?? feeCodeFromName(file.originalname))
+        if (!r || !r.fees.length) continue
+        all.push(...r.fees)
+        invalid += r.invalid
+        used.push(files.length > 1 ? `${file.originalname} › ${s.name}` : s.name)
+      }
     }
-    if (!all.length) throw new BadRequestException('Nenhuma lista de taxas encontrada: a aba precisa das colunas CNPJ (ou CPF) e TAXA, com valores como "TAXA TDE 222/20%".')
+    if (!all.length) throw new BadRequestException('Nenhuma lista de taxas encontrada: a aba precisa das colunas CNPJ (ou CPF) e TAXA ("TAXA TDE 222/20%"), ou CNPJ, CPF, TIPO VALOR e VALOR com a taxa (TDA, TDE, TDC ou TVD) no nome do arquivo.')
     // Mesmo documento e mesma taxa repetidos: fica a última linha.
     const unique = new Map(all.map((f) => [`${f.doc}|${f.code}`, f]))
     await this.prisma.$transaction(
       async (tx) => {
-        await tx.freightRecipientFee.deleteMany({ where: { carrierId: id } })
+        // Só as listas que vieram agora são trocadas (ex.: o arquivo da TDE não apaga a TDA já importada).
+        await tx.freightRecipientFee.deleteMany({ where: { carrierId: id, code: { in: [...new Set(all.map((f) => f.code))] } } })
         const rows = [...unique.values()]
         for (let i = 0; i < rows.length; i += 2000) {
           await tx.freightRecipientFee.createMany({
@@ -244,7 +249,7 @@ export class TransportadorasService {
       { timeout: 120_000 },
     )
     const counts = Object.fromEntries(FEE_CODES.map((c) => [c, [...unique.values()].filter((f) => f.code === c).length]))
-    await this.audit.byUser(user, ctx, 'frete.taxas_destinatario.importadas', 'freight_carrier', id, { arquivo: file.originalname.slice(0, 200), abas: used, quantidades: counts, linhasInvalidas: invalid })
+    await this.audit.byUser(user, ctx, 'frete.taxas_destinatario.importadas', 'freight_carrier', id, { arquivo: files.map((f) => f.originalname).join(', ').slice(0, 400), abas: used, quantidades: counts, linhasInvalidas: invalid })
     return { counts, total: unique.size, invalid, sheets: used }
   }
 

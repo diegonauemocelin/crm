@@ -54,8 +54,62 @@ export function normalizeDoc(raw: unknown, personHint: unknown): string | null {
   return d.length === 11 ? d : null
 }
 
-/** Lê uma aba de lista. Precisa das colunas de documento (CNPJ/CPF) e de taxa. */
-export function parseFeeSheet(rows: unknown[][]) {
+/**
+ * Taxa pelo nome do arquivo ou da aba ("..._Restricoes_TDE.xlsx", "TcD", aba "TVD"). TCD é a mesma TDC (difícil coleta).
+ */
+export function feeCodeFromName(name: unknown): FeeCode | null {
+  const m = /(?:^|[^a-z])(tda|tde|tdc|tcd|tvd)(?:[^a-z]|$)/i.exec(String(name ?? ''))
+  if (!m) return null
+  const c = m[1]!.toUpperCase()
+  return (c === 'TCD' ? 'TDC' : c) as FeeCode
+}
+
+/**
+ * Lista no formato "Planilha Restrições" exportado por sistemas de frete: uma taxa por arquivo, colunas CNPJ e CPF
+ * separadas, TIPO VALOR (FIXO ou PERCENTUAL_FR), VALOR e VALOR MINIMO. PERCENTUAL_FR 20 com mínimo 222 = R$ 222,00 ou
+ * 20% do frete, o maior. Outros tipos (sobre a nota, por kg, por m³) não são aceitos e contam como linha inválida.
+ */
+function parseRestrictionSheet(rows: unknown[][], headerIdx: number, code: FeeCode) {
+  const h = rows[headerIdx]!.map(normalizeHeader)
+  const col = (re: RegExp) => h.findIndex((x) => re.test(x))
+  const cCnpj = col(/^cnpj$/)
+  const cCpf = col(/^cpf$/)
+  const cDoc = col(/^(cnpj ?\/ ?cpf|cpf ?\/ ?cnpj|documento)$/)
+  const cKind = col(/^tipo ?valor$/)
+  const cValue = col(/^valor$/)
+  const cMin = col(/^valor ?minimo$/)
+  const cUf = col(/^uf$/)
+  const fees: ParsedFee[] = []
+  let invalid = 0
+  for (const r of rows.slice(headerIdx + 1)) {
+    if (!r || r.every((c) => c === null || c === undefined || String(c).trim() === '')) continue
+    const doc =
+      (cCnpj >= 0 && r[cCnpj] !== null && r[cCnpj] !== undefined && String(r[cCnpj]).trim() !== '' ? normalizeDoc(r[cCnpj], 'JURIDICA') : null) ??
+      (cCpf >= 0 && r[cCpf] !== null && r[cCpf] !== undefined && String(r[cCpf]).trim() !== '' ? normalizeDoc(r[cCpf], 'FISICA') : null) ??
+      (cDoc >= 0 ? normalizeDoc(r[cDoc], null) : null)
+    const kind = normalizeHeader(r[cKind]).replace(/\s+/g, '_')
+    const num = (v: unknown) => (v === null || v === undefined || String(v).trim() === '' ? null : typeof v === 'number' ? v : parseNumber(String(v)))
+    const value = num(r[cValue])
+    const min = cMin >= 0 ? num(r[cMin]) : null
+    let fee: { fixed: number; percent: number | null } | null = null
+    if (kind === 'fixo' && value !== null && value >= 0) fee = { fixed: value, percent: null }
+    else if ((kind === 'percentual_fr' || kind === 'percentual') && value !== null && value > 0) fee = { fixed: min !== null && min > 0 ? min : 0, percent: value }
+    if (!doc || !fee) {
+      invalid++
+      continue
+    }
+    fees.push({ doc, code, ...fee, city: null, uf: cUf >= 0 ? normalizeUf(r[cUf]) : null, since: null })
+  }
+  return { fees, invalid }
+}
+
+/**
+ * Lê uma aba de lista. Precisa das colunas de documento (CNPJ/CPF) e de taxa ("TAXA TDE 222/20%"), ou do formato
+ * "Planilha Restrições" (TIPO VALOR e VALOR), em que a taxa vem do nome da aba ou do arquivo (`code`).
+ */
+export function parseFeeSheet(rows: unknown[][], code?: FeeCode | null) {
+  const restrIdx = rows.slice(0, 10).findIndex((r) => r.some((c) => /^(cnpj|cpf)$/.test(normalizeHeader(c))) && r.some((c) => /^tipo ?valor$/.test(normalizeHeader(c))) && r.some((c) => normalizeHeader(c) === 'valor'))
+  if (restrIdx >= 0) return code ? parseRestrictionSheet(rows, restrIdx, code) : null
   const headerIdx = rows.slice(0, 10).findIndex((r) => r.some((c) => /^(cnpj|cpf|cnpj ?\/ ?cpf|cpf ?\/ ?cnpj|documento)$/.test(normalizeHeader(c))) && r.some((c) => /taxa/.test(normalizeHeader(c))))
   if (headerIdx < 0) return null
   const h = rows[headerIdx]!.map(normalizeHeader)

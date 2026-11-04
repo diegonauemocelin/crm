@@ -422,7 +422,7 @@ export const TRAIL: TrailModule[] = [
         title: 'Importar a planilha da transportadora',
         steps: [
           'Abra Fretes → Tabelas de frete → Nova tabela, escolha a transportadora, a vigência e as filiais, e salve.',
-          'Na aba Histórico de Importação, clique em Importar Regras e envie o Excel ou CSV.',
+          'Na aba Histórico de Importação, clique em Importar tabela da transportadora e envie o Excel ou CSV (ao criar uma tabela nova, a importação já abre depois de salvar).',
           'Confira o que é cada coluna. Colunas como "Até 10 kg" viram faixas de peso.',
           'Clique em Validar, leia os erros e alertas por linha e confirme.',
           'Na aba Versões, publique o rascunho para valer nas cotações.',

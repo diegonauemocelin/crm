@@ -71,9 +71,10 @@ const colName = (i: number) => {
 }
 const cellText = (c: Cell) => (c === null || c === undefined ? '' : String(c))
 
-export function ImportsTab({ table, onImported }: { table: FreightTable; onImported: (versionId: string) => void }) {
+export function ImportsTab({ table, onImported, autoOpen = false }: { table: FreightTable; onImported: (versionId: string) => void; autoOpen?: boolean }) {
   const { can } = useAuth()
-  const [open, setOpen] = useState(false)
+  // Tabela recém-criada: a importação já abre.
+  const [open, setOpen] = useState(autoOpen && can('fretes_tabelas', 'create'))
   const [report, setReport] = useState<string | null>(null)
   const list = useQuery({ queryKey: ['fretes', 'importacoes', table.id], queryFn: () => api.get<ImportRow[]>(`/fretes/tabelas/${table.id}/importacoes`) })
   return (
@@ -83,7 +84,7 @@ export function ImportsTab({ table, onImported }: { table: FreightTable; onImpor
           <p className="text-sm text-muted-foreground">A planilha vira um rascunho de nova versão. A versão publicada só muda quando você publicar (aba Versões).</p>
           {can('fretes_tabelas', 'create') && (
             <Button variant="outline" onClick={() => setOpen(true)}>
-              <UploadIcon aria-hidden /> Importar Regras
+              <UploadIcon aria-hidden /> Importar tabela da transportadora
             </Button>
           )}
         </div>

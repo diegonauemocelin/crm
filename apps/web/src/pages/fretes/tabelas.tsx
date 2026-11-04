@@ -252,7 +252,7 @@ function TableDetailView() {
   if (isNew) {
     return (
       <div className="space-y-4">
-        <PageHeader title="Nova tabela de frete" description="Depois de salvar, importe a planilha da transportadora (vira a versão 1 em rascunho) e publique." />
+        <PageHeader title="Nova tabela de frete" description="Preencha e salve: em seguida abre a importação da planilha da transportadora (vira a versão 1 em rascunho), e depois é só publicar." />
         <TableForm />
       </div>
     )
@@ -307,7 +307,7 @@ function TableDetailView() {
         </TabsList>
         <TabsContent value="regras">{version ? <RulesTab table={d} version={version} /> : <EmptyState title="Sem versão" />}</TabsContent>
         <TabsContent value="importacao">
-          <ImportsTab table={d} onImported={(vid) => (setParam('versao', vid), setParam('aba', 'regras'))} />
+          <ImportsTab table={d} autoOpen={params.get('importar') === '1'} onImported={(vid) => (setParam('versao', vid), setParam('aba', 'regras'))} />
         </TabsContent>
         <TabsContent value="componentes">{version ? <ComponentsTab table={d} version={version} /> : <EmptyState title="Sem versão" />}</TabsContent>
         <TabsContent value="versoes">
@@ -488,8 +488,8 @@ function TableForm({ table }: { table?: TableDetail }) {
     },
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['fretes'] })
-      toast.success(table ? 'Tabela salva.' : 'Tabela criada. Agora importe a planilha da transportadora.')
-      if (!table) navigate(`/fretes/tabelas/${r.id}?aba=importacao`)
+      toast.success(table ? 'Tabela salva.' : 'Tabela criada. Escolha a planilha da transportadora para importar.')
+      if (!table) navigate(`/fretes/tabelas/${r.id}?aba=importacao&importar=1`)
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
