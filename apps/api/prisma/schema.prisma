@@ -2858,6 +2858,69 @@ model FreightCarrierRegion {
   @@map("freight_carrier_regions")
 }
 
+/// Captura de CT-e na SEFAZ (Distribuição DF-e): certificado A1 do CNPJ consultado (a matriz serve para todas as
+/// filiais), ambiente, intervalo da busca automática e o último NSU lido. Certificado e senha criptografados.
+model FreightSefazConfig {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  /// CNPJ interessado na consulta (o da matriz).
+  cnpj          String    @db.Char(14)
+  unitId        String?   @db.Uuid
+  /// PRODUCAO | HOMOLOGACAO
+  env           String    @default("PRODUCAO")
+  /// cUFAutor (código IBGE da UF da matriz).
+  ufCode        Int       @default(42)
+  /// Busca automática a cada N horas (4, 8, 12 ou 24). 0 = desligada.
+  intervalHours Int       @default(0)
+  /// CT-es emitidos há mais de N dias (até 7) ficam de fora.
+  lookbackDays  Int       @default(7)
+  certEnc       String?
+  passEnc       String?
+  certSubject   String?
+  certCnpj      String?
+  certValidTo   DateTime?
+  lastNsu       String    @default("0")
+  maxNsu        String?
+  /// A SEFAZ pede 1 hora depois de "nenhum documento" ou de consumo indevido.
+  nextAllowedAt DateTime?
+  lastRunAt     DateTime?
+  lastStatus    String?
+  lastMessage   String?
+  updatedByName String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([tenantId, cnpj])
+  @@map("freight_sefaz_configs")
+}
+
+/// Cada busca na SEFAZ (automática ou "Buscar agora"): quantos documentos vieram e o que virou CT-e.
+model FreightSefazRun {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  configId    String    @db.Uuid
+  /// AUTO | MANUAL
+  trigger     String
+  byName      String?
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  /// RODANDO | OK | SEM_DOCUMENTOS | AGUARDANDO | ERRO
+  status      String    @default("RODANDO")
+  cStat       String?
+  message     String?
+  documents   Int       @default(0)
+  imported    Int       @default(0)
+  duplicated  Int       @default(0)
+  cancelled   Int       @default(0)
+  skippedOld  Int       @default(0)
+  ignored     Int       @default(0)
+  startNsu    String?
+  endNsu      String?
+
+  @@index([tenantId, startedAt])
+  @@map("freight_sefaz_runs")
+}
+
 /// Pedido expedido: liga a venda (pedido/NF) à cotação escolhida, à transportadora e ao CT-e.
 model FreightShipment {
   id            String    @id @default(uuid()) @db.Uuid
@@ -2953,6 +3016,10 @@ model FreightCte {
   protocolStatus String?
   shipmentId    String?   @db.Uuid
   fileId        String?   @db.Uuid
+  /// Papel da empresa no CT-e, pela raiz do CNPJ: TOMADOR, REMETENTE, DESTINATARIO, EXPEDIDOR, RECEBEDOR.
+  companyRoles  String[]  @default([])
+  /// MANUAL (XML enviado na tela) | SEFAZ (captura automática pela Distribuição DF-e)
+  source        String    @default("MANUAL")
   importedByName String
   createdAt     DateTime  @default(now())
 

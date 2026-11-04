@@ -476,6 +476,17 @@ export const TRAIL: TrailModule[] = [
         tip: 'O CT-e de frete dentro do estado também atualiza a alíquota interna de ICMS da UF.',
       },
       {
+        id: 'fretes.cte-sefaz',
+        title: 'Captura automática na SEFAZ',
+        steps: [
+          'Abra Fretes → Filiais e integrações → SEFAZ: captura de CT-e.',
+          'Envie o certificado A1 (e-CNPJ) da matriz e a senha: o CRM confere a senha, o CNPJ e a validade.',
+          'Escolha a busca automática (a cada 4, 8, 12 ou 24 horas) e quantos dias para trás (até 7).',
+          'Clique em Buscar agora para a primeira busca e confira as Últimas buscas.',
+        ],
+        tip: 'O CNPJ da matriz vale para todas as filiais. Sem CT-e novo, a SEFAZ pede 1 hora antes da próxima consulta.',
+      },
+      {
         id: 'fretes.conciliar',
         title: 'Decidir um CT-e divergente',
         steps: [

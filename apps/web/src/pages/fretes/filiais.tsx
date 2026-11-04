@@ -72,6 +72,7 @@ function Filiais() {
       )}
       <IcmsRates editable={can('fretes_filiais', 'edit') && !!ctx.data?.global} />
       {can('fretes_cte', 'view') && <RecParams editable={can('fretes_cte', 'edit') && !!ctx.data?.global} carriers={ctx.data?.carriers ?? []} />}
+      {can('fretes_cte', 'view') && <SefazCapture />}
       <Integrations />
     </div>
   )
@@ -148,7 +149,6 @@ const INTEGRATIONS = [
   { name: 'Correios (preço e prazo)', need: 'Contrato com os Correios, cartão de postagem e acesso à API do Correios (CWS). Até lá, a tabela dos Correios pode ser importada como uma tabela de frete comum.' },
   { name: 'Mercado Livre (Mercado Envios 1 / ME1)', need: 'Usa a conexão do Mercado Livre que o CRM já tem. Falta definir com o comercial quais tabelas valem para a loja oficial e o formato de envio da tabela de frete ao Mercado Livre.' },
   { name: 'Google Shopping (Merchant Center)', need: 'Conta do Merchant Center com acesso de API. O frete dos produtos sai das tabelas marcadas como exclusivas para "Google Shopping".' },
-  { name: 'SEFAZ: captura de CT-e (distribuição DF-e)', need: 'Certificado digital A1 de cada CNPJ (matriz e filiais) e definição de quem é o tomador. Fase 3 do projeto.' },
   { name: 'Tcar (ERP): pedidos e notas', need: 'A integração da Tcar já existe para produtos. Falta liberar a consulta de pedidos e notas fiscais expedidas. Fase 3.' },
   { name: 'APIs das transportadoras (rastreamento e cotação on-line)', need: 'Credenciais de cada transportadora que oferecer API.' },
 ]
@@ -380,3 +380,222 @@ function IcmsRates({ editable }: { editable: boolean }) {
   )
 }
 
+
+interface SefazView {
+  headquarters: { id: string; name: string; cnpj: string | null; uf: string | null } | null
+  config: {
+    cnpj: string
+    env: 'PRODUCAO' | 'HOMOLOGACAO'
+    ufCode: number
+    intervalHours: number
+    lookbackDays: number
+    hasCertificate: boolean
+    certSubject: string | null
+    certCnpj: string | null
+    certValidTo: string | null
+    lastNsu: string
+    maxNsu: string | null
+    nextAllowedAt: string | null
+    lastRunAt: string | null
+    lastStatus: string | null
+    lastMessage: string | null
+  } | null
+  runs: { id: string; trigger: string; byName: string | null; startedAt: string; finishedAt: string | null; status: string; message: string | null; documents: number; imported: number; duplicated: number; cancelled: number; skippedOld: number; ignored: number }[]
+  intervals: number[]
+  maxLookbackDays: number
+  canManage: boolean
+}
+
+const UF_CODES: [string, number][] = [['AC', 12], ['AL', 27], ['AM', 13], ['AP', 16], ['BA', 29], ['CE', 23], ['DF', 53], ['ES', 32], ['GO', 52], ['MA', 21], ['MG', 31], ['MS', 50], ['MT', 51], ['PA', 15], ['PB', 25], ['PE', 26], ['PI', 22], ['PR', 41], ['RJ', 33], ['RN', 24], ['RO', 11], ['RR', 14], ['RS', 43], ['SC', 42], ['SE', 28], ['SP', 35], ['TO', 17]]
+const RUN_STATUS: Record<string, string> = { OK: 'Concluída', SEM_DOCUMENTOS: 'Sem CT-e novo', AGUARDANDO: 'SEFAZ pediu pausa', ERRO: 'Erro', RODANDO: 'Em andamento' }
+const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—')
+
+/** Captura de CT-e na SEFAZ (Distribuição DF-e) com o certificado A1 da matriz. */
+function SefazCapture() {
+  const qc = useQueryClient()
+  const { can } = useAuth()
+  const q = useQuery({ queryKey: ['fretes', 'sefaz'], queryFn: () => api.get<SefazView>('/fretes/sefaz') })
+  const [file, setFile] = useState<File | null>(null)
+  const [password, setPassword] = useState('')
+  const d = q.data
+  const c = d?.config
+  const refresh = (v: SefazView) => qc.setQueryData(['fretes', 'sefaz'], v)
+  const upload = useMutation({
+    mutationFn: () => {
+      const fd = new FormData()
+      fd.append('arquivo', file!)
+      fd.append('senha', password)
+      return api.post<SefazView>('/fretes/sefaz/certificado', fd)
+    },
+    onSuccess: (v) => {
+      refresh(v)
+      setFile(null)
+      setPassword('')
+      toast.success('Certificado conferido e guardado.')
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const save = useMutation({
+    mutationFn: (body: Partial<{ env: string; ufCode: number; intervalHours: number; lookbackDays: number }>) => api.put<SefazView>('/fretes/sefaz', body),
+    onSuccess: (v) => (refresh(v), toast.success('Configuração salva.')),
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const remove = useMutation({
+    mutationFn: () => api.delete<SefazView>('/fretes/sefaz/certificado'),
+    onSuccess: (v) => (refresh(v), toast.success('Certificado removido. A busca automática foi desligada.')),
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const run = useMutation({
+    mutationFn: () => api.post<{ status: string; imported: number; documents: number; skippedOld: number; message: string | null }>('/fretes/sefaz/buscar'),
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: ['fretes'] })
+      if (r.status === 'ERRO') toast.error(`A busca falhou: ${r.message ?? 'erro na SEFAZ'}`)
+      else toast.success(`${r.imported} CT-e(s) novo(s) de ${r.documents} documento(s)${r.skippedOld ? `; ${r.skippedOld} fora do período` : ''}.`)
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const days = c?.certValidTo ? Math.floor((new Date(c.certValidTo).getTime() - Date.now()) / 86_400_000) : null
+  const waitMin = c?.nextAllowedAt ? Math.ceil((new Date(c.nextAllowedAt).getTime() - Date.now()) / 60_000) : 0
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <PlugIcon className="size-4" aria-hidden /> SEFAZ: captura de CT-e (Distribuição DF-e)
+          <Badge variant="outline" className={c?.hasCertificate ? 'border-[#0ca30c]/50 text-[#006300] dark:text-[#0ca30c]' : 'text-muted-foreground'}>
+            {c?.hasCertificate ? (c.intervalHours ? `Automática a cada ${c.intervalHours} h` : 'Só manual') : 'Não conectada'}
+          </Badge>
+        </CardTitle>
+        <CardDescription>
+          Busca na SEFAZ os CT-es em que a empresa aparece (tomador, remetente, destinatário, expedidor ou recebedor) com o certificado A1 da matriz. O CNPJ da matriz vale para todas as filiais. Os CT-es entram como na importação de XML e já são conciliados.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm">
+        {q.isLoading ? (
+          <TableSkeleton rows={3} />
+        ) : q.error ? (
+          <ErrorState error={q.error} onRetry={() => q.refetch()} />
+        ) : (
+          d && (
+            <>
+              {c?.hasCertificate ? (
+                <div className="space-y-1 rounded-md border p-3">
+                  <p>
+                    <span className="font-medium">{c.certSubject}</span> · CNPJ {maskCnpj(c.certCnpj ?? c.cnpj)}
+                  </p>
+                  <p className={days !== null && days <= 30 ? 'font-medium text-destructive' : 'text-muted-foreground'}>
+                    Válido até {c.certValidTo ? new Date(c.certValidTo).toLocaleDateString('pt-BR') : '—'}
+                    {days !== null && days <= 30 ? ` · vence em ${days} dia(s): renove e envie o novo` : ''}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Último NSU lido {c.lastNsu}
+                    {c.maxNsu ? ` de ${c.maxNsu}` : ''} · última busca {fmt(c.lastRunAt)}
+                    {c.lastMessage ? ` · ${c.lastMessage}` : ''}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-muted-foreground">
+                  Envie o certificado A1 (e-CNPJ) da matriz{d.headquarters ? ` (${d.headquarters.name}${d.headquarters.cnpj ? `, ${maskCnpj(d.headquarters.cnpj)}` : ''})` : ''}. A senha e o arquivo ficam criptografados e nunca voltam para a tela.
+                </p>
+              )}
+              {d.canManage && (
+                <form
+                  className="flex flex-wrap items-end gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    if (file) upload.mutate()
+                  }}
+                >
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sefaz-cert">{c?.hasCertificate ? 'Trocar o certificado A1' : 'Certificado A1 (.pfx ou .p12)'}</Label>
+                    <Input id="sefaz-cert" type="file" accept=".pfx,.p12" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="w-72" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sefaz-pass">Senha do certificado</Label>
+                    <Input id="sefaz-pass" type="password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} className="w-48" />
+                  </div>
+                  <Button type="submit" disabled={!file || !password || upload.isPending}>
+                    {upload.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Conferir e guardar
+                  </Button>
+                  {c?.hasCertificate && (
+                    <Button type="button" variant="ghost" className="text-destructive" disabled={remove.isPending} onClick={() => remove.mutate()}>
+                      Remover certificado
+                    </Button>
+                  )}
+                </form>
+              )}
+              {c && (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sefaz-int">Busca automática</Label>
+                    <select id="sefaz-int" className="h-9 w-full rounded-md border bg-transparent px-2" disabled={!d.canManage || save.isPending} value={c.intervalHours} onChange={(e) => save.mutate({ intervalHours: Number(e.target.value) })}>
+                      {d.intervals.map((h) => (
+                        <option key={h} value={h}>
+                          {h ? `A cada ${h} horas` : 'Desligada (só Buscar agora)'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sefaz-dias">CT-es emitidos nos últimos</Label>
+                    <select id="sefaz-dias" className="h-9 w-full rounded-md border bg-transparent px-2" disabled={!d.canManage || save.isPending} value={c.lookbackDays} onChange={(e) => save.mutate({ lookbackDays: Number(e.target.value) })}>
+                      {Array.from({ length: d.maxLookbackDays }, (_, i) => i + 1).map((n) => (
+                        <option key={n} value={n}>
+                          {n} dia(s)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sefaz-uf">UF da matriz</Label>
+                    <select id="sefaz-uf" className="h-9 w-full rounded-md border bg-transparent px-2" disabled={!d.canManage || save.isPending} value={c.ufCode} onChange={(e) => save.mutate({ ufCode: Number(e.target.value) })}>
+                      {UF_CODES.map(([uf, code]) => (
+                        <option key={code} value={code}>
+                          {uf}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="sefaz-env">Ambiente</Label>
+                    <select id="sefaz-env" className="h-9 w-full rounded-md border bg-transparent px-2" disabled={!d.canManage || save.isPending} value={c.env} onChange={(e) => save.mutate({ env: e.target.value })}>
+                      <option value="PRODUCAO">Produção</option>
+                      <option value="HOMOLOGACAO">Homologação (testes)</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+              {c?.hasCertificate && can('fretes_cte', 'create') && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button onClick={() => run.mutate()} disabled={run.isPending || waitMin > 0}>
+                    {run.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Buscar agora
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {waitMin > 0 ? `A SEFAZ pede 1 hora entre consultas sem CT-e novo: libera em ${waitMin} minuto(s).` : 'Busca os CT-es novos desde a última consulta.'}
+                  </span>
+                </div>
+              )}
+              {d.runs.length > 0 && (
+                <div className="space-y-1">
+                  <p className="font-medium">Últimas buscas</p>
+                  <ul className="space-y-1 text-xs">
+                    {d.runs.map((r) => (
+                      <li key={r.id} className="flex flex-wrap gap-x-3 border-b pb-1 last:border-0">
+                        <span>{fmt(r.startedAt)}</span>
+                        <span>{r.trigger === 'AUTO' ? 'Automática' : `Manual${r.byName ? ` (${r.byName})` : ''}`}</span>
+                        <span className={r.status === 'ERRO' ? 'font-medium text-destructive' : ''}>{RUN_STATUS[r.status] ?? r.status}</span>
+                        <span className="text-muted-foreground">
+                          {r.documents} documento(s) · {r.imported} novo(s) · {r.duplicated} repetido(s) · {r.cancelled} cancelado(s) · {r.skippedOld} fora do período{r.ignored ? ` · ${r.ignored} ignorado(s)` : ''}
+                        </span>
+                        {r.message && <span className="text-muted-foreground">{r.message}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )
+        )}
+      </CardContent>
+    </Card>
+  )
+}

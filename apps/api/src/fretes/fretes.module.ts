@@ -1,3 +1,5 @@
+import { FretesSefazController } from './sefaz.controller'
+import { SefazService } from './sefaz.service'
 import { Module } from '@nestjs/common'
 import { FilesModule } from '../files/files.module'
 import { CotacaoService } from './cotacao.service'
@@ -15,7 +17,7 @@ import { FretesRelatoriosService } from './relatorios.service'
 /** Gestão de fretes: transportadoras, tabelas versionadas, motor de cálculo, importação de planilhas e cotações por filial. */
 @Module({
   imports: [FilesModule],
-  controllers: [FretesController, FretesOperacaoController],
-  providers: [PainelService, TransportadorasService, TabelasService, ImportacaoService, CotacaoService, PedidosService, CteService, FaturasService, FretesRelatoriosService],
+  controllers: [FretesController, FretesOperacaoController, FretesSefazController],
+  providers: [PainelService, TransportadorasService, TabelasService, ImportacaoService, CotacaoService, PedidosService, CteService, FaturasService, FretesRelatoriosService, SefazService],
 })
 export class FretesModule {}

@@ -13,7 +13,7 @@ import { allowedUnits, assertCan } from './acesso'
 import { normalizeCep } from './cep'
 import { type ExpectedRef, reconcile, type Tolerance } from './conciliacao'
 import { CotacaoService, type QuoteResult } from './cotacao.service'
-import { type CteData, internalRateFrom, parseCteCancel, parseCteXml, type RateLearning } from './cte'
+import { companyRoles, type CteData, internalRateFrom, parseCteCancel, parseCteXml, type RateLearning } from './cte'
 import { money } from './formula'
 
 export const REC_KEY = 'fretes.conciliacao'
@@ -89,6 +89,8 @@ export class CteService {
       icms: c.icms,
       nfeKeys: c.nfeKeys,
       fiscalStatus: c.fiscalStatus,
+      companyRoles: c.companyRoles,
+      source: c.source,
       protocol: c.protocol,
       protocolStatus: c.protocolStatus,
       shipmentId: c.shipmentId,
@@ -149,7 +151,14 @@ export class CteService {
   async importXml(user: AuthUser, files: Express.Multer.File[], ctx: RequestCtx) {
     assertCan(user, 'fretes_cte', 'create')
     if (!files?.length) throw new BadRequestException('Envie os XMLs dos CT-es (ou um .zip com eles).')
-    const docs = this.expand(files)
+    return this.importDocs(user, this.expand(files), ctx, 'MANUAL')
+  }
+
+  /**
+   * Importa XMLs já lidos (tela ou captura na SEFAZ): novos CT-es, eventos de cancelamento e repetidos (ignorados pela
+   * chave). Concilia na hora. A captura automática usa um usuário de sistema da empresa.
+   */
+  async importDocs(user: AuthUser, docs: { name: string; text: string }[], ctx: RequestCtx, source: 'MANUAL' | 'SEFAZ') {
     const [carriers, units] = await Promise.all([
       this.prisma.freightCarrier.findMany({ where: { tenantId: user.tenantId }, select: { id: true, cnpj: true } }),
       this.prisma.unit.findMany({ where: { tenantId: user.tenantId }, select: { id: true, cnpj: true, city: true, state: true } }),
@@ -230,6 +239,8 @@ export class CteService {
           protocolStatus: cte.protocolStatus,
           shipmentId: shipment?.id ?? null,
           fileId: asset.id,
+          companyRoles: companyRoles(cte, units.map((u) => u.cnpj)),
+          source,
           importedByName: user.name.slice(0, 120),
         },
       })
@@ -248,7 +259,7 @@ export class CteService {
     }
     // Alíquota interna de ICMS aprendida dos CT-es de frete dentro do mesmo estado.
     const icms = learnings.length ? await this.quotes.applyIcmsLearnings(user, learnings, ctx, true) : null
-    await this.audit.byUser(user, ctx, 'frete.cte.importados', 'freight_cte', undefined, { arquivos: docs.length, novos: result.imported, repetidos: result.duplicated, cancelados: result.cancelled, ignorados: result.ignored.length })
+    await this.audit.byUser(user, ctx, 'frete.cte.importados', 'freight_cte', undefined, { origem: source, arquivos: docs.length, novos: result.imported, repetidos: result.duplicated, cancelados: result.cancelled, ignorados: result.ignored.length })
     return { ...result, ignored: result.ignored.slice(0, 100), icmsUpdated: icms?.updated ?? [] }
   }
 

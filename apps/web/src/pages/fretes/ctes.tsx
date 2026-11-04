@@ -29,6 +29,8 @@ interface RecLine {
   status: 'OK' | 'DIFERENTE' | 'NAO_PREVISTA' | 'NAO_COBRADA' | 'DUPLICADA'
 }
 
+const ROLE_LABEL: Record<string, string> = { TOMADOR: 'Tomador (paga o frete)', REMETENTE: 'Remetente', DESTINATARIO: 'Destinatário', EXPEDIDOR: 'Expedidor', RECEBEDOR: 'Recebedor' }
+
 interface Cte {
   id: string
   key: string
@@ -54,6 +56,10 @@ interface Cte {
   icms: { rate: number | null; value: number | null; base?: number | null } | null
   nfeKeys: string[]
   fiscalStatus: string
+  /** Papel da empresa no CT-e (pela raiz do CNPJ). */
+  companyRoles?: string[]
+  /** MANUAL | SEFAZ */
+  source?: string
   protocol: string | null
   shipmentId: string | null
   recStatus: string
@@ -503,7 +509,8 @@ function CteDetail() {
             <Info label="Peso" value={c.weight === null ? '—' : `${fmtNum(c.weight)} kg`} />
             <Info label="ICMS" value={c.icms ? `${c.icms.rate === null ? '—' : `${fmtNum(c.icms.rate, 2)}%`} · ${money(c.icms.value)}` : '—'} />
             <Info label="NF-e" value={c.nfeKeys.length ? c.nfeKeys.map(formatKey).join(', ') : '—'} />
-            <Info label="Situação fiscal" value={c.fiscalStatus === 'CANCELADO' ? 'Cancelado' : `Não conferido na SEFAZ${c.protocol ? ` · protocolo ${c.protocol}` : ''}`} />
+            <Info label="Situação fiscal" value={c.fiscalStatus === 'CANCELADO' ? 'Cancelado' : c.source === 'SEFAZ' ? `Capturado na SEFAZ${c.protocol ? ` · protocolo ${c.protocol}` : ''}` : `Não conferido na SEFAZ${c.protocol ? ` · protocolo ${c.protocol}` : ''}`} />
+            <Info label="Papel da empresa" value={c.companyRoles?.length ? c.companyRoles.map((r) => ROLE_LABEL[r] ?? r).join(', ') : 'Não identificado'} />
             <Info label="Importado" value={`${dateTime(c.createdAt)} por ${c.importedByName}`} />
             {c.invoice && (
               <Info

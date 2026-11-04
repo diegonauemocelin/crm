@@ -168,9 +168,17 @@ Componentes padrão de uma tabela nova (ajustar ao contrato de cada transportado
 
 ## 9. Integração fiscal e certificados (fase 3)
 
-- **CT-e:** Distribuição DF-e da SEFAZ (NSU por CNPJ interessado, com certificado A1 de cada CNPJ). O sistema só
-  baixa documentos em que o CNPJ da Usaparts é parte (tomador/destinatário/remetente), respeitando o limite de
-  consultas. XML importado não é tratado como válido só por existir: confere assinatura, protocolo e situação.
+- **CT-e (entregue na v2.0.13):** Distribuição DF-e da SEFAZ (web service CTeDistribuicaoDFe do Ambiente Nacional),
+  consulta por último NSU com o CNPJ da matriz como interessado: o certificado A1 da matriz vale para todas as filiais.
+  Configuração em Fretes › Filiais e integrações: certificado A1 (.pfx/.p12) e senha, busca automática a cada 4, 8, 12
+  ou 24 horas (ou desligada), "Buscar agora", CT-es emitidos nos últimos 1 a 7 dias (os mais antigos ficam de fora),
+  UF da matriz (cUFAutor) e ambiente (produção ou homologação). O NSU fica guardado a cada página; depois de "nenhum
+  documento" (137) ou de consumo indevido (656), espera 1 hora antes de consultar de novo (o "Buscar agora" também).
+  Cada procCTe entra pelo mesmo caminho da importação de XML (sem repetir chave) e é conciliado; o evento de
+  cancelamento (110111) marca o CT-e como cancelado; resumos e outros documentos são contados e ignorados. Cada CT-e
+  guarda o papel da empresa (tomador, remetente, destinatário, expedidor, recebedor) pela raiz do CNPJ e a origem
+  (MANUAL ou SEFAZ). Cada busca fica registrada (documentos, novos, repetidos, cancelados, fora do período). Código:
+  `apps/api/src/fretes/sefaz.ts` (partes puras, `test/fretes-sefaz.spec.ts`) e `sefaz.service.ts`.
 - **Certificado A1:** upload por quem tem permissão, senha criptografada (AES-256-GCM, como os demais segredos do
   CRM), validade e CNPJ lidos do certificado, aviso de vencimento, nada em log. A3 não roda em segundo plano:
   exigiria um agente local, a avaliar se for o caso.
@@ -192,7 +200,7 @@ Na tela **Filiais e integrações** todas aparecem como *Não conectada* até es
 |---|---|---|
 | 1 | Permissões por filial, filiais, transportadoras, tabelas, importação, componentes e variáveis | **Entregue (v2.0.0)** |
 | 2 | Fórmulas, regras geográficas, cubagem, cotação, comparativo, histórico e reprodução, cotação em lote | **Entregue (v2.0.0)** |
-| 3 | Pedidos e expedição (manual, planilha, pela cotação), importação dos XMLs de CT-e | **Entregue (v2.0.0)**; captura automática na SEFAZ (DF-e, certificado A1) e pedidos da Tcar: a decidir |
+| 3 | Pedidos e expedição (manual, planilha, pela cotação), importação dos XMLs de CT-e | **Entregue (v2.0.0)**; captura automática na SEFAZ (DF-e, certificado A1) **entregue na v2.0.13**; pedidos da Tcar: a decidir |
 | 4 | Faturas, conciliação automática por componente, tolerâncias, contestação, pagamentos | **Entregue (v2.0.0)** |
 | 5 | Relatórios gerenciais, alertas, indicadores de desempenho, perfis prontos | **Entregue (v2.0.0)** |
 | 6 | Correios, Mercado Livre ME1, Google Shopping, APIs de transportadoras, homologação | A decidir (depende de contratos e credenciais) |

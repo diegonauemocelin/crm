@@ -19,6 +19,9 @@ export interface CteData {
   recipientName: string | null
   /** Documento de quem paga o frete (tomador). */
   tomadorDoc: string | null
+  /** Expedidor e recebedor (quando o CT-e tem). */
+  expedDoc: string | null
+  recebDoc: string | null
   destZip: string | null
   cargoValue: number | null
   /** Peso para o frete: peso base de cálculo, senão aferido, senão bruto (kg). */
@@ -85,6 +88,8 @@ export function parseCteXml(raw: string): CteData {
     recipientDoc: parties['3'] ?? null,
     recipientName: dest ? tag(dest, 'xNome') : null,
     tomadorDoc,
+    expedDoc: parties['1'] ?? null,
+    recebDoc: parties['2'] ?? null,
     destZip: dest ? (tag(block(dest, 'enderDest') ?? '', 'CEP') ?? null) : null,
     cargoValue: num(tag(infCarga, 'vCarga')),
     weight,
@@ -131,4 +136,22 @@ export function parseCteCancel(raw: string): { key: string; protocol: string | n
   if (!ev || tag(ev, 'tpEvento') !== '110111') return null
   const key = tag(ev, 'chCTe')
   return key && /^\d{44}$/.test(key) ? { key, protocol: tag(block(ev, 'evCancCTe') ?? ev, 'nProt') } : null
+}
+
+export const COMPANY_ROLE_LABEL: Record<string, string> = { TOMADOR: 'Tomador', REMETENTE: 'Remetente', DESTINATARIO: 'Destinatário', EXPEDIDOR: 'Expedidor', RECEBEDOR: 'Recebedor' }
+
+/**
+ * Papel da empresa no CT-e (tomador, remetente, destinatário, expedidor, recebedor), pela raiz do CNPJ (8 dígitos):
+ * matriz e filiais têm a mesma raiz.
+ */
+export function companyRoles(cte: Pick<CteData, 'tomadorDoc' | 'senderDoc' | 'recipientDoc' | 'expedDoc' | 'recebDoc'>, cnpjs: (string | null | undefined)[]): string[] {
+  const roots = new Set(cnpjs.map((c) => (c ?? '').replace(/\D/g, '')).filter((c) => c.length === 14).map((c) => c.slice(0, 8)))
+  const is = (d: string | null) => !!d && d.length === 14 && roots.has(d.slice(0, 8))
+  const out: string[] = []
+  if (is(cte.tomadorDoc)) out.push('TOMADOR')
+  if (is(cte.senderDoc)) out.push('REMETENTE')
+  if (is(cte.recipientDoc)) out.push('DESTINATARIO')
+  if (is(cte.expedDoc)) out.push('EXPEDIDOR')
+  if (is(cte.recebDoc)) out.push('RECEBEDOR')
+  return out
 }
