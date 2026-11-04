@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.5",
+      "date": "2026-11-04",
+      "title": "Visual Por sistema padronizado nos dashboards",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Aparência",
+          "text": "Visual Por sistema em todos os dashboards e relatórios: indicadores com números grandes, subiu ou caiu em pílula verde ou vermelha, filtros de período e abas com o item escolhido na cor da marca e tabelas com o cabeçalho em maiúsculas."
+        },
+        {
+          "type": "melhoria",
+          "area": "Aparência",
+          "text": "Cores padronizadas pela marca: botões principais, mini gráficos e gráficos usam só as cores da empresa (mais verde e vermelho para subiu e caiu), e as caixas de aviso ganharam o tom suave da marca."
+        }
+      ]
+    },
+    {
       "version": "2.0.4",
       "date": "2026-11-04",
       "title": "Correção do backup na atualização",
