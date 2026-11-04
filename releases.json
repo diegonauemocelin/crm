@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.8",
+      "date": "2026-11-04",
+      "title": "Importação das listas de taxas e da tabela da transportadora",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Listas de taxas por destinatário (TDA, TDE, TDC e TVD) também no formato Planilha Restrições exportado por sistemas de frete: um arquivo por taxa, com CNPJ, CPF, tipo de valor, valor e valor mínimo. Dá para enviar até 8 arquivos de uma vez, e cada lista enviada troca só a mesma lista que já existia."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Tabela de frete nova: depois de salvar, a importação da planilha da transportadora já abre. O botão passou a se chamar Importar tabela da transportadora."
+        },
+        {
+          "type": "melhoria",
+          "area": "Postagens",
+          "text": "Ao conectar uma conta do Instagram, a tela explica o que fazer quando o Instagram diz que a conta não é desenvolvedora ou testadora (convite de testador no app da Meta)."
+        }
+      ]
+    },
+    {
       "version": "2.0.7",
       "date": "2026-11-04",
       "title": "App para Android (APK)",
