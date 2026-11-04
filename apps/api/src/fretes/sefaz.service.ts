@@ -8,7 +8,7 @@ import type { AuthUser } from '../common/types'
 import { PrismaService } from '../prisma/prisma.service'
 import { assertCan } from './acesso'
 import { CteService } from './cte.service'
-import { distEnvelope, docKind, MAX_LOOKBACK_DAYS, nsuLess, parseDistResponse, readCertificate, SEFAZ_ENDPOINT, SEFAZ_INTERVALS, SEFAZ_WAIT_MS, type SefazEnv, SOAP_ACTION, UF_CODE, withinDays } from './sefaz'
+import { distEnvelope, docKind, MAX_LOOKBACK_DAYS, nsuLess, parseDistResponse, pfxToPem, readCertificate, SEFAZ_ENDPOINT, SEFAZ_INTERVALS, SEFAZ_WAIT_MS, type SefazEnv, SOAP_ACTION, UF_CODE, withinDays } from './sefaz'
 
 const TICK_MS = 10 * 60_000
 /** Consultas por rodada (cada uma traz até 50 documentos). */
@@ -219,7 +219,10 @@ export class SefazService implements OnApplicationBootstrap, OnModuleDestroy {
 
   private post(env: SefazEnv, body: string, pfx: Buffer, passphrase: string) {
     const url = new URL(SEFAZ_ENDPOINT[env])
-    const agent = new Agent({ pfx, passphrase, keepAlive: false })
+    // Chave e certificado em PEM (o pfx do ICP-Brasil costuma usar criptografia antiga que o Node recusa direto).
+    const pem = pfxToPem(pfx, passphrase)
+    // A cadeia da certificadora vai junto do certificado da empresa (a SEFAZ confere a cadeia ICP-Brasil).
+    const agent = new Agent({ key: pem.key, cert: pem.cert + pem.ca.join(''), keepAlive: false })
     return new Promise<string>((resolve, reject) => {
       const req = request(
         { method: 'POST', hostname: url.hostname, path: url.pathname, agent, timeout: 60_000, headers: { 'Content-Type': `application/soap+xml; charset=utf-8; action="${SOAP_ACTION}"`, 'Content-Length': Buffer.byteLength(body) } },

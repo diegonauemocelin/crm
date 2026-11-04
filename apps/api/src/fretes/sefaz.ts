@@ -3,7 +3,7 @@
 // compactados, o filtro de data e a leitura do certificado A1.
 
 import { X509Certificate } from 'node:crypto'
-import { createSecureContext } from 'node:tls'
+import * as forge from 'node-forge'
 import { gunzipSync } from 'node:zlib'
 
 export const SEFAZ_ENDPOINT = {
@@ -112,18 +112,33 @@ const OID_CNPJ = Buffer.from([0x06, 0x05, 0x60, 0x4c, 0x01, 0x03, 0x03])
  * Lê o certificado A1 (.pfx/.p12): confere a senha (erro "senha incorreta"), titular, validade e o CNPJ (campo
  * 2.16.76.1.3.3 do ICP-Brasil, senão o ":CNPJ" do nome, senão o serialNumber do titular).
  */
-export function readCertificate(pfx: Buffer, passphrase: string): CertInfo {
-  let der: Buffer
+/**
+ * Abre o .pfx/.p12 e devolve a chave e o certificado em PEM (mais a cadeia). Usa o node-forge porque a maioria dos
+ * e-CNPJ ICP-Brasil vem com criptografia antiga (RC2/3DES), que o OpenSSL 3 do Node recusa ("unsupported").
+ */
+export function pfxToPem(pfx: Buffer, passphrase: string): { key: string; cert: string; ca: string[] } {
+  let p12: forge.pkcs12.Pkcs12Pfx
   try {
-    const ctx = createSecureContext({ pfx, passphrase }) as unknown as { context: { getCertificate(): Buffer | null } }
-    const c = ctx.context.getCertificate()
-    if (!c) throw new Error('sem certificado')
-    der = c
+    p12 = forge.pkcs12.pkcs12FromAsn1(forge.asn1.fromDer(forge.util.createBuffer(pfx.toString('binary'))), false, passphrase)
   } catch (e) {
     const msg = (e as Error).message
-    if (/mac verify|bad decrypt|invalid password/i.test(msg)) throw new Error('Senha do certificado incorreta.')
+    if (/mac could not be verified|invalid password|decrypt/i.test(msg)) throw new Error('Senha do certificado incorreta.')
     throw new Error('Não foi possível abrir o certificado. Envie o arquivo .pfx ou .p12 do certificado A1.')
   }
+  const keys = [
+    ...(p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag! })[forge.pki.oids.pkcs8ShroudedKeyBag!] ?? []),
+    ...(p12.getBags({ bagType: forge.pki.oids.keyBag! })[forge.pki.oids.keyBag!] ?? []),
+  ].filter((b) => b.key)
+  const certs = (p12.getBags({ bagType: forge.pki.oids.certBag! })[forge.pki.oids.certBag!] ?? []).filter((b) => b.cert).map((b) => b.cert!)
+  const key = keys[0]?.key as forge.pki.rsa.PrivateKey | undefined
+  if (!key || !certs.length) throw new Error('O arquivo não tem a chave e o certificado A1. Exporte o certificado com a chave privada (.pfx).')
+  // O certificado da empresa é o que casa com a chave (os outros são a cadeia da certificadora).
+  const mine = certs.find((c) => (c.publicKey as forge.pki.rsa.PublicKey).n?.equals(key.n)) ?? certs[0]!
+  return { key: forge.pki.privateKeyToPem(key), cert: forge.pki.certificateToPem(mine), ca: certs.filter((c) => c !== mine).map((c) => forge.pki.certificateToPem(c)) }
+}
+
+export function readCertificate(pfx: Buffer, passphrase: string): CertInfo {
+  const der = Buffer.from(forge.asn1.toDer(forge.pki.certificateToAsn1(forge.pki.certificateFromPem(pfxToPem(pfx, passphrase).cert))).getBytes(), 'binary')
   const x = new X509Certificate(der)
   let cnpj: string | null = null
   const at = der.indexOf(OID_CNPJ)

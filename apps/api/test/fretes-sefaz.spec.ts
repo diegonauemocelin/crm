@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import { companyRoles } from '../src/fretes/cte'
-import { distEnvelope, docKind, nsuLess, parseDistResponse, readCertificate, unzipDoc, withinDays } from '../src/fretes/sefaz'
+import { distEnvelope, docKind, nsuLess, parseDistResponse, pfxToPem, readCertificate, unzipDoc, withinDays } from '../src/fretes/sefaz'
 
 const zip = (xml: string) => gzipSync(Buffer.from(xml, 'utf8')).toString('base64')
 
@@ -57,6 +57,13 @@ describe('fretes: captura de CT-e na SEFAZ (Distribuição DF-e)', () => {
       expect(info.validTo.getTime()).toBeGreaterThan(Date.now())
       expect(() => readCertificate(pfx, 'errada')).toThrow('Senha do certificado incorreta.')
       expect(() => readCertificate(Buffer.from('xx'), 'a')).toThrow(/Não foi possível abrir/)
+      // e-CNPJ ICP-Brasil costuma vir com criptografia antiga (3DES/RC2, MAC SHA-1), que o OpenSSL 3 do Node recusa.
+      execFileSync('openssl', ['pkcs12', '-export', '-out', join(dir, 'legado.pfx'), '-inkey', join(dir, 'k.pem'), '-in', join(dir, 'c.pem'), '-passout', 'pass:senha123', '-keypbe', 'PBE-SHA1-3DES', '-certpbe', 'PBE-SHA1-3DES', '-macalg', 'sha1'], { stdio: 'ignore' })
+      const legado = readFileSync(join(dir, 'legado.pfx'))
+      expect(readCertificate(legado, 'senha123').cnpj).toBe('01704079000102')
+      const pem = pfxToPem(legado, 'senha123')
+      expect(pem.key).toMatch(/BEGIN RSA PRIVATE KEY/)
+      expect(pem.cert).toMatch(/BEGIN CERTIFICATE/)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

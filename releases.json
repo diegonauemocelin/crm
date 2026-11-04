@@ -2,6 +2,33 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.18",
+      "date": "2026-11-04",
+      "title": "Painel de coletas para TV",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Certificado A1 da SEFAZ: o CRM abre o certificado no formato de criptografia antigo usado pela maioria dos e-CNPJ ICP-Brasil (antes dava \"Não foi possível abrir o certificado\")."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Painel de coletas para TV (Fretes › Painel de coletas): com o relógio do computador, mostra qual transportadora está carregando, qual chega agora e qual chega em seguida, e até que horas dá para tirar pedido para cada uma, com quanto tempo falta. Tem botão de tela cheia e escolha da filial."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Horários de coleta no cadastro da transportadora: por filial e dia da semana, o ponto de corte (pedido até), a hora da coleta e o tempo de carregamento, informados à mão."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "O resultado da cotação mostra, em cada transportadora, o ponto de corte e a hora da coleta do dia."
+        }
+      ]
+    },
+    {
       "version": "2.0.17",
       "date": "2026-11-04",
       "title": "Correção na importação da tabela de frete",
