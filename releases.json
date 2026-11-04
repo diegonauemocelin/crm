@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.24",
+      "date": "2026-11-04",
+      "title": "Senha nos links da TV",
+      "changes": [
+        {
+          "type": "seguranca",
+          "area": "TV",
+          "text": "Links da TV (painel de coletas e dashboard executivo) com senha: ao criar o link, informe a senha. Na TV, o painel pede a senha uma vez e o navegador fica liberado por 90 dias; trocar a senha exige digitar de novo em todas as TVs."
+        },
+        {
+          "type": "seguranca",
+          "area": "TV",
+          "text": "Links criados antes aparecem como \"sem senha\" e continuam abrindo só com o link: use \"Pôr senha\" em cada um. Senhas erradas seguidas travam o link por 15 minutos."
+        }
+      ]
+    },
+    {
       "version": "2.0.23",
       "date": "2026-11-04",
       "title": "Dashboard executivo na TV em apresentação",
