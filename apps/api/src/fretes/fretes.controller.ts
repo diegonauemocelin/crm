@@ -399,6 +399,11 @@ export class FretesController {
     return this.tables.update(user, id, dto, ctx)
   }
 
+  @Delete('tabelas/:id')
+  removeTable(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    return this.tables.remove(user, id, ctx)
+  }
+
   @Get('tabelas/:id/versoes/:vid')
   version(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Param('vid', ParseUUIDPipe) vid: string) {
     return this.tables.version(user, id, vid)

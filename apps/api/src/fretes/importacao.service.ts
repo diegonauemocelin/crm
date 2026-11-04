@@ -8,6 +8,7 @@ import { Prisma } from '../generated/prisma/client'
 import { decodeText, isXlsx, maybeGunzip, parseDelimited } from '../leads/arquivo'
 import { PrismaService } from '../prisma/prisma.service'
 import { cleanText } from '../sugestoes/sugestoes'
+import { uploadName } from '../whatsapp/envio'
 import { allowedUnits, assertCan, assertUnitList, unitListWhere } from './acesso'
 import { DEFAULT_COMPONENTS, DEFAULT_SETTINGS } from './catalogo'
 import { checkMapping, type ColumnMap, labelOf, parseRows, suggestMapping, type RegionCity } from './importacao'
@@ -113,7 +114,7 @@ export class ImportacaoService {
     assertUnitList(user, 'fretes_tabelas', t.unitIds)
     if (!file?.buffer?.length) throw new BadRequestException('Envie a planilha da transportadora (.xlsx ou .csv).')
     if (file.size > IMPORT_MAX_BYTES) throw new BadRequestException('Arquivo maior que 20 MB.')
-    const fileName = cleanText(file.originalname, 200) || 'tabela'
+    const fileName = cleanText(uploadName(file.originalname), 200) || 'tabela'
     const sheets = await readSheets(file.buffer, fileName)
     if (!sheets.some((s) => s.rows.length)) throw new BadRequestException('A planilha está vazia.')
     const xlsx = isXlsx(maybeGunzip(file.buffer))

@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.10",
+      "date": "2026-11-04",
+      "title": "Excluir tabela de frete",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "O Administrador pode excluir uma tabela de frete (com as versões, as regras e o histórico de importação). As cotações já feitas continuam no histórico."
+        },
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Nome do arquivo importado com acento aparece certo no histórico de importação (antes saía \"RegiÃµes\")."
+        }
+      ]
+    },
+    {
       "version": "2.0.9",
       "date": "2026-11-04",
       "title": "Regiões da transportadora e importação automática das listas",

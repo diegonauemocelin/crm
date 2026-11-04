@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangleIcon, FilePlus2Icon, Loader2Icon, PlusIcon, SearchIcon, TableIcon, UploadIcon } from 'lucide-react'
+import { AlertTriangleIcon, FilePlus2Icon, Loader2Icon, PlusIcon, SearchIcon, TableIcon, Trash2Icon, UploadIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -266,7 +266,8 @@ function TableDetailView() {
         title={d.name}
         description={`${d.carrier.name} · ${dayBr(d.validFrom)} a ${dayBr(d.validTo)} · ${STATUS_LABEL[d.status]}`}
         actions={
-          versions.length > 0 && (
+          <>
+          {versions.length > 0 && (
             <Select value={versionId} onValueChange={(v) => setParam('versao', v)}>
               <SelectTrigger className="w-72" aria-label="Versão">
                 <SelectValue />
@@ -279,7 +280,9 @@ function TableDetailView() {
                 ))}
               </SelectContent>
             </Select>
-          )
+          )}
+          <DeleteTableButton id={d.id} name={d.name} />
+          </>
         }
       />
       {d.validity.state === 'VENCIDA' && d.status === 'ATIVA' && (
@@ -318,6 +321,36 @@ function TableDetailView() {
         </TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+/** Excluir a tabela inteira (versões, regras e importações). Só o Administrador vê. */
+function DeleteTableButton({ id, name }: { id: string; name: string }) {
+  const { me } = useAuth()
+  const confirm = useConfirm()
+  const navigate = useNavigate()
+  const qc = useQueryClient()
+  const del = useMutation({
+    mutationFn: () => api.delete(`/fretes/tabelas/${id}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['fretes'] })
+      toast.success('Tabela excluída.')
+      navigate('/fretes/tabelas')
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  if (!me?.role.isSystem) return null
+  return (
+    <Button
+      variant="outline"
+      className="border-destructive/50 text-destructive hover:bg-destructive/10"
+      disabled={del.isPending}
+      onClick={async () => {
+        if (await confirm({ title: `Excluir a tabela ${name}?`, description: 'Apaga a tabela com todas as versões, regras e o histórico de importação. As cotações já feitas continuam no histórico. Não dá para desfazer.', confirmLabel: 'Excluir tabela', destructive: true })) del.mutate()
+      }}
+    >
+      {del.isPending ? <Loader2Icon className="animate-spin" aria-hidden /> : <Trash2Icon aria-hidden />} Excluir tabela
+    </Button>
   )
 }
 

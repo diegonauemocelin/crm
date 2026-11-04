@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import type { RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
@@ -306,6 +306,29 @@ export class TabelasService {
     })
     await this.audit.byUser(user, ctx, 'frete.tabela.criada', 'freight_table', t.id, { nome: t.name, transportadora: t.carrierId, vigencia: [d.validFrom, d.validTo] })
     return this.get(user, t.id)
+  }
+
+  /**
+   * Exclui a tabela com as versões, as regras e o histórico de importação. Só o Administrador. As cotações já feitas
+   * ficam no histórico com os valores calculados na época.
+   */
+  async remove(user: AuthUser, id: string, ctx: RequestCtx) {
+    if (!user.role.isSystem) throw new ForbiddenException('Só o Administrador exclui tabela de frete.')
+    const t = await this.findTable(user, id)
+    const rules = await this.prisma.$transaction(
+      async (tx) => {
+        const versions = await tx.freightTableVersion.findMany({ where: { tableId: id }, select: { id: true } })
+        const r = await tx.freightRule.deleteMany({ where: { versionId: { in: versions.map((v) => v.id) } } })
+        await tx.freightImport.deleteMany({ where: { tableId: id } })
+        await tx.freightTable.update({ where: { id }, data: { publishedVersionId: null } })
+        await tx.freightTableVersion.deleteMany({ where: { tableId: id } })
+        await tx.freightTable.delete({ where: { id } })
+        return r.count
+      },
+      { timeout: 120_000 },
+    )
+    await this.audit.byUser(user, ctx, 'frete.tabela.excluida', 'freight_table', id, { nome: t.name, transportadora: t.carrier.name, regras: rules })
+    return { ok: true }
   }
 
   async update(user: AuthUser, id: string, d: TableInput, ctx: RequestCtx) {
