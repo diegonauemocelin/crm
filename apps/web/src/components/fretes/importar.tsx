@@ -393,7 +393,7 @@ function ImportWizard({ table, onClose, onDone }: { table: FreightTable; onClose
                   </p>
                 ) : (
                   <p>
-                    Esta é a planilha de <strong>regiões</strong> (código, cidades e prazo), sem preço. Ela fica na transportadora {table.carrier?.name}. Depois, envie aqui a tabela de preços com a coluna do código da região: cada região vira uma regra por cidade, com o prazo.
+                    Esta é a planilha de <strong>regiões</strong> (as bases de entrega da transportadora, com as cidades e o prazo), sem preço. Ela fica na transportadora {table.carrier?.name}. Depois, envie aqui a tabela de preços com a coluna do código da região: cada região vira uma regra por cidade, com o prazo.
                   </p>
                 )}
                 {isFeesSheet && !feeCode ? (

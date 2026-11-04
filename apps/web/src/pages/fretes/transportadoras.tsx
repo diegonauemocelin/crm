@@ -365,9 +365,9 @@ function CarrierRegions({ carrierId, editable }: { carrierId: string; editable: 
   const prazo = (list: number[]) => (!list.length ? 'sem prazo' : list.length === 1 ? `${list[0]} dia(s)` : `${list[0]} a ${list[list.length - 1]} dias`)
   return (
     <div className="space-y-2 rounded-md border p-3 text-sm">
-      <p className="font-medium">Regiões e prazos</p>
+      <p className="font-medium">Regiões (bases de entrega) e prazos</p>
       <p className="text-xs text-muted-foreground">
-        Planilha Regiões da transportadora: o código da região (PR1, SC3…), as cidades pelo código do IBGE e o prazo. Na tabela de preço, a coluna Região vira uma regra por cidade, com o prazo da região quando a tabela não traz.
+        Planilha Regiões da transportadora: o código da região, que é a base (unidade) da transportadora que faz a entrega (PR1, SC3…), as cidades que ela atende pelo código do IBGE e o prazo. Na tabela de preço, a coluna Região vira uma regra por cidade, com o prazo da região quando a tabela não traz.
       </p>
       {d && (
         <p>
