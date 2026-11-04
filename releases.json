@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.16",
+      "date": "2026-11-04",
+      "title": "Tabela de frete por estado lida sozinha",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Importação da tabela por estado (como a proposta da Viação Ouro e Prata): a coluna Destino com a sigla do estado vira a UF da regra, e a Origem fica de fora."
+        },
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Excedente em R$ por tonelada vira R$ por kg (R$ 1.800/ton = R$ 1,80/kg), e o percentual que o Excel guarda como fração (0,032) entra como 3,2%."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Faixa de peso com “–” vale a próxima faixa acima, e as observações da proposta (ICMS já incluso, cubagem em kg/m³) vão sozinhas para os parâmetros da versão."
+        }
+      ]
+    },
+    {
       "version": "2.0.15",
       "date": "2026-11-04",
       "title": "Cotação pela cidade quando o CEP mudou",
