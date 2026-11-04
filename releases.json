@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.20",
+      "date": "2026-11-04",
+      "title": "Painéis na TV por link, sem senha",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Painel de coletas (TV): botão \"Link para TV\" cria um endereço para abrir o painel no navegador da TV sem login, só para ver. Dá para escolher a filial, e o link pode ser cancelado a qualquer momento."
+        },
+        {
+          "type": "novo",
+          "area": "Marketing",
+          "text": "Dashboard executivo: o mesmo \"Link para TV\", para deixar o painel aberto numa TV sem login. Quem tiver o link vê os números (inclusive faturamento): cancele o link quando não usar mais."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Painel de coletas se atualiza a cada 30 segundos (antes 5 minutos); o dashboard executivo na TV, a cada minuto."
+        }
+      ]
+    },
+    {
       "version": "2.0.19",
       "date": "2026-11-04",
       "title": "SEFAZ lê até chegar aos CT-es de hoje",
