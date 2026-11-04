@@ -364,6 +364,11 @@ export class FretesController {
     return this.carriers.regions(user, id)
   }
 
+  @Get('transportadoras/:id/regioes/cidades')
+  regionCities(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Query('busca') busca?: string, @Query('pagina') pagina?: string) {
+    return this.carriers.regionCities(user, id, { search: busca?.slice(0, 80), page: Number(pagina) || 1 })
+  }
+
   @Post('transportadoras/:id/regioes')
   @HttpCode(200)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })

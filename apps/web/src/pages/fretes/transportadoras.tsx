@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2Icon, PlusIcon, SearchIcon, Trash2Icon, TruckIcon } from 'lucide-react'
-import { type FormEvent, useState } from 'react'
-import { Link } from 'react-router'
+import { type FormEvent, useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { MultiSelect } from '@/components/multi-select'
 import { Can, EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -67,6 +67,15 @@ function CarrierList() {
   const [status, setStatus] = useState('active')
   const [open, setOpen] = useState<Carrier | 'nova' | null>(null)
   const list = useQuery({ queryKey: ['fretes', 'transportadoras', q, status], queryFn: () => api.get<Carrier[]>(`/fretes/transportadoras?${new URLSearchParams({ ...(q ? { busca: q } : {}), ...(status !== 'all' ? { situacao: status } : {}) })}`) })
+  // ?abrir=<id> (link da tela da tabela): abre a transportadora direto.
+  const [params, setParams] = useSearchParams()
+  const openId = params.get('abrir')
+  useEffect(() => {
+    if (!openId || !list.data) return
+    const c = list.data.find((x) => x.id === openId)
+    if (c) setOpen(c)
+    setParams((p) => (p.delete('abrir'), p), { replace: true })
+  }, [openId, list.data, setParams])
   return (
     <div className="space-y-4">
       <PageHeader
@@ -345,7 +354,7 @@ interface RegionsInfo {
 }
 
 /** Regiões da transportadora (planilha "Regiões": código, cidades, prazo e dias de entrega). */
-function CarrierRegions({ carrierId, editable }: { carrierId: string; editable: boolean }) {
+export function CarrierRegions({ carrierId, editable }: { carrierId: string; editable: boolean }) {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const info = useQuery({ queryKey: ['fretes', 'regioes', carrierId], queryFn: () => api.get<RegionsInfo>(`/fretes/transportadoras/${carrierId}/regioes`) })
@@ -417,7 +426,7 @@ interface FeesInfo {
 }
 
 /** Listas de TDA/TDE/TDC/TVD que a transportadora cobra só de destinatários específicos. */
-function RecipientFees({ carrierId, editable }: { carrierId: string; editable: boolean }) {
+export function RecipientFees({ carrierId, editable }: { carrierId: string; editable: boolean }) {
   const qc = useQueryClient()
   const [doc, setDoc] = useState('')
   const [checked, setChecked] = useState('')

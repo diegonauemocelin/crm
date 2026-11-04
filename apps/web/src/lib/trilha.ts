@@ -528,7 +528,7 @@ export const TRAIL: TrailModule[] = [
     key: 'fretes-cadastros',
     title: 'Transportadoras e filiais',
     module: 'fretes_transportadoras',
-    routes: ['/fretes/transportadoras', '/fretes/filiais'],
+    routes: ['/fretes/transportadoras', '/fretes/cidades-atendidas', '/fretes/filiais'],
     purpose: 'Manter o cadastro das transportadoras e os dados de expedição de cada filial.',
     howItWorks: 'A transportadora atende todas as filiais ou só as escolhidas. O CEP de expedição da filial é a origem padrão das cotações. As integrações (Correios, Mercado Livre, Google Shopping, CT-e) aparecem com a situação real.',
     lessons: [

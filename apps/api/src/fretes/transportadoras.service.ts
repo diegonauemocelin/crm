@@ -285,6 +285,24 @@ export class TransportadorasService {
     }
   }
 
+  /** Cidades atendidas (das regiões), com busca por cidade, UF ou código da base. 100 por página. */
+  async regionCities(user: AuthUser, id: string, q: { search?: string; page?: number }) {
+    assertCan(user, 'fretes_transportadoras', 'view')
+    await this.carrierFor(user, id)
+    const s = cleanText(q.search, 80)
+    const key = s ? s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() : ''
+    const where: Prisma.FreightCarrierRegionWhereInput = {
+      carrierId: id,
+      ...(s ? { OR: [{ cityKey: { contains: key } }, { code: { equals: s.toUpperCase() } }, ...(s.length === 2 ? [{ uf: s.toUpperCase() }] : []), ...(/^\d{7}$/.test(s) ? [{ ibge: s }] : [])] } : {}),
+    }
+    const page = Math.max(1, Math.min(1000, q.page ?? 1))
+    const [total, rows] = await Promise.all([
+      this.prisma.freightCarrierRegion.count({ where }),
+      this.prisma.freightCarrierRegion.findMany({ where, orderBy: [{ uf: 'asc' }, { city: 'asc' }], skip: (page - 1) * 100, take: 100, select: { code: true, ibge: true, city: true, uf: true, deadlineDays: true, businessDays: true, weekdays: true } }),
+    ])
+    return { total, page, rows }
+  }
+
   /** Importa a planilha de regiões e substitui as regiões anteriores dessa transportadora. */
   async importRegions(user: AuthUser, id: string, file: Express.Multer.File | undefined, ctx: RequestCtx) {
     assertCan(user, 'fretes_transportadoras', 'edit')

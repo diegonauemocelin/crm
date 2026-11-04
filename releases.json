@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.11",
+      "date": "2026-11-04",
+      "title": "Cidades atendidas da transportadora",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Nova tela Fretes › Cidades atendidas (e a aba Cidades atendidas na tabela): escolha a transportadora, importe a planilha Regiões e as listas de taxas, e confira cada cidade atendida com a base de entrega, o prazo e os dias de entrega, com busca por cidade, UF, base ou código do IBGE."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "A tela da tabela de frete mostra as listas de taxas (TDA, TDE, TDC, TVD) e as regiões já importadas na transportadora, com o link para abri-la. Elas valem em todas as tabelas da transportadora e não aparecem como regras."
+        }
+      ]
+    },
+    {
       "version": "2.0.10",
       "date": "2026-11-04",
       "title": "Excluir tabela de frete",

@@ -7,6 +7,7 @@ import { useConfirm } from '@/components/confirm'
 import { ComponentsTab } from '@/components/fretes/componentes'
 import { FilialSwitch } from '@/components/fretes/filial-switch'
 import { ImportsTab } from '@/components/fretes/importar'
+import { CitiesPanel } from '@/pages/fretes/cidades'
 import { RulesTab } from '@/components/fretes/regras'
 import { MultiSelect } from '@/components/multi-select'
 import { Can, EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -295,6 +296,7 @@ function TableDetailView() {
           Nenhuma versão publicada: a tabela ainda não entra nas cotações. Importe as regras na aba <b>Histórico de Importação</b> e publique em <b>Versões</b>.
         </p>
       )}
+      <CarrierExtras carrierId={d.carrier.id} />
       <Tabs value={tab} onValueChange={(v) => setParam('aba', v)}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="regras">
@@ -305,6 +307,7 @@ function TableDetailView() {
           </TabsTrigger>
           <TabsTrigger value="importacao">Histórico de Importação</TabsTrigger>
           <TabsTrigger value="componentes">Componentes</TabsTrigger>
+          <TabsTrigger value="cidades">Cidades atendidas</TabsTrigger>
           <TabsTrigger value="versoes">Versões</TabsTrigger>
           <TabsTrigger value="dados">Dados da tabela</TabsTrigger>
         </TabsList>
@@ -313,6 +316,9 @@ function TableDetailView() {
           <ImportsTab table={d} autoOpen={params.get('importar') === '1'} onImported={(vid) => (setParam('versao', vid), setParam('aba', 'regras'))} />
         </TabsContent>
         <TabsContent value="componentes">{version ? <ComponentsTab table={d} version={version} /> : <EmptyState title="Sem versão" />}</TabsContent>
+        <TabsContent value="cidades">
+          <CitiesPanel carrierId={d.carrier.id} />
+        </TabsContent>
         <TabsContent value="versoes">
           <VersionsTab table={d} onOpen={(vid) => setParam('versao', vid)} />
         </TabsContent>
@@ -321,6 +327,29 @@ function TableDetailView() {
         </TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+/**
+ * Listas de taxas (TDA, TDE, TDC, TVD) e regiões ficam na transportadora e valem para todas as tabelas dela: a tela da
+ * tabela mostra o que já está importado, para não parecer que a importação falhou (elas não viram regras da tabela).
+ */
+function CarrierExtras({ carrierId }: { carrierId: string }) {
+  const fees = useQuery({ queryKey: ['fretes', 'taxas', carrierId, ''], queryFn: () => api.get<{ counts: Record<string, number>; total: number }>(`/fretes/transportadoras/${carrierId}/taxas`) })
+  const regions = useQuery({ queryKey: ['fretes', 'regioes', carrierId], queryFn: () => api.get<{ total: number; regions: unknown[] }>(`/fretes/transportadoras/${carrierId}/regioes`) })
+  if (!fees.data && !regions.data) return null
+  const f = fees.data
+  const r = regions.data
+  return (
+    <p className="rounded-md border bg-muted/30 p-3 text-sm">
+      <b>Da transportadora</b> (valem em todas as tabelas dela, não aparecem como regras):{' '}
+      {f?.total ? `taxas por destinatário ${Object.entries(f.counts).filter(([, n]) => n).map(([k, n]) => `${k} ${n.toLocaleString('pt-BR')}`).join(' · ')}` : 'nenhuma lista de taxas'}
+      {' · '}
+      {r?.total ? `${r.regions.length} região(ões) com ${r.total.toLocaleString('pt-BR')} cidade(s)` : 'nenhuma região'}.{' '}
+      <Link to={`/fretes/cidades-atendidas?transportadora=${carrierId}`} className="font-medium underline underline-offset-2">
+        Ver cidades atendidas e listas
+      </Link>
+    </p>
   )
 }
 
