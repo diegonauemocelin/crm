@@ -9,6 +9,7 @@ import { allowedUnits, assertCan, assertUnitList, unitListWhere } from './acesso
 import { MODALS } from './catalogo'
 import { normalizeCep, normalizeUf, validCnpj } from './cep'
 import { FEE_CODES, feeCodeFromName, parseFeeSheet, type ParsedFee } from './taxas'
+import { parseIbgeSheet, parseRegionsSheet, type ParsedRegion } from './regioes'
 import { FilesService } from '../files/files.service'
 import { IMPORT_MAX_BYTES, readSheets } from './importacao.service'
 
@@ -259,6 +260,71 @@ export class TransportadorasService {
     assertUnitList(user, 'fretes_transportadoras', carrier.unitIds)
     const r = await this.prisma.freightRecipientFee.deleteMany({ where: { carrierId: id } })
     await this.audit.byUser(user, ctx, 'frete.taxas_destinatario.apagadas', 'freight_carrier', id, { quantidade: r.count })
+    return { ok: true, removed: r.count }
+  }
+
+  // ─────────── Regiões (planilha "Regiões": código, cidades pelo IBGE, prazo e dias de entrega) ───────────
+
+  /** Resumo: quantas regiões e cidades, e as regiões com as cidades (para conferir). */
+  async regions(user: AuthUser, id: string) {
+    assertCan(user, 'fretes_transportadoras', 'view')
+    await this.carrierFor(user, id)
+    const rows = await this.prisma.freightCarrierRegion.findMany({ where: { carrierId: id }, orderBy: [{ code: 'asc' }, { city: 'asc' }], select: { code: true, city: true, uf: true, deadlineDays: true, businessDays: true, weekdays: true, createdAt: true } })
+    const byCode = new Map<string, typeof rows>()
+    for (const r of rows) byCode.set(r.code, [...(byCode.get(r.code) ?? []), r])
+    return {
+      total: rows.length,
+      importedAt: rows.reduce<Date | null>((m, r) => (!m || r.createdAt > m ? r.createdAt : m), null),
+      regions: [...byCode.entries()].map(([code, list]) => ({
+        code,
+        cities: list.length,
+        ufs: [...new Set(list.map((c) => c.uf))],
+        deadlines: [...new Set(list.map((c) => c.deadlineDays).filter((d): d is number => d !== null))].sort((a, b) => a - b),
+        sample: list.slice(0, 6).map((c) => `${c.city}/${c.uf}`),
+      })),
+    }
+  }
+
+  /** Importa a planilha de regiões e substitui as regiões anteriores dessa transportadora. */
+  async importRegions(user: AuthUser, id: string, file: Express.Multer.File | undefined, ctx: RequestCtx) {
+    assertCan(user, 'fretes_transportadoras', 'edit')
+    const carrier = await this.carrierFor(user, id)
+    assertUnitList(user, 'fretes_transportadoras', carrier.unitIds)
+    if (!file?.buffer?.length) throw new BadRequestException('Envie a planilha de regiões.')
+    if (file.size > IMPORT_MAX_BYTES) throw new BadRequestException('Arquivo maior que 20 MB.')
+    const sheets = await readSheets(file.buffer, file.originalname)
+    // Nomes das cidades pelo código do IBGE, quando a planilha traz essa aba.
+    const ibge = sheets.map((s) => parseIbgeSheet(s.rows)).find(Boolean) ?? null
+    const all: ParsedRegion[] = []
+    let invalid = 0
+    for (const s of sheets) {
+      const r = parseRegionsSheet(s.rows, ibge)
+      if (!r) continue
+      all.push(...r.regions)
+      invalid += r.invalid
+    }
+    if (!all.length) throw new BadRequestException('Nenhuma região encontrada: a planilha precisa das colunas Código, Cidades (código do IBGE) e Dias Prazo.')
+    const unique = [...new Map(all.map((r) => [`${r.code}|${r.ibge}`, r])).values()]
+    await this.prisma.$transaction(
+      async (tx) => {
+        await tx.freightCarrierRegion.deleteMany({ where: { carrierId: id } })
+        for (let i = 0; i < unique.length; i += 2000) {
+          await tx.freightCarrierRegion.createMany({ data: unique.slice(i, i + 2000).map((r) => ({ tenantId: user.tenantId, carrierId: id, ...r })) })
+        }
+      },
+      { timeout: 120_000 },
+    )
+    const codes = new Set(unique.map((r) => r.code)).size
+    await this.audit.byUser(user, ctx, 'frete.regioes.importadas', 'freight_carrier', id, { arquivo: file.originalname.slice(0, 200), regioes: codes, cidades: unique.length, linhasInvalidas: invalid })
+    return { regions: codes, cities: unique.length, invalid }
+  }
+
+  async clearRegions(user: AuthUser, id: string, ctx: RequestCtx) {
+    assertCan(user, 'fretes_transportadoras', 'edit')
+    const carrier = await this.carrierFor(user, id)
+    assertUnitList(user, 'fretes_transportadoras', carrier.unitIds)
+    const r = await this.prisma.freightCarrierRegion.deleteMany({ where: { carrierId: id } })
+    await this.audit.byUser(user, ctx, 'frete.regioes.apagadas', 'freight_carrier', id, { quantidade: r.count })
     return { ok: true, removed: r.count }
   }
 }

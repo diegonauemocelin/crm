@@ -359,6 +359,24 @@ export class FretesController {
     return this.carriers.clearFees(user, id, ctx)
   }
 
+  @Get('transportadoras/:id/regioes')
+  regions(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.carriers.regions(user, id)
+  }
+
+  @Post('transportadoras/:id/regioes')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('arquivo', { limits: { fileSize: IMPORT_MAX_BYTES } }))
+  importRegions(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File | undefined, @ReqContext() ctx: RequestCtx) {
+    return this.carriers.importRegions(user, id, file, ctx)
+  }
+
+  @Delete('transportadoras/:id/regioes')
+  clearRegions(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    return this.carriers.clearRegions(user, id, ctx)
+  }
+
   // ─────────── Tabelas ───────────
 
   @Get('tabelas')

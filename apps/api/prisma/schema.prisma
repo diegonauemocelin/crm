@@ -2835,6 +2835,29 @@ model FreightRecipientFee {
   @@map("freight_recipient_fees")
 }
 
+/// Regiões da transportadora (planilha "Regiões" do sistema de frete): cada código (PR1, SC3...) reúne cidades com o
+/// prazo e os dias de entrega. A tabela de preço por região usa o código e vira uma regra por cidade.
+model FreightCarrierRegion {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @db.Uuid
+  carrierId    String   @db.Uuid
+  code         String
+  /// Código IBGE da cidade (7 dígitos).
+  ibge         String?
+  city         String
+  cityKey      String
+  uf           String   @db.Char(2)
+  deadlineDays Int?
+  /// Prazo em dias úteis (false = corridos).
+  businessDays Boolean  @default(true)
+  /// Dias da semana com entrega: SEG, TER, QUA, QUI, SEX, SAB, DOM.
+  weekdays     String[] @default([])
+  createdAt    DateTime @default(now())
+
+  @@index([carrierId, code])
+  @@map("freight_carrier_regions")
+}
+
 /// Pedido expedido: liga a venda (pedido/NF) à cotação escolhida, à transportadora e ao CT-e.
 model FreightShipment {
   id            String    @id @default(uuid()) @db.Uuid

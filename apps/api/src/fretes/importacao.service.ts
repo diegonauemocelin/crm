@@ -10,7 +10,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { cleanText } from '../sugestoes/sugestoes'
 import { allowedUnits, assertCan, assertUnitList, unitListWhere } from './acesso'
 import { DEFAULT_COMPONENTS, DEFAULT_SETTINGS } from './catalogo'
-import { checkMapping, type ColumnMap, labelOf, parseRows, suggestMapping } from './importacao'
+import { checkMapping, type ColumnMap, labelOf, parseRows, suggestMapping, type RegionCity } from './importacao'
 
 export const IMPORT_MAX_BYTES = 20 * 1024 * 1024
 const MAX_ROWS = 100_000
@@ -187,7 +187,7 @@ export class ImportacaoService {
     return { headerRow, mapping: suggestMapping(s.rows[headerRow - 1] ?? [], s.rows.slice(headerRow, headerRow + 8)) }
   }
 
-  private run(sheets: Sheet[], sheetIdx: number, headerRow: number, mapping: ColumnMap[]) {
+  private run(sheets: Sheet[], sheetIdx: number, headerRow: number, mapping: ColumnMap[], regions?: Map<string, RegionCity[]>) {
     const s = sheets[sheetIdx]
     if (!s) throw new BadRequestException('Aba inválida.')
     if (!Number.isInteger(headerRow) || headerRow < 1 || headerRow > s.rows.length) throw new BadRequestException('Linha do cabeçalho inválida.')
@@ -196,15 +196,24 @@ export class ImportacaoService {
     if (problems.length) throw new BadRequestException(problems.join(' '))
     const data = s.rows.slice(headerRow)
     if (data.length > MAX_ROWS) throw new BadRequestException(`A planilha passa de ${MAX_ROWS.toLocaleString('pt-BR')} linhas. Divida em arquivos menores.`)
-    return parseRows(data, mapping, headerRow + 1)
+    return parseRows(data, mapping, headerRow + 1, regions)
+  }
+
+  /** Regiões da transportadora da tabela (só quando a planilha tem a coluna Região mapeada). */
+  private async regionsOf(carrierId: string, mapping: ColumnMap[]) {
+    if (!mapping.some((m) => m.field === 'region')) return undefined
+    const rows = await this.prisma.freightCarrierRegion.findMany({ where: { carrierId }, select: { code: true, city: true, cityKey: true, uf: true, deadlineDays: true } })
+    const map = new Map<string, RegionCity[]>()
+    for (const r of rows) map.set(r.code, [...(map.get(r.code) ?? []), { city: r.city, cityKey: r.cityKey, uf: r.uf, deadlineDays: r.deadlineDays }])
+    return map
   }
 
   /** Etapas 4–8: aplica o mapeamento e mostra o que vai entrar, os erros e os alertas, sem gravar regras. */
   async validate(user: AuthUser, importId: string, d: { sheet: number; headerRow: number; mapping: ColumnMap[] }) {
     assertCan(user, 'fretes_tabelas', 'create')
-    const { imp, sheets } = await this.load(user, importId)
+    const { imp, t, sheets } = await this.load(user, importId)
     if (imp.status !== 'ANALISE') throw new BadRequestException('Esta importação já foi concluída ou cancelada. Envie o arquivo de novo.')
-    const r = this.run(sheets, d.sheet, d.headerRow, d.mapping)
+    const r = this.run(sheets, d.sheet, d.headerRow, d.mapping, await this.regionsOf(t.carrierId, d.mapping))
     await this.prisma.freightImport.update({ where: { id: importId }, data: { sheet: d.sheet, headerRow: d.headerRow, mapping: d.mapping as unknown as Prisma.InputJsonValue } })
     const variables = [...new Set(r.rules.flatMap((x) => Object.keys(x.values)))].sort()
     return {
@@ -231,7 +240,7 @@ export class ImportacaoService {
     if (Number.isNaN(validFrom.getTime()) || Number.isNaN(validTo.getTime())) throw new BadRequestException('Vigência inválida.')
     if (validTo < validFrom) throw new BadRequestException('A vigência final é anterior à inicial.')
     const validityChanged = validFrom.getTime() !== t.validFrom.getTime() || validTo.getTime() !== t.validTo.getTime()
-    const r = this.run(sheets, d.sheet, d.headerRow, d.mapping)
+    const r = this.run(sheets, d.sheet, d.headerRow, d.mapping, await this.regionsOf(t.carrierId, d.mapping))
     if (!r.rules.length) throw new BadRequestException('Nenhuma linha válida para importar. Confira o mapeamento e os erros apontados.')
 
     const versionId = await this.prisma.$transaction(

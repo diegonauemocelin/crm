@@ -9,7 +9,7 @@ export const MAX_RULES = 200_000
 const MAX_ISSUES = 500
 
 /** Campos do destino e da faixa. Os valores (frete, GRIS...) usam "var:<código>". */
-export const BASE_FIELDS = ['cep_start', 'cep_end', 'cep', 'uf', 'city', 'weight_min', 'weight_max', 'deadline', 'restricted', 'note'] as const
+export const BASE_FIELDS = ['cep_start', 'cep_end', 'cep', 'uf', 'city', 'region', 'weight_min', 'weight_max', 'deadline', 'restricted', 'note'] as const
 export type BaseField = (typeof BASE_FIELDS)[number]
 
 export const FIELD_LABEL: Record<BaseField, string> = {
@@ -18,6 +18,7 @@ export const FIELD_LABEL: Record<BaseField, string> = {
   cep: 'CEP (único ou 5 dígitos)',
   uf: 'UF de destino',
   city: 'Cidade de destino',
+  region: 'Região (código das regiões da transportadora)',
   weight_min: 'Peso inicial (kg)',
   weight_max: 'Peso final (kg)',
   deadline: 'Prazo (dias úteis)',
@@ -47,6 +48,14 @@ export interface ParsedRule {
   restricted: boolean
   values: Record<string, number>
   note: string | null
+}
+
+/** Cidade de uma região da transportadora (Fretes › Transportadoras › Regiões). */
+export interface RegionCity {
+  city: string
+  cityKey: string
+  uf: string
+  deadlineDays: number | null
 }
 
 export interface Issue {
@@ -109,6 +118,7 @@ const HEADER_RULES: [RegExp, string][] = [
   [/^cep( destino)?$/, 'cep'],
   [/^(uf|estado)( destino)?$|^destino uf$/, 'uf'],
   [/^(cidade|municipio|localidade|destino|praca)( destino| atendida)?$/, 'city'],
+  [/^(regiao|cod(igo)? (da )?regiao|regiao destino)$/, 'region'],
   [/^peso (inicial|de|min|minimo)|^kg (inicial|de)/, 'weight_min'],
   [/^peso (final|ate|max|maximo)|^kg (final|ate)/, 'weight_max'],
   [/prazo|lead ?time|^dias( uteis)?$|transit/, 'deadline'],
@@ -199,7 +209,8 @@ export function suggestMapping(headers: unknown[], samples: unknown[][] = []): C
     used.add(field)
     out.push({ column, field })
   })
-  return out
+  // Região só é o destino quando a tabela não traz CEP nem cidade (com eles, a coluna Região é só informativa).
+  return out.some((m) => m.field === 'cep_start' || m.field === 'cep' || m.field === 'city') ? out.filter((m) => m.field !== 'region') : out
 }
 
 const PERCENT = new Set(RULE_VARIABLES.filter((v) => v.unit === '%').map((v) => v.code))
@@ -229,7 +240,7 @@ export function checkMapping(mapping: ColumnMap[], columns: number): string[] {
     seen.set(m.field, m.column)
   }
   const fields = new Set(mapping.map((m) => m.field))
-  if (!fields.has('cep_start') && !fields.has('cep') && !fields.has('uf') && !fields.has('city')) errors.push('Mapeie o destino: CEP inicial e final, CEP, cidade ou UF.')
+  if (!fields.has('cep_start') && !fields.has('cep') && !fields.has('uf') && !fields.has('city') && !fields.has('region')) errors.push('Mapeie o destino: CEP inicial e final, CEP, cidade, UF ou região.')
   if (fields.has('cep_start') !== fields.has('cep_end')) errors.push('Mapeie juntos o CEP inicial e o CEP final.')
   if (!mapping.some((m) => isVarField(m.field))) errors.push('Mapeie ao menos uma coluna de valor (frete, taxas).')
   const bands = mapping.filter((m) => m.weightMax !== undefined && m.weightMax !== null)
@@ -244,7 +255,7 @@ export const labelOf = (field: string) =>
  * Lê as linhas com o mapeamento. firstLine = número da linha da planilha da primeira linha de dados (para o relatório).
  * Linhas totalmente vazias são ignoradas; linhas com erro não geram regra.
  */
-export function parseRows(rows: unknown[][], mapping: ColumnMap[], firstLine: number) {
+export function parseRows(rows: unknown[][], mapping: ColumnMap[], firstLine: number, regions?: Map<string, RegionCity[]>) {
   const issues: Issue[] = []
   const rules: ParsedRule[] = []
   let errorLines = 0
@@ -284,7 +295,12 @@ export function parseRows(rows: unknown[][], mapping: ColumnMap[], firstLine: nu
     const uf = ufRaw ? normalizeUf(ufRaw) : null
     if (ufRaw && !uf) errs.push(`UF inválida: ${ufRaw}.`)
     const city = text(col(row, 'city'))
-    if (cepStart === null && !uf && !city) errs.push('Linha sem destino (CEP, cidade ou UF).')
+    // Região (PR1, SC3...): a linha vira uma regra por cidade da região, com o prazo dela quando a linha não traz.
+    const regionCode = text(col(row, 'region'), 40)?.toUpperCase() ?? null
+    const regionCities = regionCode ? regions?.get(regionCode) : undefined
+    if (regionCode && cepStart === null && !city && !regions?.size) errs.push('A transportadora não tem regiões importadas: importe a planilha Regiões em Fretes › Transportadoras.')
+    else if (regionCode && cepStart === null && !city && !regionCities?.length) errs.push(`Região ${regionCode} não está nas regiões da transportadora.`)
+    if (cepStart === null && !uf && !city && !regionCode) errs.push('Linha sem destino (CEP, cidade, UF ou região).')
     if (city && !uf && cepStart === null) warn(`Cidade ${city} sem UF: pode coincidir com cidade de mesmo nome em outro estado.`)
     if (uf && cepStart !== null) {
       const ufA = ufByCep(String(cepStart).padStart(8, '0'))
@@ -350,7 +366,9 @@ export function parseRows(rows: unknown[][], mapping: ColumnMap[], firstLine: nu
       for (const message of errs) push({ line, level: 'erro', message })
       return
     }
-    rules.push(...out)
+    if (regionCities?.length && cepStart === null && !city) {
+      for (const r of out) for (const c of regionCities) rules.push({ ...r, uf: c.uf, city: c.city, cityKey: c.cityKey, deadlineDays: r.deadlineDays ?? c.deadlineDays })
+    } else rules.push(...out)
   })
 
   // Duplicidades: mesmo destino e mesma faixa de peso. Vale a primeira; as outras são rejeitadas.

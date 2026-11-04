@@ -295,6 +295,29 @@ function ImportWizard({ table, onClose, onDone }: { table: FreightTable; onClose
       return [...rest, { column, field: 'var:freight', ...cur, ...patch }].sort((a, b) => a.column - b.column)
     })
   const mapped = useMemo(() => new Map(mapping.map((m) => [m.column, m])), [mapping])
+  // Lista de taxas ou regiões enviada aqui por engano: vai direto para a transportadora, sem mapear colunas.
+  const sendToCarrier = useMutation({
+    mutationFn: (kind: 'taxas' | 'regioes') => {
+      const fd = new FormData()
+      fd.append('arquivo', file!)
+      return api.post<{ total?: number; regions?: number; cities?: number }>(`/fretes/transportadoras/${table.carrier.id}/${kind}`, fd).then((r) => ({ kind, r }))
+    },
+    onSuccess: ({ kind, r }) => {
+      void qc.invalidateQueries({ queryKey: ['fretes', kind, table.carrier.id] })
+      toast.success(kind === 'taxas' ? `Lista importada na transportadora: ${(r.total ?? 0).toLocaleString('pt-BR')} destinatário(s).` : `Regiões importadas na transportadora: ${r.regions ?? 0} região(ões), ${(r.cities ?? 0).toLocaleString('pt-BR')} cidade(s).`)
+      close()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  // Planilha de regiões (código, cidades pelo IBGE e prazo, sem preço): é importada na transportadora, não aqui.
+  const norm = (c: Cell) => cellText(c).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+  // Lista de taxas por destinatário ("Planilha Restrições": CNPJ, CPF, TIPO VALOR, VALOR), da TDA/TDE/TDC/TVD.
+  const isFeesSheet = header.some((c) => norm(c) === 'cnpj') && header.some((c) => norm(c) === 'cpf') && header.some((c) => norm(c) === 'tipo valor')
+  const feeCode = (() => {
+    const m = /(?:^|[^a-z])(tda|tde|tdc|tcd|tvd)(?:[^a-z]|$)/i.exec(file?.name ?? '')
+    return m ? (m[1]!.toUpperCase() === 'TCD' ? 'TDC' : m[1]!.toUpperCase()) : null
+  })()
+  const isRegionsSheet = header.some((c) => norm(c) === 'codigo') && header.some((c) => /^cidades?$/.test(norm(c))) && header.some((c) => /prazo/.test(norm(c))) && !header.some((c) => /frete|valor|kg|r\$/.test(norm(c)))
 
   return (
     <Dialog open onOpenChange={(o) => !o && close()}>
@@ -362,6 +385,26 @@ function ImportWizard({ table, onClose, onDone }: { table: FreightTable; onClose
               </p>
             </div>
 
+            {(isRegionsSheet || isFeesSheet) && (
+              <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                {isFeesSheet ? (
+                  <p>
+                    Esta é a lista de <strong>taxa por destinatário{feeCode ? ` (${feeCode})` : ''}</strong>, não uma tabela de preço. Ela fica na transportadora {table.carrier?.name}: na cotação, a taxa entra quando o CPF/CNPJ do destinatário está na lista.
+                  </p>
+                ) : (
+                  <p>
+                    Esta é a planilha de <strong>regiões</strong> (código, cidades e prazo), sem preço. Ela fica na transportadora {table.carrier?.name}. Depois, envie aqui a tabela de preços com a coluna do código da região: cada região vira uma regra por cidade, com o prazo.
+                  </p>
+                )}
+                {isFeesSheet && !feeCode ? (
+                  <p className="text-xs">O nome do arquivo não diz qual taxa é (TDA, TDE, TDC ou TVD). Renomeie (ex.: …_TDE.xlsx) ou importe em Fretes › Transportadoras.</p>
+                ) : (
+                  <Button type="button" size="sm" disabled={sendToCarrier.isPending} onClick={() => sendToCarrier.mutate(isFeesSheet ? 'taxas' : 'regioes')}>
+                    {sendToCarrier.isPending && <Loader2Icon className="animate-spin" aria-hidden />} {isFeesSheet ? `Importar como lista ${feeCode} da transportadora` : 'Importar como regiões da transportadora'}
+                  </Button>
+                )}
+              </div>
+            )}
             <div className="max-h-56 overflow-auto rounded-md border text-xs">
               <table className="w-full">
                 <thead>

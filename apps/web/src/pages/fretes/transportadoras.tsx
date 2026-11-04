@@ -308,6 +308,7 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
             </label>
           </fieldset>
           {carrier && <RecipientFees carrierId={carrier.id} editable={can('fretes_transportadoras', 'edit')} />}
+          {carrier && <CarrierRegions carrierId={carrier.id} editable={can('fretes_transportadoras', 'edit')} />}
           {tables.length > 0 && (
             <div className="space-y-1 text-sm">
               <p className="font-medium">Tabelas</p>
@@ -334,6 +335,77 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
         </form>
       </SheetContent>
     </Sheet>
+  )
+}
+
+interface RegionsInfo {
+  total: number
+  importedAt: string | null
+  regions: { code: string; cities: number; ufs: string[]; deadlines: number[]; sample: string[] }[]
+}
+
+/** Regiões da transportadora (planilha "Regiões": código, cidades, prazo e dias de entrega). */
+function CarrierRegions({ carrierId, editable }: { carrierId: string; editable: boolean }) {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const info = useQuery({ queryKey: ['fretes', 'regioes', carrierId], queryFn: () => api.get<RegionsInfo>(`/fretes/transportadoras/${carrierId}/regioes`) })
+  const upload = useMutation({
+    mutationFn: (file: File) => {
+      const fd = new FormData()
+      fd.append('arquivo', file)
+      return api.post<{ regions: number; cities: number; invalid: number }>(`/fretes/transportadoras/${carrierId}/regioes`, fd)
+    },
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['fretes', 'regioes', carrierId] })
+      toast.success(`${r.regions} região(ões) com ${r.cities.toLocaleString('pt-BR')} cidade(s) importada(s)${r.invalid ? `; ${r.invalid} linha(s) sem código ou cidade reconhecível` : ''}.`)
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const d = info.data
+  const prazo = (list: number[]) => (!list.length ? 'sem prazo' : list.length === 1 ? `${list[0]} dia(s)` : `${list[0]} a ${list[list.length - 1]} dias`)
+  return (
+    <div className="space-y-2 rounded-md border p-3 text-sm">
+      <p className="font-medium">Regiões e prazos</p>
+      <p className="text-xs text-muted-foreground">
+        Planilha Regiões da transportadora: o código da região (PR1, SC3…), as cidades pelo código do IBGE e o prazo. Na tabela de preço, a coluna Região vira uma regra por cidade, com o prazo da região quando a tabela não traz.
+      </p>
+      {d && (
+        <p>
+          {d.total ? `${d.regions.length} região(ões), ${d.total.toLocaleString('pt-BR')} cidade(s)` : 'Nenhuma região importada.'}
+          {d.importedAt && <span className="text-xs text-muted-foreground"> (importadas em {new Date(d.importedAt).toLocaleDateString('pt-BR')})</span>}
+          {d.total > 0 && (
+            <Button type="button" variant="link" size="sm" className="h-auto px-1" onClick={() => setOpen((o) => !o)}>
+              {open ? 'Esconder' : 'Ver regiões'}
+            </Button>
+          )}
+        </p>
+      )}
+      {open && d && (
+        <ul className="max-h-64 space-y-1 overflow-y-auto rounded-md bg-muted/40 p-2 text-xs">
+          {d.regions.map((r) => (
+            <li key={r.code}>
+              <span className="font-semibold">{r.code}</span> · {r.cities} cidade(s) ({r.ufs.join(', ')}) · {prazo(r.deadlines)} · {r.sample.join(', ')}
+              {r.cities > r.sample.length ? '…' : ''}
+            </li>
+          ))}
+        </ul>
+      )}
+      {editable && (
+        <label className="inline-flex cursor-pointer items-center gap-2 text-sm underline underline-offset-2">
+          {upload.isPending && <Loader2Icon className="size-4 animate-spin" aria-hidden />} Importar regiões (substitui as atuais)
+          <input
+            type="file"
+            className="sr-only"
+            accept=".xlsx,.csv"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              e.target.value = ''
+              if (f) upload.mutate(f)
+            }}
+          />
+        </label>
+      )}
+    </div>
   )
 }
 
