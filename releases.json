@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.4",
+      "date": "2026-11-04",
+      "title": "Correção do backup na atualização",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Servidor",
+          "text": "A atualização não é mais cancelada com \"Backup falhou\" quando o backup deu certo: a limpeza das cópias antigas fazia o backup terminar com erro."
+        }
+      ]
+    },
+    {
       "version": "2.0.3",
       "date": "2026-11-04",
       "title": "App no iPhone sem cair a sessão",

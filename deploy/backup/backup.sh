@@ -46,6 +46,8 @@ ls -1t "$DEST"/crm-*.sha256 2>/dev/null | tail -n +"$((KEEP + 1))" | while read 
   echo "[backup] apagando cópia antiga $s"
   rm -f -- "$DEST/crm-db-$s.dump.age" "$f"
   for u in "$DEST/crm-uploads-$s.tar.gz.age" "$DEST/crm-uploads-$s.tar.age"; do
-    [ -f "$u" ] && ! echo "$manter" | grep -qxF "$u" && rm -f -- "$u"
+    if [ -f "$u" ] && ! echo "$manter" | grep -qxF "$u"; then rm -f -- "$u"; fi
   done
 done
+# A limpeza não decide o resultado: o backup já foi gravado acima.
+exit 0
