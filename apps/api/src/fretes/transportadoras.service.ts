@@ -9,6 +9,7 @@ import { allowedUnits, assertCan, assertUnitList, unitListWhere } from './acesso
 import { MODALS } from './catalogo'
 import { normalizeCep, normalizeUf, validCnpj } from './cep'
 import { FEE_CODES, feeCodeFromName, parseFeeSheet, type ParsedFee } from './taxas'
+import { cleanPickups, type Pickup } from './coletas'
 import { htmlTableRows, parseIbgeSheet, parseRegionsSheet, type ParsedRegion } from './regioes'
 import { downloadPublic } from './download'
 import { FilesService } from '../files/files.service'
@@ -32,6 +33,7 @@ export interface CarrierInput {
   externalCodes?: Record<string, string>
   notes?: string | null
   active?: boolean
+  pickups?: unknown
 }
 
 const opt = (v: string | null | undefined, max: number) => (v === undefined ? undefined : cleanText(v, max) || null)
@@ -67,6 +69,7 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
       useReceiverAsRecipient: c.useReceiverAsRecipient,
       externalCodes: c.externalCodes,
       notes: c.notes,
+      pickups: c.pickups,
       active: c.active,
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
@@ -139,6 +142,13 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
         .map(([k, v]) => [cleanText(k, 40), cleanText(String(v), 80)])
         .filter(([k, v]) => k && v),
     )
+    // Coletas: filial precisa ser da empresa (vazio = todas).
+    let pickups
+    try {
+      pickups = cleanPickups(d.pickups ?? [], new Set((await this.prisma.unit.findMany({ where: { tenantId: user.tenantId }, select: { id: true } })).map((u) => u.id)))
+    } catch (e) {
+      throw new BadRequestException((e as Error).message)
+    }
     return {
       cnpj,
       legalName,
@@ -156,8 +166,28 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
       useReceiverAsRecipient: !!d.useReceiverAsRecipient,
       externalCodes,
       notes: opt(d.notes, 4000) ?? null,
+      pickups: pickups as unknown as Prisma.InputJsonValue,
       active: d.active ?? true,
     }
+  }
+
+  /**
+   * Painel de TV das coletas: transportadoras ativas com horários (filtrados pela filial, quando escolhida). A situação
+   * (carregando, chegando, ponto de corte) é calculada na tela, pelo relógio do computador.
+   */
+  async pickupBoard(user: AuthUser, unitId: string | null) {
+    assertCan(user, 'fretes_painel', 'view')
+    const allowed = allowedUnits(user, 'fretes_painel')
+    if (unitId && allowed && !allowed.includes(unitId)) throw new NotFoundException('Filial não encontrada.')
+    const carriers = await this.prisma.freightCarrier.findMany({ where: { tenantId: user.tenantId, active: true }, select: { id: true, name: true, quoteName: true, pickups: true }, orderBy: { name: 'asc' } })
+    const units = await this.prisma.unit.findMany({ where: { tenantId: user.tenantId }, select: { id: true, name: true } })
+    const unitName = new Map(units.map((u) => [u.id, u.name]))
+    const rows = carriers.flatMap((c) =>
+      ((c.pickups ?? []) as unknown as Pickup[])
+        .filter((p) => (unitId ? !p.unitId || p.unitId === unitId : !allowed || !p.unitId || allowed.includes(p.unitId)))
+        .map((p) => ({ carrierId: c.id, carrier: c.quoteName || c.name, unit: p.unitId ? (unitName.get(p.unitId) ?? null) : null, ...p })),
+    )
+    return { unit: unitId ? (unitName.get(unitId) ?? null) : null, rows }
   }
 
   async create(user: AuthUser, d: CarrierInput, ctx: RequestCtx) {

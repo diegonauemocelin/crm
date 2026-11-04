@@ -178,6 +178,8 @@ export interface QuoteComponent {
 }
 
 export interface QuoteResult {
+  /** Coletas da transportadora no dia da cotação (até que horas tirar pedido e a hora da coleta). */
+  pickups?: { cutoff: string; pickup: string; note: string | null }[]
   tableId: string | null
   tableName: string | null
   quoteName: string

@@ -44,6 +44,7 @@ interface Carrier {
   useReceiverAsRecipient: boolean
   externalCodes: Record<string, string>
   notes: string | null
+  pickups?: PickupForm[]
   active: boolean
   tables?: number
   activeTables?: number
@@ -160,6 +161,83 @@ function CarrierList() {
   )
 }
 
+interface PickupForm {
+  unitId: string | null
+  days: number[]
+  cutoff: string
+  pickup: string
+  minutes: number
+  note: string | null
+}
+
+const DAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+
+/** Coletas na empresa: até que horas tirar pedido (ponto de corte) e a hora da coleta, por filial e dia (painel de TV). */
+function PickupsEditor({ value, onChange, units }: { value: PickupForm[]; onChange: (v: PickupForm[]) => void; units: { id: string; name: string }[] }) {
+  const patch = (i: number, p: Partial<PickupForm>) => onChange(value.map((x, j) => (j === i ? { ...x, ...p } : x)))
+  return (
+    <div className="space-y-2 sm:col-span-2">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <Label>Coletas (painel de TV)</Label>
+          <p className="text-xs text-muted-foreground">Até que horas o comercial pode tirar pedido para ir nesta coleta e a hora em que a transportadora chega. Aparece em Fretes › Painel de coletas (TV).</p>
+        </div>
+        <Button type="button" size="sm" variant="outline" onClick={() => onChange([...value, { unitId: null, days: [1, 2, 3, 4, 5], cutoff: '15:00', pickup: '16:00', minutes: 30, note: null }])}>
+          <PlusIcon aria-hidden /> Coleta
+        </Button>
+      </div>
+      {value.map((p, i) => (
+        <div key={i} className="space-y-2 rounded-md border p-2">
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_7rem_6rem_auto]">
+            <Select value={p.unitId ?? '__todas'} onValueChange={(v) => patch(i, { unitId: v === '__todas' ? null : v })}>
+              <SelectTrigger aria-label="Filial da coleta" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__todas">Todas as filiais</SelectItem>
+                {units.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <label className="text-xs">
+              Pedido até
+              <Input type="time" value={p.cutoff} onChange={(e) => patch(i, { cutoff: e.target.value })} />
+            </label>
+            <label className="text-xs">
+              Coleta às
+              <Input type="time" value={p.pickup} onChange={(e) => patch(i, { pickup: e.target.value })} />
+            </label>
+            <label className="text-xs">
+              Carrega (min)
+              <Input type="number" min={5} max={600} value={p.minutes} onChange={(e) => patch(i, { minutes: Number(e.target.value) || 30 })} />
+            </label>
+            <Button type="button" size="icon" variant="ghost" className="self-end" aria-label="Remover coleta" onClick={() => onChange(value.filter((_, j) => j !== i))}>
+              <Trash2Icon aria-hidden />
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {DAY_LABELS.map((d, n) => (
+              <button
+                key={d}
+                type="button"
+                aria-pressed={p.days.includes(n)}
+                onClick={() => patch(i, { days: p.days.includes(n) ? p.days.filter((x) => x !== n) : [...p.days, n].sort() })}
+                className={p.days.includes(n) ? 'min-h-9 rounded-full bg-primary px-3 text-xs font-semibold text-primary-foreground' : 'min-h-9 rounded-full border px-3 text-xs'}
+              >
+                {d}
+              </button>
+            ))}
+            <Input className="h-9 min-w-0 flex-1" placeholder="Observação (ex.: segunda coleta, só volumes pequenos)" value={p.note ?? ''} onChange={(e) => patch(i, { note: e.target.value || null })} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: () => void }) {
   const qc = useQueryClient()
   const ctx = useFreightContext()
@@ -185,6 +263,7 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
     active: carrier?.active ?? true,
   }))
   const [contacts, setContacts] = useState<Contact[]>(carrier?.contacts ?? [])
+  const [pickups, setPickups] = useState<PickupForm[]>(carrier?.pickups ?? [])
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }))
   const save = useMutation({
     mutationFn: () => {
@@ -195,7 +274,7 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
           .filter((p) => p.length >= 2 && p[0]!.trim())
           .map(([k, ...v]) => [k!.trim(), v.join('=').trim()]),
       )
-      const body = { ...f, quoteName: f.quoteName || null, zip: f.zip || null, address: f.address || null, city: f.city || null, state: f.state || null, phone: f.phone || null, email: f.email || null, notes: f.notes || null, externalCodes, contacts: contacts.filter((c) => c.name.trim()) }
+      const body = { ...f, quoteName: f.quoteName || null, zip: f.zip || null, address: f.address || null, city: f.city || null, state: f.state || null, phone: f.phone || null, email: f.email || null, notes: f.notes || null, externalCodes, contacts: contacts.filter((c) => c.name.trim()), pickups }
       return carrier ? api.put(`/fretes/transportadoras/${carrier.id}`, body) : api.post('/fretes/transportadoras', body)
     },
     onSuccess: () => {
@@ -304,6 +383,7 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
                 </div>
               ))}
             </div>
+            <PickupsEditor value={pickups} onChange={setPickups} units={(ctx.data?.units ?? []).map((u) => ({ id: u.id, name: u.name }))} />
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="c-ext">Códigos nos sistemas externos (um por linha: sistema=código)</Label>
               <Textarea id="c-ext" rows={2} value={f.externalCodes} onChange={(e) => set('externalCodes', e.target.value)} placeholder={'tcar=123\nmercadolivre=ME1'} />

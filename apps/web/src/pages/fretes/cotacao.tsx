@@ -454,6 +454,11 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
                         {r.deadlineDays === null ? '—' : `${r.deadlineDays} dia(s) úteis`}
                         {r.deliveryDate && <span className="block text-xs text-muted-foreground">{dayBr(r.deliveryDate)}</span>}
                         {r.deadlineDays !== null && r.deadlineDays === fastest && r.status === 'OK' && <span className="block text-[11px] text-sky-700 dark:text-sky-300">menor prazo</span>}
+                        {r.pickups?.map((p) => (
+                          <span key={p.pickup} className="block text-[11px] font-medium text-amber-800 dark:text-amber-300" title={p.note ?? undefined}>
+                            Pedido até {p.cutoff} · coleta {p.pickup}
+                          </span>
+                        ))}
                       </TableCell>
                       <TableCell className="hidden tabular-nums lg:table-cell">{r.weights ? `${fmtNum(r.weights.taxed)} kg` : '—'}</TableCell>
                       <TableCell>

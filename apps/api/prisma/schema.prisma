@@ -2608,6 +2608,9 @@ model FreightCarrier {
   /// Códigos nos sistemas externos (ERP, e-commerce, Mercado Livre...).
   externalCodes Json   @default("{}")
   notes       String?
+  /// Coletas na empresa (painel de TV): [{ unitId (null = todas as filiais), days (0 = domingo … 6 = sábado),
+  /// cutoff "HH:MM" (último horário para tirar pedido), pickup "HH:MM" (chegada para coletar), minutes (carregamento) }]
+  pickups     Json     @default("[]")
   /// Endereço da lista de cidades atendidas no site da transportadora (Excel ou tabela HTML): o CRM relê todo dia.
   citiesUrl       String?
   citiesSyncedAt  DateTime?

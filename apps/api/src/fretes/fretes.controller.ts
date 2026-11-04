@@ -62,6 +62,8 @@ class CarrierDto {
   @IsOptional() @IsObject() externalCodes?: Record<string, string>
   @IsOptional() @nullable @IsString() @MaxLength(4000) notes?: string | null
   @IsOptional() @IsBoolean() active?: boolean
+  /** Coletas (validadas no serviço): [{ unitId, days, cutoff, pickup, minutes, note }]. */
+  @IsOptional() @IsArray() @ArrayMaxSize(40) pickups?: unknown[]
 }
 
 class TableDto {
@@ -344,6 +346,11 @@ export class FretesController {
   @Put('transportadoras/:id')
   updateCarrier(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CarrierDto, @ReqContext() ctx: RequestCtx) {
     return this.carriers.update(user, id, dto, ctx)
+  }
+
+  @Get('painel-tv')
+  pickupBoard(@CurrentUser() user: AuthUser, @Query('filial') filial?: string) {
+    return this.carriers.pickupBoard(user, filial && /^[0-9a-f-]{36}$/i.test(filial) ? filial : null)
   }
 
   @Get('transportadoras/:id/taxas')

@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { cleanText } from '../sugestoes/sugestoes'
 import { allowedUnits, assertCan, assertUnit, unitListWhere } from './acesso'
+import type { Pickup } from './coletas'
 import { cityKey, formatCep, normalizeCep, normalizeUf, ufByCep, validCnpj, validCpf } from './cep'
 import { addBusinessDays, calculate, type CalcResult, matchRule, type Measures, measure, type Volume, weights } from './motor'
 import { componentsOf, ruleFromRow, settingsOf, todayUtc } from './tabelas.service'
@@ -65,6 +66,17 @@ export interface QuoteResult {
   expiredUsed: boolean
   /** Taxas da lista de destinatários da transportadora aplicadas (guardadas para reproduzir a cotação). */
   recipientFees?: ComponentDef[]
+  /** Coletas da transportadora no dia da cotação, na filial de origem: até que horas tirar pedido e a hora da coleta. */
+  pickups?: { cutoff: string; pickup: string; note: string | null }[]
+}
+
+/** Coletas cadastradas na transportadora para a filial e o dia da semana da cotação (horários informados à mão). */
+function pickupsOn(raw: unknown, unitId: string, date: Date) {
+  const day = date.getUTCDay()
+  return ((Array.isArray(raw) ? raw : []) as Pickup[])
+    .filter((p) => (!p.unitId || p.unitId === unitId) && p.days.includes(day))
+    .sort((a, b) => a.pickup.localeCompare(b.pickup))
+    .map((p) => ({ cutoff: p.cutoff, pickup: p.pickup, note: p.note }))
 }
 
 const QUOTES_PAGE = 30
@@ -262,6 +274,7 @@ export class CotacaoService {
       quoteName: t.quoteName || t.carrier.quoteName || t.carrier.name,
       carrierId: t.carrierId,
       carrierName: t.carrier.name,
+      pickups: pickupsOn(t.carrier.pickups, p.unit.id, p.quoteDate),
       versionId: null,
       versionNumber: null,
       status: 'OK',

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangleIcon, BellIcon, CalculatorIcon, TableIcon } from 'lucide-react'
+import { AlertTriangleIcon, BellIcon, CalculatorIcon, MonitorIcon, TableIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
@@ -85,6 +85,11 @@ function Painel() {
             <Input type="date" className="w-40" aria-label="De" value={from} onChange={(e) => setFrom(e.target.value)} />
             <Input type="date" className="w-40" aria-label="Até" value={to} onChange={(e) => setTo(e.target.value)} />
             <FilialSwitch active={active} />
+            <Button asChild variant="outline">
+              <Link to="/fretes/painel-tv">
+                <MonitorIcon aria-hidden /> Painel de coletas (TV)
+              </Link>
+            </Button>
           </>
         }
       />

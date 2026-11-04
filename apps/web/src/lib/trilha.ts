@@ -365,7 +365,7 @@ export const TRAIL: TrailModule[] = [
     key: 'fretes-painel',
     title: 'Painel de fretes',
     module: 'fretes_painel',
-    routes: ['/fretes', '/fretes/alertas'],
+    routes: ['/fretes', '/fretes/painel-tv', '/fretes/alertas'],
     purpose: 'Ver quanto se cotou e escolheu de frete, por transportadora, filial e UF, e quais tabelas estão vencendo.',
     howItWorks: 'Os números saem das cotações salvas e das tabelas cadastradas. "Economia estimada" é a média das opções menos a escolhida: é estimativa, não dinheiro recuperado. O seletor de filial no cabeçalho filtra a tela; quem tem acesso a todas vê a visão global.',
     lessons: [
