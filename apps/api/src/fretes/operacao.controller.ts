@@ -218,6 +218,13 @@ export class FretesOperacaoController {
     send(res, f.fileName, 'application/xml', f.content)
   }
 
+  @Post('ctes/reconciliar-sem-referencia')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  reprocessPending(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
+    return this.ctes.reprocessPending(user, ctx)
+  }
+
   @Post('ctes/:id/reconciliar')
   @HttpCode(200)
   reprocess(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {

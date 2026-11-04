@@ -350,7 +350,7 @@ export class CotacaoService {
     const settings = settingsOf(v.settings)
     const m = p.measures
     const match = matchRule(rows.map(ruleFromRow), { zip, uf: p.destUf, city: p.destCity }, weights(m, settings).taxed)
-    if (!match.rule) return no('SEM_COBERTURA', match.reason)
+    if (!match.rule) return no('SEM_COBERTURA', `${match.reason} Destino: ${p.destCity ?? '?'}/${p.destUf ?? '?'}, CEP ${formatCep(zip)}.`)
     const r = match.rule
     const label = match.by === 'CEP' ? `CEP ${formatCep(r.cepStart)} a ${formatCep(r.cepEnd)}` : match.by === 'CIDADE' ? `${r.city}${r.uf ? `/${r.uf}` : ''}` : `UF ${r.uf}`
     base.rule = { id: r.id ?? null, by: match.by, label: `${label}, ${r.weightMin} a ${r.weightMax ?? '∞'} kg` }
@@ -729,14 +729,18 @@ export class CotacaoService {
     } catch {
       return null
     }
-    const tables = await this.prisma.freightTable.findMany({
-      where: { tenantId: user.tenantId, carrierId: d.carrierId, status: { not: 'RASCUNHO' }, OR: [{ unitIds: { isEmpty: true } }, { unitIds: { has: d.unitId } }] },
-      include: { carrier: true },
-    })
+    const all = await this.prisma.freightTable.findMany({ where: { tenantId: user.tenantId, carrierId: d.carrierId, status: { not: 'RASCUNHO' } }, include: { carrier: true } })
+    const tables = all.filter((t) => !t.unitIds.length || t.unitIds.includes(d.unitId))
     const fees = await this.feesFor([d.carrierId], { doc: d.recipientDoc, destZip: p.destZip, destCity: p.destCity, destUf: p.destUf })
     const versions = await this.prisma.freightTableVersion.findMany({ where: { tableId: { in: tables.map((t) => t.id) }, publishedAt: { not: null, lte: d.date } }, orderBy: { publishedAt: 'desc' }, select: { id: true, tableId: true } })
     const results = await Promise.all(tables.map((t) => this.evaluate(t, p, input, { allowExpired: false, fees: fees.map(feeComponent), versionAt: versions.find((v) => v.tableId === t.id)?.id ?? null })))
-    return results.filter((r) => r.status === 'OK' && r.total !== null).sort((a, b) => a.total! - b.total!)[0] ?? null
+    const best = results.filter((r) => r.status === 'OK' && r.total !== null).sort((a, b) => a.total! - b.total!)[0] ?? null
+    // Sem resultado: o motivo de cada tabela, para quem confere saber o que ajustar (filial, vigência, destino, peso...).
+    const reasons = [
+      ...results.map((r) => ({ table: r.tableName ?? 'Tabela', reason: r.reason ?? r.status })),
+      ...all.filter((t) => !tables.includes(t)).map((t) => ({ table: t.name, reason: 'Não vale para a filial deste CT-e (confira as filiais da tabela).' })),
+    ]
+    return best ?? { reasons, noTables: !all.length }
   }
 
   /** Simulador do editor de componentes: calcula com uma versão específica (inclusive rascunho), sem salvar. */

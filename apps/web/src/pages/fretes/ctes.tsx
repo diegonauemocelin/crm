@@ -67,7 +67,7 @@ interface Cte {
   recSource: string | null
   expectedTotal: number | null
   difference: number | null
-  recDetail?: { reference?: string; reason?: string; allowed?: number; lines?: RecLine[]; notes?: string[] } | null
+  recDetail?: { reference?: string; reason?: string; tables?: { table: string; reason: string }[]; allowed?: number; lines?: RecLine[]; notes?: string[] } | null
   recAt: string | null
   decision: string | null
   approvedValue: number | null
@@ -153,6 +153,15 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
   })
   const pages = list.data ? Math.max(1, Math.ceil(list.data.total / list.data.pageSize)) : 1
   const carriers = active.ctx.data?.carriers ?? []
+  const qc = useQueryClient()
+  const redo = useMutation({
+    mutationFn: () => api.post<{ total: number; resolved: number; still: number }>('/fretes/ctes/reconciliar-sem-referencia'),
+    onSuccess: (r) => {
+      void qc.invalidateQueries({ queryKey: ['fretes', 'ctes'] })
+      toast.success(r.total ? `${r.total} CT-e(s) sem referência conferido(s) de novo: ${r.resolved} agora com referência, ${r.still} ainda sem.` : 'Nenhum CT-e sem referência.')
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
   return (
     <div className="space-y-4">
       <PageHeader
@@ -165,6 +174,11 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
         actions={
           <>
             <FilialSwitch active={active} />
+            <Can module="fretes_cte" action="edit">
+              <Button variant="outline" disabled={redo.isPending} onClick={() => redo.mutate()} title="Depois de cadastrar ou corrigir tabelas: compara de novo os CT-es que estão sem referência">
+                {redo.isPending ? <Loader2Icon className="animate-spin" aria-hidden /> : <RefreshCwIcon aria-hidden />} Conciliar sem referência
+              </Button>
+            </Can>
             <Can module="fretes_cte" action="create">
               <Button onClick={() => setImporting(true)}>
                 <UploadIcon aria-hidden /> Importar XML
@@ -441,6 +455,19 @@ function CteDetail() {
           </CardHeader>
           <CardContent className="space-y-3">
             {c.recDetail?.reason && <p className="text-sm text-amber-700 dark:text-amber-300">{c.recDetail.reason}</p>}
+            {!!c.recDetail?.tables?.length && (
+              <div className="space-y-1 rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+                <p className="font-medium">Por que cada tabela não calculou</p>
+                <ul className="list-disc space-y-0.5 pl-5">
+                  {c.recDetail.tables.map((t, i) => (
+                    <li key={i}>
+                      <span className="font-medium">{t.table}</span>: {t.reason}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-muted-foreground">Depois de ajustar a tabela, clique em Conciliar de novo.</p>
+              </div>
+            )}
             {c.recDetail?.reference && (
               <p className="text-sm text-muted-foreground">
                 Referência: {c.recDetail.reference}

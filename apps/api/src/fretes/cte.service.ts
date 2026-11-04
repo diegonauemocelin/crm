@@ -271,6 +271,7 @@ export class CteService {
     const tol: Tolerance = c.carrierId && settings.porTransportadora[c.carrierId] ? { value: settings.porTransportadora[c.carrierId]!.valor, percent: settings.porTransportadora[c.carrierId]!.percentual } : { value: settings.valor, percent: settings.percentual }
     let expected: (ExpectedRef & { label: string }) | null = null
     let source: string | null = null
+    let tableReasons: { table: string; reason: string }[] | null = null
     const shipment = c.shipmentId ? await this.prisma.freightShipment.findUnique({ where: { id: c.shipmentId } }) : null
     const exp = shipment?.expected as unknown as (Partial<QuoteResult> & { quoteCode?: number }) | null
     if (exp && exp.total !== null && exp.total !== undefined) {
@@ -289,14 +290,14 @@ export class CteService {
         weight: Number(c.weight),
         date: c.issuedAt ?? c.createdAt,
       })
-      if (r?.total !== null && r?.total !== undefined) {
+      if (r && 'total' in r && r.total !== null && r.total !== undefined) {
         expected = { total: r.total, components: r.components, icms: r.icms, weight: r.weights?.taxed ?? null, label: `${r.tableName} v${r.versionNumber}, recalculada na data do CT-e` }
         source = 'TABELA'
-      }
+      } else if (r && 'reasons' in r) tableReasons = r.noTables ? [] : r.reasons
     }
     if (!expected) {
-      const why = !c.carrierId ? 'Transportadora do CT-e não cadastrada (CNPJ do emitente).' : !c.unitId ? 'Filial de origem não identificada (cadastre o CNPJ das filiais).' : !c.weight || !c.destZip ? 'CT-e sem peso ou CEP de destino.' : 'Nenhuma tabela da transportadora calcula este frete na data do CT-e e não há pedido com cotação.'
-      await this.prisma.freightCte.update({ where: { id }, data: { recStatus: 'SEM_REFERENCIA', recTypes: [], recSource: null, expectedTotal: null, difference: null, recDetail: { reason: why } as Prisma.InputJsonValue, recAt: new Date() } })
+      const why = !c.carrierId ? 'Transportadora do CT-e não cadastrada (CNPJ do emitente).' : !c.unitId ? 'Filial de origem não identificada (cadastre o CNPJ das filiais).' : !c.weight || !c.destZip ? 'CT-e sem peso ou CEP de destino.' : tableReasons && !tableReasons.length ? 'A transportadora não tem tabela de frete cadastrada (fora rascunho) e não há pedido com cotação.' : 'Nenhuma tabela da transportadora calcula este frete na data do CT-e e não há pedido com cotação.'
+      await this.prisma.freightCte.update({ where: { id }, data: { recStatus: 'SEM_REFERENCIA', recTypes: [], recSource: null, expectedTotal: null, difference: null, recDetail: { reason: why, tables: tableReasons ?? [] } as Prisma.InputJsonValue, recAt: new Date() } })
       return
     }
     const comps = (c.components as unknown as { name: string; value: number }[]) ?? []
@@ -328,6 +329,16 @@ export class CteService {
     await this.reconcileOne(user, id)
     await this.audit.byUser(user, ctx, 'frete.cte.reconciliado', 'freight_cte', id, { chave: c.key })
     return this.get(user, id)
+  }
+
+  /** Concilia de novo todos os CT-es sem referência (depois de cadastrar ou corrigir tabelas). */
+  async reprocessPending(user: AuthUser, ctx: RequestCtx) {
+    assertCan(user, 'fretes_cte', 'edit')
+    const rows = await this.prisma.freightCte.findMany({ where: { ...this.scopeWhere(user), recStatus: 'SEM_REFERENCIA', decision: null, fiscalStatus: { not: 'CANCELADO' } }, select: { id: true }, orderBy: { issuedAt: 'desc' }, take: 2000 })
+    for (const r of rows) await this.reconcileOne(user, r.id)
+    const still = await this.prisma.freightCte.count({ where: { id: { in: rows.map((r) => r.id) }, recStatus: 'SEM_REFERENCIA' } })
+    await this.audit.byUser(user, ctx, 'frete.cte.reconciliados', 'freight_cte', undefined, { total: rows.length, semReferencia: still })
+    return { total: rows.length, resolved: rows.length - still, still }
   }
 
   /** Liga o CT-e a um pedido escolhido à mão (quando a NF-e não estava no pedido) e reconcilia. */
