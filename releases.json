@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.7",
+      "date": "2026-11-04",
+      "title": "App para Android (APK)",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "App no celular",
+          "text": "App do CRM para Android em arquivo de instalação (APK). Ele abre o mesmo app do celular em tela cheia, e as mudanças do sistema chegam sozinhas, sem reinstalar."
+        }
+      ]
+    },
+    {
       "version": "2.0.6",
       "date": "2026-11-04",
       "title": "Painéis do app sem rolar para o lado, Monitoramento WhatsApp e ligar pelo app",

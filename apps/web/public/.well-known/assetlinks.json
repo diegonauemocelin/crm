@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "br.com.usaparts.crm",
+      "sha256_cert_fingerprints": ["D1:AE:63:57:93:2A:19:2C:8F:3B:33:4B:65:F4:6D:9E:FD:C6:D7:82:C9:73:73:61:ED:FA:18:CF:68:AC:FA:F9"]
+    }
+  }
+]
