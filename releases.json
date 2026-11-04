@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.22",
+      "date": "2026-11-04",
+      "title": "SEFAZ até 30 dias e taxas por cidade (EMEX)",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Captura de CT-e na SEFAZ: busca os emitidos em até 30 dias (antes 7); quem estava em 7 dias passa para 30. A tela mostra até que data de emissão a leitura já chegou."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "SEFAZ: \"Ler de novo desde o começo\" relê tudo o que a SEFAZ guarda, para trazer os CT-es do período que ficaram para trás. Os que já estão no CRM contam como repetidos."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Taxas por destino: a planilha Restrições da transportadora por cidade (código IBGE), faixa de CEP, região ou UF (ex.: EMEX da Atual Cargas, 20% do frete com mínimo de R$ 89,61) entra na cotação quando o destino está na lista. Também valem TDA, TDC, TDE, TVD e TRT nesse formato, e os tipos de valor sobre a nota e por kg."
+        }
+      ]
+    },
+    {
       "version": "2.0.21",
       "date": "2026-11-04",
       "title": "Importação de tabelas no modelo Frete Gestão",
