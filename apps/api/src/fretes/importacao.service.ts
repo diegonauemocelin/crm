@@ -58,7 +58,14 @@ export async function readSheets(raw: Buffer, fileName: string): Promise<Sheet[]
 function guessHeader(rows: Cell[][]) {
   for (let i = 0; i < Math.min(rows.length, 30); i++) {
     const m = suggestMapping(rows[i] ?? [], rows.slice(i + 1, i + 9))
-    if (m.length >= 2) return { headerRow: i + 1, mapping: m }
+    if (m.length < 2) continue
+    // Cabeçalho em dois andares ("DESTINO | FRAÇÕES | Componentes" e embaixo as colunas): vale a linha que reconhece mais.
+    let best = { headerRow: i + 1, mapping: m }
+    for (let j = i + 1; j < Math.min(rows.length, i + 4); j++) {
+      const n = suggestMapping(rows[j] ?? [], rows.slice(j + 1, j + 9))
+      if (n.length >= best.mapping.length + 2) best = { headerRow: j + 1, mapping: n }
+    }
+    return best
   }
   const first = rows.findIndex((r) => r.some((c) => c !== null && String(c).trim() !== ''))
   return { headerRow: Math.max(1, first + 1), mapping: [] as ColumnMap[] }

@@ -113,6 +113,17 @@ export const normalizeHeader = (h: unknown) =>
     .replace(/\s+/g, ' ')
     .trim()
 
+const TEMPLATE_PREFIX = /^\s*(destino|fra[cç][aã]o|acima|comp(onente)?\s*\d+)\s*:\s*/i
+
+/** Pedágio com a fração na célula: "7,49/100" ou "7,49 / 100 kg" = R$ 7,49 a cada 100 kg. */
+export function parseToll(raw: unknown): { toll: number; fraction: number } | null {
+  const m = /^\s*(?:r\$\s*)?(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)\s*(?:kg)?\s*$/i.exec(String(raw ?? ''))
+  if (!m) return null
+  const toll = Number(m[1]!.replace(',', '.'))
+  const fraction = Number(m[2]!.replace(',', '.'))
+  return Number.isFinite(toll) && Number.isFinite(fraction) && fraction > 0 ? { toll, fraction } : null
+}
+
 /** Ordem importa: o mais específico primeiro (GRIS mínimo antes de GRIS, frete mínimo antes de frete). */
 const HEADER_RULES: [RegExp, string][] = [
   [/^(cep )?(inicial|inicio|ini|de)( cep)?$|^cep (inicial|inicio|ini|de|origem inicial)|^faixa (de )?cep inicial|^faixa inicial/, 'cep_start'],
@@ -183,7 +194,9 @@ export function weightBand(header: unknown): { min: number | null; max: number }
 export function suggestMapping(headers: unknown[], samples: unknown[][] = []): ColumnMap[] {
   const out: ColumnMap[] = []
   const used = new Set<string>()
-  const norm = headers.map(normalizeHeader)
+  // Modelo "Destino: Região", "Fração: ATE 1 KG (R$)", "Comp 3: Pedagio (R$/Fração)": o que vale vem depois dos dois pontos.
+  const bare = headers.map((h) => String(h ?? '').replace(TEMPLATE_PREFIX, ''))
+  const norm = bare.map(normalizeHeader)
   // Prazo em duas colunas (mínimo e máximo de dias): vale o máximo, e "mínimo" não é frete mínimo.
   const daysPair = norm.includes('minimo') && norm.includes('maximo')
   // "GRIS" (R$) ao lado de "GRIS %": o sem % é o mínimo.
@@ -202,11 +215,19 @@ export function suggestMapping(headers: unknown[], samples: unknown[][] = []): C
     const v = nums(column)
     return v.length > 0 && v.every((x) => x > 0 && x < 0.1)
   }
+  // Pedágio "7,49/100": R$ 7,49 a cada 100 kg (valor e fração na mesma célula).
+  const tollColumn = (column: number) => {
+    const v = samples.map((r) => r?.[column]).filter((x) => x !== null && x !== undefined && String(x).trim() !== '').slice(0, 8)
+    return v.length > 0 && v.every((x) => typeof x === 'number' || !!parseToll(x))
+  }
   let lastMax = 0
   headers.forEach((raw, column) => {
-    const band = weightBand(raw)
+    const band = weightBand(bare[column])
     if (band) {
-      out.push({ column, field: 'var:freight', weightMin: band.min ?? lastMax, weightMax: band.max })
+      // "(R$/kg)": valor por kg dentro da faixa; "(%)": % da nota.
+      const unit = String(raw ?? '')
+      const field = /\/\s*kg/i.test(unit) ? 'var:freight_kg' : /%/.test(unit) ? 'var:freight_value' : 'var:freight'
+      out.push({ column, field, weightMin: band.min ?? lastMax, weightMax: band.max })
       lastMax = band.max
       return
     }
@@ -216,8 +237,8 @@ export function suggestMapping(headers: unknown[], samples: unknown[][] = []): C
     if (daysPair && h === 'maximo') field = 'deadline'
     else if (daysPair && h === 'minimo') return
     else if (grisPct && h === 'gris') field = 'var:gris_min'
-    else field = HEADER_RULES.find(([re, f]) => re.test(h) && !used.has(f) && !(NUMERIC(f) && textColumn(column)))?.[1]
-    if (!field || used.has(field) || (NUMERIC(field) && textColumn(column))) return
+    else field = HEADER_RULES.find(([re, f]) => re.test(h) && !used.has(f) && !(NUMERIC(f) && textColumn(column) && !(f === 'var:toll' && tollColumn(column))))?.[1]
+    if (!field || used.has(field) || (NUMERIC(field) && textColumn(column) && !(field === 'var:toll' && tollColumn(column)))) return
     // "Destino"/"Origem" com siglas de estado (BA, SC...): é a UF, não a cidade (a origem não entra na regra).
     if (field === 'city' && ufColumn(column)) {
       if (/^origem/.test(h) || used.has('uf')) return
@@ -346,6 +367,13 @@ export function parseRows(rows: unknown[][], mapping: ColumnMap[], firstLine: nu
     const shared: Record<string, number> = {}
     for (const m of plain.filter((x) => isVarField(x.field))) {
       const code = varCode(m.field)
+      const toll = code === 'toll' ? parseToll(row[m.column]) : null
+      if (toll) {
+        shared.toll = toll.toll
+        // A coluna própria de fração, se houver, vale mais.
+        if (!plain.some((x) => x.field === 'var:fraction')) shared.fraction = toll.fraction
+        continue
+      }
       const raw = parseNumber(row[m.column])
       const v = raw === null || Number.isNaN(raw) || !m.scale ? raw : Math.round(raw * m.scale * 1e6) / 1e6
       if (v === null) continue

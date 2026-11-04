@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { checkMapping, parseCepRange, parseNumber, parseRows, suggestMapping, weightBand, cubageFactorOf, tableNotes } from '../src/fretes/importacao'
+import { checkMapping, parseCepRange, parseNumber, parseRows, parseToll, suggestMapping, weightBand, cubageFactorOf, tableNotes } from '../src/fretes/importacao'
 
 describe('fretes: leitura da planilha', () => {
   it('números no formato brasileiro', () => {
@@ -108,6 +108,29 @@ describe('fretes: validação das linhas', () => {
 })
 
 describe('fretes: layouts reais das transportadoras', () => {
+  it('Atual Cargas (modelo Frete Gestão): "Destino: Região", fração até 1 kg, componentes numerados e pedágio "7,49/100"', () => {
+    const headers = ['Destino: Região', 'Fração: ATE 1 KG (R$)', 'Acima: KG EXTRA (R$)', 'Frete Minimo (R$)', 'Comp 1: ADVALOREM NF (%)', 'Comp 1: ADVALOREM Minimo (R$)', 'Comp 2: GRIS NF (%)', 'Comp 2: GRIS Minimo (R$)', 'Comp 10: TAS (R$)', 'Comp 3: Pedagio (R$/Fração)', 'Comp 4: Reentrega (%)', 'Comp 4: Reentrega Minimo (R$)', 'Comp 5: Devolucao (%)', 'Dias', '(U)teis / (C)orridos']
+    const data = [['GO1P', 1.00066, 1.00066, 124.19, 0.48, 7.97, 0.2, 8.79, 5.5, '7,49/100', 50, 83.11, 100, null, null]]
+    const m = suggestMapping(headers, data)
+    const by = Object.fromEntries(m.map((x) => [headers[x.column], x.field]))
+    expect(by).toEqual({
+      'Destino: Região': 'region', 'Fração: ATE 1 KG (R$)': 'var:freight', 'Acima: KG EXTRA (R$)': 'var:over_weight', 'Frete Minimo (R$)': 'var:min_freight',
+      'Comp 1: ADVALOREM NF (%)': 'var:advalorem', 'Comp 1: ADVALOREM Minimo (R$)': 'var:advalorem_min', 'Comp 2: GRIS NF (%)': 'var:gris', 'Comp 2: GRIS Minimo (R$)': 'var:gris_min',
+      'Comp 10: TAS (R$)': 'var:tas', 'Comp 3: Pedagio (R$/Fração)': 'var:toll', 'Comp 4: Reentrega (%)': 'var:redelivery', 'Comp 5: Devolucao (%)': 'var:devolution', Dias: 'deadline',
+    })
+    expect(m.find((x) => x.field === 'var:freight')).toMatchObject({ weightMin: 0, weightMax: 1 })
+    expect(checkMapping(m, headers.length)).toEqual([])
+    const regions = new Map([['GO1P', [{ uf: 'GO', city: 'Anápolis', cityKey: 'anapolis', deadlineDays: 3 }]]])
+    const r = parseRows(data, m, 3, regions as never)
+    expect(r.rules[0]).toMatchObject({ uf: 'GO', city: 'Anápolis', weightMin: 0, weightMax: 1, deadlineDays: 3, values: { freight: 1.00066, over_weight: 1.00066, min_freight: 124.19, toll: 7.49, fraction: 100, tas: 5.5, gris: 0.2, advalorem: 0.48 } })
+  })
+
+  it('pedágio com a fração na célula', () => {
+    expect(parseToll('7,49/100')).toEqual({ toll: 7.49, fraction: 100 })
+    expect(parseToll('R$ 3,10 / 100 kg')).toEqual({ toll: 3.1, fraction: 100 })
+    expect(parseToll('7,49')).toBeNull()
+  })
+
   it('São Miguel: TAXA/QUILO/% NF, GRIS e GRIS %, pedágio por fração, prazo máximo e coluna de texto ignorada', () => {
     const headers = ['UNIDADE ORIGEM', 'CIDADE', 'UF', 'REGIÃO', 'CEP PRINCIPAL', 'CEP INICIAL', 'CEP FINAL', 'PREVISÃO DE ENTREGA', 'MINIMO', 'MÁXIMO', 'TAXA', 'QUILO', '% NF', 'TAS', 'GRIS', 'GRIS %', 'PEDÁGIO FRAÇÃO 100 Kg', 'MERC. VOLUMOSA -  kg³', 'ICMS']
     const data = [['ITAJAI', 'ABATIA', 'PR', 'PR5', '86460-000', '86460-000', '86464-999', ' De 2 a 6 dias', 2, 6, 41.11, 0.941, 0.5, 3, 3.79, 0.17, 3.79, 265, 'CONFORME LEGISLACAO']]
