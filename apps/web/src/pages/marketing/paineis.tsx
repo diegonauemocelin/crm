@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TvGate } from '@/components/tv-gate'
 import { TvLinksButton } from '@/components/tv-links'
 import { api, errorMessage, setApiRewrite } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
@@ -167,6 +168,14 @@ const TV_PATHS = /^\/marketing\/(analise|opcoes|mapa|comparativo)(\?.*)?$/
  */
 export function ExecutivoTvPublicPage() {
   const { token = '' } = useParams()
+  return (
+    <TvGate token={token}>
+      <ExecutivoTv token={token} />
+    </TvGate>
+  )
+}
+
+function ExecutivoTv({ token }: { token: string }) {
   // Antes de a tela pedir os dados (no primeiro desenho), para nenhum pedido sair pela rota com login.
   const rewrite = (p: string) => {
     const m = TV_PATHS.exec(p)

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, Res } from '@nestjs/common'
+import { Body, Controller, Delete, ForbiddenException, Get, Headers, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, Res } from '@nestjs/common'
 import type { Response } from 'express'
 import { ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
@@ -145,32 +145,32 @@ export class MarketingController {
   @Public()
   @Get('tv/:token/opcoes')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  async tvOptions(@Param('token') token: string) {
-    const link = await this.tv.resolve(token, 'EXECUTIVO')
+  async tvOptions(@Param('token') token: string, @Headers('x-tv-key') key: string | undefined) {
+    const link = await this.tv.resolve(token, 'EXECUTIVO', key)
     return this.mkt.options(tvUser(link.tenantId))
   }
 
   @Public()
   @Get('tv/:token/analise')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  async tvAnalysis(@Param('token') token: string, @Query() q: AnalysisDto) {
-    const link = await this.tv.resolve(token, 'EXECUTIVO')
+  async tvAnalysis(@Param('token') token: string, @Headers('x-tv-key') key: string | undefined, @Query() q: AnalysisDto) {
+    const link = await this.tv.resolve(token, 'EXECUTIVO', key)
     return this.mkt.analysis(tvUser(link.tenantId), { from: q.de, to: q.ate, visao: q.visao, filters: filtersOf(q) })
   }
 
   @Public()
   @Get('tv/:token/mapa')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  async tvMap(@Param('token') token: string, @Query() q: MapDto) {
-    const link = await this.tv.resolve(token, 'EXECUTIVO')
+  async tvMap(@Param('token') token: string, @Headers('x-tv-key') key: string | undefined, @Query() q: MapDto) {
+    const link = await this.tv.resolve(token, 'EXECUTIVO', key)
     return this.mkt.map(link.tenantId, { from: q.de, to: q.ate, origin: q.origem })
   }
 
   @Public()
   @Get('tv/:token/comparativo')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  async tvComparison(@Param('token') token: string, @Query() q: MapDto) {
-    const link = await this.tv.resolve(token, 'EXECUTIVO')
+  async tvComparison(@Param('token') token: string, @Headers('x-tv-key') key: string | undefined, @Query() q: MapDto) {
+    const link = await this.tv.resolve(token, 'EXECUTIVO', key)
     return this.mkt.comparison(link.tenantId, { origin: q.origem })
   }
 

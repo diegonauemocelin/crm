@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { FilialSwitch } from '@/components/fretes/filial-switch'
 import { ErrorState, RequirePermission } from '@/components/page'
+import { TvGate } from '@/components/tv-gate'
 import { TvLinksButton } from '@/components/tv-links'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
@@ -57,6 +58,14 @@ function Tv() {
 /** Painel aberto pelo link da TV (/tv/coletas/:token), sem login. */
 export function FretesTvPublicPage() {
   const { token = '' } = useParams()
+  return (
+    <TvGate token={token}>
+      <ColetasTv token={token} />
+    </TvGate>
+  )
+}
+
+function ColetasTv({ token }: { token: string }) {
   const q = useQuery({
     queryKey: ['fretes', 'tv-publico', token],
     queryFn: () => api.get<PanelData>(`/fretes/tv/${encodeURIComponent(token)}`),

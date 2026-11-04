@@ -2953,6 +2953,8 @@ model TvLink {
   unitId        String?   @db.Uuid
   name          String
   tokenHash     String    @unique
+  /// Senha para abrir o link (argon2). Vazia = abre só com o link.
+  pinHash       String?
   createdByName String
   createdAt     DateTime  @default(now())
   lastUsedAt    DateTime?
