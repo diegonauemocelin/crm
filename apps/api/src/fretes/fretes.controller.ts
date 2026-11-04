@@ -152,6 +152,8 @@ class MapDto {
   @IsString() @MaxLength(60) field!: string
   @IsOptional() @nullable @IsNumber() weightMin?: number | null
   @IsOptional() @nullable @IsNumber() weightMax?: number | null
+  /** 0,001 (R$/ton → R$/kg) ou 100 (% guardado como fração no Excel). */
+  @IsOptional() @nullable @IsNumber() @Min(0.000001) @Max(1000) scale?: number | null
 }
 
 class ImportDto {
