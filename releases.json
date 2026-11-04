@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.19",
+      "date": "2026-11-04",
+      "title": "SEFAZ lê até chegar aos CT-es de hoje",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Captura de CT-e na SEFAZ: a primeira leitura começa pelos documentos mais antigos guardados na SEFAZ. Agora o CRM emenda as buscas a cada 10 minutos (com a busca automática ligada) até chegar aos CT-es de hoje, e a tela mostra quantos documentos ainda faltam ler."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Cada busca na SEFAZ lê até 3.000 documentos (antes 1.000), e o histórico chama de \"eventos ou resumos sem uso\" o que não é CT-e nem cancelamento."
+        }
+      ]
+    },
+    {
       "version": "2.0.18",
       "date": "2026-11-04",
       "title": "Painel de coletas para TV",
