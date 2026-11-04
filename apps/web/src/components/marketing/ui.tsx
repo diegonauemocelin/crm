@@ -153,7 +153,7 @@ export function DeltaTag({ value, lowerIsBetter }: { value: number | null | unde
   const good = lowerIsBetter ? !up : up
   const Icon = up ? ArrowUpRightIcon : ArrowDownRightIcon
   return (
-    <span className={cn('inline-flex items-center gap-1 text-xs font-medium', good ? 'text-[#006300] dark:text-[#0ca30c]' : 'text-[#b42323] dark:text-[#e66767]')}>
+    <span data-good={good ? '1' : '0'} className={cn('delta-tag inline-flex items-center gap-1 text-xs font-medium', good ? 'text-[#006300] dark:text-[#0ca30c]' : 'text-[#b42323] dark:text-[#e66767]')}>
       <Icon className="size-3.5" aria-hidden />
       {up ? '+' : ''}
       {value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% <span className="font-normal text-muted-foreground">vs. anterior</span>
@@ -166,7 +166,7 @@ export function Kpi({ label, value, before, delta, lowerIsBetter, spark, hint, t
   const content = (
     <Card className={cn('h-full gap-1 py-4', to && 'transition-colors hover:border-[color:var(--brand)]')}>
       <CardContent className="space-y-1 px-4">
-        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="text-sm font-medium text-muted-foreground">{label}</p>
         <div className="flex items-end justify-between gap-2">
           <p className="text-2xl font-semibold tracking-tight">{value}</p>
           {spark && spark.length > 1 && <Spark data={spark} />}
@@ -189,7 +189,7 @@ export function Kpi({ label, value, before, delta, lowerIsBetter, spark, hint, t
 }
 
 function Spark({ data }: { data: number[] }) {
-  const config: ChartConfig = { v: { label: 'Tendência', color: 'var(--chart-1)' } }
+  const config: ChartConfig = { v: { label: 'Tendência', color: 'var(--spark, var(--chart-1))' } }
   return (
     <ChartContainer config={config} className="aspect-auto h-8 w-20" aria-hidden>
       <LineChart data={data.map((v, i) => ({ i, v }))} margin={{ top: 2, bottom: 2, left: 0, right: 0 }}>

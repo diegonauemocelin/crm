@@ -275,3 +275,126 @@ html.layout-sistemas main h1 {
 html.layout-sistemas [data-slot="card-title"] {
   font-weight: 700;
 }
+
+/*
+ * Visual "Por sistema" em todas as telas (04/11/2026): o mesmo modelo dos dashboards aprovados. Cores só da marca
+ * (--brand, --brand-nav) mais verde e vermelho para subiu/caiu; indicadores grandes e fortes; filtros e abas com o
+ * item escolhido na cor da marca; tabelas com o cabeçalho em maiúsculas.
+ */
+html.layout-sistemas {
+  --chart-4: color-mix(in oklch, var(--brand-nav) 45%, #ffffff);
+  --chart-5: color-mix(in oklch, var(--brand) 70%, var(--brand-nav));
+  --brand-soft: color-mix(in oklch, var(--brand) 12%, var(--card));
+  --spark: var(--brand);
+}
+/* Números de destaque dos cartões (indicadores). */
+html.layout-sistemas [data-slot="card"] :is(.text-2xl, .text-3xl, .text-4xl):is(.font-semibold, .font-bold, .font-medium) {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+html.layout-sistemas [data-slot="card"] .text-2xl:is(.font-semibold, .font-bold) {
+  font-size: 1.75rem;
+  line-height: 2.1rem;
+}
+html.layout-sistemas [data-slot="card-header"] [data-slot="card-title"] {
+  font-size: 1.0625rem;
+  letter-spacing: -0.01em;
+}
+html.layout-sistemas [data-slot="card-description"] {
+  font-size: 0.8125rem;
+}
+/* Filtros de período e escolhas (7 dias, 30 dias...): o escolhido na cor da marca. */
+html.layout-sistemas [data-slot="toggle-group"] {
+  gap: 0.375rem;
+  box-shadow: none;
+}
+html.layout-sistemas [data-slot="toggle-group-item"] {
+  border-radius: 999px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--card);
+  font-weight: 600;
+  min-height: 2.25rem;
+}
+html.layout-sistemas [data-slot="toggle-group-item"][data-state="on"] {
+  background: var(--brand);
+  color: var(--brand-foreground);
+  border-color: var(--brand) !important;
+}
+/* Abas: fundo branco e a aba aberta na cor da marca. */
+html.layout-sistemas [data-slot="tabs-list"]:not([data-variant="line"]) {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.25rem;
+  height: auto;
+}
+html.layout-sistemas [data-slot="tabs-trigger"] {
+  border-radius: 999px;
+  font-weight: 600;
+  min-height: 2.25rem;
+  padding-inline: 0.875rem;
+}
+html.layout-sistemas [data-slot="tabs-list"]:not([data-variant="line"]) [data-slot="tabs-trigger"][data-state="active"] {
+  background: var(--brand);
+  color: var(--brand-foreground);
+  box-shadow: none;
+}
+/* Tabelas como nas telas aprovadas. */
+html.layout-sistemas [data-slot="table-head"] {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+html.layout-sistemas [data-slot="table-row"] {
+  border-color: color-mix(in oklch, var(--border) 70%, transparent);
+}
+/* Campos e botões de contorno no branco do cartão, cantos iguais. */
+html.layout-sistemas :is([data-slot="input"], [data-slot="select-trigger"], [data-slot="button"][data-variant="outline"]) {
+  background-color: var(--card);
+  border-radius: 0.625rem;
+}
+html.layout-sistemas [data-slot="button"][data-variant="default"] {
+  background: var(--brand);
+  color: var(--brand-foreground);
+}
+html.layout-sistemas [data-slot="button"][data-variant="default"]:hover {
+  background: color-mix(in oklch, var(--brand) 88%, #000000);
+}
+/* Selos: pílulas, como os do resto do visual. */
+html.layout-sistemas [data-slot="badge"] {
+  border-radius: 999px;
+  font-weight: 600;
+}
+/* Avisos e destaques em caixa cinza: tom suave da marca. */
+html.layout-sistemas main .bg-muted\/30,
+html.layout-sistemas main .bg-muted\/40 {
+  background: var(--brand-soft);
+}
+/* Cabeçalho da tela: subtítulo e caminho (sistema › tela). */
+html.layout-sistemas main h1 {
+  font-size: 1.875rem;
+  line-height: 2.25rem;
+}
+@media (max-width: 640px) {
+  html.layout-sistemas main h1 {
+    font-size: 1.5rem;
+    line-height: 2rem;
+  }
+}
+/* Variação contra o período anterior: pílula verde (melhorou) ou vermelha (piorou). */
+html.layout-sistemas .delta-tag[data-good] {
+  border-radius: 999px;
+  padding: 0.125rem 0.5rem;
+  font-weight: 700;
+}
+html.layout-sistemas .delta-tag[data-good="1"] {
+  background: color-mix(in oklch, #0ca30c 14%, var(--card));
+}
+html.layout-sistemas .delta-tag[data-good="0"] {
+  background: color-mix(in oklch, #e66767 16%, var(--card));
+}
+html.layout-sistemas .delta-tag[data-good] > span {
+  font-weight: 500;
+}
