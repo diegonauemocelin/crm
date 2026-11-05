@@ -19,10 +19,11 @@ daquele computador.
 
 ## Entrega (toda mudança que vai para o usuário)
 
-Uma versão por dia, às 17h (decisão de 28/10/2026). Durante o dia, cada pedido pronto (testado) vai em commits
-`dia: <resumo>` num branch `dia/AAAA-MM-DD`, com push (para não depender do PC). Às 17h junta tudo do dia numa versão só
-(passos abaixo, no main, uma entrada no releases.json com todas as mudanças) e depois leva ao SaaS. Se o usuário pedir
-antes ("publica agora"), publica na hora.
+Duas versões por dia, às **11h** e às **17h** (decisão de 05/11/2026; antes era uma só, às 17h). Entre uma e outra,
+cada pedido pronto (testado) vai em commits `dia: <resumo>` num branch `dia/AAAA-MM-DD`, com push (para não depender
+do PC), sem publicar. Às 11h junta o que ficou pronto desde a versão anterior numa versão só, e às 17h o que ficou
+pronto depois das 11h (passos abaixo, no main, uma entrada no releases.json com todas as mudanças); depois de cada uma,
+leva ao SaaS. Se o usuário pedir antes ("publica agora"), publica na hora.
 
 Os fretes (branch `claude/tender-brown-6n5q8f`) entraram na v2.0.0 junto com o visual Por sistema (03/11/2026).
 
