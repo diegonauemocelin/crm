@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.30",
+      "date": "2026-11-05",
+      "title": "Conciliação com a tabela da Matriz",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Conciliação de CT-e: a tabela cadastrada para uma filial também vale para o CT-e de outra filial com o mesmo CNPJ ou que sai da mesma cidade (ex.: CT-e que caiu no E-commerce e a tabela está na Matriz, ambos em Maravilha). Use \"Conciliar sem referência\" na lista de CT-e para refazer os que ficaram sem referência."
+        }
+      ]
+    },
+    {
       "version": "2.0.29",
       "date": "2026-11-05",
       "title": "Tabela de frete por código IBGE",
