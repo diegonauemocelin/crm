@@ -968,7 +968,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const quotedIds = [...new Set(rows.map((r) => r.quotedWaId).filter((x): x is string => !!x))]
     // Mensagem respondida que está no CRM: se era da empresa e o id dela (para ir até ela na conversa).
     const quotedRows = new Map((quotedIds.length ? await this.prisma.whatsappMessage.findMany({ where: { conversationId: conv.id, waId: { in: quotedIds } }, select: { id: true, waId: true, fromMe: true } }) : []).map((q) => [q.waId, { id: q.id, fromMe: q.fromMe }]))
-    const mentionNames = conv.category === 'GRUPO' ? await this.mentionNames(conv.id, conv.numberId, rows) : new Map<string, string>()
+    const mentionNames = conv.category === 'GRUPO' ? await this.mentionNames(conv.id, conv.numberId, rows, conv.jid) : new Map<string, string>()
     return {
       conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, assignedUserId: conv.assignedUserId, assignedUserName: attendants.find((a) => a.id === conv.assignedUserId)?.name ?? null, helpers: attendants.filter((a) => conv.helperUserIds.includes(a.id)).map((a) => ({ id: a.id, name: a.name })), sectorId: conv.sectorId, category: conv.category, unread: conv.unread, noReplyNeeded: conv.noReplyNeeded, lastInboundAt: conv.lastInboundAt, labels: (await this.labelsOf(user, [conv.id])).get(conv.id) ?? [] },
       /** Contato na agenda do número (ou na geral): nome e tipo salvos. */
@@ -992,23 +992,60 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     }
   }
 
+  /** Participantes de cada grupo (identificador escondido @lid → telefone), guardados por 10 minutos. */
+  private readonly groupMembers = new Map<string, { at: number; list: { jid: string; phone: string | null; name: string | null }[] }>()
+
+  private async membersOf(numberId: string, groupJid: string) {
+    const key = `${numberId}|${groupJid}`
+    const hit = this.groupMembers.get(key)
+    if (hit && Date.now() - hit.at < 10 * 60_000) return hit.list
+    const client = this.clientOf()
+    const number = client ? await this.prisma.whatsappNumber.findUnique({ where: { id: numberId }, select: { instanceName: true } }) : null
+    const list = client && number ? await client.groupParticipants(number.instanceName, groupJid).catch(() => []) : []
+    this.groupMembers.set(key, { at: Date.now(), list })
+    return list
+  }
+
   /**
    * Nome de quem foi mencionado (@) nas mensagens do grupo: o nome com que a pessoa escreveu no grupo (pelo telefone
-   * ou pelo @lid), o contato salvo/conversa com o mesmo telefone, ou o próprio número da empresa.
+   * ou pelo @lid), o contato da agenda ou a conversa com o mesmo telefone, outro número da empresa, ou o telefone
+   * formatado (o WhatsApp esconde o número de muitos participantes: o grupo informa o telefone de cada @lid).
    */
-  private async mentionNames(conversationId: string, numberId: string, rows: { mentions: Prisma.JsonValue; text?: string | null }[]) {
+  private async mentionNames(conversationId: string, numberId: string, rows: { mentions: Prisma.JsonValue; text?: string | null }[], groupJid?: string) {
     const jids = [...new Set(rows.flatMap((r) => mentionJids(r).filter((x) => !x.name).flatMap((x) => x.jids)))]
     const out = new Map<string, string>()
     if (!jids.length) return out
-    const said = await this.prisma.whatsappMessage.findMany({ where: { conversationId, fromMe: false, senders: { hasSome: jids }, sentByName: { not: null } }, orderBy: { sentAt: 'desc' }, select: { senders: true, sentByName: true }, take: 500 })
-    for (const s of said) for (const j of s.senders) if (jids.includes(j) && !out.has(j) && s.sentByName && s.sentByName !== 'Participante') out.set(j, s.sentByName)
-    const phones = jids.filter((j) => !out.has(j) && j.endsWith('@s.whatsapp.net')).map((j) => j.split('@')[0]!)
+    // @lid → telefone, pelos participantes do grupo.
+    const members = groupJid ? await this.membersOf(numberId, groupJid) : []
+    const phoneOf = new Map<string, string>()
+    for (const m of members) if (m.phone) phoneOf.set(m.jid, m.phone)
+    const keys = [...new Set([...jids, ...jids.map((j) => phoneOf.get(j)).filter((p): p is string => !!p).map((p) => `${p}@s.whatsapp.net`)])]
+    const said = await this.prisma.whatsappMessage.findMany({ where: { conversationId, fromMe: false, senders: { hasSome: keys }, sentByName: { not: null } }, orderBy: { sentAt: 'desc' }, select: { senders: true, sentByName: true }, take: 500 })
+    const named = new Map<string, string>()
+    for (const s of said) for (const j of s.senders) if (keys.includes(j) && !named.has(j) && s.sentByName && s.sentByName !== 'Participante') named.set(j, s.sentByName)
+    const phones = [...new Set(keys.filter((j) => j.endsWith('@s.whatsapp.net')).map((j) => j.split('@')[0]!))]
     if (phones.length) {
-      const number = await this.prisma.whatsappNumber.findUnique({ where: { id: numberId }, select: { phone: true, name: true } })
+      const number = await this.prisma.whatsappNumber.findUnique({ where: { id: numberId }, select: { phone: true, name: true, tenantId: true } })
+      const others = number ? await this.prisma.whatsappNumber.findMany({ where: { tenantId: number.tenantId }, select: { phone: true, name: true } }) : []
       const convs = await this.prisma.whatsappConversation.findMany({ where: { numberId, jid: { in: phones.map((p) => `${p}@s.whatsapp.net`) }, name: { not: null } }, select: { jid: true, name: true } })
-      for (const c of convs) if (c.name) out.set(c.jid, c.name)
-      const own = (number?.phone ?? '').replace(/\D/g, '')
-      if (own) for (const p of phones) if (p === own || p.endsWith(own) || own.endsWith(p)) out.set(`${p}@s.whatsapp.net`, number?.name ? `${number.name} (empresa)` : 'Empresa')
+      for (const c of convs) if (c.name && !named.has(c.jid)) named.set(c.jid, c.name)
+      const same = (a: string, b: string) => !!a && !!b && (a === b || a.endsWith(b.slice(-8)) && b.endsWith(a.slice(-8)))
+      for (const p of phones) {
+        const k = `${p}@s.whatsapp.net`
+        if (named.has(k)) continue
+        const n = others.find((o) => same((o.phone ?? '').replace(/\D/g, ''), p))
+        if (n) named.set(k, `${n.name} (empresa)`)
+        else if (number) {
+          const a = await this.agendaContact(number.tenantId, numberId, p)
+          if (a?.name) named.set(k, a.name)
+        }
+      }
+    }
+    const fmt = (p: string) => (p.length >= 12 && p.startsWith('55') ? `+55 ${p.slice(2, 4)} ${p.slice(4, -4)}-${p.slice(-4)}` : `+${p}`)
+    for (const j of jids) {
+      const phone = j.endsWith('@s.whatsapp.net') ? j.split('@')[0]! : phoneOf.get(j)
+      const name = named.get(j) ?? (phone ? named.get(`${phone}@s.whatsapp.net`) : undefined) ?? (phone && j.endsWith('@lid') ? fmt(phone) : undefined)
+      if (name) out.set(j, name)
     }
     return out
   }
@@ -1019,7 +1056,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (c.conv.category !== 'GRUPO' || !c.conv.jid.endsWith('@g.us')) throw new BadRequestException('Só conversas de grupo têm participantes para mencionar.')
     const list = await c.client.groupParticipants(c.number.instanceName, c.conv.jid).catch(() => [])
     const all = [...new Set(list.flatMap((p) => [p.jid, ...(p.phone ? [`${p.phone}@s.whatsapp.net`] : [])]))]
-    const names = await this.mentionNames(id, c.number.id, [{ mentions: all.map((jid) => ({ jid, name: null })) }])
+    const names = await this.mentionNames(id, c.number.id, [{ mentions: all.map((jid) => ({ jid, name: null })) }], c.conv.jid)
     const own = (c.number.phone ?? '').replace(/\D/g, '')
     return list
       .filter((p) => !own || !p.phone || !(p.phone === own || p.phone.endsWith(own) || own.endsWith(p.phone)))
