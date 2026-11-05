@@ -143,6 +143,7 @@ class SellerDto {
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() unitId?: string | null
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsEmail() email?: string | null
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(30) phone?: string | null
+  @ApiPropertyOptional({ enum: ['M', 'F'] }) @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsIn(['M', 'F']) gender?: 'M' | 'F' | null
   @ApiPropertyOptional() @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() userId?: string | null
   @ApiPropertyOptional() @IsOptional() @IsBoolean() active?: boolean
 }

@@ -77,7 +77,7 @@ export class RepasseService implements OnApplicationBootstrap, OnModuleDestroy {
       where: { tenantId, kind: 'PRE_VENDAS', deletedAt: null, importBatch: null, phone: { not: null }, forwarded: true, saleStatus: 'NEGOCIACAO', [k.at]: null, ...(k.needsSeller ? { sellerId: { not: null } } : {}), forwardedAt: { gte: oldest, lte: due } },
       orderBy: { forwardedAt: 'asc' },
       take: BATCH,
-      select: { id: true, name: true, phone: true, leadId: true, leadAt: true, seller: { select: { name: true } } },
+      select: { id: true, name: true, phone: true, leadId: true, leadAt: true, seller: { select: { name: true, gender: true } } },
     })
     if (!records.length) return
     const numbers = await this.prisma.whatsappNumber.findMany({ where: { tenantId, deletedAt: null, status: 'CONECTADO' }, orderBy: { createdAt: 'asc' } })
@@ -100,7 +100,7 @@ export class RepasseService implements OnApplicationBootstrap, OnModuleDestroy {
       if (now.getTime() < (await this.releasedAt(number.id, config, kind))) continue
       const claimed = await this.prisma.serviceRecord.updateMany({ where: { id: r.id, [k.at]: null }, data: { [k.at]: new Date(), [k.status]: 'ENVIANDO' } })
       if (!claimed.count) continue
-      const text = applyVariables(config.text, { nome: r.name, vendedor: r.seller?.name })
+      const text = applyVariables(config.text, { nome: r.name, vendedor: r.seller?.name, genero: r.seller?.gender })
       try {
         const sent = await this.chat.sendAutomatic(number, r.phone!, text, k.label, { leadId: r.leadId, recordId: r.id, name: r.name })
         if (!sent) {

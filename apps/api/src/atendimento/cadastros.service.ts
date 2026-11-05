@@ -194,7 +194,7 @@ export class CadastrosService implements OnApplicationBootstrap {
   async saveSeller(
     actor: AuthUser,
     id: string | null,
-    data: { name: string; unitId?: string | null; email?: string | null; phone?: string | null; userId?: string | null; active?: boolean },
+    data: { name: string; unitId?: string | null; email?: string | null; phone?: string | null; gender?: string | null; userId?: string | null; active?: boolean },
     ctx: RequestCtx,
   ) {
     const name = data.name.trim()
@@ -214,6 +214,7 @@ export class CadastrosService implements OnApplicationBootstrap {
       unitId: data.unitId || null,
       email: data.email?.trim().toLowerCase() || null,
       phone: data.phone?.trim() || null,
+      ...(data.gender !== undefined ? { gender: data.gender === 'F' || data.gender === 'M' ? data.gender : null } : {}),
       userId: data.userId || null,
       ...(data.active !== undefined ? { active: data.active } : {}),
     }

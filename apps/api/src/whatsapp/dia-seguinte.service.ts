@@ -64,7 +64,7 @@ export class DiaSeguinteService implements OnApplicationBootstrap, OnModuleDestr
       where: { tenantId, kind: 'PRE_VENDAS', deletedAt: null, importBatch: null, phone: { not: null }, autoMessageAt: null, saleStatus: { in: config.saleStatuses }, ...when },
       orderBy: { leadAt: 'asc' },
       take: BATCH,
-      select: { id: true, name: true, phone: true, leadId: true, leadAt: true, seller: { select: { name: true } } },
+      select: { id: true, name: true, phone: true, leadId: true, leadAt: true, seller: { select: { name: true, gender: true } } },
     })
     if (!records.length) return
     const numbers = await this.prisma.whatsappNumber.findMany({ where: { tenantId, deletedAt: null, status: 'CONECTADO' }, orderBy: { createdAt: 'asc' } })
@@ -91,7 +91,7 @@ export class DiaSeguinteService implements OnApplicationBootstrap, OnModuleDestr
       // Marca antes de enviar: dois servidores (ou dois minutos) não mandam a mesma mensagem duas vezes.
       const claimed = await this.prisma.serviceRecord.updateMany({ where: { id: r.id, autoMessageAt: null }, data: { autoMessageAt: new Date(), autoMessageStatus: 'ENVIANDO' } })
       if (!claimed.count) continue
-      const text = applyVariables(config.text, { nome: r.name, vendedor: r.seller?.name })
+      const text = applyVariables(config.text, { nome: r.name, vendedor: r.seller?.name, genero: r.seller?.gender })
       try {
         const sent = await this.chat.sendAutomatic(number, r.phone!, text, LABEL, { leadId: r.leadId, recordId: r.id, name: r.name })
         if (!sent) {

@@ -67,10 +67,23 @@ export function safeFileName(name: string, ext: string) {
   return `${base}.${ext}`
 }
 
-/** Troca {nome} (primeiro nome do cliente) e {vendedor} (quem envia). */
-export function applyVariables(text: string, v: { nome?: string | null; vendedor?: string | null }) {
+/**
+ * Vendedora: "o vendedor {vendedor}" vira "a vendedora {vendedor}" (também "do/ao/pelo/no/um vendedor", com maiúscula
+ * no começo da frase). Só mexe na palavra "vendedor" no singular.
+ */
+export function feminineSeller(text: string) {
+  const art: Record<string, string> = { o: 'a', do: 'da', ao: 'à', pelo: 'pela', no: 'na', um: 'uma', seu: 'sua', nosso: 'nossa', este: 'esta', esse: 'essa' }
+  const keepCase = (from: string, to: string) => (from[0] === from[0]!.toUpperCase() ? to[0]!.toUpperCase() + to.slice(1) : to)
+  return text
+    .replace(/\b(o|do|ao|pelo|no|um|seu|nosso|este|esse)(\s+)vendedor\b/gi, (_m, a: string, sp: string) => `${keepCase(a, art[a.toLowerCase()] ?? a)}${sp}vendedora`)
+    .replace(/(?<!\{)\b([Vv])endedor\b(?!a|\})/g, (_m, v: string) => `${v}endedora`)
+}
+
+/** Troca {nome} (primeiro nome do cliente) e {vendedor} (quem envia); com vendedora (gênero F), ajusta "o vendedor". */
+export function applyVariables(text: string, v: { nome?: string | null; vendedor?: string | null; genero?: string | null }) {
   const first = (s?: string | null) => (s ?? '').trim().split(/\s+/)[0] ?? ''
-  return text.replace(/\{nome\}/gi, first(v.nome)).replace(/\{vendedor\}/gi, first(v.vendedor)).replace(/[ \t]+([,.!?])/g, '$1')
+  const base = v.genero === 'F' ? feminineSeller(text) : text
+  return base.replace(/\{nome\}/gi, first(v.nome)).replace(/\{vendedor\}/gi, first(v.vendedor)).replace(/[ \t]+([,.!?])/g, '$1')
 }
 
 /** Nome escolhido pelo usuário para as mensagens: uma linha, sem os sinais de formatação do WhatsApp, até 40 letras. */

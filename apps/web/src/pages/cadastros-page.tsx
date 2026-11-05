@@ -46,6 +46,7 @@ interface SellerRow {
   unit: { id: string; name: string } | null
   email: string | null
   phone: string | null
+  gender: 'M' | 'F' | null
   active: boolean
   usage: number
   userId: string | null
@@ -262,15 +263,16 @@ function SellerDialog({ seller, onClose }: { seller: SellerRow | null; onClose: 
   const options = useOptions()
   const [email, setEmail] = useState(seller?.email ?? '')
   const [phone, setPhone] = useState(seller?.phone ?? '')
+  const [gender, setGender] = useState<'M' | 'F'>(seller?.gender === 'F' ? 'F' : 'M')
   const [userId, setUserId] = useState<string | null>(seller?.userId ?? null)
   const [active, setActive] = useState(seller?.active ?? true)
   const [error, setError] = useState<string | null>(null)
-  const [initial] = useState(() => ({ name, unitId, email, phone, userId, active }))
-  const guard = useCloseGuard(isDirty(initial, { name, unitId, email, phone, userId, active }), onClose, 'os dados do vendedor')
+  const [initial] = useState(() => ({ name, unitId, email, phone, gender, userId, active }))
+  const guard = useCloseGuard(isDirty(initial, { name, unitId, email, phone, gender, userId, active }), onClose, 'os dados do vendedor')
 
   const save = useMutation({
     mutationFn: (): Promise<unknown> => {
-      const body = { name, unitId, email: email || null, phone: phone || null, userId, active }
+      const body = { name, unitId, email: email || null, phone: phone || null, gender, userId, active }
       return seller ? api.put(`/cadastros/vendedores/${seller.id}`, body) : api.post('/cadastros/vendedores', body)
     },
     onSuccess: (r) => {
@@ -322,6 +324,18 @@ function SellerDialog({ seller, onClose }: { seller: SellerRow | null; onClose: 
               <Label htmlFor="s-phone">Telefone</Label>
               <Input id="s-phone" maxLength={30} value={phone} onChange={(e) => setPhone(e.target.value)} />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="s-gender">Nas mensagens ao cliente</Label>
+            <Select value={gender} onValueChange={(v) => setGender(v === 'F' ? 'F' : 'M')}>
+              <SelectTrigger id="s-gender" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="M">o vendedor {name.trim().split(/\s+/)[0] || '…'}</SelectItem>
+                <SelectItem value="F">a vendedora {name.trim().split(/\s+/)[0] || '…'}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label htmlFor="s-email">E-mail</Label>

@@ -364,6 +364,8 @@ model Seller {
   unitId    String?  @db.Uuid
   email     String?
   phone     String?
+  /// Gênero para as mensagens ao cliente: M ("o vendedor Carlos") ou F ("a vendedora Mariana"). Vazio = masculino.
+  gender    String?  @db.Char(1)
   userId    String?  @unique @db.Uuid
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
