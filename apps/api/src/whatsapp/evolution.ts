@@ -268,6 +268,21 @@ export class EvolutionClient {
     return typeof r?.subject === 'string' && r.subject.trim() ? r.subject.trim().slice(0, 120) : null
   }
 
+  /** Participantes do grupo: identificador (telefone ou @lid) e o telefone, quando o WhatsApp informa. */
+  async groupParticipants(instanceName: string, groupJid: string) {
+    const r = await this.call<{ participants?: unknown }>('GET', `/group/participants/${encodeURIComponent(instanceName)}?groupJid=${encodeURIComponent(groupJid)}`, undefined, 10_000)
+    const list = Array.isArray(r?.participants) ? (r.participants as Record<string, unknown>[]) : []
+    return list
+      .map((p) => {
+        const id = typeof p.id === 'string' ? p.id.replace(/:\d+@/, '@') : null
+        const phone = [p.phoneNumber, p.jid, p.id].map((v) => (typeof v === 'string' ? /^(\d{8,15})(?::\d+)?@s\.whatsapp\.net$/.exec(v)?.[1] : null)).find(Boolean) ?? null
+        const name = typeof p.name === 'string' && p.name.trim() ? p.name.trim().slice(0, 120) : typeof p.notify === 'string' && p.notify.trim() ? p.notify.trim().slice(0, 120) : null
+        return id ? { jid: id, phone, name, admin: p.admin === 'admin' || p.admin === 'superadmin' } : null
+      })
+      .filter((x): x is NonNullable<typeof x> => !!x)
+      .slice(0, 1100)
+  }
+
   /** Baixa a mídia de uma mensagem (a Evolution não guarda as mensagens: vai a mensagem inteira). */
   async media(instanceName: string, raw: { key: unknown; message: unknown }) {
     const r = await this.call<{ base64?: string; mimetype?: string }>('POST', `/chat/getBase64FromMediaMessage/${encodeURIComponent(instanceName)}`, { message: raw, convertToMp4: false }, 180_000)
@@ -294,9 +309,10 @@ export class EvolutionClient {
   }
 
   /** Texto; com quoted, sai como resposta (citação) a uma mensagem da conversa. */
-  async sendText(instanceName: string, number: string, text: string, quoted?: { waId: string; fromMe: boolean; remoteJid: string; text: string }) {
+  async sendText(instanceName: string, number: string, text: string, quoted?: { waId: string; fromMe: boolean; remoteJid: string; text: string }, mentioned?: string[]) {
     const q = quoted ? { quoted: { key: { id: quoted.waId, fromMe: quoted.fromMe, remoteJid: quoted.remoteJid }, message: { conversation: quoted.text } } } : {}
-    return this.sent(await this.send(instanceName, `/message/sendText/${encodeURIComponent(instanceName)}`, { number, text, ...q }, 30_000))
+    const men = mentioned?.length ? { mentioned } : {}
+    return this.sent(await this.send(instanceName, `/message/sendText/${encodeURIComponent(instanceName)}`, { number, text, ...q, ...men }, 30_000))
   }
 
   /** Corrige o texto de uma mensagem enviada (o WhatsApp aceita até 15 minutos depois do envio). */

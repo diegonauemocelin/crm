@@ -26,6 +26,10 @@ export interface ParsedMessage {
   raw: { key: unknown; message: unknown }
   /** Chave da mensagem (messageSecret, em base64): abre as edições que o WhatsApp manda criptografadas. */
   secret?: string | null
+  /** Grupo: identificadores de quem escreveu (telefone e/ou @lid). */
+  senders?: string[]
+  /** Pessoas mencionadas (@) na mensagem (jid: telefone@s.whatsapp.net ou @lid). */
+  mentions?: string[]
 }
 
 type Obj = Record<string, unknown>
@@ -86,6 +90,8 @@ export function parseMessage(data: unknown): ParsedMessage | null {
     at: ts ? new Date(ts * 1000) : new Date(),
     raw: { key, message: d.message },
     quoted: quotedOf(m, d.contextInfo),
+    senders: group ? [...new Set([key.participant, key.participantAlt, key.senderPn, key.senderLid].map((v) => str(v, 120)).filter((v): v is string => !!v && !v.endsWith('@g.us')).map((v) => v.replace(/:\d+@/, '@')))] : [],
+    mentions: mentionsOf(m, d.contextInfo),
     secret: bytesOf(obj(obj(d.message)?.messageContextInfo)?.messageSecret)?.toString('base64') ?? null,
   }
   const media = (o: Obj, fileName?: unknown) => ({ mime: str(o.mimetype, 120)?.split(';')[0]?.trim() || null, fileName: str(fileName, 200), size: num(o.fileLength) })
@@ -298,6 +304,18 @@ function quotedPreview(q: Obj | null): string {
   if (o('locationMessage')) return 'Localização'
   // Menu de robô (botões, lista): o texto dele.
   return (menuOf(inner) ?? anyText(inner) ?? 'Mensagem').slice(0, 300)
+}
+
+/** Menções (@pessoa): contextInfo.mentionedJid do conteúdo (ou do nível de cima do evento), sem repetir. */
+export function mentionsOf(m: Obj, top: unknown): string[] {
+  const out = new Set<string>()
+  const add = (ctx: unknown) => {
+    const list = ctx && typeof ctx === 'object' ? (ctx as Obj).mentionedJid : null
+    if (Array.isArray(list)) for (const j of list) if (typeof j === 'string' && /^[\d]{5,20}(:\d+)?@(s\.whatsapp\.net|lid)$/.test(j)) out.add(j.replace(/:\d+@/, '@'))
+  }
+  for (const v of Object.values(m)) if (v && typeof v === 'object') add((v as Obj).contextInfo)
+  add(top)
+  return [...out].slice(0, 50)
 }
 
 /** Citação a partir do contextInfo: stanzaId é a mensagem respondida e quotedMessage, o trecho dela. */

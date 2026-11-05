@@ -119,6 +119,8 @@ interface Message {
   canDelete?: boolean
   /** Áudio transcrito (Gemini), quando alguém já pediu. */
   transcript?: string | null
+  /** Menções (@) num grupo: o número que aparece no texto e o nome de quem é (quando o CRM sabe). */
+  mentions?: { id: string; name: string | null }[]
 }
 interface Thread {
   conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; helpers?: { id: string; name: string }[]; sectorId?: string | null; category: ContactCategory | 'GRUPO'; labels?: ChatLabel[]; noReplyNeeded?: boolean; lastInboundAt?: string | null }
@@ -825,7 +827,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
                   <p className="mb-0.5 flex items-center gap-1 text-xs font-semibold tracking-wide uppercase">
                     <LockIcon className="size-3" /> Nota interna · o cliente não vê
                   </p>
-                  <p className="break-words whitespace-pre-wrap">{waFormat(m.text ?? '')}</p>
+                  <p className="break-words whitespace-pre-wrap">{waFormat(m.text ?? '', m.mentions)}</p>
                   <p className="mt-0.5 text-right text-xs tabular-nums opacity-70">
                     {m.sentByName ? `${m.sentByName} · ` : ''}
                     {time(m.sentAt)}
@@ -1515,6 +1517,59 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed, compa
   }
   const { novo } = useScreens()
   const [pick, setPick] = useState(0)
+  // Menções (@pessoa) em grupo: digitar @ abre a lista de participantes; no envio "@Nome" vira "@número".
+  const isGroup = thread.conversation.category === 'GRUPO'
+  const [mentionQ, setMentionQ] = useState<string | null>(null)
+  const [tagged, setTagged] = useState<{ label: string; jid: string }[]>([])
+  const participants = useQuery({
+    queryKey: ['chat-grupo-participantes', id],
+    queryFn: () => api.get<{ jid: string; phone: string | null; name: string | null }[]>(`/chat/conversas/${id}/participantes-grupo`),
+    enabled: isGroup && mentionQ !== null,
+    staleTime: 5 * 60_000,
+  })
+  const mentionList =
+    mentionQ === null
+      ? []
+      : (participants.data ?? [])
+          .filter((p) => {
+            const q = mentionQ.toLowerCase()
+            return !q || (p.name ?? '').toLowerCase().includes(q) || (p.phone ?? '').includes(q.replace(/\D/g, '') || '§')
+          })
+          .slice(0, 8)
+  const trackMention = (value: string, caret: number | null) => {
+    if (!isGroup) return
+    const m = /(^|\s)@([^\s@]{0,30})$/.exec(value.slice(0, caret ?? value.length))
+    setMentionQ(m ? m[2]! : null)
+  }
+  const mentionLabel = (p: { jid: string; phone: string | null; name: string | null }) => (p.name ?? (p.phone ? `+${p.phone}` : p.jid.split('@')[0]!)).replace(/\s+/g, ' ').trim()
+  const applyMention = (p: { jid: string; phone: string | null; name: string | null }) => {
+    const el = box.current
+    const caret = el?.selectionStart ?? text.length
+    const before = text.slice(0, caret).replace(/@([^\s@]{0,30})$/, '')
+    const label = mentionLabel(p)
+    const next = `${before}@${label} ${text.slice(caret)}`
+    setText(next)
+    setTagged((t) => [...t.filter((x) => x.label !== label), { label, jid: p.jid }])
+    setMentionQ(null)
+    setPick(0)
+    requestAnimationFrame(() => {
+      const pos = before.length + label.length + 2
+      el?.focus()
+      el?.setSelectionRange(pos, pos)
+    })
+  }
+  /** Texto que vai para o WhatsApp: cada "@Nome" escolhido vira "@número", com a lista de quem foi mencionado. */
+  const withMentions = (raw: string) => {
+    let out = raw
+    const used: { jid: string; name: string }[] = []
+    for (const t of [...tagged].sort((a, b) => b.label.length - a.label.length)) {
+      const tag = `@${t.label}`
+      if (!out.includes(tag)) continue
+      out = out.split(tag).join(`@${t.jid.split('@')[0]}`)
+      used.push({ jid: t.jid, name: t.label })
+    }
+    return { text: out, mentions: used }
+  }
   const slash = novo && !file && !replyFile && text.startsWith('/') && !text.includes('\n') ? text.slice(1).trim().toLowerCase() : null
   const slashList = slash === null ? [] : (replies.data ?? []).filter((r) => !slash || r.title.toLowerCase().includes(slash) || r.preview.toLowerCase().includes(slash)).slice(0, 8)
   /** Um arquivo por vez, na ordem; a legenda vai no primeiro. Falhando no meio, os que não foram continuam anexados. */
@@ -1540,10 +1595,13 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed, compa
     mutationFn: () => {
       if (replyFile) return api.post(`/chat/conversas/${id}/respostas/${replyFile.id}/enviar`, { legenda: text.trim() || undefined })
       if (files.length) return sendFiles()
-      return api.post(`/chat/conversas/${id}/mensagens`, { text, ...(replyTo ? { quotedId: replyTo.id } : {}) })
+      const out = withMentions(text)
+      return api.post(`/chat/conversas/${id}/mensagens`, { text: out.text, ...(replyTo ? { quotedId: replyTo.id } : {}), ...(out.mentions.length ? { mentions: out.mentions } : {}) })
     },
     onSuccess: () => {
       setText('')
+      setTagged([])
+      setMentionQ(null)
       setFiles([])
       setReplyFile(null)
       onClearReply?.()
@@ -1584,6 +1642,23 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed, compa
     send.mutate()
   }
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionList.length > 0) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        setPick((p) => (p + (e.key === 'ArrowDown' ? 1 : mentionList.length - 1)) % mentionList.length)
+        return
+      }
+      if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey) {
+        e.preventDefault()
+        applyMention(mentionList[Math.min(pick, mentionList.length - 1)]!)
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setMentionQ(null)
+        return
+      }
+    }
     if (slashList.length > 0) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault()
@@ -1653,8 +1728,9 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed, compa
     <Textarea
       ref={box}
       value={text}
-      onChange={(e) => (setText(e.target.value), setPick(0))}
+      onChange={(e) => (setText(e.target.value), setPick(0), trackMention(e.target.value, e.target.selectionStart))}
       onKeyDown={onKey}
+      onClick={(e) => trackMention(e.currentTarget.value, e.currentTarget.selectionStart)}
       onPaste={(e) => {
         // Imagem copiada (print, foto do site, do Explorer): vira anexo; texto colado segue normal.
         if (attach([...e.clipboardData.files])) e.preventDefault()
@@ -1683,6 +1759,28 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed, compa
           <button type="button" className="rounded p-0.5 hover:bg-background" onClick={onClearReply} aria-label="Cancelar resposta">
             <XIcon className="size-3.5" />
           </button>
+        </div>
+      )}
+      {mentionQ !== null && (
+        <div className="absolute bottom-full left-2 z-10 mb-1 w-[min(22rem,calc(100%-1rem))] rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg" role="listbox" aria-label="Mencionar participante">
+          <p className="px-2 py-1 text-xs text-muted-foreground">Mencionar · digite para filtrar, ↑↓ escolhe, Enter usa</p>
+          {participants.isLoading && <p className="px-2 py-1.5 text-sm text-muted-foreground">Carregando participantes…</p>}
+          {participants.error && <p className="px-2 py-1.5 text-sm text-destructive">{errorMessage(participants.error)}</p>}
+          {participants.data && mentionList.length === 0 && <p className="px-2 py-1.5 text-sm text-muted-foreground">Ninguém com esse nome no grupo.</p>}
+          {mentionList.map((p, i) => (
+            <button
+              key={p.jid}
+              type="button"
+              role="option"
+              aria-selected={i === Math.min(pick, mentionList.length - 1)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => applyMention(p)}
+              className={cn('flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm', i === Math.min(pick, mentionList.length - 1) ? 'bg-accent' : 'hover:bg-muted')}
+            >
+              <span className="truncate font-medium">{p.name ?? (p.phone ? `+${p.phone}` : 'Participante')}</span>
+              {p.name && p.phone && <span className="shrink-0 text-xs text-muted-foreground">+{p.phone}</span>}
+            </button>
+          ))}
         </div>
       )}
       {slash !== null && (
@@ -2069,8 +2167,24 @@ export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, e
 }
 
 /** Formatação do WhatsApp (*negrito*, _itálico_, ~riscado~) como elementos do React (nunca HTML vindo da mensagem). */
-/** Texto da mensagem: links clicáveis (abrem em nova aba), a formatação do WhatsApp e telefones clicáveis no resto. */
-function waFormat(text: string) {
+/** Texto da mensagem: links clicáveis, formatação do WhatsApp, telefones e as menções (@número vira @Nome). */
+function waFormat(text: string, mentions?: { id: string; name: string | null }[]) {
+  const named = (mentions ?? []).filter((x) => x.name)
+  if (!named.length) return waFormatBase(text)
+  const byId = new Map(named.map((x) => [x.id, x.name!]))
+  return text.split(/(@\d{5,20}\b)/).map((part, i) => {
+    const name = /^@\d{5,20}$/.test(part) ? byId.get(part.slice(1)) : undefined
+    return name ? (
+      <span key={`m${i}`} className="font-medium text-sky-700 dark:text-sky-300" title={`+${part.slice(1)}`}>
+        @{name}
+      </span>
+    ) : (
+      <span key={`p${i}`}>{waFormatBase(part)}</span>
+    )
+  })
+}
+
+function waFormatBase(text: string) {
   return splitLinks(text).map((part, i) =>
     part.href ? (
       <a key={`l${i}`} href={part.href} target="_blank" rel="noopener noreferrer nofollow" className="break-all text-sky-700 underline underline-offset-2 hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-100" title={`Abrir em nova aba: ${part.href}`}>
@@ -2336,7 +2450,7 @@ function Bubble({ m }: { m: Message }) {
     )
   }
   const src = `/api/chat/midias/${m.id}${monitor ? '?monitorar=true' : ''}`
-  const text = m.text && <p className="break-words whitespace-pre-wrap">{waFormat(m.text)}</p>
+  const text = m.text && <p className="break-words whitespace-pre-wrap">{waFormat(m.text, m.mentions)}</p>
   const pending = m.mediaStatus === 'PENDENTE' && <p className="text-xs italic opacity-70">Baixando a mídia…</p>
   const missing = (m.mediaStatus === 'GRANDE' || m.mediaStatus === 'ERRO' || m.mediaStatus === 'APAGADA') && (
     <p className="text-xs italic opacity-70">{m.mediaStatus === 'GRANDE' ? 'Arquivo grande (mais de 64 MB): veja no celular.' : m.mediaStatus === 'APAGADA' ? 'Arquivo apagado pelo prazo de guarda (LGPD).' : 'Não foi possível baixar a mídia: veja no celular.'}</p>

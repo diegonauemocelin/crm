@@ -1552,6 +1552,10 @@ model WhatsappMessage {
   transcript     String?
   /// Chave da mensagem no WhatsApp (messageSecret, base64): abre as edições que chegam criptografadas.
   secret         String?
+  /// Grupo: identificadores de quem escreveu (telefone@s.whatsapp.net e/ou @lid), para dar nome a quem é mencionado.
+  senders        String[] @default([])
+  /// Menções (@pessoa) da mensagem: [{ jid, name }] (name preenchido ao enviar pelo CRM; ao receber, sai na leitura).
+  mentions       Json?
   createdAt      DateTime @default(now())
 
   conversation WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

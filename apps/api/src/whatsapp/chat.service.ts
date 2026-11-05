@@ -34,6 +34,19 @@ const BOT_NAME = 'Robô de atendimento'
 const STICKER_MAX = 300
 const STICKER_MAX_BYTES = 1024 * 1024
 
+/**
+ * Menções de uma mensagem: as que vieram do WhatsApp (mentionedJid) ou, nas mensagens antigas, os "@número" do texto
+ * (o número pode ser o telefone ou o identificador escondido @lid).
+ */
+function mentionJids(m: { mentions: Prisma.JsonValue; text?: string | null }) {
+  if (Array.isArray(m.mentions)) {
+    return (m.mentions as { jid?: unknown; name?: unknown }[])
+      .filter((x) => typeof x?.jid === 'string')
+      .map((x) => ({ id: (x.jid as string).split('@')[0]!, jids: [x.jid as string], name: typeof x.name === 'string' ? x.name : null }))
+  }
+  return [...new Set([...(m.text ?? '').matchAll(/@(\d{8,20})\b/g)].map((x) => x[1]!))].slice(0, 20).map((id) => ({ id, jids: [`${id}@s.whatsapp.net`, `${id}@lid`], name: null as string | null }))
+}
+
 @Injectable()
 export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger('WhatsAppChat')
@@ -258,6 +271,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
           secret: p.secret ?? null,
           // Quem escreveu no grupo (o celular da empresa, quando é ela).
           sentByName: p.fromMe ? null : (p.pushName ?? 'Participante'),
+          senders: p.senders ?? [],
+          ...(p.mentions?.length ? { mentions: p.mentions.map((jid) => ({ jid, name: null })) } : {}),
           sentAt: p.at,
         },
       ],
@@ -953,6 +968,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const quotedIds = [...new Set(rows.map((r) => r.quotedWaId).filter((x): x is string => !!x))]
     // Mensagem respondida que está no CRM: se era da empresa e o id dela (para ir até ela na conversa).
     const quotedRows = new Map((quotedIds.length ? await this.prisma.whatsappMessage.findMany({ where: { conversationId: conv.id, waId: { in: quotedIds } }, select: { id: true, waId: true, fromMe: true } }) : []).map((q) => [q.waId, { id: q.id, fromMe: q.fromMe }]))
+    const mentionNames = conv.category === 'GRUPO' ? await this.mentionNames(conv.id, conv.numberId, rows) : new Map<string, string>()
     return {
       conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, assignedUserId: conv.assignedUserId, assignedUserName: attendants.find((a) => a.id === conv.assignedUserId)?.name ?? null, helpers: attendants.filter((a) => conv.helperUserIds.includes(a.id)).map((a) => ({ id: a.id, name: a.name })), sectorId: conv.sectorId, category: conv.category, unread: conv.unread, noReplyNeeded: conv.noReplyNeeded, lastInboundAt: conv.lastInboundAt, labels: (await this.labelsOf(user, [conv.id])).get(conv.id) ?? [] },
       /** Contato na agenda do número (ou na geral): nome e tipo salvos. */
@@ -972,8 +988,43 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       messages: rows
         .slice(0, PAGE)
         .reverse()
-        .map((m) => (monitor ? { ...this.messageView(m, user, m.quotedWaId ? (quotedRows.get(m.quotedWaId) ?? null) : null), canEdit: false, canDelete: false } : this.messageView(m, user, m.quotedWaId ? (quotedRows.get(m.quotedWaId) ?? null) : null))),
+        .map((m) => (monitor ? { ...this.messageView(m, user, m.quotedWaId ? (quotedRows.get(m.quotedWaId) ?? null) : null, mentionNames), canEdit: false, canDelete: false } : this.messageView(m, user, m.quotedWaId ? (quotedRows.get(m.quotedWaId) ?? null) : null, mentionNames))),
     }
+  }
+
+  /**
+   * Nome de quem foi mencionado (@) nas mensagens do grupo: o nome com que a pessoa escreveu no grupo (pelo telefone
+   * ou pelo @lid), o contato salvo/conversa com o mesmo telefone, ou o próprio número da empresa.
+   */
+  private async mentionNames(conversationId: string, numberId: string, rows: { mentions: Prisma.JsonValue; text?: string | null }[]) {
+    const jids = [...new Set(rows.flatMap((r) => mentionJids(r).filter((x) => !x.name).flatMap((x) => x.jids)))]
+    const out = new Map<string, string>()
+    if (!jids.length) return out
+    const said = await this.prisma.whatsappMessage.findMany({ where: { conversationId, fromMe: false, senders: { hasSome: jids }, sentByName: { not: null } }, orderBy: { sentAt: 'desc' }, select: { senders: true, sentByName: true }, take: 500 })
+    for (const s of said) for (const j of s.senders) if (jids.includes(j) && !out.has(j) && s.sentByName && s.sentByName !== 'Participante') out.set(j, s.sentByName)
+    const phones = jids.filter((j) => !out.has(j) && j.endsWith('@s.whatsapp.net')).map((j) => j.split('@')[0]!)
+    if (phones.length) {
+      const number = await this.prisma.whatsappNumber.findUnique({ where: { id: numberId }, select: { phone: true, name: true } })
+      const convs = await this.prisma.whatsappConversation.findMany({ where: { numberId, jid: { in: phones.map((p) => `${p}@s.whatsapp.net`) }, name: { not: null } }, select: { jid: true, name: true } })
+      for (const c of convs) if (c.name) out.set(c.jid, c.name)
+      const own = (number?.phone ?? '').replace(/\D/g, '')
+      if (own) for (const p of phones) if (p === own || p.endsWith(own) || own.endsWith(p)) out.set(`${p}@s.whatsapp.net`, number?.name ? `${number.name} (empresa)` : 'Empresa')
+    }
+    return out
+  }
+
+  /** Participantes do grupo para mencionar (@): nome (como escreveram no grupo, ou o contato salvo) e o identificador. */
+  async groupParticipants(user: AuthUser, id: string) {
+    const c = await this.sendContext(user, id)
+    if (c.conv.category !== 'GRUPO' || !c.conv.jid.endsWith('@g.us')) throw new BadRequestException('Só conversas de grupo têm participantes para mencionar.')
+    const list = await c.client.groupParticipants(c.number.instanceName, c.conv.jid).catch(() => [])
+    const all = [...new Set(list.flatMap((p) => [p.jid, ...(p.phone ? [`${p.phone}@s.whatsapp.net`] : [])]))]
+    const names = await this.mentionNames(id, c.number.id, [{ mentions: all.map((jid) => ({ jid, name: null })) }])
+    const own = (c.number.phone ?? '').replace(/\D/g, '')
+    return list
+      .filter((p) => !own || !p.phone || !(p.phone === own || p.phone.endsWith(own) || own.endsWith(p.phone)))
+      .map((p) => ({ jid: p.jid, phone: p.phone, name: names.get(p.jid) ?? (p.phone ? names.get(`${p.phone}@s.whatsapp.net`) : undefined) ?? p.name ?? null, admin: p.admin }))
+      .sort((a, b) => (a.name ? 0 : 1) - (b.name ? 0 : 1) || (a.name ?? a.phone ?? a.jid).localeCompare(b.name ?? b.phone ?? b.jid, 'pt-BR'))
   }
 
   /**
@@ -1212,9 +1263,9 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     user: AuthUser,
     c: { conv: { id: string; jid: string; numberId: string; tenantId: string; assignedUserId?: string | null }; number: WhatsappNumber },
     r: { waId: string; remoteJid: string | null; at: Date },
-    m: { type: string; text: string | null; fileId?: string; fileName?: string; mime?: string; quotedWaId?: string; quotedText?: string | null },
+    m: { type: string; text: string | null; fileId?: string; fileName?: string; mime?: string; quotedWaId?: string; quotedText?: string | null; mentions?: { jid: string; name: string | null }[] },
   ) {
-    const data = { sentById: user.id, sentByName: user.name.slice(0, 120), status: 'ENVIADA', ...(m.fileId ? { fileId: m.fileId, fileName: m.fileName ?? null, mime: m.mime ?? null, mediaStatus: 'OK' } : {}), ...(m.quotedWaId ? { quotedWaId: m.quotedWaId, quotedText: m.quotedText ?? null } : {}) }
+    const data = { sentById: user.id, sentByName: user.name.slice(0, 120), status: 'ENVIADA', ...(m.mentions?.length ? { mentions: m.mentions } : {}), ...(m.fileId ? { fileId: m.fileId, fileName: m.fileName ?? null, mime: m.mime ?? null, mediaStatus: 'OK' } : {}), ...(m.quotedWaId ? { quotedWaId: m.quotedWaId, quotedText: m.quotedText ?? null } : {}) }
     // O evento da Evolution pode chegar antes desta resposta: aí a mensagem já existe e só ganha quem enviou.
     const msg = await this.prisma.whatsappMessage.upsert({
       where: { conversationId_waId: { conversationId: c.conv.id, waId: r.waId } },
@@ -1297,7 +1348,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     return (await this.prisma.user.findUnique({ where: { id: user.id }, select: { chatSignature: true } }))?.chatSignature ?? null
   }
 
-  async sendText(user: AuthUser, id: string, raw: string, quotedId?: string) {
+  async sendText(user: AuthUser, id: string, raw: string, quotedId?: string, mentions?: { jid: string; name?: string | null }[]) {
     const text = raw.replace(/\r\n/g, '\n').trim()
     if (!text) throw new BadRequestException('Escreva a mensagem.')
     if (text.length > 4000) throw new BadRequestException('Mensagem muito longa (máximo 4.000 caracteres).')
@@ -1307,8 +1358,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (quotedId && !q) throw new BadRequestException('A mensagem que você está respondendo não está nesta conversa.')
     const quotedText = q ? (q.text?.trim() || previewOf({ type: q.type as ParsedMessage['type'], text: q.text })).slice(0, 300) : null
     const body = c.number.signMessages ? signed(text, user.name, await this.signatureOf(user)) : text
-    const r = await c.client.sendText(c.number.instanceName, c.target, body, q ? { waId: q.waId, fromMe: q.fromMe, remoteJid: c.conv.jid, text: quotedText! } : undefined).catch((e: unknown) => this.fail(e))
-    return this.recordSent(user, c, r, { type: 'texto', text: body, ...(q ? { quotedWaId: q.waId, quotedText } : {}) })
+    // Menções (@pessoa): só em grupo e só as que aparecem no texto como "@número".
+    const men = c.conv.category === 'GRUPO' ? (mentions ?? []).filter((x) => /^\d{5,20}@(s\.whatsapp\.net|lid)$/.test(x.jid) && body.includes(`@${x.jid.split('@')[0]}`)).slice(0, 50) : []
+    const r = await c.client.sendText(c.number.instanceName, c.target, body, q ? { waId: q.waId, fromMe: q.fromMe, remoteJid: c.conv.jid, text: quotedText! } : undefined, men.map((x) => x.jid)).catch((e: unknown) => this.fail(e))
+    return this.recordSent(user, c, r, { type: 'texto', text: body, ...(q ? { quotedWaId: q.waId, quotedText } : {}), ...(men.length ? { mentions: men.map((x) => ({ jid: x.jid, name: x.name?.slice(0, 120) || null })) } : {}) })
   }
 
   /**
@@ -1357,10 +1410,13 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /** Mensagem como a tela recebe (a apagada perde o texto e o arquivo). */
-  private messageView(m: Prisma.WhatsappMessageGetPayload<object>, user: AuthUser, quoted: { id: string; fromMe: boolean } | null = null) {
+  private messageView(m: Prisma.WhatsappMessageGetPayload<object>, user: AuthUser, quoted: { id: string; fromMe: boolean } | null = null, names?: Map<string, string>) {
     const gone = !!m.deletedAt
     const actions = sentActions(m)
+    // Menções: o número que aparece no texto ("@5511..." ou o @lid) e o nome de quem é.
+    const mentions = gone || !names ? [] : mentionJids(m).map((x) => ({ id: x.id, name: x.name || x.jids.map((j) => names.get(j)).find(Boolean) || null }))
     return {
+      mentions,
       id: m.id, fromMe: m.fromMe, type: m.type, text: gone ? null : m.text, fileName: gone ? null : m.fileName, mime: gone ? null : m.mime, mediaStatus: gone ? null : m.mediaStatus, hasFile: !gone && !!m.fileId,
       sentAt: m.sentAt, sentByName: m.sentByName, status: m.status, internal: m.internal, quotedText: m.quotedText, quotedFromMe: quoted?.fromMe ?? null, quotedId: quoted?.id ?? null, reactions: Array.isArray(m.reactions) ? m.reactions : [],
       editedAt: m.editedAt, deleted: gone, transcript: gone ? null : m.transcript,

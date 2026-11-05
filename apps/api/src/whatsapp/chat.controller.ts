@@ -30,10 +30,17 @@ class ListDto {
   @IsOptional() @Transform(({ value }) => value === 'true' || value === '1' || value === true) @IsBoolean() aguardandoVendedor?: boolean
 }
 
+class MentionDto {
+  @IsString() @Matches(/^\d{5,20}@(s\.whatsapp\.net|lid)$/) jid!: string
+  @IsOptional() @IsString() @MaxLength(120) name?: string | null
+}
+
 class TextDto {
   @IsString() @Length(1, 4000) text!: string
   /** Responder (citar) uma mensagem da conversa. */
   @IsOptional() @IsUUID() quotedId?: string
+  /** Menções (@pessoa) num grupo: o texto leva "@número" e aqui vai quem é. */
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @ValidateNested({ each: true }) @Type(() => MentionDto) mentions?: MentionDto[]
 }
 
 class FinishDto {
@@ -457,11 +464,17 @@ export class ChatController {
     return this.chat.react(user, id, dto.emoji)
   }
 
+  @Get('conversas/:id/participantes-grupo')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  groupParticipants(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.chat.groupParticipants(user, id)
+  }
+
   @Post('conversas/:id/mensagens')
   @HttpCode(200)
   @Throttle({ default: { limit: 40, ttl: 60_000 } })
   sendText(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TextDto) {
-    return this.chat.sendText(user, id, dto.text, dto.quotedId)
+    return this.chat.sendText(user, id, dto.text, dto.quotedId, dto.mentions)
   }
 
   @Post('conversas/:id/arquivos')
