@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.28",
+      "date": "2026-11-05",
+      "title": "Mais memória para importações grandes",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Sistema",
+          "text": "A importação de tabelas de frete muito grandes (dezenas de milhares de linhas) podia estourar a memória do servidor e deixar o sistema em \"sendo atualizado\" por alguns segundos. O servidor agora tem mais folga de memória (ajustável na instalação)."
+        }
+      ]
+    },
+    {
       "version": "2.0.27",
       "date": "2026-11-05",
       "title": "Tabelas por CEP muito grandes e vigência em lote",
