@@ -328,7 +328,7 @@ export class ImportacaoService {
         })
         return target.id
       },
-      { timeout: 120_000 },
+      { timeout: 280_000 },
     )
     await this.audit.byUser(user, ctx, 'frete.importacao.concluida', 'freight_table', t.id, {
       importacao: importId,

@@ -5,7 +5,8 @@
 import { RULE_VARIABLES } from './catalogo'
 import { cityKey, formatCep, normalizeUf, ufByCep } from './cep'
 
-export const MAX_RULES = 200_000
+// Tabelas aéreas com muitas faixas de peso por destino (ex.: 7 mil destinos × 30 faixas) passam de 200 mil.
+export const MAX_RULES = 400_000
 const MAX_ISSUES = 500
 
 /** Campos do destino e da faixa. Os valores (frete, GRIS...) usam "var:<código>". */
