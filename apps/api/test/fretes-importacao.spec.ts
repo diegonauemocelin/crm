@@ -125,6 +125,23 @@ describe('fretes: layouts reais das transportadoras', () => {
     expect(r.rules[0]).toMatchObject({ uf: 'GO', city: 'Anápolis', weightMin: 0, weightMax: 1, deadlineDays: 3, values: { freight: 1.00066, over_weight: 1.00066, min_freight: 124.19, toll: 7.49, fraction: 100, tas: 5.5, gris: 0.2, advalorem: 0.48 } })
   })
 
+  it('J&T (CEP de mil em mil): junta faixas seguidas com os mesmos valores, ignora repetidas iguais e "Acima: KG" é excedente', () => {
+    const headers = ['Destino: CEP Inicial', 'Destino: CEP Final', 'Fração: ATE 0.250 KG (R$)', 'Fração: ATE 30 KG (R$)', 'Acima: KG (R$/kg)', 'Comp 1: ADVALOREM NF (%)', 'Dias', null]
+    const data = [
+      [1000001, 1000999, 8.6, 135.3, 9.06, 0.2, 5, 'A'],
+      [1001000, 1001999, 8.6, 135.3, 9.06, 0.2, 5, 'B'],
+      [1002000, 1002999, 9.1, 140, 9.06, 0.2, 5, null],
+      [1002000, 1002999, 9.1, 140, 9.06, 0.2, 5, 'C'],
+    ]
+    const m = suggestMapping(headers, data)
+    expect(m.find((x) => headers[x.column] === 'Acima: KG (R$/kg)')?.field).toBe('var:over_weight')
+    expect(m.find((x) => headers[x.column] === 'Fração: ATE 0.250 KG (R$)')).toMatchObject({ field: 'var:freight', weightMin: 0, weightMax: 0.25 })
+    const r = parseRows(data, m, 3)
+    expect(r.rules.map((x) => `${x.cepStart}-${x.cepEnd}:${x.weightMax}`)).toEqual(['1000001-1001999:0.25', '1000001-1001999:30', '1002000-1002999:0.25', '1002000-1002999:30'])
+    expect(r.importedLines).toBe(4)
+    expect(r.errorLines).toBe(0)
+  })
+
   it('pedágio com a fração na célula', () => {
     expect(parseToll('7,49/100')).toEqual({ toll: 7.49, fraction: 100 })
     expect(parseToll('R$ 3,10 / 100 kg')).toEqual({ toll: 3.1, fraction: 100 })

@@ -235,7 +235,9 @@ export function suggestMapping(headers: unknown[], samples: unknown[][] = []): C
     const h = norm[column]!
     if (!h) return
     let field: string | undefined
-    if (daysPair && h === 'maximo') field = 'deadline'
+    // "Acima: KG (R$/kg)" / "Acima: KG EXTRA (R$)": o valor por kg acima da última faixa (excedente).
+    if (/^\s*acima\s*:/i.test(String(raw ?? '')) && !/%|m3|m³/i.test(String(raw ?? '')) && !used.has('var:over_weight')) field = 'var:over_weight'
+    else if (daysPair && h === 'maximo') field = 'deadline'
     else if (daysPair && h === 'minimo') return
     else if (grisPct && h === 'gris') field = 'var:gris_min'
     else field = HEADER_RULES.find(([re, f]) => re.test(h) && !used.has(f) && !(NUMERIC(f) && textColumn(column) && !(f === 'var:toll' && tollColumn(column))))?.[1]
@@ -313,6 +315,12 @@ export function parseRows(rows: unknown[][], mapping: ColumnMap[], firstLine: nu
     return m ? row[m.column] : undefined
   }
 
+  // Faixas de CEP seguidas com os mesmos valores (tabelas por CEP de mil em mil, ex.: J&T com 89 mil linhas) viram uma
+  // faixa só: o cálculo é o mesmo e a versão fica com muito menos regras.
+  // Só as colunas mapeadas contam (colunas ignoradas, como observações internas, não impedem juntar).
+  const sigCols = mapping.filter((m) => m.field !== 'cep_start' && m.field !== 'cep_end' && m.field !== 'cep').map((m) => m.column)
+  let last: { sig: string; cepEnd: number; rules: ParsedRule[] } | null = null
+  let joined = 0
   rows.forEach((row, idx) => {
     const line = firstLine + idx
     if (!row || row.every((c) => c === null || c === undefined || String(c).trim() === '')) return
@@ -334,6 +342,13 @@ export function parseRows(rows: unknown[][], mapping: ColumnMap[], firstLine: nu
       cepEnd = b.end
       if (cepStart > cepEnd) errs.push(`CEP inicial ${formatCep(cepStart)} maior que o final ${formatCep(cepEnd)}.`)
     } else if (a || b) errs.push('Informe o CEP inicial e o final.')
+    const sig = cepStart !== null && cepEnd !== null && !errs.length ? sigCols.map((i) => String(row[i] ?? '')).join('\u0001') : null
+    if (sig && last && last.sig === sig && cepStart === last.cepEnd + 1) {
+      for (const r of last.rules) r.cepEnd = cepEnd
+      last.cepEnd = cepEnd!
+      joined++
+      return
+    }
 
     const ufRaw = text(col(row, 'uf'), 10)
     const uf = ufRaw ? normalizeUf(ufRaw) : null
@@ -422,28 +437,45 @@ export function parseRows(rows: unknown[][], mapping: ColumnMap[], firstLine: nu
     if (errs.length) {
       errorLines++
       for (const message of errs) push({ line, level: 'erro', message })
+      last = null
       return
     }
     if (regionCities?.length && cepStart === null && !city) {
       for (const r of out) for (const c of regionCities) rules.push({ ...r, uf: c.uf, city: c.city, cityKey: c.cityKey, deadlineDays: r.deadlineDays ?? c.deadlineDays })
-    } else rules.push(...out)
+      last = null
+    } else {
+      for (const r of out) rules.push(r)
+      last = sig && cepEnd !== null ? { sig, cepEnd, rules: out } : null
+    }
   })
+  if (joined) push({ line: 0, level: 'alerta', message: `${joined.toLocaleString('pt-BR')} linha(s) com faixa de CEP seguida da anterior e os mesmos valores foram juntadas numa faixa só (mesmo cálculo, menos regras).` })
 
   // Duplicidades: mesmo destino e mesma faixa de peso. Vale a primeira; as outras são rejeitadas.
   const seen = new Map<string, number>()
+  const seenRule = new Map<string, ParsedRule>()
   const unique: ParsedRule[] = []
   const rejectedLines = new Set<number>()
+  const sameLines = new Set<number>()
+  const content = (r: ParsedRule) => JSON.stringify([r.values, r.deadlineDays, r.restricted, r.note])
   for (const r of rules) {
     const key = `${r.cepStart ?? ''}|${r.cepEnd ?? ''}|${r.uf ?? ''}|${r.cityKey ?? ''}|${r.weightMin}|${r.weightMax ?? ''}`
     const first = seen.get(key)
+    // Linha repetida igualzinha (mesmo destino, faixa e valores): só é ignorada, não é erro.
+    if (first !== undefined && content(seenRule.get(key)!) === content(r)) {
+      sameLines.add(r.line)
+      continue
+    }
     if (first !== undefined) {
       if (!rejectedLines.has(r.line)) push({ line: r.line, level: 'erro', message: `Duplicada: mesmo destino e mesma faixa de peso da linha ${first}.` })
       rejectedLines.add(r.line)
       continue
     }
     seen.set(key, r.line)
+    seenRule.set(key, r)
     unique.push(r)
   }
+  for (const l of rejectedLines) sameLines.delete(l)
+  if (sameLines.size) push({ line: 0, level: 'alerta', message: `${sameLines.size.toLocaleString('pt-BR')} linha(s) repetida(s) com os mesmos valores de outra linha foram ignoradas.` })
   // Rejeita a linha inteira quando parte dela é duplicada (evita importar meia linha).
   const finalRules = unique.filter((r) => !rejectedLines.has(r.line))
 
@@ -467,7 +499,7 @@ export function parseRows(rows: unknown[][], mapping: ColumnMap[], firstLine: nu
     issueCount,
     readLines,
     errorLines: errorLines + rejectedLines.size,
-    importedLines: new Set(finalRules.map((r) => r.line)).size,
+    importedLines: new Set(finalRules.map((r) => r.line)).size + joined + sameLines.size,
   }
 }
 
