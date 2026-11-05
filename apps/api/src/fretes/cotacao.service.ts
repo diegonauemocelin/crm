@@ -36,6 +36,8 @@ export interface QuoteInput {
   goodsType?: string | null
   quoteDate?: string | null
   reference?: string | null
+  erpDocType?: 'ORCAMENTO' | 'PRE_NOTA' | null
+  erpDocNumber?: string | null
   notes?: string | null
   /** Liberar tabela vencida nesta cotação (exige permissão de editar tabelas e justificativa). */
   allowExpired?: boolean
@@ -518,6 +520,17 @@ export class CotacaoService {
     })
   }
 
+  /**
+   * Orçamento ou pré-nota do ERP (Tcar) para preencher a cotação: destinatário (CPF/CNPJ), CEP, peso e volumes. A
+   * consulta depende de a Tcar liberar as rotas de orçamento e pré-nota no TCarWebServer (hoje só produtos).
+   */
+  async erpDocument(user: AuthUser, type: string, number: string) {
+    assertCan(user, 'fretes_cotacao', 'create')
+    if (type !== 'ORCAMENTO' && type !== 'PRE_NOTA') throw new BadRequestException('Escolha orçamento ou pré-nota.')
+    if (!cleanText(number, 30)) throw new BadRequestException('Informe o número do documento no ERP.')
+    throw new BadRequestException('A importação do ERP ainda não está disponível: falta a Tcar liberar a consulta de orçamentos e pré-notas no TCarWebServer. Preencha os dados à mão; o número fica guardado na cotação para comparar o frete cobrado quando a integração estiver pronta.')
+  }
+
   /** Taxas das listas que valem para este envio: pelo CPF/CNPJ do destinatário ou pelo destino (cidade, CEP, região, UF). */
   private async feesFor(carrierIds: string[], p: { doc: string | null; destZip: string; destCity: string | null; destUf: string | null }) {
     if (!carrierIds.length) return []
@@ -635,6 +648,8 @@ export class CotacaoService {
         tenantId: user.tenantId,
         unitId: p.unit.id,
         reference: cleanText(d.reference, 80) || null,
+        erpDocType: d.erpDocType === 'ORCAMENTO' || d.erpDocType === 'PRE_NOTA' ? d.erpDocType : null,
+        erpDocNumber: d.erpDocType ? cleanText(d.erpDocNumber, 30) || null : null,
         customerName: cleanText(d.customerName, 160) || null,
         customerDoc: p.doc,
         personType: d.personType,
@@ -730,6 +745,8 @@ export class CotacaoService {
       unitId: q.unitId,
       unitName: unitName ?? null,
       reference: q.reference,
+      erpDocType: q.erpDocType,
+      erpDocNumber: q.erpDocNumber,
       customerName: q.customerName,
       customerDoc: q.customerDoc,
       personType: q.personType,

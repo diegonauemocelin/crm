@@ -243,6 +243,8 @@ class QuoteDto {
   @IsOptional() @nullable @IsString() @MaxLength(60) goodsType?: string | null
   @IsOptional() @nullable @Matches(DATE) quoteDate?: string | null
   @IsOptional() @nullable @IsString() @MaxLength(80) reference?: string | null
+  @IsOptional() @nullable @IsIn(['ORCAMENTO', 'PRE_NOTA']) erpDocType?: 'ORCAMENTO' | 'PRE_NOTA' | null
+  @IsOptional() @nullable @IsString() @MaxLength(30) erpDocNumber?: string | null
   @IsOptional() @nullable @IsString() @MaxLength(2000) notes?: string | null
   @IsOptional() @IsBoolean() allowExpired?: boolean
   @IsOptional() @nullable @IsString() @MaxLength(500) expiredReason?: string | null
@@ -485,6 +487,12 @@ export class FretesController {
   @Post('tabelas')
   createTable(@CurrentUser() user: AuthUser, @Body() dto: TableDto, @ReqContext() ctx: RequestCtx) {
     return this.tables.create(user, dto, ctx)
+  }
+
+  @Get('erp/documento')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  erpDocument(@CurrentUser() user: AuthUser, @Query('tipo') type?: string, @Query('numero') number?: string) {
+    return this.quotes.erpDocument(user, type ?? '', number ?? '')
   }
 
   @Get('integracoes')

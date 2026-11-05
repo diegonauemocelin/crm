@@ -214,6 +214,8 @@ export interface Quote {
   unitId: string
   unitName: string | null
   reference: string | null
+  erpDocType?: 'ORCAMENTO' | 'PRE_NOTA' | null
+  erpDocNumber?: string | null
   customerName: string | null
   customerDoc: string | null
   personType: 'PF' | 'PJ'

@@ -58,6 +58,20 @@ function NewQuote() {
   const [volumes, setVolumes] = useState<VolumeRow[]>([emptyVolume()])
   const [goodsType, setGoodsType] = useState('')
   const [reference, setReference] = useState('')
+  const [erpType, setErpType] = useState<'ORCAMENTO' | 'PRE_NOTA'>('ORCAMENTO')
+  const [erpNumber, setErpNumber] = useState('')
+  const erpImport = useMutation({
+    mutationFn: () => api.get<{ customerDoc?: string | null; customerName?: string | null; destZip?: string | null; weight?: number | null; cargoValue?: number | null; volumes?: { quantity: number; weight: number }[] }>(`/fretes/erp/documento?${new URLSearchParams({ tipo: erpType, numero: erpNumber.trim() })}`),
+    onSuccess: (d) => {
+      if (d.customerDoc) setCustomerDoc(d.customerDoc)
+      if (d.customerName) setCustomerName(d.customerName)
+      if (d.weight) setWeight(String(d.weight).replace('.', ','))
+      if (d.cargoValue) setCargoValue(d.cargoValue)
+      if (d.destZip) setDestZip(maskCep(d.destZip))
+      toast.success('Dados importados do ERP: confira antes de cotar.')
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
   const [batch, setBatch] = useState(false)
   const [notes, setNotes] = useState('')
   const [allowExpired, setAllowExpired] = useState(false)
@@ -101,6 +115,8 @@ function NewQuote() {
       volumes: vols,
       goodsType: goodsType || null,
       reference: reference || null,
+      erpDocType: erpNumber.trim() ? erpType : null,
+      erpDocNumber: erpNumber.trim() || null,
       notes: notes || null,
       allowExpired,
       expiredReason: allowExpired ? expiredReason : null,
@@ -156,6 +172,23 @@ function NewQuote() {
             <CardTitle className="text-base">Dados do envio</CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
+            <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed p-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="q-erp-type">Documento do ERP</Label>
+                <select id="q-erp-type" className="h-9 rounded-md border bg-transparent px-2" value={erpType} onChange={(e) => setErpType(e.target.value === 'PRE_NOTA' ? 'PRE_NOTA' : 'ORCAMENTO')}>
+                  <option value="ORCAMENTO">Orçamento</option>
+                  <option value="PRE_NOTA">Pré-nota</option>
+                </select>
+              </div>
+              <div className="w-40 space-y-1.5">
+                <Label htmlFor="q-erp-num">Número</Label>
+                <Input id="q-erp-num" value={erpNumber} onChange={(e) => setErpNumber(e.target.value.slice(0, 30))} />
+              </div>
+              <Button type="button" variant="outline" disabled={!erpNumber.trim() || erpImport.isPending} onClick={() => erpImport.mutate()}>
+                {erpImport.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Importar do ERP
+              </Button>
+              <p className="min-w-60 flex-1 text-xs text-muted-foreground">Importa CPF/CNPJ, CEP de destino, peso e volumes do orçamento ou da pré-nota. Na cotação manual, informe o número mesmo assim: ele fica guardado para comparar o frete cobrado no ERP com o CT-e.</p>
+            </div>
             <div className="grid gap-4 md:grid-cols-4">
               <div className="space-y-1.5">
                 <Label htmlFor="q-unit">Filial de origem</Label>
@@ -757,7 +790,7 @@ function QuoteDetail() {
     <div className="space-y-4">
       <PageHeader
         title={`Cotação de frete nº ${d.code}`}
-        description={`${d.unitName ?? ''} · ${dateTime(d.createdAt)}${d.reference ? ` · Ref.: ${d.reference}` : ''}${d.customerName ? ` · ${d.customerName}` : ''}`}
+        description={`${d.unitName ?? ''} · ${dateTime(d.createdAt)}${d.erpDocNumber ? ` · ${d.erpDocType === 'PRE_NOTA' ? 'Pré-nota' : 'Orçamento'} ${d.erpDocNumber}` : ''}${d.reference ? ` · Ref.: ${d.reference}` : ''}${d.customerName ? ` · ${d.customerName}` : ''}`}
         actions={
           <div className="flex flex-wrap gap-2 print:hidden">
             <Button variant="outline" onClick={() => reproduce.mutate()} disabled={reproduce.isPending}>

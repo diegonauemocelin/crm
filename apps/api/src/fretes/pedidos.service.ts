@@ -224,7 +224,7 @@ export class PedidosService {
     if (!r) throw new BadRequestException('Opção escolhida não encontrada na cotação.')
     const data = await this.validate(user, {
       unitId: q.unitId,
-      orderNumber: d.orderNumber ?? q.reference,
+      orderNumber: d.orderNumber ?? q.reference ?? q.erpDocNumber,
       invoiceNumber: d.invoiceNumber,
       invoiceKey: d.invoiceKey,
       customerName: q.customerName,
@@ -243,6 +243,8 @@ export class PedidosService {
         tenantId: user.tenantId,
         ...data,
         quoteId: q.id,
+        erpDocType: q.erpDocType,
+        erpDocNumber: q.erpDocNumber,
         expected: expected as unknown as Prisma.InputJsonValue,
         expectedTotal: r.total,
         expectedDeliveryAt: r.deadlineDays !== null ? addBusinessDays(new Date(), r.deadlineDays) : null,

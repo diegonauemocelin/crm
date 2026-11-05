@@ -2780,6 +2780,9 @@ model FreightQuote {
   code        Int      @default(autoincrement())
   unitId      String   @db.Uuid
   reference   String?
+  /// Documento do ERP (Tcar) da cotação: ORCAMENTO ou PRE_NOTA, e o número (para importar os dados e comparar o frete cobrado).
+  erpDocType  String?
+  erpDocNumber String?
   customerName String?
   customerDoc String?
   personType  String   @default("PJ")
@@ -2985,6 +2988,10 @@ model FreightShipment {
   code          Int       @default(autoincrement())
   unitId        String    @db.Uuid
   orderNumber   String?
+  /// Documento do ERP (Tcar): ORCAMENTO ou PRE_NOTA e o número; erpFreight = frete cobrado do cliente no ERP.
+  erpDocType    String?
+  erpDocNumber  String?
+  erpFreight    Decimal?  @db.Decimal(12, 2)
   invoiceNumber String?
   /// Chave da NF-e (44 dígitos).
   invoiceKey    String?   @db.Char(44)
