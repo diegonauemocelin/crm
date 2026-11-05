@@ -377,6 +377,95 @@ export class CotacaoService {
     }
   }
 
+  /**
+   * Quem atende uma cidade: em todas as transportadoras ativas, as tabelas publicadas e vigentes com regra para a cidade
+   * (pela cidade, pela faixa de CEP ou pela UF) e as cidades atendidas (regiões/bases), com o prazo de cada uma.
+   */
+  async cityCoverage(user: AuthUser, q: { city?: string; uf?: string; cep?: string }) {
+    assertCan(user, 'fretes_transportadoras', 'view')
+    let city = cleanText(q.city, 120) || null
+    let uf = q.uf ? normalizeUf(q.uf) : null
+    let zip: number | null = null
+    let cepSource: 'informado' | 'regra' | 'consulta' | 'cte' | null = null
+    if (q.cep && normalizeCep(q.cep)) {
+      const info = await this.cep(q.cep)
+      zip = Number(info.cep)
+      cepSource = 'informado'
+      city = info.city ?? city
+      uf = info.uf ?? uf
+    }
+    if (!city || !uf) throw new BadRequestException('Informe a cidade e a UF, ou um CEP.')
+    const key = cityKey(city)
+    if (!key) throw new BadRequestException('Cidade inválida.')
+    // Sem CEP: um CEP da cidade (de uma regra com cidade e CEP, de uma consulta de CEP ou de um CT-e) para as tabelas por faixa.
+    if (zip === null) {
+      const r = await this.prisma.freightRule.findFirst({ where: { cityKey: key, uf, cepStart: { not: null } }, select: { cepStart: true } })
+      if (r?.cepStart) (zip = r.cepStart), (cepSource = 'regra')
+    }
+    if (zip === null) {
+      const c = await this.prisma.freightCep.findFirst({ where: { uf, found: true, city: { equals: city, mode: 'insensitive' } }, select: { cep: true } })
+      if (c) (zip = Number(c.cep)), (cepSource = 'consulta')
+    }
+    if (zip === null) {
+      const c = await this.prisma.freightCte.findFirst({ where: { tenantId: user.tenantId, ufFim: uf, cityFim: { equals: city, mode: 'insensitive' }, destZip: { not: null } }, select: { destZip: true } })
+      if (c?.destZip) (zip = Number(c.destZip)), (cepSource = 'cte')
+    }
+    const today = todayUtc()
+    const carriers = await this.prisma.freightCarrier.findMany({ where: { tenantId: user.tenantId, active: true, ...unitListWhere(allowedUnits(user, 'fretes_transportadoras')) }, select: { id: true, name: true, quoteName: true } })
+    const ids = carriers.map((c) => c.id)
+    const tables = await this.prisma.freightTable.findMany({
+      where: { tenantId: user.tenantId, carrierId: { in: ids }, status: 'ATIVA', publishedVersionId: { not: null }, validFrom: { lte: today }, validTo: { gte: today } },
+      select: { id: true, name: true, quoteName: true, carrierId: true, publishedVersionId: true, dispatchDays: true, modal: true },
+    })
+    const versionIds = tables.map((t) => t.publishedVersionId!)
+    const rules = versionIds.length
+      ? await this.prisma.freightRule.findMany({
+          where: {
+            versionId: { in: versionIds },
+            OR: [{ cityKey: key, uf }, { cityKey: key, uf: null }, { cepStart: null, cityKey: null, uf }, ...(zip !== null ? [{ cepStart: { lte: zip }, cepEnd: { gte: zip } }] : [])],
+          },
+          select: { versionId: true, cepStart: true, cityKey: true, uf: true, deadlineDays: true, restricted: true, note: true },
+          take: 20_000,
+        })
+      : []
+    const regions = await this.prisma.freightCarrierRegion.findMany({ where: { carrierId: { in: ids }, uf, cityKey: key }, select: { carrierId: true, code: true, deadlineDays: true, businessDays: true, pickup: true, contact: true, note: true } })
+    const rank = { CEP: 0, CIDADE: 1, UF: 2 } as const
+    const out = carriers
+      .map((c) => {
+        const tabs = tables
+          .filter((t) => t.carrierId === c.id)
+          .map((t) => {
+            const rs = rules.filter((r) => r.versionId === t.publishedVersionId)
+            if (!rs.length) return null
+            const by = (r: (typeof rs)[number]) => (r.cepStart !== null ? 'CEP' : r.cityKey ? 'CIDADE' : 'UF')
+            const best = Math.min(...rs.map((r) => rank[by(r)]))
+            const used = rs.filter((r) => rank[by(r)] === best)
+            const days = used.map((r) => r.deadlineDays).filter((x): x is number => x !== null)
+            const extra = t.dispatchDays ?? 0
+            return {
+              id: t.id,
+              name: t.quoteName || t.name,
+              modal: t.modal,
+              by: (['CEP', 'CIDADE', 'UF'] as const)[best]!,
+              deadlineMin: days.length ? Math.min(...days) + extra : null,
+              deadlineMax: days.length ? Math.max(...days) + extra : null,
+              restricted: used.every((r) => r.restricted),
+              note: used.find((r) => r.note)?.note ?? null,
+            }
+          })
+          .filter((x): x is NonNullable<typeof x> => !!x)
+        const reg = regions.find((r) => r.carrierId === c.id) ?? null
+        if (!tabs.length && !reg) return null
+        return { carrierId: c.id, carrier: c.quoteName || c.name, tables: tabs, region: reg && { code: reg.code, deadlineDays: reg.deadlineDays, businessDays: reg.businessDays, pickup: reg.pickup, contact: reg.contact, note: reg.note } }
+      })
+      .filter((x): x is NonNullable<typeof x> => !!x)
+      .sort((a, b) => {
+        const d = (x: (typeof out)[number]) => Math.min(...x.tables.filter((t) => !t.restricted).map((t) => t.deadlineMin ?? 999), x.region?.deadlineDays ?? 999)
+        return d(a) - d(b) || a.carrier.localeCompare(b.carrier)
+      })
+    return { city, uf, cep: zip === null ? null : String(zip).padStart(8, '0'), cepSource, carriers: out, checked: carriers.length }
+  }
+
   /** Taxas das listas que valem para este envio: pelo CPF/CNPJ do destinatário ou pelo destino (cidade, CEP, região, UF). */
   private async feesFor(carrierIds: string[], p: { doc: string | null; destZip: string; destCity: string | null; destUf: string | null }) {
     if (!carrierIds.length) return []

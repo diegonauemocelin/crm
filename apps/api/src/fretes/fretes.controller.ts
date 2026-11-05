@@ -322,6 +322,12 @@ export class FretesController {
     return this.quotes.learnIcmsFromCtes(user, files ?? [], ctx)
   }
 
+  @Get('cidades/busca')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  cityCoverage(@CurrentUser() user: AuthUser, @Query('cidade') city?: string, @Query('uf') uf?: string, @Query('cep') cep?: string) {
+    return this.quotes.cityCoverage(user, { city, uf, cep })
+  }
+
   @Get('cep/:cep')
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   cep(@Param('cep') cep: string) {
