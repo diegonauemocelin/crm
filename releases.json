@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.29",
+      "date": "2026-11-05",
+      "title": "Tabela de frete por código IBGE",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Importar tabela: o destino pode ser o código IBGE da cidade (coluna \"Destino: IBGE Cidades\", como na tabela da Rodonaves). Cada código vira uma regra para a cidade, com nome e UF da tabela do IBGE; vários códigos na mesma célula (separados por vírgula) também valem."
+        }
+      ]
+    },
+    {
       "version": "2.0.28",
       "date": "2026-11-05",
       "title": "Mais memória para importações grandes",
