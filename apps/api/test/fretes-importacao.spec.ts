@@ -142,6 +142,17 @@ describe('fretes: layouts reais das transportadoras', () => {
     expect(r.errorLines).toBe(0)
   })
 
+  it('destino pelo código IBGE (Rodonaves): uma regra por cidade, com nome e UF do IBGE', () => {
+    const headers = ['Destino: IBGE Cidades', 'Fração: ATE 5 KG (R$)', 'Acima: KG (R$/kg)', 'Dias']
+    const data = [['3200102', 102.9, 4.15, 12], ['3304557,3200169', 90, 4, 5], ['9999999', 1, 1, 1]]
+    const m = suggestMapping(headers, data)
+    expect(m[0]).toMatchObject({ column: 0, field: 'ibge' })
+    expect(checkMapping(m, headers.length)).toEqual([])
+    const r = parseRows(data, m, 3)
+    expect(r.rules.map((x) => `${x.city}/${x.uf}`)).toEqual(['Afonso Claudio/ES', 'Rio de Janeiro/RJ', 'Agua Doce do Norte/ES'])
+    expect(r.issues.some((i) => i.level === 'erro' && /9999999/.test(i.message))).toBe(true)
+  })
+
   it('pedágio com a fração na célula', () => {
     expect(parseToll('7,49/100')).toEqual({ toll: 7.49, fraction: 100 })
     expect(parseToll('R$ 3,10 / 100 kg')).toEqual({ toll: 3.1, fraction: 100 })

@@ -4,13 +4,15 @@
 
 import { RULE_VARIABLES } from './catalogo'
 import { cityKey, formatCep, normalizeUf, ufByCep } from './cep'
+import { IBGE_MUNICIPIOS } from './ibge-municipios'
+import { ufByIbge } from './regioes'
 
 // Tabelas aéreas com muitas faixas de peso por destino (ex.: 7 mil destinos × 30 faixas) passam de 200 mil.
 export const MAX_RULES = 400_000
 const MAX_ISSUES = 500
 
 /** Campos do destino e da faixa. Os valores (frete, GRIS...) usam "var:<código>". */
-export const BASE_FIELDS = ['cep_start', 'cep_end', 'cep', 'uf', 'city', 'region', 'weight_min', 'weight_max', 'deadline', 'restricted', 'note'] as const
+export const BASE_FIELDS = ['cep_start', 'cep_end', 'cep', 'uf', 'city', 'ibge', 'region', 'weight_min', 'weight_max', 'deadline', 'restricted', 'note'] as const
 export type BaseField = (typeof BASE_FIELDS)[number]
 
 export const FIELD_LABEL: Record<BaseField, string> = {
@@ -19,6 +21,7 @@ export const FIELD_LABEL: Record<BaseField, string> = {
   cep: 'CEP (único ou 5 dígitos)',
   uf: 'UF de destino',
   city: 'Cidade de destino',
+  ibge: 'Código IBGE da cidade (um ou vários, separados por vírgula)',
   region: 'Região ou base de entrega (código da transportadora)',
   weight_min: 'Peso inicial (kg)',
   weight_max: 'Peso final (kg)',
@@ -132,6 +135,7 @@ const HEADER_RULES: [RegExp, string][] = [
   [/^cep( destino)?$/, 'cep'],
   [/^(uf|estado)( destino)?$|^destino uf$/, 'uf'],
   [/^(cidade|municipio|localidade|destino|praca)( destino| atendida)?$/, 'city'],
+  [/^(cod(igo)? )?ibge( (da )?cidades?| municipio)?$|^cidades? ibge$/, 'ibge'],
   [/^(regiao|cod(igo)? (da )?regiao|regiao destino|base( de)? entrega|base destino|unidade( de)? entrega)$/, 'region'],
   [/^peso (inicial|de|min|minimo)|^kg (inicial|de)/, 'weight_min'],
   [/^peso (final|ate|max|maximo)|^kg (final|ate)/, 'weight_max'],
@@ -253,7 +257,7 @@ export function suggestMapping(headers: unknown[], samples: unknown[][] = []): C
     out.push({ column, field, ...(scale ? { scale } : {}) })
   })
   // Região só é o destino quando a tabela não traz CEP nem cidade (com eles, a coluna Região é só informativa).
-  return out.some((m) => m.field === 'cep_start' || m.field === 'cep' || m.field === 'city') ? out.filter((m) => m.field !== 'region') : out
+  return out.some((m) => m.field === 'cep_start' || m.field === 'cep' || m.field === 'city' || m.field === 'ibge') ? out.filter((m) => m.field !== 'region') : out
 }
 
 const PERCENT = new Set(RULE_VARIABLES.filter((v) => v.unit === '%').map((v) => v.code))
@@ -283,7 +287,7 @@ export function checkMapping(mapping: ColumnMap[], columns: number): string[] {
     seen.set(m.field, m.column)
   }
   const fields = new Set(mapping.map((m) => m.field))
-  if (!fields.has('cep_start') && !fields.has('cep') && !fields.has('uf') && !fields.has('city') && !fields.has('region')) errors.push('Mapeie o destino: CEP inicial e final, CEP, cidade, UF ou região.')
+  if (!fields.has('cep_start') && !fields.has('cep') && !fields.has('uf') && !fields.has('city') && !fields.has('ibge') && !fields.has('region')) errors.push('Mapeie o destino: CEP inicial e final, CEP, cidade, código IBGE, UF ou região.')
   if (fields.has('cep_start') !== fields.has('cep_end')) errors.push('Mapeie juntos o CEP inicial e o CEP final.')
   if (!mapping.some((m) => isVarField(m.field))) errors.push('Mapeie ao menos uma coluna de valor (frete, taxas).')
   const bands = mapping.filter((m) => m.weightMax !== undefined && m.weightMax !== null)
@@ -356,10 +360,20 @@ export function parseRows(rows: unknown[][], mapping: ColumnMap[], firstLine: nu
     const city = text(col(row, 'city'))
     // Região (PR1, SC3...): a linha vira uma regra por cidade da região, com o prazo dela quando a linha não traz.
     const regionCode = text(col(row, 'region'), 40)?.toUpperCase() ?? null
-    const regionCities = regionCode ? regions?.get(regionCode) : undefined
+    // Código IBGE (um ou vários, "4100103,4100400"): uma regra por cidade, com o nome e a UF da tabela do IBGE.
+    const ibgeRaw = text(col(row, 'ibge'), 4000)
+    const ibgeCodes = ibgeRaw ? [...new Set(ibgeRaw.split(/[,;\s]+/).map((x) => x.replace(/\D/g, '')).filter(Boolean))] : []
+    const ibgeCities: RegionCity[] = []
+    for (const code of ibgeCodes) {
+      const name = code.length === 7 ? IBGE_MUNICIPIOS[code] : undefined
+      const u = name ? ufByIbge(code) : null
+      if (!name || !u) errs.push(`Código IBGE ${code} não é de um município.`)
+      else ibgeCities.push({ uf: u, city: name.charAt(0).toUpperCase() + name.slice(1), cityKey: cityKey(name)!, deadlineDays: null })
+    }
+    const regionCities = ibgeCities.length ? ibgeCities : regionCode ? regions?.get(regionCode) : undefined
     if (regionCode && cepStart === null && !city && !regions?.size) errs.push('A transportadora não tem regiões importadas: importe a planilha Regiões em Fretes › Transportadoras.')
     else if (regionCode && cepStart === null && !city && !regionCities?.length) errs.push(`Região ${regionCode} não está nas regiões da transportadora.`)
-    if (cepStart === null && !uf && !city && !regionCode) errs.push('Linha sem destino (CEP, cidade, UF ou região).')
+    if (cepStart === null && !uf && !city && !regionCode && !ibgeCodes.length) errs.push('Linha sem destino (CEP, cidade, IBGE, UF ou região).')
     if (city && !uf && cepStart === null) warn(`Cidade ${city} sem UF: pode coincidir com cidade de mesmo nome em outro estado.`)
     if (uf && cepStart !== null) {
       const ufA = ufByCep(String(cepStart).padStart(8, '0'))
