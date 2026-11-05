@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.33",
+      "date": "2026-11-05",
+      "title": "Segurança da biblioteca do certificado e deploy mais seguro",
+      "changes": [
+        {
+          "type": "seguranca",
+          "area": "Sistema",
+          "text": "Biblioteca que abre o certificado A1 da SEFAZ atualizada (corrige vulnerabilidades de segurança conhecidas)."
+        },
+        {
+          "type": "infra",
+          "area": "Sistema",
+          "text": "Atualização do servidor: se a montagem da versão nova falhar (ex.: internet do servidor caiu), o sistema volta sozinho para a versão anterior."
+        }
+      ]
+    },
+    {
       "version": "2.0.32",
       "date": "2026-11-05",
       "title": "Quem atende a cidade e CT-e de compra",
