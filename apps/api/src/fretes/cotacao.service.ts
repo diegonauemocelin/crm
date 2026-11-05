@@ -402,13 +402,14 @@ export class CotacaoService {
 
   private async compute(user: AuthUser, d: QuoteInput, allowExpired: boolean) {
     const p = await this.prepare(user, d)
+    const sib = await this.siblingUnits(user.tenantId, p.unit.id)
     const tables = await this.prisma.freightTable.findMany({
       where: {
         tenantId: user.tenantId,
         status: 'ATIVA',
         usage: { in: ['COTACAO_CONCILIACAO', 'COTACAO'] },
-        OR: [{ unitIds: { isEmpty: true } }, { unitIds: { has: p.unit.id } }],
-        carrier: { active: true, OR: [{ unitIds: { isEmpty: true } }, { unitIds: { has: p.unit.id } }] },
+        OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }],
+        carrier: { active: true, OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }] },
       },
       include: { carrier: true },
     })
@@ -428,7 +429,7 @@ export class CotacaoService {
     // Transportadoras ativas da filial sem nenhuma tabela ativa: aparecem para ninguém achar que foram esquecidas.
     const withTable = new Set(tables.map((t) => t.carrierId))
     const carriers = await this.prisma.freightCarrier.findMany({
-      where: { tenantId: user.tenantId, active: true, id: { notIn: [...withTable] }, OR: [{ unitIds: { isEmpty: true } }, { unitIds: { has: p.unit.id } }] },
+      where: { tenantId: user.tenantId, active: true, id: { notIn: [...withTable] }, OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }] },
       select: { id: true, name: true, quoteName: true },
       take: 100,
     })
@@ -721,6 +722,19 @@ export class CotacaoService {
    * (a mais barata que atende, na versão publicada naquela data), com as taxas da lista do destinatário. null quando
    * nenhuma tabela calcula.
    */
+  /**
+   * Filiais que saem do mesmo lugar valem juntas: mesmo CNPJ (ex.: E-commerce e Matriz, mesmo CNPJ em Maravilha) ou a
+   * mesma cidade de origem. A tabela cadastrada para uma vale para as outras, na cotação e na conciliação.
+   */
+  private async siblingUnits(tenantId: string, unitId: string, originCity?: string | null, originUf?: string | null) {
+    const units = await this.prisma.unit.findMany({ where: { tenantId }, select: { id: true, cnpj: true, city: true, state: true } })
+    const self = units.find((u) => u.id === unitId)
+    const city = originCity ?? self?.city ?? null
+    const uf = originUf ?? self?.state ?? null
+    const same = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }) === 0
+    return [...new Set(units.filter((u) => u.id === unitId || (self?.cnpj && u.cnpj === self.cnpj) || (city && same(u.city, city) && (!uf || !u.state || u.state === uf))).map((u) => u.id))]
+  }
+
   async expectedByTable(user: AuthUser, d: { unitId: string; carrierId: string; destZip: string; destCity: string | null; destUf: string | null; personType: 'PF' | 'PJ'; recipientDoc: string | null; cargoValue: number; weight: number; date: Date; originCity?: string | null; originUf?: string | null }) {
     const input: QuoteInput = { unitId: d.unitId, destZip: d.destZip, destCity: d.destCity, destUf: d.destUf, personType: d.personType, cargoValue: d.cargoValue, weight: d.weight, quoteDate: d.date.toISOString().slice(0, 10) }
     let p: Awaited<ReturnType<CotacaoService['prepare']>>
@@ -732,14 +746,7 @@ export class CotacaoService {
     const all = await this.prisma.freightTable.findMany({ where: { tenantId: user.tenantId, carrierId: d.carrierId, status: { not: 'RASCUNHO' } }, include: { carrier: true } })
     // Filiais que saem do mesmo lugar valem juntas: mesmo CNPJ (ex.: E-commerce faturado pela Matriz) ou a mesma cidade de
     // origem do CT-e. Assim a tabela cadastrada para a Matriz confere o CT-e que caiu no E-commerce.
-    const units = await this.prisma.unit.findMany({ where: { tenantId: user.tenantId }, select: { id: true, cnpj: true, city: true, state: true } })
-    const self = units.find((u) => u.id === d.unitId)
-    const same = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }) === 0
-    const siblings = new Set(
-      units
-        .filter((u) => u.id === d.unitId || (self?.cnpj && u.cnpj === self.cnpj) || (d.originCity && same(u.city, d.originCity) && (!d.originUf || !u.state || u.state === d.originUf)))
-        .map((u) => u.id),
-    )
+    const siblings = new Set(await this.siblingUnits(user.tenantId, d.unitId, d.originCity, d.originUf))
     const tables = all.filter((t) => !t.unitIds.length || t.unitIds.some((id) => siblings.has(id)))
     const fees = await this.feesFor([d.carrierId], { doc: d.recipientDoc, destZip: p.destZip, destCity: p.destCity, destUf: p.destUf })
     const versions = await this.prisma.freightTableVersion.findMany({ where: { tableId: { in: tables.map((t) => t.id) }, publishedAt: { not: null, lte: d.date } }, orderBy: { publishedAt: 'desc' }, select: { id: true, tableId: true } })
