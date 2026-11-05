@@ -828,9 +828,10 @@ export class CotacaoService {
     const input: QuoteInput = { unitId: d.unitId, destZip: d.destZip, destCity: d.destCity, destUf: d.destUf, personType: d.personType, cargoValue: d.cargoValue, weight: d.weight, quoteDate: d.date.toISOString().slice(0, 10) }
     let p: Awaited<ReturnType<CotacaoService['prepare']>>
     try {
-      p = await this.prepare(user, input)
-    } catch {
-      return null
+      // A origem é a do CT-e: a filial não precisa ter o CEP de expedição cadastrado para conferir.
+      p = await this.prepare(user, input, true)
+    } catch (e) {
+      return { reasons: [{ table: 'Dados do CT-e', reason: (e as Error).message }], noTables: false }
     }
     const all = await this.prisma.freightTable.findMany({ where: { tenantId: user.tenantId, carrierId: d.carrierId, status: { not: 'RASCUNHO' } }, include: { carrier: true } })
     // Filiais que saem do mesmo lugar valem juntas: mesmo CNPJ (ex.: E-commerce faturado pela Matriz) ou a mesma cidade de
