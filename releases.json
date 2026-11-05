@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.35",
+      "date": "2026-11-05",
+      "title": "Cotação online: Melhor Envio, Correios e Braspress",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Cotação online: ligue o Melhor Envio (token da conta, escolhendo quais transportadoras aparecem), os Correios (contrato: usuário, código de acesso à API e cartão de postagem) e a Braspress (usuário e senha da API) em Fretes › Filiais. A cotação mostra os valores e prazos dessas APIs junto com as tabelas, para comparar."
+        },
+        {
+          "type": "melhoria",
+          "area": "WhatsApp",
+          "text": "Menções em grupos: participantes com número escondido pelo WhatsApp aparecem pelo nome da agenda/conversa (pelo telefone que o grupo informa) ou, sem nome, pelo telefone, também nas mensagens antigas."
+        }
+      ]
+    },
+    {
       "version": "2.0.34",
       "date": "2026-11-05",
       "title": "Menções em grupos, vendedora nas mensagens e CT-e da Matriz",
