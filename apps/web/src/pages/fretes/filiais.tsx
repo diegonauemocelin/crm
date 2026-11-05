@@ -73,6 +73,7 @@ function Filiais() {
       <IcmsRates editable={can('fretes_filiais', 'edit') && !!ctx.data?.global} />
       {can('fretes_cte', 'view') && <RecParams editable={can('fretes_cte', 'edit') && !!ctx.data?.global} carriers={ctx.data?.carriers ?? []} />}
       {can('fretes_cte', 'view') && <SefazCapture />}
+      {can('fretes_transportadoras', 'view') && <OnlineQuotes />}
       <Integrations />
     </div>
   )
@@ -146,12 +147,218 @@ function UnitCard({ unit, editable }: { unit: FreightUnit; editable: boolean }) 
 
 /** Situação real das integrações: nenhuma aparece como ligada sem estar. */
 const INTEGRATIONS = [
-  { name: 'Correios (preço e prazo)', need: 'Contrato com os Correios, cartão de postagem e acesso à API do Correios (CWS). Até lá, a tabela dos Correios pode ser importada como uma tabela de frete comum.' },
   { name: 'Mercado Livre (Mercado Envios 1 / ME1)', need: 'Usa a conexão do Mercado Livre que o CRM já tem. Falta definir com o comercial quais tabelas valem para a loja oficial e o formato de envio da tabela de frete ao Mercado Livre.' },
   { name: 'Google Shopping (Merchant Center)', need: 'Conta do Merchant Center com acesso de API. O frete dos produtos sai das tabelas marcadas como exclusivas para "Google Shopping".' },
   { name: 'Tcar (ERP): pedidos e notas', need: 'A integração da Tcar já existe para produtos. Falta liberar a consulta de pedidos e notas fiscais expedidas. Fase 3.' },
   { name: 'APIs das transportadoras (rastreamento e cotação on-line)', need: 'Credenciais de cada transportadora que oferecer API.' },
 ]
+
+interface OnlineView {
+  melhorEnvio: { enabled: boolean; hasToken: boolean; email: string; sandbox: boolean; services: number[] }
+  correios: { enabled: boolean; user: string; hasAccessCode: boolean; postCard: string; products: { code: string; name: string }[] }
+  braspress: { enabled: boolean; user: string; hasPassword: boolean; modal: 'R' | 'A' }
+}
+
+/** Cotação online: Melhor Envio (token da conta, escolhendo quais transportadoras aparecem) e Correios (contrato). */
+function OnlineQuotes() {
+  const { can } = useAuth()
+  const editable = can('fretes_transportadoras', 'edit')
+  const qc = useQueryClient()
+  const q = useQuery({ queryKey: ['fretes', 'integracoes'], queryFn: () => api.get<OnlineView>('/fretes/integracoes') })
+  const save = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.put<OnlineView>('/fretes/integracoes', body),
+    onSuccess: (v) => (qc.setQueryData(['fretes', 'integracoes'], v), toast.success('Integração salva.')),
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const d = q.data
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <PlugIcon className="size-4" aria-hidden /> Cotação online: Melhor Envio, Correios e Braspress
+        </CardTitle>
+        <CardDescription>
+          Ligadas, a cotação de frete também consulta essas APIs na hora e mostra os valores junto com as tabelas, para comparar. As chaves ficam criptografadas e nunca voltam para a tela.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {q.isLoading ? <TableSkeleton rows={3} /> : q.error ? <ErrorState error={q.error} onRetry={() => q.refetch()} /> : d && (
+          <>
+            <MelhorEnvioForm v={d.melhorEnvio} editable={editable} saving={save.isPending} onSave={(m) => save.mutate({ melhorEnvio: m })} />
+            <CorreiosForm v={d.correios} editable={editable} saving={save.isPending} onSave={(c) => save.mutate({ correios: c })} />
+            <BraspressForm v={d.braspress} editable={editable} saving={save.isPending} onSave={(b) => save.mutate({ braspress: b })} />
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function MelhorEnvioForm({ v, editable, saving, onSave }: { v: OnlineView['melhorEnvio']; editable: boolean; saving: boolean; onSave: (m: Record<string, unknown>) => void }) {
+  const [token, setToken] = useState('')
+  const [email, setEmail] = useState(v.email)
+  const [sandbox, setSandbox] = useState(v.sandbox)
+  const [services, setServices] = useState<number[]>(v.services)
+  const list = useQuery({ queryKey: ['fretes', 'melhor-envio', 'servicos', v.hasToken], queryFn: () => api.get<{ id: number; name: string; company: string }[]>('/fretes/integracoes/melhor-envio/servicos'), enabled: v.hasToken })
+  const body = (enabled: boolean) => ({ enabled, email, sandbox, services, ...(token.trim() ? { token: token.trim() } : {}) })
+  return (
+    <div className="space-y-3 rounded-md border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-medium">Melhor Envio</p>
+        <Badge variant="outline" className={v.enabled ? 'border-[#0ca30c]/50 text-[#006300] dark:text-[#0ca30c]' : 'text-muted-foreground'}>{v.enabled ? 'Ligado' : v.hasToken ? 'Desligado' : 'Não conectado'}</Badge>
+      </div>
+      <p className="text-xs text-muted-foreground">No painel do Melhor Envio: Integrações › Permissões de acesso › Gerar novo token (marque a permissão de cálculo de frete). Cole o token aqui; ele não aparece de novo.</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="me-token">Token {v.hasToken && <span className="text-xs text-muted-foreground">(cadastrado; em branco mantém)</span>}</Label>
+          <Input id="me-token" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="me-email">E-mail da conta (o Melhor Envio pede para identificar o sistema)</Label>
+          <Input id="me-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={!editable} />
+        </div>
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={sandbox} onChange={(e) => setSandbox(e.target.checked)} disabled={!editable} /> Ambiente de testes (sandbox)
+      </label>
+      {v.hasToken && (
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium">Transportadoras que aparecem na cotação {services.length ? `(${services.length})` : '(todas)'}</p>
+          {list.isLoading ? (
+            <p className="text-xs text-muted-foreground">Carregando os serviços do Melhor Envio…</p>
+          ) : list.error ? (
+            <p className="text-xs text-destructive">{errorMessage(list.error)}</p>
+          ) : (
+            <div className="grid max-h-64 gap-1 overflow-y-auto sm:grid-cols-2">
+              {(list.data ?? []).map((s) => (
+                <label key={s.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" disabled={!editable} checked={services.includes(s.id)} onChange={(e) => setServices((x) => (e.target.checked ? [...x, s.id] : x.filter((y) => y !== s.id)))} />
+                  {s.company} · {s.name}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {editable && (
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={saving} onClick={() => onSave(body(v.enabled))}>
+            {saving && <Loader2Icon className="animate-spin" aria-hidden />} Salvar
+          </Button>
+          <Button variant="outline" disabled={saving} onClick={() => onSave(body(!v.enabled))}>
+            {v.enabled ? 'Desligar' : 'Salvar e ligar'}
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CorreiosForm({ v, editable, saving, onSave }: { v: OnlineView['correios']; editable: boolean; saving: boolean; onSave: (c: Record<string, unknown>) => void }) {
+  const [user, setUser] = useState(v.user)
+  const [code, setCode] = useState('')
+  const [card, setCard] = useState(v.postCard)
+  const [products, setProducts] = useState(v.products)
+  const body = (enabled: boolean) => ({ enabled, user, postCard: card, products: products.filter((p) => p.code.trim() && p.name.trim()), ...(code.trim() ? { accessCode: code.trim() } : {}) })
+  return (
+    <div className="space-y-3 rounded-md border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-medium">Correios (contrato)</p>
+        <Badge variant="outline" className={v.enabled ? 'border-[#0ca30c]/50 text-[#006300] dark:text-[#0ca30c]' : 'text-muted-foreground'}>{v.enabled ? 'Ligado' : v.hasAccessCode ? 'Desligado' : 'Não conectado'}</Badge>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        A API dos Correios não usa a senha do site: use o usuário do Meu Correios e o <b>código de acesso à API</b>, gerado em cws.correios.com.br (Gestão de acesso a API's), e o número do cartão de postagem do contrato.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="co-user">Usuário (Meu Correios)</Label>
+          <Input id="co-user" value={user} onChange={(e) => setUser(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="co-code">Código de acesso à API {v.hasAccessCode && <span className="text-xs text-muted-foreground">(em branco mantém)</span>}</Label>
+          <Input id="co-code" type="password" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="co-card">Cartão de postagem</Label>
+          <Input id="co-card" inputMode="numeric" value={card} onChange={(e) => setCard(e.target.value)} disabled={!editable} />
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <p className="text-sm font-medium">Serviços do contrato (código do produto e nome)</p>
+        {products.map((p, i) => (
+          <div key={i} className="flex gap-2">
+            <Input className="w-28" value={p.code} placeholder="03298" onChange={(e) => setProducts((x) => x.map((y, j) => (j === i ? { ...y, code: e.target.value } : y)))} disabled={!editable} aria-label="Código do serviço" />
+            <Input className="max-w-xs" value={p.name} placeholder="PAC" onChange={(e) => setProducts((x) => x.map((y, j) => (j === i ? { ...y, name: e.target.value } : y)))} disabled={!editable} aria-label="Nome do serviço" />
+            {editable && (
+              <Button variant="ghost" size="sm" onClick={() => setProducts((x) => x.filter((_, j) => j !== i))}>
+                Tirar
+              </Button>
+            )}
+          </div>
+        ))}
+        {editable && products.length < 10 && (
+          <Button variant="outline" size="sm" onClick={() => setProducts((x) => [...x, { code: '', name: '' }])}>
+            Adicionar serviço
+          </Button>
+        )}
+        <p className="text-xs text-muted-foreground">Os códigos mais comuns de contrato são 03298 (PAC) e 03220 (SEDEX); confira os do seu contrato no Meu Correios.</p>
+      </div>
+      {editable && (
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={saving} onClick={() => onSave(body(v.enabled))}>
+            {saving && <Loader2Icon className="animate-spin" aria-hidden />} Salvar
+          </Button>
+          <Button variant="outline" disabled={saving} onClick={() => onSave(body(!v.enabled))}>
+            {v.enabled ? 'Desligar' : 'Salvar e ligar'}
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BraspressForm({ v, editable, saving, onSave }: { v: OnlineView['braspress']; editable: boolean; saving: boolean; onSave: (b: Record<string, unknown>) => void }) {
+  const [user, setUser] = useState(v.user)
+  const [password, setPassword] = useState('')
+  const [modal, setModal] = useState<'R' | 'A'>(v.modal)
+  const body = (enabled: boolean) => ({ enabled, user, modal, ...(password.trim() ? { password: password.trim() } : {}) })
+  return (
+    <div className="space-y-3 rounded-md border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-medium">Braspress</p>
+        <Badge variant="outline" className={v.enabled ? 'border-[#0ca30c]/50 text-[#006300] dark:text-[#0ca30c]' : 'text-muted-foreground'}>{v.enabled ? 'Ligado' : v.hasPassword ? 'Desligado' : 'Não conectado'}</Badge>
+      </div>
+      <p className="text-xs text-muted-foreground">Usuário e senha da API de cotação, pedidos à Braspress (não é o login do site). A cotação usa o CNPJ da filial de origem e precisa do CPF/CNPJ do destinatário na cotação.</p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="br-user">Usuário da API</Label>
+          <Input id="br-user" value={user} onChange={(e) => setUser(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="br-pass">Senha da API {v.hasPassword && <span className="text-xs text-muted-foreground">(em branco mantém)</span>}</Label>
+          <Input id="br-pass" type="password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="br-modal">Modal</Label>
+          <select id="br-modal" className="h-9 w-full rounded-md border bg-transparent px-2" value={modal} onChange={(e) => setModal(e.target.value === 'A' ? 'A' : 'R')} disabled={!editable}>
+            <option value="R">Rodoviário</option>
+            <option value="A">Aéreo</option>
+          </select>
+        </div>
+      </div>
+      {editable && (
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={saving} onClick={() => onSave(body(v.enabled))}>
+            {saving && <Loader2Icon className="animate-spin" aria-hidden />} Salvar
+          </Button>
+          <Button variant="outline" disabled={saving} onClick={() => onSave(body(!v.enabled))}>
+            {v.enabled ? 'Desligar' : 'Salvar e ligar'}
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function Integrations() {
   return (

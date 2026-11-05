@@ -367,7 +367,7 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
     })
   }, [quote.results, sort, showAll])
   const hidden = quote.results.length - quote.results.filter((r) => r.status !== 'NAO_APLICAVEL' && r.status !== 'SEM_TABELA').length
-  const key = (r: QuoteResult) => r.tableId ?? r.carrierId
+  const key = (r: QuoteResult) => r.tableId ?? `${r.online ?? ''}|${r.carrierId}|${r.quoteName}`
 
   return (
     <Card>
@@ -468,7 +468,7 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
                         {r.warnings.length > 0 && <span className="block text-[11px] text-amber-700 dark:text-amber-300">{r.warnings.length} aviso(s)</span>}
                       </TableCell>
                       <TableCell className="text-right print:hidden">
-                        {r.status === 'OK' && quote.status !== 'CANCELADA' && !selected && (
+                        {r.status === 'OK' && r.tableId && quote.status !== 'CANCELADA' && !selected && (
                           <Can module="fretes_cotacao" action="edit">
                             <Button size="sm" variant="outline" onClick={() => setChoosing(r)}>
                               <TruckIcon aria-hidden /> Escolher

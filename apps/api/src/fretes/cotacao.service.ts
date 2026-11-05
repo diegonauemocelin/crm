@@ -16,6 +16,8 @@ import type { ComponentDef } from './catalogo'
 import { FEE_LABEL, FEE_ORDER, type FeeCode } from './taxas'
 import { ibgeByCity } from './regioes'
 import { internalRateFrom, parseCteXml, type RateLearning } from './cte'
+import { IntegracoesService } from './integracoes.service'
+import { packageOf } from './integracoes'
 import { parseNumber } from './importacao'
 
 export interface QuoteInput {
@@ -69,6 +71,8 @@ export interface QuoteResult {
   recipientFees?: ComponentDef[]
   /** Coletas da transportadora no dia da cotação, na filial de origem: até que horas tirar pedido e a hora da coleta. */
   pickups?: { cutoff: string; pickup: string; note: string | null }[]
+  /** Cotação online (API): de onde veio; não tem tabela no CRM. */
+  online?: 'MELHOR_ENVIO' | 'CORREIOS' | 'BRASPRESS'
 }
 
 /** Coletas cadastradas na transportadora para a filial e o dia da semana da cotação (horários informados à mão). */
@@ -136,6 +140,7 @@ export class CotacaoService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly settings: SettingsService,
+    private readonly online: IntegracoesService,
   ) {}
 
   /** Alíquotas internas de ICMS por UF cadastradas pela empresa (frete dentro do mesmo estado). */
@@ -466,6 +471,42 @@ export class CotacaoService {
     return { city, uf, cep: zip === null ? null : String(zip).padStart(8, '0'), cepSource, carriers: out, checked: carriers.length }
   }
 
+  /**
+   * Cotação online (Melhor Envio e Correios, quando ligados em Fretes › Integrações): entra na lista junto com as
+   * tabelas, para comparar. Não tem tabela no CRM, então não fica como opção escolhida do pedido.
+   */
+  private async onlineResults(tenantId: string, p: Awaited<ReturnType<CotacaoService['prepare']>>, d: QuoteInput): Promise<QuoteResult[]> {
+    if (!p.originZip) return []
+    const quotes = await this.online.quote(tenantId, p.originZip, p.destZip, packageOf({ realWeight: p.measures.realWeight, volumes: d.volumes }, d.cargoValue), { senderDoc: p.unit.cnpj?.replace(/\D/g, '') || null, recipientDoc: p.doc }).catch(() => [])
+    return quotes.map((q) => {
+      const ok = q.price !== null && !q.error
+      const label = q.source === 'CORREIOS' ? 'Correios (contrato) · cotação online' : q.source === 'BRASPRESS' ? 'Braspress · cotação online' : 'Melhor Envio · cotação online'
+      return {
+        tableId: null,
+        tableName: label,
+        quoteName: [q.carrier, q.service].filter(Boolean).join(' · ') || label,
+        carrierId: '',
+        carrierName: q.carrier,
+        versionId: null,
+        versionNumber: null,
+        status: ok ? 'OK' : 'ERRO',
+        reason: ok ? null : q.error,
+        total: ok ? q.price : null,
+        subtotal: ok ? q.price : null,
+        icms: null,
+        components: ok ? [{ code: 'ONLINE', name: `Frete (${label})`, cteName: null, value: q.price!, inTax: false, formula: '', skipped: false, missing: [] }] : [],
+        weights: null,
+        deadlineDays: ok ? q.deadlineDays : null,
+        deliveryDate: ok && q.deadlineDays !== null ? iso(addBusinessDays(p.quoteDate, q.deadlineDays)) : null,
+        validUntil: null,
+        rule: null,
+        warnings: ok ? ['Cotação online: valor informado pela API na hora; não é tabela do CRM e não fica como opção escolhida do pedido.'] : [],
+        expiredUsed: false,
+        online: q.source,
+      } satisfies QuoteResult
+    })
+  }
+
   /** Taxas das listas que valem para este envio: pelo CPF/CNPJ do destinatário ou pelo destino (cidade, CEP, região, UF). */
   private async feesFor(carrierIds: string[], p: { doc: string | null; destZip: string; destCity: string | null; destUf: string | null }) {
     if (!carrierIds.length) return []
@@ -529,6 +570,7 @@ export class CotacaoService {
         deadlineDays: null, deliveryDate: null, validUntil: null, rule: null, warnings: [], expiredUsed: false,
       })
     }
+    results.push(...(await this.onlineResults(user.tenantId, p, d)))
     results.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || (a.total ?? Infinity) - (b.total ?? Infinity) || (a.deadlineDays ?? 999) - (b.deadlineDays ?? 999))
     return { p, results }
   }

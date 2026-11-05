@@ -34,6 +34,7 @@ import { PainelService } from './painel.service'
 import { TabelasService } from './tabelas.service'
 import { TransportadorasService } from './transportadoras.service'
 import { TvService } from '../tv/tv.service'
+import { IntegracoesService } from './integracoes.service'
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const nullable = ValidateIf((_, v) => v !== null)
@@ -65,6 +66,40 @@ class CarrierDto {
   @IsOptional() @IsBoolean() active?: boolean
   /** Coletas (validadas no serviço): [{ unitId, days, cutoff, pickup, minutes, note }]. */
   @IsOptional() @IsArray() @ArrayMaxSize(40) pickups?: unknown[]
+}
+
+class MelhorEnvioDto {
+  @IsOptional() @IsBoolean() enabled?: boolean
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(4000) token?: string | null
+  @IsOptional() @IsString() @MaxLength(120) email?: string
+  @IsOptional() @IsBoolean() sandbox?: boolean
+  @IsOptional() @IsArray() @ArrayMaxSize(100) @IsInt({ each: true }) services?: number[]
+}
+
+class CorreiosProductDto {
+  @IsString() @MaxLength(10) code!: string
+  @IsString() @MaxLength(40) name!: string
+}
+
+class CorreiosDto {
+  @IsOptional() @IsBoolean() enabled?: boolean
+  @IsOptional() @IsString() @MaxLength(60) user?: string
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(200) accessCode?: string | null
+  @IsOptional() @IsString() @MaxLength(20) postCard?: string
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @ValidateNested({ each: true }) @Type(() => CorreiosProductDto) products?: CorreiosProductDto[]
+}
+
+class BraspressDto {
+  @IsOptional() @IsBoolean() enabled?: boolean
+  @IsOptional() @IsString() @MaxLength(60) user?: string
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(200) password?: string | null
+  @IsOptional() @IsIn(['R', 'A']) modal?: 'R' | 'A'
+}
+
+class IntegrationsDto {
+  @IsOptional() @IsObject() @ValidateNested() @Type(() => BraspressDto) braspress?: BraspressDto
+  @IsOptional() @IsObject() @ValidateNested() @Type(() => MelhorEnvioDto) melhorEnvio?: MelhorEnvioDto
+  @IsOptional() @IsObject() @ValidateNested() @Type(() => CorreiosDto) correios?: CorreiosDto
 }
 
 class BulkValidityDto {
@@ -275,6 +310,7 @@ export class FretesController {
     private readonly imports: ImportacaoService,
     private readonly quotes: CotacaoService,
     private readonly tv: TvService,
+    private readonly online: IntegracoesService,
   ) {}
 
   @Get('contexto')
@@ -445,6 +481,22 @@ export class FretesController {
   @Post('tabelas')
   createTable(@CurrentUser() user: AuthUser, @Body() dto: TableDto, @ReqContext() ctx: RequestCtx) {
     return this.tables.create(user, dto, ctx)
+  }
+
+  @Get('integracoes')
+  integrations(@CurrentUser() user: AuthUser) {
+    return this.online.view(user)
+  }
+
+  @Put('integracoes')
+  saveIntegrations(@CurrentUser() user: AuthUser, @Body() dto: IntegrationsDto, @ReqContext() ctx: RequestCtx) {
+    return this.online.save(user, dto, ctx)
+  }
+
+  @Get('integracoes/melhor-envio/servicos')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  melhorEnvioServices(@CurrentUser() user: AuthUser) {
+    return this.online.melhorEnvioServices(user)
   }
 
   @Post('tabelas/vigencia')
