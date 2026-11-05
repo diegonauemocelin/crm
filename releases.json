@@ -2,6 +2,33 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.34",
+      "date": "2026-11-05",
+      "title": "Menções em grupos, vendedora nas mensagens e CT-e da Matriz",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "WhatsApp",
+          "text": "Grupos: quem é mencionado (@) aparece pelo nome em vez do número, e dá para mencionar participantes digitando @ na caixa de mensagem (a pessoa é marcada no WhatsApp)."
+        },
+        {
+          "type": "novo",
+          "area": "Cadastros",
+          "text": "Vendedor ou vendedora: no cadastro do vendedor, escolha como ele aparece nas mensagens ao cliente. Com \"a vendedora\", as mensagens automáticas (repasse, \"já entrou em contato?\", dia seguinte e reativação) saem como \"A vendedora Mariana...\"."
+        },
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "CT-e de filial com o mesmo CNPJ ou na mesma cidade da Matriz (ex.: E-commerce) fica na Matriz, que é de onde a carga sai; os já importados passam para ela."
+        },
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Conciliação não exige mais o CEP de expedição da filial (vale a origem do CT-e) e, quando um dado do CT-e impede o cálculo, mostra o motivo."
+        }
+      ]
+    },
+    {
       "version": "2.0.33",
       "date": "2026-11-05",
       "title": "Segurança da biblioteca do certificado e deploy mais seguro",
