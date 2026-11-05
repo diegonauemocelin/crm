@@ -2,6 +2,33 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.27",
+      "date": "2026-11-05",
+      "title": "Tabelas por CEP muito grandes e vigência em lote",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Importar tabela: faixas de CEP seguidas com os mesmos valores viram uma faixa só (ex.: J&T Express, 89 mil linhas de CEP de mil em mil viram cerca de 3,7 mil faixas). O cálculo é o mesmo, com muito menos regras."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Linha repetida com os mesmos valores de outra é só ignorada (antes era erro). Repetida com valor ou prazo diferente continua apontada como erro."
+        },
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Coluna \"Acima: KG (R$/kg)\" do modelo Frete Gestão é lida como excedente de peso."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Tabelas de frete: marque várias na lista e use \"Alterar vigência\" para mudar a vigência de todas de uma vez (a final em branco mantém a de cada uma)."
+        }
+      ]
+    },
+    {
       "version": "2.0.26",
       "date": "2026-11-05",
       "title": "Tabelas aéreas grandes",
