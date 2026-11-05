@@ -67,6 +67,12 @@ class CarrierDto {
   @IsOptional() @IsArray() @ArrayMaxSize(40) pickups?: unknown[]
 }
 
+class BulkValidityDto {
+  @IsArray() @ArrayMaxSize(500) @IsUUID('all', { each: true }) ids!: string[]
+  @Matches(/^\d{4}-\d{2}-\d{2}$/) validFrom!: string
+  @IsOptional() @nullable @Matches(/^\d{4}-\d{2}-\d{2}$/) validTo?: string | null
+}
+
 class TableDto {
   @ApiProperty() @IsUUID() carrierId!: string
   @ApiProperty() @IsString() @Length(2, 160) name!: string
@@ -433,6 +439,12 @@ export class FretesController {
   @Post('tabelas')
   createTable(@CurrentUser() user: AuthUser, @Body() dto: TableDto, @ReqContext() ctx: RequestCtx) {
     return this.tables.create(user, dto, ctx)
+  }
+
+  @Post('tabelas/vigencia')
+  @HttpCode(200)
+  bulkValidity(@CurrentUser() user: AuthUser, @Body() dto: BulkValidityDto, @ReqContext() ctx: RequestCtx) {
+    return this.tables.bulkValidity(user, dto, ctx)
   }
 
   @Put('tabelas/:id')

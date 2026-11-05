@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangleIcon, FilePlus2Icon, Loader2Icon, PlusIcon, SearchIcon, TableIcon, Trash2Icon, UploadIcon } from 'lucide-react'
+import { AlertTriangleIcon, CalendarRangeIcon, FilePlus2Icon, Loader2Icon, PlusIcon, SearchIcon, TableIcon, Trash2Icon, UploadIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -14,6 +14,8 @@ import { Can, EmptyState, ErrorState, PageHeader, RequirePermission, TableSkelet
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -100,6 +102,19 @@ function TableList() {
     setParams(p, { replace: true })
   }
   const units = active.ctx.data?.units ?? []
+  const { can } = useAuth()
+  const editable = can('fretes_tabelas', 'edit')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const rows = list.data ?? []
+  const allOn = rows.length > 0 && rows.every((t) => selected.has(t.id))
+  const toggle = (id: string) =>
+    setSelected((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
   return (
     <div className="space-y-4">
       <PageHeader
@@ -108,6 +123,11 @@ function TableList() {
         actions={
           <>
             <FilialSwitch active={active} />
+            {editable && (
+              <Button variant="outline" disabled={!selected.size} onClick={() => setBulkOpen(true)} title="Marque as tabelas na lista">
+                <CalendarRangeIcon aria-hidden /> Alterar vigência{selected.size ? ` (${selected.size})` : ''}
+              </Button>
+            )}
             <Can module="fretes_tabelas" action="create">
               <Button asChild>
                 <Link to="/fretes/tabelas/nova">
@@ -180,6 +200,11 @@ function TableList() {
         <Table>
           <TableHeader>
             <TableRow>
+              {editable && (
+                <TableHead className="w-8">
+                  <Checkbox aria-label="Marcar todas" checked={allOn} onCheckedChange={(v) => setSelected(v ? new Set(rows.map((t) => t.id)) : new Set())} />
+                </TableHead>
+              )}
               <TableHead>Tabela</TableHead>
               <TableHead>Transportadora</TableHead>
               <TableHead>Vigência</TableHead>
@@ -191,6 +216,11 @@ function TableList() {
           <TableBody>
             {list.data.map((t) => (
               <TableRow key={t.id} className="cursor-pointer" onClick={() => navigate(`/fretes/tabelas/${t.id}`)}>
+                {editable && (
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Checkbox aria-label={`Marcar ${t.name}`} checked={selected.has(t.id)} onCheckedChange={() => toggle(t.id)} />
+                  </TableCell>
+                )}
                 <TableCell>
                   <Link to={`/fretes/tabelas/${t.id}`} className="font-medium" onClick={(e) => e.stopPropagation()}>
                     {t.name}
@@ -220,7 +250,59 @@ function TableList() {
           </TableBody>
         </Table>
       )}
+      {bulkOpen && <BulkValidityDialog ids={[...selected]} onClose={(done) => (setBulkOpen(false), done && setSelected(new Set()))} />}
     </div>
+  )
+}
+
+/** Vigência de várias tabelas de uma vez. Final em branco = cada tabela mantém a sua. */
+function BulkValidityDialog({ ids, onClose }: { ids: string[]; onClose: (done: boolean) => void }) {
+  const qc = useQueryClient()
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const save = useMutation({
+    mutationFn: () => api.post<{ updated: number }>('/fretes/tabelas/vigencia', { ids, validFrom: from, validTo: to || null }),
+    onSuccess: (r) => {
+      toast.success(`Vigência alterada em ${r.updated} tabela(s).`)
+      void qc.invalidateQueries({ queryKey: ['fretes'] })
+      onClose(true)
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose(false)}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Alterar vigência de {ids.length} tabela(s)</DialogTitle>
+          <DialogDescription>A nova vigência vale para as tabelas marcadas. Deixe a final em branco para manter a de cada tabela. Cada alteração fica na auditoria.</DialogDescription>
+        </DialogHeader>
+        <form
+          id="bulk-validity"
+          className="grid grid-cols-2 gap-3"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (from) save.mutate()
+          }}
+        >
+          <div className="space-y-1.5">
+            <Label htmlFor="bv-from">Vigência inicial *</Label>
+            <Input id="bv-from" type="date" required value={from} onChange={(e) => setFrom(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="bv-to">Vigência final</Label>
+            <Input id="bv-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </div>
+        </form>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onClose(false)}>
+            Cancelar
+          </Button>
+          <Button type="submit" form="bulk-validity" disabled={!from || save.isPending}>
+            {save.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Aplicar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

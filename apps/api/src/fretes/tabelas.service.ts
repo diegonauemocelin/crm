@@ -331,6 +331,29 @@ export class TabelasService {
     return { ok: true }
   }
 
+  /** Vigência de várias tabelas de uma vez (ex.: todas valem desde 01/01/2026). Cada tabela fica na auditoria. */
+  async bulkValidity(user: AuthUser, d: { ids: string[]; validFrom: string; validTo?: string | null }, ctx: RequestCtx) {
+    assertCan(user, 'fretes_tabelas', 'edit')
+    const ids = [...new Set(d.ids)]
+    if (!ids.length) throw new BadRequestException('Escolha ao menos uma tabela.')
+    const validFrom = dateOnly(d.validFrom)
+    const validTo = d.validTo ? dateOnly(d.validTo) : null
+    const tables = await this.prisma.freightTable.findMany({ where: { id: { in: ids }, tenantId: user.tenantId, ...unitListWhere(allowedUnits(user, 'fretes_tabelas')) } })
+    if (tables.length !== ids.length) throw new NotFoundException('Alguma tabela não foi encontrada ou não é da sua filial.')
+    for (const t of tables) assertUnitList(user, 'fretes_tabelas', t.unitIds)
+    const bad = tables.find((t) => (validTo ?? t.validTo) < validFrom)
+    if (bad) throw new BadRequestException(`A vigência final da tabela ${bad.name} (${bad.validTo.toLocaleDateString('pt-BR', { timeZone: 'UTC' })}) fica antes da inicial: informe também a vigência final.`)
+    await this.prisma.$transaction(tables.map((t) => this.prisma.freightTable.update({ where: { id: t.id }, data: { validFrom, ...(validTo ? { validTo } : {}) } })))
+    for (const t of tables) {
+      const diff: Record<string, { de: string; para: string }> = {}
+      const iso = (x: Date) => x.toISOString().slice(0, 10)
+      if (iso(t.validFrom) !== iso(validFrom)) diff.validFrom = { de: iso(t.validFrom), para: iso(validFrom) }
+      if (validTo && iso(t.validTo) !== iso(validTo)) diff.validTo = { de: iso(t.validTo), para: iso(validTo) }
+      if (Object.keys(diff).length) await this.audit.byUser(user, ctx, 'frete.tabela.alterada', 'freight_table', t.id, { alteracoes: diff, emLote: true })
+    }
+    return { updated: tables.length }
+  }
+
   async update(user: AuthUser, id: string, d: TableInput, ctx: RequestCtx) {
     assertCan(user, 'fretes_tabelas', 'edit')
     const cur = await this.findTable(user, id)
