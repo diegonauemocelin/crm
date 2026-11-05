@@ -161,7 +161,7 @@ export class CteService {
   async importDocs(user: AuthUser, docs: { name: string; text: string }[], ctx: RequestCtx, source: 'MANUAL' | 'SEFAZ') {
     const [carriers, units] = await Promise.all([
       this.prisma.freightCarrier.findMany({ where: { tenantId: user.tenantId }, select: { id: true, cnpj: true } }),
-      this.prisma.unit.findMany({ where: { tenantId: user.tenantId }, select: { id: true, cnpj: true, city: true, state: true } }),
+      this.prisma.unit.findMany({ where: { tenantId: user.tenantId }, select: { id: true, cnpj: true, city: true, state: true, isHeadquarters: true, zip: true } }),
     ])
     const allowed = allowedUnits(user, 'fretes_cte')
     const result = { imported: 0, duplicated: 0, cancelled: 0, linked: 0, ignored: [] as { file: string; reason: string }[], ids: [] as string[] }
@@ -198,10 +198,14 @@ export class CteService {
       const root = cte.emitCnpj?.slice(0, 8)
       const carrier = carriers.find((c) => c.cnpj === cte.emitCnpj) ?? carriers.find((c) => root && c.cnpj.startsWith(root))
       // Filial da Usaparts: quem enviou, quem paga, ou a cidade de origem.
+      // Várias filiais com o mesmo CNPJ ou na mesma cidade (ex.: Matriz e E-commerce em Maravilha): a carga sai da matriz
+      // (ou da que tem CEP de expedição), não da filial que só fatura.
+      const pick = (list: typeof units) => list.find((u) => u.isHeadquarters) ?? list.find((u) => u.zip) ?? list[0]
+      const sameCity = (u: (typeof units)[number]) => !!u.city && !!cte.cityIni && u.city.localeCompare(cte.cityIni, 'pt-BR', { sensitivity: 'base' }) === 0 && (!u.state || u.state === cte.ufIni)
       const unit =
-        units.find((u) => u.cnpj && u.cnpj === cte.senderDoc) ??
-        units.find((u) => u.cnpj && u.cnpj === cte.tomadorDoc) ??
-        units.find((u) => u.city && cte.cityIni && u.city.localeCompare(cte.cityIni, 'pt-BR', { sensitivity: 'base' }) === 0 && (!u.state || u.state === cte.ufIni))
+        pick(units.filter((u) => u.cnpj && u.cnpj === cte.senderDoc)) ??
+        pick(units.filter((u) => u.cnpj && u.cnpj === cte.tomadorDoc)) ??
+        pick(units.filter(sameCity))
       if (allowed && (!unit || !allowed.includes(unit.id))) {
         result.ignored.push({ file: d.name, reason: 'CT-e de filial que não está liberada para o seu usuário.' })
         continue
