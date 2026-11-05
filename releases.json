@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.26",
+      "date": "2026-11-05",
+      "title": "Tabelas aéreas grandes",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Importar tabela: o limite por versão passou de 200 mil para 400 mil regras, para tabelas aéreas com muitas faixas de peso por destino (ex.: Azul Cargo, 7 mil destinos × 30 faixas = 212 mil regras)."
+        }
+      ]
+    },
+    {
       "version": "2.0.25",
       "date": "2026-11-04",
       "title": "Conciliação explica o CT-e sem referência",
