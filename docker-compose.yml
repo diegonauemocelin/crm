@@ -57,8 +57,9 @@ services:
       - /tmp
     environment:
       NODE_ENV: production
-      # Importações grandes (dezenas de milhares de linhas) precisam de folga; uso normal fica em ~150 MB.
-      NODE_OPTIONS: --max-old-space-size=384
+      # Importações grandes (tabelas de frete com dezenas de milhares de linhas, ex.: J&T com 89 mil) precisam de folga;
+      # uso normal fica em ~150 MB. Ajustável no .env (API_HEAP_MB e API_MEMORY) conforme a memória da VPS.
+      NODE_OPTIONS: --max-old-space-size=${API_HEAP_MB:-1024}
       HOME: /tmp
       CHECKPOINT_DISABLE: "1"
       APP_URL: https://${CRM_DOMAIN:?defina CRM_DOMAIN no .env}
@@ -85,7 +86,7 @@ services:
     networks: [internal, egress]
     deploy:
       resources:
-        limits: { memory: 512m }
+        limits: { memory: "${API_MEMORY:-1536m}" }
 
   web:
     <<: *hardening
