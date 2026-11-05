@@ -267,6 +267,19 @@ export class CteService {
   async reconcileOne(user: AuthUser, id: string) {
     const c = await this.prisma.freightCte.findUniqueOrThrow({ where: { id } })
     if (c.fiscalStatus === 'CANCELADO') return
+    // CT-e de compra: a carga sai de outra cidade (fornecedor), não de uma filial. Quase sempre não segue a nossa tabela,
+    // então não é conciliado (fica marcado como compra, fora da fila de conferência).
+    if (c.cityIni && !c.shipmentId) {
+      const units = await this.prisma.unit.findMany({ where: { tenantId: c.tenantId, city: { not: null } }, select: { city: true, state: true } })
+      const fromUnit = units.some((u) => u.city!.localeCompare(c.cityIni!, 'pt-BR', { sensitivity: 'base' }) === 0 && (!u.state || !c.ufIni || u.state === c.ufIni))
+      if (units.length && !fromUnit) {
+        await this.prisma.freightCte.update({
+          where: { id },
+          data: { recStatus: 'COMPRA', recTypes: [], recSource: null, expectedTotal: null, difference: null, recDetail: { reason: `CT-e de compra: a origem (${c.cityIni}${c.ufIni ? `/${c.ufIni}` : ''}) não é cidade de uma filial, então não é conciliado com as tabelas de frete.` } as Prisma.InputJsonValue, recAt: new Date() },
+        })
+        return
+      }
+    }
     const settings = await this.recSettings(user.tenantId)
     const tol: Tolerance = c.carrierId && settings.porTransportadora[c.carrierId] ? { value: settings.porTransportadora[c.carrierId]!.valor, percent: settings.porTransportadora[c.carrierId]!.percentual } : { value: settings.valor, percent: settings.percentual }
     let expected: (ExpectedRef & { label: string }) | null = null
@@ -336,9 +349,9 @@ export class CteService {
   /** Concilia de novo todos os CT-es sem referência (depois de cadastrar ou corrigir tabelas). */
   async reprocessPending(user: AuthUser, ctx: RequestCtx) {
     assertCan(user, 'fretes_cte', 'edit')
-    const rows = await this.prisma.freightCte.findMany({ where: { ...this.scopeWhere(user), recStatus: 'SEM_REFERENCIA', decision: null, fiscalStatus: { not: 'CANCELADO' } }, select: { id: true }, orderBy: { issuedAt: 'desc' }, take: 2000 })
+    const rows = await this.prisma.freightCte.findMany({ where: { ...this.scopeWhere(user), recStatus: { in: ['SEM_REFERENCIA', 'DIVERGENTE'] }, decision: null, fiscalStatus: { not: 'CANCELADO' } }, select: { id: true }, orderBy: { issuedAt: 'desc' }, take: 2000 })
     for (const r of rows) await this.reconcileOne(user, r.id)
-    const still = await this.prisma.freightCte.count({ where: { id: { in: rows.map((r) => r.id) }, recStatus: 'SEM_REFERENCIA' } })
+    const still = await this.prisma.freightCte.count({ where: { id: { in: rows.map((r) => r.id) }, recStatus: { in: ['SEM_REFERENCIA', 'DIVERGENTE'] } } })
     await this.audit.byUser(user, ctx, 'frete.cte.reconciliados', 'freight_cte', undefined, { total: rows.length, semReferencia: still })
     return { total: rows.length, resolved: rows.length - still, still }
   }

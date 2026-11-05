@@ -3066,7 +3066,7 @@ model FreightCte {
   importedByName String
   createdAt     DateTime  @default(now())
 
-  /// Conciliação: PENDENTE | CONCILIADO | DIVERGENTE | SEM_REFERENCIA | CANCELADO
+  /// Conciliação: PENDENTE | CONCILIADO | DIVERGENTE | SEM_REFERENCIA | COMPRA | CANCELADO
   recStatus     String    @default("PENDENTE")
   recTypes      String[]  @default([])
   /// De onde veio o valor esperado: COTACAO (escolhida no pedido) | TABELA (recalculado pela tabela vigente na data do CT-e)

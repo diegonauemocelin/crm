@@ -158,7 +158,7 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
     mutationFn: () => api.post<{ total: number; resolved: number; still: number }>('/fretes/ctes/reconciliar-sem-referencia'),
     onSuccess: (r) => {
       void qc.invalidateQueries({ queryKey: ['fretes', 'ctes'] })
-      toast.success(r.total ? `${r.total} CT-e(s) sem referência conferido(s) de novo: ${r.resolved} agora com referência, ${r.still} ainda sem.` : 'Nenhum CT-e sem referência.')
+      toast.success(r.total ? `${r.total} CT-e(s) pendente(s) conferido(s) de novo: ${r.resolved} resolvido(s) (conciliados ou de compra), ${r.still} ainda pendente(s).` : 'Nenhum CT-e pendente.')
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -175,8 +175,8 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
           <>
             <FilialSwitch active={active} />
             <Can module="fretes_cte" action="edit">
-              <Button variant="outline" disabled={redo.isPending} onClick={() => redo.mutate()} title="Depois de cadastrar ou corrigir tabelas: compara de novo os CT-es que estão sem referência">
-                {redo.isPending ? <Loader2Icon className="animate-spin" aria-hidden /> : <RefreshCwIcon aria-hidden />} Conciliar sem referência
+              <Button variant="outline" disabled={redo.isPending} onClick={() => redo.mutate()} title="Depois de cadastrar ou corrigir tabelas: compara de novo os CT-es sem referência e divergentes sem decisão">
+                {redo.isPending ? <Loader2Icon className="animate-spin" aria-hidden /> : <RefreshCwIcon aria-hidden />} Conciliar pendentes de novo
               </Button>
             </Can>
             <Can module="fretes_cte" action="create">
