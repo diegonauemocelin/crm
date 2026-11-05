@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.32",
+      "date": "2026-11-05",
+      "title": "Quem atende a cidade e CT-e de compra",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Cidades atendidas: \"Quem atende uma cidade\" busca a cidade (ou o CEP) em todas as transportadoras ativas e mostra quem atende, por qual tabela (cidade, faixa de CEP ou estado inteiro), o prazo e a base de entrega com as observações."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "CT-e de compra (que sai de uma cidade que não é de filial, como o fornecedor) não é mais conciliado: fica como \"Compra (não concilia)\", fora da fila de conferência."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "O botão \"Conciliar pendentes de novo\" (antes \"Conciliar sem referência\") refaz os sem referência e também os divergentes ainda sem decisão."
+        }
+      ]
+    },
+    {
       "version": "2.0.31",
       "date": "2026-11-05",
       "title": "Cotação pelo E-commerce com as tabelas da Matriz",
