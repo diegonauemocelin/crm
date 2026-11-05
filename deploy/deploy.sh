@@ -6,7 +6,7 @@
 # Passos: backup -> checkout da tag -> build das imagens -> migrations -> subida -> checagem de saúde.
 # Se a checagem falhar, volta automaticamente para a versão anterior.
 
-set -euo pipefail
+set -Eeuo pipefail
 source "$(dirname "$0")/lib.sh"
 cd "$RAIZ"
 
