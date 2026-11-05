@@ -2,6 +2,33 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.36",
+      "date": "2026-11-05",
+      "title": "Coleta ou despacho nas transportadoras",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Transportadoras: informe se a transportadora coleta na empresa ou se é despacho (a empresa leva até ela). No despacho, informe o valor pago para levar e quem leva (ou deixe sem valor quando a empresa leva sem custo)."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Prestador: cadastre quem só leva a carga da empresa até a transportadora (CPF ou CNPJ), na tela de transportadoras. Ele não entra na cotação."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Cotação: cada transportadora mostra se é coleta ou despacho; com despacho pago, o valor entra no total e aparece com o nome de quem leva. Esse valor fica fora da conferência do CT-e, porque não é cobrado pela transportadora."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Painel de coletas (TV): cada cartão mostra se é coleta na empresa ou despacho (levar até a transportadora)."
+        }
+      ]
+    },
+    {
       "version": "2.0.35",
       "date": "2026-11-05",
       "title": "Cotação online: Melhor Envio, Correios e Braspress",
