@@ -721,7 +721,7 @@ export class CotacaoService {
    * (a mais barata que atende, na versão publicada naquela data), com as taxas da lista do destinatário. null quando
    * nenhuma tabela calcula.
    */
-  async expectedByTable(user: AuthUser, d: { unitId: string; carrierId: string; destZip: string; destCity: string | null; destUf: string | null; personType: 'PF' | 'PJ'; recipientDoc: string | null; cargoValue: number; weight: number; date: Date }) {
+  async expectedByTable(user: AuthUser, d: { unitId: string; carrierId: string; destZip: string; destCity: string | null; destUf: string | null; personType: 'PF' | 'PJ'; recipientDoc: string | null; cargoValue: number; weight: number; date: Date; originCity?: string | null; originUf?: string | null }) {
     const input: QuoteInput = { unitId: d.unitId, destZip: d.destZip, destCity: d.destCity, destUf: d.destUf, personType: d.personType, cargoValue: d.cargoValue, weight: d.weight, quoteDate: d.date.toISOString().slice(0, 10) }
     let p: Awaited<ReturnType<CotacaoService['prepare']>>
     try {
@@ -730,7 +730,17 @@ export class CotacaoService {
       return null
     }
     const all = await this.prisma.freightTable.findMany({ where: { tenantId: user.tenantId, carrierId: d.carrierId, status: { not: 'RASCUNHO' } }, include: { carrier: true } })
-    const tables = all.filter((t) => !t.unitIds.length || t.unitIds.includes(d.unitId))
+    // Filiais que saem do mesmo lugar valem juntas: mesmo CNPJ (ex.: E-commerce faturado pela Matriz) ou a mesma cidade de
+    // origem do CT-e. Assim a tabela cadastrada para a Matriz confere o CT-e que caiu no E-commerce.
+    const units = await this.prisma.unit.findMany({ where: { tenantId: user.tenantId }, select: { id: true, cnpj: true, city: true, state: true } })
+    const self = units.find((u) => u.id === d.unitId)
+    const same = (a: string | null | undefined, b: string | null | undefined) => !!a && !!b && a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }) === 0
+    const siblings = new Set(
+      units
+        .filter((u) => u.id === d.unitId || (self?.cnpj && u.cnpj === self.cnpj) || (d.originCity && same(u.city, d.originCity) && (!d.originUf || !u.state || u.state === d.originUf)))
+        .map((u) => u.id),
+    )
+    const tables = all.filter((t) => !t.unitIds.length || t.unitIds.some((id) => siblings.has(id)))
     const fees = await this.feesFor([d.carrierId], { doc: d.recipientDoc, destZip: p.destZip, destCity: p.destCity, destUf: p.destUf })
     const versions = await this.prisma.freightTableVersion.findMany({ where: { tableId: { in: tables.map((t) => t.id) }, publishedAt: { not: null, lte: d.date } }, orderBy: { publishedAt: 'desc' }, select: { id: true, tableId: true } })
     const results = await Promise.all(tables.map((t) => this.evaluate(t, p, input, { allowExpired: false, fees: fees.map(feeComponent), versionAt: versions.find((v) => v.tableId === t.id)?.id ?? null })))

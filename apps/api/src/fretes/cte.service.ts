@@ -289,6 +289,8 @@ export class CteService {
         cargoValue: n(c.cargoValue) ?? 0,
         weight: Number(c.weight),
         date: c.issuedAt ?? c.createdAt,
+        originCity: c.cityIni,
+        originUf: c.ufIni,
       })
       if (r && 'total' in r && r.total !== null && r.total !== undefined) {
         expected = { total: r.total, components: r.components, icms: r.icms, weight: r.weights?.taxed ?? null, label: `${r.tableName} v${r.versionNumber}, recalculada na data do CT-e` }
