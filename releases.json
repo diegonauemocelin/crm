@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.37",
+      "date": "2026-11-05",
+      "title": "Orçamento ou pré-nota do ERP na cotação",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Cotação de frete: campo para o orçamento ou a pré-nota do ERP, com o botão \"Importar do ERP\" para trazer CPF/CNPJ, CEP de destino, peso e volumes. O número fica guardado na cotação e passa para o pedido, para comparar o frete cobrado no ERP com o CT-e. A importação começa a funcionar quando a Tcar liberar a consulta de orçamentos e pré-notas; até lá, a cotação é preenchida à mão."
+        }
+      ]
+    },
+    {
       "version": "2.0.36",
       "date": "2026-11-05",
       "title": "Coleta ou despacho nas transportadoras",
