@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.31",
+      "date": "2026-11-05",
+      "title": "Cotação pelo E-commerce com as tabelas da Matriz",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Cotação: filiais com o mesmo CNPJ ou na mesma cidade (E-commerce e Matriz, em Maravilha) usam as mesmas tabelas e transportadoras. Cotar pelo E-commerce mostra as tabelas cadastradas para a Matriz, como já acontece na conciliação."
+        }
+      ]
+    },
+    {
       "version": "2.0.30",
       "date": "2026-11-05",
       "title": "Conciliação com a tabela da Matriz",
