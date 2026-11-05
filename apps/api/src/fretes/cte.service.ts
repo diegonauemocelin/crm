@@ -12,7 +12,7 @@ import { cleanText } from '../sugestoes/sugestoes'
 import { allowedUnits, assertCan } from './acesso'
 import { normalizeCep } from './cep'
 import { type ExpectedRef, reconcile, type Tolerance } from './conciliacao'
-import { CotacaoService, type QuoteResult } from './cotacao.service'
+import { CotacaoService, DROP_OFF_CODE, dropOffOf, type QuoteResult } from './cotacao.service'
 import { companyRoles, type CteData, internalRateFrom, parseCteCancel, parseCteXml, type RateLearning } from './cte'
 import { money } from './formula'
 
@@ -292,7 +292,8 @@ export class CteService {
     const shipment = c.shipmentId ? await this.prisma.freightShipment.findUnique({ where: { id: c.shipmentId } }) : null
     const exp = shipment?.expected as unknown as (Partial<QuoteResult> & { quoteCode?: number }) | null
     if (exp && exp.total !== null && exp.total !== undefined) {
-      expected = { total: exp.total, components: exp.components ?? [], icms: exp.icms ?? null, weight: exp.weights?.taxed ?? null, label: `Cotação nº ${exp.quoteCode} (${exp.tableName ?? ''} v${exp.versionNumber ?? ''})` }
+      // O despacho (prestador que leva até a transportadora) não está no CT-e: sai da comparação.
+      expected = { total: Math.round((exp.total - dropOffOf(exp)) * 100) / 100, components: (exp.components ?? []).filter((c) => c.code !== DROP_OFF_CODE), icms: exp.icms ?? null, weight: exp.weights?.taxed ?? null, label: `Cotação nº ${exp.quoteCode} (${exp.tableName ?? ''} v${exp.versionNumber ?? ''})` }
       source = 'COTACAO'
     } else if (c.carrierId && c.unitId && c.destZip && c.weight) {
       const r = await this.quotes.expectedByTable(user, {

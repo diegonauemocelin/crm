@@ -73,7 +73,17 @@ export interface QuoteResult {
   pickups?: { cutoff: string; pickup: string; note: string | null }[]
   /** Cotação online (API): de onde veio; não tem tabela no CRM. */
   online?: 'MELHOR_ENVIO' | 'CORREIOS' | 'BRASPRESS'
+  /** Como a carga chega à transportadora: ela coleta na empresa ou a empresa despacha (leva até ela). */
+  pickupMode?: 'COLETA' | 'DESPACHO'
+  /** Despacho pago a um prestador (somado ao total da cotação, fora da conciliação do CT-e). */
+  dropOff?: { cost: number; provider: string | null } | null
 }
+
+/** Valor do despacho (prestador que leva até a transportadora) dentro do total: sai na conferência do CT-e. */
+export function dropOffOf(r: { components?: { code: string; value: number }[] }) {
+  return (r.components ?? []).filter((c) => c.code === DROP_OFF_CODE).reduce((s, c) => s + c.value, 0)
+}
+export const DROP_OFF_CODE = 'DESPACHO_TERCEIRO'
 
 /** Coletas cadastradas na transportadora para a filial e o dia da semana da cotação (horários informados à mão). */
 function pickupsOn(raw: unknown, unitId: string, date: Date) {
@@ -298,6 +308,7 @@ export class CotacaoService {
       carrierId: t.carrierId,
       carrierName: t.carrier.name,
       pickups: pickupsOn(t.carrier.pickups, p.unit.id, p.quoteDate),
+      pickupMode: t.carrier.pickupMode === 'DESPACHO' ? 'DESPACHO' : 'COLETA',
       versionId: null,
       versionNumber: null,
       status: 'OK',
@@ -539,7 +550,7 @@ export class CotacaoService {
         status: 'ATIVA',
         usage: { in: ['COTACAO_CONCILIACAO', 'COTACAO'] },
         OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }],
-        carrier: { active: true, OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }] },
+        carrier: { active: true, kind: 'TRANSPORTADORA', OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }] },
       },
       include: { carrier: true },
     })
@@ -559,7 +570,7 @@ export class CotacaoService {
     // Transportadoras ativas da filial sem nenhuma tabela ativa: aparecem para ninguém achar que foram esquecidas.
     const withTable = new Set(tables.map((t) => t.carrierId))
     const carriers = await this.prisma.freightCarrier.findMany({
-      where: { tenantId: user.tenantId, active: true, id: { notIn: [...withTable] }, OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }] },
+      where: { tenantId: user.tenantId, active: true, kind: 'TRANSPORTADORA', id: { notIn: [...withTable] }, OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }] },
       select: { id: true, name: true, quoteName: true },
       take: 100,
     })
@@ -569,6 +580,20 @@ export class CotacaoService {
         status: 'SEM_TABELA', reason: 'Sem tabela de frete ativa para esta filial.', total: null, subtotal: null, icms: null, components: [], weights: null,
         deadlineDays: null, deliveryDate: null, validUntil: null, rule: null, warnings: [], expiredUsed: false,
       })
+    }
+    // Despacho: a transportadora não coleta e um prestador leva a carga até ela; o valor entra no total da cotação.
+    const providerIds = [...new Set(tables.map((t) => t.carrier.dropOffProviderId).filter((x): x is string => !!x))]
+    const providers = new Map((providerIds.length ? await this.prisma.freightCarrier.findMany({ where: { id: { in: providerIds }, tenantId: user.tenantId }, select: { id: true, name: true } }) : []).map((x) => [x.id, x.name]))
+    for (const r of results) {
+      const t = tables.find((x) => x.id === r.tableId)
+      if (!t || t.carrier.pickupMode !== 'DESPACHO') continue
+      const cost = t.carrier.dropOffCost === null ? 0 : Number(t.carrier.dropOffCost)
+      const provider = t.carrier.dropOffProviderId ? (providers.get(t.carrier.dropOffProviderId) ?? null) : null
+      r.dropOff = cost > 0 ? { cost, provider } : null
+      if (cost > 0 && r.status === 'OK' && r.total !== null) {
+        r.components = [...r.components, { code: DROP_OFF_CODE, name: `Despacho até a transportadora${provider ? ` (${provider})` : ''}`, cteName: null, value: cost, inTax: false, formula: '', skipped: false, missing: [] }]
+        r.total = Math.round((r.total + cost) * 100) / 100
+      }
     }
     results.push(...(await this.onlineResults(user.tenantId, p, d)))
     results.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || (a.total ?? Infinity) - (b.total ?? Infinity) || (a.deadlineDays ?? 999) - (b.deadlineDays ?? 999))
@@ -843,7 +868,8 @@ export class CotacaoService {
         continue
       }
       const r = await this.evaluate(t, p, input, { allowExpired: true, forceVersionId: o.versionId!, fees: o.recipientFees, ...(o.icms ? { icmsRate: o.icms.rate } : {}) })
-      out.push({ tableId: o.tableId, carrierName: o.carrierName, versionNumber: o.versionNumber, original: o.total, recalculated: r.total, same: r.status === 'OK' && r.total === o.total, reason: r.status === 'OK' ? null : r.reason })
+      const original = o.total === null ? null : Math.round((o.total - dropOffOf(o)) * 100) / 100
+      out.push({ tableId: o.tableId, carrierName: o.carrierName, versionNumber: o.versionNumber, original, recalculated: r.total, same: r.status === 'OK' && r.total === original, reason: r.status === 'OK' ? null : r.reason })
     }
     return { code: q.code, quoteDate: iso(q.quoteDate), allSame: out.every((x) => x.same), items: out }
   }

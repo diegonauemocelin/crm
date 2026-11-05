@@ -127,6 +127,7 @@ function Board({ q, children, linkHint }: { q: { data?: PanelData; error: Error 
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="truncate text-3xl font-extrabold">{i.carrier}</h2>
+                  <p className={cn('text-sm font-bold tracking-wide uppercase', i.mode === 'DESPACHO' ? 'text-amber-300' : 'text-sky-300')}>{i.mode === 'DESPACHO' ? 'Despacho · levar até a transportadora' : 'Coleta na empresa'}</p>
                   {(i.unit || i.note) && <p className="truncate text-white/60">{[i.unit, i.note].filter(Boolean).join(' · ')}</p>}
                 </div>
                 <span className={cn('shrink-0 rounded-full px-3 py-1 text-sm font-bold', s.chip)}>{s.label}</span>
@@ -138,7 +139,7 @@ function Board({ q, children, linkHint }: { q: { data?: PanelData; error: Error 
                   <p className={cn('text-sm font-semibold', open ? (urgent ? 'text-red-300' : 'text-emerald-300') : 'text-white/50')}>{open ? `faltam ${span(i.toCutoff)}` : 'corte encerrado'}</p>
                 </div>
                 <div className="rounded-xl bg-white/10 p-3">
-                  <p className="text-xs font-semibold tracking-widest text-white/60 uppercase">Coleta</p>
+                  <p className="text-xs font-semibold tracking-widest text-white/60 uppercase">{i.mode === 'DESPACHO' ? 'Despacho' : 'Coleta'}</p>
                   <p className="text-4xl font-extrabold tabular-nums">{i.pickup}</p>
                   <p className="text-sm font-semibold text-white/70">
                     {i.status === 'CARREGANDO' ? `saída em ${span(i.toPickup + i.minutes)}` : i.status === 'COLETADO' ? 'já saiu' : `chega em ${span(i.toPickup)}`}

@@ -28,3 +28,11 @@ describe('fretes: cotação online (Melhor Envio, Correios, Braspress)', () => {
     expect(parseBraspress({ id: 1, prazo: 4, totalFrete: 123.45 })).toEqual({ price: 123.45, deadlineDays: 4, error: null })
   })
 })
+
+describe('fretes: despacho até a transportadora', () => {
+  it('o valor do despacho sai da conferência do CT-e', async () => {
+    const { dropOffOf } = await import('../src/fretes/cotacao.service')
+    expect(dropOffOf({ components: [{ code: 'FRETE_PESO', value: 100 }, { code: 'DESPACHO_TERCEIRO', value: 25 }] })).toBe(25)
+    expect(dropOffOf({ components: [] })).toBe(0)
+  })
+})

@@ -7,7 +7,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { cleanText } from '../sugestoes/sugestoes'
 import { allowedUnits, assertCan, assertUnitList, unitListWhere } from './acesso'
 import { MODALS } from './catalogo'
-import { normalizeCep, normalizeUf, validCnpj } from './cep'
+import { normalizeCep, normalizeUf, validCnpj, validCpf } from './cep'
 import { FEE_CODES, feeCodeFromName, parseFeeSheet, type ParsedFee } from './taxas'
 import { cleanPickups, type Pickup } from './coletas'
 import { htmlTableRows, parseIbgeSheet, parseRegionsSheet, type ParsedRegion } from './regioes'
@@ -34,6 +34,10 @@ export interface CarrierInput {
   notes?: string | null
   active?: boolean
   pickups?: unknown
+  kind?: string
+  pickupMode?: string
+  dropOffCost?: number | null
+  dropOffProviderId?: string | null
 }
 
 const opt = (v: string | null | undefined, max: number) => (v === undefined ? undefined : cleanText(v, max) || null)
@@ -53,7 +57,11 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
   private view(c: Prisma.FreightCarrierGetPayload<object>, extra: { tables?: number; activeTables?: number } = {}) {
     return {
       id: c.id,
-      cnpj: c.cnpj,
+      cnpj: c.cnpj.trim(),
+      kind: c.kind,
+      pickupMode: c.pickupMode,
+      dropOffCost: c.dropOffCost === null ? null : Number(c.dropOffCost),
+      dropOffProviderId: c.dropOffProviderId,
       legalName: c.legalName,
       name: c.name,
       quoteName: c.quoteName,
@@ -124,7 +132,13 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
 
   private async validate(user: AuthUser, d: CarrierInput) {
     const cnpj = d.cnpj.replace(/\D/g, '')
-    if (!validCnpj(cnpj)) throw new BadRequestException('CNPJ inválido: confira os números.')
+    const kind = d.kind === 'PRESTADOR' ? 'PRESTADOR' : 'TRANSPORTADORA'
+    // Prestador (leva até a transportadora) pode ser pessoa física: CPF também vale.
+    if (!validCnpj(cnpj) && !(kind === 'PRESTADOR' && validCpf(cnpj))) throw new BadRequestException(kind === 'PRESTADOR' ? 'CPF ou CNPJ inválido: confira os números.' : 'CNPJ inválido: confira os números.')
+    const pickupMode = kind === 'TRANSPORTADORA' && d.pickupMode === 'DESPACHO' ? 'DESPACHO' : 'COLETA'
+    const dropOffCost = pickupMode === 'DESPACHO' && d.dropOffCost !== null && d.dropOffCost !== undefined && Number.isFinite(d.dropOffCost) && d.dropOffCost > 0 ? Math.round(d.dropOffCost * 100) / 100 : null
+    const dropOffProviderId = pickupMode === 'DESPACHO' ? d.dropOffProviderId || null : null
+    if (dropOffProviderId && !(await this.prisma.freightCarrier.count({ where: { id: dropOffProviderId, tenantId: user.tenantId, kind: 'PRESTADOR' } }))) throw new BadRequestException('Prestador inválido: cadastre-o como "Prestador (leva até a transportadora)".')
     const legalName = cleanText(d.legalName, 160)
     if (legalName.length < 2) throw new BadRequestException('Informe a razão social.')
     const zip = d.zip ? normalizeCep(d.zip) : null
@@ -168,6 +182,10 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
       notes: opt(d.notes, 4000) ?? null,
       pickups: pickups as unknown as Prisma.InputJsonValue,
       active: d.active ?? true,
+      kind,
+      pickupMode,
+      dropOffCost,
+      dropOffProviderId,
     }
   }
 
@@ -188,13 +206,13 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
   }
 
   private async boardOf(tenantId: string, unitId: string | null, allowed: string[] | null) {
-    const carriers = await this.prisma.freightCarrier.findMany({ where: { tenantId, active: true }, select: { id: true, name: true, quoteName: true, pickups: true }, orderBy: { name: 'asc' } })
+    const carriers = await this.prisma.freightCarrier.findMany({ where: { tenantId, active: true }, select: { id: true, name: true, quoteName: true, pickups: true, pickupMode: true }, orderBy: { name: 'asc' } })
     const units = await this.prisma.unit.findMany({ where: { tenantId }, select: { id: true, name: true } })
     const unitName = new Map(units.map((u) => [u.id, u.name]))
     const rows = carriers.flatMap((c) =>
       ((c.pickups ?? []) as unknown as Pickup[])
         .filter((p) => (unitId ? !p.unitId || p.unitId === unitId : !allowed || !p.unitId || allowed.includes(p.unitId)))
-        .map((p) => ({ carrierId: c.id, carrier: c.quoteName || c.name, unit: p.unitId ? (unitName.get(p.unitId) ?? null) : null, ...p })),
+        .map((p) => ({ carrierId: c.id, carrier: c.quoteName || c.name, unit: p.unitId ? (unitName.get(p.unitId) ?? null) : null, mode: c.pickupMode, ...p })),
     )
     return { unit: unitId ? (unitName.get(unitId) ?? null) : null, rows }
   }

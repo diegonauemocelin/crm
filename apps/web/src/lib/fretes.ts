@@ -178,6 +178,10 @@ export interface QuoteComponent {
 }
 
 export interface QuoteResult {
+  /** Coleta (a transportadora busca) ou despacho (a empresa leva até ela). */
+  pickupMode?: 'COLETA' | 'DESPACHO'
+  /** Despacho pago a um prestador, já somado ao total. */
+  dropOff?: { cost: number; provider: string | null } | null
   /** Cotação online (API do Melhor Envio ou dos Correios): não tem tabela no CRM e não vira opção escolhida. */
   online?: 'MELHOR_ENVIO' | 'CORREIOS' | 'BRASPRESS'
   /** Coletas da transportadora no dia da cotação (até que horas tirar pedido e a hora da coleta). */

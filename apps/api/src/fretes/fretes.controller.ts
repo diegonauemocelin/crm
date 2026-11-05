@@ -47,7 +47,7 @@ class ContactDto {
 }
 
 class CarrierDto {
-  @ApiProperty() @IsString() @Length(14, 18) cnpj!: string
+  @ApiProperty() @IsString() @Length(11, 18) cnpj!: string
   @ApiProperty() @IsString() @Length(2, 160) legalName!: string
   @ApiPropertyOptional() @IsOptional() @nullable @IsString() @MaxLength(120) name?: string | null
   @ApiPropertyOptional() @IsOptional() @nullable @IsString() @MaxLength(120) quoteName?: string | null
@@ -66,6 +66,10 @@ class CarrierDto {
   @IsOptional() @IsBoolean() active?: boolean
   /** Coletas (validadas no serviço): [{ unitId, days, cutoff, pickup, minutes, note }]. */
   @IsOptional() @IsArray() @ArrayMaxSize(40) pickups?: unknown[]
+  @IsOptional() @IsIn(['TRANSPORTADORA', 'PRESTADOR']) kind?: string
+  @IsOptional() @IsIn(['COLETA', 'DESPACHO']) pickupMode?: string
+  @IsOptional() @nullable @IsNumber() @Min(0) @Max(100000) dropOffCost?: number | null
+  @IsOptional() @nullable @IsUUID() dropOffProviderId?: string | null
 }
 
 class MelhorEnvioDto {

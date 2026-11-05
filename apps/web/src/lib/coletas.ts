@@ -10,6 +10,8 @@ export interface PickupRow {
   pickup: string
   minutes: number
   note: string | null
+  /** COLETA (a transportadora busca) ou DESPACHO (a empresa leva até ela). */
+  mode?: 'COLETA' | 'DESPACHO'
 }
 
 export type PickupStatus = 'CARREGANDO' | 'CHEGANDO' | 'EM_SEGUIDA' | 'ABERTA' | 'CORTE_ENCERRADO' | 'COLETADO'

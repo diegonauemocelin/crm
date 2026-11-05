@@ -45,6 +45,10 @@ interface Carrier {
   externalCodes: Record<string, string>
   notes: string | null
   pickups?: PickupForm[]
+  kind?: 'TRANSPORTADORA' | 'PRESTADOR'
+  pickupMode?: 'COLETA' | 'DESPACHO'
+  dropOffCost?: number | null
+  dropOffProviderId?: string | null
   active: boolean
   tables?: number
   activeTables?: number
@@ -245,7 +249,11 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
   const editable = carrier ? can('fretes_transportadoras', 'edit') : can('fretes_transportadoras', 'create')
   const detail = useQuery({ queryKey: ['fretes', 'transportadora', carrier?.id], queryFn: () => api.get<CarrierDetail>(`/fretes/transportadoras/${carrier!.id}`), enabled: !!carrier })
   const [f, setF] = useState(() => ({
-    cnpj: carrier ? maskCnpj(carrier.cnpj) : '',
+    cnpj: carrier ? (carrier.cnpj.length === 11 ? carrier.cnpj : maskCnpj(carrier.cnpj)) : '',
+    kind: carrier?.kind ?? 'TRANSPORTADORA',
+    pickupMode: carrier?.pickupMode ?? 'COLETA',
+    dropOffCost: carrier?.dropOffCost ? String(carrier.dropOffCost).replace('.', ',') : '',
+    dropOffProviderId: carrier?.dropOffProviderId ?? '',
     legalName: carrier?.legalName ?? '',
     name: carrier?.name ?? '',
     quoteName: carrier?.quoteName ?? '',
@@ -263,6 +271,7 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
     active: carrier?.active ?? true,
   }))
   const [contacts, setContacts] = useState<Contact[]>(carrier?.contacts ?? [])
+  const providers = useQuery({ queryKey: ['fretes', 'transportadoras', '', 'active'], queryFn: () => api.get<Carrier[]>('/fretes/transportadoras?situacao=active'), select: (l) => l.filter((c) => c.kind === 'PRESTADOR' && c.id !== carrier?.id) })
   const [pickups, setPickups] = useState<PickupForm[]>(carrier?.pickups ?? [])
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }))
   const save = useMutation({
@@ -274,7 +283,8 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
           .filter((p) => p.length >= 2 && p[0]!.trim())
           .map(([k, ...v]) => [k!.trim(), v.join('=').trim()]),
       )
-      const body = { ...f, quoteName: f.quoteName || null, zip: f.zip || null, address: f.address || null, city: f.city || null, state: f.state || null, phone: f.phone || null, email: f.email || null, notes: f.notes || null, externalCodes, contacts: contacts.filter((c) => c.name.trim()), pickups }
+      const cost = Number(f.dropOffCost.replace(/\./g, '').replace(',', '.'))
+      const body = { ...f, dropOffCost: f.pickupMode === 'DESPACHO' && f.dropOffCost.trim() && Number.isFinite(cost) ? cost : null, dropOffProviderId: f.pickupMode === 'DESPACHO' ? f.dropOffProviderId || null : null, quoteName: f.quoteName || null, zip: f.zip || null, address: f.address || null, city: f.city || null, state: f.state || null, phone: f.phone || null, email: f.email || null, notes: f.notes || null, externalCodes, contacts: contacts.filter((c) => c.name.trim()), pickups }
       return carrier ? api.put(`/fretes/transportadoras/${carrier.id}`, body) : api.post('/fretes/transportadoras', body)
     },
     onSuccess: () => {
@@ -314,9 +324,16 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
         )}
         <form onSubmit={submit} className="space-y-4 px-4 pb-6">
           <fieldset disabled={!editable} className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="c-kind">Tipo de cadastro</Label>
+              <select id="c-kind" className="h-9 w-full rounded-md border bg-transparent px-2" value={f.kind} onChange={(e) => set('kind', e.target.value === 'PRESTADOR' ? 'PRESTADOR' : 'TRANSPORTADORA')}>
+                <option value="TRANSPORTADORA">Transportadora (faz o frete, entra na cotação)</option>
+                <option value="PRESTADOR">Prestador: só leva a carga da empresa até a transportadora (não entra na cotação)</option>
+              </select>
+            </div>
             <div className="space-y-1.5">
-              <Label htmlFor="c-cnpj">CNPJ *</Label>
-              <Input id="c-cnpj" required value={f.cnpj} onChange={(e) => set('cnpj', maskCnpj(e.target.value))} />
+              <Label htmlFor="c-cnpj">{f.kind === 'PRESTADOR' ? 'CPF ou CNPJ *' : 'CNPJ *'}</Label>
+              <Input id="c-cnpj" required value={f.cnpj} onChange={(e) => set('cnpj', f.kind === 'PRESTADOR' && e.target.value.replace(/\D/g, '').length <= 11 ? e.target.value.replace(/\D/g, '') : maskCnpj(e.target.value))} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="c-legal">Razão social *</Label>
@@ -383,6 +400,39 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
                 </div>
               ))}
             </div>
+            {f.kind === 'TRANSPORTADORA' && (
+              <div className="space-y-2 rounded-md border p-3 sm:col-span-2">
+                <p className="text-sm font-medium">Como a carga chega à transportadora</p>
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <label className="flex items-center gap-2">
+                    <input type="radio" name="c-mode" checked={f.pickupMode === 'COLETA'} onChange={() => set('pickupMode', 'COLETA')} /> Coleta (ela busca na empresa)
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="radio" name="c-mode" checked={f.pickupMode === 'DESPACHO'} onChange={() => set('pickupMode', 'DESPACHO')} /> Despacho (a empresa leva até ela)
+                  </label>
+                </div>
+                {f.pickupMode === 'DESPACHO' && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="c-drop">Valor pago para levar (R$, por envio)</Label>
+                      <Input id="c-drop" inputMode="decimal" value={f.dropOffCost} onChange={(e) => set('dropOffCost', e.target.value)} placeholder="vazio = levamos sem custo" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="c-prov">Quem leva</Label>
+                      <select id="c-prov" className="h-9 w-full rounded-md border bg-transparent px-2" value={f.dropOffProviderId} onChange={(e) => set('dropOffProviderId', e.target.value)}>
+                        <option value="">A própria empresa</option>
+                        {(providers.data ?? []).map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <p className="text-xs text-muted-foreground sm:col-span-2">O valor entra no total da cotação, com o nome de quem leva, e fica fora da conferência do CT-e (não é cobrado pela transportadora). Cadastre o prestador como "Prestador" nesta mesma tela.</p>
+                  </div>
+                )}
+              </div>
+            )}
             <PickupsEditor value={pickups} onChange={setPickups} units={(ctx.data?.units ?? []).map((u) => ({ id: u.id, name: u.name }))} />
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="c-ext">Códigos nos sistemas externos (um por linha: sistema=código)</Label>

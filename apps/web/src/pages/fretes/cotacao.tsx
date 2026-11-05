@@ -437,6 +437,12 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
                         <p className="font-medium">
                           {r.quoteName} {selected && <CheckCircle2Icon className="inline size-4 text-[#006300]" aria-label="Escolhida" />}
                         </p>
+                        {r.pickupMode && (
+                          <p className={cn('text-[11px] font-medium', r.pickupMode === 'DESPACHO' ? 'text-amber-800 dark:text-amber-300' : 'text-sky-700 dark:text-sky-300')}>
+                            {r.pickupMode === 'DESPACHO' ? 'Despacho: levar até a transportadora' : 'Coleta na empresa'}
+                            {r.dropOff ? ` · inclui ${money(r.dropOff.cost)} para levar${r.dropOff.provider ? ` (${r.dropOff.provider})` : ''}` : r.pickupMode === 'DESPACHO' ? ' · sem custo' : ''}
+                          </p>
+                        )}
                         <p className="text-xs text-muted-foreground">
                           {r.tableName ?? '—'}
                           {r.versionNumber ? ` · v${r.versionNumber}` : ''}
