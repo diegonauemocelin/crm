@@ -388,17 +388,45 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
   const [open, setOpen] = useState<string | null>(null)
   const [choosing, setChoosing] = useState<QuoteResult | null>(null)
   const [showAll, setShowAll] = useState(false)
+  /** Transportadoras com todas as tabelas abertas (normalmente aparece só a melhor de cada uma). */
+  const [moreOf, setMoreOf] = useState<Set<string>>(() => new Set())
   const ok = quote.results.filter((r) => r.status === 'OK')
   const cheapest = ok.length ? Math.min(...ok.map((r) => r.total!)) : null
   const fastest = ok.filter((r) => r.deadlineDays !== null).length ? Math.min(...ok.filter((r) => r.deadlineDays !== null).map((r) => r.deadlineDays!)) : null
-  const rows = useMemo(() => {
+  const { rows, extra } = useMemo(() => {
     const list = showAll ? quote.results : quote.results.filter((r) => r.status !== 'NAO_APLICAVEL' && r.status !== 'SEM_TABELA')
-    return [...list].sort((a, b) => {
+    const sorted = [...list].sort((a, b) => {
       if ((a.status === 'OK') !== (b.status === 'OK')) return a.status === 'OK' ? -1 : 1
       if (sort === 'prazo') return (a.deadlineDays ?? 999) - (b.deadlineDays ?? 999) || (a.total ?? Infinity) - (b.total ?? Infinity)
       return (a.total ?? Infinity) - (b.total ?? Infinity) || (a.deadlineDays ?? 999) - (b.deadlineDays ?? 999)
     })
-  }, [quote.results, sort, showAll])
+    // Uma linha por transportadora: a melhor (ou a escolhida); as outras tabelas dela ficam recolhidas.
+    const out: QuoteResult[] = []
+    const extra = new Map<string, number>()
+    const shown = new Set<string>()
+    for (const r of sorted) {
+      if (!r.tableId || showAll || moreOf.has(r.carrierId)) {
+        out.push(r)
+        continue
+      }
+      if (shown.has(r.carrierId)) {
+        extra.set(r.carrierId, (extra.get(r.carrierId) ?? 0) + 1)
+        continue
+      }
+      shown.add(r.carrierId)
+      const chosen = sorted.find((x) => x.carrierId === r.carrierId && x.tableId && x.tableId === quote.selectedTableId)
+      out.push(chosen ?? r)
+    }
+    return { rows: out, extra }
+  }, [quote.results, quote.selectedTableId, sort, showAll, moreOf])
+  const firstOf = new Set<string>()
+  const toggleMore = (carrierId: string) =>
+    setMoreOf((m) => {
+      const n = new Set(m)
+      if (n.has(carrierId)) n.delete(carrierId)
+      else n.add(carrierId)
+      return n
+    })
   const hidden = quote.results.length - quote.results.filter((r) => r.status !== 'NAO_APLICAVEL' && r.status !== 'SEM_TABELA').length
   const key = (r: QuoteResult) => r.tableId ?? `${r.online ?? ''}|${r.carrierId}|${r.quoteName}`
 
@@ -458,6 +486,9 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
                 const fp = r.components.find((c) => c.code === 'FRETE_PESO')?.value ?? null
                 const taxes = r.components.filter((c) => c.code !== 'FRETE_PESO' && !c.skipped).reduce((s, c) => s + c.value, 0)
                 const selected = quote.selectedTableId && quote.selectedTableId === r.tableId
+                const first = !!r.tableId && !firstOf.has(r.carrierId)
+                if (r.tableId) firstOf.add(r.carrierId)
+                const others = extra.get(r.carrierId) ?? 0
                 return (
                   <Fragment key={key(r)}>
                     <TableRow className={cn(selected && 'bg-[#006300]/5')}>
@@ -481,6 +512,11 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
                           {r.versionNumber ? ` · v${r.versionNumber}` : ''}
                           {r.validUntil ? ` · vale até ${dayBr(r.validUntil)}` : ''}
                         </p>
+                        {first && !showAll && (others > 0 || moreOf.has(r.carrierId)) && (
+                          <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline print:hidden" onClick={() => toggleMore(r.carrierId)}>
+                            {moreOf.has(r.carrierId) ? 'Mostrar só a melhor desta transportadora' : `+${others} ${others === 1 ? 'outra tabela' : 'outras tabelas'} desta transportadora`}
+                          </button>
+                        )}
                       </TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">
                         {money(r.total)}
