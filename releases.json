@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.42",
+      "date": "2026-11-06",
+      "title": "Concorrentes do Mercado Livre: leitura pelo catálogo e motivo na tela",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Marketplaces",
+          "text": "Concorrentes do Mercado Livre: quando o Mercado Livre recusa a busca ou a leitura dos anúncios de outra loja, o CRM pega o preço direto da lista de vendedores dos produtos de catálogo que a sua loja também vende. Se não achar nada, o cartão da loja mostra o motivo (o que foi recusado e quantos produtos foram consultados)."
+        }
+      ]
+    },
+    {
       "version": "2.0.41",
       "date": "2026-11-06",
       "title": "Cotação de frete: sem cobertura escondida e ordenação por equilíbrio",
