@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.41",
+      "date": "2026-11-06",
+      "title": "Cotação de frete: sem cobertura escondida e ordenação por equilíbrio",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Cotação de frete: transportadoras sem cobertura para o destino não aparecem mais no resultado (ficam no link \"Mostrar ... sem cobertura, que não se aplicam ou sem tabela\")."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Cotação de frete: além de menor preço e menor prazo, a ordenação \"Equilíbrio\" faz a média entre preço e prazo; a melhor nessa conta ganha o selo \"melhor equilíbrio\"."
+        }
+      ]
+    },
+    {
       "version": "2.0.40",
       "date": "2026-11-06",
       "title": "Correção ao salvar as regras do WhatsApp",
