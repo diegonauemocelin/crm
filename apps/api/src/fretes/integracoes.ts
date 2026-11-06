@@ -176,8 +176,16 @@ export function correiosError(body: unknown): string | null {
   return t.trim() ? t.trim().slice(0, 200) : null
 }
 
-/** Query de preço dos Correios: peso em gramas, medidas em cm, objeto tipo 2 (pacote). */
-export function correiosPriceQuery(from: string, to: string, p: PackageInput) {
+/**
+ * Serviço adicional "Valor Declarado" do produto (obrigatório quando vai o valor da mercadoria): 019 na linha SEDEX
+ * (expressa) e 064 na linha PAC (standard).
+ */
+export function correiosDeclaredService(product: CorreiosProduct): string {
+  return /sedex|expres|premium/i.test(product.name) || ['03220', '04014', '03204', '04162'].includes(product.code) ? '019' : '064'
+}
+
+/** Query de preço dos Correios: peso em gramas, medidas em cm, objeto tipo 2 (pacote); com valor, o Valor Declarado do produto. */
+export function correiosPriceQuery(from: string, to: string, p: PackageInput, declaredService?: string | null) {
   return new URLSearchParams({
     cepOrigem: from,
     cepDestino: to,
@@ -186,6 +194,6 @@ export function correiosPriceQuery(from: string, to: string, p: PackageInput) {
     comprimento: String(p.lengthCm),
     largura: String(p.widthCm),
     altura: String(p.heightCm),
-    ...(p.value > 0 ? { vlDeclarado: p.value.toFixed(2) } : {}),
+    ...(p.value > 0 && declaredService ? { vlDeclarado: p.value.toFixed(2), servicosAdicionais: declaredService } : {}),
   })
 }

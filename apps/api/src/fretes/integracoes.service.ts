@@ -11,6 +11,7 @@ import {
   parseBraspress,
   CORREIOS_BASE,
   correiosError,
+  correiosDeclaredService,
   correiosPriceQuery,
   DEFAULT_INTEGRATIONS,
   INTEGRATIONS_KEY,
@@ -146,14 +147,23 @@ export class IntegracoesService {
       c.products.map(async (prod): Promise<OnlineQuote> => {
         const base: OnlineQuote = { source: 'CORREIOS', serviceId: prod.code, carrier: 'Correios', service: prod.name, price: null, deadlineDays: null, error: null }
         try {
-          const [pr, dl] = await Promise.all([
-            fetch(`${CORREIOS_BASE}/preco/v1/nacional/${prod.code}?${correiosPriceQuery(from, to, p)}`, { headers: h, signal: AbortSignal.timeout(TIMEOUT_MS) }),
+          const priceOf = (declared: string | null) => fetch(`${CORREIOS_BASE}/preco/v1/nacional/${prod.code}?${correiosPriceQuery(from, to, p, declared)}`, { headers: h, signal: AbortSignal.timeout(TIMEOUT_MS) })
+          const [first, dl] = await Promise.all([
+            priceOf(correiosDeclaredService(prod)),
             fetch(`${CORREIOS_BASE}/prazo/v1/nacional/${prod.code}?${new URLSearchParams({ cepOrigem: from, cepDestino: to })}`, { headers: h, signal: AbortSignal.timeout(TIMEOUT_MS) }),
           ])
-          const pb = await pr.json().catch(() => null)
+          let pr = first
+          let pb = await pr.json().catch(() => null)
+          let noDeclared = false
+          // O contrato não aceita o Valor Declarado deste produto: cota sem ele (o preço vem sem o seguro).
+          if (!pr.ok && p.value > 0 && /valor declarado|servi[cç]o adicional/i.test(correiosError(pb) ?? '')) {
+            pr = await priceOf(null)
+            pb = await pr.json().catch(() => null)
+            noDeclared = pr.ok
+          }
           const db = await dl.json().catch(() => null)
           const price = pr.ok ? parseCorreiosPrice(pb) : null
-          return { ...base, price, deadlineDays: dl.ok ? parseCorreiosDeadline(db) : null, error: price === null ? (correiosError(pb) ?? `HTTP ${pr.status}`) : null }
+          return { ...base, service: noDeclared ? `${prod.name} (sem valor declarado)` : prod.name, price, deadlineDays: dl.ok ? parseCorreiosDeadline(db) : null, error: price === null ? (correiosError(pb) ?? `HTTP ${pr.status}`) : null }
         } catch (e) {
           return { ...base, error: (e as Error).message.slice(0, 200) }
         }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { braspressBody, correiosPriceQuery, melhorEnvioBody, packageOf, parseBraspress, parseCorreiosDeadline, parseCorreiosPrice, parseMelhorEnvio } from '../src/fretes/integracoes'
+import { braspressBody, correiosDeclaredService, correiosPriceQuery, melhorEnvioBody, packageOf, parseBraspress, parseCorreiosDeadline, parseCorreiosPrice, parseMelhorEnvio } from '../src/fretes/integracoes'
 
 describe('fretes: cotação online (Melhor Envio, Correios, Braspress)', () => {
   const pkg = packageOf({ realWeight: 3.5, volumes: [{ quantity: 2, height: 10, width: 20, length: 30 }] }, 1500)
@@ -22,6 +22,14 @@ describe('fretes: cotação online (Melhor Envio, Correios, Braspress)', () => {
     expect(q.get('tpObjeto')).toBe('2')
     expect(parseCorreiosPrice({ pcFinal: '1.045,90' })).toBe(1045.9)
     expect(parseCorreiosDeadline({ prazoEntrega: 7 })).toBe(7)
+  })
+  it('Correios: com valor da mercadoria vai o Valor Declarado do produto (019 SEDEX, 064 PAC)', () => {
+    expect(correiosDeclaredService({ code: '03220', name: 'SEDEX' })).toBe('019')
+    expect(correiosDeclaredService({ code: '03298', name: 'PAC' })).toBe('064')
+    const q = correiosPriceQuery('89874000', '01001000', { ...pkg, value: 1000 }, '064')
+    expect(q.get('vlDeclarado')).toBe('1000.00')
+    expect(q.get('servicosAdicionais')).toBe('064')
+    expect(correiosPriceQuery('89874000', '01001000', { ...pkg, value: 1000 }, null).has('vlDeclarado')).toBe(false)
   })
   it('Braspress: medidas em metros e leitura do total', () => {
     expect(braspressBody({ senderDoc: '01704079000102', recipientDoc: '12345678000190', from: '89874000', to: '01001000', modal: 'R' }, pkg)).toMatchObject({ cnpjRemetente: '01704079000102', tipoFrete: '1', cubagem: [{ altura: 0.2, largura: 0.2, comprimento: 0.3 }] })

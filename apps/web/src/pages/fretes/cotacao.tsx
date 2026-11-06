@@ -538,7 +538,7 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
                       <TableCell className="hidden tabular-nums lg:table-cell">{r.weights ? `${fmtNum(r.weights.taxed)} kg` : '—'}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={RESULT_STATUS[r.status].className}>
-                          {RESULT_STATUS[r.status].label}
+                          {r.online && r.status === 'ERRO' ? 'Erro na consulta' : RESULT_STATUS[r.status].label}
                         </Badge>
                         {r.warnings.length > 0 && <span className="block text-[11px] text-amber-700 dark:text-amber-300">{r.warnings.length} aviso(s)</span>}
                       </TableCell>
