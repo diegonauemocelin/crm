@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
 import type { AuthUser } from '../common/types'
+import { MlError } from '../marketplaces/mercadolivre'
 import { MercadoLivreService } from '../marketplaces/mercadolivre.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { AssistMlService, mapLimit } from './assist-ml.service'
@@ -190,6 +191,28 @@ export class ConcorrentesService implements OnApplicationBootstrap, OnModuleDest
     }
   }
 
+  /**
+   * Anúncios da loja concorrente pelos produtos do catálogo do Mercado Livre que a nossa loja também vende: para cada
+   * produto, os anúncios dele (de todos os vendedores), ficando os da loja concorrente.
+   */
+  private async itemsByCatalog(tenantId: string, sellerId: string): Promise<string[]> {
+    const own = await this.prisma.assistItem.findMany({ where: { tenantId, status: 'active' }, select: { id: true } })
+    const batches: string[][] = []
+    for (let i = 0; i < own.length; i += 20) batches.push(own.slice(i, i + 20).map((o) => o.id))
+    const products = new Set<string>()
+    await mapLimit(batches, 3, async (batch) => {
+      const res = await this.ml.get<{ code: number; body?: { catalog_product_id?: string | null } }[]>(tenantId, '/items', { ids: batch.join(','), attributes: 'id,catalog_product_id' }).catch(() => [])
+      for (const r of res ?? []) if (r.code === 200 && r.body?.catalog_product_id) products.add(r.body.catalog_product_id)
+    })
+    const found = new Set<string>()
+    await mapLimit([...products], 3, async (pid) => {
+      const page = await this.ml.get<{ results?: { item_id?: string; seller_id?: number }[] }>(tenantId, `/products/${pid}/items`, { limit: 100 }).catch(() => null)
+      for (const r of page?.results ?? []) if (r.item_id && String(r.seller_id ?? '') === sellerId) found.add(r.item_id)
+    })
+    this.logger.log(`Concorrente ${sellerId}: busca fechada; ${found.size} anúncio(s) achado(s) em ${products.size} produto(s) do catálogo em comum.`)
+    return [...found]
+  }
+
   /** Lê os anúncios ativos da loja (até 1.000, o limite da busca do Mercado Livre) e guarda preço e códigos. */
   async sync(id: string) {
     if (this.syncing.has(id)) return
@@ -197,11 +220,20 @@ export class ConcorrentesService implements OnApplicationBootstrap, OnModuleDest
     const c = await this.prisma.mlCompetitor.findUnique({ where: { id } })
     try {
       if (!c) return
-      const ids = await this.ml.listStoreItemIds(c.tenantId, {
-        seller_id: c.sellerId,
-        site_id: 'MLB',
-        official_store_id: c.officialStoreId,
-      })
+      // A busca por vendedor do Mercado Livre pode estar fechada para o aplicativo (403): aí os anúncios da loja saem
+      // dos produtos do catálogo que a nossa loja também vende.
+      let byCatalog = false
+      const ids = await this.ml
+        .listStoreItemIds(c.tenantId, {
+          seller_id: c.sellerId,
+          site_id: 'MLB',
+          official_store_id: c.officialStoreId,
+        })
+        .catch(async (err: unknown) => {
+          if (!(err instanceof MlError) || err.status !== 403) throw err
+          byCatalog = true
+          return this.itemsByCatalog(c.tenantId, c.sellerId)
+        })
       const batches: string[][] = []
       for (let i = 0; i < ids.length; i += 20) batches.push(ids.slice(i, i + 20))
       const now = new Date()
@@ -263,7 +295,11 @@ export class ConcorrentesService implements OnApplicationBootstrap, OnModuleDest
           itemsRead: read,
           itemsWithCode: withCode,
           lastSyncAt: now,
-          lastError: ids.length ? null : 'O Mercado Livre não listou anúncios ativos desta loja.',
+          lastError: ids.length
+            ? null
+            : byCatalog
+              ? 'O Mercado Livre não libera a lista de anúncios de outras lojas. O CRM procura pelos produtos do catálogo que as duas lojas vendem e não achou nenhum em comum.'
+              : 'O Mercado Livre não listou anúncios ativos desta loja.',
         },
       })
     } catch (err) {
