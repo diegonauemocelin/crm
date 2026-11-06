@@ -235,6 +235,7 @@ export class AssistMlService {
     let officialStoreId: string | null = null
     let slug: string | null = null
     let itemId: string | null = null
+    let productId: string | null = null
     let url: URL | null = null
     if (/^https?:\/\//i.test(raw) || /mercado(livre|libre)\./i.test(raw)) {
       try {
@@ -245,18 +246,38 @@ export class AssistMlService {
       if (!ML_HOST.test(url.hostname)) throw new Error('O link precisa ser do Mercado Livre (mercadolivre.com.br).')
       const full = decodeURIComponent(url.href)
       sellerId = full.match(/_CustId_(\d+)/i)?.[1] ?? url.searchParams.get('seller_id')
-      officialStoreId = full.match(/_Tienda_[^_/]*?(\d+)/i)?.[1] ?? url.searchParams.get('official_store_id')
+      // Loja oficial: _Tienda_ no link de listagem ou pdp_filters=official_store:ID no link do produto.
+      officialStoreId = full.match(/_Tienda_[^_/]*?(\d+)/i)?.[1] ?? url.searchParams.get('official_store_id') ?? full.match(/official_store[:=](\d+)/i)?.[1] ?? null
       nickname = url.pathname.match(/\/perfil\/([^/?#]+)/i)?.[1] ?? null
       slug = url.pathname.match(/\/(?:loja|pagina|tienda)\/([^/?#]+)/i)?.[1] ?? null
-      itemId = full.match(/\b(ML[A-Z])-?(\d{6,})/)?.slice(1).join('') ?? null
+      // Página de produto do catálogo (/p/MLB...): o número é do produto, não do anúncio (o anúncio vem em wid=).
+      productId = url.pathname.match(/\/p\/(ML[A-Z]\d{6,})/i)?.[1]?.toUpperCase() ?? null
+      itemId = productId ? (full.match(/[?&#]wid=(ML[A-Z])-?(\d{6,})/i)?.slice(1).join('').toUpperCase() ?? null) : (full.match(/\b(ML[A-Z])-?(\d{6,})/)?.slice(1).join('') ?? null)
     } else if (/^\d+$/.test(raw)) sellerId = raw
     else if (/^ML[A-Z]-?\d{6,}$/i.test(raw)) itemId = raw.toUpperCase().replace('-', '')
     else nickname = raw
 
     if (!sellerId && itemId && !slug && !nickname) {
-      const it = await this.get<MlItemApi>(tenantId, `/items/${itemId}`)
-      sellerId = String(it.seller_id)
-      officialStoreId ||= it.official_store_id ? String(it.official_store_id) : null
+      const it = await this.get<MlItemApi>(tenantId, `/items/${itemId}`).catch(() => null)
+      if (it?.seller_id) sellerId = String(it.seller_id)
+      officialStoreId ||= it?.official_store_id ? String(it.official_store_id) : null
+    }
+    // Produto do catálogo: o vendedor sai dos anúncios do produto (da loja oficial do link, se veio) ou de quem ganha a compra.
+    if (!sellerId && productId) {
+      const items = await this.get<{ results?: { seller_id?: number; official_store_id?: number | null }[] }>(tenantId, `/products/${productId}/items`, officialStoreId ? { official_store_id: officialStoreId } : {}).catch(() => null)
+      const hit = items?.results?.find((r) => !officialStoreId || String(r.official_store_id ?? '') === officialStoreId) ?? (officialStoreId ? undefined : items?.results?.[0])
+      if (hit?.seller_id) sellerId = String(hit.seller_id)
+      if (!sellerId && !officialStoreId) {
+        const prod = await this.get<{ buy_box_winner?: { seller_id?: number; official_store_id?: number | null } | null }>(tenantId, `/products/${productId}`).catch(() => null)
+        if (prod?.buy_box_winner?.seller_id) {
+          sellerId = String(prod.buy_box_winner.seller_id)
+          officialStoreId ||= prod.buy_box_winner.official_store_id ? String(prod.buy_box_winner.official_store_id) : null
+        }
+      }
+    }
+    if (!sellerId && officialStoreId && !slug) {
+      const s = await this.get<{ results?: { seller?: { id?: number } }[] }>(tenantId, '/sites/MLB/search', { official_store_id: officialStoreId, limit: 1 }).catch(() => null)
+      sellerId = s?.results?.[0]?.seller?.id ? String(s.results[0].seller.id) : null
     }
     if (!sellerId && slug && url) {
       try {
@@ -284,7 +305,9 @@ export class AssistMlService {
       throw new Error(
         slug
           ? 'O Mercado Livre não deixou ler a página desta loja. Abra qualquer anúncio dela e cole o link do anúncio (ou o link do perfil do vendedor: mercadolivre.com.br/perfil/APELIDO).'
-          : 'Não foi possível identificar a loja por este link. Cole o link de qualquer anúncio da loja ou o link do perfil do vendedor (mercadolivre.com.br/perfil/APELIDO).',
+          : productId
+            ? 'Este link é de uma página de produto do catálogo, com vários vendedores, e o Mercado Livre não informou de qual loja. Na página, clique no nome da loja (ou em "Ver mais anúncios do vendedor") e cole esse link, ou cole o link do perfil do vendedor (mercadolivre.com.br/perfil/APELIDO).'
+            : 'Não foi possível identificar a loja por este link. Cole o link de qualquer anúncio da loja ou o link do perfil do vendedor (mercadolivre.com.br/perfil/APELIDO).',
       )
     const user = await this.get<{ nickname?: string; site_id?: string; permalink?: string }>(tenantId, `/users/${sellerId}`)
     const search = await this.get<{ paging?: { total?: number } }>(tenantId, `/sites/${user.site_id || 'MLB'}/search`, { seller_id: sellerId, ...(officialStoreId ? { official_store_id: officialStoreId } : {}), limit: 1 }).catch(() => null)
