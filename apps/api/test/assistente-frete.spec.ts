@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { AI_DEFAULTS } from '../src/assistente/constantes'
-import { buildAnswer, classifyQuestion, extractCep, forbiddenContent, itemSku, parseFreightOptions } from '../src/assistente/frete'
+import { buildAnswer, classifyQuestion, correiosOptionName, extractCep, forbiddenContent, itemSku, packageFromAttributes, packageFromDimensions, parseFreightOptions } from '../src/assistente/frete'
 
 describe('perguntas do Mercado Livre: é sobre frete?', () => {
   it('frete com CEP', () => {
@@ -65,5 +65,21 @@ describe('cotação da Magazord', () => {
     expect(itemSku({ seller_custom_field: 'X9' })).toBe('X9')
     expect(itemSku({ variations: [{ attributes: [{ id: 'SELLER_SKU', value_name: 'V1' }] }] })).toBe('V1')
     expect(itemSku({})).toBeNull()
+  })
+})
+
+describe('frete pelos Correios: peso e medidas do anúncio', () => {
+  it('atributos de embalagem em várias unidades', () => {
+    expect(packageFromAttributes([{ id: 'SELLER_PACKAGE_WEIGHT', value: '1,2 kg' }, { id: 'SELLER_PACKAGE_HEIGHT', value: '150 mm' }, { id: 'SELLER_PACKAGE_WIDTH', value: '20 cm' }, { id: 'SELLER_PACKAGE_LENGTH', value: '0.3 m' }])).toEqual({ weightKg: 1.2, heightCm: 15, widthCm: 20, lengthCm: 30 })
+    expect(packageFromAttributes([{ id: 'PACKAGE_WEIGHT', value_name: '500 g' }])).toEqual({ weightKg: 0.5, heightCm: 2, widthCm: 11, lengthCm: 16 })
+    expect(packageFromAttributes([{ id: 'SELLER_PACKAGE_HEIGHT', value: '10 cm' }])).toBeNull()
+  })
+  it('medidas do envio do anúncio (AxLxC,gramas)', () => {
+    expect(packageFromDimensions('10x20x30,500')).toEqual({ weightKg: 0.5, heightCm: 10, widthCm: 20, lengthCm: 30 })
+    expect(packageFromDimensions('sem')).toBeNull()
+  })
+  it('nome da opção na resposta', () => {
+    expect(correiosOptionName('PAC (sem valor declarado)')).toBe('Correios PAC')
+    expect(buildAnswer({ intro: 'Para o CEP {cep}:', outro: '' }, '01310100', [{ name: correiosOptionName('PAC'), price: 39.9, days: 8 }, { name: correiosOptionName('SEDEX'), price: 61.2, days: 3 }])).toBe('Para o CEP 01310-100:\n- Correios PAC: R$ 39,90, entrega em até 8 dias úteis\n- Correios SEDEX: R$ 61,20, entrega em até 3 dias úteis')
   })
 })

@@ -97,6 +97,10 @@ export interface AiSettings {
   frete_outro: string
   frete_ask_cep: boolean
   frete_ask_cep_text: string
+  /** De onde vem o frete: contrato dos Correios (peso e medidas do anúncio) ou simulação da Magazord. */
+  frete_source: 'correios' | 'magazord'
+  /** CEP de onde sai o envio (vazio: o da matriz). */
+  frete_origem_cep: string
 }
 
 /** Texto padrão anterior das regras de venda adicional (trocado pelo novo ao carregar as configurações). */
@@ -136,6 +140,8 @@ export const AI_DEFAULTS: AiSettings = {
   frete_intro: 'Para o CEP {cep}, as opções de envio são:',
   frete_outro: 'Valores para 1 unidade, sujeitos a confirmação no fechamento da compra. Qualquer dúvida, estamos à disposição!',
   frete_ask_cep: true,
+  frete_source: 'correios',
+  frete_origem_cep: '',
   frete_ask_cep_text: 'Para calcular o frete, por favor nos informe o seu CEP aqui nas perguntas que respondemos com as opções de envio e os prazos. Obrigado!',
 }
 

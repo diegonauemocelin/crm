@@ -20,5 +20,6 @@ import { FretesRelatoriosService } from './relatorios.service'
   imports: [FilesModule],
   controllers: [FretesController, FretesOperacaoController, FretesSefazController],
   providers: [PainelService, TransportadorasService, TabelasService, ImportacaoService, CotacaoService, PedidosService, CteService, FaturasService, FretesRelatoriosService, SefazService, IntegracoesService],
+  exports: [IntegracoesService],
 })
 export class FretesModule {}

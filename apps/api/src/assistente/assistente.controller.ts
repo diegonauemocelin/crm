@@ -206,6 +206,8 @@ class AiSettingsDto {
   @IsString() @MaxLength(500) frete_outro!: string
   @IsBoolean() frete_ask_cep!: boolean
   @IsString() @MaxLength(800) frete_ask_cep_text!: string
+  @IsOptional() @IsIn(['correios', 'magazord']) frete_source?: 'correios' | 'magazord'
+  @IsOptional() @Matches(/^(\d{8})?$/, { message: 'CEP de origem: 8 números ou vazio.' }) frete_origem_cep?: string
 }
 
 class KeyDto {

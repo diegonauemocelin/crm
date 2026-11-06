@@ -183,6 +183,13 @@ export class IntegracoesService {
     return [{ ...base, price: res.ok ? r.price : null, deadlineDays: r.deadlineDays, error: res.ok ? r.error : (r.error ?? `HTTP ${res.status}`) }]
   }
 
+  /** Só os Correios (contrato), para a resposta automática de frete no Mercado Livre. Erro quando não está configurado. */
+  async correiosQuote(tenantId: string, from: string, to: string, p: PackageInput): Promise<OnlineQuote[]> {
+    const c = await this.config(tenantId)
+    if (!c.correios.enabled || !c.correios.accessCodeEnc) throw new Error('A cotação dos Correios não está ligada (Fretes › Filiais › Cotação online).')
+    return this.correios(tenantId, c.correios, from, to, p)
+  }
+
   /** Cotação online nas integrações ligadas; falha de uma não derruba a outra nem a cotação das tabelas. */
   async quote(tenantId: string, from: string, to: string, p: PackageInput, docs: { senderDoc: string | null; recipientDoc: string | null } = { senderDoc: null, recipientDoc: null }): Promise<OnlineQuote[]> {
     const c = await this.config(tenantId)

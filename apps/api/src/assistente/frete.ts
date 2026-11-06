@@ -106,6 +106,50 @@ export function parseFreightOptions(data: unknown, inherited: string | null = nu
 // Espaço comum depois do R$ (o formato de moeda usa espaço não separável, que aparece estranho no Mercado Livre).
 const brl = (v: number) => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
+/** Valor de um atributo do anúncio em gramas ou centímetros ("500 g", "1,2 kg", "10 cm", "150 mm", "0.3 m"). */
+function measure(v: unknown, kind: 'peso' | 'medida'): number | null {
+  if (typeof v !== 'string' || !v.trim()) return null
+  const m = /^\s*([\d.,]+)\s*([a-zA-Z]*)/.exec(v)
+  if (!m) return null
+  const n = num(m[1])
+  if (n === null || n <= 0) return null
+  const u = m[2]!.toLowerCase()
+  if (kind === 'peso') return u === 'kg' ? n * 1000 : u === 'mg' ? n / 1000 : n
+  return u === 'mm' ? n / 10 : u === 'm' ? n * 100 : n
+}
+
+/**
+ * Peso (kg) e medidas (cm) da embalagem pelos atributos do anúncio do Mercado Livre (SELLER_PACKAGE_*, PACKAGE_*);
+ * sem o peso, null (não dá para cotar). Sem medidas, a caixa mínima dos Correios.
+ */
+export function packageFromAttributes(attrs: unknown): { weightKg: number; heightCm: number; widthCm: number; lengthCm: number } | null {
+  const list = Array.isArray(attrs) ? (attrs as { id?: string; value?: string | null; value_name?: string | null }[]) : []
+  const get = (ids: string[], kind: 'peso' | 'medida') => {
+    for (const id of ids) {
+      const a = list.find((x) => x.id === id)
+      const v = measure(a?.value ?? a?.value_name, kind)
+      if (v !== null) return v
+    }
+    return null
+  }
+  const grams = get(['SELLER_PACKAGE_WEIGHT', 'PACKAGE_WEIGHT', 'WEIGHT', 'NET_WEIGHT'], 'peso')
+  if (grams === null) return null
+  const dim = (k: string, min: number) => Math.max(min, Math.round(get([`SELLER_PACKAGE_${k}`, `PACKAGE_${k}`], 'medida') ?? min))
+  return { weightKg: Math.round(grams) / 1000, heightCm: dim('HEIGHT', 2), widthCm: dim('WIDTH', 11), lengthCm: dim('LENGTH', 16) }
+}
+
+/** Medidas do envio do anúncio (shipping.dimensions do Mercado Livre: "AxLxC,gramas", ex.: "10x20x30,500"). */
+export function packageFromDimensions(dims: unknown): { weightKg: number; heightCm: number; widthCm: number; lengthCm: number } | null {
+  const m = typeof dims === 'string' ? /^\s*(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?),(\d+(?:\.\d+)?)\s*$/.exec(dims) : null
+  if (!m) return null
+  const [h, w, l, g] = m.slice(1).map(Number) as [number, number, number, number]
+  if (!(g > 0)) return null
+  return { weightKg: Math.round(g) / 1000, heightCm: Math.max(2, Math.round(h)), widthCm: Math.max(11, Math.round(w)), lengthCm: Math.max(16, Math.round(l)) }
+}
+
+/** Nome da opção dos Correios para a resposta: "Correios PAC", "Correios SEDEX". */
+export const correiosOptionName = (service: string) => `Correios ${service.replace(/\s*\(sem valor declarado\)/i, '').trim()}`
+
 /** Resposta com as opções (o Mercado Livre não aceita telefone, e-mail ou link: os textos fixos não devem ter). */
 export function buildAnswer(cfg: { intro: string; outro: string }, cep: string, options: FreightOption[]) {
   const lines = options.map((o) => `- ${o.name}: ${o.price === 0 ? 'grátis' : brl(o.price)}${o.days !== null ? `, entrega em até ${o.days} ${o.days === 1 ? 'dia útil' : 'dias úteis'}` : ''}`)

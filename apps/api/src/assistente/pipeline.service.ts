@@ -4,12 +4,13 @@
  */
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import type { AssistAttempt, AssistItem, AssistQuestion, Prisma } from '../generated/prisma/client'
+import { IntegracoesService } from '../fretes/integracoes.service'
 import { MagazordService } from '../integracoes/magazord.service'
 import { type Actor, AssistService, SYSTEM } from './assist.service'
 import { AssistMlService, type MlQuestionApi } from './assist-ml.service'
 import { AssistKnowledgeService } from './conhecimento.service'
 import { type AiSettings, FINAL_STATUSES, ML_ANSWER_LIMIT, REASONS } from './constantes'
-import { buildAnswer, classifyQuestion, type FreightOption, parseFreightOptions } from './frete'
+import { buildAnswer, classifyQuestion, correiosOptionName, type FreightOption, packageFromAttributes, packageFromDimensions, parseFreightOptions } from './frete'
 import { AiError, type AiResult, type AssistContext, type CtxIds, generateAnswer } from './ia'
 import { type Complement, titleComplements } from './venda-adicional'
 import { codeKey, extractCodes, greetingFor, itemCodes, norm, normCode, questionSimilarity, searchTokens } from './texto'
@@ -28,6 +29,7 @@ export class AssistPipelineService {
     private readonly ml: AssistMlService,
     private readonly knowledge: AssistKnowledgeService,
     private readonly magazord: MagazordService,
+    private readonly fretes: IntegracoesService,
   ) {}
 
   private get prisma() {
@@ -200,13 +202,28 @@ export class AssistPipelineService {
     return out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
   }
 
-  // ---------- Frete (Magazord) ----------
+  // ---------- Frete (Correios ou Magazord) ----------
 
-  /** Cotação para o anúncio e o CEP: SKU do anúncio → simulação de frete da Magazord. */
-  async quoteFreight(tenantId: string, item: AssistItem | null, cep: string) {
+  /**
+   * Cotação para o anúncio e o CEP. Correios: contrato da empresa (Fretes › Filiais), com o peso e as medidas da
+   * embalagem do anúncio e o preço como valor declarado; PAC, SEDEX... Magazord: SKU do anúncio → simulação de frete.
+   */
+  async quoteFreight(tenantId: string, item: AssistItem | null, cep: string, settings: AiSettings): Promise<{ options: FreightOption[]; raw: unknown; source: string }> {
+    if (settings.frete_source === 'correios') {
+      if (!item) throw new Error('Pergunta sem anúncio: não dá para pegar o peso e as medidas.')
+      const pkg =
+        packageFromAttributes(item.attributes) ??
+        packageFromDimensions((await this.ml.get<{ shipping?: { dimensions?: string | null } }>(tenantId, `/items/${item.id}`, { attributes: 'shipping' }).catch(() => null))?.shipping?.dimensions)
+      if (!pkg) throw new Error('O anúncio não tem o peso da embalagem (atributo de peso do pacote no Mercado Livre).')
+      const from = settings.frete_origem_cep || (await this.prisma.unit.findFirst({ where: { tenantId, zip: { not: null } }, orderBy: [{ isHeadquarters: 'desc' }, { createdAt: 'asc' }], select: { zip: true } }))?.zip
+      if (!from) throw new Error('Informe o CEP de origem do envio nas configurações do assistente (ou o CEP da matriz em Cadastros).')
+      const quotes = await this.fretes.correiosQuote(tenantId, from, cep, { ...pkg, value: num(item.price) ?? 0 })
+      const options = quotes.filter((q) => q.price !== null && !q.error).map((q) => ({ name: correiosOptionName(q.service), price: q.price!, days: q.deadlineDays })).sort((a, b) => a.price - b.price)
+      return { options, raw: quotes, source: 'Correios' }
+    }
     if (!item?.sellerSku) throw new Error('O anúncio não tem SKU do vendedor para achar o produto na Magazord.')
     const raw = await this.magazord.simulateFreight(tenantId, cep, [{ sku: item.sellerSku, quantity: 1, price: num(item.price) ?? 0 }])
-    return { options: parseFreightOptions(raw), raw }
+    return { options: parseFreightOptions(raw), raw, source: 'Magazord' }
   }
 
   // ---------- Entrada de perguntas (webhook e leitura periódica) ----------
@@ -357,17 +374,17 @@ export class AssistPipelineService {
       const greeting = settings.greeting_by_time ? greetingFor() : 'Olá!'
       if (freight?.cep) {
         try {
-          const r = await this.quoteFreight(tenantId, item, freight.cep)
+          const r = await this.quoteFreight(tenantId, item, freight.cep, settings)
           freightOptions = r.options
           if (r.options.length) freightCtx = { cep: freight.cep, opcoes: r.options.map((o) => ({ nome: o.name, valor: o.price, prazo_dias_uteis: o.days })) }
-          await this.assist.addEvent(tenantId, q.id, 'frete_calculado', { note: r.options.length ? `Frete da Magazord para o CEP ${freight.cep}: ${r.options.length} opção(ões).` : `A Magazord não devolveu opção de frete para o CEP ${freight.cep}.`, data: { cep: freight.cep, options: r.options } })
+          await this.assist.addEvent(tenantId, q.id, 'frete_calculado', { note: r.options.length ? `Frete (${r.source}) para o CEP ${freight.cep}: ${r.options.length} opção(ões).` : `${r.source}: nenhuma opção de frete para o CEP ${freight.cep}.`, data: { cep: freight.cep, options: r.options } })
         } catch (e) {
           await this.assist.addEvent(tenantId, q.id, 'frete_calculado', { note: `Frete não calculado: ${(e as Error).message}` })
         }
         if (freight.kind === 'frete') {
           freightResult = freightCtx
-            ? baseResult({ decision: 'responder', confidence: 0.95, answer: `${greeting}\n${buildAnswer({ intro: settings.frete_intro, outro: settings.frete_outro }, freight.cep, freightOptions!)}`, reason_explanation: `Frete calculado pela Magazord para o CEP ${freight.cep}.`, found_info: freightOptions!.map((o) => `${o.name}: R$ ${o.price}`) })
-            : baseResult({ decision: 'encaminhar', pending_reason: 'G', reason_explanation: 'Pergunta de frete, mas a Magazord não calculou o frete para este CEP e produto.', missing_info: ['Frete para o CEP'], suggested_routing: 'Atendente informar o frete.' })
+            ? baseResult({ decision: 'responder', confidence: 0.95, answer: `${greeting}\n${buildAnswer({ intro: settings.frete_intro, outro: settings.frete_outro }, freight.cep, freightOptions!)}`, reason_explanation: `Frete calculado (${settings.frete_source === 'correios' ? 'Correios' : 'Magazord'}) para o CEP ${freight.cep}.`, found_info: freightOptions!.map((o) => `${o.name}: R$ ${o.price}`) })
+            : baseResult({ decision: 'encaminhar', pending_reason: 'G', reason_explanation: `Pergunta de frete, mas ${settings.frete_source === 'correios' ? 'os Correios não calcularam' : 'a Magazord não calculou'} o frete para este CEP e produto.`, missing_info: ['Frete para o CEP'], suggested_routing: 'Atendente informar o frete.' })
         }
       } else if (freight?.kind === 'frete_sem_cep' && settings.frete_ask_cep) {
         freightResult = baseResult({ decision: 'solicitar_info', pending_reason: 'B', confidence: 0.95, answer: `${greeting}\n${settings.frete_ask_cep_text}`, reason_explanation: 'Pergunta de frete sem CEP: pedido o CEP ao cliente.', missing_info: ['CEP de entrega'] })
@@ -377,7 +394,7 @@ export class AssistPipelineService {
       await this.assist.addEvent(tenantId, q.id, 'analise_ia', { actor, note: `Consulta: ${knowledge.length} conhecimento(s), ${context.aplicacoes.length} aplicação(ões), ${context.anuncios_complementares.length} complementar(es).` })
 
       let gen: { result: AiResult; model: string }
-      if (freightResult) gen = { result: freightResult, model: 'frete-magazord' }
+      if (freightResult) gen = { result: freightResult, model: settings.frete_source === 'correios' ? 'frete-correios' : 'frete-magazord' }
       else {
         try {
           gen = await generateAnswer({ settings, context, question: q.text, greeting, ctxIds, keys: { claude: await this.assist.apiKey(tenantId, 'claude'), gemini: await this.assist.apiKey(tenantId, 'gemini') } })
@@ -631,9 +648,9 @@ export class AssistPipelineService {
     let freightNote: string | null = null
     if (freight?.cep) {
       try {
-        const r = await this.quoteFreight(tenantId, item, freight.cep)
+        const r = await this.quoteFreight(tenantId, item, freight.cep, settings)
         if (r.options.length) freightCtx = { cep: freight.cep, opcoes: r.options.map((o) => ({ nome: o.name, valor: o.price, prazo_dias_uteis: o.days })) }
-        freightNote = r.options.length ? null : 'A Magazord não devolveu opção de frete para este CEP e produto.'
+        freightNote = r.options.length ? null : `${r.source}: nenhuma opção de frete para este CEP e produto.`
       } catch (e) {
         freightNote = (e as Error).message
       }
@@ -641,7 +658,7 @@ export class AssistPipelineService {
     const { context, knowledge, ctxIds } = await this.buildContext(tenantId, question, item, settings, freightCtx)
     let gen: { result: AiResult; model: string }
     if (freight?.kind === 'frete' && freightCtx) {
-      gen = { result: baseResult({ decision: 'responder', confidence: 0.95, answer: `${greeting}\n${buildAnswer({ intro: settings.frete_intro, outro: settings.frete_outro }, freight.cep!, freightCtx.opcoes.map((o) => ({ name: o.nome, price: o.valor, days: o.prazo_dias_uteis })))}`, reason_explanation: 'Frete calculado pela Magazord.' }), model: 'frete-magazord' }
+      gen = { result: baseResult({ decision: 'responder', confidence: 0.95, answer: `${greeting}\n${buildAnswer({ intro: settings.frete_intro, outro: settings.frete_outro }, freight.cep!, freightCtx.opcoes.map((o) => ({ name: o.nome, price: o.valor, days: o.prazo_dias_uteis })))}`, reason_explanation: `Frete calculado (${settings.frete_source === 'correios' ? 'Correios' : 'Magazord'}).` }), model: settings.frete_source === 'correios' ? 'frete-correios' : 'frete-magazord' }
     } else if (freight?.kind === 'frete_sem_cep' && settings.frete_ask_cep) {
       gen = { result: baseResult({ decision: 'solicitar_info', pending_reason: 'B', confidence: 0.95, answer: `${greeting}\n${settings.frete_ask_cep_text}`, reason_explanation: 'Pergunta de frete sem CEP: pedido o CEP ao cliente.' }), model: 'frete-magazord' }
     } else {

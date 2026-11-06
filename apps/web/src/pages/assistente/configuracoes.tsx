@@ -49,6 +49,8 @@ interface AiSettings {
   frete_outro: string
   frete_ask_cep: boolean
   frete_ask_cep_text: string
+  frete_source?: 'correios' | 'magazord'
+  frete_origem_cep?: string
 }
 interface KeyStatus {
   source: string | null
@@ -347,11 +349,29 @@ function SettingsForm({ part }: { part: 'respostas' | 'motor' }) {
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Frete pela Magazord</CardTitle>
-          <CardDescription>Pergunta de frete com CEP é respondida com as opções calculadas na Magazord (peso, medidas e tabelas de frete do produto). O SKU do anúncio precisa ser o mesmo da Magazord.</CardDescription>
+          <CardTitle className="text-base">Frete nas perguntas</CardTitle>
+          <CardDescription>
+            Pergunta de frete com CEP é respondida com as opções de envio e os prazos. Pelos Correios: contrato da empresa (ligado em Fretes › Filiais › Cotação online), com o peso e as medidas da embalagem do
+            anúncio e o preço como valor declarado (PAC, SEDEX...). Pela Magazord: a simulação de frete da loja (o SKU do anúncio precisa ser o mesmo da Magazord).
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {toggle('frete_enabled', 'Calcular o frete na Magazord')}
+          {toggle('frete_enabled', 'Calcular o frete e responder')}
+          <Field label="Calcular por">
+            <div className="flex flex-wrap gap-4 text-sm">
+              <label className="flex items-center gap-2">
+                <input type="radio" name="frete-source" checked={(s.frete_source ?? 'correios') === 'correios'} onChange={() => set('frete_source', 'correios')} disabled={!edit} /> Correios (contrato)
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="radio" name="frete-source" checked={s.frete_source === 'magazord'} onChange={() => set('frete_source', 'magazord')} disabled={!edit} /> Magazord
+              </label>
+            </div>
+          </Field>
+          {(s.frete_source ?? 'correios') === 'correios' && (
+            <Field label="CEP de origem do envio" hint="Vazio: o CEP da matriz (Cadastros › Unidades).">
+              <Input inputMode="numeric" maxLength={9} placeholder="Ex.: 89874-000" value={s.frete_origem_cep ? s.frete_origem_cep.replace(/^(\d{5})(\d)/, '$1-$2') : ''} onChange={(e) => set('frete_origem_cep', e.target.value.replace(/\D/g, '').slice(0, 8))} disabled={!edit} />
+            </Field>
+          )}
           <Field label="Começo da resposta" hint="{cep} vira o CEP do cliente.">
             <Input value={s.frete_intro} onChange={(e) => set('frete_intro', e.target.value)} disabled={!edit} />
           </Field>
