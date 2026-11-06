@@ -1473,6 +1473,8 @@ model WhatsappConversation {
   numberId         String    @db.Uuid
   /// Contato no WhatsApp (5549...@s.whatsapp.net, ou ...@lid quando o WhatsApp esconde o número).
   jid              String
+  /// Identificador escondido (@lid) do contato, quando já se sabe: resposta que chega só por ele cai nesta conversa.
+  lid              String?
   phone            String?
   name             String?
   leadId           String?   @db.Uuid
@@ -1515,6 +1517,7 @@ model WhatsappConversation {
   labels    WhatsappConversationLabel[]
 
   @@unique([numberId, jid])
+  @@index([numberId, lid])
   @@index([tenantId, lastMessageAt])
   @@index([leadId])
   @@map("whatsapp_conversations")

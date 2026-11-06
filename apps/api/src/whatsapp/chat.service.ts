@@ -234,16 +234,30 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
    */
   private async adoptHidden(n: WhatsappNumber, lid: string, jid: string, phone: string | null, conv: Prisma.WhatsappConversationGetPayload<object> | null) {
     const hidden = await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: n.id, jid: lid } } })
-    if (!hidden || hidden.id === conv?.id) return conv
-    if (!conv) return this.prisma.whatsappConversation.update({ where: { id: hidden.id }, data: { jid, ...(phone ? { phone } : {}) } })
+    if (!hidden || hidden.id === conv?.id) return conv && conv.lid !== lid ? this.prisma.whatsappConversation.update({ where: { id: conv.id }, data: { lid } }) : conv
+    if (!conv) return this.prisma.whatsappConversation.update({ where: { id: hidden.id }, data: { jid, lid, ...(phone ? { phone } : {}) } })
     await this.prisma.whatsappMessage.updateMany({ where: { conversationId: hidden.id }, data: { conversationId: conv.id } })
     await this.prisma.whatsappReminder.updateMany({ where: { conversationId: hidden.id }, data: { conversationId: conv.id } })
     const later = hidden.lastMessageAt && (!conv.lastMessageAt || hidden.lastMessageAt > conv.lastMessageAt)
     await this.prisma.whatsappConversation.delete({ where: { id: hidden.id } })
     return this.prisma.whatsappConversation.update({
       where: { id: conv.id },
-      data: { unread: { increment: hidden.unread }, ...(hidden.lastInboundAt && (!conv.lastInboundAt || hidden.lastInboundAt > conv.lastInboundAt) ? { lastInboundAt: hidden.lastInboundAt } : {}), ...(later ? { lastMessageAt: hidden.lastMessageAt, lastPreview: hidden.lastPreview, lastFromMe: hidden.lastFromMe, status: hidden.status === 'ABERTA' ? 'ABERTA' : conv.status } : {}) },
+      data: { lid, unread: { increment: hidden.unread }, ...(hidden.lastInboundAt && (!conv.lastInboundAt || hidden.lastInboundAt > conv.lastInboundAt) ? { lastInboundAt: hidden.lastInboundAt } : {}), ...(later ? { lastMessageAt: hidden.lastMessageAt, lastPreview: hidden.lastPreview, lastFromMe: hidden.lastFromMe, status: hidden.status === 'ABERTA' ? 'ABERTA' : conv.status } : {}) },
     })
+  }
+
+  /**
+   * Resposta que chegou só pelo identificador escondido (@lid), sem o telefone: acha a conversa do telefone pelo
+   * @lid já conhecido ou pela mensagem que o cliente respondeu (citada). Sem isso, a resposta abria outra conversa
+   * ("envia, mas não recebe").
+   */
+  private async conversationOfLid(n: WhatsappNumber, p: ParsedMessage) {
+    if (p.group || !p.jid.endsWith('@lid')) return null
+    const known = await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, lid: p.jid, jid: { not: p.jid } } })
+    if (known) return known
+    if (!p.quoted?.waId) return null
+    const m = await this.prisma.whatsappMessage.findFirst({ where: { waId: p.quoted.waId, conversation: { numberId: n.id, jid: { endsWith: '@s.whatsapp.net' } } }, select: { conversation: true } })
+    return m?.conversation ?? null
   }
 
   private async storeGroup(n: WhatsappNumber, p: ParsedMessage, client: EvolutionClient | null) {
@@ -294,11 +308,14 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
 
   private async store(n: WhatsappNumber, p: ParsedMessage, client: EvolutionClient | null) {
     if (p.group) return this.storeGroup(n, p, client)
-    const phone = phoneFromDigits(p.phoneDigits)
+    // Veio só pelo @lid, mas já se sabe de quem é: segue como a conversa do telefone (e junta a escondida, se abriu).
+    const real = await this.conversationOfLid(n, p)
+    const phone = phoneFromDigits(p.phoneDigits) ?? real?.phone ?? null
     // O WhatsApp pode registrar o celular sem o 9: a conversa é a mesma se o telefone (já com o 9) bate.
-    let conv =
-      (await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: n.id, jid: p.jid } } })) ??
-      (phone ? await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, phone } }) : null)
+    let conv = real
+      ? await this.adoptHidden(n, p.jid, real.jid, phone, real)
+      : ((await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: n.id, jid: p.jid } } })) ??
+        (phone ? await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, phone } }) : null))
     if (p.lid) conv = await this.adoptHidden(n, p.lid, p.jid, phone, conv)
     const rules = await this.rules(n.tenantId)
     // "Muito obrigada!", "ok 👍" depois da última fala da empresa (só para não reabrir um atendimento recém-finalizado).
@@ -480,7 +497,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const phone = phoneFromDigits(p.phoneDigits)
     let conv =
       (await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: n.id, jid: p.jid } } })) ??
-      (phone ? await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, phone } }) : null)
+      (phone ? await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, phone } }) : null) ??
+      (p.jid.endsWith('@lid') ? await this.prisma.whatsappConversation.findFirst({ where: { numberId: n.id, lid: p.jid } }) : null)
     const created = !conv
     const name = historyName(p.pushName)
     if (!conv) {
@@ -1326,6 +1344,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         data: { calledAt: r.at, callDueAt: new Date(r.at.getTime() + callHoursOf(s) * 3_600_000) },
       })
     }
+    // O WhatsApp respondeu com o identificador escondido (@lid) do contato: guarda, para as respostas dele caírem aqui.
+    if (r.remoteJid?.endsWith('@lid') && !c.conv.jid.endsWith('@lid')) await this.prisma.whatsappConversation.updateMany({ where: { id: c.conv.id, OR: [{ lid: null }, { lid: { not: r.remoteJid } }] }, data: { lid: r.remoteJid } })
     // O WhatsApp registrou o contato com outro identificador (ex.: celular sem o 9): a conversa passa a usar o dele.
     if (r.remoteJid?.endsWith('@s.whatsapp.net') && r.remoteJid !== c.conv.jid) {
       const taken = await this.prisma.whatsappConversation.findUnique({ where: { numberId_jid: { numberId: c.conv.numberId, jid: r.remoteJid } } })
