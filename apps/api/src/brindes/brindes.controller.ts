@@ -64,6 +64,11 @@ export class BrindesController {
     return this.brindes.removeGift(user, id, ctx)
   }
 
+  @Get('meus')
+  mine(@CurrentUser() user: AuthUser, @Query() q: MonthQuery) {
+    return this.brindes.mine(user, q.mes)
+  }
+
   @Get('mes/saldo')
   month(@CurrentUser() user: AuthUser, @Query() q: MonthQuery) {
     return this.brindes.month(user, q.mes)

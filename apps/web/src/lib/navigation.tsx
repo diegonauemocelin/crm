@@ -109,6 +109,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Agenda de contatos', to: '/agenda', icon: BookUserIcon, module: 'whatsapp' },
       { title: 'Monitorar conversas', to: '/chat?monitorar=1', icon: EyeIcon, module: 'monitoramento' },
       { title: 'Consulta de produtos', to: '/consulta-produtos', icon: PackageSearchIcon, module: 'consulta_produtos' },
+      { title: 'Meus brindes', to: '/meus-brindes', icon: GiftIcon, anyOf: ['pre_vendas', 'pos_vendas', 'chat', 'brindes'] },
     ],
   },
   {

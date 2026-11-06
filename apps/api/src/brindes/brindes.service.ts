@@ -143,6 +143,30 @@ export class BrindesService {
     return { ok: true }
   }
 
+  /**
+   * Meus brindes (Atendimento Comercial): o vendedor ligado ao usuário consulta o saldo do mês, o que usou e para
+   * quem. Só leitura e só dele: não depende da permissão do Controle de brindes.
+   */
+  async mine(user: AuthUser, monthIn?: string) {
+    const month = monthOf(monthIn)
+    const seller = await this.prisma.seller.findFirst({ where: { tenantId: user.tenantId, userId: user.id }, select: { id: true, name: true } })
+    if (!seller) return { month, seller: null, items: [], deliveries: [] }
+    const { start, end } = monthRange(month)
+    const [quotas, rows] = await Promise.all([
+      this.prisma.giftQuota.findMany({ where: { sellerId: seller.id }, select: { giftId: true, monthly: true } }),
+      this.prisma.giftDelivery.findMany({ where: { sellerId: seller.id, date: { gte: start, lt: end } }, orderBy: [{ date: 'desc' }, { createdAt: 'desc' }], include: { gift: { select: { name: true } } } }),
+    ])
+    const items = balances(quotas, rows.map((r) => ({ giftId: r.giftId, quantity: r.quantity })))
+    const gifts = await this.prisma.gift.findMany({ where: { id: { in: items.map((i) => i.giftId) } }, select: { id: true, name: true, active: true } })
+    const name = new Map(gifts.map((g) => [g.id, g]))
+    return {
+      month,
+      seller: seller.name,
+      items: items.filter((i) => i.quota > 0 || i.used > 0).map((i) => ({ ...i, name: name.get(i.giftId)?.name ?? 'Brinde', active: name.get(i.giftId)?.active ?? false })).sort((a, b) => a.name.localeCompare(b.name)),
+      deliveries: rows.map((r) => ({ id: r.id, date: r.date.toISOString().slice(0, 10), gift: r.gift.name, customerCode: r.customerCode, customerName: r.customerName, quantity: r.quantity, notes: r.notes })),
+    }
+  }
+
   // ---------- Retiradas ----------
 
   async deliveries(user: AuthUser, monthIn?: string, sellerId?: string) {

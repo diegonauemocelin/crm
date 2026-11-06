@@ -889,6 +889,24 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'meus-brindes',
+    title: 'Meus brindes',
+    routes: ['/meus-brindes'],
+    purpose: 'O vendedor consulta os brindes que tem livres no mês, quantos já usou e para quais clientes.',
+    lessons: [
+      {
+        id: 'meus-brindes.consultar',
+        title: 'Consultar meus brindes',
+        steps: [
+          'Abra Atendimento Comercial → Meus brindes.',
+          'Cada cartão mostra quantos brindes de cada tipo ainda estão livres no mês e quantos você já usou.',
+          'Em "Para quem foi", veja a data, o código do cliente e o brinde de cada entrega. Troque o mês no alto da tela para ver meses anteriores.',
+        ],
+        tip: 'A retirada é registrada pelo marketing em Controle de brindes. Se algo estiver diferente, fale com eles.',
+      },
+    ],
+  },
+  {
     key: 'brindes',
     title: 'Controle de brindes',
     module: 'brindes',
