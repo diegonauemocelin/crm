@@ -13,6 +13,7 @@ export const MODULES = [
   { key: 'captura', label: 'Formulários, LPs e pop-ups', group: 'Marketing', help: 'Formulários, pop-ups, botões de WhatsApp e o editor visual.' },
   { key: 'postagens', label: 'Postagens (Instagram e Facebook)', group: 'Marketing', help: 'Ver: calendário e biblioteca. Criar: montar postagens, mídias e textos com IA, e mandar para aprovação. Editar: aprovar, devolver, publicar e cancelar. Excluir: apagar postagens e mídias.' },
   { key: 'email_marketing', label: 'Email marketing', group: 'Marketing', help: 'Segmentos e campanhas. Criar/Editar inclui enviar.' },
+  { key: 'brindes', label: 'Controle de brindes', group: 'Marketing', help: 'Ver: brindes, saldo do mês por vendedor e retiradas. Criar: cadastrar brinde e registrar retirada. Editar: estoque, valor e cotas mensais. Excluir: brinde sem retiradas e desfazer retirada. Escopo: próprios = só o vendedor ligado ao usuário.' },
   { key: 'automacoes', label: 'Automações', group: 'Marketing', help: 'Fluxos automáticos. Editar inclui ligar e desligar.' },
   { key: 'catalogo', label: 'Catálogo de produtos', group: 'E-commerce', help: 'Produtos da loja virtual e seus números.' },
   { key: 'seo_ecommerce', label: 'SEO do e-commerce', group: 'E-commerce', help: 'Ver: produtos da loja virtual com a nota de SEO. Criar: gerar sugestões com IA e editar textos. Editar: enviar as alterações para a loja (Magazord) e desfazer.' },

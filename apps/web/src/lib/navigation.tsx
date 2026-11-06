@@ -5,6 +5,7 @@ import {
   ClipboardListIcon,
   EyeIcon,
   FileClockIcon,
+  GiftIcon,
   GraduationCapIcon,
   HeadsetIcon,
   HistoryIcon,
@@ -132,6 +133,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Landing pages', to: '/landing-pages', icon: LayoutTemplateIcon, module: 'email_marketing' },
       { title: 'Postagens', to: '/postagens', icon: CalendarClockIcon, module: 'postagens' },
       { title: 'Automações', to: '/automacoes', icon: BotIcon, module: 'automacoes' },
+      { title: 'Controle de brindes', to: '/brindes', icon: GiftIcon, module: 'brindes' },
     ],
   },
   {
