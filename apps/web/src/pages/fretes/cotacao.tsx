@@ -382,21 +382,45 @@ function exportCsv(q: Quote) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000)
 }
 
+/** Situações que ficam escondidas no resultado (aparecem em "Mostrar ..."): não atendem este envio. */
+const HIDDEN_STATUS = new Set<string>(['SEM_COBERTURA', 'NAO_APLICAVEL', 'SEM_TABELA'])
+
 /** Resultado da cotação: comparativo, composição do preço e escolha da transportadora. Usado na tela nova e no histórico. */
 export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quote) => void }) {
-  const [sort, setSort] = useState<'preco' | 'prazo'>('preco')
+  const [sort, setSort] = useState<'preco' | 'prazo' | 'equilibrio'>('preco')
   const [open, setOpen] = useState<string | null>(null)
   const [choosing, setChoosing] = useState<QuoteResult | null>(null)
   const [showAll, setShowAll] = useState(false)
   /** Transportadoras com todas as tabelas abertas (normalmente aparece só a melhor de cada uma). */
   const [moreOf, setMoreOf] = useState<Set<string>>(() => new Set())
   const ok = quote.results.filter((r) => r.status === 'OK')
+  /**
+   * Equilíbrio preço × prazo: média do preço e do prazo, cada um de 0 (o melhor da cotação) a 1 (o pior). Sem prazo
+   * informado conta como o pior prazo. Menor nota = melhor equilíbrio.
+   */
+  const balance = useMemo(() => {
+    const m = new Map<QuoteResult, number>()
+    const priced = quote.results.filter((r) => r.status === 'OK' && r.total !== null)
+    if (!priced.length) return m
+    const prices = priced.map((r) => r.total!)
+    const days = priced.filter((r) => r.deadlineDays !== null).map((r) => r.deadlineDays!)
+    const [pMin, pMax] = [Math.min(...prices), Math.max(...prices)]
+    const [dMin, dMax] = days.length ? [Math.min(...days), Math.max(...days)] : [0, 0]
+    for (const r of priced) {
+      const p = pMax > pMin ? (r.total! - pMin) / (pMax - pMin) : 0
+      const d = r.deadlineDays === null ? 1 : dMax > dMin ? (r.deadlineDays - dMin) / (dMax - dMin) : 0
+      m.set(r, (p + d) / 2)
+    }
+    return m
+  }, [quote.results])
+  const bestBalance = balance.size ? [...balance.entries()].sort((a, b) => a[1] - b[1] || (a[0].total ?? 0) - (b[0].total ?? 0))[0]![0] : null
   const cheapest = ok.length ? Math.min(...ok.map((r) => r.total!)) : null
   const fastest = ok.filter((r) => r.deadlineDays !== null).length ? Math.min(...ok.filter((r) => r.deadlineDays !== null).map((r) => r.deadlineDays!)) : null
   const { rows, extra } = useMemo(() => {
-    const list = showAll ? quote.results : quote.results.filter((r) => r.status !== 'NAO_APLICAVEL' && r.status !== 'SEM_TABELA')
+    const list = showAll ? quote.results : quote.results.filter((r) => !HIDDEN_STATUS.has(r.status))
     const sorted = [...list].sort((a, b) => {
       if ((a.status === 'OK') !== (b.status === 'OK')) return a.status === 'OK' ? -1 : 1
+      if (sort === 'equilibrio') return (balance.get(a) ?? 2) - (balance.get(b) ?? 2) || (a.total ?? Infinity) - (b.total ?? Infinity)
       if (sort === 'prazo') return (a.deadlineDays ?? 999) - (b.deadlineDays ?? 999) || (a.total ?? Infinity) - (b.total ?? Infinity)
       return (a.total ?? Infinity) - (b.total ?? Infinity) || (a.deadlineDays ?? 999) - (b.deadlineDays ?? 999)
     })
@@ -418,7 +442,7 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
       out.push(chosen ?? r)
     }
     return { rows: out, extra }
-  }, [quote.results, quote.selectedTableId, sort, showAll, moreOf])
+  }, [quote.results, quote.selectedTableId, sort, showAll, moreOf, balance])
   const firstOf = new Set<string>()
   const toggleMore = (carrierId: string) =>
     setMoreOf((m) => {
@@ -427,7 +451,7 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
       else n.add(carrierId)
       return n
     })
-  const hidden = quote.results.length - quote.results.filter((r) => r.status !== 'NAO_APLICAVEL' && r.status !== 'SEM_TABELA').length
+  const hidden = quote.results.filter((r) => HIDDEN_STATUS.has(r.status)).length
   const key = (r: QuoteResult) => r.tableId ?? `${r.online ?? ''}|${r.carrierId}|${r.quoteName}`
 
   return (
@@ -446,9 +470,12 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
           <Badge variant="outline" className={QUOTE_STATUS[quote.status].className}>
             {QUOTE_STATUS[quote.status].label}
           </Badge>
-          <ToggleGroup type="single" variant="outline" size="sm" value={sort} onValueChange={(v) => v && setSort(v as 'preco' | 'prazo')}>
+          <ToggleGroup type="single" variant="outline" size="sm" value={sort} onValueChange={(v) => v && setSort(v as 'preco' | 'prazo' | 'equilibrio')}>
             <ToggleGroupItem value="preco">Menor preço</ToggleGroupItem>
             <ToggleGroupItem value="prazo">Menor prazo</ToggleGroupItem>
+            <ToggleGroupItem value="equilibrio" title="Média entre preço e prazo: a opção que equilibra os dois">
+              Equilíbrio
+            </ToggleGroupItem>
           </ToggleGroup>
           <Can module="fretes_cotacao" action="export">
             <Button size="sm" variant="outline" onClick={() => exportCsv(quote)}>
@@ -521,6 +548,7 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
                       <TableCell className="text-right font-semibold tabular-nums">
                         {money(r.total)}
                         {r.total !== null && r.total === cheapest && <span className="block text-[11px] font-normal text-[#006300] dark:text-[#0ca30c]">menor preço</span>}
+                        {bestBalance === r && ok.length > 1 && <span className="block text-[11px] font-normal text-violet-700 dark:text-violet-300">melhor equilíbrio</span>}
                       </TableCell>
                       <TableCell className="hidden text-right tabular-nums md:table-cell">{money(fp)}</TableCell>
                       <TableCell className="hidden text-right tabular-nums md:table-cell">{r.total === null ? '—' : money(taxes)}</TableCell>
@@ -568,7 +596,7 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
         </div>
         {hidden > 0 && (
           <button type="button" className="mt-2 text-sm text-muted-foreground underline underline-offset-2 print:hidden" onClick={() => setShowAll((v) => !v)}>
-            {showAll ? 'Esconder' : 'Mostrar'} {hidden} tabela(s) que não se aplicam ou transportadoras sem tabela
+            {showAll ? 'Esconder' : 'Mostrar'} {hidden} sem cobertura, que não se aplicam ou sem tabela
           </button>
         )}
         {quote.selectionNote && <p className="mt-3 text-sm">Motivo da escolha: {quote.selectionNote}</p>}
