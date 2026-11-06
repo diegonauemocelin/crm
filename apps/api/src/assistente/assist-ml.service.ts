@@ -272,11 +272,20 @@ export class AssistMlService {
         sellerId = s.results?.[0]?.seller?.id ? String(s.results[0].seller.id) : null
       }
     }
-    if (!sellerId && nickname) {
-      const s = await this.get<{ seller?: { id?: number }; results?: { seller?: { id?: number } }[] }>(tenantId, '/sites/MLB/search', { nickname, limit: 1 })
-      sellerId = s.seller?.id ? String(s.seller.id) : s.results?.[0]?.seller?.id ? String(s.results[0].seller.id) : null
+    // Link /loja/NOME que o Mercado Livre não deixou ler (pede verificação): tenta o nome da loja como apelido do vendedor.
+    const guesses = [...new Set([nickname, ...(!nickname && slug ? storeNicknames(slug) : [])].filter((v): v is string => !!v))]
+    for (const nick of guesses) {
+      if (sellerId) break
+      const s = await this.get<{ seller?: { id?: number }; results?: { seller?: { id?: number } }[] }>(tenantId, '/sites/MLB/search', { nickname: nick, limit: 1 }).catch(() => null)
+      sellerId = s?.seller?.id ? String(s.seller.id) : s?.results?.[0]?.seller?.id ? String(s.results[0].seller.id) : null
+      if (sellerId) nickname = nick
     }
-    if (!sellerId) throw new Error('Não foi possível identificar a loja por este link. Cole o link de qualquer anúncio da sua loja ou o link do perfil do vendedor (mercadolivre.com.br/perfil/APELIDO).')
+    if (!sellerId)
+      throw new Error(
+        slug
+          ? 'O Mercado Livre não deixou ler a página desta loja. Abra qualquer anúncio dela e cole o link do anúncio (ou o link do perfil do vendedor: mercadolivre.com.br/perfil/APELIDO).'
+          : 'Não foi possível identificar a loja por este link. Cole o link de qualquer anúncio da loja ou o link do perfil do vendedor (mercadolivre.com.br/perfil/APELIDO).',
+      )
     const user = await this.get<{ nickname?: string; site_id?: string; permalink?: string }>(tenantId, `/users/${sellerId}`)
     const search = await this.get<{ paging?: { total?: number } }>(tenantId, `/sites/${user.site_id || 'MLB'}/search`, { seller_id: sellerId, ...(officialStoreId ? { official_store_id: officialStoreId } : {}), limit: 1 }).catch(() => null)
     const mine = await this.sellerId(tenantId)
@@ -291,6 +300,13 @@ export class AssistMlService {
       is_connected_account: !!mine && mine === sellerId,
     }
   }
+}
+
+/** Apelidos prováveis a partir do nome da loja no link (guara-tratores → GUARATRATORES, GUARA TRATORES, GUARA_TRATORES, GUARA.TRATORES). */
+export function storeNicknames(slug: string): string[] {
+  const words = decodeURIComponent(slug).toUpperCase().split(/[-_.+\s]+/).filter(Boolean)
+  if (!words.length) return []
+  return [...new Set([words.join(''), words.join(' '), words.join('_'), words.join('.'), words.join('-')])]
 }
 
 /** Executa fn para cada item com no máximo `limit` chamadas ao mesmo tempo. */
