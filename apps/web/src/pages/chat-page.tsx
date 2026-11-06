@@ -181,8 +181,11 @@ function useFillHeight<T extends HTMLElement>() {
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    const update = () => setHeight(Math.max(448, Math.floor(window.innerHeight - el.getBoundingClientRect().top - 16)))
+    // Posição na página (não na tela): com a página rolada, a conta continua a mesma e o chat não passa do fim da tela.
+    const update = () => setHeight(Math.max(420, Math.floor(window.innerHeight - (el.getBoundingClientRect().top + window.scrollY) - 12)))
     update()
+    // Volta ao topo: o chat ocupa a tela inteira, sem precisar rolar a página.
+    if (window.scrollY > 0) window.scrollTo({ top: 0 })
     window.addEventListener('resize', update)
     const ro = new ResizeObserver(update)
     if (el.parentElement) ro.observe(el.parentElement)
@@ -348,6 +351,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
   return (
     <div>
       <PageHeader
+        compact
         title={monitor ? 'Monitorar conversas' : 'Chat WhatsApp'}
         description={monitor ? `${monitorAccess.data?.scope === 'EQUIPE' ? 'Conversas da sua equipe e dos setores que você gerencia' : 'Conversas de todos os números e vendedores'}, só para leitura. Abrir aqui não marca como lida: quem atende continua vendo as mensagens novas.` : undefined}
         actions={
@@ -504,7 +508,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                 </span>
               </div>
             )}
-            <ul className="min-h-0 flex-1 overflow-y-auto">
+            <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
               {list.data.items.length === 0 && waitingSeller && !q && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa aguardando vendedor. Quando a pré-venda for marcada como repassada ao vendedor, a conversa vem para cá até ele retornar.</li>}
               {list.data.items.length === 0 && groups && !q && <li className="p-6 text-center text-sm text-muted-foreground">Nenhum grupo ainda. As mensagens dos grupos do WhatsApp aparecem aqui, separadas das conversas com clientes.</li>}
               {list.data.items.length === 0 && !(groups && !q) && !(waitingSeller && !q) && <li className="p-6 text-center text-sm text-muted-foreground">Nenhuma conversa{archived ? ' arquivada' : ''}{q || unread || numberId || category || labelId || sellerId || awaiting || queue ? ' com esses filtros' : archived ? '' : ' ainda'}.</li>}
@@ -803,7 +807,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
           </SheetContent>
         </Sheet>
       )}
-      <div className={cn('wa-wallpaper min-h-0 flex-1 space-y-1 overflow-y-auto px-3 py-3 sm:px-[6%]')}>
+      <div className={cn('wa-wallpaper min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 py-3 sm:px-[6%]')}>
         {(d.hasMore || older.length > 0) && (
           <div className="text-center">
             <Button size="sm" variant="ghost" disabled={loadingOlder} onClick={() => void loadOlder()}>

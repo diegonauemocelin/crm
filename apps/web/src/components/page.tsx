@@ -5,12 +5,14 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ApiError, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import type { Action } from '@/lib/types'
+import { cn } from '@/lib/utils'
 
-export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }) {
+/** compact: telas de altura limitada (monitores de 17" e 19"): margem menor e o título fica só no caminho do topo. */
+export function PageHeader({ title, description, actions, compact }: { title: string; description?: string; actions?: ReactNode; compact?: boolean }) {
   return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div className={cn('flex flex-wrap items-end justify-between gap-3', compact ? 'mb-3 [@media(max-height:900px)]:mb-2' : 'mb-5')}>
       {/* O título não é espremido pelos botões: quando não cabe tudo, os botões descem para a linha de baixo. */}
-      <div className="min-w-0 flex-[1_1_20rem]">
+      <div className={cn('min-w-0 flex-[1_1_20rem]', compact && '[@media(max-height:900px)]:sr-only')}>
         <h1 className="text-xl font-semibold tracking-tight md:text-2xl">{title}</h1>
         {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
       </div>
