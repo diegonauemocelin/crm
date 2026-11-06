@@ -193,25 +193,45 @@ export class ConcorrentesService implements OnApplicationBootstrap, OnModuleDest
 
   /**
    * Anúncios da loja concorrente pelos produtos do catálogo do Mercado Livre que a nossa loja também vende: para cada
-   * produto, os anúncios dele (de todos os vendedores), ficando os da loja concorrente.
+   * produto, os anúncios dele (de todos os vendedores), ficando os da loja concorrente. Preço vem da própria lista do
+   * produto, e os códigos são os do nosso anúncio do mesmo produto (é o mesmo produto do catálogo).
    */
-  private async itemsByCatalog(tenantId: string, sellerId: string): Promise<string[]> {
-    const own = await this.prisma.assistItem.findMany({ where: { tenantId, status: 'active' }, select: { id: true } })
+  private async itemsByCatalog(tenantId: string, sellerId: string): Promise<{ id: string; title: string | null; permalink: string | null; price: number | null; freeShipping: boolean; codes: string[] }[]> {
+    const own = await this.prisma.assistItem.findMany({ where: { tenantId, status: 'active' }, select: { id: true, title: true, sellerSku: true, partNumber: true, attributes: true } })
+    const ownById = new Map(own.map((o) => [o.id, o]))
     const batches: string[][] = []
     for (let i = 0; i < own.length; i += 20) batches.push(own.slice(i, i + 20).map((o) => o.id))
-    const products = new Set<string>()
+    const products = new Map<string, string>()
     await mapLimit(batches, 3, async (batch) => {
-      const res = await this.ml.get<{ code: number; body?: { catalog_product_id?: string | null } }[]>(tenantId, '/items', { ids: batch.join(','), attributes: 'id,catalog_product_id' }).catch(() => [])
-      for (const r of res ?? []) if (r.code === 200 && r.body?.catalog_product_id) products.add(r.body.catalog_product_id)
+      const res = await this.ml.get<{ code: number; body?: { id?: string; catalog_product_id?: string | null } }[]>(tenantId, '/items', { ids: batch.join(','), attributes: 'id,catalog_product_id' }).catch(() => [])
+      for (const r of res ?? []) if (r.code === 200 && r.body?.catalog_product_id && r.body.id) products.set(r.body.catalog_product_id, r.body.id)
     })
-    const found = new Set<string>()
-    await mapLimit([...products], 3, async (pid) => {
-      const page = await this.ml.get<{ results?: { item_id?: string; seller_id?: number }[] }>(tenantId, `/products/${pid}/items`, { limit: 100 }).catch(() => null)
-      for (const r of page?.results ?? []) if (r.item_id && String(r.seller_id ?? '') === sellerId) found.add(r.item_id)
+    const found = new Map<string, { id: string; title: string | null; permalink: string | null; price: number | null; freeShipping: boolean; codes: string[] }>()
+    let failed = 0
+    await mapLimit([...products], 3, async ([pid, ownId]) => {
+      const page = await this.ml.get<{ results?: { item_id?: string; seller_id?: number; price?: number; shipping?: { free_shipping?: boolean } }[] }>(tenantId, `/products/${pid}/items`, { limit: 100 }).catch(() => {
+        failed++
+        return null
+      })
+      const mine = ownById.get(ownId)
+      for (const r of page?.results ?? []) {
+        if (!r.item_id || String(r.seller_id ?? '') !== sellerId) continue
+        found.set(r.item_id, {
+          id: r.item_id,
+          title: mine?.title ?? null,
+          permalink: `https://produto.mercadolivre.com.br/${r.item_id.replace(/^([A-Z]{3})(\d+)$/, '$1-$2')}`,
+          price: typeof r.price === 'number' ? r.price : null,
+          freeShipping: !!r.shipping?.free_shipping,
+          codes: mine ? ownCodes(mine) : [],
+        })
+      }
     })
-    this.logger.log(`Concorrente ${sellerId}: busca fechada; ${found.size} anúncio(s) achado(s) em ${products.size} produto(s) do catálogo em comum.`)
-    return [...found]
+    this.logger.log(`Concorrente ${sellerId}: ${found.size} anúncio(s) em ${products.size} produto(s) do catálogo da sua loja (${failed} consulta(s) recusada(s)).`)
+    this.catalogStats = { products: products.size, failed }
+    return [...found.values()]
   }
+
+  private catalogStats = { products: 0, failed: 0 }
 
   /** Lê os anúncios ativos da loja (até 1.000, o limite da busca do Mercado Livre) e guarda preço e códigos. */
   async sync(id: string) {
@@ -220,70 +240,50 @@ export class ConcorrentesService implements OnApplicationBootstrap, OnModuleDest
     const c = await this.prisma.mlCompetitor.findUnique({ where: { id } })
     try {
       if (!c) return
-      // A busca por vendedor do Mercado Livre pode estar fechada para o aplicativo (403): aí os anúncios da loja saem
-      // dos produtos do catálogo que a nossa loja também vende.
-      let byCatalog = false
-      const ids = await this.ml
-        .listStoreItemIds(c.tenantId, {
-          seller_id: c.sellerId,
-          site_id: 'MLB',
-          official_store_id: c.officialStoreId,
-        })
-        .catch(async (err: unknown) => {
-          if (!(err instanceof MlError) || err.status !== 403) throw err
-          byCatalog = true
-          return this.itemsByCatalog(c.tenantId, c.sellerId)
-        })
-      const batches: string[][] = []
-      for (let i = 0; i < ids.length; i += 20) batches.push(ids.slice(i, i + 20))
       const now = new Date()
       let read = 0
       let withCode = 0
       const seen = new Set<string>()
-      await mapLimit(batches, 2, async (batch) => {
-        const res = await this.ml.get<{ code: number; body?: MlItem }[]>(c.tenantId, '/items', {
-          ids: batch.join(','),
-          attributes: 'id,title,permalink,price,status,shipping,attributes',
+      const store = async (it: { id: string; title: string | null; permalink: string | null; price: number | null; status: string | null; freeShipping: boolean; codes: string[] }) => {
+        read++
+        if (it.codes.length) withCode++
+        seen.add(it.id)
+        const old = await this.prisma.mlCompetitorItem.findUnique({ where: { competitorId_itemId: { competitorId: c.id, itemId: it.id } }, select: { price: true } })
+        const changed = old?.price != null && it.price != null && Number(old.price) !== it.price
+        const data = { title: it.title, permalink: it.permalink, price: it.price, status: it.status, freeShipping: it.freeShipping, codes: it.codes, syncedAt: now, ...(changed ? { previousPrice: old.price, priceChangedAt: now } : {}) }
+        await this.prisma.mlCompetitorItem.upsert({ where: { competitorId_itemId: { competitorId: c.id, itemId: it.id } }, create: { tenantId: c.tenantId, competitorId: c.id, itemId: it.id, ...data }, update: data })
+      }
+      // 1) Busca dos anúncios do vendedor e leitura de cada um. O Mercado Livre pode fechar a busca (403) ou a leitura
+      //    de anúncios de outras lojas: aí vale o caminho 2.
+      let refused: string | null = null
+      const ids = await this.ml
+        .listStoreItemIds(c.tenantId, { seller_id: c.sellerId, site_id: 'MLB', official_store_id: c.officialStoreId })
+        .catch((err: unknown) => {
+          if (!(err instanceof MlError) || err.status !== 403) throw err
+          refused = 'busca'
+          return [] as string[]
         })
+      const batches: string[][] = []
+      for (let i = 0; i < ids.length; i += 20) batches.push(ids.slice(i, i + 20))
+      const codesSeen = new Set<number>()
+      await mapLimit(batches, 2, async (batch) => {
+        const res = await this.ml.get<{ code: number; body?: MlItem }[]>(c.tenantId, '/items', { ids: batch.join(','), attributes: 'id,title,permalink,price,status,shipping,attributes' })
         for (const r of res ?? []) {
-          if (r.code !== 200 || !r.body) continue
-          const it = r.body
-          const codes = competitorCodes(it.attributes, it.title)
-          read++
-          if (codes.length) withCode++
-          seen.add(it.id)
-          const old = await this.prisma.mlCompetitorItem.findUnique({
-            where: {
-              competitorId_itemId: { competitorId: c.id, itemId: it.id },
-            },
-            select: { price: true },
-          })
-          const price = it.price ?? null
-          const changed = old?.price != null && price != null && Number(old.price) !== price
-          const data = {
-            title: it.title ?? null,
-            permalink: it.permalink ?? null,
-            price,
-            status: it.status ?? null,
-            freeShipping: !!it.shipping?.free_shipping,
-            codes,
-            syncedAt: now,
-            ...(changed ? { previousPrice: old.price, priceChangedAt: now } : {}),
+          if (r.code !== 200 || !r.body) {
+            codesSeen.add(r.code)
+            continue
           }
-          await this.prisma.mlCompetitorItem.upsert({
-            where: {
-              competitorId_itemId: { competitorId: c.id, itemId: it.id },
-            },
-            create: {
-              tenantId: c.tenantId,
-              competitorId: c.id,
-              itemId: it.id,
-              ...data,
-            },
-            update: data,
-          })
+          const it = r.body
+          await store({ id: it.id, title: it.title ?? null, permalink: it.permalink ?? null, price: it.price ?? null, status: it.status ?? null, freeShipping: !!it.shipping?.free_shipping, codes: competitorCodes(it.attributes, it.title) })
         }
       })
+      if (ids.length && !read) refused = `leitura (código ${[...codesSeen].join(', ') || '?'})`
+      // 2) Produtos do catálogo que a nossa loja também vende.
+      let viaCatalog = false
+      if (!read) {
+        viaCatalog = true
+        for (const it of await this.itemsByCatalog(c.tenantId, c.sellerId)) await store({ ...it, status: 'active' })
+      }
       // Anúncio que saiu da busca (pausado ou encerrado): deixa de entrar na comparação.
       await this.prisma.mlCompetitorItem.updateMany({
         where: { competitorId: c.id, itemId: { notIn: [...seen] } },
@@ -295,10 +295,10 @@ export class ConcorrentesService implements OnApplicationBootstrap, OnModuleDest
           itemsRead: read,
           itemsWithCode: withCode,
           lastSyncAt: now,
-          lastError: ids.length
+          lastError: read
             ? null
-            : byCatalog
-              ? 'O Mercado Livre não libera a lista de anúncios de outras lojas. O CRM procura pelos produtos do catálogo que as duas lojas vendem e não achou nenhum em comum.'
+            : viaCatalog
+              ? `O Mercado Livre não libera ${refused ? `a ${refused}` : 'a lista'} de anúncios de outras lojas. Pelos produtos do catálogo que a sua loja vende (${this.catalogStats.products}${this.catalogStats.failed ? `, ${this.catalogStats.failed} consulta(s) recusada(s)` : ''}), nenhum anúncio desta loja foi encontrado.`
               : 'O Mercado Livre não listou anúncios ativos desta loja.',
         },
       })
