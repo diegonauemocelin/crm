@@ -2,6 +2,43 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.38",
+      "date": "2026-11-06",
+      "title": "Controle de brindes e correções no recebimento do WhatsApp",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Marketing",
+          "text": "Controle de brindes: cadastro dos brindes com estoque e valor unitário, cota mensal de cada vendedor (ex.: 5 copos, 3 chaveiros) e registro de cada retirada com código do cliente, data e quantidade. Cada retirada baixa o estoque e o saldo do mês do vendedor até zerar; no mês seguinte o saldo volta à cota. Exporta as retiradas para planilha. Libere a permissão \"Controle de brindes\" nos perfis."
+        },
+        {
+          "type": "novo",
+          "area": "Atendimento",
+          "text": "Meus brindes (Atendimento Comercial): o vendedor consulta quantos brindes tem livres no mês, quantos já usou e para quais clientes."
+        },
+        {
+          "type": "melhoria",
+          "area": "Atendimento",
+          "text": "Pré-venda: os campos que vieram preenchidos pelo formulário, botão de WhatsApp, chat ou automação ficam com um destaque azul suave; os informados à mão ganham um lápis. Alterou um campo que veio preenchido, ele passa a aparecer como manual."
+        },
+        {
+          "type": "correcao",
+          "area": "WhatsApp",
+          "text": "Resposta de cliente que o WhatsApp manda só pelo identificador escondido (sem o telefone) agora cai na conversa do cliente, em vez de abrir outra conversa. As conversas separadas que já tinham sido abertas assim são juntadas."
+        },
+        {
+          "type": "correcao",
+          "area": "WhatsApp",
+          "text": "Mensagem que chega trancada (chaves do WhatsApp dessincronizadas) aparece na conversa com o aviso para ver no celular, em vez de sumir; se o WhatsApp reenviar, a mensagem verdadeira toma o lugar. Reconectar o número pelo QR Code resolve a dessincronização."
+        },
+        {
+          "type": "correcao",
+          "area": "WhatsApp",
+          "text": "Álbum de fotos não aparece mais como \"tipo de mensagem desconhecido\" (as fotos continuam chegando uma a uma)."
+        }
+      ]
+    },
+    {
       "version": "2.0.37",
       "date": "2026-11-05",
       "title": "Orçamento ou pré-nota do ERP na cotação",
