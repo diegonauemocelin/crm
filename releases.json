@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.40",
+      "date": "2026-11-06",
+      "title": "Correção ao salvar as regras do WhatsApp",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "WhatsApp",
+          "text": "Números de WhatsApp › Regras: salvar voltou a funcionar (dava \"O campo retention não é aceito aqui\"); o prazo de guarda das conversas e a mensagem ao finalizar o atendimento são gravados junto."
+        }
+      ]
+    },
+    {
       "version": "2.0.39",
       "date": "2026-11-06",
       "title": "Frete nas perguntas pelos Correios, descarte de cadastro e ajustes no chat e nos fretes",
