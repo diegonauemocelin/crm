@@ -1,5 +1,5 @@
 import { Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
-import { cleanReactivation, nextGapMs, type Reactivation, REACTIVATION_STEPS, reactivationText } from '../atendimento/regras'
+import { cleanReactivation, nextGapMs, type Reactivation, REACTIVATION_STEPS, reactivationText, stepTextFor } from '../atendimento/regras'
 import type { AtendimentoSettings } from '../atendimento/service-records.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { ChatService } from './chat.service'
@@ -82,7 +82,7 @@ export class ReativacaoService implements OnApplicationBootstrap, OnModuleDestro
           },
           orderBy: { resultAt: 'asc' },
           take: BATCH,
-          select: { id: true, name: true, phone: true, leadId: true, resultAt: true, reactivationAt: true, brandIds: true, seller: { select: { name: true, gender: true } } },
+          select: { id: true, name: true, phone: true, leadId: true, resultAt: true, reactivationAt: true, brandIds: true, customerTypeId: true, seller: { select: { name: true, gender: true } } },
         })
         for (const r of records) {
           const stop = await this.stopReason(tenantId, r)
@@ -93,7 +93,7 @@ export class ReativacaoService implements OnApplicationBootstrap, OnModuleDestro
           const claimed = await this.prisma.serviceRecord.updateMany({ where: { id: r.id, reactivationStep: { lte: i } }, data: { reactivationStep: i + 1, reactivationAt: now, reactivationStatus: 'ENVIANDO' } })
           if (!claimed.count) continue
           const brands = r.brandIds.length ? await this.prisma.lookupItem.findMany({ where: { id: { in: r.brandIds } }, select: { name: true }, orderBy: { name: 'asc' } }) : []
-          const text = applyVariables(reactivationText(step.text, { marcas: brands.map((b) => b.name) }), { nome: r.name, vendedor: r.seller?.name, genero: r.seller?.gender })
+          const text = applyVariables(reactivationText(stepTextFor(step, r.customerTypeId), { marcas: brands.map((b) => b.name) }), { nome: r.name, vendedor: r.seller?.name, genero: r.seller?.gender })
           const what = `a ${i + 1}ª mensagem para chamar o cliente de novo (${saleStatus === 'SIM' ? 'comprou' : 'sem venda'}, ${step.days} dias)`
           try {
             const sent = await this.chat.sendAutomatic(number, r.phone!, text, LABEL, { leadId: r.leadId, recordId: r.id, name: r.name })

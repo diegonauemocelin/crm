@@ -610,7 +610,11 @@ interface ReactivationStep {
   enabled: boolean
   days: number
   text: string
+  /** Texto próprio por tipo de cliente (id do tipo → texto); vazio usa o padrão. */
+  byType?: Record<string, string>
 }
+
+const trimByType = (b: Record<string, string> | undefined) => Object.fromEntries(Object.entries(b ?? {}).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v))
 
 interface Reactivation {
   enabled: boolean
@@ -1156,6 +1160,7 @@ export function ReactivationCard({ config }: { config: AlertConfig }) {
   const { can } = useAuth()
   const canEdit = can('cadastros', 'edit')
   const [m, setM] = useState<Reactivation | undefined>(config.reactivation)
+  const types = (useOptions().data?.customerTypes ?? []).filter((t) => t.active !== false)
   const numbers = useQuery({ queryKey: ['cadastros', 'alertas', 'numeros'], queryFn: () => api.get<{ id: string; name: string; phone: string | null; status: string }[]>('/cadastros/alertas/numeros') })
   const save = useSaveAlerts(m?.enabled ? 'Chamar o cliente de novo: ligado.' : 'Chamar o cliente de novo: salvo (desligado).')
   if (!m) return null
@@ -1228,6 +1233,32 @@ export function ReactivationCard({ config }: { config: AlertConfig }) {
                     </div>
                   </div>
                   <Textarea aria-label={`Texto da ${i + 1}ª mensagem (${g.title})`} rows={3} maxLength={1000} value={s.text} onChange={(e) => setStep(g.key, i, { text: e.target.value })} disabled={!canEdit || !s.enabled} />
+                  {types.length > 0 && s.enabled && (
+                    <details className="group rounded-md border bg-muted/30 px-3 py-2" open={Object.values(s.byType ?? {}).some((v) => v.trim())}>
+                      <summary className="cursor-pointer text-xs font-medium text-muted-foreground select-none">
+                        Texto por tipo de cliente{Object.values(s.byType ?? {}).filter((v) => v.trim()).length ? ` (${Object.values(s.byType ?? {}).filter((v) => v.trim()).length})` : ''}
+                      </summary>
+                      <div className="mt-2 space-y-2">
+                        <p className="text-xs text-muted-foreground">Deixe vazio para usar o texto acima. Vale pelo tipo de cliente marcado na pré-venda.</p>
+                        {types.map((t) => (
+                          <div key={t.id} className="space-y-1">
+                            <Label htmlFor={`react-${g.key}-${i}-${t.id}`} className="text-xs">
+                              {t.name}
+                            </Label>
+                            <Textarea
+                              id={`react-${g.key}-${i}-${t.id}`}
+                              rows={2}
+                              maxLength={1000}
+                              placeholder="Usa o texto padrão"
+                              value={s.byType?.[t.id] ?? ''}
+                              onChange={(e) => setStep(g.key, i, { byType: { ...(s.byType ?? {}), [t.id]: e.target.value } })}
+                              disabled={!canEdit}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                 </div>
               ))}
             </div>
@@ -1242,7 +1273,7 @@ export function ReactivationCard({ config }: { config: AlertConfig }) {
       {canEdit && (
         <CardFooter>
           <Button
-            onClick={() => save.mutate({ ...config, reactivation: { ...m, lost: m.lost.map((s) => ({ ...s, text: s.text.trim() })), sold: m.sold.map((s) => ({ ...s, text: s.text.trim() })) } })}
+            onClick={() => save.mutate({ ...config, reactivation: { ...m, lost: m.lost.map((s) => ({ ...s, text: s.text.trim(), byType: trimByType(s.byType) })), sold: m.sold.map((s) => ({ ...s, text: s.text.trim(), byType: trimByType(s.byType) })) } })}
             disabled={save.isPending || !valid}
           >
             {save.isPending && <Loader2Icon className="animate-spin" />}

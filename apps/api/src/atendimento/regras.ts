@@ -244,6 +244,22 @@ export interface ReactivationStep {
   days: number
   /** Texto com {nome}, {vendedor} e {marca} (marcas da máquina da pré-venda). */
   text: string
+  /** Texto próprio por tipo de cliente (id do tipo → texto), ex.: consumidor final e revenda. Sem texto: usa o padrão. */
+  byType?: Record<string, string>
+}
+
+/** Texto da mensagem para o tipo de cliente da pré-venda (o do tipo, se tiver; senão o padrão). */
+export function stepTextFor(step: ReactivationStep, customerTypeId: string | null | undefined): string {
+  return (customerTypeId && step.byType?.[customerTypeId]?.trim()) || step.text
+}
+
+function cleanByType(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>).slice(0, 30)) {
+    if (/^[0-9a-f-]{36}$/i.test(k) && typeof v === 'string' && v.trim()) out[k] = v.trim().slice(0, 1000)
+  }
+  return out
 }
 
 export interface Reactivation {
@@ -288,6 +304,7 @@ function cleanSteps(raw: unknown, fallback: ReactivationStep[]): ReactivationSte
       enabled: list[i] ? r.enabled === true : f.enabled,
       days: Number.isFinite(days) && days >= 1 && days <= 1095 ? days : f.days,
       text: typeof r.text === 'string' && r.text.trim() ? r.text.trim().slice(0, 1000) : f.text,
+      byType: cleanByType(r.byType),
     }
   })
   // Em ordem de dias: a 2ª nunca antes da 1ª.

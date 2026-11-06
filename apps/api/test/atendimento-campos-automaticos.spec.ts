@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { autoFieldsOf, keepAutoFields } from '../src/atendimento/regras'
+import { autoFieldsOf, cleanReactivation, keepAutoFields, stepTextFor } from '../src/atendimento/regras'
 
 describe('campos que vieram preenchidos na pré-venda', () => {
   it('guarda só os campos com valor', () => {
@@ -10,5 +10,18 @@ describe('campos que vieram preenchidos na pré-venda', () => {
   it('campo alterado por uma pessoa passa a ser manual', () => {
     expect(keepAutoFields(['name', 'phone', 'originId'], { phone: { de: 'a', para: 'b' }, saleStatus: {} })).toEqual(['name', 'originId'])
     expect(keepAutoFields(['name'], {})).toEqual(['name'])
+  })
+})
+
+describe('chamar o cliente de novo: texto por tipo de cliente', () => {
+  const FINAL = '11111111-1111-1111-1111-111111111111'
+  const REV = '22222222-2222-2222-2222-222222222222'
+  it('usa o texto do tipo; sem texto do tipo, o padrão', () => {
+    const r = cleanReactivation({ sold: [{ enabled: true, days: 60, text: 'Padrão', byType: { [REV]: '  Revenda  ', [FINAL]: '', lixo: 'x' } }] } as never)
+    const step = r.sold.find((s) => s.days === 60)!
+    expect(step.byType).toEqual({ [REV]: 'Revenda' })
+    expect(stepTextFor(step, REV)).toBe('Revenda')
+    expect(stepTextFor(step, FINAL)).toBe('Padrão')
+    expect(stepTextFor(step, null)).toBe('Padrão')
   })
 })
