@@ -35,6 +35,8 @@ export interface ParsedMessage {
 type Obj = Record<string, unknown>
 
 export const UNKNOWN_TEXT = 'Mensagem de um tipo que o CRM ainda não mostra (veja no celular).'
+/** Mensagem que chegou trancada (chaves do WhatsApp dessincronizadas): o celular mostra, o CRM não conseguiu abrir. */
+export const UNREADABLE_TEXT = 'Mensagem que o CRM não conseguiu abrir: veja no celular do número. Se acontecer de novo, reconecte o número pelo QR Code.'
 
 const WRAPPERS = ['ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2', 'viewOnceMessageV2Extension', 'documentWithCaptionMessage', 'editedMessage']
 
@@ -64,7 +66,7 @@ function unwrap(m: Obj | null | undefined): Obj | null {
  * status, canais, reações e avisos do sistema (mensagem apagada, chaves de criptografia). Grupos vêm com group = true.
  */
 export function parseMessage(data: unknown): ParsedMessage | null {
-  const d = data as { key?: Obj; message?: Obj; pushName?: unknown; messageTimestamp?: unknown; contextInfo?: unknown } | null
+  const d = data as { key?: Obj; message?: Obj; pushName?: unknown; messageTimestamp?: unknown; contextInfo?: unknown; messageStubType?: unknown } | null
   const key = d?.key
   if (!key || typeof key.id !== 'string') return null
   const remote = str(key.remoteJid, 120)
@@ -76,9 +78,30 @@ export function parseMessage(data: unknown): ParsedMessage | null {
   // Num grupo o telefone é o de cada participante, não da conversa: a conversa é o grupo.
   const phoneDigits = group ? null : (/^(\d{8,15})(?::\d+)?@s\.whatsapp\.net$/.exec(jid)?.[1] ?? null)
   const m = unwrap(d.message)
-  if (!m) return null
   const ts = num(d.messageTimestamp)
   const fromMe = key.fromMe === true
+  // Chegou sem conteúdo porque não abriu (CIPHERTEXT): vira um aviso na conversa, em vez de sumir.
+  if (!m) {
+    if (fromMe || !(d.messageStubType === 2 || d.messageStubType === 'CIPHERTEXT')) return null
+    return {
+      waId: key.id.slice(0, 120),
+      fromMe,
+      jid: phoneDigits ? `${phoneDigits}@s.whatsapp.net` : jid,
+      lid: remote.endsWith('@lid') && phoneDigits ? remote : null,
+      phoneDigits,
+      pushName: str(d.pushName, 120),
+      group,
+      at: ts ? new Date(ts * 1000) : new Date(),
+      raw: { key, message: null },
+      quoted: null,
+      senders: group ? [...new Set([key.participant, key.participantAlt, key.senderPn, key.senderLid].map((v) => str(v, 120)).filter((v): v is string => !!v && !v.endsWith('@g.us')).map((v) => v.replace(/:\d+@/, '@')))] : [],
+      mentions: [],
+      secret: null,
+      type: 'outro',
+      text: UNREADABLE_TEXT,
+      media: null,
+    }
+  }
   const base = {
     waId: key.id.slice(0, 120),
     fromMe,
@@ -135,7 +158,7 @@ export function parseMessage(data: unknown): ParsedMessage | null {
   if (poll) return { ...base, type: 'outro', text: `Enquete: ${str(poll.name, 300) ?? ''}`, media: null }
   // Reações, avisos do sistema e chaves de criptografia não viram mensagem na conversa.
   const keys = Object.keys(m).filter((k) => k !== 'messageContextInfo')
-  if (!keys.length || keys.some((k) => ['reactionMessage', 'protocolMessage', 'senderKeyDistributionMessage', 'pollUpdateMessage', 'keepInChatMessage', 'secretEncryptedMessage'].includes(k))) return null
+  if (!keys.length || keys.some((k) => ['reactionMessage', 'protocolMessage', 'senderKeyDistributionMessage', 'pollUpdateMessage', 'keepInChatMessage', 'secretEncryptedMessage', 'albumMessage'].includes(k))) return null
   const found = anyText(m)
   if (found) return { ...base, type: 'texto', text: found, media: null }
   return { ...base, type: 'outro', text: UNKNOWN_TEXT, media: null }

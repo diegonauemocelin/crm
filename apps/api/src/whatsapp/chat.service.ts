@@ -20,7 +20,7 @@ import { type AgendaCategory, answersClient, applyVariables, cleanRules, contact
 import { parseCsv } from '../atendimento/planilha'
 import { answersNote, type BotOutcome, botStateOf, chooseFlow, continueFlow, flowOf, startFlow } from './fluxo'
 import { HISTORY_NAME, historyFrom, historyName, historyNote, historyPatch, type HistoryPick, pickHistory } from './historico'
-import { extOf, INLINE_MEDIA_MAX_BYTES, MEDIA_MAX_BYTES, openSecretEdit, parseCalls, parseMessage, parseReaction, parseRevision, parseSecretEdit, type ParsedSecretEdit, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, whatsappOf, withReaction } from './mensagens'
+import { extOf, INLINE_MEDIA_MAX_BYTES, MEDIA_MAX_BYTES, openSecretEdit, parseCalls, parseMessage, parseReaction, parseRevision, parseSecretEdit, type ParsedSecretEdit, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, UNREADABLE_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, whatsappOf, withReaction } from './mensagens'
 
 const PAGE = 60
 /** Nome que aparece nas mensagens e notas do chatbot. */
@@ -157,6 +157,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     }
     // Tipo novo do WhatsApp: fica o aviso na conversa e o formato no registro do servidor (para o CRM aprender a ler).
     if (p.type === 'outro' && p.text === UNKNOWN_TEXT) this.logger.warn(`Mensagem de tipo desconhecido (${n.name}): ${unknownKeys(data)}`)
+    if (p.text === UNREADABLE_TEXT) this.logger.warn(`Mensagem que não abriu (chaves do WhatsApp dessincronizadas) no número ${n.name}: reconectar pelo QR Code resolve.`)
     // Mesma fila para as duas formas do celular (com e sem o 9).
     return this.enqueue(`${n.id}:${phoneFromDigits(p.phoneDigits) ?? p.jid}`, () => this.store(n, p, client), `Mensagem não gravada (${n.name})`)
   }
@@ -328,6 +329,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const contact = await this.agendaContact(n.tenantId, n.id, phone ?? p.jid)
     conv ??= await this.prisma.whatsappConversation.create({ data: { tenantId: n.tenantId, numberId: n.id, jid: p.jid, phone, name: p.pushName, category: contact?.category ?? 'CLIENTE' } })
 
+    // O WhatsApp reenviou a mensagem que tinha chegado trancada: a de verdade substitui o aviso.
+    if (p.text !== UNREADABLE_TEXT) await this.prisma.whatsappMessage.deleteMany({ where: { conversationId: conv.id, waId: p.waId, text: UNREADABLE_TEXT } })
     const tooBig = !!p.media?.size && p.media.size > MEDIA_MAX_BYTES
     const saved = await this.prisma.whatsappMessage.createManyAndReturn({
       data: [
