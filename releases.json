@@ -2,6 +2,58 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.39",
+      "date": "2026-11-06",
+      "title": "Frete nas perguntas pelos Correios, descarte de cadastro e ajustes no chat e nos fretes",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Assistente ML",
+          "text": "Pergunta de frete com CEP é respondida com a cotação dos Correios (contrato da empresa), usando o peso e as medidas da embalagem do anúncio: aparecem as formas de envio (PAC, SEDEX) com preço e prazo. Em Configurações do assistente dá para escolher Correios ou Magazord e o CEP de origem."
+        },
+        {
+          "type": "novo",
+          "area": "Atendimento",
+          "text": "Descartar cadastro: na pré-venda e no lead, para formulário preenchido errado (telefone que não funciona e sem e-mail, dados de teste, duplicado). Sai das telas e relatórios, com o motivo no histórico e na auditoria."
+        },
+        {
+          "type": "novo",
+          "area": "Atendimento",
+          "text": "Chamar o cliente de novo: cada mensagem pode ter um texto próprio por tipo de cliente (ex.: consumidor final e revenda). Sem texto do tipo, vai o padrão."
+        },
+        {
+          "type": "novo",
+          "area": "WhatsApp",
+          "text": "Perfis de acesso: escolha os números de WhatsApp que cada perfil pode monitorar (nenhum marcado = todos)."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Transportadora pode ficar fora da conciliação (ex.: Mercado Livre Envios, frete cobrado pela plataforma): os CT-es dela ficam como \"Fora da conciliação\" e não entram nos totais."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Cotação de frete mostra uma opção por transportadora (a melhor ou a escolhida); as outras tabelas dela ficam no link \"+N outras tabelas\"."
+        },
+        {
+          "type": "melhoria",
+          "area": "WhatsApp",
+          "text": "Chat cabe inteiro na tela, inclusive em monitores menores: a altura não passa do fim da tela e a rolagem das listas não arrasta a página."
+        },
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Cotação dos Correios: vai o serviço Valor Declarado (SEDEX e PAC) junto com o valor da mercadoria, como a API exige; se o contrato não aceitar, cota sem ele. Erro de cotação online aparece como \"Erro na consulta\"."
+        },
+        {
+          "type": "correcao",
+          "area": "Marketplaces",
+          "text": "Concorrentes do Mercado Livre: aceita link de produto do catálogo e link /loja/; com a busca por vendedor fechada pelo Mercado Livre, os anúncios da loja são achados pelos produtos do catálogo em comum."
+        }
+      ]
+    },
+    {
       "version": "2.0.38",
       "date": "2026-11-06",
       "title": "Controle de brindes e correções no recebimento do WhatsApp",
