@@ -17,6 +17,7 @@ import { MailService } from '../settings/mail.service'
 import { SettingsService } from '../settings/settings.service'
 import { pagePath } from '../rastreamento/origem'
 import { ChatService } from '../whatsapp/chat.service'
+import { autoFieldsOf } from '../atendimento/regras'
 import {
   allSteps,
   branchStart,
@@ -680,21 +681,25 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
     const origin =
       (await this.prisma.lookupItem.findFirst({ where: { tenantId: run.tenantId, type: 'ORIGEM', name: { equals: 'Automação', mode: 'insensitive' } }, select: { id: true } })) ??
       (await this.prisma.lookupItem.create({ data: { tenantId: run.tenantId, type: 'ORIGEM', name: 'Automação' }, select: { id: true } }))
+    const fields = {
+      leadAt: new Date(),
+      name: (lead.name ?? lead.email ?? 'Lead da automação').slice(0, 160),
+      phone: lead.phone,
+      email: lead.email,
+      state: lead.state,
+      city: lead.city,
+      sellerId: seller?.id ?? null,
+      unitId: seller?.unitId ?? lead.unitId ?? null,
+      originId: origin.id,
+      notes: [`Criado pela automação "${a.name}".`, note || null].filter(Boolean).join('\n').slice(0, 5000),
+    }
     const record = await this.prisma.serviceRecord.create({
       data: {
         tenantId: run.tenantId,
         kind: 'PRE_VENDAS',
-        leadAt: new Date(),
-        name: (lead.name ?? lead.email ?? 'Lead da automação').slice(0, 160),
-        phone: lead.phone,
-        email: lead.email,
-        state: lead.state,
-        city: lead.city,
-        sellerId: seller?.id ?? null,
-        unitId: seller?.unitId ?? lead.unitId ?? null,
-        originId: origin.id,
+        ...fields,
+        autoFields: autoFieldsOf(fields),
         leadId: run.leadId,
-        notes: [`Criado pela automação "${a.name}".`, note || null].filter(Boolean).join('\n').slice(0, 5000),
         history: { create: { userName: `Automação "${a.name}"`.slice(0, 120), action: 'criado automaticamente', changes: {} } },
       },
     })

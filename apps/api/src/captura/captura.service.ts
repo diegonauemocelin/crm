@@ -13,6 +13,7 @@ import { RastreamentoService } from '../rastreamento/rastreamento.service'
 import { env } from '../config/env'
 import { SettingsService } from '../settings/settings.service'
 import { BASE_FIELDS, type FormField, safeRedirect, validateSubmission, waLink, whatsappText, whatsappFields, withCustomerTypes } from './regras'
+import { autoFieldsOf } from '../atendimento/regras'
 
 export interface WhatsappWidget {
   enabled: boolean
@@ -379,27 +380,31 @@ export class CapturaService {
       (await this.prisma.lookupItem.create({ data: { tenantId, type: 'ORIGEM', name: originName }, select: { id: true } }))
     const answers = Object.entries(custom).map(([k, v]) => `${k}: ${v}`)
     const notes = [`Entrou pelo ${channel}.`, message ? `Mensagem: ${message}` : null, answers.length ? `Respostas: ${answers.join('; ')}` : null].filter(Boolean).join('\n')
+    const fields = {
+      leadAt: new Date(),
+      name: (c.name ?? lead?.name ?? c.email ?? lead?.email ?? 'Contato do site').slice(0, 160),
+      customerCode: lead?.customerCode ?? null,
+      phone: c.phone ?? lead?.phone ?? null,
+      email: c.email ?? lead?.email ?? null,
+      state: c.state ?? lead?.state ?? null,
+      city: c.city ?? lead?.city ?? null,
+      sellerId: seller?.id ?? null,
+      unitId: seller?.unitId ?? lead?.unitId ?? null,
+      originId: origin.id,
+      customerTypeId,
+      brandIds,
+      notes: notes.slice(0, 5000),
+    }
     const record = await this.prisma.serviceRecord.create({
       data: {
         tenantId,
         kind: 'PRE_VENDAS',
-        leadAt: new Date(),
-        name: (c.name ?? lead?.name ?? c.email ?? lead?.email ?? 'Contato do site').slice(0, 160),
-        customerCode: lead?.customerCode ?? null,
-        phone: c.phone ?? lead?.phone ?? null,
-        email: c.email ?? lead?.email ?? null,
-        state: c.state ?? lead?.state ?? null,
-        city: c.city ?? lead?.city ?? null,
-        sellerId: seller?.id ?? null,
-        unitId: seller?.unitId ?? lead?.unitId ?? null,
-        originId: origin.id,
-        customerTypeId,
-        brandIds,
+        ...fields,
+        autoFields: autoFieldsOf(fields),
         leadId,
         // Formulário/botão e página exata da conversão: separa cada LP mesmo com o mesmo tipo de captura.
         entryChannel: channel.slice(0, 160),
         entryPage: pageLabel(pageUrl),
-        notes: notes.slice(0, 5000),
         history: { create: { userName: 'Captura do site', action: 'criado automaticamente', changes: {} } },
       },
     })

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangleIcon, ArrowRightLeftIcon, ClockIcon, Loader2Icon, MegaphoneIcon, MessageCircleIcon, PhoneCallIcon, Trash2Icon, GlobeIcon } from 'lucide-react'
+import { AlertTriangleIcon, ArrowRightLeftIcon, ClockIcon, Loader2Icon, MegaphoneIcon, MessageCircleIcon, PencilIcon, PhoneCallIcon, Trash2Icon, GlobeIcon } from 'lucide-react'
 import { type FormEvent, type ReactNode, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
@@ -159,12 +159,45 @@ function toPayload(f: FormState, r: ServiceRecord | null) {
   }
 }
 
-function Field({ label, htmlFor, required, error, children, className }: { label: string; htmlFor?: string; required?: boolean; error?: string | null; children: ReactNode; className?: string }) {
+/** De onde veio o valor do campo: preenchido pelo site/WhatsApp (auto) ou por uma pessoa (manual). */
+type FieldSource = 'auto' | 'manual' | null
+
+/** Campo que veio preenchido: fundo azul bem leve no controle (2º filho, logo depois do rótulo). */
+const AUTO_TINT = '[&>:nth-child(2)]:border-sky-300/70 [&>:nth-child(2)]:bg-sky-50 dark:[&>:nth-child(2)]:border-sky-500/30 dark:[&>:nth-child(2)]:bg-sky-500/10'
+
+function SourceMark({ source, via }: { source: FieldSource; via: string }) {
+  if (source === 'auto')
+    return (
+      <span title={`Veio preenchido: ${via}`} className="inline-flex items-center">
+        <span aria-hidden className="size-1.5 rounded-full bg-sky-500" />
+        <span className="sr-only">(veio preenchido: {via})</span>
+      </span>
+    )
+  if (source === 'manual')
+    return (
+      <span title="Informado manualmente" className="inline-flex items-center text-muted-foreground/70">
+        <PencilIcon aria-hidden className="size-3" />
+        <span className="sr-only">(informado manualmente)</span>
+      </span>
+    )
+  return null
+}
+
+function Field({ label, htmlFor, required, error, children, className, source = null, via = '' }: { label: string; htmlFor?: string; required?: boolean; error?: string | null; children: ReactNode; className?: string; source?: FieldSource; via?: string }) {
   return (
-    <div className={className ?? 'space-y-1.5'}>
-      <Label htmlFor={htmlFor} required={required}>
-        {label}
-      </Label>
+    <div className={`${className ?? 'space-y-1.5'} ${source === 'auto' ? AUTO_TINT : ''}`}>
+      {source ? (
+        <div className="flex items-center gap-1.5">
+          <Label htmlFor={htmlFor} required={required}>
+            {label}
+          </Label>
+          <SourceMark source={source} via={via} />
+        </div>
+      ) : (
+        <Label htmlFor={htmlFor} required={required}>
+          {label}
+        </Label>
+      )}
       {children}
       {error && (
         <p id={htmlFor ? `${htmlFor}-error` : undefined} className="text-xs text-destructive">
@@ -237,6 +270,18 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
   const guard = useCloseGuard(dirty, onClose, 'o atendimento')
   const full = useQuery({ queryKey: ['atendimento', record?.id], queryFn: () => api.get<ServiceRecord>(`/atendimentos/${record!.id}`), enabled: !!record })
   const linked = full.data
+  // Pré-venda criada pelo site, botão de WhatsApp, chat ou automação: mostra o que veio preenchido e o que foi
+  // informado à mão. Mexeu no campo (mesmo antes de salvar), passa a ser manual.
+  const autoFields = linked?.autoFields ?? record?.autoFields ?? []
+  const via = linked?.entryChannel ?? record?.entryChannel ?? 'formulário, WhatsApp ou automação'
+  const src = (k: keyof FormState): FieldSource => {
+    if (!autoFields.length) return null
+    const v = form[k]
+    if (autoFields.includes(k) && JSON.stringify(v) === JSON.stringify(start[k])) return 'auto'
+    const filled = Array.isArray(v) ? v.length > 0 : v !== null && v !== '' && v !== undefined
+    return filled ? 'manual' : null
+  }
+  const at = (k: keyof FormState) => ({ source: src(k), via })
 
   const save = useMutation({
     mutationFn: () => {
@@ -483,18 +528,32 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
               )}
               <fieldset disabled={!canEdit || save.isPending} className="space-y-6">
                 <section className="space-y-3">
-                  <h3 className="text-sm font-semibold">Cliente</h3>
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <h3 className="text-sm font-semibold">Cliente</h3>
+                    {autoFields.length > 0 && (
+                      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span aria-hidden className="size-1.5 rounded-full bg-sky-500" />
+                          Veio preenchido
+                        </span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <PencilIcon aria-hidden className="size-3" />
+                          Informado manualmente
+                        </span>
+                      </p>
+                    )}
+                  </div>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Data do lead" htmlFor="r-date" required error={fieldError('r-date')}>
+                    <Field label="Data do lead" htmlFor="r-date" {...at('leadAt')} required error={fieldError('r-date')}>
                       <Input id="r-date" type="datetime-local" {...invalidProps('r-date')} required value={form.leadAt} onChange={(e) => set('leadAt', e.target.value)} />
                     </Field>
-                    <Field label="Código do cliente" htmlFor="r-code">
+                    <Field label="Código do cliente" htmlFor="r-code" {...at('customerCode')}>
                       <Input id="r-code" value={form.customerCode} maxLength={40} onChange={(e) => set('customerCode', e.target.value)} />
                     </Field>
-                    <Field label="Nome" htmlFor="r-name" required error={fieldError('r-name')} className="space-y-1.5 sm:col-span-2">
+                    <Field label="Nome" htmlFor="r-name" {...at('name')} required error={fieldError('r-name')} className="space-y-1.5 sm:col-span-2">
                       <Input id="r-name" {...invalidProps('r-name')} required maxLength={160} value={form.name} onChange={(e) => set('name', e.target.value)} autoFocus={!record} />
                     </Field>
-                    <Field label="Telefone" htmlFor="r-phone">
+                    <Field label="Telefone" htmlFor="r-phone" {...at('phone')}>
                       <Input
                         id="r-phone"
                         inputMode="tel"
@@ -507,10 +566,10 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                         }}
                       />
                     </Field>
-                    <Field label="E-mail" htmlFor="r-email" error={fieldError('r-email')}>
+                    <Field label="E-mail" htmlFor="r-email" {...at('email')} error={fieldError('r-email')}>
                       <Input id="r-email" {...invalidProps('r-email')} type="email" value={form.email} maxLength={200} onChange={(e) => set('email', e.target.value)} />
                     </Field>
-                    <Field label="Estado" htmlFor="r-state">
+                    <Field label="Estado" htmlFor="r-state" {...at('state')}>
                       <Select
                         value={form.country === 'BR' ? (form.state ?? NONE) : 'EX'}
                         onValueChange={(v) => {
@@ -539,7 +598,7 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                         <Input id="r-country" {...invalidProps('r-country')} required value={form.country} maxLength={40} onChange={(e) => set('country', e.target.value)} />
                       </Field>
                     ) : (
-                      <Field label="Cidade" htmlFor="r-city">
+                      <Field label="Cidade" htmlFor="r-city" {...at('city')}>
                         <Input id="r-city" value={form.city} maxLength={80} onChange={(e) => set('city', e.target.value)} />
                       </Field>
                     )}
@@ -549,16 +608,16 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                 <section className="space-y-3">
                   <h3 className="text-sm font-semibold">Interesse</h3>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Origem do lead" htmlFor="r-origin">
+                    <Field label="Origem do lead" htmlFor="r-origin" {...at('originId')}>
                       <OptionSelect id="r-origin" value={form.originId} onChange={(v) => set('originId', v)} items={o?.origins ?? []} />
                     </Field>
-                    <Field label="Tipo de cliente" htmlFor="r-type">
+                    <Field label="Tipo de cliente" htmlFor="r-type" {...at('customerTypeId')}>
                       <OptionSelect id="r-type" value={form.customerTypeId} onChange={(v) => set('customerTypeId', v)} items={o?.customerTypes ?? []} />
                     </Field>
-                    <Field label="Marca da máquina" htmlFor="r-brand">
+                    <Field label="Marca da máquina" htmlFor="r-brand" {...at('brandIds')}>
                       <MultiSelect id="r-brand" items={o?.brands ?? []} value={form.brandIds} onChange={(v) => set('brandIds', v)} />
                     </Field>
-                    <Field label="Tipo de peça" htmlFor="r-part">
+                    <Field label="Tipo de peça" htmlFor="r-part" {...at('partTypeIds')}>
                       <MultiSelect id="r-part" items={o?.partTypes ?? []} value={form.partTypeIds} onChange={(v) => set('partTypeIds', v)} />
                     </Field>
                   </div>
@@ -567,7 +626,7 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                 <section className="space-y-3">
                   <h3 className="text-sm font-semibold">Encaminhamento</h3>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Vendedor" htmlFor="r-seller">
+                    <Field label="Vendedor" htmlFor="r-seller" {...at('sellerId')}>
                       <OptionSelect
                         id="r-seller"
                         value={form.sellerId}
@@ -580,7 +639,7 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                         placeholder="Sem vendedor"
                       />
                     </Field>
-                    <Field label="Unidade" htmlFor="r-unit">
+                    <Field label="Unidade" htmlFor="r-unit" {...at('unitId')}>
                       <OptionSelect id="r-unit" value={form.unitId} onChange={(v) => set('unitId', v)} items={o?.units ?? []} placeholder="Sem unidade" />
                     </Field>
                     <div className="flex items-end gap-3 pb-1.5 sm:col-span-2">
@@ -652,7 +711,7 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                       </Field>
                     </div>
                   )}
-                  <Field label="Observações" htmlFor="r-notes">
+                  <Field label="Observações" htmlFor="r-notes" {...at('notes')}>
                     <Textarea id="r-notes" rows={4} maxLength={5000} value={form.notes} onChange={(e) => set('notes', e.target.value)} />
                   </Field>
                 </section>

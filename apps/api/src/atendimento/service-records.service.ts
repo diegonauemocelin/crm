@@ -12,7 +12,7 @@ import { SettingsService } from '../settings/settings.service'
 import { normalizePhone, REGIONS, regionOf, UF_LIST, UFS } from './br'
 import { type BusinessHours, cleanRules, subBusinessMs, type WaRules } from '../whatsapp/envio'
 import { buildDashboard, type DashRow } from './dashboard'
-import { applyAutomaticFields, cleanDigest, deadline, DEFAULT_CONTACT_CHECK, DEFAULT_FORWARD_MESSAGE, DEFAULT_REACTIVATION, type Reactivation, type ForwardMessage, skipsPostSale, digestFor, DEFAULT_DIGEST, DEFAULT_NEXT_DAY, digestMessages, saleSituation, type SellerDigest, todayWindow, diffRecord, FIELD_LABELS, type FollowStatus, inNegotiation, isCallOverdue, isFollowOverdue, isOverdue, nextCallDue, type NextDayMessage, type RecordState, shouldCreatePostSale, validateFollow, validateRecord } from './regras'
+import { applyAutomaticFields, cleanDigest, deadline, DEFAULT_CONTACT_CHECK, DEFAULT_FORWARD_MESSAGE, DEFAULT_REACTIVATION, type Reactivation, type ForwardMessage, skipsPostSale, digestFor, DEFAULT_DIGEST, DEFAULT_NEXT_DAY, digestMessages, saleSituation, type SellerDigest, todayWindow, diffRecord, FIELD_LABELS, keepAutoFields, type FollowStatus, inNegotiation, isCallOverdue, isFollowOverdue, isOverdue, nextCallDue, type NextDayMessage, type RecordState, shouldCreatePostSale, validateFollow, validateRecord } from './regras'
 
 export const MODULE_BY_KIND: Record<ServiceKind, 'pre_vendas' | 'pos_vendas'> = { PRE_VENDAS: 'pre_vendas', POS_VENDAS: 'pos_vendas' }
 
@@ -449,6 +449,7 @@ export class ServiceRecordsService {
     const data: Record<string, unknown> = {}
     for (const k of Object.keys(changes)) data[k] = (next as Record<string, unknown>)[k]
     for (const k of ['forwardedAt', 'returnedAt'] as const) data[k] = next[k]
+    if (current.autoFields.some((k) => k in changes)) data.autoFields = keepAutoFields(current.autoFields, changes)
     // Resultado novo (ou de volta para negociação): a sequência de "chamar de novo" recomeça a contar dele.
     if (changes.saleStatus) Object.assign(data, { resultAt: next.saleStatus === 'NEGOCIACAO' ? null : new Date(), reactivationStep: 0, reactivationAt: null, reactivationStatus: null })
     // Primeiro contato do pós-venda: é o que conta para o prazo.

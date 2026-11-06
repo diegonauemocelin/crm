@@ -72,6 +72,8 @@ export interface ServiceRecord {
   entryPage?: string | null
   /** Formulário, pop-up ou botão de WhatsApp por onde entrou. */
   entryChannel?: string | null
+  /** Campos que vieram preenchidos (site, botão de WhatsApp, chat ou automação) e ninguém alterou depois. */
+  autoFields?: string[]
   kind: Kind
   leadAt: string
   name: string

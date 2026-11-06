@@ -474,6 +474,8 @@ model ServiceRecord {
   entryPage      String?
   /// Por onde entrou no site: formulário, pop-up ou botão de WhatsApp (com o nome dado na Captura).
   entryChannel   String?
+  /// Campos que vieram preenchidos pelo formulário, botão de WhatsApp, chat ou automação. Alterado por uma pessoa, sai daqui (passa a ser manual).
+  autoFields     String[]      @default([])
   /// Palavra-chave do anúncio (utm_term={keyword} no sufixo do link do Google Ads).
   adsTerm        String?
   createdById    String?       @db.Uuid

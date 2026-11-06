@@ -463,6 +463,22 @@ function comparable(v: unknown): string {
 }
 
 /** Lista só os campos que mudaram, com valor anterior e novo (base do histórico de cada registro). */
+/** Campos da ficha que podem vir preenchidos pelo formulário, botão de WhatsApp, chat ou automação. */
+export const AUTO_FIELDS = ['leadAt', 'name', 'customerCode', 'phone', 'email', 'state', 'city', 'sellerId', 'unitId', 'originId', 'customerTypeId', 'brandIds', 'partTypeIds', 'notes'] as const
+
+/** Quais desses campos vieram com valor no atendimento criado automaticamente. */
+export function autoFieldsOf(data: Record<string, unknown>): string[] {
+  return AUTO_FIELDS.filter((k) => {
+    const v = data[k]
+    return Array.isArray(v) ? v.length > 0 : v !== null && v !== undefined && String(v).trim() !== ''
+  })
+}
+
+/** Campo alterado por uma pessoa deixa de ser "veio preenchido" e passa a ser informado manualmente. */
+export function keepAutoFields(auto: string[], changes: Record<string, unknown>): string[] {
+  return auto.filter((k) => !(k in changes))
+}
+
 export function diffRecord(before: Record<string, unknown>, after: Record<string, unknown>) {
   const changes: Record<string, { de: unknown; para: unknown }> = {}
   for (const field of Object.keys(FIELD_LABELS)) {
