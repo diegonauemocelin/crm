@@ -721,7 +721,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
    * (quem a tem como gestora e os setores que ela gerencia). null = nada.
    */
   async monitorScope(user: AuthUser): Promise<Prisma.WhatsappConversationWhereInput | null> {
-    if (this.canMonitor(user)) return { tenantId: user.tenantId }
+    if (this.canMonitor(user)) {
+      const ids = await this.monitorNumbers(user)
+      return ids ? { tenantId: user.tenantId, numberId: { in: ids } } : { tenantId: user.tenantId }
+    }
     const [users, sectors] = await Promise.all([
       this.prisma.user.findMany({ where: { tenantId: user.tenantId, active: true, managerIds: { has: user.id } }, select: { id: true, managerIds: true } }),
       this.sectors(user.tenantId),
@@ -730,9 +733,16 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     return team ? { tenantId: user.tenantId, ...team } : null
   }
 
-  /** Para a tela: pode monitorar tudo, só a equipe, ou nada. */
+  /** Números que o perfil pode monitorar (escolhidos no perfil de acesso); null = todos. */
+  private async monitorNumbers(user: AuthUser): Promise<string[] | null> {
+    if (user.role.isSystem) return null
+    const role = await this.prisma.role.findUnique({ where: { id: user.role.id }, select: { monitorNumberIds: true } })
+    return role?.monitorNumberIds.length ? role.monitorNumberIds : null
+  }
+
+  /** Para a tela: pode monitorar tudo, só alguns números, só a equipe, ou nada. */
   async monitorAccess(user: AuthUser) {
-    if (this.canMonitor(user)) return { scope: 'TODOS' as const }
+    if (this.canMonitor(user)) return { scope: (await this.monitorNumbers(user)) ? ('NUMEROS' as const) : ('TODOS' as const) }
     return { scope: (await this.monitorScope(user)) ? ('EQUIPE' as const) : null }
   }
 

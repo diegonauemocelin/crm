@@ -132,6 +132,8 @@ model Role {
   require2fa  Boolean  @default(false)
   /// Horário de acesso: { enabled, days[0..6] = { from, to } | null } (horário de Brasília). Vazio = sem limite.
   loginHours  Json?
+  /// Números de WhatsApp que o perfil pode monitorar (permissão "Monitorar conversas"). Vazio = todos.
+  monitorNumberIds String[] @default([]) @db.Uuid
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

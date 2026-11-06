@@ -113,6 +113,8 @@ export interface RoleRow {
   require2fa: boolean
   /** Horário de acesso (null = sem limite). */
   loginHours?: { enabled: boolean; days: ({ from: string; to: string } | null)[] } | null
+  /** Números de WhatsApp que o perfil monitora (vazio = todos). */
+  monitorNumberIds?: string[]
   active: boolean
   userCount: number
   permissions: (PermissionEntry & { module: string })[]

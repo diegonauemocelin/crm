@@ -36,7 +36,7 @@ const MONITOR_PANEL = { key: 'monitoramento', title: 'Monitoramento WhatsApp', d
 
 function usePanels() {
   const { can } = useAuth()
-  const access = useQuery({ queryKey: ['chat-monitoramento'], queryFn: () => api.get<{ scope: 'TODOS' | 'EQUIPE' | null }>('/chat/monitoramento'), staleTime: 5 * 60_000, enabled: can('chat') || can('monitoramento') })
+  const access = useQuery({ queryKey: ['chat-monitoramento'], queryFn: () => api.get<{ scope: 'TODOS' | 'NUMEROS' | 'EQUIPE' | null }>('/chat/monitoramento'), staleTime: 5 * 60_000, enabled: can('chat') || can('monitoramento') })
   return [...APP_PANELS.filter((p) => can(p.module)), ...(access.data?.scope ? [MONITOR_PANEL] : [])]
 }
 

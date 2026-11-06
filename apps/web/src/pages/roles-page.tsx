@@ -179,9 +179,11 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
   const [perms, setPerms] = useState<Record<string, PermissionEntry>>(() =>
     Object.fromEntries(modules.map((m) => [m.key, { ...EMPTY, ...role?.permissions.find((p) => p.module === m.key) }])),
   )
+  const [monitorNumberIds, setMonitorNumberIds] = useState<string[]>(() => role?.monitorNumberIds ?? [])
+  const numbers = useQuery({ queryKey: ['roles', 'numeros-whatsapp'], queryFn: () => api.get<{ id: string; name: string; phone: string | null }[]>('/roles/numeros-whatsapp') })
   const [error, setError] = useState<string | null>(null)
-  const [initial] = useState(() => ({ name, description, require2fa, active, perms, loginHours }))
-  const guard = useCloseGuard(isDirty(initial, { name, description, require2fa, active, perms, loginHours }), onClose, 'o perfil')
+  const [initial] = useState(() => ({ name, description, require2fa, active, perms, loginHours, monitorNumberIds }))
+  const guard = useCloseGuard(isDirty(initial, { name, description, require2fa, active, perms, loginHours, monitorNumberIds }), onClose, 'o perfil')
 
   const toggle = (module: string, action: ActionKey, value: boolean) =>
     setPerms((prev) => {
@@ -202,6 +204,7 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
         description: description || undefined,
         require2fa,
         loginHours,
+        monitorNumberIds: perms.monitoramento?.view ? monitorNumberIds : [],
         active,
         permissions: Object.entries(perms)
           .filter(([, p]) => p.view)
@@ -260,6 +263,21 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
             <div className="sm:col-span-2">
               <LoginHoursEditor value={loginHours} onChange={setLoginHours} />
             </div>
+            {perms.monitoramento?.view && (
+              <div className="space-y-2 rounded-md border p-3 sm:col-span-2">
+                <p className="text-sm font-medium">Números que este perfil monitora</p>
+                <p className="text-xs text-muted-foreground">Vale para &quot;Monitorar conversas do WhatsApp&quot;. Nenhum marcado = todos os números.</p>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {(numbers.data ?? []).map((n) => (
+                    <label key={n.id} className="flex items-center gap-2 text-sm">
+                      <Checkbox checked={monitorNumberIds.includes(n.id)} onCheckedChange={(on) => setMonitorNumberIds((ids) => (on === true ? [...ids, n.id] : ids.filter((x) => x !== n.id)))} />
+                      {n.name}
+                    </label>
+                  ))}
+                  {numbers.data && !numbers.data.length && <p className="text-xs text-muted-foreground">Nenhum número cadastrado.</p>}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="overflow-x-auto rounded-md border">

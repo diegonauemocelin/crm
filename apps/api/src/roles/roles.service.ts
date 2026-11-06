@@ -22,6 +22,7 @@ export interface RoleInput {
   description?: string
   require2fa: boolean
   loginHours?: unknown
+  monitorNumberIds?: string[]
   active: boolean
   permissions: PermissionInput[]
 }
@@ -51,6 +52,17 @@ export class RolesService {
     return view(role)
   }
 
+  whatsappNumbers(tenantId: string) {
+    return this.prisma.whatsappNumber.findMany({ where: { tenantId, deletedAt: null }, select: { id: true, name: true, phone: true }, orderBy: { name: 'asc' } })
+  }
+
+  /** Só números de WhatsApp da empresa (os outros são descartados). */
+  private async cleanNumbers(tenantId: string, ids: string[] | undefined) {
+    if (!ids?.length) return []
+    const rows = await this.prisma.whatsappNumber.findMany({ where: { tenantId, id: { in: [...new Set(ids)] }, deletedAt: null }, select: { id: true } })
+    return rows.map((r) => r.id)
+  }
+
   async create(actor: AuthUser, input: RoleInput, ctx: RequestCtx) {
     await this.assertUniqueName(actor.tenantId, input.name)
     const role = await this.prisma.role.create({
@@ -60,6 +72,7 @@ export class RolesService {
         description: input.description,
         require2fa: input.require2fa,
         loginHours: hoursData(input.loginHours),
+        monitorNumberIds: await this.cleanNumbers(actor.tenantId, input.monitorNumberIds),
         active: input.active,
         permissions: { create: toRows(input.permissions) },
       },
@@ -84,6 +97,7 @@ export class RolesService {
           description: input.description,
           require2fa: input.require2fa,
           ...(input.loginHours !== undefined ? { loginHours: hoursData(input.loginHours) } : {}),
+          ...(input.monitorNumberIds !== undefined ? { monitorNumberIds: await this.cleanNumbers(actor.tenantId, input.monitorNumberIds) } : {}),
           active: input.active,
           permissions: { create: toRows(input.permissions) },
         },
@@ -134,6 +148,7 @@ function view(role: {
   isSystem: boolean
   require2fa: boolean
   loginHours: unknown
+  monitorNumberIds: string[]
   active: boolean
   permissions: { module: string; canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean; canExport: boolean; scope: Scope }[]
   _count: { users: number }
@@ -145,6 +160,7 @@ function view(role: {
     isSystem: role.isSystem,
     require2fa: role.require2fa,
     loginHours: cleanLoginHours(role.loginHours),
+    monitorNumberIds: role.monitorNumberIds,
     active: role.active,
     userCount: role._count.users,
     permissions: role.permissions.map((p) => ({
