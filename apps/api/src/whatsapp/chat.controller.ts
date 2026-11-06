@@ -186,6 +186,9 @@ class RulesDto {
   /** Horário comercial e mensagem de ausência: conferidos campo a campo em cleanRules. */
   @IsOptional() @IsObject() businessHours?: { enabled?: boolean; days?: ({ start: string; end: string } | null)[] }
   @IsOptional() @IsObject() away?: { enabled?: boolean; text?: string; cooldownHours?: number }
+  /** Prazo de guarda das conversas e mensagem ao finalizar: também conferidos em cleanRules. */
+  @IsOptional() @IsObject() retention?: { enabled?: boolean; clientMonths?: number; otherMonths?: number; mediaMonths?: number }
+  @IsOptional() @IsObject() close?: { enabled?: boolean; text?: string }
 }
 
 /** Agenda de contatos: id de um número (uuid) ou vazio (geral). */
