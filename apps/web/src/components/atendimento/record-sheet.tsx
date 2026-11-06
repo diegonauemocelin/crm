@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangleIcon, ArrowRightLeftIcon, ClockIcon, Loader2Icon, MegaphoneIcon, MessageCircleIcon, PencilIcon, PhoneCallIcon, Trash2Icon, GlobeIcon } from 'lucide-react'
+import { AlertTriangleIcon, ArrowRightLeftIcon, ClockIcon, Loader2Icon, MegaphoneIcon, MessageCircleIcon, PencilIcon, PhoneCallIcon, Trash2Icon, GlobeIcon, XCircleIcon } from 'lucide-react'
 import { type FormEvent, type ReactNode, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
+import { DiscardDialog } from '@/components/discard-dialog'
 import { MoneyInput } from '@/components/money-input'
 import { MultiSelect } from '@/components/multi-select'
 import { formatDateTime, InlineError } from '@/components/page'
@@ -356,6 +357,7 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
     if (ok) remove.mutate()
   }
 
+  const [discarding, setDiscarding] = useState(false)
   const wa = whatsappLink(record?.phone ?? null)
   const [chatOpen, setChatOpen] = useState(false)
   const chatNav = useNavigate()
@@ -733,8 +735,27 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                 <Button type="button" variant="outline" onClick={() => void guard()}>
                   {canEdit ? 'Cancelar' : 'Fechar'}
                 </Button>
+                {record && record.kind === 'PRE_VENDAS' && record.saleStatus !== 'SIM' && can(module, 'edit') && (
+                  <Button type="button" variant="ghost" className="ml-auto text-muted-foreground" onClick={() => setDiscarding(true)}>
+                    <XCircleIcon /> Descartar cadastro
+                  </Button>
+                )}
+                {discarding && record && (
+                  <DiscardDialog
+                    path={`/atendimentos/${record.id}/descartar`}
+                    title={`Descartar o cadastro de ${record.name}?`}
+                    description="Use quando o formulário veio preenchido errado e o contato não serve como lead (ex.: telefone não funciona e sem e-mail). A pré-venda sai das telas e relatórios, com o motivo no histórico; o lead vai junto se não tiver outro atendimento nem compra."
+                    onClose={() => setDiscarding(false)}
+                    onDone={(r) => {
+                      void qc.invalidateQueries({ queryKey: ['atendimentos'] })
+                      void qc.invalidateQueries({ queryKey: ['leads'] })
+                      toast.success(r.leadDiscarded ? 'Cadastro descartado (pré-venda e lead).' : 'Pré-venda descartada.')
+                      onClose()
+                    }}
+                  />
+                )}
                 {record && can(module, 'delete') && (
-                  <Button type="button" variant="ghost" className="ml-auto text-destructive" onClick={() => void askDelete()} disabled={remove.isPending}>
+                  <Button type="button" variant="ghost" className={`${record.kind === 'PRE_VENDAS' && record.saleStatus !== 'SIM' && can(module, 'edit') ? '' : 'ml-auto '}text-destructive`} onClick={() => void askDelete()} disabled={remove.isPending}>
                     {remove.isPending ? <Loader2Icon className="animate-spin" /> : <Trash2Icon />} Excluir atendimento
                   </Button>
                 )}

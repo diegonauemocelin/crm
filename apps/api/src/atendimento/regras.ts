@@ -496,6 +496,18 @@ export function keepAutoFields(auto: string[], changes: Record<string, unknown>)
   return auto.filter((k) => !(k in changes))
 }
 
+/** Motivos para descartar um cadastro que não serve como lead (formulário preenchido errado). */
+export const DISCARD_REASONS = ['Telefone não funciona e sem e-mail', 'Dados falsos ou de teste', 'Cadastro duplicado', 'Outro'] as const
+
+/** Motivo do descarte: um da lista (Outro pede o texto). */
+export function cleanDiscardReason(reason: unknown, note: unknown): string | null {
+  const r = typeof reason === 'string' ? reason.trim() : ''
+  const n = typeof note === 'string' ? note.trim().slice(0, 200) : ''
+  if (!(DISCARD_REASONS as readonly string[]).includes(r)) return null
+  if (r === 'Outro') return n || null
+  return n ? `${r} (${n})` : r
+}
+
 export function diffRecord(before: Record<string, unknown>, after: Record<string, unknown>) {
   const changes: Record<string, { de: unknown; para: unknown }> = {}
   for (const field of Object.keys(FIELD_LABELS)) {

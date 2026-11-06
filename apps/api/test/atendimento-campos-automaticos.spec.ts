@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { autoFieldsOf, cleanReactivation, keepAutoFields, stepTextFor } from '../src/atendimento/regras'
+import { autoFieldsOf, cleanDiscardReason, cleanReactivation, keepAutoFields, stepTextFor } from '../src/atendimento/regras'
 
 describe('campos que vieram preenchidos na pré-venda', () => {
   it('guarda só os campos com valor', () => {
@@ -23,5 +23,15 @@ describe('chamar o cliente de novo: texto por tipo de cliente', () => {
     expect(stepTextFor(step, REV)).toBe('Revenda')
     expect(stepTextFor(step, FINAL)).toBe('Padrão')
     expect(stepTextFor(step, null)).toBe('Padrão')
+  })
+})
+
+describe('descartar cadastro inválido', () => {
+  it('aceita só motivo da lista; Outro pede o texto', () => {
+    expect(cleanDiscardReason('Telefone não funciona e sem e-mail', '')).toBe('Telefone não funciona e sem e-mail')
+    expect(cleanDiscardReason('Cadastro duplicado', ' igual ao de ontem ')).toBe('Cadastro duplicado (igual ao de ontem)')
+    expect(cleanDiscardReason('Outro', '')).toBeNull()
+    expect(cleanDiscardReason('Outro', 'cliente pediu')).toBe('cliente pediu')
+    expect(cleanDiscardReason('qualquer', 'x')).toBeNull()
   })
 })

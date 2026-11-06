@@ -12,7 +12,7 @@ import { SettingsService } from '../settings/settings.service'
 import { normalizePhone, REGIONS, regionOf, UF_LIST, UFS } from './br'
 import { type BusinessHours, cleanRules, subBusinessMs, type WaRules } from '../whatsapp/envio'
 import { buildDashboard, type DashRow } from './dashboard'
-import { applyAutomaticFields, cleanDigest, deadline, DEFAULT_CONTACT_CHECK, DEFAULT_FORWARD_MESSAGE, DEFAULT_REACTIVATION, type Reactivation, type ForwardMessage, skipsPostSale, digestFor, DEFAULT_DIGEST, DEFAULT_NEXT_DAY, digestMessages, saleSituation, type SellerDigest, todayWindow, diffRecord, FIELD_LABELS, keepAutoFields, type FollowStatus, inNegotiation, isCallOverdue, isFollowOverdue, isOverdue, nextCallDue, type NextDayMessage, type RecordState, shouldCreatePostSale, validateFollow, validateRecord } from './regras'
+import { applyAutomaticFields, cleanDigest, deadline, DEFAULT_CONTACT_CHECK, DEFAULT_FORWARD_MESSAGE, DEFAULT_REACTIVATION, type Reactivation, type ForwardMessage, skipsPostSale, digestFor, DEFAULT_DIGEST, DEFAULT_NEXT_DAY, digestMessages, saleSituation, type SellerDigest, todayWindow, diffRecord, FIELD_LABELS, keepAutoFields, cleanDiscardReason, type FollowStatus, inNegotiation, isCallOverdue, isFollowOverdue, isOverdue, nextCallDue, type NextDayMessage, type RecordState, shouldCreatePostSale, validateFollow, validateRecord } from './regras'
 
 export const MODULE_BY_KIND: Record<ServiceKind, 'pre_vendas' | 'pos_vendas'> = { PRE_VENDAS: 'pre_vendas', POS_VENDAS: 'pos_vendas' }
 
@@ -653,6 +653,40 @@ export class ServiceRecordsService {
     })
     await this.audit.byUser(user, ctx, 'atendimento.client_called', 'service_record', id, {})
     return this.view(record, settings.alertHours, hours)
+  }
+
+  /**
+   * Descarta a pré-venda de um cadastro que não serve (formulário preenchido errado: telefone que não funciona e sem
+   * e-mail). Some das telas e relatórios como a exclusão, com o motivo no histórico; o lead vai junto quando não tem
+   * outro atendimento nem compra. Basta poder editar pré-vendas.
+   */
+  async discard(user: AuthUser, id: string, reasonIn: unknown, note: unknown, ctx: RequestCtx) {
+    const current = await this.load(user, id)
+    if (current.kind !== 'PRE_VENDAS') throw new BadRequestException('Só pré-vendas podem ser descartadas.')
+    this.assertCan(user, current.kind, 'edit')
+    if (current.saleStatus === 'SIM') throw new BadRequestException('Pré-venda com venda não pode ser descartada.')
+    const reason = cleanDiscardReason(reasonIn, note)
+    if (!reason) throw new BadRequestException('Informe o motivo do descarte.')
+    const now = new Date()
+    await this.prisma.serviceRecord.update({
+      where: { id },
+      data: { deletedAt: now, history: { create: { userId: user.id, userName: user.name, action: `descartado (cadastro inválido: ${reason})`, changes: {} } } },
+    })
+    await this.prisma.whatsappConversation.updateMany({ where: { recordId: id }, data: { recordId: null } })
+    let leadDiscarded = false
+    if (current.leadId) {
+      const [others, lead] = await Promise.all([
+        this.prisma.serviceRecord.count({ where: { leadId: current.leadId, deletedAt: null } }),
+        this.prisma.lead.findFirst({ where: { id: current.leadId, tenantId: user.tenantId, deletedAt: null }, select: { lastSaleAt: true } }),
+      ])
+      if (lead && !others && !lead.lastSaleAt) {
+        await this.prisma.lead.update({ where: { id: current.leadId }, data: { deletedAt: now } })
+        await this.prisma.serviceRecord.updateMany({ where: { leadId: current.leadId }, data: { leadId: null } })
+        leadDiscarded = true
+      }
+    }
+    await this.audit.byUser(user, ctx, 'atendimento.discarded', 'service_record', id, { nome: current.name, motivo: reason, leadDescartado: leadDiscarded })
+    return { ok: true, leadDiscarded }
   }
 
   /** Exclusão lógica: some das telas e relatórios, mas continua no banco e na auditoria. */

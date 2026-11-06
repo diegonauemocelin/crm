@@ -41,6 +41,11 @@ const SALE = ['SIM', 'NAO', 'NEGOCIACAO'] as const
 const RETURN = ['SIM', 'NAO', 'PENDENTE'] as const
 const FOLLOW = ['PENDENTE', 'CONTATADO', 'ANALISANDO', 'RESOLVIDO', 'VOLTOU_AO_VENDEDOR'] as const
 
+class DiscardDto {
+  @IsString() @MaxLength(80) reason!: string
+  @IsOptional() @IsString() @MaxLength(200) note?: string
+}
+
 class FiltersDto implements RecordFilters {
   @IsIn(KINDS) kind!: ServiceKind
   @IsOptional() @IsString() @MaxLength(120) search?: string
@@ -330,6 +335,12 @@ export class AtendimentoController {
   @HttpCode(200)
   markCalled(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
     return this.records.markCalled(user, id, ctx)
+  }
+
+  @Post(':id/descartar')
+  @HttpCode(200)
+  discard(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: DiscardDto, @ReqContext() ctx: RequestCtx) {
+    return this.records.discard(user, id, body.reason, body.note, ctx)
   }
 
   @Delete(':id')

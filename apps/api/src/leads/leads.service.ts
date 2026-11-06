@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { createHmac } from 'node:crypto'
 import { AuditService } from '../audit/audit.service'
 import { type LeadRegion, normalizePhone, regionStates, ufFromPhone } from '../atendimento/br'
+import { cleanDiscardReason } from '../atendimento/regras'
 import { env } from '../config/env'
 import { safeEqual } from '../common/crypto'
 import type { RequestCtx } from '../common/decorators'
@@ -371,6 +372,30 @@ export class LeadsService {
     await this.audit.byUser(user, ctx, 'lead.updated', 'lead', id, { campos: Object.keys(changed) })
     await this.config.rescore(user.tenantId, [id])
     return this.get(user, id)
+  }
+
+  /**
+   * Descarta um lead que não serve (formulário preenchido errado: telefone que não funciona e sem e-mail): sai da base
+   * como a exclusão, com o motivo na auditoria, e leva junto as pré-vendas dele que não tiveram venda.
+   */
+  async discard(user: AuthUser, id: string, reasonIn: unknown, note: unknown, ctx: RequestCtx) {
+    this.assertCan(user, 'edit')
+    const lead = await this.load(user, id)
+    if (lead.lastSaleAt) throw new BadRequestException('Lead com compra não pode ser descartado.')
+    const reason = cleanDiscardReason(reasonIn, note)
+    if (!reason) throw new BadRequestException('Informe o motivo do descarte.')
+    const now = new Date()
+    const records = await this.prisma.serviceRecord.findMany({ where: { leadId: id, deletedAt: null, kind: 'PRE_VENDAS', saleStatus: { not: 'SIM' } }, select: { id: true } })
+    await this.prisma.$transaction([
+      this.prisma.lead.update({ where: { id }, data: { deletedAt: now } }),
+      ...records.map((r) =>
+        this.prisma.serviceRecord.update({ where: { id: r.id }, data: { deletedAt: now, history: { create: { userId: user.id, userName: user.name, action: `descartado com o lead (cadastro inválido: ${reason})`, changes: {} } } } }),
+      ),
+      this.prisma.whatsappConversation.updateMany({ where: { recordId: { in: records.map((r) => r.id) } }, data: { recordId: null } }),
+      this.prisma.serviceRecord.updateMany({ where: { leadId: id }, data: { leadId: null } }),
+    ])
+    await this.audit.byUser(user, ctx, 'lead.discarded', 'lead', id, { motivo: reason, preVendas: records.length })
+    return { ok: true, records: records.length }
   }
 
   async remove(user: AuthUser, id: string, ctx: RequestCtx) {

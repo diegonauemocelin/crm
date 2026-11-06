@@ -19,6 +19,11 @@ const STAGES = ['LEAD', 'QUALIFICADO', 'OPORTUNIDADE', 'CLIENTE'] as const
 const UUID_OR_NONE = /^([0-9a-f-]{36}|none)$/
 const SALE_LABEL: Record<string, string> = { SIM: 'Venda realizada', NAO: 'Sem venda', NEGOCIACAO: 'Em negociação' }
 
+class DiscardLeadDto {
+  @IsString() @MaxLength(80) reason!: string
+  @IsOptional() @IsString() @MaxLength(200) note?: string
+}
+
 class FiltersDto implements LeadFilters {
   @IsOptional() @IsString() @MaxLength(120) search?: string
   @IsOptional() @IsIn(STAGES) stage?: LeadStage
@@ -311,6 +316,12 @@ export class LeadsController {
   @Patch(':id')
   update(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LeadDto, @ReqContext() ctx: RequestCtx) {
     return this.leads.update(user, id, dto, ctx)
+  }
+
+  @Post(':id/descartar')
+  @HttpCode(200)
+  discard(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: DiscardLeadDto, @ReqContext() ctx: RequestCtx) {
+    return this.leads.discard(user, id, body.reason, body.note, ctx)
   }
 
   @Delete(':id')

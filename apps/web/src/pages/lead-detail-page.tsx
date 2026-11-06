@@ -11,6 +11,7 @@ import {
   MailXIcon,
   MessageCircleIcon,
   ShieldAlertIcon,
+  XCircleIcon,
   XIcon,
 } from 'lucide-react'
 import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useState } from 'react'
@@ -18,6 +19,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { MultiSelect } from '@/components/multi-select'
 import { LeadConversations, StartDialog } from '@/pages/chat-page'
+import { DiscardDialog } from '@/components/discard-dialog'
 import { ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { isDirty, useConfirm, useUnsavedChangesPrompt } from '@/components/confirm'
 import { LeadProductsSeen } from '@/components/catalogo/produtos-vistos'
@@ -184,6 +186,7 @@ function LeadDetail() {
 
 function LeadView({ lead }: { lead: Lead | null }) {
   const [chatOpen, setChatOpen] = useState(false)
+  const [discarding, setDiscarding] = useState(false)
   const chatNav = useNavigate()
   const chatAuth = useAuth()
   const qc = useQueryClient()
@@ -268,6 +271,25 @@ function LeadView({ lead }: { lead: Lead | null }) {
                     </a>
                   </Button>
                 )
+              )}
+              {can('leads', 'edit') && !lead.anonymizedAt && !lead.lastSaleAt && (
+                <Button variant="outline" size="sm" onClick={() => setDiscarding(true)}>
+                  <XCircleIcon /> Descartar
+                </Button>
+              )}
+              {discarding && (
+                <DiscardDialog
+                  path={`/leads/${lead.id}/descartar`}
+                  title={`Descartar ${title}?`}
+                  description="Use quando o formulário veio preenchido errado e o contato não serve como lead (ex.: telefone não funciona e sem e-mail). O lead sai da base, junto com as pré-vendas dele sem venda, com o motivo na auditoria."
+                  onClose={() => setDiscarding(false)}
+                  onDone={() => {
+                    void qc.invalidateQueries({ queryKey: ['leads'] })
+                    void qc.invalidateQueries({ queryKey: ['atendimentos'] })
+                    toast.success('Lead descartado.')
+                    navigate('/leads')
+                  }}
+                />
               )}
               {chatOpen && <StartDialog leadId={lead.id} phone={lead.phone} external={wa} onClose={() => setChatOpen(false)} onStarted={(cid) => chatNav(`/chat?conversa=${cid}`)} />}
             </div>
