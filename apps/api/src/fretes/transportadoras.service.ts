@@ -38,6 +38,7 @@ export interface CarrierInput {
   pickupMode?: string
   dropOffCost?: number | null
   dropOffProviderId?: string | null
+  reconcile?: boolean
 }
 
 const opt = (v: string | null | undefined, max: number) => (v === undefined ? undefined : cleanText(v, max) || null)
@@ -60,6 +61,7 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
       cnpj: c.cnpj.trim(),
       kind: c.kind,
       pickupMode: c.pickupMode,
+      reconcile: c.reconcile,
       dropOffCost: c.dropOffCost === null ? null : Number(c.dropOffCost),
       dropOffProviderId: c.dropOffProviderId,
       legalName: c.legalName,
@@ -186,6 +188,7 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
       pickupMode,
       dropOffCost,
       dropOffProviderId,
+      reconcile: kind === 'PRESTADOR' ? true : d.reconcile !== false,
     }
   }
 
@@ -236,6 +239,10 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
       throw new ConflictException('Já existe uma transportadora com este CNPJ.')
     }
     const c = await this.prisma.freightCarrier.update({ where: { id }, data })
+    // Deixou de conciliar: os CT-es ainda sem decisão saem da conciliação. Voltou: ficam para "Conciliar pendentes de novo".
+    if (cur.reconcile && !data.reconcile)
+      await this.prisma.freightCte.updateMany({ where: { carrierId: id, decision: null, recStatus: { not: 'COMPRA' } }, data: { recStatus: 'FORA', expectedTotal: null, difference: null, recSource: null, recTypes: [], recDetail: { reason: 'Transportadora marcada para não conciliar CT-e.' }, recAt: new Date() } })
+    if (!cur.reconcile && data.reconcile) await this.prisma.freightCte.updateMany({ where: { carrierId: id, recStatus: 'FORA' }, data: { recStatus: 'SEM_REFERENCIA', recDetail: { reason: 'Conciliação religada: use "Conciliar pendentes de novo".' } } })
     const changed = Object.keys(data).filter((k) => JSON.stringify((cur as Record<string, unknown>)[k]) !== JSON.stringify((data as Record<string, unknown>)[k]))
     await this.audit.byUser(user, ctx, 'frete.transportadora.alterada', 'freight_carrier', id, { campos: changed, ...(changed.includes('active') ? { ativa: data.active } : {}) })
     return this.view(c)

@@ -270,6 +270,7 @@ export const REC_STATUS: Record<string, { label: string; className: string }> = 
   DIVERGENTE: { label: 'Divergente', className: 'border-destructive/50 text-destructive' },
   SEM_REFERENCIA: { label: 'Sem referência', className: 'border-amber-500/50 text-amber-700 dark:text-amber-300' },
   COMPRA: { label: 'Compra (não concilia)', className: 'text-muted-foreground' },
+  FORA: { label: 'Fora da conciliação', className: 'text-muted-foreground' },
   CANCELADO: { label: 'CT-e cancelado', className: 'text-muted-foreground line-through' },
 }
 

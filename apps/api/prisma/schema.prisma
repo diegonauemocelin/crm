@@ -2632,6 +2632,8 @@ model FreightCarrier {
   kind        String   @default("TRANSPORTADORA")
   /// Como a carga chega à transportadora: COLETA (ela busca na empresa) ou DESPACHO (a empresa leva até ela).
   pickupMode  String   @default("COLETA")
+  /// false: os CT-es dela não são conciliados com as tabelas (ex.: frete de marketplace, cobrado pela plataforma).
+  reconcile   Boolean  @default(true)
   /// Despacho: valor pago ao prestador para levar até a transportadora (vazio = a empresa leva sem custo).
   dropOffCost Decimal? @db.Decimal(12, 2)
   /// Despacho: prestador (cadastro com kind PRESTADOR) que leva até a transportadora.

@@ -271,6 +271,15 @@ export class CteService {
   async reconcileOne(user: AuthUser, id: string) {
     const c = await this.prisma.freightCte.findUniqueOrThrow({ where: { id } })
     if (c.fiscalStatus === 'CANCELADO') return
+    // Transportadora que não concilia (ex.: Mercado Livre Envios, frete cobrado pela plataforma): fica fora da conferência.
+    const carrier = c.carrierId ? await this.prisma.freightCarrier.findUnique({ where: { id: c.carrierId }, select: { reconcile: true, name: true } }) : null
+    if (carrier && !carrier.reconcile) {
+      await this.prisma.freightCte.update({
+        where: { id },
+        data: { recStatus: 'FORA', recTypes: [], recSource: null, expectedTotal: null, difference: null, recDetail: { reason: `${carrier.name} está marcada para não conciliar CT-e (Fretes › Transportadoras).` } as Prisma.InputJsonValue, recAt: new Date() },
+      })
+      return
+    }
     // CT-e de compra: a carga sai de outra cidade (fornecedor), não de uma filial. Quase sempre não segue a nossa tabela,
     // então não é conciliado (fica marcado como compra, fora da fila de conferência).
     if (c.cityIni && !c.shipmentId) {
@@ -463,7 +472,8 @@ export class CteService {
     const [total, rows, sums, byStatus] = await Promise.all([
       this.prisma.freightCte.count({ where }),
       this.prisma.freightCte.findMany({ where, orderBy: [{ issuedAt: 'desc' }, { createdAt: 'desc' }], skip: (page - 1) * PAGE, take: PAGE }),
-      this.prisma.freightCte.aggregate({ where: { AND: [...and, { fiscalStatus: { not: 'CANCELADO' } }] }, _sum: { total: true, expectedTotal: true, difference: true, approvedValue: true, creditValue: true } }),
+      // Fora da conciliação (transportadora que não concilia) não entra nos totais, a não ser filtrando por ela.
+      this.prisma.freightCte.aggregate({ where: { AND: [...and, { fiscalStatus: { not: 'CANCELADO' } }, ...(f.recStatus === 'FORA' ? [] : [{ recStatus: { not: 'FORA' } }])] }, _sum: { total: true, expectedTotal: true, difference: true, approvedValue: true, creditValue: true } }),
       this.prisma.freightCte.groupBy({ by: ['recStatus'], where: this.scopeWhere(user), _count: { _all: true } }),
     ])
     const carriers = await this.prisma.freightCarrier.findMany({ where: { id: { in: rows.map((r) => r.carrierId).filter((x): x is string => !!x) } }, select: { id: true, name: true } })

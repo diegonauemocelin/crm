@@ -47,6 +47,8 @@ interface Carrier {
   pickups?: PickupForm[]
   kind?: 'TRANSPORTADORA' | 'PRESTADOR'
   pickupMode?: 'COLETA' | 'DESPACHO'
+  /** false: os CT-es dela não são conciliados (ex.: Mercado Livre Envios). */
+  reconcile?: boolean
   dropOffCost?: number | null
   dropOffProviderId?: string | null
   active: boolean
@@ -252,6 +254,7 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
     cnpj: carrier ? (carrier.cnpj.length === 11 ? carrier.cnpj : maskCnpj(carrier.cnpj)) : '',
     kind: carrier?.kind ?? 'TRANSPORTADORA',
     pickupMode: carrier?.pickupMode ?? 'COLETA',
+    reconcile: carrier?.reconcile ?? true,
     dropOffCost: carrier?.dropOffCost ? String(carrier.dropOffCost).replace('.', ',') : '',
     dropOffProviderId: carrier?.dropOffProviderId ?? '',
     legalName: carrier?.legalName ?? '',
@@ -400,6 +403,15 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
                 </div>
               ))}
             </div>
+            {f.kind === 'TRANSPORTADORA' && (
+              <label className="flex items-start gap-2 rounded-md border p-3 text-sm sm:col-span-2">
+                <input type="checkbox" className="mt-0.5" checked={!f.reconcile} onChange={(e) => set('reconcile', !e.target.checked)} />
+                <span>
+                  <span className="font-medium">Não conciliar os CT-es desta transportadora</span>
+                  <span className="block text-xs text-muted-foreground">Para frete de marketplace (ex.: Mercado Livre Envios), cobrado pela plataforma: os CT-es ficam como &quot;Fora da conciliação&quot; e não entram nos totais.</span>
+                </span>
+              </label>
+            )}
             {f.kind === 'TRANSPORTADORA' && (
               <div className="space-y-2 rounded-md border p-3 sm:col-span-2">
                 <p className="text-sm font-medium">Como a carga chega à transportadora</p>
