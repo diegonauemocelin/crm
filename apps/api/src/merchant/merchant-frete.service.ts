@@ -117,7 +117,7 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
         `A Merchant API está desligada no projeto do Google Cloud da conta de serviço. Abra https://console.cloud.google.com/apis/library/merchantapi.googleapis.com${project ? `?project=${project}` : ''}, clique em Ativar, espere uns 5 minutos e tente de novo.`,
       )
     }
-    if (r.status === 403 && NOT_REGISTERED.test(msg)) throw new Error('O projeto do Google Cloud da conta de serviço ainda não está registrado nesta conta do Merchant Center. Clique em Preparar a conta: o CRM faz o registro.')
+    if (r.status >= 400 && NOT_REGISTERED.test(msg)) throw new Error('O projeto do Google Cloud da conta de serviço ainda não está registrado nesta conta do Merchant Center. Clique em Preparar a conta: o CRM faz o registro.')
     if (r.status === 401 || r.status === 403) {
       const ga = await this.settings.get<Ga4Settings>(tenantId, 'ga4', DEFAULT_GA4)
       throw new Error(`Sem acesso ao Merchant Center: em Configurações › Pessoas e acesso, adicione ${ga.clientEmail} como Administrador. (${r.body?.error?.message ?? r.status})`)
@@ -170,7 +170,7 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
    */
   private async registerProject(tenantId: string, acc: string) {
     const probe = await this.api<{ error?: { message?: string } }>(tenantId, 'GET', `/accounts/v1/${acc}`)
-    if (!(probe.status === 403 && NOT_REGISTERED.test(probe.body?.error?.message ?? ''))) return
+    if (!(probe.status >= 400 && NOT_REGISTERED.test(probe.body?.error?.message ?? ''))) return
     const ga = await this.settings.get<Ga4Settings>(tenantId, 'ga4', DEFAULT_GA4)
     const r = await this.api<{ error?: { message?: string } }>(tenantId, 'POST', `/accounts/v1/${acc}/developerRegistration:registerGcp`, { developerEmail: ga.clientEmail })
     if (r.status >= 200 && r.status < 300) {
