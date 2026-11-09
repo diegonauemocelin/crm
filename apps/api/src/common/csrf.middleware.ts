@@ -13,7 +13,8 @@ const CSRF_MAX_AGE_MS = 180 * 86_400_000
  */
 // Descadastro: autenticado pelo token assinado do link (o Gmail/Outlook envia o "cancelar inscrição" direto, sem cookie).
 // Landing pages (subdomínio lp.*): sem sessão; o formulário só cria lead pela Captura e só para página publicada.
-const EXEMPT_PREFIXES = ['/api/webhooks/', '/api/public/rastreamento/', '/api/public/captura/', '/api/public/webpush/', '/api/public/descadastro/', '/api/public/lp/']
+// API do Power BI: só leitura (GET), autenticada pela chave no X-BI-Key, sem cookie nem sessão.
+const EXEMPT_PREFIXES = ['/api/webhooks/', '/api/public/rastreamento/', '/api/public/captura/', '/api/public/webpush/', '/api/public/descadastro/', '/api/public/lp/', '/api/bi/v1']
 
 function originOf(referer: string | undefined): string | undefined {
   if (!referer) return undefined

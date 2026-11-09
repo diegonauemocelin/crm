@@ -26,6 +26,7 @@ import { AssistenteModule } from './assistente/assistente.module'
 import { TcarModule } from './tcar/tcar.module'
 import { FretesModule } from './fretes/fretes.module'
 import { BrindesModule } from './brindes/brindes.module'
+import { BiModule } from './bi/bi.module'
 import { WebPushModule } from './webpush/webpush.module'
 import { MerchantModule } from './merchant/merchant.module'
 import { WhatsappModule } from './whatsapp/whatsapp.module'
@@ -51,7 +52,7 @@ import { UsersService } from './users/users.service'
         transport: env.isProd ? undefined : { target: 'pino-pretty', options: { singleLine: true } },
         // Cookies e cabeçalhos de autenticação nunca vão para o log.
         // Chaves de integração (Tcar, Evolution) também nunca vão para o log.
-        redact: ['req.headers.cookie', 'req.headers.authorization', 'req.headers["x-csrf-token"]', 'req.headers["x-api-key"]', 'req.headers.apikey', 'req.headers["x-tcar-session"]', 'res.headers["set-cookie"]'],
+        redact: ['req.headers.cookie', 'req.headers.authorization', 'req.headers["x-csrf-token"]', 'req.headers["x-api-key"]', 'req.headers.apikey', 'req.headers["x-tcar-session"]', 'req.headers["x-bi-key"]', 'res.headers["set-cookie"]'],
         // Health e as páginas vistas do site (milhares por dia) não poluem o log.
         // Códigos de acesso no caminho do endereço (webhooks, links públicos) saem mascarados do log.
         serializers: {
@@ -90,6 +91,7 @@ import { UsersService } from './users/users.service'
     BrindesModule,
     WebPushModule,
     MerchantModule,
+    BiModule,
   ],
   controllers: [UsersController, RolesController, SystemController],
   providers: [

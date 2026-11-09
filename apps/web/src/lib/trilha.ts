@@ -1503,6 +1503,17 @@ export const TRAIL: TrailModule[] = [
         tip: 'Chaves e senhas das integrações ficam criptografadas: nem quem administra consegue ver depois de salvas.',
       },
       {
+        id: 'admin.powerbi',
+        title: 'Power BI',
+        steps: [
+          'Em Configurações → Power BI, dê um nome e clique em Criar chave. Copie na hora: a chave não aparece de novo.',
+          'No Power BI, use o endereço da API de BI (copiado da mesma tela) e a chave nos parâmetros CRM_BaseUrl e CRM_Chave.',
+          'No Power BI Service, escolha a credencial Anônima e privacidade Organizacional: atualiza sem gateway.',
+          'Baixe o contrato de dados para ver as tabelas, colunas, relações e medidas sugeridas.',
+        ],
+        tip: 'A chave lê todas as tabelas de BI da empresa (sem dados pessoais de clientes). Revogue a que não for mais usada: o Power BI dela para na hora.',
+      },
+      {
         id: 'admin.auditoria',
         title: 'Conferir na auditoria',
         steps: [

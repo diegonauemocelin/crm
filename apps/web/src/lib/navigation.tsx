@@ -79,7 +79,7 @@ export interface NavGroup {
 }
 
 /** Módulos com seções em Configurações (a tela mostra só as seções de cada um). */
-export const SETTINGS_MODULES = ['configuracoes', 'cadastros', 'usuarios', 'perfis', 'whatsapp', 'email_marketing', 'captura', 'mi_config']
+export const SETTINGS_MODULES = ['configuracoes', 'cadastros', 'usuarios', 'perfis', 'whatsapp', 'email_marketing', 'captura', 'mi_config', 'bi']
 
 /** Menu único, usado pelos dois layouts (Moderno e Clássico). Cada item respeita a permissão do perfil. */
 export const NAVIGATION: NavGroup[] = [

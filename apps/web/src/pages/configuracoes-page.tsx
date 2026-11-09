@@ -32,6 +32,7 @@ import {
   PlugIcon,
   SparklesIcon,
   ListChecksIcon,
+  ChartColumnBigIcon,
   WorkflowIcon,
 } from 'lucide-react'
 import { lazy, type ReactNode, Suspense, useMemo, useState } from 'react'
@@ -89,6 +90,7 @@ const AssistenteRespostas = lazyNamed(assistente, 'AssistenteRespostas')
 const AssistenteMotor = lazyNamed(assistente, 'AssistenteMotor')
 const AssistenteTestar = lazyNamed(assistente, 'AssistenteTestar')
 const TcarTab = lazyNamed(() => import('./settings/tcar-tab'), 'TcarTab')
+const PowerBiTab = lazyNamed(() => import('./settings/power-bi-tab'), 'PowerBiTab')
 
 interface Section {
   id: string
@@ -200,6 +202,16 @@ const SECTIONS: Section[] = [
   { id: 'ga4', group: 'Integrações', title: 'Google Analytics', description: 'Dados do GA4 nos relatórios.', icon: ChartLineIcon, module: 'configuracoes', keywords: 'analytics ga4 relatórios', render: () => <Ga4Tab /> },
   { id: 'google-ads', group: 'Integrações', title: 'Google Ads', description: 'Conversões dos atendimentos enviadas às campanhas.', icon: TargetIcon, module: 'configuracoes', keywords: 'conversões offline campanhas', render: () => <GoogleAdsTab /> },
   { id: 'tcar', group: 'Integrações', title: 'Tcar (ERP)', description: 'Estoque e preços do ERP na consulta de produtos.', icon: ContactRoundIcon, module: 'configuracoes', keywords: 'erp estoque preço produtos', render: () => <TcarTab /> },
+  {
+    id: 'power-bi',
+    group: 'Integrações',
+    title: 'Power BI',
+    description: 'Chaves de acesso para o Power BI ler as tabelas de BI do CRM (só leitura, sem dados pessoais de clientes), o endereço da API e o contrato de dados.',
+    icon: ChartColumnBigIcon,
+    module: 'bi',
+    keywords: 'power bi bi relatórios dashboard chave api dados microsoft exportar',
+    render: () => <PowerBiTab />,
+  },
   // ---------- Marketplaces ----------
   {
     id: 'marketplaces-conexoes',
