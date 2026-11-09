@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.46",
+      "date": "2026-11-09",
+      "title": "Correção no frete do Google Shopping",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Marketing",
+          "text": "Frete no Google Shopping: Preparar a conta faz o registro do projeto do Google Cloud no Merchant Center também quando o Google responde de outro jeito ao pedido (antes continuava o aviso de \"não registrado\")."
+        }
+      ]
+    },
+    {
       "version": "2.0.45",
       "date": "2026-11-09",
       "title": "Fotos de perfil no chat, abrir conversa pela menção e imagens que abrem na mesma tela",
