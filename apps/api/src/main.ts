@@ -39,7 +39,9 @@ async function bootstrap() {
   app.use('/api/webhooks/whatsapp', (req: Request, res: Response, next: NextFunction) =>
     (env.evolutionWebhookSecret && safeEqual(req.path.slice(1), env.evolutionWebhookSecret) ? whatsappHistory : whatsappEvents)(req, res, next),
   )
-  // Resultado das consultas da Tcar (páginas de 200 produtos com referências e filiais).
+  // Resultado das consultas da Tcar: páginas de 200 produtos com referências e filiais, e as fotos de um produto (até 6,
+  // em base64; a Tcar corta em 16 MB de imagem por resposta). O contato (ping) é pequeno.
+  app.use('/api/webhooks/tcar/report', json({ limit: '24mb' }))
   app.use('/api/webhooks/tcar', json({ limit: '5mb' }))
   app.useBodyParser('json', { limit: '1mb' })
   app.useBodyParser('urlencoded', { limit: '1mb', extended: false })

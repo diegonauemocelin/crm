@@ -13,6 +13,7 @@ import { allowedUnits, assertCan } from './acesso'
 import { normalizeCep } from './cep'
 import { type ExpectedRef, reconcile, type Tolerance } from './conciliacao'
 import { CotacaoService, DROP_OFF_CODE, dropOffOf, type QuoteResult } from './cotacao.service'
+import { confrontNfeCte, DEFAULT_NFE_TOLERANCE } from './confronto'
 import { companyRoles, type CteData, internalRateFrom, parseCteCancel, parseCteXml, type RateLearning } from './cte'
 import { money } from './formula'
 
@@ -27,8 +28,12 @@ export interface RecSettings {
   diasSemCte: number
   /** Alerta de fatura vencendo em N dias. */
   diasFatura: number
+  /** Confronto NF-e × CT-e: folga de peso (% e kg, vale a maior) e de valor da carga (R$). */
+  nfePesoPercentual: number
+  nfePesoKg: number
+  nfeValor: number
 }
-export const DEFAULT_REC: RecSettings = { valor: 1, percentual: 1, porTransportadora: {}, diasSemCte: 5, diasFatura: 5 }
+export const DEFAULT_REC: RecSettings = { valor: 1, percentual: 1, porTransportadora: {}, diasSemCte: 5, diasFatura: 5, nfePesoPercentual: DEFAULT_NFE_TOLERANCE.pesoPercentual, nfePesoKg: DEFAULT_NFE_TOLERANCE.pesoKg, nfeValor: DEFAULT_NFE_TOLERANCE.valor }
 
 const PAGE = 30
 const MAX_FILES = 500
@@ -45,8 +50,22 @@ export class CteService {
     private readonly quotes: CotacaoService,
   ) {}
 
-  recSettings(tenantId: string) {
-    return this.settings.get<RecSettings>(tenantId, REC_KEY, DEFAULT_REC)
+  async recSettings(tenantId: string): Promise<RecSettings> {
+    return { ...DEFAULT_REC, ...(await this.settings.get<RecSettings>(tenantId, REC_KEY, DEFAULT_REC)) }
+  }
+
+  /** Confronto NF-e × CT-e de vários CT-es de uma vez (notas importadas por XML em Fretes › Pedidos). */
+  async confrontFor(tenantId: string, ctes: Prisma.FreightCteGetPayload<object>[]) {
+    const keys = [...new Set(ctes.flatMap((c) => c.nfeKeys))]
+    const [nfes, rec] = await Promise.all([keys.length ? this.prisma.freightNfe.findMany({ where: { tenantId, key: { in: keys } } }) : [], this.recSettings(tenantId)])
+    const side = nfes.map((x) => ({ key: x.key, number: x.number, value: n(x.value), grossWeight: n(x.grossWeight), volumes: x.volumes, destUf: x.destUf, destCity: x.destCity, carrierCnpj: x.carrierCnpj, freightMode: x.freightMode, emitCnpj: x.emitCnpj, destCnpj: x.destCnpj }))
+    const tol = { pesoPercentual: rec.nfePesoPercentual, pesoKg: rec.nfePesoKg, valor: rec.nfeValor }
+    return new Map(
+      ctes.map((c) => [
+        c.id,
+        confrontNfeCte({ nfeKeys: c.nfeKeys, cargoValue: n(c.cargoValue), weight: n(c.weight), volumes: c.volumes, ufFim: c.ufFim, cityFim: c.cityFim, emitCnpj: c.emitCnpj, tomadorDoc: c.tomadorDoc }, side.filter((x) => c.nfeKeys.includes(x.key)), tol),
+      ]),
+    )
   }
 
   async saveRecSettings(user: AuthUser, d: Partial<RecSettings>, ctx: RequestCtx) {
@@ -58,6 +77,7 @@ export class CteService {
       if (!(t.valor >= 0 && t.valor <= 10_000 && t.percentual >= 0 && t.percentual <= 100)) throw new BadRequestException('Tolerância inválida.')
     }
     if (!(next.diasSemCte >= 1 && next.diasSemCte <= 90 && next.diasFatura >= 0 && next.diasFatura <= 60)) throw new BadRequestException('Prazos de alerta inválidos.')
+    if (!(next.nfePesoPercentual >= 0 && next.nfePesoPercentual <= 100 && next.nfePesoKg >= 0 && next.nfePesoKg <= 10_000 && next.nfeValor >= 0 && next.nfeValor <= 100_000)) throw new BadRequestException('Folga do confronto com a NF-e inválida.')
     await this.settings.set(user.tenantId, REC_KEY, next)
     await this.audit.byUser(user, ctx, 'frete.conciliacao.parametros', 'tenant_setting', REC_KEY, { antes: cur, depois: next })
     return next
@@ -85,6 +105,7 @@ export class CteService {
       total: Number(c.total),
       cargoValue: n(c.cargoValue),
       weight: n(c.weight),
+      volumes: c.volumes,
       components: c.components,
       icms: c.icms,
       nfeKeys: c.nfeKeys,
@@ -236,6 +257,7 @@ export class CteService {
           total: cte.total,
           cargoValue: cte.cargoValue,
           weight: cte.weight,
+          volumes: cte.volumes,
           components: cte.components as unknown as Prisma.InputJsonValue,
           icms: cte.icms as unknown as Prisma.InputJsonValue,
           nfeKeys: cte.nfeKeys,
@@ -477,13 +499,17 @@ export class CteService {
       this.prisma.freightCte.groupBy({ by: ['recStatus'], where: this.scopeWhere(user), _count: { _all: true } }),
     ])
     const carriers = await this.prisma.freightCarrier.findMany({ where: { id: { in: rows.map((r) => r.carrierId).filter((x): x is string => !!x) } }, select: { id: true, name: true } })
+    const confront = await this.confrontFor(user.tenantId, rows)
     return {
       total,
       page,
       pageSize: PAGE,
       counts: Object.fromEntries(byStatus.map((b) => [b.recStatus, b._count._all])),
       sums: { charged: n(sums._sum.total) ?? 0, expected: n(sums._sum.expectedTotal) ?? 0, difference: n(sums._sum.difference) ?? 0, approved: n(sums._sum.approvedValue) ?? 0, credit: n(sums._sum.creditValue) ?? 0 },
-      items: rows.map((r) => this.view(r, { carrierName: carriers.find((c) => c.id === r.carrierId)?.name ?? null, components: undefined, recDetail: undefined })),
+      items: rows.map((r) => {
+        const cf = confront.get(r.id)
+        return this.view(r, { carrierName: carriers.find((c) => c.id === r.carrierId)?.name ?? null, components: undefined, recDetail: undefined, nfeCheck: cf ? { status: cf.status, divergences: cf.divergences } : null })
+      }),
     }
   }
 
@@ -496,7 +522,8 @@ export class CteService {
       c.shipmentId ? this.prisma.freightShipment.findUnique({ where: { id: c.shipmentId }, select: { id: true, code: true, orderNumber: true, invoiceNumber: true, status: true } }) : null,
       c.invoiceId ? this.prisma.freightInvoice.findUnique({ where: { id: c.invoiceId }, select: { id: true, number: true, status: true } }) : null,
     ])
-    return this.view(c, { carrierName: carrier?.name ?? null, unitName: unit?.name ?? null, shipment, invoice })
+    const confront = (await this.confrontFor(user.tenantId, [c])).get(c.id) ?? null
+    return this.view(c, { carrierName: carrier?.name ?? null, unitName: unit?.name ?? null, shipment, invoice, nfeConfront: confront })
   }
 
   async xml(user: AuthUser, id: string) {

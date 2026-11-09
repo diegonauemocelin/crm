@@ -2,7 +2,7 @@ import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, P
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { Transform, Type } from 'class-transformer'
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateIf } from 'class-validator'
 import { CurrentUser, Public, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { SEARCH_FIELDS, type SearchField, TcarService } from './tcar.service'
@@ -29,6 +29,8 @@ class ConfigDto {
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(48) fullEveryHours?: number
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(2) @Max(240) incrementalMinutes?: number
   @ApiPropertyOptional() @IsOptional() @IsBoolean() resetIdentity?: boolean
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() photos?: boolean
+  @ApiPropertyOptional({ nullable: true }) @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID('all') unitId?: string | null
 }
 
 /**

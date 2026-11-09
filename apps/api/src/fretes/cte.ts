@@ -24,8 +24,10 @@ export interface CteData {
   recebDoc: string | null
   destZip: string | null
   cargoValue: number | null
-  /** Peso para o frete: peso base de cálculo, senão aferido, senão bruto (kg). */
+  /** Peso para o frete: peso base de cálculo, senão aferido, senão bruto (kg; em toneladas é convertido). */
   weight: number | null
+  /** Quantidade em unidades (infQ cUnid 03), quando o CT-e informa: os volumes. */
+  volumes: number | null
   nfeKeys: string[]
   protocol: string | null
   protocolStatus: string | null
@@ -66,7 +68,10 @@ export function parseCteXml(raw: string): CteData {
   const quants = [...infCarga.matchAll(/<(?:\w+:)?infQ>([\s\S]*?)<\/(?:\w+:)?infQ>/g)].map((m) => ({ unit: tag(m[1]!, 'cUnid'), kind: (tag(m[1]!, 'tpMed') ?? '').toUpperCase(), q: num(tag(m[1]!, 'qCarga')) }))
   const kg = quants.filter((q) => q.unit === '01' && q.q !== null && q.q > 0)
   const pick = (re: RegExp) => kg.find((q) => re.test(q.kind))?.q ?? null
-  const weight = pick(/BASE|CALC/) ?? pick(/AFERIDO/) ?? pick(/BRUTO/) ?? kg[0]?.q ?? null
+  // Peso em toneladas (cUnid 02) só quando não há em kg.
+  const ton = quants.find((q) => q.unit === '02' && q.q !== null && q.q > 0)?.q ?? null
+  const weight = pick(/BASE|CALC/) ?? pick(/AFERIDO/) ?? pick(/BRUTO/) ?? kg[0]?.q ?? (ton === null ? null : Math.round(ton * 1_000_000) / 1000)
+  const units = quants.find((q) => q.unit === '03' && q.q !== null && q.q > 0)?.q ?? null
   const nfeKeys = [...inf.matchAll(/<(?:\w+:)?chave>(\d{44})<\/(?:\w+:)?chave>/g)].map((m) => m[1]!)
   const prot = block(xml, 'infProt')
   const imp = block(inf, 'imp') ?? ''
@@ -93,6 +98,7 @@ export function parseCteXml(raw: string): CteData {
     destZip: dest ? (tag(block(dest, 'enderDest') ?? '', 'CEP') ?? null) : null,
     cargoValue: num(tag(infCarga, 'vCarga')),
     weight,
+    volumes: units === null ? null : Math.round(units),
     nfeKeys: [...new Set(nfeKeys)],
     protocol: prot ? tag(prot, 'nProt') : null,
     protocolStatus: prot ? tag(prot, 'cStat') : null,

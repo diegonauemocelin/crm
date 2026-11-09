@@ -1723,6 +1723,12 @@ model TcarProduct {
   stock           Decimal? @db.Decimal(14, 3)
   price           Decimal? @db.Decimal(12, 2)
   resalePrice     Decimal? @db.Decimal(12, 2)
+  /// Peso bruto e líquido (kg) do cadastro da Tcar: usados na cotação de frete do orçamento/pré-nota.
+  grossWeight     Decimal? @db.Decimal(12, 3)
+  netWeight       Decimal? @db.Decimal(12, 3)
+  /// Fotos (capa primeiro): [{ fileId } | { url }]. photosAt nulo = buscar de novo.
+  photos          Json     @default("[]")
+  photosAt        DateTime?
   /// Estoque e preço por filial: [{ id, name, available, price, resalePrice }].
   branches        Json     @default("[]")
   /// Texto sem acentos para a busca.
@@ -1756,12 +1762,73 @@ model TcarAction {
   offset    Int       @default(0)
   resultCode Int?
   error     String?
+  /// Resultado reduzido (orçamento/pré-nota e endereço do cliente) para a tela que pediu.
+  result    Json?
+  /// Ligação: produto (fotos), nota (XML) ou a consulta do documento (cliente).
+  refId     String?   @db.Uuid
   sentAt    DateTime?
   doneAt    DateTime?
   createdAt DateTime  @default(now())
 
   @@index([tenantId, status, createdAt])
+  @@index([tenantId, kind, status])
   @@map("tcar_actions")
+}
+
+/// NF-e de saída da empresa importadas por XML (Fretes › Pedidos): base dos pedidos de frete e do confronto com o
+/// CT-e. Sem nome nem CPF do destinatário (o nome fica só no pedido).
+model FreightNfe {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  key          String    @db.Char(44)
+  number       Int
+  series       String?
+  issuedAt     DateTime?
+  emitCnpj     String?   @db.Char(14)
+  unitId       String?   @db.Uuid
+  value        Decimal?  @db.Decimal(14, 2)
+  freightValue Decimal?  @db.Decimal(14, 2)
+  /// modFrete da NF-e: 0 emitente (CIF), 1 destinatário (FOB), 2 terceiros, 3/4 próprio, 9 sem frete.
+  freightMode  String?
+  carrierCnpj  String?   @db.Char(14)
+  carrierId    String?   @db.Uuid
+  volumes      Int?
+  grossWeight  Decimal?  @db.Decimal(12, 3)
+  netWeight    Decimal?  @db.Decimal(12, 3)
+  /// Só CNPJ (empresa); destinatário pessoa física não tem o CPF guardado.
+  destCnpj     String?   @db.Char(14)
+  destZip      String?   @db.Char(8)
+  destCity     String?
+  destUf       String?   @db.Char(2)
+  destIbge     String?   @db.Char(7)
+  shipmentId   String?   @db.Uuid
+  /// PEDIDO (pedido de frete criado/ligado) | SEM_FRETE (transporte próprio ou sem frete) | CANCELADA
+  status       String    @default("PEDIDO")
+  importId     String?   @db.Uuid
+  cancelledAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([tenantId, key])
+  @@index([tenantId, status])
+  @@map("freight_nfes")
+}
+
+/// Histórico das importações de XML de NF-e: quem, quando, arquivo e o resumo.
+model FreightNfeImport {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  fileNames     String
+  /// { novas, existentes, canceladas, ignoradas, erros, ctesLigados, pedidosCriados }
+  counts        Json
+  /// Até 200 linhas: [{ file, reason, kind: 'ignorada' | 'erro' }]
+  issues        Json     @default("[]")
+  createdById   String   @db.Uuid
+  createdByName String
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@map("freight_nfe_imports")
 }
 
 // ---------- Marketing Inteligente (tabelas próprias do módulo; só acréscimos, nada dos módulos atuais muda) ----------
@@ -2835,6 +2902,8 @@ model FreightQuote {
   /// Documento do ERP (Tcar) da cotação: ORCAMENTO ou PRE_NOTA, e o número (para importar os dados e comparar o frete cobrado).
   erpDocType  String?
   erpDocNumber String?
+  /// Dados importados da Tcar (orçamento ou pré-nota): itens, peso de cada peça e as peças sem peso cadastrado.
+  erpData     Json?
   customerName String?
   customerDoc String?
   personType  String   @default("PJ")
@@ -3101,6 +3170,8 @@ model FreightCte {
   total         Decimal   @db.Decimal(14, 2)
   cargoValue    Decimal?  @db.Decimal(14, 2)
   weight        Decimal?  @db.Decimal(12, 3)
+  /// Quantidade de volumes da carga (infQ em unidades), quando o CT-e informa.
+  volumes       Int?
   components    Json      @default("[]")
   icms          Json?
   nfeKeys       String[]  @default([])

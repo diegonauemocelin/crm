@@ -4,26 +4,13 @@ import { join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { env } from '../config/env'
 import { PrismaService } from '../prisma/prisma.service'
+import { detectImage } from './image-type'
 
 export const IMAGE_UPLOAD_LIMIT = 1024 * 1024 // 1 MB
 /** Imagens de e-mail (o proxy do servidor aceita até 2 MB por envio). */
 export const EMAIL_IMAGE_LIMIT = 1.5 * 1024 * 1024
 
-const SIGNATURES: { mime: string; ext: string; test: (b: Buffer) => boolean }[] = [
-  { mime: 'image/png', ext: 'png', test: (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
-  { mime: 'image/jpeg', ext: 'jpg', test: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
-  { mime: 'image/gif', ext: 'gif', test: (b) => b.toString('ascii', 0, 6) === 'GIF87a' || b.toString('ascii', 0, 6) === 'GIF89a' },
-  { mime: 'image/webp', ext: 'webp', test: (b) => b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP' },
-  { mime: 'image/x-icon', ext: 'ico', test: (b) => b[0] === 0 && b[1] === 0 && b[2] === 1 && b[3] === 0 },
-]
-
-/**
- * O tipo é detectado pelos bytes do arquivo, não pela extensão nem pelo Content-Type enviado.
- * SVG não é aceito: pode carregar script e virar XSS.
- */
-export function detectImage(buffer: Buffer) {
-  return SIGNATURES.find((s) => s.test(buffer)) ?? null
-}
+export { detectImage }
 
 @Injectable()
 export class FilesService {

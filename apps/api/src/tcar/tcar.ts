@@ -1,8 +1,10 @@
 /**
  * Integração com a Tcar (ERP) pelo PingAlive: o servidor da Tcar (atrás do firewall da empresa) chama o CRM de
- * tempos em tempos; o CRM responde com consultas de produtos ("actions") e recebe o resultado ("report").
- * O CRM só pede leituras de produtos: nada é alterado na Tcar. O custo contábil nunca é copiado.
+ * tempos em tempos; o CRM responde com consultas ("actions") e recebe o resultado ("report"). O CRM só pede leituras
+ * (produtos, fotos, orçamento/pré-nota e endereço do cliente): nada é alterado na Tcar. O custo contábil
+ * nunca é copiado.
  */
+import { allowedRoute } from './erp'
 
 export interface TcarSettings {
   enabled: boolean
@@ -18,14 +20,17 @@ export interface TcarSettings {
   /** Cópia completa (preço e estoque) a cada N horas e produtos alterados a cada N minutos. */
   fullEveryHours: number
   incrementalMinutes: number
+  /** Buscar as fotos dos produtos (aos poucos, em segundo plano). */
+  photos: boolean
+  /** Filial do CRM que corresponde à filial do servidor da Tcar (origem das cotações importadas da Tcar). */
+  unitId: string | null
 }
 
-export const DEFAULT_TCAR: TcarSettings = { enabled: false, keyHash: null, companyId: null, branchId: null, branchIds: [], usedInField: '', fullEveryHours: 6, incrementalMinutes: 10 }
+export const DEFAULT_TCAR: TcarSettings = { enabled: false, keyHash: null, companyId: null, branchId: null, branchIds: [], usedInField: '', fullEveryHours: 6, incrementalMinutes: 10, photos: false, unitId: null }
 
 export const PAGE_SIZE = 200
-export const MAX_ACTIONS_PER_PING = 4
-/** Consultas de uma peça pedidas pela tela (estoque na hora): vão na frente e em maior número. */
-export const MAX_LIVE_PER_PING = 20
+// Quantas consultas vão por contato: LANES em erp.ts (tela, produtos, notas, fotos).
+
 /** Peças da busca atualizadas sozinhas e o intervalo mínimo entre duas atualizações da mesma peça. */
 export const AUTO_REFRESH_TOP = 10
 export const AUTO_REFRESH_MIN_AGE_MS = 2 * 60_000
@@ -55,6 +60,9 @@ export interface TcarProductData {
   application: string | null
   usedIn: string | null
   unit: string | null
+  /** Peso bruto e líquido (kg) do cadastro da Tcar. */
+  grossWeight: number | null
+  netWeight: number | null
   stock: number | null
   price: number | null
   resalePrice: number | null
@@ -75,6 +83,12 @@ const num = (v: unknown) => {
 const money = (v: unknown) => {
   const n = num(v)
   return n === null ? null : Math.round(n * 100) / 100
+}
+
+/** Peso em kg: zero ou negativo é "sem peso cadastrado". */
+const weight = (v: unknown) => {
+  const n = num(v)
+  return n !== null && n > 0 && n < 100_000 ? n : null
 }
 
 /** Texto para a busca: sem acentos, minúsculo. */
@@ -109,6 +123,8 @@ export function productFrom(row: Record<string, unknown>, usedInField = ''): Tca
     application: str(row.aplicacao_descricao, 120) ?? str(row.epapl_id, 40),
     usedIn,
     unit: str(row.epctb_unidade, 10),
+    grossWeight: weight(row.epctb_pesobruto),
+    netWeight: weight(row.epctb_pesoliq),
     stock: num(row.epcte_estoquedisponivel),
     price: money(row.epprc_preco),
     resalePrice: money(row.epprc_precorevenda),
@@ -151,9 +167,9 @@ export function detailQuery(code: string, branchIds: number[]) {
   return { cmd: `/produtos/${encodeURIComponent(code)}`, verb: 'GET' as const, query_params: branchIds.length ? { include: 'filiais', branch_ids: branchIds.join(',') } : {} }
 }
 
-/** Só leituras de produtos podem sair do CRM para a Tcar. */
-export function allowedAction(cmd: string, verb: string) {
-  return verb === 'GET' && /^\/produtos(\/[^/?#]+)?$/.test(cmd)
+/** Só leituras (GET) das rotas conhecidas, com os parâmetros conhecidos, podem sair do CRM para a Tcar (erp.ts). */
+export function allowedAction(cmd: string, verb: string, query: unknown = {}) {
+  return allowedRoute(cmd, verb, query)
 }
 
 export type Due = 'full' | 'incremental' | null

@@ -24,6 +24,9 @@ interface TcarConfig {
   usedInField: string
   fullEveryHours: number
   incrementalMinutes: number
+  photos: boolean
+  unitId: string | null
+  units: { id: string; name: string; zip: string | null }[]
   urls: { ping: string; report: string }
   state: {
     lastPingAt: string | null
@@ -35,6 +38,7 @@ interface TcarConfig {
     lastErrorAt: string | null
     products: number
     pendingActions: number
+    photos: { withPhotos: number; pending: number }
   }
 }
 
@@ -63,6 +67,8 @@ function TcarEditor({ initial }: { initial: TcarConfig }) {
   const [usedIn, setUsedIn] = useState(initial.usedInField)
   const [fullHours, setFullHours] = useState(initial.fullEveryHours)
   const [incMinutes, setIncMinutes] = useState(initial.incrementalMinutes)
+  const [photos, setPhotos] = useState(initial.photos)
+  const [unitId, setUnitId] = useState(initial.unitId ?? '')
   const [key, setKey] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const save = useMutation({
@@ -73,6 +79,8 @@ function TcarEditor({ initial }: { initial: TcarConfig }) {
         usedInField: usedIn.trim(),
         fullEveryHours: fullHours,
         incrementalMinutes: incMinutes,
+        photos,
+        unitId: unitId || null,
       }),
     onSuccess: (v) => {
       qc.setQueryData(['tcar-config'], v)
@@ -107,9 +115,9 @@ APIKey=${key ?? '<chave gerada no CRM>'}`
         }}
       >
         <CardHeader>
-          <CardTitle>Tcar (ERP): consulta de produtos</CardTitle>
+          <CardTitle>Tcar (ERP): produtos e orçamentos</CardTitle>
           <CardDescription>
-            Pelo PingAlive: o servidor da Tcar, na rede da empresa, chama o CRM de tempos em tempos e executa só consultas de produtos. Não precisa abrir porta nem expor a Tcar na internet. A senha do usuário Tcar fica no servidor da Tcar, nunca no CRM.
+            Pelo PingAlive: o servidor da Tcar, na rede da empresa, chama o CRM de tempos em tempos e executa só consultas (produtos, fotos, orçamento/pré-nota e o endereço do cliente para a cotação de frete). Não precisa abrir porta nem expor a Tcar na internet. A senha do usuário Tcar fica no servidor da Tcar, nunca no CRM.
           </CardDescription>
         </CardHeader>
         <CardContent className="mt-4 space-y-4">
@@ -182,6 +190,25 @@ APIKey=${key ?? '<chave gerada no CRM>'}`
                 <p className="text-xs text-muted-foreground">A API da Tcar ainda não envia esse dado: peça ao suporte para incluir e informe aqui o nome do campo.</p>
               </div>
               <div className="space-y-1.5">
+                <Label htmlFor="tc-unit">Filial do CRM do servidor da Tcar</Label>
+                <select id="tc-unit" className="h-9 w-full rounded-md border bg-transparent px-2 text-sm" value={unitId} onChange={(e) => setUnitId(e.target.value)}>
+                  <option value="">Não definida</option>
+                  {initial.units.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">Origem da cotação de frete importada do orçamento/pré-nota (a Tcar só consulta a filial do servidor{initial.branchId ? `, nº ${initial.branchId}` : ''}).</p>
+              </div>
+              <label className="flex items-start justify-between gap-3 rounded-md border p-3 text-sm">
+                <span>
+                  Buscar fotos dos produtos
+                  <span className="block text-xs text-muted-foreground">Aos poucos, em segundo plano (capa e até 5 fotos por peça); de novo quando a peça muda na Tcar.</span>
+                </span>
+                <Switch checked={photos} onCheckedChange={setPhotos} />
+              </label>
+              <div className="space-y-1.5">
                 <Label htmlFor="tc-full">Cópia completa (estoque e preço) a cada</Label>
                 <div className="flex items-center gap-2">
                   <Input id="tc-full" type="number" min={1} max={48} className="w-24" value={fullHours} onChange={(e) => setFullHours(Number(e.target.value))} />
@@ -239,6 +266,7 @@ function TcarStatus({ c }: { c: TcarConfig }) {
     ['Produtos copiados', int.format(s.products)],
     ['Última cópia completa', s.fullRunning ? 'Copiando agora…' : s.lastFullAt ? formatDateTime(s.lastFullAt) : '—'],
     ['Consultas na fila', int.format(s.pendingActions)],
+    ['Fotos', c.photos ? `${int.format(s.photos.withPhotos)} peças com foto · ${int.format(s.photos.pending)} a buscar` : 'Busca desligada'],
   ]
   return (
     <Card className="h-fit">

@@ -1,9 +1,11 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2Icon, PackageIcon, PlusIcon, SearchIcon, UploadIcon } from 'lucide-react'
+import { FileArchiveIcon, Loader2Icon, PackageIcon, PlusIcon, SearchIcon, UploadIcon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { FilialSwitch } from '@/components/fretes/filial-switch'
+import { NfeConfrontView } from '@/components/fretes/confronto-nfe'
+import { ImportNfeDialog } from '@/components/fretes/importar-nfe'
 import { MoneyInput } from '@/components/money-input'
 import { Can, EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
@@ -18,7 +20,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { dateTime, dayBr, money } from '@/lib/format'
-import { fmtNum, formatCep, maskCep, parseBr, REC_STATUS, SHIPMENT_STATUS, useActiveUnit, useFreightContext } from '@/lib/fretes'
+import { fmtNum, formatCep, maskCep, type NfeConfront, parseBr, REC_STATUS, SHIPMENT_STATUS, useActiveUnit, useFreightContext } from '@/lib/fretes'
 import { cn } from '@/lib/utils'
 
 interface Shipment {
@@ -54,7 +56,8 @@ interface Shipment {
   createdAt: string
   cte?: { number: string | null; total: number; recStatus: string } | null
   events?: { id: string; status: string; note: string | null; userName: string; createdAt: string }[]
-  ctes?: { id: string; number: string | null; total: number; recStatus: string; issuedAt: string | null }[]
+  ctes?: { id: string; number: string | null; total: number; recStatus: string; issuedAt: string | null; nfeConfront: NfeConfront | null }[]
+  nfe?: { number: number; series: string | null; status: string; freightMode: string | null; createdAt: string } | null
 }
 
 const ORDER = ['AGUARDANDO_COTACAO', 'AGUARDANDO_COLETA', 'DESPACHADO', 'EM_TRANSITO', 'COM_OCORRENCIA', 'ENTREGUE', 'AGUARDANDO_CONCILIACAO', 'CONCILIADO', 'CANCELADO']
@@ -75,6 +78,7 @@ function ShipmentList() {
   const [page, setPage] = useState(1)
   const [open, setOpen] = useState<string | 'novo' | null>(null)
   const [importing, setImporting] = useState(false)
+  const [importingNfe, setImportingNfe] = useState(false)
   const status = params.get('situacao') ?? ''
   const late = params.get('atrasados') === '1'
   const qs = new URLSearchParams({ pagina: String(page) })
@@ -94,21 +98,25 @@ function ShipmentList() {
     <div className="space-y-4">
       <PageHeader
         title="Pedidos e expedição"
-        description="Do pedido/NF à coleta, entrega e CT-e. Gere o pedido pela cotação para a conciliação comparar com o valor escolhido."
+        description="Do pedido/NF à coleta, entrega e CT-e. Importe todo dia o .zip com os XMLs das notas emitidas: cada nota com frete vira pedido e o CT-e da transportadora é casado pela chave."
         actions={
           <>
             <FilialSwitch active={active} />
             <Can module="fretes_pedidos" action="create">
+              <Button onClick={() => setImportingNfe(true)}>
+                <FileArchiveIcon aria-hidden /> Importar XML de NF-e
+              </Button>
               <Button variant="outline" onClick={() => setImporting(true)}>
                 <UploadIcon aria-hidden /> Importar planilha
               </Button>
-              <Button onClick={() => setOpen('novo')}>
+              <Button variant="outline" onClick={() => setOpen('novo')}>
                 <PlusIcon aria-hidden /> Novo pedido
               </Button>
             </Can>
           </>
         }
       />
+      {importingNfe && <ImportNfeDialog onClose={() => setImportingNfe(false)} />}
       <div className="flex flex-wrap gap-1.5">
         <Button size="sm" variant={!status && !late ? 'secondary' : 'ghost'} onClick={() => (setParams({}), setPage(1))}>
           Todos
@@ -320,19 +328,29 @@ function ShipmentSheet({ id, defaultUnit, onClose }: { id: string | null; defaul
                   </Link>
                 )}
               </div>
+              {s.nfe && (
+                <p className="text-xs text-muted-foreground">
+                  NF-e {s.nfe.number}
+                  {s.nfe.series ? `/${s.nfe.series}` : ''} importada em {dateTime(s.nfe.createdAt)}
+                  {s.nfe.status === 'CANCELADA' ? ' · cancelada' : ''}
+                </p>
+              )}
               {s.ctes && s.ctes.length > 0 && (
-                <div className="space-y-1 text-sm">
+                <div className="space-y-3 text-sm">
                   <p className="font-medium">CT-e</p>
                   {s.ctes.map((c) => (
-                    <p key={c.id}>
-                      <Link className="underline underline-offset-2" to={`/fretes/ctes/${c.id}`}>
-                        CT-e {c.number}
-                      </Link>{' '}
-                      · {money(c.total)}{' '}
-                      <Badge variant="outline" className={REC_STATUS[c.recStatus]?.className}>
-                        {REC_STATUS[c.recStatus]?.label}
-                      </Badge>
-                    </p>
+                    <div key={c.id} className="space-y-1.5 rounded-md border p-2">
+                      <p>
+                        <Link className="underline underline-offset-2" to={`/fretes/ctes/${c.id}`}>
+                          CT-e {c.number}
+                        </Link>{' '}
+                        · {money(c.total)}{' '}
+                        <Badge variant="outline" className={REC_STATUS[c.recStatus]?.className}>
+                          {REC_STATUS[c.recStatus]?.label}
+                        </Badge>
+                      </p>
+                      {c.nfeConfront && <NfeConfrontView c={c.nfeConfront} />}
+                    </div>
                   ))}
                 </div>
               )}

@@ -12,6 +12,7 @@ import type { QuoteResult } from './cotacao.service'
 import { parseNumber } from './importacao'
 import { addBusinessDays } from './motor'
 import { todayUtc } from './tabelas.service'
+import { CteService } from './cte.service'
 
 export interface ShipmentInput {
   unitId: string
@@ -59,6 +60,7 @@ export class PedidosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly cteService: CteService,
   ) {}
 
   private view(s: Prisma.FreightShipmentGetPayload<object>, extra: Record<string, unknown> = {}) {
@@ -192,10 +194,19 @@ export class PedidosService {
     const [events, carrier, ctes, unit] = await Promise.all([
       this.prisma.freightShipmentEvent.findMany({ where: { shipmentId: id }, orderBy: { createdAt: 'desc' } }),
       s.carrierId ? this.prisma.freightCarrier.findUnique({ where: { id: s.carrierId }, select: { id: true, name: true } }) : null,
-      this.prisma.freightCte.findMany({ where: { shipmentId: id }, select: { id: true, number: true, key: true, total: true, recStatus: true, issuedAt: true } }),
+      this.prisma.freightCte.findMany({ where: { shipmentId: id } }),
       this.prisma.unit.findUnique({ where: { id: s.unitId }, select: { name: true } }),
     ])
-    return this.view(s, { carrierName: carrier?.name ?? null, unitName: unit?.name ?? null, events, ctes: ctes.map((c) => ({ ...c, total: Number(c.total) })) })
+    // Confronto de cada CT-e com os XMLs das notas importadas.
+    const confront = await this.cteService.confrontFor(user.tenantId, ctes)
+    const nfe = s.invoiceKey ? await this.prisma.freightNfe.findUnique({ where: { tenantId_key: { tenantId: user.tenantId, key: s.invoiceKey } }, select: { number: true, series: true, status: true, freightMode: true, createdAt: true } }) : null
+    return this.view(s, {
+      carrierName: carrier?.name ?? null,
+      unitName: unit?.name ?? null,
+      events,
+      nfe,
+      ctes: ctes.map((c) => ({ id: c.id, number: c.number, key: c.key, total: Number(c.total), recStatus: c.recStatus, issuedAt: c.issuedAt, nfeConfront: confront.get(c.id) ?? null })),
+    })
   }
 
   private async event(shipmentId: string, status: string, user: AuthUser, note?: string | null) {

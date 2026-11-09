@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { FilialSwitch } from '@/components/fretes/filial-switch'
+import { NfeConfrontView } from '@/components/fretes/confronto-nfe'
 import { MoneyInput } from '@/components/money-input'
 import { Can, EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
@@ -18,7 +19,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { dateTime, dayBr, money } from '@/lib/format'
-import { CONTEST, DECISION, fmtNum, formatCep, formatCnpj, formatKey, INVOICE_STATUS, REC_STATUS, REC_TYPE, SHIPMENT_STATUS, useActiveUnit } from '@/lib/fretes'
+import { CONTEST, DECISION, fmtNum, formatCep, formatCnpj, formatKey, INVOICE_STATUS, NFE_CHECK_STATUS, type NfeConfront, REC_STATUS, REC_TYPE, SHIPMENT_STATUS, useActiveUnit } from '@/lib/fretes'
 import { cn } from '@/lib/utils'
 
 interface RecLine {
@@ -82,6 +83,10 @@ interface Cte {
   createdAt: string
   shipment?: { id: string; code: number; orderNumber: string | null; invoiceNumber: string | null; status: string } | null
   invoice?: { id: string; number: string; status: string } | null
+  volumes?: number | null
+  /** Confronto com os XMLs das NF-e importados (detalhe) e o resumo (lista). */
+  nfeConfront?: NfeConfront | null
+  nfeCheck?: { status: NfeConfront['status']; divergences: string[] } | null
 }
 
 interface CteList {
@@ -296,6 +301,11 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
                       {REC_STATUS[c.recStatus]?.label ?? c.recStatus}
                     </Badge>
                     <span className="block text-xs text-muted-foreground">{c.contestStatus ? CONTEST[c.contestStatus] : c.decision ? DECISION[c.decision] : c.recTypes.map((t) => REC_TYPE[t] ?? t).join(', ')}</span>
+                    {c.nfeCheck && (c.nfeCheck.status === 'DIVERGENTE' || c.nfeCheck.status === 'OK') && (
+                      <span className={cn('mt-0.5 block text-xs', c.nfeCheck.status === 'DIVERGENTE' ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground')} title={c.nfeCheck.divergences.join(' · ')}>
+                        {c.nfeCheck.status === 'DIVERGENTE' ? `NF-e: ${c.nfeCheck.divergences.join(', ')}` : NFE_CHECK_STATUS.OK.label}
+                      </span>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -534,6 +544,7 @@ function CteDetail() {
             <Info label="Destinatário" value={c.recipientName ?? '—'} />
             <Info label="Valor da carga" value={money(c.cargoValue)} />
             <Info label="Peso" value={c.weight === null ? '—' : `${fmtNum(c.weight)} kg`} />
+            {c.volumes != null && <Info label="Volumes" value={fmtNum(c.volumes, 0)} />}
             <Info label="ICMS" value={c.icms ? `${c.icms.rate === null ? '—' : `${fmtNum(c.icms.rate, 2)}%`} · ${money(c.icms.value)}` : '—'} />
             <Info label="NF-e" value={c.nfeKeys.length ? c.nfeKeys.map(formatKey).join(', ') : '—'} />
             <Info label="Situação fiscal" value={c.fiscalStatus === 'CANCELADO' ? 'Cancelado' : c.source === 'SEFAZ' ? `Capturado na SEFAZ${c.protocol ? ` · protocolo ${c.protocol}` : ''}` : `Não conferido na SEFAZ${c.protocol ? ` · protocolo ${c.protocol}` : ''}`} />
@@ -552,6 +563,16 @@ function CteDetail() {
           </CardContent>
         </Card>
       </div>
+      {c.nfeConfront && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Confronto com a NF-e</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <NfeConfrontView c={c.nfeConfront} />
+          </CardContent>
+        </Card>
+      )}
       <div className="grid gap-4 lg:grid-cols-2">
         <ShipmentLink cte={c} editable={editable} onDone={(d) => done(d, 'Pedido atualizado e conciliação refeita.')} />
         <DecisionCard cte={c} editable={editable} onDone={done} />

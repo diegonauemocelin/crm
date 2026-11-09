@@ -43,6 +43,10 @@ interface Product {
   resalePrice: number | null
   branches: Branch[]
   stockAt: string
+  /** Peso do cadastro da Tcar (kg) e fotos (capa primeiro). */
+  grossWeight: number | null
+  netWeight: number | null
+  photos: { fileId?: string; url?: string }[]
 }
 interface SearchData {
   total: number
@@ -61,6 +65,7 @@ const FIELDS = [
   ['titulo', 'Título'],
   ['utilizado', 'Utilizado em'],
 ] as const
+const photoSrc = (p: { fileId?: string; url?: string }) => (p.fileId ? `/api/files/${p.fileId}` : (p.url ?? ''))
 const qty = (n: number | null) => (n === null ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 3 }))
 
 export function ConsultaProdutosPage() {
@@ -270,13 +275,38 @@ function ProductRow({ p, usedIn, updating }: { p: Product; usedIn: boolean; upda
   return (
     <TableRow>
       <TableCell className="max-w-96">
-        <p className="font-medium break-words">{p.name}</p>
-        <p className="text-xs text-muted-foreground">
-          <span className="font-mono">{p.code}</span>
-          {[p.brand, p.groupName, p.subgroupName].filter(Boolean).length ? ` · ${[p.brand, p.groupName, p.subgroupName].filter(Boolean).join(' · ')}` : ''}
-        </p>
-        {/* No celular, os códigos aparecem embaixo do nome. */}
-        <p className="mt-0.5 text-xs text-muted-foreground lg:hidden">{[...codes, ...p.refs.slice(0, 3)].join(' · ')}</p>
+        <div className="flex items-start gap-2">
+          {p.photos.length > 0 && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <button type="button" className="shrink-0" title="Ver fotos" aria-label={`Ver fotos de ${p.code}`}>
+                  <img src={photoSrc(p.photos[0]!)} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" className="size-12 rounded border bg-muted object-contain" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto max-w-[min(90vw,40rem)]">
+                <div className="flex flex-wrap gap-2">
+                  {p.photos.map((f, i) => (
+                    <a key={i} href={photoSrc(f)} target="_blank" rel="noreferrer noopener">
+                      <img src={photoSrc(f)} alt={`${p.name} (foto ${i + 1})`} loading="lazy" referrerPolicy="no-referrer" className="size-36 rounded border bg-muted object-contain" />
+                    </a>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+          <div className="min-w-0">
+            <p className="font-medium break-words">{p.name}</p>
+            <p className="text-xs text-muted-foreground">
+              <span className="font-mono">{p.code}</span>
+              {[p.brand, p.groupName, p.subgroupName].filter(Boolean).length ? ` · ${[p.brand, p.groupName, p.subgroupName].filter(Boolean).join(' · ')}` : ''}
+            </p>
+            {(p.grossWeight !== null || p.netWeight !== null) && (
+              <p className="text-xs text-muted-foreground">Peso {[p.grossWeight !== null && `bruto ${qty(p.grossWeight)} kg`, p.netWeight !== null && `líquido ${qty(p.netWeight)} kg`].filter(Boolean).join(' · ')}</p>
+            )}
+            {/* No celular, os códigos aparecem embaixo do nome. */}
+            <p className="mt-0.5 text-xs text-muted-foreground lg:hidden">{[...codes, ...p.refs.slice(0, 3)].join(' · ')}</p>
+          </div>
+        </div>
       </TableCell>
       <TableCell className="hidden max-w-72 lg:table-cell">
         <div className="space-y-1 text-xs">

@@ -19,6 +19,8 @@ import { internalRateFrom, parseCteXml, type RateLearning } from './cte'
 import { IntegracoesService } from './integracoes.service'
 import { packageOf } from './integracoes'
 import { parseNumber } from './importacao'
+import { TcarService } from '../tcar/tcar.service'
+import { docNumber, type ErpDocType, weightOf } from '../tcar/erp'
 
 export interface QuoteInput {
   unitId: string
@@ -38,6 +40,8 @@ export interface QuoteInput {
   reference?: string | null
   erpDocType?: 'ORCAMENTO' | 'PRE_NOTA' | null
   erpDocNumber?: string | null
+  /** Consulta da Tcar que preencheu a cotação (guarda itens e pesos junto da cotação). */
+  erpActionId?: string | null
   notes?: string | null
   /** Liberar tabela vencida nesta cotação (exige permissão de editar tabelas e justificativa). */
   allowExpired?: boolean
@@ -153,6 +157,7 @@ export class CotacaoService {
     private readonly audit: AuditService,
     private readonly settings: SettingsService,
     private readonly online: IntegracoesService,
+    private readonly tcar: TcarService,
   ) {}
 
   /** Alíquotas internas de ICMS por UF cadastradas pela empresa (frete dentro do mesmo estado). */
@@ -521,14 +526,69 @@ export class CotacaoService {
   }
 
   /**
-   * Orçamento ou pré-nota do ERP (Tcar) para preencher a cotação: destinatário (CPF/CNPJ), CEP, peso e volumes. A
-   * consulta depende de a Tcar liberar as rotas de orçamento e pré-nota no TCarWebServer (hoje só produtos).
+   * Orçamento ou pré-nota da Tcar para preencher a cotação. A consulta vai pelo PingAlive: o CRM pede, a Tcar responde
+   * no próximo contato (segundos) e a tela acompanha pelo id. Na Tcar desta empresa a pré-nota é sempre venda.
    */
-  async erpDocument(user: AuthUser, type: string, number: string) {
+  async erpRequest(user: AuthUser, type: string, number: string) {
     assertCan(user, 'fretes_cotacao', 'create')
     if (type !== 'ORCAMENTO' && type !== 'PRE_NOTA') throw new BadRequestException('Escolha orçamento ou pré-nota.')
-    if (!cleanText(number, 30)) throw new BadRequestException('Informe o número do documento no ERP.')
-    throw new BadRequestException('A importação do ERP ainda não está disponível: falta a Tcar liberar a consulta de orçamentos e pré-notas no TCarWebServer. Preencha os dados à mão; o número fica guardado na cotação para comparar o frete cobrado quando a integração estiver pronta.')
+    if (!docNumber(number)) throw new BadRequestException('Informe o número do documento (só dígitos).')
+    return this.tcar.requestDocument(user.tenantId, type, number)
+  }
+
+  /** Dados para a cotação: itens, valor, peso (quantidade × peso bruto do cadastro da Tcar), destino e filial de origem. */
+  async erpResult(user: AuthUser, id: string) {
+    assertCan(user, 'fretes_cotacao', 'create')
+    const r = await this.tcar.documentResult(user.tenantId, id)
+    if (r.status !== 'OK') return r
+    const { doc, address, clientError } = r.result
+    const weights = await this.tcar.productWeights(user.tenantId, doc.items.map((i) => i.code))
+    const w = weightOf(doc.items, weights)
+    const units = allowedUnits(user, 'fretes_cotacao')
+    const unit = r.unitId && (!units || units.includes(r.unitId)) ? await this.prisma.unit.findFirst({ where: { id: r.unitId, tenantId: user.tenantId }, select: { id: true, name: true, zip: true } }) : null
+    const zip = normalizeCep(address?.zip ?? null)
+    return {
+      status: 'OK' as const,
+      type: doc.type,
+      number: doc.number,
+      statusLabel: doc.statusLabel,
+      issuedAt: doc.issuedAt,
+      customerName: doc.customerName,
+      customerDoc: doc.customerCnpj,
+      personType: doc.personType,
+      destZip: zip,
+      destCity: address?.city ?? null,
+      destUf: address?.uf ?? (zip ? ufByCep(zip) : null),
+      clientWarning: clientError,
+      cargoValue: doc.productsTotal ?? doc.total,
+      documentTotal: doc.total,
+      documentFreight: doc.freight,
+      weight: w.total > 0 ? w.total : null,
+      missingWeight: w.missing,
+      items: doc.items.map((i) => ({ ...i, unitWeight: weights.get(i.code) ?? null })),
+      unit,
+    }
+  }
+
+  /** Itens e pesos da consulta da Tcar que preencheu a cotação (só se for do mesmo documento). */
+  private async erpDataFor(tenantId: string, d: QuoteInput) {
+    if (!d.erpActionId || !d.erpDocType || !d.erpDocNumber) return null
+    const r = await this.tcar.documentResult(tenantId, d.erpActionId).catch(() => null)
+    if (!r || r.status !== 'OK') return null
+    const doc = r.result.doc
+    if (doc.type !== (d.erpDocType as ErpDocType) || doc.number !== docNumber(d.erpDocNumber)) return null
+    const weights = await this.tcar.productWeights(tenantId, doc.items.map((i) => i.code))
+    const w = weightOf(doc.items, weights)
+    return {
+      source: 'TCAR',
+      statusLabel: doc.statusLabel,
+      productsTotal: doc.productsTotal,
+      total: doc.total,
+      freight: doc.freight,
+      weight: w.total,
+      missingWeight: w.missing,
+      items: doc.items.slice(0, 300).map((i) => ({ code: i.code, description: i.description, quantity: i.quantity, total: i.total, unitWeight: weights.get(i.code) ?? null })),
+    }
   }
 
   /** Taxas das listas que valem para este envio: pelo CPF/CNPJ do destinatário ou pelo destino (cidade, CEP, região, UF). */
@@ -643,6 +703,7 @@ export class CotacaoService {
     }
     const { p, results } = await this.compute(user, d, !!d.allowExpired)
     const ok = results.filter((r) => r.status === 'OK')
+    const erpData = await this.erpDataFor(user.tenantId, d)
     const q = await this.prisma.freightQuote.create({
       data: {
         tenantId: user.tenantId,
@@ -650,6 +711,7 @@ export class CotacaoService {
         reference: cleanText(d.reference, 80) || null,
         erpDocType: d.erpDocType === 'ORCAMENTO' || d.erpDocType === 'PRE_NOTA' ? d.erpDocType : null,
         erpDocNumber: d.erpDocType ? cleanText(d.erpDocNumber, 30) || null : null,
+        ...(erpData ? { erpData: erpData as unknown as Prisma.InputJsonValue } : {}),
         customerName: cleanText(d.customerName, 160) || null,
         customerDoc: p.doc,
         personType: d.personType,
@@ -747,6 +809,7 @@ export class CotacaoService {
       reference: q.reference,
       erpDocType: q.erpDocType,
       erpDocNumber: q.erpDocNumber,
+      erpData: q.erpData,
       customerName: q.customerName,
       customerDoc: q.customerDoc,
       personType: q.personType,

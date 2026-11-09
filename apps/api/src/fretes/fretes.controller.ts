@@ -228,6 +228,11 @@ class VolumeDto {
   @IsNumber() @Min(0) height!: number
 }
 
+class ErpDocumentDto {
+  @IsIn(['ORCAMENTO', 'PRE_NOTA']) tipo!: 'ORCAMENTO' | 'PRE_NOTA'
+  @IsString() @Matches(/^\s*\d{1,12}\s*$/, { message: 'Informe o número do documento (só dígitos).' }) numero!: string
+}
+
 class QuoteDto {
   @ApiProperty() @IsUUID() unitId!: string
   @IsOptional() @nullable @IsString() @MaxLength(10) originZip?: string | null
@@ -246,6 +251,7 @@ class QuoteDto {
   @IsOptional() @nullable @IsString() @MaxLength(80) reference?: string | null
   @IsOptional() @nullable @IsIn(['ORCAMENTO', 'PRE_NOTA']) erpDocType?: 'ORCAMENTO' | 'PRE_NOTA' | null
   @IsOptional() @nullable @IsString() @MaxLength(30) erpDocNumber?: string | null
+  @IsOptional() @nullable @IsUUID('all') erpActionId?: string | null
   @IsOptional() @nullable @IsString() @MaxLength(2000) notes?: string | null
   @IsOptional() @IsBoolean() allowExpired?: boolean
   @IsOptional() @nullable @IsString() @MaxLength(500) expiredReason?: string | null
@@ -482,10 +488,17 @@ export class FretesController {
     return this.tables.create(user, dto, ctx)
   }
 
-  @Get('erp/documento')
+  /** Pede à Tcar o orçamento ou a pré-nota (chega no próximo contato da Tcar). */
+  @Post('erp/documento')
+  @HttpCode(200)
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  erpDocument(@CurrentUser() user: AuthUser, @Query('tipo') type?: string, @Query('numero') number?: string) {
-    return this.quotes.erpDocument(user, type ?? '', number ?? '')
+  erpRequest(@CurrentUser() user: AuthUser, @Body() dto: ErpDocumentDto) {
+    return this.quotes.erpRequest(user, dto.tipo, dto.numero)
+  }
+
+  @Get('erp/documento/:id')
+  erpResult(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.quotes.erpResult(user, id)
   }
 
   @Get('integracoes')

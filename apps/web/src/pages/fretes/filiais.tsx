@@ -149,7 +149,7 @@ function UnitCard({ unit, editable }: { unit: FreightUnit; editable: boolean }) 
 const INTEGRATIONS = [
   { name: 'Mercado Livre (Mercado Envios 1 / ME1)', need: 'Usa a conexão do Mercado Livre que o CRM já tem. Falta definir com o comercial quais tabelas valem para a loja oficial e o formato de envio da tabela de frete ao Mercado Livre.' },
   { name: 'Google Shopping (Merchant Center)', need: 'Conta do Merchant Center com acesso de API. O frete dos produtos sai das tabelas marcadas como exclusivas para "Google Shopping".' },
-  { name: 'Tcar (ERP): pedidos e notas', need: 'A integração da Tcar já existe para produtos. Falta liberar a consulta de pedidos e notas fiscais expedidas. Fase 3.' },
+  { name: 'Tcar (ERP): orçamentos, pré-notas e notas', need: 'Pronto: a cotação importa o orçamento ou a pré-nota da Tcar (itens, valor, peso pelos produtos e CEP do cliente), e as notas entram pelo .zip de XMLs do dia em Pedidos › Importar XML de NF-e. O CRM não grava nada na Tcar.', ready: true },
   { name: 'APIs das transportadoras (rastreamento e cotação on-line)', need: 'Credenciais de cada transportadora que oferecer API.' },
 ]
 
@@ -376,8 +376,8 @@ function Integrations() {
               <p className="text-sm font-medium">{i.name}</p>
               <p className="text-xs text-muted-foreground">{i.need}</p>
             </div>
-            <Badge variant="outline" className="text-muted-foreground">
-              Não conectada
+            <Badge variant="outline" className={'ready' in i && i.ready ? 'border-[#006300]/40 text-[#006300] dark:text-[#0ca30c]' : 'text-muted-foreground'}>
+              {'ready' in i && i.ready ? 'Em uso' : 'Não conectada'}
             </Badge>
           </div>
         ))}
@@ -395,6 +395,9 @@ interface RecSettings {
   porTransportadora: Record<string, { valor: number; percentual: number }>
   diasSemCte: number
   diasFatura: number
+  nfePesoPercentual: number
+  nfePesoKg: number
+  nfeValor: number
 }
 
 const br = (v: number | undefined) => (v === undefined ? '' : String(v).replace('.', ','))
@@ -414,6 +417,9 @@ function RecParams({ editable, carriers }: { editable: boolean; carriers: { id: 
           percentual: br(d.percentual),
           diasSemCte: String(d.diasSemCte),
           diasFatura: String(d.diasFatura),
+          nfePesoPercentual: br(d.nfePesoPercentual),
+          nfePesoKg: br(d.nfePesoKg),
+          nfeValor: br(d.nfeValor),
           ...Object.fromEntries(carriers.flatMap((c) => [[`v:${c.id}`, br(d.porTransportadora[c.id]?.valor)], [`p:${c.id}`, br(d.porTransportadora[c.id]?.percentual)]])),
         }
       : {})
@@ -426,8 +432,8 @@ function RecParams({ editable, carriers }: { editable: boolean; carriers: { id: 
         const p = values[`p:${c.id}`]?.trim()
         if (v || p) porTransportadora[c.id] = { valor: v ? nb(v) : 0, percentual: p ? nb(p) : 0 }
       }
-      const body = { valor: nb(values.valor ?? ''), percentual: nb(values.percentual ?? ''), diasSemCte: Number(values.diasSemCte), diasFatura: Number(values.diasFatura), porTransportadora }
-      if ([body.valor, body.percentual, body.diasSemCte, body.diasFatura, ...Object.values(porTransportadora).flatMap((t) => [t.valor, t.percentual])].some((x) => !Number.isFinite(x))) throw new Error('Confira os números.')
+      const body = { valor: nb(values.valor ?? ''), percentual: nb(values.percentual ?? ''), diasSemCte: Number(values.diasSemCte), diasFatura: Number(values.diasFatura), nfePesoPercentual: nb(values.nfePesoPercentual ?? ''), nfePesoKg: nb(values.nfePesoKg ?? ''), nfeValor: nb(values.nfeValor ?? ''), porTransportadora }
+      if ([body.valor, body.percentual, body.diasSemCte, body.diasFatura, body.nfePesoPercentual, body.nfePesoKg, body.nfeValor, ...Object.values(porTransportadora).flatMap((t) => [t.valor, t.percentual])].some((x) => !Number.isFinite(x))) throw new Error('Confira os números.')
       return api.put<RecSettings>('/fretes/ctes/parametros', body)
     },
     onSuccess: (r) => {
@@ -467,6 +473,24 @@ function RecParams({ editable, carriers }: { editable: boolean; carriers: { id: 
                 <Label htmlFor="rec-df">Alerta de fatura (dias antes)</Label>
                 <Input id="rec-df" inputMode="numeric" value={values.diasFatura ?? ''} onChange={(e) => set('diasFatura', e.target.value.replace(/\D/g, ''))} />
               </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Confronto NF-e × CT-e (XML da nota importado em Pedidos)</p>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="rec-nfe-pp">Folga de peso (%)</Label>
+                  <Input id="rec-nfe-pp" inputMode="decimal" value={values.nfePesoPercentual ?? ''} onChange={(e) => set('nfePesoPercentual', e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rec-nfe-pk">Folga de peso (kg)</Label>
+                  <Input id="rec-nfe-pk" inputMode="decimal" value={values.nfePesoKg ?? ''} onChange={(e) => set('nfePesoKg', e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rec-nfe-v">Folga do valor da carga (R$)</Label>
+                  <Input id="rec-nfe-v" inputMode="decimal" value={values.nfeValor ?? ''} onChange={(e) => set('nfeValor', e.target.value)} />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">Peso: vale a maior folga entre o percentual e os quilos. Fora da folga, o CT-e mostra “Peso cobrado maior que o da nota” (ou menor) e “Valor da carga maior/menor que o das notas”.</p>
             </div>
             {carriers.length > 0 && (
               <div className="space-y-2">

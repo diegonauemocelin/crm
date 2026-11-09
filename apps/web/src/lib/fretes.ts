@@ -216,6 +216,8 @@ export interface Quote {
   reference: string | null
   erpDocType?: 'ORCAMENTO' | 'PRE_NOTA' | null
   erpDocNumber?: string | null
+  /** Itens e pesos importados da Tcar (orçamento ou pré-nota). */
+  erpData?: { statusLabel?: string | null; total?: number | null; weight?: number; missingWeight?: string[]; items?: { code: string; description: string | null; quantity: number; total: number | null; unitWeight: number | null }[] } | null
   customerName: string | null
   customerDoc: string | null
   personType: 'PF' | 'PJ'
@@ -298,3 +300,25 @@ export const INVOICE_STATUS: Record<string, { label: string; className: string }
 
 /** Chave de 44 dígitos agrupada de 4 em 4 (como no DACTE/DANFE). */
 export const formatKey = (k: string | null | undefined) => (k ? k.replace(/(\d{4})(?=\d)/g, '$1 ') : '—')
+
+/** Confronto NF-e × CT-e (XML da nota importado × CT-e). */
+export interface NfeCheck {
+  code: 'NOTAS' | 'VALOR' | 'PESO' | 'VOLUMES' | 'DESTINO' | 'TRANSPORTADORA' | 'TOMADOR'
+  name: string
+  status: 'OK' | 'DIVERGENTE' | 'SEM_DADO'
+  label: string | null
+  nfe: string | number | null
+  cte: string | number | null
+}
+export interface NfeConfront {
+  status: 'OK' | 'DIVERGENTE' | 'SEM_NOTA' | 'SEM_CHAVE'
+  notes: { key: string; number: string | null; found: boolean }[]
+  checks: NfeCheck[]
+  divergences: string[]
+}
+export const NFE_CHECK_STATUS: Record<NfeConfront['status'], { label: string; className: string }> = {
+  OK: { label: 'NF-e confere', className: 'border-[#006300]/40 text-[#006300] dark:text-[#0ca30c]' },
+  DIVERGENTE: { label: 'Diverge da NF-e', className: 'border-amber-500/50 text-amber-700 dark:text-amber-400' },
+  SEM_NOTA: { label: 'NF-e não importada', className: 'text-muted-foreground' },
+  SEM_CHAVE: { label: 'CT-e sem NF-e', className: 'text-muted-foreground' },
+}

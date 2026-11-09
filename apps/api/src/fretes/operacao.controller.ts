@@ -13,6 +13,7 @@ import { CteService } from './cte.service'
 import { FaturasService } from './faturas.service'
 import { IMPORT_MAX_BYTES, readSheets } from './importacao.service'
 import { PedidosService } from './pedidos.service'
+import { NfeService } from './nfe.service'
 import { FretesRelatoriosService, REPORTS } from './relatorios.service'
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
@@ -88,6 +89,9 @@ class RecSettingsDto {
   @IsOptional() @IsObject() porTransportadora?: Record<string, { valor: number; percentual: number }>
   @IsOptional() @IsInt() @Min(1) diasSemCte?: number
   @IsOptional() @IsInt() @Min(0) diasFatura?: number
+  @IsOptional() @IsNumber() @Min(0) nfePesoPercentual?: number
+  @IsOptional() @IsNumber() @Min(0) nfePesoKg?: number
+  @IsOptional() @IsNumber() @Min(0) nfeValor?: number
 }
 
 class InvoiceDto {
@@ -138,7 +142,24 @@ export class FretesOperacaoController {
     private readonly ctes: CteService,
     private readonly invoices: FaturasService,
     private readonly reports: FretesRelatoriosService,
+    private readonly nfes: NfeService,
   ) {}
+
+  // ─────────── NF-e (XML) ───────────
+
+  /** XMLs das NF-e de saída (o .zip do dia baixado do ERP, ou .xml soltos): pedidos de frete e confronto com o CT-e. */
+  @Post('nfe/importar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseInterceptors(FilesInterceptor('arquivos', 10, { limits: { fileSize: 60 * 1024 * 1024 } }))
+  importNfes(@CurrentUser() user: AuthUser, @UploadedFiles() files: Express.Multer.File[], @ReqContext() ctx: RequestCtx) {
+    return this.nfes.importXml(user, files ?? [], ctx)
+  }
+
+  @Get('nfe/importacoes')
+  nfeImports(@CurrentUser() user: AuthUser) {
+    return this.nfes.history(user)
+  }
 
   // ─────────── Pedidos ───────────
 

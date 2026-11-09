@@ -33,6 +33,75 @@ interface VolumeRow {
 }
 const emptyVolume = (): VolumeRow => ({ quantity: '1', weight: '', length: '', width: '', height: '' })
 
+interface ErpFill {
+  status: 'OK'
+  type: 'ORCAMENTO' | 'PRE_NOTA'
+  number: string
+  statusLabel: string | null
+  issuedAt: string | null
+  customerName: string | null
+  customerDoc: string | null
+  personType: 'PF' | 'PJ' | null
+  destZip: string | null
+  destCity: string | null
+  destUf: string | null
+  clientWarning: string | null
+  cargoValue: number | null
+  documentTotal: number | null
+  documentFreight: number | null
+  weight: number | null
+  missingWeight: string[]
+  items: { code: string; description: string | null; quantity: number; unitPrice: number | null; total: number | null; unitWeight: number | null }[]
+  unit: { id: string; name: string; zip: string | null } | null
+}
+type ErpResult = { status: 'AGUARDANDO' } | { status: 'ERRO'; error: string } | ErpFill
+
+/** Itens importados do orçamento/pré-nota, com o peso de cada peça (as sem peso ficam marcadas). */
+function ErpItems({ d }: { d: ErpFill }) {
+  return (
+    <div className="w-full space-y-1.5 text-xs">
+      <p>
+        <span className="font-medium">
+          {d.type === 'PRE_NOTA' ? 'Pré-nota' : 'Orçamento'} {d.number}
+        </span>
+        {d.statusLabel ? ` · ${d.statusLabel}` : ''}
+        {d.documentTotal !== null ? ` · total ${money(d.documentTotal)}` : ''}
+        {d.documentFreight ? ` · frete na pré-nota ${money(d.documentFreight)}` : ''}
+        {d.unit ? ` · origem ${d.unit.name}` : ''}
+      </p>
+      {d.clientWarning && <p className="text-amber-700 dark:text-amber-400">{d.clientWarning}</p>}
+      <div className="max-h-48 overflow-y-auto rounded-md border">
+        <table className="w-full">
+          <thead className="bg-muted/50 text-left text-muted-foreground">
+            <tr>
+              <th className="px-2 py-1 font-normal">Peça</th>
+              <th className="px-2 py-1 text-right font-normal">Qtd.</th>
+              <th className="px-2 py-1 text-right font-normal">Valor</th>
+              <th className="px-2 py-1 text-right font-normal">Peso (kg)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {d.items.map((i, k) => (
+              <tr key={k} className="border-t">
+                <td className="px-2 py-1">
+                  <span className="font-mono">{i.code}</span> {i.description}
+                </td>
+                <td className="px-2 py-1 text-right tabular-nums">{fmtNum(i.quantity)}</td>
+                <td className="px-2 py-1 text-right tabular-nums">{money(i.total)}</td>
+                <td className={cn('px-2 py-1 text-right tabular-nums', i.unitWeight === null && 'text-amber-700 dark:text-amber-400')}>{i.unitWeight === null ? 'sem peso' : fmtNum(i.unitWeight * i.quantity)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-muted-foreground">
+        Peso somado: {d.weight === null ? '—' : `${fmtNum(d.weight)} kg`}
+        {d.missingWeight.length ? ` · ${d.missingWeight.length} peça(s) sem peso no cadastro da Tcar: some à mão` : ''}
+      </p>
+    </div>
+  )
+}
+
 export function FretesCotacaoPage() {
   return (
     <RequirePermission module="fretes_cotacao" action="create">
@@ -60,18 +129,46 @@ function NewQuote() {
   const [reference, setReference] = useState('')
   const [erpType, setErpType] = useState<'ORCAMENTO' | 'PRE_NOTA'>('ORCAMENTO')
   const [erpNumber, setErpNumber] = useState('')
-  const erpImport = useMutation({
-    mutationFn: () => api.get<{ customerDoc?: string | null; customerName?: string | null; destZip?: string | null; weight?: number | null; cargoValue?: number | null; volumes?: { quantity: number; weight: number }[] }>(`/fretes/erp/documento?${new URLSearchParams({ tipo: erpType, numero: erpNumber.trim() })}`),
-    onSuccess: (d) => {
-      if (d.customerDoc) setCustomerDoc(d.customerDoc)
-      if (d.customerName) setCustomerName(d.customerName)
-      if (d.weight) setWeight(String(d.weight).replace('.', ','))
-      if (d.cargoValue) setCargoValue(d.cargoValue)
-      if (d.destZip) setDestZip(maskCep(d.destZip))
-      toast.success('Dados importados do ERP: confira antes de cotar.')
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  })
+  // Orçamento/pré-nota da Tcar: o pedido vai no próximo contato do servidor da Tcar (segundos); a tela acompanha.
+  const [erpWaiting, setErpWaiting] = useState(false)
+  const [erpFill, setErpFill] = useState<(ErpFill & { actionId: string }) | null>(null)
+  const erpImport = async () => {
+    setErpWaiting(true)
+    setErpFill(null)
+    try {
+      const { id } = await api.post<{ id: string }>('/fretes/erp/documento', { tipo: erpType, numero: erpNumber.trim() })
+      for (let i = 0; i < 45; i++) {
+        await new Promise((r) => setTimeout(r, 2000))
+        const r = await api.get<ErpResult>(`/fretes/erp/documento/${id}`)
+        if (r.status === 'ERRO') return void toast.error(r.error)
+        if (r.status === 'OK') {
+          setErpFill({ ...r, actionId: id })
+          if (r.customerName) setCustomerName(r.customerName)
+          if (r.personType) setPersonType(r.personType)
+          setCustomerDoc(r.customerDoc ?? '')
+          if (r.cargoValue !== null) setCargoValue(r.cargoValue)
+          if (r.weight) setWeight(String(r.weight).replace('.', ','))
+          if (r.destZip) {
+            setDestZip(maskCep(r.destZip))
+            if (r.destCity && r.destUf) setDest({ city: r.destCity, uf: r.destUf })
+            else cep.mutate(r.destZip)
+          }
+          if (r.unit) {
+            setUnitId(r.unit.id)
+            setOriginZip(r.unit.zip ? maskCep(r.unit.zip) : '')
+          }
+          toast.success(`${r.type === 'PRE_NOTA' ? 'Pré-nota' : 'Orçamento'} ${r.number} importado da Tcar: confira antes de cotar.`)
+          if (r.missingWeight.length) toast.warning(`${r.missingWeight.length} peça(s) sem peso no cadastro da Tcar: some o peso delas à mão.`)
+          return
+        }
+      }
+      toast.error('A Tcar não respondeu em 90 segundos. O servidor da Tcar está ligado? Preencha à mão se precisar.')
+    } catch (e) {
+      toast.error(errorMessage(e))
+    } finally {
+      setErpWaiting(false)
+    }
+  }
   const [batch, setBatch] = useState(false)
   const [notes, setNotes] = useState('')
   const [allowExpired, setAllowExpired] = useState(false)
@@ -117,6 +214,7 @@ function NewQuote() {
       reference: reference || null,
       erpDocType: erpNumber.trim() ? erpType : null,
       erpDocNumber: erpNumber.trim() || null,
+      erpActionId: erpFill && erpFill.type === erpType && erpFill.number === String(Number(erpNumber.trim())) ? erpFill.actionId : null,
       notes: notes || null,
       allowExpired,
       expiredReason: allowExpired ? expiredReason : null,
@@ -174,20 +272,25 @@ function NewQuote() {
           <CardContent className="space-y-5">
             <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed p-3">
               <div className="space-y-1.5">
-                <Label htmlFor="q-erp-type">Documento do ERP</Label>
+                <Label htmlFor="q-erp-type">Documento da Tcar</Label>
                 <select id="q-erp-type" className="h-9 rounded-md border bg-transparent px-2" value={erpType} onChange={(e) => setErpType(e.target.value === 'PRE_NOTA' ? 'PRE_NOTA' : 'ORCAMENTO')}>
                   <option value="ORCAMENTO">Orçamento</option>
-                  <option value="PRE_NOTA">Pré-nota</option>
+                  <option value="PRE_NOTA">Pré-nota (venda)</option>
                 </select>
               </div>
               <div className="w-40 space-y-1.5">
                 <Label htmlFor="q-erp-num">Número</Label>
-                <Input id="q-erp-num" value={erpNumber} onChange={(e) => setErpNumber(e.target.value.slice(0, 30))} />
+                <Input id="q-erp-num" inputMode="numeric" value={erpNumber} onChange={(e) => setErpNumber(e.target.value.replace(/\D/g, '').slice(0, 12))} />
               </div>
-              <Button type="button" variant="outline" disabled={!erpNumber.trim() || erpImport.isPending} onClick={() => erpImport.mutate()}>
-                {erpImport.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Importar do ERP
+              <Button type="button" variant="outline" disabled={!erpNumber.trim() || erpWaiting} onClick={() => void erpImport()}>
+                {erpWaiting && <Loader2Icon className="animate-spin" aria-hidden />} Importar do Tcar
               </Button>
-              <p className="min-w-60 flex-1 text-xs text-muted-foreground">Importa CPF/CNPJ, CEP de destino, peso e volumes do orçamento ou da pré-nota. Na cotação manual, informe o número mesmo assim: ele fica guardado para comparar o frete cobrado no ERP com o CT-e.</p>
+              <p className="min-w-60 flex-1 text-xs text-muted-foreground" aria-live="polite">
+                {erpWaiting
+                  ? 'Aguardando o Tcar… o pedido vai no próximo contato do servidor dele (alguns segundos).'
+                  : 'Traz cliente, CEP de destino, itens, valor e o peso (quantidade × peso bruto de cada peça no cadastro da Tcar). Só a filial do servidor da Tcar. Na cotação manual, informe o número mesmo assim: fica guardado na cotação.'}
+              </p>
+              {erpFill && <ErpItems d={erpFill} />}
             </div>
             <div className="grid gap-4 md:grid-cols-4">
               <div className="space-y-1.5">
@@ -893,6 +996,30 @@ function QuoteDetail() {
         </Card>
       )}
       <QuoteView quote={d} onChange={(n) => qc.setQueryData(['fretes', 'cotacao', id], n)} />
+      {d.erpData?.items && d.erpData.items.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              Itens {d.erpDocType === 'PRE_NOTA' ? 'da pré-nota' : 'do orçamento'} {d.erpDocNumber} (Tcar)
+            </CardTitle>
+            <CardDescription>
+              Peso somado pelo cadastro das peças: {fmtNum(d.erpData.weight ?? 0)} kg{d.erpData.missingWeight?.length ? ` · sem peso: ${d.erpData.missingWeight.join(', ')}` : ''}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm">
+            {d.erpData.items.map((i, k) => (
+              <p key={k} className="flex justify-between gap-2 border-b py-1 last:border-0">
+                <span>
+                  <span className="font-mono text-xs">{i.code}</span> {i.description} × {fmtNum(i.quantity)}
+                </span>
+                <span className="text-right tabular-nums">
+                  {money(i.total)} · {i.unitWeight === null ? 'sem peso' : `${fmtNum(i.unitWeight * i.quantity)} kg`}
+                </span>
+              </p>
+            ))}
+          </CardContent>
+        </Card>
+      )}
       {d.volumes.length > 0 && (
         <Card>
           <CardHeader>
