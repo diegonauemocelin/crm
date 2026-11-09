@@ -105,6 +105,15 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
 
   private async must<T>(tenantId: string, method: string, path: string, body?: unknown): Promise<T> {
     const r = await this.api<T & { error?: { message?: string } }>(tenantId, method, path, body)
+    const msg = r.body?.error?.message ?? ''
+    // API desligada no projeto do Google Cloud da conta de serviço: o problema não é o acesso ao Merchant Center.
+    const disabled = /has not been used in project|is disabled|SERVICE_DISABLED/i.test(msg)
+    if (r.status === 403 && disabled) {
+      const project = /project (\d+)/.exec(msg)?.[1]
+      throw new Error(
+        `A Merchant API está desligada no projeto do Google Cloud da conta de serviço. Abra https://console.cloud.google.com/apis/library/merchantapi.googleapis.com${project ? `?project=${project}` : ''}, clique em Ativar, espere uns 5 minutos e tente de novo.`,
+      )
+    }
     if (r.status === 401 || r.status === 403) {
       const ga = await this.settings.get<Ga4Settings>(tenantId, 'ga4', DEFAULT_GA4)
       throw new Error(`Sem acesso ao Merchant Center: em Configurações › Pessoas e acesso, adicione ${ga.clientEmail} como Administrador. (${r.body?.error?.message ?? r.status})`)
