@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.48",
+      "date": "2026-11-09",
+      "title": "SEO Marketplace: texto fixo da loja",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Marketplaces",
+          "text": "SEO Marketplace: aba Texto fixo com os diferenciais da loja (envio imediato, produto novo com nota fiscal, Loja Oficial, anos de mercado, itens em estoque). Vai no fim de todas as descrições: sugeridas pela IA, escritas à mão e enviadas ao Mercado Livre, sem repetir."
+        }
+      ]
+    },
+    {
       "version": "2.0.47",
       "date": "2026-11-09",
       "title": "Frete no Google Shopping: registro com o e-mail de uma pessoa",
