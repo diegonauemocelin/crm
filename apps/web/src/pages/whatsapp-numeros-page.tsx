@@ -181,6 +181,11 @@ export function Numbers() {
                       {n.splitAttendance ? ` · atendimento dividido${n.defaultUserId ? ` · clientes novos para ${d?.users.find((u) => u.id === n.defaultUserId)?.name ?? 'usuário removido'}` : ''}` : ''}
                     </p>
                     {n.status === 'CONECTADO' && n.connectedAt && <p className="text-xs text-muted-foreground">Conectado desde {formatDateTime(n.connectedAt)}</p>}
+                    {n.status === 'CONECTADO' && n.statusReason?.startsWith('Pode estar sem receber') && (
+                      <p role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-900 dark:text-amber-200">
+                        {n.statusReason}
+                      </p>
+                    )}
                     {n.status === 'DESCONECTADO' && n.statusReason && (
                       <p className="text-xs text-muted-foreground">
                         {n.statusReason}

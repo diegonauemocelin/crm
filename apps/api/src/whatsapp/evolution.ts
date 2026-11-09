@@ -64,6 +64,23 @@ export const DISCONNECTED_BY_CRM = 'Desconectado pelo CRM'
 export const SILENT_REFRESH_MS = 45 * 60_000
 
 /** Hora de renovar: em horário de atendimento, sem mensagens há SILENT_REFRESH_MS e sem renovar nesse tempo. */
+/** Aviso no número quando ele envia mas não recebe nada (o WhatsApp parou de entregar ao CRM). */
+export const DEAF_REASON = 'Pode estar sem receber mensagens: envia normalmente, mas nada chega há mais de 1 hora. Gere o QR Code de novo (as mensagens que faltaram entram na volta).'
+/** Mensagens enviadas sem nenhuma recebida que contam como sinal de problema. */
+export const DEAF_SENT_MIN = 3
+
+/**
+ * Número "surdo": no horário de atendimento, enviou várias mensagens e não recebeu nenhuma há 45 min (o WhatsApp parou
+ * de entregar as mensagens recebidas ao aparelho do CRM). Primeiro renova a conexão (sem QR Code); se 30 min depois
+ * continuar assim, avisa na tela para gerar o QR Code de novo.
+ */
+export function deafAction(s: { lastInbound: number; sentSince: number; lastRefresh: number; warned: boolean }, now: number, open: boolean): 'nada' | 'renovar' | 'avisar' {
+  if (!open || s.sentSince < DEAF_SENT_MIN || now - s.lastInbound < SILENT_REFRESH_MS) return 'nada'
+  if (s.lastRefresh < s.lastInbound) return 'renovar'
+  if (!s.warned && now - s.lastRefresh >= 30 * 60_000) return 'avisar'
+  return 'nada'
+}
+
 export function silentTooLong(lastTraffic: number, lastRefresh: number, now: number, open: boolean) {
   return open && now - lastTraffic >= SILENT_REFRESH_MS && now - lastRefresh >= SILENT_REFRESH_MS
 }
