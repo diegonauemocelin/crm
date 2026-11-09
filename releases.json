@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.47",
+      "date": "2026-11-09",
+      "title": "Frete no Google Shopping: registro com o e-mail de uma pessoa",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Marketing",
+          "text": "Frete no Google Shopping: novo campo \"E-mail Google de quem administra o Merchant Center\". O Google só aceita o registro do CRM como desenvolvedor com o e-mail de uma pessoa (não com a conta de serviço)."
+        },
+        {
+          "type": "correcao",
+          "area": "Marketing",
+          "text": "Frete no Google Shopping: ao salvar com prazo ou produtos por noite fora do limite, a mensagem diz qual campo corrigir (antes aparecia só \"algum campo está inválido\")."
+        }
+      ]
+    },
+    {
       "version": "2.0.46",
       "date": "2026-11-09",
       "title": "Correção no frete do Google Shopping",
