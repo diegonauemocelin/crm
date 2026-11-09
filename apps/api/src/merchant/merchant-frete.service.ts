@@ -43,6 +43,9 @@ interface McProduct {
  * carrinho) para os CEPs de cada estado e enviado numa fonte suplementar, por estado. A Magazord continua mandando
  * os produtos; o CRM só acrescenta o frete. Uma rodada por noite, alguns produtos por vez.
  */
+/** Projeto do Google Cloud ainda não registrado na conta do Merchant Center (exigência da Merchant API). */
+const NOT_REGISTERED = /not registered with the merchant account|register_as_a_developer/i
+
 @Injectable()
 export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger('MerchantFrete')
@@ -114,6 +117,7 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
         `A Merchant API está desligada no projeto do Google Cloud da conta de serviço. Abra https://console.cloud.google.com/apis/library/merchantapi.googleapis.com${project ? `?project=${project}` : ''}, clique em Ativar, espere uns 5 minutos e tente de novo.`,
       )
     }
+    if (r.status === 403 && NOT_REGISTERED.test(msg)) throw new Error('O projeto do Google Cloud da conta de serviço ainda não está registrado nesta conta do Merchant Center. Clique em Preparar a conta: o CRM faz o registro.')
     if (r.status === 401 || r.status === 403) {
       const ga = await this.settings.get<Ga4Settings>(tenantId, 'ga4', DEFAULT_GA4)
       throw new Error(`Sem acesso ao Merchant Center: em Configurações › Pessoas e acesso, adicione ${ga.clientEmail} como Administrador. (${r.body?.error?.message ?? r.status})`)
@@ -160,12 +164,33 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
    * Prepara a conta: confere o acesso, cria as regiões (estados pelas faixas de CEP), a fonte suplementar "CRM - Frete
    * por estado" e a liga às fontes principais (a da Magazord), sem tirar nada do que já estava nelas.
    */
+  /**
+   * A Merchant API exige registrar uma vez o projeto do Google Cloud (o da conta de serviço) na conta do Merchant
+   * Center. Só registra quando o Google diz que falta; a conta de serviço precisa ser Administrador lá.
+   */
+  private async registerProject(tenantId: string, acc: string) {
+    const probe = await this.api<{ error?: { message?: string } }>(tenantId, 'GET', `/accounts/v1/${acc}`)
+    if (!(probe.status === 403 && NOT_REGISTERED.test(probe.body?.error?.message ?? ''))) return
+    const ga = await this.settings.get<Ga4Settings>(tenantId, 'ga4', DEFAULT_GA4)
+    const r = await this.api<{ error?: { message?: string } }>(tenantId, 'POST', `/accounts/v1/${acc}/developerRegistration:registerGcp`, { developerEmail: ga.clientEmail })
+    if (r.status >= 200 && r.status < 300) {
+      this.logger.log(`Merchant Center ${acc}: projeto do Google Cloud registrado`)
+      return
+    }
+    const msg = r.body?.error?.message ?? String(r.status)
+    if (/already/i.test(msg)) return
+    if (r.status === 401 || r.status === 403)
+      throw new Error(`Não deu para registrar o projeto do Google Cloud no Merchant Center: em Configurações › Pessoas e acesso, adicione ${ga.clientEmail} como Administrador e clique de novo em Preparar a conta. (${msg.slice(0, 200)})`)
+    throw new Error(`Merchant Center recusou o registro do projeto: ${msg.slice(0, 300)}`)
+  }
+
   async prepare(user: AuthUser, ctx: RequestCtx) {
     this.assertCan(user, 'edit')
     const cfg = await this.config(user.tenantId)
     if (!cfg.merchantId) throw new BadRequestException('Informe e salve o número da conta do Merchant Center.')
     const acc = `accounts/${cfg.merchantId}`
     try {
+      await this.registerProject(user.tenantId, acc)
       await this.must(user.tenantId, 'GET', `/accounts/v1/${acc}`)
       for (const uf of UFS) {
         const id = regionId(uf)
