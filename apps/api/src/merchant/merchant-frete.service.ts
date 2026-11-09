@@ -46,9 +46,16 @@ interface McProduct {
 /** Projeto do Google Cloud ainda não registrado na conta do Merchant Center (exigência da Merchant API). */
 const NOT_REGISTERED = /not registered with the merchant account|register_as_a_developer/i
 
+/** Intervalo mínimo entre chamadas à Merchant API (as regiões têm limite baixo de pedidos por minuto). */
+const MIN_GAP_MS = 1_100
+
 @Injectable()
 export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger('MerchantFrete')
+  /** Última chamada à Merchant API (para espaçar os pedidos). */
+  private lastCall = 0
+  /** Empresas com o Preparar a conta rodando. */
+  private readonly preparing = new Set<string>()
   private timer: NodeJS.Timeout | null = null
   private readonly running = new Set<string>()
   private token: { value: string; until: number; tenantId: string } | null = null
@@ -95,15 +102,33 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
     return tok.access_token
   }
 
+  /**
+   * Chamada à Merchant API. O Google limita os pedidos por minuto (429): espera o tempo pedido (Retry-After) ou 5, 10,
+   * 20, 40 e 60 s e tenta de novo; também espera um pouco entre uma chamada e outra para não estourar o limite.
+   */
   private async api<T>(tenantId: string, method: string, path: string, body?: unknown): Promise<{ status: number; body: T | null }> {
-    const token = await this.accessToken(tenantId)
-    const res = await fetch(`${MERCHANT_API}${path}`, {
-      method,
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(30_000),
-    })
-    return { status: res.status, body: (await res.json().catch(() => null)) as T | null }
+    const waits = [5_000, 10_000, 20_000, 40_000, 60_000]
+    for (let attempt = 0; ; attempt++) {
+      const gap = this.lastCall + MIN_GAP_MS - Date.now()
+      if (gap > 0) await new Promise((r) => setTimeout(r, gap))
+      this.lastCall = Date.now()
+      const token = await this.accessToken(tenantId)
+      const res = await fetch(`${MERCHANT_API}${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(30_000),
+      })
+      if ((res.status === 429 || res.status === 503) && attempt < waits.length) {
+        const after = Number(res.headers.get('retry-after'))
+        const wait = Number.isFinite(after) && after > 0 ? Math.min(after * 1000, 120_000) : waits[attempt]!
+        this.logger.warn(`Merchant API ${res.status} em ${method} ${path.split('?')[0]}: nova tentativa em ${Math.round(wait / 1000)} s`)
+        await res.body?.cancel().catch(() => undefined)
+        await new Promise((r) => setTimeout(r, wait))
+        continue
+      }
+      return { status: res.status, body: (await res.json().catch(() => null)) as T | null }
+    }
   }
 
   private async must<T>(tenantId: string, method: string, path: string, body?: unknown): Promise<T> {
@@ -141,6 +166,7 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
       config: cfg,
       serviceAccount: ga.clientEmail || null,
       running: this.running.has(user.tenantId),
+      preparing: this.preparing.has(user.tenantId),
       totals: { products: c?._all ?? 0, withSku: c?.sku ?? 0, sent: c?.sentAt ?? 0, errors: c?.error ?? 0 },
       recent: recent.map((r) => {
         const q = (Array.isArray(r.quotes) ? r.quotes : []) as unknown as UfQuote[]
@@ -187,10 +213,25 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
     throw new Error(`Merchant Center recusou o registro do projeto: ${msg.slice(0, 300)}`)
   }
 
+  /**
+   * Preparar a conta roda em segundo plano: são umas 60 chamadas ao Google, espaçadas por causa do limite por minuto,
+   * e pode levar alguns minutos. A tela acompanha pela situação (preparing) e mostra o erro, se houver.
+   */
   async prepare(user: AuthUser, ctx: RequestCtx) {
     this.assertCan(user, 'edit')
     const cfg = await this.config(user.tenantId)
     if (!cfg.merchantId) throw new BadRequestException('Informe e salve o número da conta do Merchant Center.')
+    if (this.preparing.has(user.tenantId)) return { started: false }
+    this.preparing.add(user.tenantId)
+    await this.settings.set(user.tenantId, MERCHANT_KEY, { ...cfg, lastError: null })
+    void this.doPrepare(user, ctx)
+      .catch(() => undefined)
+      .finally(() => this.preparing.delete(user.tenantId))
+    return { started: true }
+  }
+
+  private async doPrepare(user: AuthUser, ctx: RequestCtx) {
+    const cfg = await this.config(user.tenantId)
     const acc = `accounts/${cfg.merchantId}`
     try {
       await this.registerProject(user.tenantId, acc)
@@ -225,7 +266,7 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
       return { ok: true, regions: UFS.length, dataSource: supp.name, primaries: linked }
     } catch (e) {
       const msg = (e as Error).message.slice(0, 400)
-      await this.settings.set(user.tenantId, MERCHANT_KEY, { ...cfg, lastError: msg })
+      await this.settings.set(user.tenantId, MERCHANT_KEY, { ...(await this.config(user.tenantId)), lastError: msg })
       throw new BadRequestException(msg)
     }
   }

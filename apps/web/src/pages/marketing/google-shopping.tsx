@@ -32,6 +32,7 @@ interface View {
   config: Config
   serviceAccount: string | null
   running: boolean
+  preparing?: boolean
   totals: { products: number; withSku: number; sent: number; errors: number }
   recent: { offerId: string; title: string | null; sku: string | null; states: number; min: number | null; max: number | null; sentAt: string | null; error: string | null }[]
 }
@@ -62,7 +63,7 @@ function GoogleShopping() {
   const qc = useQueryClient()
   const { can } = useAuth()
   const edit = can('mi_config', 'edit')
-  const q = useQuery({ queryKey: KEY, queryFn: () => api.get<View>('/marketing/google-shopping/frete'), refetchInterval: (s) => (s.state.data?.running ? 15_000 : false) })
+  const q = useQuery({ queryKey: KEY, queryFn: () => api.get<View>('/marketing/google-shopping/frete'), refetchInterval: (s) => (s.state.data?.running || s.state.data?.preparing ? 5_000 : false) })
   const [form, setForm] = useState<(Config & { cepsText: string }) | null>(null)
   useEffect(() => {
     if (q.data && !form) setForm({ ...q.data.config, cepsText: cepsText(q.data.config.ceps) })
@@ -77,9 +78,9 @@ function GoogleShopping() {
     onError: (e) => toast.error(errorMessage(e)),
   })
   const prepare = useMutation({
-    mutationFn: () => api.post<{ regions: number; primaries: number }>('/marketing/google-shopping/frete/preparar'),
+    mutationFn: () => api.post<{ started: boolean }>('/marketing/google-shopping/frete/preparar'),
     onSuccess: (r) => {
-      toast.success(`Conta preparada: ${r.regions} estados e a fonte de frete ligada a ${r.primaries} fonte(s) de produtos.`)
+      toast.info(r.started ? 'Preparando a conta no Google: leva alguns minutos (o Google limita os pedidos por minuto). Pode sair desta tela.' : 'A conta já está sendo preparada.')
       void qc.invalidateQueries({ queryKey: KEY })
     },
     onError: (e) => {
@@ -186,7 +187,12 @@ function GoogleShopping() {
               </li>
             </ul>
             {v.config.lastRunAt && <p className="text-xs text-muted-foreground">Última rodada: {formatDateTime(v.config.lastRunAt)}</p>}
-            {v.config.lastError && <p className="text-xs text-destructive">{v.config.lastError}</p>}
+            {v.config.lastError && !v.preparing && <p className="text-xs text-destructive">{v.config.lastError}</p>}
+            {v.preparing && (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2Icon className="size-3.5 animate-spin" aria-hidden /> Preparando a conta no Google (alguns minutos)…
+              </p>
+            )}
             {v.running && (
               <p className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2Icon className="size-3.5 animate-spin" aria-hidden /> Atualizando…
@@ -195,8 +201,8 @@ function GoogleShopping() {
           </CardContent>
           {edit && (
             <CardFooter className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => prepare.mutate()} disabled={prepare.isPending || !v.config.merchantId}>
-                {prepare.isPending ? <Loader2Icon className="animate-spin" /> : <SettingsIcon />} Preparar a conta
+              <Button variant="outline" onClick={() => prepare.mutate()} disabled={prepare.isPending || !!v.preparing || !v.config.merchantId}>
+                {prepare.isPending || v.preparing ? <Loader2Icon className="animate-spin" /> : <SettingsIcon />} Preparar a conta
               </Button>
               <Button onClick={() => run.mutate()} disabled={run.isPending || v.running || !v.config.dataSource}>
                 {run.isPending ? <Loader2Icon className="animate-spin" /> : <PlayIcon />} Atualizar agora
