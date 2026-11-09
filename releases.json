@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.45",
+      "date": "2026-11-09",
+      "title": "Fotos de perfil no chat, abrir conversa pela menção e imagens que abrem na mesma tela",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "WhatsApp",
+          "text": "Fotos de perfil dos contatos e dos grupos na lista de conversas, no cabeçalho, no painel do cliente e no app do celular (quem não tem foto continua com as iniciais). As fotos vão chegando aos poucos."
+        },
+        {
+          "type": "novo",
+          "area": "WhatsApp",
+          "text": "Grupos: clicar numa menção (@pessoa) abre a conversa particular com ela pelo mesmo número do grupo. Quando o WhatsApp esconde o número da pessoa, o sistema avisa em vez de mostrar um código como se fosse telefone."
+        },
+        {
+          "type": "melhoria",
+          "area": "WhatsApp",
+          "text": "Imagem enviada como arquivo aparece em miniatura e abre na mesma tela, como as fotos (antes abria outra aba)."
+        }
+      ]
+    },
+    {
       "version": "2.0.44",
       "date": "2026-11-09",
       "title": "Web Push, SEO Marketplace, brindes por filial e definir senha pelo administrador",
