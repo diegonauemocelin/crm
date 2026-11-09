@@ -108,28 +108,7 @@ export function friendlyMessage(status: number, message: string | undefined) {
   return STATUS_MESSAGE[status] ?? (status >= 500 ? 'Erro inesperado no servidor. Tente de novo; se continuar, avise o TI.' : 'Não foi possível concluir. Tente de novo.')
 }
 
-/**
- * Painel aberto pelo link da TV (sem login): os pedidos de leitura vão para as rotas públicas do link
- * (ex.: /marketing/analise → /marketing/tv/<código>/analise) e não tentam renovar sessão.
- */
-let apiRewrite: ((path: string) => string | null) | null = null
-export function setApiRewrite(fn: ((path: string) => string | null) | null) {
-  apiRewrite = fn
-}
-
-/** Chave do painel da TV liberado pela senha: vai em todos os pedidos (X-TV-Key). */
-let tvKey: string | null = null
-export function setTvKey(key: string | null) {
-  tvKey = key
-}
-
-async function request<T>(method: string, path: string, body?: Body, retry = true, direct = false): Promise<T> {
-  if (apiRewrite && !direct) {
-    const p = method === 'GET' ? apiRewrite(path) : null
-    if (!p) throw new ApiError(path.startsWith('/auth/') ? 401 : 403, 'Painel da TV: só leitura.')
-    path = p
-    retry = false
-  }
+async function request<T>(method: string, path: string, body?: Body, retry = true): Promise<T> {
   if (method !== 'GET') await ensureCsrf()
   const isForm = body instanceof FormData
   let res: Response
@@ -140,7 +119,6 @@ async function request<T>(method: string, path: string, body?: Body, retry = tru
       headers: {
         ...(method !== 'GET' ? { 'X-CSRF-Token': csrfToken() } : {}),
         ...(body && !isForm ? { 'Content-Type': 'application/json' } : {}),
-        ...(tvKey ? { 'X-TV-Key': tvKey } : {}),
         ...appHeader(),
       },
       body: isForm ? body : body ? JSON.stringify(body) : undefined,
@@ -149,7 +127,7 @@ async function request<T>(method: string, path: string, body?: Body, retry = tru
     throw new ApiError(503, UNAVAILABLE_MESSAGE)
   }
 
-  if (res.status === 401 && retry && !direct && !path.startsWith('/auth/') && !apiRewrite) {
+  if (res.status === 401 && retry && !path.startsWith('/auth/')) {
     const r = await refreshSession()
     if (r === 'ok') return request<T>(method, path, body, false)
     if (r === 'unavailable') throw new ApiError(503, UNAVAILABLE_MESSAGE)
@@ -229,8 +207,6 @@ export const api = {
   patch: <T>(path: string, body?: Body) => request<T>('PATCH', path, body),
   delete: <T>(path: string) => request<T>('DELETE', path),
   download,
-  /** Sem o desvio do painel da TV e sem renovar sessão (rotas públicas do link da TV). */
-  direct: { get: <T>(path: string) => request<T>('GET', path, undefined, false, true), post: <T>(path: string, body?: Body) => request<T>('POST', path, body, false, true) },
 }
 
 export function errorMessage(err: unknown): string {

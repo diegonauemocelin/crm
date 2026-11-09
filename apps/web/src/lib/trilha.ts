@@ -1034,7 +1034,7 @@ export const TRAIL: TrailModule[] = [
     key: 'marketing',
     title: 'Marketing Inteligente',
     module: 'mi_executivo',
-    routes: ['/marketing'],
+    routes: ['/marketing', '/tv/executivo'],
     purpose: 'Investimento, leads, atendimento, vendas e retorno de todos os canais num lugar só, para decidir com números.',
     howItWorks:
       'O módulo lê o Pré-Vendas (fonte da verdade: leads, atendimento, vendas e o valor da venda) e o investimento das plataformas (hoje o Google Ads, pelo script). Um lead conta uma vez, mesmo com vários atendimentos; conversões das plataformas não são somadas às vendas do CRM. Cada tela tem os mesmos filtros (período, plataforma, campanha, marca, tipo de peça, estado, região, filial, vendedor, origem, tipo de cliente e cliente novo/recorrente) e compara com o período anterior do mesmo tamanho. Cada parte do menu só aparece para quem tem a permissão no perfil.',

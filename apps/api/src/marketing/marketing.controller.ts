@@ -16,7 +16,6 @@ import { MarketingPlatformsService } from './plataformas.service'
 import { MarketingSyncService } from './sync.service'
 import { MarketingService } from './marketing.service'
 import { MarketingReportsService } from './relatorios.service'
-import { TvService, tvUser } from '../tv/tv.service'
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -109,7 +108,6 @@ export class MarketingController {
     private readonly management: MarketingManagementService,
     private readonly sync: MarketingSyncService,
     private readonly instagramSvc: MarketingInstagramService,
-    private readonly tv: TvService,
   ) {}
 
   /** Módulos do Marketing Inteligente que podem usar os dados de análise (cada tela pede o seu). */
@@ -139,39 +137,6 @@ export class MarketingController {
   analysis(@CurrentUser() user: AuthUser, @Query() q: AnalysisDto) {
     this.assertAny(user, MarketingController.ANALYSIS_MODULES)
     return this.mkt.analysis(user, { from: q.de, to: q.ate, visao: q.visao, filters: filtersOf(q) })
-  }
-
-  // Dashboard executivo aberto pelo link da TV (sem login, só leitura): os mesmos dados, da empresa inteira.
-  @Public()
-  @Get('tv/:token/opcoes')
-  @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  async tvOptions(@Param('token') token: string, @Headers('x-tv-key') key: string | undefined) {
-    const link = await this.tv.resolve(token, 'EXECUTIVO', key)
-    return this.mkt.options(tvUser(link.tenantId))
-  }
-
-  @Public()
-  @Get('tv/:token/analise')
-  @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  async tvAnalysis(@Param('token') token: string, @Headers('x-tv-key') key: string | undefined, @Query() q: AnalysisDto) {
-    const link = await this.tv.resolve(token, 'EXECUTIVO', key)
-    return this.mkt.analysis(tvUser(link.tenantId), { from: q.de, to: q.ate, visao: q.visao, filters: filtersOf(q) })
-  }
-
-  @Public()
-  @Get('tv/:token/mapa')
-  @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  async tvMap(@Param('token') token: string, @Headers('x-tv-key') key: string | undefined, @Query() q: MapDto) {
-    const link = await this.tv.resolve(token, 'EXECUTIVO', key)
-    return this.mkt.map(link.tenantId, { from: q.de, to: q.ate, origin: q.origem })
-  }
-
-  @Public()
-  @Get('tv/:token/comparativo')
-  @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  async tvComparison(@Param('token') token: string, @Headers('x-tv-key') key: string | undefined, @Query() q: MapDto) {
-    const link = await this.tv.resolve(token, 'EXECUTIVO', key)
-    return this.mkt.comparison(link.tenantId, { origin: q.origem })
   }
 
   @Get('ao-vivo')

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightIcon, BellRingIcon, CheckCircle2Icon, Loader2Icon, SparklesIcon, CircleAlertIcon, CirclePauseIcon, LightbulbIcon, XCircleIcon } from 'lucide-react'
+import { ArrowRightIcon, BellRingIcon, CheckCircle2Icon, Loader2Icon, SparklesIcon, CircleAlertIcon, CirclePauseIcon, LightbulbIcon, MonitorIcon, XCircleIcon } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link } from 'react-router'
 import { ComparativoMensal } from '@/components/marketing/comparativo-mensal'
 import { MapaVendas } from '@/components/marketing/mapa-vendas'
 import { BreakdownTable, COLS, COMMERCIAL_COLS, CrmOnlyNotice, ExportButtons, FunnelView, Kpi, MEDIA_COLS, MktFilters, TrendChart, UpdatedLine } from '@/components/marketing/ui'
@@ -12,9 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { TvGate } from '@/components/tv-gate'
-import { TvLinksButton } from '@/components/tv-links'
-import { api, errorMessage, setApiRewrite } from '@/lib/api'
+import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { type Analysis, type BreakdownRow, downloadCsv, hours, money, moneyShort, num, pct, type Recommendation, times, useAnalysis, useMktFilters } from '@/lib/marketing'
 import { cn } from '@/lib/utils'
@@ -140,15 +138,17 @@ function RecentAlerts() {
 // ---------- 2. Dashboard executivo ----------
 
 export function ExecutivoPage() {
-  const { can } = useAuth()
-  const tv = can('mi_executivo', 'edit') || can('mi_executivo', 'export')
   return (
     <RequirePermission module="mi_executivo">
       <Screen title="Dashboard executivo" description="Investimento, leads, vendas e retorno de todos os canais, com comparação ao período anterior.">
         {(d) => (
           <>
             <div className="flex flex-wrap justify-end gap-2">
-              {tv && <TvLinksButton kind="EXECUTIVO" />}
+              <Button variant="outline" asChild>
+                <Link to="/tv/executivo" target="_blank" rel="noopener">
+                  <MonitorIcon aria-hidden /> Modo TV
+                </Link>
+              </Button>
               <ExportButtons sections={['kpis', 'plataformas', 'campanhas', 'funil', 'vendedores', 'regioes', 'marcas', 'categorias', 'origens', 'recomendacoes']} />
             </div>
             <Executivo d={d} />
@@ -159,35 +159,19 @@ export function ExecutivoPage() {
   )
 }
 
-const TV_PATHS = /^\/marketing\/(analise|opcoes|mapa|comparativo)(\?.*)?$/
-
 /**
- * Dashboard executivo aberto pelo link da TV (/tv/executivo/:token), sem login: os pedidos de leitura vão para as
- * rotas do link. Na TV vira uma apresentação: cada parte do painel ocupa a tela inteira (reduzida para caber, sem
- * rolar) e elas se alternam sozinhas. Os dados são recarregados de hora em hora.
+ * Dashboard executivo na TV (/tv/executivo, com login): vira uma apresentação, cada parte do painel ocupa a tela
+ * inteira (reduzida para caber, sem rolar) e elas se alternam sozinhas. Os dados são recarregados de hora em hora.
  */
-export function ExecutivoTvPublicPage() {
-  const { token = '' } = useParams()
+export function ExecutivoTvPage() {
   return (
-    <TvGate token={token}>
-      <ExecutivoTv token={token} />
-    </TvGate>
+    <RequirePermission module="mi_executivo">
+      <ExecutivoTv />
+    </RequirePermission>
   )
 }
 
-function ExecutivoTv({ token }: { token: string }) {
-  // Antes de a tela pedir os dados (no primeiro desenho), para nenhum pedido sair pela rota com login.
-  const rewrite = (p: string) => {
-    const m = TV_PATHS.exec(p)
-    return m ? `/marketing/tv/${encodeURIComponent(token)}/${m[1]}${m[2] ?? ''}` : null
-  }
-  useState(() => setApiRewrite(rewrite))
-  // Também no efeito: no modo de desenvolvimento o React desmonta e monta de novo, e a limpeza apagaria o desvio.
-  useEffect(() => {
-    setApiRewrite(rewrite)
-    return () => setApiRewrite(null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token])
+function ExecutivoTv() {
   const qc = useQueryClient()
   useEffect(() => {
     const t = setInterval(() => void qc.invalidateQueries({ predicate: (q) => /^(mkt-|marketing-)/.test(String(q.queryKey[0])) }), TV_REFRESH)

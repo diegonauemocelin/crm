@@ -1,14 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { MaximizeIcon, TruckIcon } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link } from 'react-router'
 import { FilialSwitch } from '@/components/fretes/filial-switch'
 import { ErrorState, RequirePermission } from '@/components/page'
-import { TvGate } from '@/components/tv-gate'
-import { TvLinksButton } from '@/components/tv-links'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
-import { useAuth } from '@/lib/auth'
 import { board, type BoardItem, type PickupRow, span } from '@/lib/coletas'
 import { ALL_UNITS, useActiveUnit } from '@/lib/fretes'
 import { cn } from '@/lib/utils'
@@ -40,7 +37,6 @@ const REFRESH = 30_000
 
 function Tv() {
   const active = useActiveUnit()
-  const { can } = useAuth()
   const unit = active.value && active.value !== ALL_UNITS ? active.value : null
   const q = useQuery({
     queryKey: ['fretes', 'painel-tv', unit],
@@ -50,33 +46,7 @@ function Tv() {
   return (
     <Board q={q} linkHint>
       <FilialSwitch active={active} />
-      {can('fretes_painel', 'edit') && <TvLinksButton kind="COLETAS" variant="secondary" units={active.ctx.data?.units.filter((u) => u.active)} />}
     </Board>
-  )
-}
-
-/** Painel aberto pelo link da TV (/tv/coletas/:token), sem login. */
-export function FretesTvPublicPage() {
-  const { token = '' } = useParams()
-  return (
-    <TvGate token={token}>
-      <ColetasTv token={token} />
-    </TvGate>
-  )
-}
-
-function ColetasTv({ token }: { token: string }) {
-  const q = useQuery({
-    queryKey: ['fretes', 'tv-publico', token],
-    queryFn: () => api.get<PanelData>(`/fretes/tv/${encodeURIComponent(token)}`),
-    refetchInterval: REFRESH,
-    refetchIntervalInBackground: true,
-    retry: (n, err) => (err as { status?: number }).status !== 404 && n < 3,
-  })
-  return (
-    <div className="min-h-dvh bg-[#0d1117] p-4 md:p-6">
-      <Board q={q} />
-    </div>
   )
 }
 
