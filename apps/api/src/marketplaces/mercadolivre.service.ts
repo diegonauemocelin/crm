@@ -256,6 +256,36 @@ export class MercadoLivreService implements OnApplicationBootstrap, OnModuleDest
     throw new MlError('O Mercado Livre recusou o acesso. Reconecte a conta.', 401, true)
   }
 
+  /**
+   * Grava no anúncio (PUT ou POST; ex.: descrição e título no SEO Marketplace). Sem repetir em erro de servidor: a
+   * alteração pode ter sido gravada. A mensagem de recusa traz os motivos ("cause") que o Mercado Livre mandar.
+   */
+  async apiWrite<T>(tenantId: string, method: 'PUT' | 'POST', path: string, body: unknown, params: Record<string, string | number> = {}): Promise<T> {
+    const url = new URL(ML_API + path)
+    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v))
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const token = await this.accessToken(tenantId)
+      const res = await this.fetcher(url, {
+        method,
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30_000),
+        redirect: 'error',
+      })
+      if (res.ok) return (await res.json().catch(() => ({}))) as T
+      if (res.status === 401 && attempt === 0) {
+        await this.patch(tenantId, { tokenExpiresAt: new Date(0).toISOString() })
+        continue
+      }
+      const b = (await res.json().catch(() => ({}))) as { message?: string; error?: string; cause?: { message?: string }[] | string }
+      const causes = Array.isArray(b.cause) ? b.cause.map((c) => c?.message).filter(Boolean).join('; ') : ''
+      const msg = [b.message ?? b.error ?? res.statusText, causes].filter(Boolean).join(' — ')
+      if (res.status === 403) throw new MlError(`O Mercado Livre não deixou alterar o anúncio (${msg}). Confira se o aplicativo tem permissão de escrita em Publicação e venda e reconecte.`, 403)
+      throw new MlError(`O Mercado Livre respondeu ${res.status}: ${msg}`, res.status)
+    }
+    throw new MlError('O Mercado Livre recusou o acesso. Reconecte a conta.', 401, true)
+  }
+
   async listAdvertisers(tenantId: string, product: 'PADS' | 'DISPLAY' = 'PADS', counter?: { calls: number }) {
     const r = await this.apiGet<{ advertisers?: { advertiser_id: number; site_id: string; advertiser_name: string; account_name: string }[] }>(tenantId, '/advertising/advertisers', { product_id: product }, '1', counter)
     return (r.advertisers ?? []).map((a) => ({ advertiserId: String(a.advertiser_id), siteId: a.site_id, name: a.advertiser_name, account: a.account_name }))

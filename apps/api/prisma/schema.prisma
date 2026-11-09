@@ -2519,6 +2519,39 @@ model SeoChange {
   @@map("seo_changes")
 }
 
+/// SEO Marketplace: alterações de descrição (e título) de anúncios do Mercado Livre sugeridas pela IA ou escritas à mão,
+/// revisadas e enviadas. Guarda o texto anterior para desfazer.
+model MlSeoChange {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  /// Anúncio do Mercado Livre (MLB...).
+  itemId        String
+  /// Título do anúncio na hora da sugestão (para as listas).
+  itemTitle     String?
+  /// Textos antes da alteração (título e descrição), para desfazer.
+  before        Json
+  /// Textos propostos.
+  proposed      Json
+  /// Campos escolhidos para enviar (description, title).
+  sendFields    String[]  @default([])
+  /// SUGERIDA, ENVIADA, ERRO, DESCARTADA ou DESFEITA.
+  status        String    @default("SUGERIDA")
+  /// ia ou manual.
+  source        String    @default("ia")
+  error         String?
+  createdById   String?   @db.Uuid
+  createdByName String?
+  sentByName    String?
+  sentAt        DateTime?
+  undoneAt      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, itemId])
+  @@map("ml_seo_changes")
+}
+
 /// Figurinhas salvas por cada atendente (recebidas no chat ou enviadas do computador), para mandar nas conversas.
 model WhatsappSticker {
   id        String   @id @default(uuid()) @db.Uuid

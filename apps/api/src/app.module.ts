@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module'
 import { CapturaModule } from './captura/captura.module'
 import { LandingModule } from './landing/landing.module'
 import { SeoModule } from './seo/seo.module'
+import { SeoMarketplaceModule } from './seo-marketplace/seo-marketplace.module'
 import { PostagensModule } from './postagens/postagens.module'
 import { CsrfMiddleware } from './common/csrf.middleware'
 import { EmailModule } from './email/email.module'
@@ -71,6 +72,7 @@ import { UsersService } from './users/users.service'
     CapturaModule,
     LandingModule,
     SeoModule,
+    SeoMarketplaceModule,
     PostagensModule,
     EmailModule,
     AutomacoesModule,

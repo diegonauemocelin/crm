@@ -166,6 +166,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Visão geral', to: '/marketplaces', icon: StoreIcon, module: 'marketplaces' },
       { title: 'Mercado Livre Ads', to: '/marketplaces/mercado-livre', icon: ShoppingBagIcon, module: 'marketplaces' },
       { title: 'Concorrentes', to: '/marketplaces/concorrentes', icon: SwordsIcon, module: 'marketplaces' },
+      { title: 'SEO Marketplace', to: '/marketplaces/seo', icon: SearchCheckIcon, module: 'seo_marketplace' },
       { title: 'Assistente ML', to: '/marketplaces/assistente', icon: BotIcon, module: 'assist_atendimento' },
       { title: 'Perguntas pendentes', to: '/marketplaces/assistente/pendentes', icon: MessageCircleQuestionIcon, module: 'assist_atendimento' },
       { title: 'Perguntas e respostas', to: '/marketplaces/assistente/perguntas', icon: MessagesSquareIcon, module: 'assist_atendimento' },

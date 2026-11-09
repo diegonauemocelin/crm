@@ -1220,6 +1220,37 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'seo-marketplace',
+    title: 'SEO Marketplace (Mercado Livre)',
+    module: 'seo_marketplace',
+    routes: ['/marketplaces/seo'],
+    purpose: 'Melhorar a descrição (e o título, quando dá) dos anúncios do Mercado Livre para vender mais e aparecer melhor na busca.',
+    howItWorks:
+      'O CRM usa os anúncios da conta conectada (os mesmos que o Assistente ML sincroniza), dá uma nota para cada um e aponta o que falta: descrição curta ou sem seções, sem aplicação ou sem o código, título acima de 60 caracteres, atributos vazios e contato proibido (telefone, e-mail, link). A IA sugere uma descrição nova só com os dados do anúncio; nada vai para o Mercado Livre sem você revisar e clicar em Enviar. Cada envio guarda o texto anterior para desfazer. Preço e estoque nunca mudam.',
+    lessons: [
+      {
+        id: 'seoml.anuncio',
+        title: 'Melhorar a descrição de um anúncio',
+        steps: [
+          'Abra Marketplaces → SEO Marketplace e filtre pelas notas mais baixas ou por um problema.',
+          'Abra o anúncio: o CRM lê o título e a descrição atuais direto no Mercado Livre.',
+          'Clique em Sugerir com IA (se quiser, escreva um pedido) e confira o texto. Onde faltar dado, a IA pede para o cliente consultar pelo campo de perguntas.',
+          'Marque o que vai (descrição e, se o anúncio ainda não tem vendas, o título) e clique em Enviar para o Mercado Livre.',
+        ],
+        tip: 'O Mercado Livre não aceita telefone, e-mail nem link na descrição, e só deixa mudar o título de anúncio sem vendas (até 60 caracteres).',
+      },
+      {
+        id: 'seoml.lote',
+        title: 'Melhorar em lote e desfazer',
+        steps: [
+          'Na aba Anúncios, selecione até 50 e clique em Gerar sugestões com IA.',
+          'Na aba Para revisar, abra cada sugestão, ajuste e envie (ou marque várias e envie juntas).',
+          'Na aba Enviadas, veja o histórico e use Desfazer para voltar o texto anterior.',
+        ],
+      },
+    ],
+  },
+  {
     key: 'assistente-ml',
     title: 'Assistente das perguntas do Mercado Livre',
     module: 'assist_atendimento',
