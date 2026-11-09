@@ -31,6 +31,7 @@ export function UsersContent() {
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all')
   const [editing, setEditing] = useState<UserRow | 'new' | null>(null)
   const [devicesOf, setDevicesOf] = useState<UserRow | null>(null)
+  const [passwordOf, setPasswordOf] = useState<UserRow | null>(null)
   const confirm = useConfirm()
 
   useEffect(() => {
@@ -171,6 +172,11 @@ export function UsersContent() {
                           >
                             <MailIcon /> Enviar link de senha
                           </DropdownMenuItem>
+                          {me?.role.isSystem && (
+                            <DropdownMenuItem onSelect={() => setPasswordOf(u)}>
+                              <KeyRoundIcon /> Definir senha
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem onSelect={() => setDevicesOf(u)}>
                             <MonitorSmartphoneIcon /> Aparelhos conectados
                           </DropdownMenuItem>
@@ -243,11 +249,62 @@ export function UsersContent() {
       {editing && <UserDialog user={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
 
       {devicesOf && <DevicesDialog user={devicesOf} onClose={() => setDevicesOf(null)} />}
+      {passwordOf && <SetPasswordDialog user={passwordOf} onClose={() => setPasswordOf(null)} />}
     </>
   )
 }
 
 /** Aparelhos em que o usuário está conectado; o administrador pode desconectá-lo de todos (ex.: celular perdido). */
+/** Só o Administrador: define a senha de um usuário na hora, sem link por e-mail. */
+function SetPasswordDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
+  const [password, setPassword] = useState('')
+  const [mustChange, setMustChange] = useState(true)
+  const save = useMutation({
+    mutationFn: () => api.post(`/users/${user.id}/senha`, { password, mustChange }),
+    onSuccess: () => {
+      toast.success(mustChange ? `Senha definida. ${user.name} vai trocar no próximo acesso.` : 'Senha definida.')
+      onClose()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Definir senha de {user.name}</DialogTitle>
+          <DialogDescription>A senha vale na hora, sem e-mail. As sessões abertas de {user.name} são encerradas. Passe a senha por um canal seguro (não pelo chat de clientes).</DialogDescription>
+        </DialogHeader>
+        <form
+          className="space-y-4"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault()
+            save.mutate()
+          }}
+        >
+          <div className="space-y-1.5">
+            <Label htmlFor="sp-password" required>
+              Nova senha
+            </Label>
+            <Input id="sp-password" type="password" autoComplete="new-password" minLength={12} required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <p className="text-xs text-muted-foreground">Pelo menos 12 caracteres, sem o e-mail e fora da lista de senhas comuns.</p>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={mustChange} onCheckedChange={(v) => setMustChange(v === true)} /> Pedir para trocar a senha no próximo acesso
+          </label>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={save.isPending || password.length < 12}>
+              {save.isPending && <Loader2Icon className="animate-spin" />} Definir senha
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function DevicesDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
   const { can } = useAuth()
   const confirm = useConfirm()

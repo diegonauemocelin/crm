@@ -193,6 +193,26 @@ export class UsersService {
     return { ok: true, sessions: r.count }
   }
 
+  /**
+   * O Administrador define a senha de um usuário na hora, sem link por e-mail (ex.: e-mail que não chega). As sessões
+   * abertas desse usuário são encerradas; marcado, ele troca a senha no próximo acesso.
+   */
+  async setPassword(actor: AuthUser, id: string, password: string, mustChange: boolean, ctx: RequestCtx) {
+    if (!actor.role.isSystem) throw new ForbiddenException('Só um Administrador pode definir a senha de um usuário.')
+    const user = await this.prisma.user.findFirst({ where: { id, tenantId: actor.tenantId, deletedAt: null } })
+    if (!user) throw new NotFoundException('Usuário não encontrado.')
+    const problem = passwordProblems(password, user.email)
+    if (problem) throw new BadRequestException(problem)
+    await this.prisma.user.update({
+      where: { id },
+      data: { passwordHash: await hashPassword(password), passwordChangedAt: new Date(), mustChangePassword: mustChange && id !== actor.id, failedLogins: 0, lockedUntil: null },
+    })
+    await this.prisma.passwordResetToken.updateMany({ where: { userId: id, usedAt: null }, data: { usedAt: new Date() } })
+    if (id !== actor.id) await this.auth.revokeAllSessions(id)
+    await this.audit.byUser(actor, ctx, 'user.password_set_by_admin', 'user', id, { email: user.email, trocarNoProximoAcesso: mustChange })
+    return { ok: true }
+  }
+
   async sendReset(actor: AuthUser, id: string, ctx: RequestCtx) {
     const user = await this.prisma.user.findFirst({ where: { id, tenantId: actor.tenantId, deletedAt: null }, include: { role: true } })
     if (!user) throw new NotFoundException('Usuário não encontrado.')

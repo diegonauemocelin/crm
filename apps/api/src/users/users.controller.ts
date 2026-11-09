@@ -12,6 +12,11 @@ class ListUsersQuery {
   @IsOptional() @IsIn(['active', 'inactive']) status?: 'active' | 'inactive'
 }
 
+class SetPasswordDto {
+  @IsString() @Length(12, 200) password!: string
+  @IsOptional() @IsBoolean() mustChange?: boolean
+}
+
 class CreateUserDto {
   @ApiProperty() @IsString() @Length(2, 120) name!: string
   @ApiProperty() @IsEmail({}, { message: 'E-mail inválido.' }) @MaxLength(200) email!: string
@@ -101,6 +106,14 @@ export class UsersController {
   @RequirePermission('usuarios', 'edit')
   async revokeSessions(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
     return this.users.revokeSessions(user, id, ctx)
+  }
+
+  /** Só o Administrador: define a senha na hora, sem e-mail. */
+  @Post(':id/senha')
+  @HttpCode(200)
+  @RequirePermission('usuarios', 'edit')
+  setPassword(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetPasswordDto, @ReqContext() ctx: RequestCtx) {
+    return this.users.setPassword(user, id, dto.password, dto.mustChange !== false, ctx)
   }
 
   @Post(':id/send-password-link')

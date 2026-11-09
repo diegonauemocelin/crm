@@ -135,6 +135,10 @@ export class RolesService {
     if (role._count.users > 0) {
       throw new BadRequestException(`Há ${role._count.users} usuário(s) neste perfil. Mova-os para outro perfil ou desative o perfil.`)
     }
+    // Usuários já excluídos (exclusão lógica) ainda apontam para o perfil e impediam apagar (erro no servidor): passam
+    // para o perfil Administrador da empresa. Continuam excluídos e inativos: não entram nem aparecem nas listas.
+    const fallback = await this.prisma.role.findFirst({ where: { tenantId: actor.tenantId, isSystem: true }, select: { id: true } })
+    if (fallback) await this.prisma.user.updateMany({ where: { tenantId: actor.tenantId, roleId: id, deletedAt: { not: null } }, data: { roleId: fallback.id, active: false } })
     await this.prisma.role.delete({ where: { id } })
     await this.audit.byUser(actor, ctx, 'role.deleted', 'role', id, { name: role.name })
   }
