@@ -2,6 +2,58 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.44",
+      "date": "2026-11-09",
+      "title": "Web Push, SEO Marketplace, brindes por filial e definir senha pelo administrador",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Marketing",
+          "text": "Web Push: notificações no navegador para os visitantes da loja virtual, com envio na hora ou agendado, rascunhos e o resultado de cada envio (disparos, entregas e cliques). A coleta de inscrições começa depois de colocar o arquivo crm-push-sw.js na raiz do site (Marketing › Web Push › Gerenciar coleta). Os inscritos do RD Station não passam para o CRM."
+        },
+        {
+          "type": "novo",
+          "area": "Marketplaces",
+          "text": "SEO Marketplace: nota de cada anúncio do Mercado Livre, sugestão de descrição melhor com a IA (e do título, quando o anúncio ainda não teve vendas), revisão, envio para o Mercado Livre e desfazer. Preço e estoque nunca mudam."
+        },
+        {
+          "type": "novo",
+          "area": "Marketing",
+          "text": "Controle de brindes: as filiais (Unidades) têm cota mensal e retiradas próprias, sem vendedor."
+        },
+        {
+          "type": "novo",
+          "area": "Marketing",
+          "text": "Controle de brindes: aba Dashboard com o resumo do que foi entregue no período, por brinde, por vendedor ou filial e mês a mês."
+        },
+        {
+          "type": "novo",
+          "area": "Sistema",
+          "text": "Usuários: o Administrador pode definir a senha de uma pessoa na hora, sem mandar link por e-mail (com a opção de pedir a troca no próximo acesso)."
+        },
+        {
+          "type": "melhoria",
+          "area": "Sistema",
+          "text": "Meu perfil: opção de desligar os avisos do WhatsApp em pop-up (mensagem nova e cliente sem resposta); fica só o número no sino."
+        },
+        {
+          "type": "melhoria",
+          "area": "Marketing",
+          "text": "Saúde das fontes de dados com todas as integrações (WhatsApp, Mercado Livre Ads, Assistente ML, concorrentes, frete no Google Shopping, SEFAZ e postagens), separadas por área."
+        },
+        {
+          "type": "correcao",
+          "area": "Marketing",
+          "text": "Frete no Google Shopping: Preparar a conta faz sozinho o registro do projeto do Google Cloud no Merchant Center, exigido pelo Google; quando a Merchant API está desligada, o aviso diz como ativar."
+        },
+        {
+          "type": "correcao",
+          "area": "Sistema",
+          "text": "Excluir perfil de acesso que tinha usuários já excluídos dava erro no servidor."
+        }
+      ]
+    },
+    {
       "version": "2.0.43",
       "date": "2026-11-09",
       "title": "Frete no Google Shopping, segurança reforçada e WhatsApp que avisa quando não recebe",
