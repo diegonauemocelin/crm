@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Post, Put } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger'
-import { IsBoolean, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
+import { Allow, IsBoolean, IsObject, IsOptional, IsString, MaxLength } from 'class-validator'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import type { MerchantFreteConfig } from './frete-google'
@@ -10,9 +10,11 @@ class MerchantFreteDto {
   @IsOptional() @IsBoolean() enabled?: boolean
   @IsOptional() @IsString() @MaxLength(20) merchantId?: string
   @IsOptional() @IsString() @MaxLength(60) service?: string
-  @IsOptional() @IsInt() @Min(0) @Max(30) handlingMin?: number
-  @IsOptional() @IsInt() @Min(0) @Max(30) handlingMax?: number
-  @IsOptional() @IsInt() @Min(10) @Max(2000) batchSize?: number
+  @IsOptional() @IsString() @MaxLength(120) developerEmail?: string
+  /** Números conferidos em cleanConfig, que devolve a mensagem certa (o validador daria só "campo inválido"). */
+  @Allow() handlingMin?: number
+  @Allow() handlingMax?: number
+  @Allow() batchSize?: number
   /** CEPs por estado (UF → lista de CEPs); conferidos em cleanConfig. */
   @IsOptional() @IsObject() ceps?: Record<string, string[]>
 }

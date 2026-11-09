@@ -172,7 +172,10 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
     const probe = await this.api<{ error?: { message?: string } }>(tenantId, 'GET', `/accounts/v1/${acc}`)
     if (!(probe.status >= 400 && NOT_REGISTERED.test(probe.body?.error?.message ?? ''))) return
     const ga = await this.settings.get<Ga4Settings>(tenantId, 'ga4', DEFAULT_GA4)
-    const r = await this.api<{ error?: { message?: string } }>(tenantId, 'POST', `/accounts/v1/${acc}/developerRegistration:registerGcp`, { developerEmail: ga.clientEmail })
+    const developerEmail = (await this.config(tenantId)).developerEmail
+    if (!developerEmail)
+      throw new Error('O Google pede o registro do projeto com o e-mail de uma pessoa: preencha "E-mail Google de quem administra o Merchant Center" (precisa ser Administrador lá em Pessoas e acesso), salve e clique de novo em Preparar a conta.')
+    const r = await this.api<{ error?: { message?: string } }>(tenantId, 'POST', `/accounts/v1/${acc}/developerRegistration:registerGcp`, { developerEmail })
     if (r.status >= 200 && r.status < 300) {
       this.logger.log(`Merchant Center ${acc}: projeto do Google Cloud registrado`)
       return
@@ -180,7 +183,7 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
     const msg = r.body?.error?.message ?? String(r.status)
     if (/already/i.test(msg)) return
     if (r.status === 401 || r.status === 403)
-      throw new Error(`Não deu para registrar o projeto do Google Cloud no Merchant Center: em Configurações › Pessoas e acesso, adicione ${ga.clientEmail} como Administrador e clique de novo em Preparar a conta. (${msg.slice(0, 200)})`)
+      throw new Error(`Não deu para registrar o projeto do Google Cloud no Merchant Center: confira se ${ga.clientEmail} e ${developerEmail} estão como Administrador em Configurações › Pessoas e acesso e clique de novo em Preparar a conta. (${msg.slice(0, 200)})`)
     throw new Error(`Merchant Center recusou o registro do projeto: ${msg.slice(0, 300)}`)
   }
 

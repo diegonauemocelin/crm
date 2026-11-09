@@ -55,6 +55,8 @@ export interface MerchantFreteConfig {
   enabled: boolean
   /** Número da conta no Merchant Center. */
   merchantId: string
+  /** E-mail Google de uma PESSOA administradora do Merchant Center: o Google não aceita conta de serviço no registro do projeto. */
+  developerEmail: string
   /** Nome do serviço de entrega que aparece no Google (ex.: "Entrega"). */
   service: string
   /** Dias úteis para separar e postar o pedido (manuseio). */
@@ -74,6 +76,7 @@ export interface MerchantFreteConfig {
 export const DEFAULT_MERCHANT_FRETE: MerchantFreteConfig = {
   enabled: false,
   merchantId: '',
+  developerEmail: '',
   service: 'Entrega',
   handlingMin: 1,
   handlingMax: 2,
@@ -111,7 +114,10 @@ export function cleanConfig(input: Partial<MerchantFreteConfig>, cur: MerchantFr
     if (list.length) ceps[uf] = [...new Set(list)].slice(0, 5)
   }
   const service = String(input.service ?? cur.service).trim().slice(0, 60) || 'Entrega'
-  return { ...cur, enabled, merchantId, service, handlingMin, handlingMax, batchSize, ceps, dataSource: merchantId === cur.merchantId ? cur.dataSource : null, preparedAt: merchantId === cur.merchantId ? cur.preparedAt : null }
+  const developerEmail = String(input.developerEmail ?? cur.developerEmail ?? '').trim().toLowerCase().slice(0, 120)
+  if (developerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(developerEmail)) return { error: 'E-mail da pessoa administradora inválido.' }
+  if (developerEmail.endsWith('.gserviceaccount.com')) return { error: 'Use o e-mail Google de uma pessoa (não o da conta de serviço): o Google não aceita conta de serviço no registro.' }
+  return { ...cur, enabled, merchantId, developerEmail, service, handlingMin, handlingMax, batchSize, ceps, dataSource: merchantId === cur.merchantId ? cur.dataSource : null, preparedAt: merchantId === cur.merchantId ? cur.preparedAt : null }
 }
 
 export interface UfQuote {

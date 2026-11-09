@@ -17,6 +17,7 @@ import { money } from '@/lib/format'
 interface Config {
   enabled: boolean
   merchantId: string
+  developerEmail?: string
   service: string
   handlingMin: number
   handlingMax: number
@@ -67,7 +68,7 @@ function GoogleShopping() {
     if (q.data && !form) setForm({ ...q.data.config, cepsText: cepsText(q.data.config.ceps) })
   }, [q.data, form])
   const save = useMutation({
-    mutationFn: () => api.put<View>('/marketing/google-shopping/frete', { enabled: form!.enabled, merchantId: form!.merchantId, service: form!.service, handlingMin: Number(form!.handlingMin), handlingMax: Number(form!.handlingMax), batchSize: Number(form!.batchSize), ceps: parseCeps(form!.cepsText) }),
+    mutationFn: () => api.put<View>('/marketing/google-shopping/frete', { enabled: form!.enabled, merchantId: form!.merchantId, developerEmail: (form!.developerEmail ?? '').trim(), service: form!.service, handlingMin: Number(form!.handlingMin), handlingMax: Number(form!.handlingMax), batchSize: Number(form!.batchSize), ceps: parseCeps(form!.cepsText) }),
     onSuccess: (v) => {
       qc.setQueryData(KEY, v)
       setForm({ ...v.config, cepsText: cepsText(v.config.ceps) })
@@ -120,6 +121,11 @@ function GoogleShopping() {
               <div className="space-y-1.5">
                 <Label htmlFor="mc-id">Número da conta do Merchant Center</Label>
                 <Input id="mc-id" inputMode="numeric" value={form.merchantId} onChange={(e) => set('merchantId', e.target.value.replace(/\D/g, ''))} disabled={!edit} placeholder="Ex.: 123456789" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="mc-dev">E-mail Google de quem administra o Merchant Center</Label>
+                <Input id="mc-dev" type="email" maxLength={120} value={form.developerEmail ?? ''} onChange={(e) => set('developerEmail', e.target.value)} disabled={!edit} placeholder="voce@gmail.com" />
+                <p className="text-xs text-muted-foreground">Uma pessoa (não a conta de serviço) que seja Administrador em Pessoas e acesso. O Google usa só para o registro do CRM como desenvolvedor.</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="mc-service">Nome do serviço de entrega</Label>
