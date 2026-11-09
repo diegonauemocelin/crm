@@ -355,6 +355,9 @@ model Unit {
   records ServiceRecord[]
   leads   Lead[]
 
+  giftQuotas     GiftQuota[]
+  giftDeliveries GiftDelivery[]
+
   @@unique([tenantId, name])
   @@map("units")
 }
@@ -3211,29 +3214,34 @@ model Gift {
   @@map("gifts")
 }
 
-/// Quantos brindes de cada tipo o vendedor tem por mês para distribuir (vale todo mês até mudar).
+/// Quantos brindes de cada tipo o vendedor (ou a filial) tem por mês para distribuir (vale todo mês até mudar).
 model GiftQuota {
   id        String   @id @default(uuid()) @db.Uuid
   tenantId  String   @db.Uuid
-  sellerId  String   @db.Uuid
+  sellerId  String?  @db.Uuid
+  /// Filial (unidade) com cota própria, sem vendedor.
+  unitId    String?  @db.Uuid
   giftId    String   @db.Uuid
   monthly   Int
   updatedAt DateTime @updatedAt
 
-  seller Seller @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  gift   Gift   @relation(fields: [giftId], references: [id], onDelete: Cascade)
+  seller Seller? @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  unit   Unit?   @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  gift   Gift    @relation(fields: [giftId], references: [id], onDelete: Cascade)
 
   @@unique([sellerId, giftId])
+  @@unique([unitId, giftId])
   @@index([tenantId])
   @@map("gift_quotas")
 }
 
-/// Brinde entregue pelo vendedor a um cliente: baixa do estoque e da cota do mês.
+/// Brinde entregue pelo vendedor (ou pela filial) a um cliente: baixa do estoque e da cota do mês.
 model GiftDelivery {
   id            String   @id @default(uuid()) @db.Uuid
   tenantId      String   @db.Uuid
   giftId        String   @db.Uuid
-  sellerId      String   @db.Uuid
+  sellerId      String?  @db.Uuid
+  unitId        String?  @db.Uuid
   customerCode  String
   customerName  String?
   date          DateTime @db.Date
@@ -3245,11 +3253,13 @@ model GiftDelivery {
   createdByName String?
   createdAt     DateTime @default(now())
 
-  gift   Gift   @relation(fields: [giftId], references: [id])
-  seller Seller @relation(fields: [sellerId], references: [id])
+  gift   Gift    @relation(fields: [giftId], references: [id])
+  seller Seller? @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  unit   Unit?   @relation(fields: [unitId], references: [id], onDelete: Restrict)
 
   @@index([tenantId, date])
   @@index([sellerId, date])
+  @@index([unitId, date])
   @@map("gift_deliveries")
 }
 

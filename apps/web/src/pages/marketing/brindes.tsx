@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { DownloadIcon, GiftIcon, Loader2Icon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react'
+import { BuildingIcon, DownloadIcon, GiftIcon, Loader2Icon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm'
 import { MoneyInput } from '@/components/money-input'
+import { Kpi, TrendChart } from '@/components/marketing/ui'
 import { Can, EmptyState, ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -38,15 +39,34 @@ interface Balance {
 interface MonthView {
   month: string
   gifts: { id: string; name: string; stock: number; unitCost: number; active: boolean }[]
-  sellers: { id: string; name: string; items: Balance[]; value: number }[]
+  /** Vendedores ("s:<id>") e filiais ("u:<id>"). */
+  holders: Holder[]
+}
+interface Holder {
+  id: string
+  kind: 'seller' | 'unit'
+  name: string
+  items: Balance[]
+  value: number
+}
+interface Report {
+  from: string
+  to: string
+  quantity: number
+  value: number
+  customers: number
+  byGift: { giftId: string; name: string; quantity: number; value: number }[]
+  byHolder: { id: string; name: string; kind: 'seller' | 'unit'; quantity: number; value: number }[]
+  byMonth: { month: string; quantity: number; value: number }[]
 }
 interface Delivery {
   id: string
   date: string
   giftId: string
   gift: string
-  sellerId: string
-  seller: string
+  holderId: string
+  holder: string
+  holderKind: 'seller' | 'unit'
   customerCode: string
   customerName: string | null
   quantity: number
@@ -60,6 +80,22 @@ interface Delivery {
 const ALL = '__todos__'
 const monthLabel = (m: string) => new Date(`${m}-15T12:00:00Z`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 const dateBR = (d: string) => d.split('-').reverse().join('/')
+const shortMonth = (m: string) => new Date(`${m}-15T12:00:00Z`).toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. de ', '/').replace('.', '')
+
+/** Nome com a marca de filial (filial não tem vendedor: a cota e as retiradas são dela). */
+function HolderName({ name, kind }: { name: string; kind: 'seller' | 'unit' }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {kind === 'unit' && <BuildingIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />}
+      {name}
+      {kind === 'unit' && (
+        <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">
+          Filial
+        </Badge>
+      )}
+    </span>
+  )
+}
 
 export function BrindesPage() {
   return (
@@ -72,14 +108,14 @@ export function BrindesPage() {
 function Brindes() {
   const { can } = useAuth()
   const [month, setMonth] = useState(() => todaySP().slice(0, 7))
-  const [deliver, setDeliver] = useState<{ sellerId?: string; giftId?: string } | null>(null)
+  const [deliver, setDeliver] = useState<{ holderId?: string; giftId?: string } | null>(null)
   const view = useQuery({ queryKey: ['brindes', 'mes', month], queryFn: () => api.get<MonthView>(`/marketing/brindes/mes/saldo?mes=${month}`) })
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Controle de brindes"
-        description="Cadastro dos brindes, cota mensal de cada vendedor e as retiradas por cliente. Cada retirada baixa o estoque e o saldo do mês."
+        description="Cadastro dos brindes, cota mensal de cada vendedor ou filial e as retiradas por cliente. Cada retirada baixa o estoque e o saldo do mês."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Input type="month" aria-label="Mês" className="w-44" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />
@@ -94,15 +130,19 @@ function Brindes() {
       <Tabs defaultValue="saldo">
         <TabsList>
           <TabsTrigger value="saldo">Saldo do mês</TabsTrigger>
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="retiradas">Retiradas</TabsTrigger>
           <TabsTrigger value="brindes">Brindes</TabsTrigger>
           {can('brindes', 'edit') && <TabsTrigger value="cotas">Cotas mensais</TabsTrigger>}
         </TabsList>
         <TabsContent value="saldo" className="mt-4">
-          <Saldo view={view} month={month} onDeliver={(sellerId, giftId) => setDeliver({ sellerId, giftId })} />
+          <Saldo view={view} month={month} onDeliver={(holderId, giftId) => setDeliver({ holderId, giftId })} />
+        </TabsContent>
+        <TabsContent value="dashboard" className="mt-4">
+          <Dashboard month={month} />
         </TabsContent>
         <TabsContent value="retiradas" className="mt-4">
-          <Retiradas month={month} sellers={view.data?.sellers ?? []} />
+          <Retiradas month={month} holders={view.data?.holders ?? []} />
         </TabsContent>
         <TabsContent value="brindes" className="mt-4">
           <Cadastro />
@@ -118,17 +158,17 @@ function Brindes() {
   )
 }
 
-function Saldo({ view, month, onDeliver }: { view: ReturnType<typeof useQuery<MonthView>>; month: string; onDeliver: (sellerId: string, giftId?: string) => void }) {
+function Saldo({ view, month, onDeliver }: { view: ReturnType<typeof useQuery<MonthView>>; month: string; onDeliver: (holderId: string, giftId?: string) => void }) {
   const { can } = useAuth()
   if (view.isLoading) return <TableSkeleton />
   if (view.isError) return <ErrorState error={view.error} onRetry={() => view.refetch()} />
   const d = view.data!
   const names = new Map(d.gifts.map((g) => [g.id, g.name]))
-  const sellers = d.sellers.filter((s) => s.items.length > 0)
+  const sellers = d.holders.filter((s) => s.items.length > 0)
   const totalQty = sellers.reduce((t, s) => t + s.items.reduce((a, i) => a + i.used, 0), 0)
   const totalValue = sellers.reduce((t, s) => t + s.value, 0)
   if (!sellers.length)
-    return <EmptyState icon={GiftIcon} title="Nenhum vendedor com cota" description="Cadastre os brindes e defina na aba Cotas mensais quantos cada vendedor tem por mês." />
+    return <EmptyState icon={GiftIcon} title="Nenhum vendedor ou filial com cota" description="Cadastre os brindes e defina na aba Cotas mensais quantos cada vendedor ou filial tem por mês." />
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
@@ -139,7 +179,9 @@ function Saldo({ view, month, onDeliver }: { view: ReturnType<typeof useQuery<Mo
           <Card key={s.id}>
             <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0">
               <div>
-                <CardTitle className="text-base">{s.name}</CardTitle>
+                <CardTitle className="text-base">
+                  <HolderName name={s.name} kind={s.kind} />
+                </CardTitle>
                 <CardDescription>Entregue no mês: {money(s.value)}</CardDescription>
               </div>
               {can('brindes', 'create') && (
@@ -173,7 +215,7 @@ function Saldo({ view, month, onDeliver }: { view: ReturnType<typeof useQuery<Mo
   )
 }
 
-function Retiradas({ month, sellers }: { month: string; sellers: { id: string; name: string }[] }) {
+function Retiradas({ month, holders }: { month: string; holders: { id: string; name: string; kind: 'seller' | 'unit' }[] }) {
   const qc = useQueryClient()
   const confirm = useConfirm()
   const { can } = useAuth()
@@ -190,8 +232,8 @@ function Retiradas({ month, sellers }: { month: string; sellers: { id: string; n
   const items = q.data?.items ?? []
 
   function exportCsv() {
-    const head = ['Data', 'Vendedor', 'Código do cliente', 'Cliente', 'Brinde', 'Quantidade', 'Valor unitário', 'Total', 'Observação', 'Lançado por']
-    const rows = items.map((r) => [dateBR(r.date), r.seller, r.customerCode, r.customerName ?? '', r.gift, r.quantity, r.unitCost.toFixed(2).replace('.', ','), r.total.toFixed(2).replace('.', ','), r.notes ?? '', r.createdByName ?? ''])
+    const head = ['Data', 'Vendedor ou filial', 'Código do cliente', 'Cliente', 'Brinde', 'Quantidade', 'Valor unitário', 'Total', 'Observação', 'Lançado por']
+    const rows = items.map((r) => [dateBR(r.date), r.holderKind === 'unit' ? `Filial ${r.holder}` : r.holder, r.customerCode, r.customerName ?? '', r.gift, r.quantity, r.unitCost.toFixed(2).replace('.', ','), r.total.toFixed(2).replace('.', ','), r.notes ?? '', r.createdByName ?? ''])
     const csv = [head, ...rows].map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\r\n')
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' }))
@@ -206,14 +248,14 @@ function Retiradas({ month, sellers }: { month: string; sellers: { id: string; n
         <CardTitle className="text-base">Retiradas de {monthLabel(month)}</CardTitle>
         <div className="flex flex-wrap items-center gap-2">
           <Select value={seller} onValueChange={setSeller}>
-            <SelectTrigger className="w-52" aria-label="Vendedor">
+            <SelectTrigger className="w-56" aria-label="Vendedor ou filial">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={ALL}>Todos os vendedores</SelectItem>
-              {sellers.map((s) => (
+              <SelectItem value={ALL}>Todos (vendedores e filiais)</SelectItem>
+              {holders.map((s) => (
                 <SelectItem key={s.id} value={s.id}>
-                  {s.name}
+                  {s.kind === 'unit' ? `Filial ${s.name}` : s.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -238,7 +280,7 @@ function Retiradas({ month, sellers }: { month: string; sellers: { id: string; n
               <TableHeader>
                 <TableRow>
                   <TableHead>Data</TableHead>
-                  <TableHead>Vendedor</TableHead>
+                  <TableHead>Vendedor ou filial</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Brinde</TableHead>
                   <TableHead className="text-right">Qtd.</TableHead>
@@ -251,7 +293,9 @@ function Retiradas({ month, sellers }: { month: string; sellers: { id: string; n
                 {items.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell className="tabular-nums">{dateBR(r.date)}</TableCell>
-                    <TableCell>{r.seller}</TableCell>
+                    <TableCell>
+                      <HolderName name={r.holder} kind={r.holderKind} />
+                    </TableCell>
                     <TableCell>
                       <span className="font-medium tabular-nums">{r.customerCode}</span>
                       {r.customerName && <span className="block text-xs text-muted-foreground">{r.customerName}</span>}
@@ -272,7 +316,7 @@ function Retiradas({ month, sellers }: { month: string; sellers: { id: string; n
                           aria-label="Desfazer retirada"
                           disabled={remove.isPending}
                           onClick={async () => {
-                            if (await confirm({ title: 'Desfazer esta retirada?', description: `${r.quantity} ${r.gift} do cliente ${r.customerCode} volta ao estoque e ao saldo de ${r.seller}.`, confirmLabel: 'Desfazer' })) remove.mutate(r.id)
+                            if (await confirm({ title: 'Desfazer esta retirada?', description: `${r.quantity} ${r.gift} do cliente ${r.customerCode} volta ao estoque e ao saldo de ${r.holder}.`, confirmLabel: 'Desfazer' })) remove.mutate(r.id)
                           }}
                         >
                           <Trash2Icon />
@@ -455,7 +499,7 @@ function Cotas({ view }: { view: ReturnType<typeof useQuery<MonthView>> }) {
   const gifts = useMemo(() => (d?.gifts ?? []).filter((g) => g.active), [d])
   const current = useMemo(() => {
     const m = new Map<string, number>()
-    for (const s of d?.sellers ?? []) for (const i of s.items) m.set(`${s.id}:${i.giftId}`, i.quota)
+    for (const s of d?.holders ?? []) for (const i of s.items) m.set(`${s.id}|${i.giftId}`, i.quota)
     return m
   }, [d])
   const changed = Object.entries(draft).filter(([k, v]) => (Number(v) || 0) !== (current.get(k) ?? 0))
@@ -463,8 +507,8 @@ function Cotas({ view }: { view: ReturnType<typeof useQuery<MonthView>> }) {
     mutationFn: () =>
       api.put('/marketing/brindes/mes/cotas', {
         list: changed.map(([k, v]) => {
-          const [sellerId, giftId] = k.split(':')
-          return { sellerId, giftId, monthly: Math.max(0, Math.floor(Number(v) || 0)) }
+          const [holderId, giftId] = k.split('|')
+          return { holderId, giftId, monthly: Math.max(0, Math.floor(Number(v) || 0)) }
         }),
       }),
     onSuccess: () => {
@@ -482,7 +526,7 @@ function Cotas({ view }: { view: ReturnType<typeof useQuery<MonthView>> }) {
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
         <div>
           <CardTitle className="text-base">Cotas mensais</CardTitle>
-          <CardDescription>Quantos de cada brinde o vendedor tem por mês. Vale todo mês até mudar; 0 ou vazio = sem cota.</CardDescription>
+          <CardDescription>Quantos de cada brinde o vendedor ou a filial tem por mês. Vale todo mês até mudar; 0 ou vazio = sem cota. As filiais são as Unidades de Configurações › Listas.</CardDescription>
         </div>
         <Button size="sm" disabled={!changed.length || save.isPending} onClick={() => save.mutate()}>
           {save.isPending && <Loader2Icon className="animate-spin" />} Salvar{changed.length ? ` (${changed.length})` : ''}
@@ -493,7 +537,7 @@ function Cotas({ view }: { view: ReturnType<typeof useQuery<MonthView>> }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Vendedor</TableHead>
+                <TableHead>Vendedor ou filial</TableHead>
                 {gifts.map((g) => (
                   <TableHead key={g.id} className="min-w-24 text-center">
                     {g.name}
@@ -502,11 +546,13 @@ function Cotas({ view }: { view: ReturnType<typeof useQuery<MonthView>> }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {d!.sellers.map((s) => (
+              {d!.holders.map((s) => (
                 <TableRow key={s.id}>
-                  <TableCell className="font-medium whitespace-nowrap">{s.name}</TableCell>
+                  <TableCell className="font-medium whitespace-nowrap">
+                    <HolderName name={s.name} kind={s.kind} />
+                  </TableCell>
                   {gifts.map((g) => {
-                    const k = `${s.id}:${g.id}`
+                    const k = `${s.id}|${g.id}`
                     const v = draft[k] ?? (current.get(k) ? String(current.get(k)) : '')
                     return (
                       <TableCell key={g.id} className="text-center">
@@ -534,22 +580,22 @@ function Cotas({ view }: { view: ReturnType<typeof useQuery<MonthView>> }) {
   )
 }
 
-function DeliverDialog({ view, initial, onClose }: { view: MonthView; initial: { sellerId?: string; giftId?: string }; onClose: () => void }) {
+function DeliverDialog({ view, initial, onClose }: { view: MonthView; initial: { holderId?: string; giftId?: string }; onClose: () => void }) {
   const qc = useQueryClient()
-  const sellers = view.sellers.filter((s) => s.items.some((i) => i.quota > 0))
-  const [sellerId, setSellerId] = useState(initial.sellerId ?? (sellers.length === 1 ? sellers[0]!.id : ''))
+  const sellers = view.holders.filter((s) => s.items.some((i) => i.quota > 0))
+  const [sellerId, setSellerId] = useState(initial.holderId ?? (sellers.length === 1 ? sellers[0]!.id : ''))
   const [giftId, setGiftId] = useState(initial.giftId ?? '')
   const [code, setCode] = useState('')
   const [customerName, setCustomerName] = useState('')
   const [date, setDate] = useState(() => todaySP())
   const [quantity, setQuantity] = useState('1')
   const [notes, setNotes] = useState('')
-  const seller = view.sellers.find((s) => s.id === sellerId)
+  const seller = view.holders.find((s) => s.id === sellerId)
   const options = (seller?.items ?? []).filter((i) => i.quota > 0)
   const giftOf = (id: string) => view.gifts.find((g) => g.id === id)
   const sameMonth = date.slice(0, 7) === view.month
   const save = useMutation({
-    mutationFn: () => api.post('/marketing/brindes/mes/retiradas', { sellerId, giftId, customerCode: code.trim(), customerName: customerName.trim() || null, date, quantity: Number(quantity) || 1, notes: notes.trim() || null }),
+    mutationFn: () => api.post('/marketing/brindes/mes/retiradas', { holderId: sellerId, giftId, customerCode: code.trim(), customerName: customerName.trim() || null, date, quantity: Number(quantity) || 1, notes: notes.trim() || null }),
     onSuccess: () => {
       toast.success('Retirada registrada.')
       qc.invalidateQueries({ queryKey: ['brindes'] })
@@ -562,7 +608,7 @@ function DeliverDialog({ view, initial, onClose }: { view: MonthView; initial: {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Registrar retirada</DialogTitle>
-          <DialogDescription>Baixa do estoque e do saldo do mês do vendedor.</DialogDescription>
+          <DialogDescription>Baixa do estoque e do saldo do mês do vendedor ou da filial.</DialogDescription>
         </DialogHeader>
         <form
           className="space-y-4"
@@ -573,7 +619,7 @@ function DeliverDialog({ view, initial, onClose }: { view: MonthView; initial: {
         >
           <div className="space-y-1.5">
             <Label htmlFor="d-seller" required>
-              Vendedor
+              Vendedor ou filial
             </Label>
             <Select
               value={sellerId}
@@ -588,7 +634,7 @@ function DeliverDialog({ view, initial, onClose }: { view: MonthView; initial: {
               <SelectContent>
                 {sellers.map((s) => (
                   <SelectItem key={s.id} value={s.id}>
-                    {s.name}
+                    {s.kind === 'unit' ? `Filial ${s.name}` : s.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -600,7 +646,7 @@ function DeliverDialog({ view, initial, onClose }: { view: MonthView; initial: {
             </Label>
             <Select value={giftId} onValueChange={setGiftId} disabled={!seller}>
               <SelectTrigger id="d-gift" className="w-full">
-                <SelectValue placeholder={seller ? 'Selecione' : 'Escolha o vendedor'} />
+                <SelectValue placeholder={seller ? 'Selecione' : 'Escolha o vendedor ou a filial'} />
               </SelectTrigger>
               <SelectContent>
                 {options.map((i) => {
@@ -653,5 +699,116 @@ function DeliverDialog({ view, initial, onClose }: { view: MonthView; initial: {
         </form>
       </DialogContent>
     </Dialog>
+  )
+}
+
+const addMonths = (m: string, k: number) => {
+  const d = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1 + k, 1))
+  return d.toISOString().slice(0, 7)
+}
+
+/** Resumo dos brindes entregues num período: totais, por brinde, por vendedor/filial e mês a mês. */
+function Dashboard({ month }: { month: string }) {
+  const [to, setTo] = useState(month)
+  const [from, setFrom] = useState(() => addMonths(month, -5))
+  const q = useQuery({ queryKey: ['brindes', 'relatorio', from, to], queryFn: () => api.get<Report>(`/marketing/brindes/mes/relatorio?de=${from}&ate=${to}`) })
+  const d = q.data
+  const units = d?.byHolder.filter((h) => h.kind === 'unit') ?? []
+  const sellers = d?.byHolder.filter((h) => h.kind === 'seller') ?? []
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="r-from">De</Label>
+          <Input id="r-from" type="month" className="w-44" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="r-to">Até</Label>
+          <Input id="r-to" type="month" className="w-44" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} />
+        </div>
+        <div className="flex flex-wrap gap-1.5 pb-0.5">
+          {[
+            ['Mês', 0],
+            ['3 meses', -2],
+            ['6 meses', -5],
+            ['12 meses', -11],
+          ].map(([label, k]) => (
+            <Button key={label} size="sm" variant="outline" onClick={() => setFrom(addMonths(to, k as number))}>
+              {label}
+            </Button>
+          ))}
+        </div>
+      </div>
+      {q.isLoading ? (
+        <TableSkeleton />
+      ) : q.isError ? (
+        <ErrorState error={q.error} onRetry={() => q.refetch()} />
+      ) : !d || d.quantity === 0 ? (
+        <EmptyState icon={GiftIcon} title="Nenhum brinde entregue no período" description="As retiradas registradas aparecem aqui somadas por brinde, vendedor, filial e mês." />
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Kpi label="Brindes entregues" value={d.quantity.toLocaleString('pt-BR')} spark={d.byMonth.map((m) => m.quantity)} hint={d.from === d.to ? monthLabel(d.from) : `${shortMonth(d.from)} a ${shortMonth(d.to)}`} />
+            <Kpi label="Valor entregue" value={money(d.value)} spark={d.byMonth.map((m) => m.value)} />
+            <Kpi label="Clientes que receberam" value={d.customers.toLocaleString('pt-BR')} hint={`Média de ${money(d.customers ? d.value / d.customers : 0)} por cliente`} />
+            <Kpi label="Vendedores e filiais" value={String(d.byHolder.length)} hint={`${sellers.length} ${sellers.length === 1 ? 'vendedor' : 'vendedores'}, ${units.length} ${units.length === 1 ? 'filial' : 'filiais'}`} />
+          </div>
+          {d.byMonth.length > 1 && (
+            <TrendChart
+              title="Mês a mês"
+              description="Valor dos brindes entregues em cada mês."
+              kind="bar"
+              format={money}
+              data={d.byMonth.map((m) => ({ label: shortMonth(m.month), valor: m.value }))}
+              series={[{ key: 'valor', label: 'Valor', color: 'var(--chart-1)' }]}
+            />
+          )}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Ranking title="Por brinde" rows={d.byGift.map((g) => ({ key: g.giftId, name: <>{g.name}</>, quantity: g.quantity, value: g.value }))} total={d.quantity} />
+            <Ranking title="Por vendedor e filial" rows={d.byHolder.map((h) => ({ key: h.id, name: <HolderName name={h.name} kind={h.kind} />, quantity: h.quantity, value: h.value }))} total={d.quantity} />
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function Ranking({ title, rows, total }: { title: string; rows: { key: string; name: React.ReactNode; quantity: number; value: number }[]; total: number }) {
+  const max = Math.max(1, ...rows.map((r) => r.quantity))
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nome</TableHead>
+              <TableHead className="text-right">Qtd.</TableHead>
+              <TableHead className="text-right">%</TableHead>
+              <TableHead className="text-right">Valor</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r) => (
+              <TableRow key={r.key}>
+                <TableCell>
+                  <div className="space-y-1">
+                    <div className="text-sm font-medium">{r.name}</div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden>
+                      <div className="h-full rounded-full bg-[color:var(--brand)]" style={{ width: `${(r.quantity / max) * 100}%` }} />
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell className="text-right tabular-nums">{r.quantity.toLocaleString('pt-BR')}</TableCell>
+                <TableCell className="text-right tabular-nums text-muted-foreground">{total ? Math.round((r.quantity / total) * 100) : 0}%</TableCell>
+                <TableCell className="text-right tabular-nums">{money(r.value)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   )
 }

@@ -911,8 +911,8 @@ export const TRAIL: TrailModule[] = [
     title: 'Controle de brindes',
     module: 'brindes',
     routes: ['/brindes'],
-    purpose: 'Brindes do marketing (copo, chaveiro, chapéu...) com estoque, cota mensal de cada vendedor e o registro de quem recebeu.',
-    howItWorks: 'Cada vendedor tem uma cota por mês de cada brinde (ex.: 5 copos, 3 chaveiros). A cada retirada, anote o código do cliente, a data e o brinde: o sistema baixa do estoque e do saldo do mês do vendedor, até chegar a zero. No mês seguinte o saldo volta à cota.',
+    purpose: 'Brindes do marketing (copo, chaveiro, chapéu...) com estoque, cota mensal de cada vendedor ou filial, o registro de quem recebeu e um resumo do que foi entregue.',
+    howItWorks: 'Cada vendedor, e cada filial (sem vendedor), tem uma cota por mês de cada brinde (ex.: 5 copos, 3 chaveiros). A cada retirada, anote o código do cliente, a data e o brinde: o sistema baixa do estoque e do saldo do mês de quem entregou, até chegar a zero. No mês seguinte o saldo volta à cota. As filiais são as Unidades de Configurações → Listas.',
     lessons: [
       {
         id: 'brindes.cadastro',
@@ -920,7 +920,8 @@ export const TRAIL: TrailModule[] = [
         steps: [
           'Abra Marketing → Controle de brindes → aba Brindes → Novo brinde: nome, estoque e valor unitário.',
           'Quando chegar mais brinde, edite e atualize o estoque.',
-          'Na aba Cotas mensais, digite quantos de cada brinde cada vendedor tem por mês e clique em Salvar. A cota vale todo mês até ser alterada.',
+          'Na aba Cotas mensais, digite quantos de cada brinde cada vendedor ou filial tem por mês e clique em Salvar. A cota vale todo mês até ser alterada.',
+          'As filiais aparecem com a marca Filial. Para incluir uma filial, cadastre-a em Configurações → Listas → Unidades.',
         ],
         tip: 'Brinde que já teve retiradas não é excluído: desative para sumir das opções e manter o histórico.',
       },
@@ -929,11 +930,20 @@ export const TRAIL: TrailModule[] = [
         title: 'Registrar uma retirada',
         steps: [
           'Clique em Registrar retirada (ou em Retirada no cartão do vendedor, na aba Saldo do mês).',
-          'Escolha o vendedor e o brinde (aparece o saldo do mês e o estoque), informe o código do cliente, a data e a quantidade.',
+          'Escolha o vendedor ou a filial e o brinde (aparece o saldo do mês e o estoque), informe o código do cliente, a data e a quantidade.',
           'A aba Saldo do mês mostra quanto falta de cada brinde; a aba Retiradas lista tudo o que foi entregue e exporta para planilha.',
           'Lançou errado? Na aba Retiradas, a lixeira desfaz: o brinde volta ao estoque e ao saldo.',
         ],
         tip: 'Sem saldo no mês ou sem estoque, o sistema não deixa registrar.',
+      },
+      {
+        id: 'brindes.dashboard',
+        title: 'Ver o resumo do que foi entregue',
+        steps: [
+          'Abra a aba Dashboard e escolha o período (De / Até) ou um atalho: mês, 3, 6 ou 12 meses.',
+          'Os cartões mostram quantos brindes saíram, o valor, quantos clientes receberam e quantos vendedores e filiais entregaram.',
+          'O gráfico mostra o valor mês a mês; as tabelas somam por brinde e por vendedor e filial.',
+        ],
       },
     ],
   },

@@ -4,6 +4,7 @@ import { Type } from 'class-transformer'
 import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
+import { HOLDER_RE } from './brindes'
 import { BrindesService } from './brindes.service'
 
 class GiftDto {
@@ -14,7 +15,8 @@ class GiftDto {
 }
 
 class QuotaDto {
-  @IsUUID() sellerId!: string
+  /** "s:<vendedor>" ou "u:<filial>". */
+  @Matches(HOLDER_RE) holderId!: string
   @IsUUID() giftId!: string
   @IsInt() @Min(0) @Max(100_000) monthly!: number
 }
@@ -25,7 +27,7 @@ class QuotasDto {
 
 class DeliveryDto {
   @IsUUID() giftId!: string
-  @IsUUID() sellerId!: string
+  @Matches(HOLDER_RE) holderId!: string
   @IsString() @MaxLength(40) customerCode!: string
   @IsOptional() @IsString() @MaxLength(160) customerName?: string | null
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) date?: string | null
@@ -35,10 +37,16 @@ class DeliveryDto {
 
 class MonthQuery {
   @IsOptional() @Matches(/^\d{4}-\d{2}$/) mes?: string
-  @IsOptional() @IsUUID() vendedor?: string
+  /** Vendedor ou filial ("s:<id>" / "u:<id>"). */
+  @IsOptional() @Matches(HOLDER_RE) vendedor?: string
 }
 
-/** Marketing › Controle de brindes: cadastro, cota mensal por vendedor e retiradas. */
+class RangeQuery {
+  @IsOptional() @Matches(/^\d{4}-\d{2}$/) de?: string
+  @IsOptional() @Matches(/^\d{4}-\d{2}$/) ate?: string
+}
+
+/** Marketing › Controle de brindes: cadastro, cota mensal por vendedor ou filial, retiradas e resumo. */
 @ApiTags('brindes')
 @Controller('marketing/brindes')
 export class BrindesController {
@@ -77,6 +85,11 @@ export class BrindesController {
   @Put('mes/cotas')
   quotas(@CurrentUser() user: AuthUser, @Body() body: QuotasDto, @ReqContext() ctx: RequestCtx) {
     return this.brindes.saveQuotas(user, body.list, ctx)
+  }
+
+  @Get('mes/relatorio')
+  report(@CurrentUser() user: AuthUser, @Query() q: RangeQuery) {
+    return this.brindes.report(user, q.de, q.ate)
   }
 
   @Get('mes/retiradas')

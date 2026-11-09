@@ -42,11 +42,90 @@ export function balances(quotas: { giftId: string; monthly: number }[], used: { 
 }
 
 /** Por que a retirada não pode ser feita (null = pode). */
-export function deliveryProblem(d: { quantity: number; stock: number; quota: number | null; used: number; giftName: string }): string | null {
+export function deliveryProblem(d: { quantity: number; stock: number; quota: number | null; used: number; giftName: string; who?: string }): string | null {
   if (!Number.isInteger(d.quantity) || d.quantity < 1) return 'Informe a quantidade (1 ou mais).'
-  if (d.quota === null || d.quota <= 0) return `O vendedor não tem cota de ${d.giftName} por mês. Defina em Cotas mensais.`
+  if (d.quota === null || d.quota <= 0) return `${d.who ?? 'O vendedor'} não tem cota de ${d.giftName} por mês. Defina em Cotas mensais.`
   const left = d.quota - d.used
   if (d.quantity > left) return left > 0 ? `Saldo do mês de ${d.giftName}: só ${left}.` : `A cota do mês de ${d.giftName} já acabou (${d.quota} de ${d.quota}).`
   if (d.quantity > d.stock) return d.stock > 0 ? `Estoque de ${d.giftName}: só ${d.stock}.` : `${d.giftName} sem estoque.`
   return null
+}
+
+/** Quem tem cota e entrega: vendedor ("s:<id>") ou filial/unidade ("u:<id>"). */
+export type Holder = { kind: 'seller'; id: string } | { kind: 'unit'; id: string }
+
+const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+export const HOLDER_RE = new RegExp(`^(s|u):${UUID}$`)
+
+/** Lê "s:<uuid>" / "u:<uuid>"; um uuid sem prefixo é vendedor (chamadas antigas). */
+export function parseHolder(v: string | undefined | null): Holder | null {
+  if (!v) return null
+  if (new RegExp(`^${UUID}$`).test(v)) return { kind: 'seller', id: v }
+  if (!HOLDER_RE.test(v)) return null
+  return { kind: v[0] === 'u' ? 'unit' : 'seller', id: v.slice(2) }
+}
+
+export function holderKey(h: { sellerId?: string | null; unitId?: string | null }): string {
+  return h.unitId ? `u:${h.unitId}` : `s:${h.sellerId}`
+}
+
+/** Meses "AAAA-MM" de `from` até `to` (inclusive, no máximo 24; invertidos são trocados). */
+export function monthsBetween(from: string, to: string): string[] {
+  let [a, b] = from <= to ? [from, to] : [to, from]
+  const out: string[] = []
+  while (a <= b && out.length < 24) {
+    out.push(a)
+    const y = Number(a.slice(0, 4))
+    const m = Number(a.slice(5, 7))
+    a = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`
+  }
+  return out
+}
+
+export interface ReportRow {
+  month: string
+  giftId: string
+  gift: string
+  holder: string
+  holderName: string
+  holderKind: 'seller' | 'unit'
+  customerCode: string
+  quantity: number
+  value: number
+}
+
+type Sum = { quantity: number; value: number }
+const add = (m: Map<string, Sum & Record<string, unknown>>, k: string, extra: Record<string, unknown>, q: number, v: number) => {
+  const cur = m.get(k) ?? { ...extra, quantity: 0, value: 0 }
+  cur.quantity += q
+  cur.value += v
+  m.set(k, cur)
+}
+const round = (v: number) => Math.round(v * 100) / 100
+
+/** Resumo dos brindes entregues: total, por brinde, por vendedor/filial e por mês. */
+export function reportOf(rows: ReportRow[], months: string[]) {
+  const byGift = new Map<string, Sum & Record<string, unknown>>()
+  const byHolder = new Map<string, Sum & Record<string, unknown>>()
+  const byMonth = new Map<string, Sum & Record<string, unknown>>(months.map((m) => [m, { month: m, quantity: 0, value: 0 }]))
+  let quantity = 0
+  let value = 0
+  const customers = new Set<string>()
+  for (const r of rows) {
+    quantity += r.quantity
+    value += r.value
+    customers.add(r.customerCode.trim().toUpperCase())
+    add(byGift, r.giftId, { giftId: r.giftId, name: r.gift }, r.quantity, r.value)
+    add(byHolder, r.holder, { id: r.holder, name: r.holderName, kind: r.holderKind }, r.quantity, r.value)
+    add(byMonth, r.month, { month: r.month }, r.quantity, r.value)
+  }
+  const sorted = (m: Map<string, Sum & Record<string, unknown>>) => [...m.values()].map((x) => ({ ...x, value: round(x.value) })).sort((a, b) => b.quantity - a.quantity || b.value - a.value)
+  return {
+    quantity,
+    value: round(value),
+    byGift: sorted(byGift) as ({ giftId: string; name: string } & Sum)[],
+    byHolder: sorted(byHolder) as ({ id: string; name: string; kind: 'seller' | 'unit' } & Sum)[],
+    byMonth: [...byMonth.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, x]) => ({ ...x, value: round(x.value) })) as ({ month: string } & Sum)[],
+    customers: customers.size,
+  }
 }
