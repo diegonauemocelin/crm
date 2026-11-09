@@ -1,0 +1,31 @@
+/// Origens do lead e do atendimento (lista Origens: Google, Indicação, WhatsApp - <número>...). A campanha do anúncio fica nos fatos.
+table dim_origem
+
+	/// Número interno (uuid).
+	column origem_id
+		dataType: string
+		isHidden
+		isKey
+		summarizeBy: none
+		sourceColumn: origem_id
+
+	/// Nome do item.
+	column nome
+		dataType: string
+		summarizeBy: none
+		sourceColumn: nome
+
+	/// Ainda aparece para escolher.
+	column ativo
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: ativo
+
+	partition dim_origem = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("dim_origem"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"origem_id", type text}, {"nome", type text}, {"ativo", type logical}})
+			in
+			    Tipada

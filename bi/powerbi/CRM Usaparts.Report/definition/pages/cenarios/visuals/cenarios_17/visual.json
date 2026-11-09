@@ -1,0 +1,37 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "cenarios_17",
+  "position": {
+    "x": 1061,
+    "y": 180,
+    "z": 17000,
+    "height": 84,
+    "width": 201,
+    "tabOrder": 17000
+  },
+  "visual": {
+    "visualType": "card",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Diferença de frete"
+                }
+              },
+              "queryRef": "_Medidas.Diferença de frete",
+              "nativeQueryRef": "Diferença de frete"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

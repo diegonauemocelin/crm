@@ -1,0 +1,37 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "cenarios_11",
+  "position": {
+    "x": 1061,
+    "y": 88,
+    "z": 11000,
+    "height": 84,
+    "width": 201,
+    "tabOrder": 11000
+  },
+  "visual": {
+    "visualType": "card",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Diferença de vendas"
+                }
+              },
+              "queryRef": "_Medidas.Diferença de vendas",
+              "nativeQueryRef": "Diferença de vendas"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

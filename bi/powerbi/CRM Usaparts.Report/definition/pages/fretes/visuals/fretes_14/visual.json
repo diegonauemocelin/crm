@@ -1,0 +1,144 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "fretes_14",
+  "position": {
+    "x": 16,
+    "y": 452,
+    "z": 14000,
+    "height": 256,
+    "width": 820,
+    "tabOrder": 14000
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "dim_transportadora"
+                    }
+                  },
+                  "Property": "nome"
+                }
+              },
+              "queryRef": "dim_transportadora.nome",
+              "nativeQueryRef": "nome"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "CT-es"
+                }
+              },
+              "queryRef": "_Medidas.CT-es",
+              "nativeQueryRef": "CT-es"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Frete pago (CT-e)"
+                }
+              },
+              "queryRef": "_Medidas.Frete pago (CT-e)",
+              "nativeQueryRef": "Frete pago (CT-e)"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Frete sobre a carga"
+                }
+              },
+              "queryRef": "_Medidas.Frete sobre a carga",
+              "nativeQueryRef": "Frete sobre a carga"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "% CT-es conciliados"
+                }
+              },
+              "queryRef": "_Medidas.% CT-es conciliados",
+              "nativeQueryRef": "% CT-es conciliados"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Divergência cobrada"
+                }
+              },
+              "queryRef": "_Medidas.Divergência cobrada",
+              "nativeQueryRef": "Divergência cobrada"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Crédito das contestações"
+                }
+              },
+              "queryRef": "_Medidas.Crédito das contestações",
+              "nativeQueryRef": "Crédito das contestações"
+            }
+          ]
+        }
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Transportadoras'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

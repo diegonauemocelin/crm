@@ -1,0 +1,127 @@
+/// Carrinhos da loja virtual (aberto, abandonado ou comprado) e o contato de recuperação.
+table fato_carrinhos
+
+	/// Número interno (uuid).
+	column carrinho_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: carrinho_id
+
+	/// 1 aberto, 2 abandonado, 3 comprado.
+	column situacao_codigo
+		dataType: int64
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: situacao_codigo
+
+	/// aberto, abandonado ou comprado.
+	column situacao
+		dataType: string
+		summarizeBy: none
+		sourceColumn: situacao
+
+	/// Início do carrinho.
+	column iniciado_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: iniciado_em
+
+	/// Dia do início.
+	column data_inicio
+		dataType: dateTime
+		formatString: dd/MM/yyyy
+		summarizeBy: none
+		sourceColumn: data_inicio
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// Última atividade.
+	column ultima_atividade_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: ultima_atividade_em
+
+	/// Preencheu o endereço de entrega.
+	column chegou_checkout
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: chegou_checkout
+
+	/// Itens no carrinho.
+	column qtd_itens
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: qtd_itens
+
+	/// Valor do carrinho (R$).
+	column valor
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: valor
+
+	/// Código do pedido, quando comprado.
+	column pedido_codigo
+		dataType: string
+		summarizeBy: none
+		sourceColumn: pedido_codigo
+
+	/// Recuperação: PENDENTE, CONTATADO...
+	column status_contato
+		dataType: string
+		summarizeBy: none
+		sourceColumn: status_contato
+
+	/// Quando a equipe fez o contato.
+	column contatado_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: contatado_em
+
+	/// Lead do cliente.
+	column lead_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: lead_id
+
+	/// UF do cliente (do lead).
+	column uf
+		dataType: string
+		summarizeBy: none
+		sourceColumn: uf
+
+	/// Cidade do cliente (do lead).
+	column cidade
+		dataType: string
+		summarizeBy: none
+		sourceColumn: cidade
+
+	/// Última alteração.
+	column atualizado_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: atualizado_em
+
+	hierarchy Geografia
+
+		level UF
+			column: uf
+
+		level Cidade
+			column: cidade
+
+	partition fato_carrinhos = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("fato_carrinhos"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"carrinho_id", type text}, {"situacao_codigo", Int64.Type}, {"situacao", type text}, {"iniciado_em", type datetime}, {"data_inicio", type date}, {"ultima_atividade_em", type datetime}, {"chegou_checkout", type logical}, {"qtd_itens", Int64.Type}, {"valor", Currency.Type}, {"pedido_codigo", type text}, {"status_contato", type text}, {"contatado_em", type datetime}, {"lead_id", type text}, {"uf", type text}, {"cidade", type text}, {"atualizado_em", type datetime}})
+			in
+			    Tipada

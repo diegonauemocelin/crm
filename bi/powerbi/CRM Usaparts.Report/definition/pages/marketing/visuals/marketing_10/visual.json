@@ -1,0 +1,104 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "marketing_10",
+  "position": {
+    "x": 16,
+    "y": 180,
+    "z": 10000,
+    "height": 262,
+    "width": 400,
+    "tabOrder": 10000
+  },
+  "visual": {
+    "visualType": "clusteredColumnChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "HierarchyLevel": {
+                  "Expression": {
+                    "Hierarchy": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "fato_anuncios_diario"
+                        }
+                      },
+                      "Hierarchy": "Campanha"
+                    }
+                  },
+                  "Level": "Plataforma"
+                }
+              },
+              "queryRef": "fato_anuncios_diario.Campanha.Plataforma",
+              "nativeQueryRef": "Campanha Plataforma",
+              "active": true
+            },
+            {
+              "field": {
+                "HierarchyLevel": {
+                  "Expression": {
+                    "Hierarchy": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "fato_anuncios_diario"
+                        }
+                      },
+                      "Hierarchy": "Campanha"
+                    }
+                  },
+                  "Level": "Campanha"
+                }
+              },
+              "queryRef": "fato_anuncios_diario.Campanha.Campanha",
+              "nativeQueryRef": "Campanha Campanha",
+              "active": false
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Investimento"
+                }
+              },
+              "queryRef": "_Medidas.Investimento",
+              "nativeQueryRef": "Investimento"
+            }
+          ]
+        }
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Investimento por plataforma e campanha (drill-down)'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "loja_ml_13",
+  "position": {
+    "x": 956,
+    "y": 180,
+    "z": 13000,
+    "height": 262,
+    "width": 308,
+    "tabOrder": 13000
+  },
+  "visual": {
+    "visualType": "clusteredBarChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "HierarchyLevel": {
+                  "Expression": {
+                    "Hierarchy": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "fato_pedidos_loja"
+                        }
+                      },
+                      "Hierarchy": "Geografia"
+                    }
+                  },
+                  "Level": "UF"
+                }
+              },
+              "queryRef": "fato_pedidos_loja.Geografia.UF",
+              "nativeQueryRef": "Geografia UF",
+              "active": true
+            },
+            {
+              "field": {
+                "HierarchyLevel": {
+                  "Expression": {
+                    "Hierarchy": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "fato_pedidos_loja"
+                        }
+                      },
+                      "Hierarchy": "Geografia"
+                    }
+                  },
+                  "Level": "Cidade"
+                }
+              },
+              "queryRef": "fato_pedidos_loja.Geografia.Cidade",
+              "nativeQueryRef": "Geografia Cidade",
+              "active": false
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Receita da loja"
+                }
+              },
+              "queryRef": "_Medidas.Receita da loja",
+              "nativeQueryRef": "Receita da loja"
+            }
+          ]
+        }
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Receita da loja por UF e cidade (drill-down)'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

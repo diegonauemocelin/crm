@@ -92,4 +92,14 @@ export class BiKeysController {
     res.setHeader('Content-Disposition', 'attachment; filename="BI-CONTRATO.md"')
     res.send(md)
   }
+
+  /** Projeto do Power BI Desktop (.pbip com modelo TMDL e relatório PBIR), em zip. */
+  @Get('projeto')
+  project(@CurrentUser() user: AuthUser, @Res() res: Response) {
+    const { nome, zip } = this.bi.projetoPowerBi(user)
+    res.setHeader('Content-Type', 'application/zip')
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Content-Disposition', `attachment; filename="${nome}"`)
+    res.send(Buffer.from(zip))
+  }
 }

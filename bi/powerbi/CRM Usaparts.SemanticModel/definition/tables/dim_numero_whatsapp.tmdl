@@ -1,0 +1,62 @@
+/// Números de WhatsApp da empresa ligados ao CRM (sem o telefone).
+table dim_numero_whatsapp
+
+	/// Número interno (uuid).
+	column numero_id
+		dataType: string
+		isHidden
+		isKey
+		summarizeBy: none
+		sourceColumn: numero_id
+
+	/// Nome dado ao número no CRM.
+	column nome
+		dataType: string
+		summarizeBy: none
+		sourceColumn: nome
+
+	/// Unidade do número.
+	column filial_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: filial_id
+
+	/// ATENDIMENTO ou MONITORAMENTO.
+	column finalidade
+		dataType: string
+		summarizeBy: none
+		sourceColumn: finalidade
+
+	/// CONECTADO, CONECTANDO ou DESCONECTADO.
+	column situacao
+		dataType: string
+		summarizeBy: none
+		sourceColumn: situacao
+
+	/// Conversa nova abre pré-venda.
+	column abre_pre_venda
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: abre_pre_venda
+
+	/// Cada conversa tem um atendente.
+	column atendimento_dividido
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: atendimento_dividido
+
+	/// Número removido do CRM.
+	column excluido
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: excluido
+
+	partition dim_numero_whatsapp = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("dim_numero_whatsapp"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"numero_id", type text}, {"nome", type text}, {"filial_id", type text}, {"finalidade", type text}, {"situacao", type text}, {"abre_pre_venda", type logical}, {"atendimento_dividido", type logical}, {"excluido", type logical}})
+			in
+			    Tipada

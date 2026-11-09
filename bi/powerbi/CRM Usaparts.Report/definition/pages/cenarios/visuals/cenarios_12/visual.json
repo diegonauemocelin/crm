@@ -1,0 +1,37 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "cenarios_12",
+  "position": {
+    "x": 16,
+    "y": 180,
+    "z": 12000,
+    "height": 84,
+    "width": 201,
+    "tabOrder": 12000
+  },
+  "visual": {
+    "visualType": "card",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "ROAS Google"
+                }
+              },
+              "queryRef": "_Medidas.ROAS Google",
+              "nativeQueryRef": "ROAS Google"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

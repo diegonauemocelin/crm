@@ -1,0 +1,37 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "loja_ml_10",
+  "position": {
+    "x": 1115,
+    "y": 72,
+    "z": 10000,
+    "height": 96,
+    "width": 149,
+    "tabOrder": 10000
+  },
+  "visual": {
+    "visualType": "card",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "% respondidas pelo CRM"
+                }
+              },
+              "queryRef": "_Medidas.% respondidas pelo CRM",
+              "nativeQueryRef": "% respondidas pelo CRM"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,96 @@
+/// Mídia paga por dia e campanha: Google Ads, Meta Ads e TikTok Ads (só leitura das contas).
+table fato_anuncios_diario
+
+	/// plataforma|campanha|data.
+	column linha_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: linha_id
+
+	/// Dia.
+	column data
+		dataType: dateTime
+		formatString: dd/MM/yyyy
+		summarizeBy: none
+		sourceColumn: data
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// google, meta ou tiktok.
+	column plataforma
+		dataType: string
+		summarizeBy: none
+		sourceColumn: plataforma
+
+	/// Campanha na plataforma.
+	column campanha_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: campanha_id
+
+	/// Nome da campanha.
+	column campanha
+		dataType: string
+		summarizeBy: none
+		sourceColumn: campanha
+
+	/// Valor investido no dia (moeda da conta, R$).
+	column investimento
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: investimento
+
+	/// Impressões.
+	column impressoes
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: impressoes
+
+	/// Cliques.
+	column cliques
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: cliques
+
+	/// Conversões contadas pela plataforma.
+	column conversoes
+		dataType: double
+		formatString: #,0.0
+		summarizeBy: sum
+		sourceColumn: conversoes
+
+	/// Meta/TikTok: leads de formulário.
+	column leads
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: leads
+
+	/// Meta/TikTok: conversas iniciadas.
+	column conversas
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: conversas
+
+	hierarchy Campanha
+
+		level Plataforma
+			column: plataforma
+
+		level Campanha
+			column: campanha
+
+	partition fato_anuncios_diario = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("fato_anuncios_diario"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"linha_id", type text}, {"data", type date}, {"plataforma", type text}, {"campanha_id", type text}, {"campanha", type text}, {"investimento", Currency.Type}, {"impressoes", Int64.Type}, {"cliques", Int64.Type}, {"conversoes", type number}, {"leads", Int64.Type}, {"conversas", Int64.Type}})
+			in
+			    Tipada

@@ -1,0 +1,45 @@
+/// Endereço da API de BI do CRM (termina em /api/bi/v1/).
+expression CRM_BaseUrl = "https://crm.usaparts.com.br/api/bi/v1/" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+
+	annotation PBI_ResultType = Text
+
+/// Chave de acesso criada em Configurações › Power BI no CRM (crmbi_...).
+expression CRM_Chave = "" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=false]
+
+	annotation PBI_ResultType = Text
+
+/// Lê uma tabela da API de BI do CRM, página por página (contrato de dados, seção 3).
+expression CRM_Tabela =
+		(nome as text, optional desde as nullable text) as table =>
+		let
+		    Pagina = (cursor as nullable text) as record =>
+		        let
+		            Filtro = if desde = null or desde = "" then [] else [desde = desde],
+		            Consulta = if cursor = null then Filtro else Record.AddField(Filtro, "cursor", cursor),
+		            Resposta = Web.Contents(
+		                CRM_BaseUrl,
+		                [
+		                    RelativePath = nome,
+		                    Query = Consulta,
+		                    Headers = [#"X-BI-Key" = CRM_Chave, Accept = "application/json"],
+		                    ManualStatusHandling = {400, 401, 404, 429},
+		                    Timeout = #duration(0, 0, 10, 0)
+		                ]
+		            ),
+		            Status = Value.Metadata(Resposta)[Response.Status],
+		            Json = Json.Document(Resposta),
+		            Ok = if Status = 200 then Json else error Error.Record("CRM", "Erro " & Text.From(Status) & " em " & nome, Json[message]?)
+		        in
+		            Ok,
+		    Paginas = List.Generate(
+		        () => Pagina(null),
+		        each _ <> null,
+		        each if _[next] = null then null else Pagina(_[next])
+		    ),
+		    Colunas = Paginas{0}[colunas],
+		    Linhas = List.Combine(List.Transform(Paginas, each _[rows])),
+		    Tabela = Table.FromRecords(Linhas, Colunas, MissingField.UseNull)
+		in
+		    Tabela
+
+	annotation PBI_ResultType = Function

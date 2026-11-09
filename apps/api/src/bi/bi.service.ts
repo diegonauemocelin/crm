@@ -26,7 +26,10 @@ import {
   todaySP,
   whatsappSessions,
 } from './bi'
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { contratoMarkdown } from './bi-contrato'
+import { PROJETO, zipDoProjeto } from './powerbi'
 import { type BiTable, describeTables, pageSql, TABLE_BY_NAME } from './bi-tabelas'
 
 const MODULE = 'bi'
@@ -108,6 +111,20 @@ export class BiService {
   contrato(user: AuthUser) {
     this.assertCan(user, 'view')
     return contratoMarkdown(this.baseUrl())
+  }
+
+  /** Pasta do projeto do Power BI (bi/powerbi do repositório; na imagem, POWERBI_DIR). */
+  private powerBiDir(): string | null {
+    const candidatos = [process.env.POWERBI_DIR, resolve(process.cwd(), '../../bi/powerbi'), resolve(process.cwd(), 'bi/powerbi'), resolve(__dirname, '../../../../bi/powerbi')]
+    return candidatos.find((d) => d && existsSync(resolve(d, `${PROJETO}.pbip`))) ?? null
+  }
+
+  /** Projeto do Power BI (.pbip) em zip, com o endereço deste CRM no parâmetro CRM_BaseUrl. */
+  projetoPowerBi(user: AuthUser) {
+    this.assertCan(user, 'view')
+    const dir = this.powerBiDir()
+    if (!dir) throw new NotFoundException('O projeto do Power BI não está nesta instalação.')
+    return { nome: `${PROJETO} - Power BI.zip`, zip: zipDoProjeto(dir, this.baseUrl()) }
   }
 
   // ---------- API de dados (Power BI) ----------

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "visao_geral_09",
+  "position": {
+    "x": 732,
+    "y": 72,
+    "z": 9000,
+    "height": 96,
+    "width": 171,
+    "tabOrder": 9000
+  },
+  "visual": {
+    "visualType": "card",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Taxa de conversão"
+                }
+              },
+              "queryRef": "_Medidas.Taxa de conversão",
+              "nativeQueryRef": "Taxa de conversão"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

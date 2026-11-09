@@ -1,0 +1,37 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "comercial_07",
+  "position": {
+    "x": 374,
+    "y": 72,
+    "z": 7000,
+    "height": 96,
+    "width": 171,
+    "tabOrder": 7000
+  },
+  "visual": {
+    "visualType": "card",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Perdas"
+                }
+              },
+              "queryRef": "_Medidas.Perdas",
+              "nativeQueryRef": "Perdas"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

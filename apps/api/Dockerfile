@@ -29,6 +29,7 @@ ENV NODE_ENV=production \
     GIT_COMMIT=${GIT_COMMIT} \
     BUILD_DATE=${BUILD_DATE} \
     RELEASES_FILE=/app/releases.json \
+    POWERBI_DIR=/app/bi/powerbi \
     UPLOAD_DIR=/data/uploads \
     PATH=/app/node_modules/.bin:/app/apps/api/node_modules/.bin:$PATH \
     NPM_CONFIG_UPDATE_NOTIFIER=false
@@ -41,6 +42,8 @@ COPY --from=build --chown=node:node /app/apps/api/src/generated ./src/generated
 COPY --chown=node:node apps/api/package.json apps/api/prisma.config.ts ./
 COPY --chown=node:node apps/api/prisma ./prisma
 COPY --chown=node:node releases.json /app/releases.json
+# Projeto do Power BI (Configurações › Power BI › Baixar projeto do Power BI).
+COPY --chown=node:node bi/powerbi /app/bi/powerbi
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

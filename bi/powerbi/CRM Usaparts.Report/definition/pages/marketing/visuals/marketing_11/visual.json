@@ -1,0 +1,172 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "marketing_11",
+  "position": {
+    "x": 424,
+    "y": 180,
+    "z": 11000,
+    "height": 262,
+    "width": 840,
+    "tabOrder": 11000
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "fato_anuncios_diario"
+                    }
+                  },
+                  "Property": "campanha"
+                }
+              },
+              "queryRef": "fato_anuncios_diario.campanha",
+              "nativeQueryRef": "campanha"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Investimento"
+                }
+              },
+              "queryRef": "_Medidas.Investimento",
+              "nativeQueryRef": "Investimento"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Cliques"
+                }
+              },
+              "queryRef": "_Medidas.Cliques",
+              "nativeQueryRef": "Cliques"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "CTR"
+                }
+              },
+              "queryRef": "_Medidas.CTR",
+              "nativeQueryRef": "CTR"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "CPC"
+                }
+              },
+              "queryRef": "_Medidas.CPC",
+              "nativeQueryRef": "CPC"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Leads dos anúncios"
+                }
+              },
+              "queryRef": "_Medidas.Leads dos anúncios",
+              "nativeQueryRef": "Leads dos anúncios"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "CPL (plataforma)"
+                }
+              },
+              "queryRef": "_Medidas.CPL (plataforma)",
+              "nativeQueryRef": "CPL (plataforma)"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "CPA (plataforma)"
+                }
+              },
+              "queryRef": "_Medidas.CPA (plataforma)",
+              "nativeQueryRef": "CPA (plataforma)"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "ROAS da campanha"
+                }
+              },
+              "queryRef": "_Medidas.ROAS da campanha",
+              "nativeQueryRef": "ROAS da campanha"
+            }
+          ]
+        }
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Campanhas: CPL, CPA e ROAS'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

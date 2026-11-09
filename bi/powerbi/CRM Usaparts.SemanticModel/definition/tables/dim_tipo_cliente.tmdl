@@ -1,0 +1,31 @@
+/// Tipos de cliente do atendimento.
+table dim_tipo_cliente
+
+	/// Número interno (uuid).
+	column tipo_cliente_id
+		dataType: string
+		isHidden
+		isKey
+		summarizeBy: none
+		sourceColumn: tipo_cliente_id
+
+	/// Nome do item.
+	column nome
+		dataType: string
+		summarizeBy: none
+		sourceColumn: nome
+
+	/// Ainda aparece para escolher.
+	column ativo
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: ativo
+
+	partition dim_tipo_cliente = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("dim_tipo_cliente"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"tipo_cliente_id", type text}, {"nome", type text}, {"ativo", type logical}})
+			in
+			    Tipada

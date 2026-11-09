@@ -1,0 +1,148 @@
+/// Cotações de frete: destino (cidade/UF), carga, melhor preço e a transportadora escolhida. Sem cliente e sem CEP.
+table fato_frete_cotacoes
+
+	/// Número interno (uuid).
+	column cotacao_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: cotacao_id
+
+	/// Número da cotação.
+	column codigo
+		dataType: int64
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: codigo
+
+	/// Filial de origem.
+	column filial_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: filial_id
+
+	/// Dia da cotação.
+	column data_cotacao
+		dataType: dateTime
+		formatString: dd/MM/yyyy
+		summarizeBy: none
+		sourceColumn: data_cotacao
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// Quando foi calculada.
+	column criada_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: criada_em
+
+	/// Quem cotou (dim_usuario).
+	column criado_por_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: criado_por_id
+
+	/// PF ou PJ.
+	column tipo_pessoa
+		dataType: string
+		summarizeBy: none
+		sourceColumn: tipo_pessoa
+
+	/// ORCAMENTO ou PRE_NOTA (Tcar).
+	column documento_erp
+		dataType: string
+		summarizeBy: none
+		sourceColumn: documento_erp
+
+	/// UF do destino.
+	column uf_destino
+		dataType: string
+		summarizeBy: none
+		sourceColumn: uf_destino
+
+	/// Cidade do destino.
+	column cidade_destino
+		dataType: string
+		summarizeBy: none
+		sourceColumn: cidade_destino
+
+	/// Valor da mercadoria (R$).
+	column valor_carga
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: valor_carga
+
+	/// Peso real (kg).
+	column peso_kg
+		dataType: double
+		formatString: #,0.0
+		summarizeBy: sum
+		sourceColumn: peso_kg
+
+	/// Volume (m³).
+	column metros_cubicos
+		dataType: double
+		formatString: #,0.0
+		summarizeBy: sum
+		sourceColumn: metros_cubicos
+
+	/// Menor frete calculado (R$).
+	column melhor_total
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: melhor_total
+
+	/// CALCULADA, SELECIONADA ou CANCELADA.
+	column situacao
+		dataType: string
+		summarizeBy: none
+		sourceColumn: situacao
+
+	/// Transportadora escolhida.
+	column transportadora_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: transportadora_id
+
+	/// Frete da transportadora escolhida (R$).
+	column total_escolhido
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: total_escolhido
+
+	/// Quando a transportadora foi escolhida.
+	column escolhida_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: escolhida_em
+
+	/// Usou tabela vencida com autorização.
+	column tabela_vencida_liberada
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: tabela_vencida_liberada
+
+	hierarchy Destino
+
+		level UF
+			column: uf_destino
+
+		level Cidade
+			column: cidade_destino
+
+	partition fato_frete_cotacoes = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("fato_frete_cotacoes"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"cotacao_id", type text}, {"codigo", Int64.Type}, {"filial_id", type text}, {"data_cotacao", type date}, {"criada_em", type datetime}, {"criado_por_id", type text}, {"tipo_pessoa", type text}, {"documento_erp", type text}, {"uf_destino", type text}, {"cidade_destino", type text}, {"valor_carga", Currency.Type}, {"peso_kg", type number}, {"metros_cubicos", type number}, {"melhor_total", Currency.Type}, {"situacao", type text}, {"transportadora_id", type text}, {"total_escolhido", Currency.Type}, {"escolhida_em", type datetime}, {"tabela_vencida_liberada", type logical}})
+			in
+			    Tipada

@@ -1,0 +1,13 @@
+/// Parâmetro de cenário (what-if): de -50% a 200%, de 10 em 10. Use no controle deslizante da página Cenários.
+table 'Variação do investimento em anúncios (%)'
+
+	column 'Variação do investimento em anúncios (%)'
+		dataType: int64
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: [Value]
+
+	partition 'Variação do investimento em anúncios (%)' = calculated
+		mode: import
+		source =
+			GENERATESERIES ( -50, 200, 10 )

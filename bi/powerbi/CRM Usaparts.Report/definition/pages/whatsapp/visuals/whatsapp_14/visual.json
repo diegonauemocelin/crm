@@ -1,0 +1,130 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "whatsapp_14",
+  "position": {
+    "x": 16,
+    "y": 452,
+    "z": 14000,
+    "height": 256,
+    "width": 820,
+    "tabOrder": 14000
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "dim_usuario"
+                    }
+                  },
+                  "Property": "nome"
+                }
+              },
+              "queryRef": "dim_usuario.nome",
+              "nativeQueryRef": "nome"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Atendimentos recebidos"
+                }
+              },
+              "queryRef": "_Medidas.Atendimentos recebidos",
+              "nativeQueryRef": "Atendimentos recebidos"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Primeira resposta comercial (min, mediana)"
+                }
+              },
+              "queryRef": "_Medidas.Primeira resposta comercial (min, mediana)",
+              "nativeQueryRef": "Primeira resposta comercial (min, mediana)"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "% respondidos em 15 min"
+                }
+              },
+              "queryRef": "_Medidas.% respondidos em 15 min",
+              "nativeQueryRef": "% respondidos em 15 min"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Sem resposta"
+                }
+              },
+              "queryRef": "_Medidas.Sem resposta",
+              "nativeQueryRef": "Sem resposta"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Mensagens enviadas"
+                }
+              },
+              "queryRef": "_Medidas.Mensagens enviadas",
+              "nativeQueryRef": "Mensagens enviadas"
+            }
+          ]
+        }
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Atendentes'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

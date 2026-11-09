@@ -1,0 +1,37 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "cenarios_08",
+  "position": {
+    "x": 434,
+    "y": 88,
+    "z": 8000,
+    "height": 84,
+    "width": 201,
+    "tabOrder": 8000
+  },
+  "visual": {
+    "visualType": "card",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Diferença de receita"
+                }
+              },
+              "queryRef": "_Medidas.Diferença de receita",
+              "nativeQueryRef": "Diferença de receita"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

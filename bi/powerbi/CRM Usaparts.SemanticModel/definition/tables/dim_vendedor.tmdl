@@ -1,0 +1,58 @@
+/// Vendedores do atendimento (com ou sem login).
+table dim_vendedor
+
+	/// Número interno (uuid).
+	column vendedor_id
+		dataType: string
+		isHidden
+		isKey
+		summarizeBy: none
+		sourceColumn: vendedor_id
+
+	/// Nome do vendedor.
+	column nome
+		dataType: string
+		summarizeBy: none
+		sourceColumn: nome
+
+	/// Unidade do vendedor.
+	column filial_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: filial_id
+
+	/// Login ligado ao vendedor (dim_usuario).
+	column usuario_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: usuario_id
+
+	/// Vendedor ativo.
+	column ativo
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: ativo
+
+	/// Unidade do vendedor (nome), para a hierarquia Comercial.
+	column filial = LOOKUPVALUE ( dim_filial[nome], dim_filial[filial_id], dim_vendedor[filial_id] )
+		dataType: string
+		summarizeBy: none
+
+	hierarchy Comercial
+
+		level Filial
+			column: filial
+
+		level Vendedor
+			column: nome
+
+	partition dim_vendedor = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("dim_vendedor"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"vendedor_id", type text}, {"nome", type text}, {"filial_id", type text}, {"usuario_id", type text}, {"ativo", type logical}})
+			in
+			    Tipada

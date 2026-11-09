@@ -1,0 +1,164 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "cenarios_20",
+  "position": {
+    "x": 16,
+    "y": 496,
+    "z": 20000,
+    "height": 212,
+    "width": 1248,
+    "tabOrder": 20000
+  },
+  "visual": {
+    "visualType": "pivotTable",
+    "query": {
+      "queryState": {
+        "Rows": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "dim_filial"
+                    }
+                  },
+                  "Property": "nome"
+                }
+              },
+              "queryRef": "dim_filial.nome",
+              "nativeQueryRef": "nome",
+              "active": true
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "dim_vendedor"
+                    }
+                  },
+                  "Property": "nome"
+                }
+              },
+              "queryRef": "dim_vendedor.nome",
+              "nativeQueryRef": "nome",
+              "active": false
+            }
+          ]
+        },
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Receita das pré-vendas"
+                }
+              },
+              "queryRef": "_Medidas.Receita das pré-vendas",
+              "nativeQueryRef": "Receita das pré-vendas"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Receita projetada"
+                }
+              },
+              "queryRef": "_Medidas.Receita projetada",
+              "nativeQueryRef": "Receita projetada"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Diferença de receita"
+                }
+              },
+              "queryRef": "_Medidas.Diferença de receita",
+              "nativeQueryRef": "Diferença de receita"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Vendas"
+                }
+              },
+              "queryRef": "_Medidas.Vendas",
+              "nativeQueryRef": "Vendas"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Vendas projetadas"
+                }
+              },
+              "queryRef": "_Medidas.Vendas projetadas",
+              "nativeQueryRef": "Vendas projetadas"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Taxa de conversão projetada"
+                }
+              },
+              "queryRef": "_Medidas.Taxa de conversão projetada",
+              "nativeQueryRef": "Taxa de conversão projetada"
+            }
+          ]
+        }
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Cenário por filial e vendedor'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

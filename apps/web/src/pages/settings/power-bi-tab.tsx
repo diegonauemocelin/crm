@@ -186,17 +186,26 @@ export function PowerBiTab() {
           <ol className="list-decimal space-y-1.5 pl-5 text-muted-foreground">
             <li>Crie uma chave aqui e copie.</li>
             <li>
-              Abra o projeto do Power BI do CRM (o arquivo do projeto vem numa próxima etapa) ou, num relatório novo, crie os parâmetros <code>CRM_BaseUrl</code> e <code>CRM_Chave</code> e a função <code>CRM_Tabela</code> do contrato.
+              Baixe o projeto do Power BI abaixo, descompacte e abra o arquivo <code>CRM Usaparts.pbip</code> no Power BI Desktop (o LEIA-ME do zip explica). Ou, num relatório novo, crie os parâmetros <code>CRM_BaseUrl</code> e <code>CRM_Chave</code> e a função <code>CRM_Tabela</code> do contrato.
             </li>
-            <li>Atualize: as tabelas vêm em páginas de até 50 mil linhas, últimos 24 meses nos fatos.</li>
+            <li>
+              Em Transformar dados › Editar parâmetros, cole a chave em <code>CRM_Chave</code> e atualize: as tabelas vêm em páginas de até 50 mil linhas, últimos 24 meses nos fatos.
+            </li>
             <li>
               No Power BI Service, nas credenciais da fonte de dados, escolha <strong>Anônima</strong> e privacidade <strong>Organizacional</strong>. A chave vai no parâmetro <code>CRM_Chave</code>.
             </li>
           </ol>
-          <p className="text-xs text-muted-foreground">O contrato lista as tabelas, as colunas, as relações do modelo, a função do Power Query e medidas DAX sugeridas.</p>
-          <Button type="button" variant="outline" onClick={() => api.download('/power-bi/contrato', 'BI-CONTRATO.md').catch((e) => toast.error(errorMessage(e)))}>
-            <DownloadIcon /> Baixar o contrato de dados (Markdown)
-          </Button>
+          <p className="text-xs text-muted-foreground">
+            O projeto já vem com o modelo (tabelas, relações, calendário, medidas por área, cenários) e o relatório (visão geral, comercial, WhatsApp, loja e Mercado Livre, marketing, fretes e cenários), com o endereço deste CRM. O contrato lista as tabelas, as colunas, as relações, a função do Power Query e as medidas DAX.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" onClick={() => api.download('/power-bi/projeto', 'CRM Usaparts - Power BI.zip').catch((e) => toast.error(errorMessage(e)))}>
+              <DownloadIcon /> Baixar projeto do Power BI
+            </Button>
+            <Button type="button" variant="outline" onClick={() => api.download('/power-bi/contrato', 'BI-CONTRATO.md').catch((e) => toast.error(errorMessage(e)))}>
+              <DownloadIcon /> Baixar o contrato de dados (Markdown)
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "whatsapp_06",
+  "position": {
+    "x": 225,
+    "y": 72,
+    "z": 6000,
+    "height": 96,
+    "width": 201,
+    "tabOrder": 6000
+  },
+  "visual": {
+    "visualType": "card",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Atendimentos recebidos"
+                }
+              },
+              "queryRef": "_Medidas.Atendimentos recebidos",
+              "nativeQueryRef": "Atendimentos recebidos"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

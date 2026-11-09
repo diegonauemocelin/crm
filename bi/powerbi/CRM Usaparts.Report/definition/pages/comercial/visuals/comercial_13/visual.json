@@ -1,0 +1,104 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "comercial_13",
+  "position": {
+    "x": 424,
+    "y": 180,
+    "z": 13000,
+    "height": 262,
+    "width": 420,
+    "tabOrder": 13000
+  },
+  "visual": {
+    "visualType": "clusteredBarChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "HierarchyLevel": {
+                  "Expression": {
+                    "Hierarchy": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "dim_vendedor"
+                        }
+                      },
+                      "Hierarchy": "Comercial"
+                    }
+                  },
+                  "Level": "Filial"
+                }
+              },
+              "queryRef": "dim_vendedor.Comercial.Filial",
+              "nativeQueryRef": "Comercial Filial",
+              "active": true
+            },
+            {
+              "field": {
+                "HierarchyLevel": {
+                  "Expression": {
+                    "Hierarchy": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "dim_vendedor"
+                        }
+                      },
+                      "Hierarchy": "Comercial"
+                    }
+                  },
+                  "Level": "Vendedor"
+                }
+              },
+              "queryRef": "dim_vendedor.Comercial.Vendedor",
+              "nativeQueryRef": "Comercial Vendedor",
+              "active": false
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Taxa de conversão"
+                }
+              },
+              "queryRef": "_Medidas.Taxa de conversão",
+              "nativeQueryRef": "Taxa de conversão"
+            }
+          ]
+        }
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Conversão por filial e vendedor (drill-down)'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

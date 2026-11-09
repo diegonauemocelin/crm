@@ -1,0 +1,74 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "cenarios_05",
+  "position": {
+    "x": 1020,
+    "y": 8,
+    "z": 5000,
+    "height": 72,
+    "width": 243,
+    "tabOrder": 5000
+  },
+  "visual": {
+    "visualType": "slicer",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Variação do frete (%)"
+                    }
+                  },
+                  "Property": "Variação do frete (%)"
+                }
+              },
+              "queryRef": "Variação do frete (%).Variação do frete (%)",
+              "nativeQueryRef": "Variação do frete (%)"
+            }
+          ]
+        }
+      }
+    },
+    "objects": {
+      "data": [
+        {
+          "properties": {
+            "mode": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Single'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Variação do frete (%)'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

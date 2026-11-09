@@ -1,0 +1,126 @@
+/// Pedidos da loja virtual (Magazord). UF e cidade vêm do lead do pedido. O frete do pedido não é copiado da loja (não há coluna de frete).
+table fato_pedidos_loja
+
+	/// Número interno (uuid).
+	column pedido_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: pedido_id
+
+	/// Código do pedido na loja.
+	column codigo
+		dataType: string
+		summarizeBy: none
+		sourceColumn: codigo
+
+	/// Data e hora do pedido.
+	column pedido_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: pedido_em
+
+	/// Dia do pedido.
+	column data_pedido
+		dataType: dateTime
+		formatString: dd/MM/yyyy
+		summarizeBy: none
+		sourceColumn: data_pedido
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// Código da situação na Magazord.
+	column situacao_codigo
+		dataType: int64
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: situacao_codigo
+
+	/// Nome da situação.
+	column situacao
+		dataType: string
+		summarizeBy: none
+		sourceColumn: situacao
+
+	/// pago (aprovado, faturado, enviado, entregue), pendente ou cancelado.
+	column grupo_situacao
+		dataType: string
+		summarizeBy: none
+		sourceColumn: grupo_situacao
+
+	/// Forma de pagamento.
+	column pagamento
+		dataType: string
+		summarizeBy: none
+		sourceColumn: pagamento
+
+	/// Canal de venda: Site, marketplace, Manual ou PDV.
+	column canal
+		dataType: string
+		summarizeBy: none
+		sourceColumn: canal
+
+	/// Total do pedido (R$).
+	column total
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: total
+
+	/// Soma das quantidades dos itens (vazio se os itens ainda não foram lidos).
+	column qtd_itens
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: qtd_itens
+
+	/// Linhas de produto do pedido.
+	column qtd_produtos
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: qtd_produtos
+
+	/// Lead do cliente.
+	column lead_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: lead_id
+
+	/// UF do cliente (do lead).
+	column uf
+		dataType: string
+		summarizeBy: none
+		sourceColumn: uf
+
+	/// Cidade do cliente (do lead).
+	column cidade
+		dataType: string
+		summarizeBy: none
+		sourceColumn: cidade
+
+	/// Última alteração.
+	column atualizado_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: atualizado_em
+
+	hierarchy Geografia
+
+		level UF
+			column: uf
+
+		level Cidade
+			column: cidade
+
+	partition fato_pedidos_loja = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("fato_pedidos_loja"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"pedido_id", type text}, {"codigo", type text}, {"pedido_em", type datetime}, {"data_pedido", type date}, {"situacao_codigo", Int64.Type}, {"situacao", type text}, {"grupo_situacao", type text}, {"pagamento", type text}, {"canal", type text}, {"total", Currency.Type}, {"qtd_itens", Int64.Type}, {"qtd_produtos", Int64.Type}, {"lead_id", type text}, {"uf", type text}, {"cidade", type text}, {"atualizado_em", type datetime}})
+			in
+			    Tipada
