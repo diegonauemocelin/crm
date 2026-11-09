@@ -3183,6 +3183,92 @@ model PushSubscription {
   @@map("push_subscriptions")
 }
 
+/// Web Push da loja virtual: situação de uma campanha.
+enum WebPushStatus {
+  RASCUNHO
+  AGENDADO
+  ENVIANDO
+  ENVIADO
+  CANCELADO
+  ERRO
+}
+
+/// Visitante da loja virtual inscrito no Web Push (Marketing › Web Push). Chaves VAPID próprias do site, separadas
+/// das do app no celular (push_subscriptions).
+model WebPushSubscriber {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @db.Uuid
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  /// Visitante do rastreamento do site (_crm_vid) e o lead dele, quando já identificado.
+  visitorId  String?
+  leadId     String?   @db.Uuid
+  active     Boolean   @default(true)
+  failCount  Int       @default(0)
+  failedAt   DateTime?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+
+  deliveries WebPushDelivery[]
+
+  @@index([tenantId, active])
+  @@index([leadId])
+  @@map("web_push_subscribers")
+}
+
+/// Campanha de Web Push: título, mensagem, link, ícone e imagem; contagem de disparos, entregas e cliques.
+model WebPushCampaign {
+  id            String        @id @default(uuid()) @db.Uuid
+  tenantId      String        @db.Uuid
+  name          String
+  title         String
+  message       String
+  url           String
+  buttonLabel   String?
+  /// Imagens enviadas pelo painel (file_assets públicos do tipo webpush-image). Sem ícone: o da empresa.
+  iconFileId    String?       @db.Uuid
+  imageFileId   String?       @db.Uuid
+  status        WebPushStatus @default(RASCUNHO)
+  scheduledAt   DateTime?
+  sentAt        DateTime?
+  finishedAt    DateTime?
+  targets       Int           @default(0)
+  sent          Int           @default(0)
+  failed        Int           @default(0)
+  delivered     Int           @default(0)
+  clicks        Int           @default(0)
+  error         String?
+  createdById   String?       @db.Uuid
+  createdByName String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  deliveries WebPushDelivery[]
+
+  @@index([tenantId, status])
+  @@index([status, scheduledAt])
+  @@map("web_push_campaigns")
+}
+
+/// Um envio de campanha para um inscrito: base das entregas e cliques únicos e da retomada depois de reiniciar.
+model WebPushDelivery {
+  id           String    @id @default(uuid()) @db.Uuid
+  campaignId   String    @db.Uuid
+  subscriberId String    @db.Uuid
+  sentAt       DateTime  @default(now())
+  shownAt      DateTime?
+  clickedAt    DateTime?
+
+  campaign   WebPushCampaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  subscriber WebPushSubscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, subscriberId])
+  @@index([subscriberId])
+  @@map("web_push_deliveries")
+}
+
 /// Lojas concorrentes no Mercado Livre, informadas pelo link, para comparar preços pelo código de referência.
 model MlCompetitor {
   id             String    @id @default(uuid()) @db.Uuid

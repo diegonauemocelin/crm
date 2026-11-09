@@ -11,6 +11,7 @@
  *   usaCrm('pageview')        // registrar manualmente uma página (normalmente automático)
  */
 import { CAPTURE_JS } from '../captura/widget'
+import { PUSH_JS } from '../webpush/webpush'
 
 export function buildScript(o: { key: string; endpoint: string; requireConsent: boolean; cookieDomains: string[] }) {
   const cfg = JSON.stringify({ k: o.key, e: o.endpoint, c: o.requireConsent, d: o.cookieDomains })
@@ -110,7 +111,8 @@ export function buildScript(o: { key: string; endpoint: string; requireConsent: 
   w.addEventListener('pagehide', scan);
   setInterval(scan, 1000);
 ${CAPTURE_JS}
-  if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', function () { send(); scan(); startCapture(); }); else { send(); scan(); startCapture(); }
+${PUSH_JS}
+  if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', function () { send(); scan(); startCapture(); startPush(); }); else { send(); scan(); startCapture(); startPush(); }
 })(window, document);
 `
 }
