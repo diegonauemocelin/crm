@@ -1204,14 +1204,22 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     // Pré-venda em aberto desta conversa: recebe o código e o vendedor (se ainda não tem) ou, cliente da carteira, sai.
     let removedRecord = false
     const record = conv.recordId ? await this.prisma.serviceRecord.findFirst({ where: { id: conv.recordId, tenantId: user.tenantId, kind: 'PRE_VENDAS', deletedAt: null } }) : null
-    if (record && d.walletOnly && record.saleStatus === 'NEGOCIACAO' && !record.forwarded && can(user.permissions, user.role.isSystem, 'pre_vendas', 'delete')) {
-      const seller = await this.prisma.seller.findUnique({ where: { id: d.sellerId! }, select: { name: true } })
-      await this.prisma.serviceRecord.update({
-        where: { id: record.id },
-        data: { deletedAt: new Date(), history: { create: { userId: user.id, userName: user.name, action: `excluído (cliente da carteira de ${seller?.name ?? 'um vendedor'}, não é venda perdida)`, changes: {} } } },
+    const wallet = d.walletOnly ?? (await this.prisma.lead.findUnique({ where: { id: leadId }, select: { walletOnly: true } }))?.walletOnly ?? false
+    const sellerId = d.sellerId ?? (await this.prisma.lead.findUnique({ where: { id: leadId }, select: { clientSellerId: true } }))?.clientSellerId ?? null
+    if (wallet && can(user.permissions, user.role.isSystem, 'pre_vendas', 'edit')) {
+      // Cliente da carteira: as pré-vendas dele ainda sem atendimento (a desta conversa e as que o WhatsApp abriu) saem.
+      // Não é venda perdida: some das telas e relatórios, com o motivo no histórico.
+      const open = await this.prisma.serviceRecord.findMany({
+        where: { tenantId: user.tenantId, kind: 'PRE_VENDAS', deletedAt: null, saleStatus: 'NEGOCIACAO', forwarded: false, OR: [...(record ? [{ id: record.id }] : []), { leadId, firstActionAt: null }] },
+        select: { id: true },
       })
-      await this.prisma.whatsappConversation.update({ where: { id }, data: { recordId: null } })
-      removedRecord = true
+      if (open.length) {
+        const seller = sellerId ? await this.prisma.seller.findUnique({ where: { id: sellerId }, select: { name: true } }) : null
+        const action = `finalizado: cliente da carteira de ${seller?.name ?? 'um vendedor'} (não é venda perdida)`
+        for (const r of open) await this.prisma.serviceRecord.update({ where: { id: r.id }, data: { deletedAt: new Date(), updatedById: user.id, history: { create: { userId: user.id, userName: user.name, action, changes: {} } } } })
+        await this.prisma.whatsappConversation.updateMany({ where: { recordId: { in: open.map((r) => r.id) } }, data: { recordId: null } })
+        removedRecord = true
+      }
     } else if (record && record.saleStatus === 'NEGOCIACAO' && can(user.permissions, user.role.isSystem, 'pre_vendas', 'edit')) {
       const data: Prisma.ServiceRecordUncheckedUpdateInput = {}
       const changes: Record<string, { de: unknown; para: unknown }> = {}
