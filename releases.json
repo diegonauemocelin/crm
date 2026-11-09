@@ -2,6 +2,38 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.51",
+      "date": "2026-11-09",
+      "title": "Tcar com peso e fotos, orçamento e pré-nota na cotação e importação de XML das notas",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Cotação de frete: botão Importar do Tcar traz o orçamento ou a pré-nota pelo número (itens, quantidades, valor e CEP/cidade/UF do cliente) e soma o peso das peças; as peças sem peso ficam marcadas para completar. A cotação fica ligada ao documento."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Importar XML de NF-e (Fretes › Pedidos): arraste o .zip com os XML do dia; só entram as notas de saída autorizadas da empresa, cada uma vira pedido de frete e os CT-e da SEFAZ casam sozinhos pela chave. Cancelamentos no .zip cancelam o pedido; resumo e histórico de cada importação."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Confronto NF-e × CT-e: nota encontrada, valor da carga, peso, volumes, destino, transportadora e CIF/FOB, com aviso de divergência (ex.: peso cobrado maior que o da nota). Folgas em Filiais › Conciliação."
+        },
+        {
+          "type": "novo",
+          "area": "ERP",
+          "text": "Tcar: o CRM guarda o peso bruto e líquido das peças e busca as fotos (Consulta de produtos com miniatura, galeria e peso). Liga e desliga em Configurações › Tcar."
+        },
+        {
+          "type": "infra",
+          "area": "Sistema",
+          "text": "Inclui as versões 2.0.49 e 2.0.50 (limite do Google no frete do Shopping e Power BI)."
+        }
+      ]
+    },
+    {
       "version": "2.0.50",
       "date": "2026-11-09",
       "title": "Power BI: dados do CRM e projeto pronto",
