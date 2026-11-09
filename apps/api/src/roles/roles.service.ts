@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import type { RequestCtx } from '../common/decorators'
 import { cleanLoginHours } from '../common/horario-acesso'
@@ -63,7 +63,26 @@ export class RolesService {
     return rows.map((r) => r.id)
   }
 
+  /**
+   * Quem não é Administrador não muda o próprio perfil nem dá a um perfil o que ele mesmo não tem (ação ou escopo):
+   * senão, a permissão "perfis" viraria acesso total.
+   */
+  private assertGrantable(actor: AuthUser, input: RoleInput, editingId?: string) {
+    if (actor.role.isSystem) return
+    if (editingId && editingId === actor.role.id) throw new ForbiddenException('Você não pode alterar o seu próprio perfil de acesso.')
+    const rank: Record<string, number> = { OWN: 0, UNIT: 1, ALL: 2 }
+    for (const p of input.permissions) {
+      const mine = actor.permissions[p.module]
+      for (const a of ['view', 'create', 'edit', 'delete', 'export'] as const) {
+        if (p[a] && !mine?.[a]) throw new ForbiddenException('Você não pode dar a um perfil uma permissão que o seu perfil não tem.')
+      }
+      const any = p.view || p.create || p.edit || p.delete || p.export
+      if (any && (rank[p.scope] ?? 2) > (rank[mine?.scope ?? 'OWN'] ?? 0)) throw new ForbiddenException('Você não pode dar a um perfil um escopo maior que o do seu perfil.')
+    }
+  }
+
   async create(actor: AuthUser, input: RoleInput, ctx: RequestCtx) {
+    this.assertGrantable(actor, input)
     await this.assertUniqueName(actor.tenantId, input.name)
     const role = await this.prisma.role.create({
       data: {
@@ -86,6 +105,7 @@ export class RolesService {
     const current = await this.prisma.role.findFirst({ where: { id, tenantId: actor.tenantId } })
     if (!current) throw new NotFoundException('Perfil não encontrado.')
     if (current.isSystem) throw new BadRequestException('O perfil Administrador é do sistema e não pode ser alterado.')
+    this.assertGrantable(actor, input, id)
     if (input.name.trim() !== current.name) await this.assertUniqueName(actor.tenantId, input.name)
 
     const role = await this.prisma.$transaction(async (tx) => {

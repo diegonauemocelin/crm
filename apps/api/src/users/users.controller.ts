@@ -83,6 +83,7 @@ export class UsersController {
   @HttpCode(200)
   @RequirePermission('usuarios', 'edit')
   async reset2fa(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    await this.users.assertTarget(user, id)
     await this.twoFactor.resetForUser(user, id, ctx)
     return { ok: true }
   }

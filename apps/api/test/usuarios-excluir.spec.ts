@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { UsersService } from '../src/users/users.service'
 
-const actor = { id: 'admin', tenantId: 't1', name: 'Admin' }
+const actor = { id: 'admin', tenantId: 't1', name: 'Admin', role: { isSystem: true } }
+const gerente = { id: 'g1', tenantId: 't1', name: 'Gerente', role: { isSystem: false } }
 function make(target: Record<string, unknown> | null, otherAdmins = 1) {
   const calls: string[] = []
   let userUpdate: Record<string, unknown> | null = null
@@ -15,6 +16,7 @@ function make(target: Record<string, unknown> | null, otherAdmins = 1) {
       },
     },
     refreshToken: { updateMany: () => 'tokens' },
+    pushSubscription: { deleteMany: () => 'push' },
     seller: { updateMany: () => 'seller' },
     $executeRaw: (s: TemplateStringsArray) => s.join('?').match(/UPDATE (\w+)/)?.[1] ?? 'raw',
     $transaction: async (ops: string[]) => {
@@ -32,7 +34,7 @@ describe('Excluir usuário', () => {
     await svc.remove(actor as never, 'u1', {} as never)
     expect(update()).toMatchObject({ active: false, totpEnabled: false, email: 'excluido-u1@usuario-excluido.invalid' })
     expect(update()?.deletedAt).toBeInstanceOf(Date)
-    expect(calls).toEqual(['user.update', 'tokens', 'seller', 'whatsapp_numbers', 'whatsapp_sectors', 'users', 'whatsapp_conversations'])
+    expect(calls).toEqual(['user.update', 'tokens', 'push', 'seller', 'whatsapp_numbers', 'whatsapp_sectors', 'users', 'whatsapp_conversations'])
   })
 
   it('não exclui a si mesmo', async () => {
@@ -49,5 +51,10 @@ describe('Excluir usuário', () => {
   it('usuário já excluído ou de outra empresa: não encontrado', async () => {
     const { svc } = make(null)
     await expect(svc.remove(actor as never, 'u3', {} as never)).rejects.toThrow(/não encontrado/)
+  })
+
+  it('quem não é Administrador não exclui um Administrador', async () => {
+    const { svc } = make({ id: 'u2', name: 'Chefe', email: 'c@x.com', active: true, role: { isSystem: true } })
+    await expect(svc.remove(gerente as never, 'u2', {} as never)).rejects.toThrow(/Administrador/)
   })
 })

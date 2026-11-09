@@ -28,7 +28,9 @@ export class UserThrottlerGuard extends ThrottlerGuard {
     }
     // Renovação da sessão (token de acesso vencido): conta por sessão, não pelo IP do escritório (com a equipe toda
     // renovando a cada 15 minutos, o limite por IP recusava a renovação e o app/tela ia para o login).
-    const refresh = r.cookies?.[REFRESH_COOKIE] as string | undefined
+    // Só na própria renovação: nas outras rotas sem login (login, esqueci a senha, 2FA) um cookie inventado a cada
+    // tentativa abriria um contador novo e furaria o limite por IP.
+    const refresh = (r.path ?? r.url ?? '').split('?')[0]!.endsWith('/auth/refresh') ? (r.cookies?.[REFRESH_COOKIE] as string | undefined) : undefined
     if (refresh) return `r:${createHash('sha256').update(refresh).digest('hex').slice(0, 32)}`
     return r.ip ?? 'desconhecido'
   }

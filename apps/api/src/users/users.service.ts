@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import { AuthService } from '../auth/auth.service'
 import { hashPassword, passwordProblems } from '../auth/password'
@@ -83,11 +83,13 @@ export class UsersService {
     const current = await this.prisma.user.findFirst({ where: { id, tenantId: actor.tenantId, deletedAt: null }, include: { role: true } })
     if (!current) throw new NotFoundException('Usuário não encontrado.')
     if (id === actor.id) throw new BadRequestException('Você não pode excluir o seu próprio usuário.')
+    this.assertCanManage(actor, current)
     if (current.role.isSystem && current.active) await this.assertAnotherAdmin(actor.tenantId, id)
     const t = actor.tenantId
     await this.prisma.$transaction([
       this.prisma.user.update({ where: { id }, data: { deletedAt: new Date(), active: false, email: `excluido-${id}@usuario-excluido.invalid`, passwordHash: await hashPassword(randomToken(48)), totpSecretEnc: null, totpPendingSecretEnc: null, totpEnabled: false, managerIds: [] } }),
       this.prisma.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } }),
+      this.prisma.pushSubscription.deleteMany({ where: { userId: id } }),
       this.prisma.seller.updateMany({ where: { tenantId: t, userId: id }, data: { userId: null } }),
       this.prisma.$executeRaw`UPDATE whatsapp_numbers SET "userIds" = array_remove("userIds", ${id}::uuid), "defaultUserId" = NULLIF("defaultUserId", ${id}::uuid) WHERE "tenantId" = ${t}::uuid AND (${id}::uuid = ANY("userIds") OR "defaultUserId" = ${id}::uuid)`,
       this.prisma.$executeRaw`UPDATE whatsapp_sectors SET "userIds" = array_remove("userIds", ${id}::uuid), "managerIds" = array_remove("managerIds", ${id}::uuid) WHERE "tenantId" = ${t}::uuid AND (${id}::uuid = ANY("userIds") OR ${id}::uuid = ANY("managerIds"))`,
@@ -100,7 +102,7 @@ export class UsersService {
 
   async create(actor: AuthUser, input: CreateUserInput, ctx: RequestCtx) {
     const email = input.email.trim().toLowerCase()
-    await this.assertRole(actor.tenantId, input.roleId)
+    await this.assertRole(actor, input.roleId)
     await this.assertUnit(actor.tenantId, input.unitId)
     const extraUnitIds = await this.extraUnits(actor.tenantId, input.extraUnitIds, input.unitId)
     if (await this.prisma.user.findUnique({ where: { tenantId_email: { tenantId: actor.tenantId, email } } })) {
@@ -142,7 +144,8 @@ export class UsersService {
     if (id === actor.id && (input.active === false || (input.roleId && input.roleId !== current.roleId))) {
       throw new BadRequestException('Você não pode desativar nem trocar o perfil do seu próprio usuário.')
     }
-    if (input.roleId) await this.assertRole(actor.tenantId, input.roleId)
+    this.assertCanManage(actor, current)
+    if (input.roleId) await this.assertRole(actor, input.roleId)
     await this.assertUnit(actor.tenantId, input.unitId)
     const extraUnitIds = await this.extraUnits(actor.tenantId, input.extraUnitIds, input.unitId === undefined ? current.unitId : input.unitId)
 
@@ -161,8 +164,8 @@ export class UsersService {
       data: { name: input.name?.trim(), email, roleId: input.roleId, active: input.active, unitId: input.unitId, extraUnitIds },
       select: USER_SELECT,
     })
-    // Desativar ou trocar o perfil encerra as sessões abertas na hora.
-    if (input.active === false || (input.roleId && input.roleId !== current.roleId)) await this.auth.revokeAllSessions(id)
+    // Desativar, trocar o perfil ou o e-mail encerra as sessões abertas na hora.
+    if (input.active === false || (input.roleId && input.roleId !== current.roleId) || (email && email !== current.email)) await this.auth.revokeAllSessions(id)
     await this.audit.byUser(actor, ctx, 'user.updated', 'user', id, { ...input })
     await this.linkSellers(actor, ctx)
     return view(user)
@@ -175,29 +178,45 @@ export class UsersService {
   }
 
   async unlock(actor: AuthUser, id: string, ctx: RequestCtx) {
-    await this.get(actor.tenantId, id)
+    await this.assertTarget(actor, id)
     await this.prisma.user.update({ where: { id }, data: { failedLogins: 0, lockedUntil: null } })
     await this.audit.byUser(actor, ctx, 'user.unlocked', 'user', id)
   }
 
   /** Desconecta o usuário de todos os aparelhos (ex.: celular perdido ou suspeita de acesso indevido). */
   async revokeSessions(actor: AuthUser, id: string, ctx: RequestCtx) {
+    await this.assertTarget(actor, id)
     const target = await this.get(actor.tenantId, id)
     const r = await this.prisma.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } })
+    await this.prisma.pushSubscription.deleteMany({ where: { userId: id } })
     await this.audit.byUser(actor, ctx, 'user.sessions_revoked', 'user', id, { email: target.email, sessoes: r.count })
     return { ok: true, sessions: r.count }
   }
 
   async sendReset(actor: AuthUser, id: string, ctx: RequestCtx) {
-    const user = await this.prisma.user.findFirst({ where: { id, tenantId: actor.tenantId, deletedAt: null } })
+    const user = await this.prisma.user.findFirst({ where: { id, tenantId: actor.tenantId, deletedAt: null }, include: { role: true } })
     if (!user) throw new NotFoundException('Usuário não encontrado.')
+    this.assertCanManage(actor, user)
     await this.auth.sendPasswordLink(user.id, user.tenantId, user.email, user.name, 'invite')
     await this.audit.byUser(actor, ctx, 'user.password_link_sent', 'user', id)
   }
 
-  private async assertRole(tenantId: string, roleId: string) {
-    const role = await this.prisma.role.findFirst({ where: { id: roleId, tenantId, active: true } })
+  /** Perfil válido da empresa; o perfil Administrador (de sistema) só um Administrador pode dar. */
+  private async assertRole(actor: AuthUser, roleId: string) {
+    const role = await this.prisma.role.findFirst({ where: { id: roleId, tenantId: actor.tenantId, active: true } })
     if (!role) throw new BadRequestException('Perfil de acesso inválido.')
+    if (role.isSystem && !actor.role.isSystem) throw new ForbiddenException('Só um Administrador pode dar o perfil Administrador.')
+  }
+
+  /** Usuário Administrador só é alterado (e-mail, senha, 2FA, bloqueio, sessões) por outro Administrador. */
+  assertCanManage(actor: AuthUser, target: { role: { isSystem: boolean } }) {
+    if (target.role.isSystem && !actor.role.isSystem) throw new ForbiddenException('Só um Administrador pode alterar um usuário Administrador.')
+  }
+
+  async assertTarget(actor: AuthUser, id: string) {
+    const target = await this.prisma.user.findFirst({ where: { id, tenantId: actor.tenantId, deletedAt: null }, include: { role: true } })
+    if (!target) throw new NotFoundException('Usuário não encontrado.')
+    this.assertCanManage(actor, target)
   }
 
   /** Outras unidades que a pessoa acessa (sem repetir a principal). undefined = não mexe. */

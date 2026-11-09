@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common'
+import { BadRequestException, Body, ForbiddenException, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common'
+import { can } from '../common/permissions'
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
@@ -347,6 +348,8 @@ export class FretesController {
 
   @Get('icms')
   icms(@CurrentUser() user: AuthUser) {
+    // Alíquotas internas: de quem trabalha com cotação, tabelas ou filiais.
+    if (!(['fretes_cotacao', 'fretes_tabelas', 'fretes_filiais'] as const).some((m) => can(user.permissions, user.role.isSystem, m, 'view'))) throw new ForbiddenException('Você não tem permissão para esta ação.')
     return this.quotes.icmsRates(user.tenantId)
   }
 

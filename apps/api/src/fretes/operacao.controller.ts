@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common'
+import { assertCan } from './acesso'
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express'
 import { ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
@@ -199,6 +200,7 @@ export class FretesOperacaoController {
 
   @Get('ctes/parametros')
   recSettings(@CurrentUser() user: AuthUser) {
+    assertCan(user, 'fretes_cte', 'view')
     return this.ctes.recSettings(user.tenantId)
   }
 
