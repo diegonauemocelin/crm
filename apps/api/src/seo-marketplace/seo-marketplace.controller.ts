@@ -29,6 +29,10 @@ class DraftDto {
   @ApiPropertyOptional() @IsOptional() @IsArray() @ArrayMaxSize(5) @IsString({ each: true }) sendFields?: string[]
 }
 
+class FixedDto {
+  @ApiProperty() @IsString() @MaxLength(5000) text!: string
+}
+
 class SendDto {
   @ApiProperty() @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) ids!: string[]
 }
@@ -59,6 +63,18 @@ export class SeoMarketplaceController {
   @RequirePermission('seo_marketplace', 'create')
   draft(@CurrentUser() user: AuthUser, @Param() p: ItemParam, @Body() dto: DraftDto) {
     return this.seo.saveDraft(user, p.id, dto)
+  }
+
+  @Get('texto-fixo')
+  @RequirePermission('seo_marketplace', 'view')
+  getFixed(@CurrentUser() user: AuthUser) {
+    return this.seo.getFixed(user)
+  }
+
+  @Put('texto-fixo')
+  @RequirePermission('seo_marketplace', 'edit')
+  saveFixed(@CurrentUser() user: AuthUser, @Body() dto: FixedDto, @ReqContext() ctx: RequestCtx) {
+    return this.seo.saveFixed(user, dto.text, ctx)
   }
 
   @Get('revisao')

@@ -174,6 +174,7 @@ export function SeoMarketplacePage() {
           <TabsTrigger value="anuncios">Anúncios</TabsTrigger>
           <TabsTrigger value="revisar">Para revisar{d?.stats.pending ? ` (${d.stats.pending})` : ''}</TabsTrigger>
           <TabsTrigger value="enviadas">Enviadas</TabsTrigger>
+          <TabsTrigger value="texto-fixo">Texto fixo</TabsTrigger>
         </TabsList>
         <TabsContent value="anuncios" className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -311,6 +312,9 @@ export function SeoMarketplacePage() {
         </TabsContent>
         <TabsContent value="enviadas">
           <ReviewList status="ENVIADA" fields={d?.fields ?? []} onOpen={setOpen} busy={!!job} />
+        </TabsContent>
+        <TabsContent value="texto-fixo">
+          <FixedText />
         </TabsContent>
       </Tabs>
       {open && d && <ItemSheet id={open} fields={d.fields} onClose={() => setOpen(null)} />}
@@ -636,5 +640,46 @@ function ItemSheet({ id, fields, onClose }: { id: string; fields: FieldDef[]; on
         )}
       </SheetContent>
     </Sheet>
+  )
+}
+
+/** Diferenciais da loja: vão no fim de todas as descrições (sugeridas pela IA, escritas à mão e enviadas). */
+function FixedText() {
+  const qc = useQueryClient()
+  const { can } = useAuth()
+  const q = useQuery({ queryKey: ['seo-ml', 'texto-fixo'], queryFn: () => api.get<{ text: string }>('/seo-marketplace/texto-fixo') })
+  const [text, setText] = useState<string | null>(null)
+  const value = text ?? q.data?.text ?? ''
+  const save = useMutation({
+    mutationFn: () => api.put<{ text: string }>('/seo-marketplace/texto-fixo', { text: value }),
+    onSuccess: (r) => {
+      qc.setQueryData(['seo-ml', 'texto-fixo'], r)
+      setText(null)
+      toast.success('Texto fixo salvo. Ele vai no fim de todas as descrições enviadas daqui em diante.')
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  if (q.isLoading) return <TableSkeleton rows={3} />
+  if (q.isError) return <ErrorState error={q.error} onRetry={() => q.refetch()} />
+  return (
+    <Card className="space-y-3 p-4">
+      <div>
+        <Label htmlFor="ml-fixed" className="text-base font-semibold">
+          Texto fixo da loja
+        </Label>
+        <p className="text-sm text-muted-foreground">
+          Vai no fim de todas as descrições: nas sugestões da IA, nos textos escritos à mão e no envio ao Mercado Livre (não repete se já estiver lá). Texto simples, sem telefone, WhatsApp, e-mail ou link. Deixe vazio para não usar.
+        </p>
+      </div>
+      <Textarea id="ml-fixed" rows={9} maxLength={1200} value={value} onChange={(e) => setText(e.target.value)} disabled={!can('seo_marketplace', 'edit')} className="font-mono text-sm" />
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">{value.length}/1200</span>
+        <Can module="seo_marketplace" action="edit">
+          <Button size="sm" disabled={save.isPending || text === null} onClick={() => save.mutate()}>
+            {save.isPending && <Loader2Icon className="animate-spin" />} Salvar
+          </Button>
+        </Can>
+      </div>
+    </Card>
   )
 }

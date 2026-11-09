@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { MODULE_KEYS } from '../src/common/permissions'
 import {
   cleanMlDescription,
+  cleanMlFixed,
+  DEFAULT_ML_FIXED,
+  withFixedText,
   cleanMlSeoFields,
   forbiddenContent,
   isMlItemId,
@@ -101,5 +104,20 @@ describe('SEO Marketplace: textos', () => {
 
   it('a permissão do módulo existe', () => {
     expect(MODULE_KEYS).toContain('seo_marketplace')
+  })
+})
+
+describe('SEO Marketplace: texto fixo da loja', () => {
+  it('vai no fim de todas as descrições, sem repetir', () => {
+    const fixed = 'DIFERENCIAIS DA LOJA\n- Envio imediato'
+    const d = withFixedText('PRODUTO\nBomba\n\nDÚVIDAS\nUse o campo de perguntas.', fixed)
+    expect(d.endsWith(fixed)).toBe(true)
+    expect(withFixedText(d, fixed)).toBe(d)
+    expect(withFixedText('Texto', '')).toBe('Texto')
+    expect(withFixedText('x'.repeat(20), fixed, 30).endsWith(fixed)).toBe(true)
+  })
+  it('não aceita contato no texto fixo', () => {
+    expect(cleanMlFixed('Chame no WhatsApp (49) 99999-0000')).toHaveProperty('error')
+    expect(cleanMlFixed(DEFAULT_ML_FIXED)).toEqual({ text: DEFAULT_ML_FIXED })
   })
 })

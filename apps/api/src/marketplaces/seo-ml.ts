@@ -216,3 +216,40 @@ export const mlTitleAllowed = (it: { sold_quantity?: number | null; catalog_list
 
 /** ID de anúncio do Mercado Livre (ex.: MLB1234567890). */
 export const isMlItemId = (s: string) => /^ML[A-Z]\d{5,15}$/.test(s)
+
+// ---------- Texto fixo da loja ----------
+
+export const ML_FIXED_KEY = 'seo_marketplace_texto_fixo'
+export const ML_FIXED_MAX = 1200
+
+/** Texto fixo (diferenciais da loja) que entra em toda descrição sugerida. Escrito pela própria loja. */
+export const DEFAULT_ML_FIXED = [
+  'DIFERENCIAIS DA LOJA',
+  '- Envio imediato',
+  '- Produto novo, com nota fiscal',
+  '- Loja Oficial Usaparts no Mercado Livre',
+  '- Usaparts Importadora e Distribuidora de Peças para Máquinas Pesadas',
+  '- 11 anos de mercado',
+  '- Mais de 21 mil itens (SKU) em estoque',
+].join('\n')
+
+/** Limpa o texto fixo: texto simples, sem contato nem link (o Mercado Livre não aceita). */
+export function cleanMlFixed(input: string): { text: string } | { error: string } {
+  const text = cleanMlDescription(input ?? '', ML_FIXED_MAX)
+  const bad = forbiddenContent(text)
+  if (bad.length) return { error: `O texto fixo não pode ter ${bad.join(', ')}: o Mercado Livre não aceita.` }
+  return { text }
+}
+
+/**
+ * Coloca o texto fixo no fim da descrição (em todas). Se ele já estiver lá, não repete. Respeita o tamanho máximo
+ * da descrição (corta a descrição, nunca o texto fixo).
+ */
+export function withFixedText(description: string, fixed: string, max = ML_DESCRIPTION_MAX): string {
+  const block = fixed.trim()
+  const desc = description.trim()
+  if (!block) return desc
+  if (norm(desc).replace(/\s+/g, ' ').includes(norm(block).replace(/\s+/g, ' '))) return desc
+  const room = Math.max(0, max - block.length - 2)
+  return `${desc.slice(0, room).trim()}\n\n${block}`.trim()
+}

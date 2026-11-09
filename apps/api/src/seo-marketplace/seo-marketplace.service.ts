@@ -14,6 +14,10 @@ import {
   type MlSeoField,
   type MlSeoFields,
   mlSeoPrompt,
+  cleanMlFixed,
+  DEFAULT_ML_FIXED,
+  ML_FIXED_KEY,
+  withFixedText,
   mlSeoScore,
   mlSeoSystem,
   ML_SEO_FIELDS,
@@ -221,6 +225,25 @@ export class SeoMarketplaceService {
     }
   }
 
+  // ---------- Texto fixo da loja ----------
+
+  private async fixed(tenantId: string) {
+    const s = await this.settings.get<{ text?: string }>(tenantId, ML_FIXED_KEY, {})
+    return typeof s.text === 'string' ? s.text : DEFAULT_ML_FIXED
+  }
+
+  async getFixed(user: AuthUser) {
+    return { text: await this.fixed(user.tenantId) }
+  }
+
+  async saveFixed(user: AuthUser, text: string, ctx: RequestCtx) {
+    const r = cleanMlFixed(text)
+    if ('error' in r) throw new BadRequestException(r.error)
+    await this.settings.set(user.tenantId, ML_FIXED_KEY, { text: r.text })
+    await this.audit.byUser(user, ctx, 'seo_marketplace.texto_fixo', 'setting', undefined, { tamanho: r.text.length })
+    return { text: r.text }
+  }
+
   // ---------- Sugestões (IA e manual) ----------
 
   private async aiSystem(tenantId: string) {
@@ -237,6 +260,8 @@ export class SeoMarketplaceService {
     const answer = parseMlSeoAnswer(await this.ai.complete(user.tenantId, system, mlSeoPrompt(facts, { titleAllowed: live.titleAllowed, instruction }), 4000))
     if (!answer) throw new Error('a IA não respondeu no formato esperado')
     if (!live.titleAllowed) delete answer.title
+    // Diferenciais da loja (texto fixo escrito pela própria loja), iguais em todas as descrições.
+    if (answer.description) answer.description = withFixedText(answer.description, await this.fixed(user.tenantId))
     const proposed = { ...live.fields, ...answer }
     // O título só vai se a pessoa marcar (muda como o anúncio aparece na busca).
     const send = mlChangedFields(live.fields, proposed).filter((k) => k !== 'title')
@@ -287,6 +312,7 @@ export class SeoMarketplaceService {
     const it = await this.cached(user.tenantId, itemId)
     const current: MlSeoFields = { title: it.title ?? '', description: it.description ?? '' }
     const proposed = { ...current, ...cleanMlSeoFields(d.proposed ?? {}) }
+    if (proposed.description) proposed.description = withFixedText(proposed.description, await this.fixed(user.tenantId))
     const sendFields = (d.sendFields ?? mlChangedFields(current, proposed)).filter((k) => SENDABLE.has(k))
     if (d.changeId) {
       const c = await this.prisma.mlSeoChange.findFirst({ where: { id: d.changeId, tenantId: user.tenantId, itemId, status: { in: ['SUGERIDA', 'ERRO'] } } })
@@ -375,7 +401,9 @@ export class SeoMarketplaceService {
       throw await fail((err as Error).message)
     }
     if (live.sellerId !== seller) throw await fail('o anúncio não é da conta conectada do Mercado Livre')
-    const proposed = c.proposed as unknown as MlSeoFields
+    const proposed = { ...(c.proposed as unknown as MlSeoFields) }
+    // Texto fixo da loja no fim de toda descrição enviada (também nas sugestões feitas antes de ele existir).
+    if (c.sendFields.includes('description') && proposed.description) proposed.description = withFixedText(proposed.description, await this.fixed(user.tenantId))
     const fields = c.sendFields.filter((k): k is MlSeoField => SENDABLE.has(k)).filter((k) => (proposed[k] ?? '').trim() !== (live.fields[k] ?? '').trim())
     if (!fields.length) {
       await this.prisma.mlSeoChange.update({ where: { id: c.id }, data: { status: 'DESCARTADA', error: 'Nada para enviar: os textos já estão iguais no Mercado Livre.' } })
