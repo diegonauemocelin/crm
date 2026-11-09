@@ -2,6 +2,53 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.43",
+      "date": "2026-11-09",
+      "title": "Frete no Google Shopping, segurança reforçada e WhatsApp que avisa quando não recebe",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Marketing",
+          "text": "Frete no Google Shopping (Marketing Inteligente): o frete de cada produto é calculado na Magazord, com as mesmas tabelas do carrinho, para os estados, e enviado ao Google Merchant Center toda noite. A Magazord continua mandando os produtos; o CRM só acrescenta o frete."
+        },
+        {
+          "type": "novo",
+          "area": "Marketing",
+          "text": "Dashboard executivo: botão \"Modo TV\" abre a apresentação em tela cheia (com login)."
+        },
+        {
+          "type": "seguranca",
+          "area": "Sistema",
+          "text": "Links de TV sem login retirados do sistema; os painéis continuam, com login."
+        },
+        {
+          "type": "seguranca",
+          "area": "Sistema",
+          "text": "Perfil Administrador só pode ser dado por um Administrador, e só Administrador altera um usuário Administrador (e-mail, senha, 2FA, bloqueio, sessões, exclusão). Trocar o e-mail de alguém encerra as sessões dele."
+        },
+        {
+          "type": "seguranca",
+          "area": "Sistema",
+          "text": "Quem tem a permissão de perfis não altera o próprio perfil nem dá permissões que não tem. Limite de tentativas de login reforçado. Celular deixa de receber notificações ao encerrar as sessões, bloquear ou excluir o usuário. Links de senha antigos deixam de valer ao redefinir a senha."
+        },
+        {
+          "type": "seguranca",
+          "area": "Sistema",
+          "text": "Webhook do WhatsApp fechado para a internet (só a rede interna do servidor chama) e códigos de acesso fora dos registros do servidor. Backups guardam 30 cópias."
+        },
+        {
+          "type": "melhoria",
+          "area": "WhatsApp",
+          "text": "Número que envia mas não recebe nada há 45 minutos no horário de atendimento tem a conexão renovada sozinha; se continuar, aparece um aviso em Números de WhatsApp para gerar o QR Code de novo."
+        },
+        {
+          "type": "correcao",
+          "area": "Atendimento",
+          "text": "Marcar o cliente como da carteira do vendedor finaliza as pré-vendas dele que ainda aguardam atendimento (basta poder editar pré-vendas)."
+        }
+      ]
+    },
+    {
       "version": "2.0.42",
       "date": "2026-11-06",
       "title": "Concorrentes do Mercado Livre: leitura pelo catálogo e motivo na tela",
