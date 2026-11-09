@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, AlertCircleIcon, BanIcon, ChevronLeftIcon, ChevronRightIcon, CircleCheckBigIcon, FileTextIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ListChecksIcon, ReplyIcon, SmilePlusIcon, SmileIcon, StickerIcon, Loader2Icon, LockIcon, MailIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, AlertCircleIcon, BanIcon, ChevronLeftIcon, CopyIcon, ChevronRightIcon, CircleCheckBigIcon, FileTextIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ListChecksIcon, ReplyIcon, SmilePlusIcon, SmileIcon, StickerIcon, Loader2Icon, LockIcon, MailIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
 import { createContext, Fragment, type FormEvent, type KeyboardEvent, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -48,6 +48,8 @@ export interface NumberRef {
 }
 export interface ConvItem {
   id: string
+  /** Foto do perfil no WhatsApp (arquivo guardado no CRM); vazio = sem foto (mostra as iniciais). */
+  photoId?: string | null
   /** Atendimento dividido: atendente da conversa (vazio = na fila). */
   assignedUserId?: string | null
   assignedUserName?: string | null
@@ -120,10 +122,21 @@ interface Message {
   /** Áudio transcrito (Gemini), quando alguém já pediu. */
   transcript?: string | null
   /** Menções (@) num grupo: o número que aparece no texto e o nome de quem é (quando o CRM sabe). */
-  mentions?: { id: string; name: string | null }[]
+  mentions?: Mention[]
+}
+/**
+ * Pessoa mencionada (@) num grupo: o número do texto, o identificador (telefone ou @lid), o nome e o telefone quando
+ * se sabe (hidden = o WhatsApp esconde o número).
+ */
+export interface Mention {
+  id: string
+  name: string | null
+  jid?: string
+  phone?: string | null
+  hidden?: boolean
 }
 interface Thread {
-  conversation: { id: string; name: string | null; phone: string | null; jid: string; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; helpers?: { id: string; name: string }[]; sectorId?: string | null; category: ContactCategory | 'GRUPO'; labels?: ChatLabel[]; noReplyNeeded?: boolean; lastInboundAt?: string | null }
+  conversation: { id: string; name: string | null; phone: string | null; jid: string; photoId?: string | null; status: 'ABERTA' | 'ARQUIVADA'; assignedSellerId: string | null; assignedUserId?: string | null; assignedUserName?: string | null; helpers?: { id: string; name: string }[]; sectorId?: string | null; category: ContactCategory | 'GRUPO'; labels?: ChatLabel[]; noReplyNeeded?: boolean; lastInboundAt?: string | null }
   /** Contato salvo na agenda do número (ou na geral). */
   agenda?: { name: string | null; category: string; general: boolean } | null
   number: NumberRef | null
@@ -152,7 +165,16 @@ const dayKey = (iso: string) => dateShort(iso)
 
 /** Iniciais e cor fixa por contato, como a foto vazia do WhatsApp. */
 const AVATAR_COLORS = ['bg-emerald-600', 'bg-sky-600', 'bg-violet-600', 'bg-amber-600', 'bg-rose-600', 'bg-teal-600', 'bg-indigo-600', 'bg-orange-600']
-export function Avatar({ name, group, className }: { name: string | null; group?: boolean; className?: string }) {
+export function Avatar({ name, group, className, photoId }: { name: string | null; group?: boolean; className?: string; photoId?: string | null }) {
+  // Foto do WhatsApp (guardada no CRM); se não abrir, volta para as iniciais.
+  const [failed, setFailed] = useState<string | null>(null)
+  if (photoId && failed !== photoId) {
+    return (
+      <span className={cn('relative flex size-10 shrink-0 overflow-hidden rounded-full bg-muted', className)} aria-hidden>
+        <img src={`/api/files/${photoId}`} alt="" loading="lazy" decoding="async" className="size-full object-cover" onError={() => setFailed(photoId)} />
+      </span>
+    )
+  }
   const letters = (name ?? '').replace(/[^\p{L}\s]/gu, ' ').trim().split(/\s+/).filter(Boolean)
   const text = letters.length ? (letters[0]![0]! + (letters.length > 1 ? letters[letters.length - 1]![0]! : '')).toUpperCase() : ''
   const color = AVATAR_COLORS[[...(name ?? '')].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % AVATAR_COLORS.length]
@@ -243,6 +265,8 @@ const MonitorContext = createContext(false)
 const GalleryContext = createContext<{ id: string; alt: string }[]>([])
 /** Número de WhatsApp da conversa aberta: telefone clicado na mensagem abre a conversa por ele. */
 const ThreadNumberContext = createContext<string | null>(null)
+/** Conversa aberta (o grupo da menção clicada). */
+const ThreadIdContext = createContext<string | null>(null)
 
 export function ChatPage() {
   const { can } = useAuth()
@@ -542,7 +566,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                           <CheckIcon className={cn('size-5', !picked!.has(c.id) && 'invisible')} />
                         </span>
                       ) : (
-                        <Avatar name={c.name} group={c.category === 'GRUPO'} />
+                        <Avatar name={c.name} group={c.category === 'GRUPO'} photoId={c.photoId} />
                       )}
                       {wc && !picking && <span className={cn('absolute -right-0.5 -bottom-0.5 size-3 rounded-full ring-2 ring-background', wc.dot)} aria-label={`Sem resposta há ${waitText(wc.min)} (${wc.label})`} />}
                     </span>
@@ -648,7 +672,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
   if (q.error) return <div className="p-4"><ErrorState error={q.error} onRetry={() => q.refetch()} /></div>
   const d = q.data!
   const messages = [...older, ...d.messages]
-  const gallery = messages.filter((m) => m.type === 'imagem' && m.hasFile && !m.deleted).map((m) => ({ id: m.id, alt: m.text ?? 'Foto' }))
+  const gallery = messages.filter((m) => (m.type === 'imagem' || imageDocument(m)) && m.hasFile && !m.deleted).map((m) => ({ id: m.id, alt: m.text ?? m.fileName ?? 'Foto' }))
   const loadOlder = async () => {
     if (!messages[0]) return
     setLoadingOlder(true)
@@ -698,6 +722,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
   return (
     <MonitorContext.Provider value={monitor}>
     <ThreadNumberContext.Provider value={d.number?.id ?? null}>
+    <ThreadIdContext.Provider value={d.conversation.category === 'GRUPO' ? d.conversation.id : null}>
     <div
       className="relative flex h-full min-h-0 flex-col"
       onDragEnter={(e) => {
@@ -732,7 +757,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
               <ArrowLeftIcon className="size-5" />
             </Button>
           )}
-          <Avatar name={d.conversation.name ?? d.lead?.name ?? null} group={d.conversation.category === 'GRUPO'} />
+          <Avatar name={d.conversation.name ?? d.lead?.name ?? null} group={d.conversation.category === 'GRUPO'} photoId={d.conversation.photoId} />
           <button type="button" className="min-w-0 flex-1 px-1 text-left" onClick={() => setOptionsOpen(true)}>
             <span className="block truncate font-medium leading-tight">{title}</span>
             <span className="block truncate text-xs text-muted-foreground">{d.conversation.assignedUserName ? `com ${d.conversation.assignedUserName}` : (d.number?.name ?? formatPhone(d.conversation.phone))}</span>
@@ -772,7 +797,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
               <ArrowLeftIcon />
             </Button>
           )}
-          <Avatar name={d.conversation.name ?? d.lead?.name ?? null} group={d.conversation.category === 'GRUPO'} />
+          <Avatar name={d.conversation.name ?? d.lead?.name ?? null} group={d.conversation.category === 'GRUPO'} photoId={d.conversation.photoId} />
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium">{title}</p>
             <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
@@ -904,6 +929,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
         />
       )}
     </div>
+    </ThreadIdContext.Provider>
     </ThreadNumberContext.Provider>
     </MonitorContext.Provider>
   )
@@ -2172,20 +2198,75 @@ export function StartDialog({ onClose, onStarted, leadId, phone: initialPhone, e
 
 /** Formatação do WhatsApp (*negrito*, _itálico_, ~riscado~) como elementos do React (nunca HTML vindo da mensagem). */
 /** Texto da mensagem: links clicáveis, formatação do WhatsApp, telefones e as menções (@número vira @Nome). */
-function waFormat(text: string, mentions?: { id: string; name: string | null }[]) {
-  const named = (mentions ?? []).filter((x) => x.name)
-  if (!named.length) return waFormatBase(text)
-  const byId = new Map(named.map((x) => [x.id, x.name!]))
+function waFormat(text: string, mentions?: Mention[]) {
+  const list = mentions ?? []
+  if (!list.length) return waFormatBase(text)
+  const byId = new Map(list.map((x) => [x.id, x]))
   return text.split(/(@\d{5,20}\b)/).map((part, i) => {
-    const name = /^@\d{5,20}$/.test(part) ? byId.get(part.slice(1)) : undefined
-    return name ? (
-      <span key={`m${i}`} className="font-medium text-sky-700 dark:text-sky-300" title={`+${part.slice(1)}`}>
-        @{name}
-      </span>
-    ) : (
-      <span key={`p${i}`}>{waFormatBase(part)}</span>
-    )
+    const m = /^@\d{5,20}$/.test(part) ? byId.get(part.slice(1)) : undefined
+    return m ? <MentionChip key={`m${i}`} m={m} /> : <span key={`p${i}`}>{waFormatBase(part)}</span>
   })
+}
+
+/**
+ * Pessoa mencionada no grupo: clicar abre o menu "Abrir conversa com…" (pelo mesmo número do grupo) e, quando o
+ * telefone é conhecido, "Copiar número". O @lid (número escondido pelo WhatsApp) nunca aparece como se fosse telefone.
+ */
+function MentionChip({ m }: { m: Mention }) {
+  const monitor = useContext(MonitorContext)
+  const groupId = useContext(ThreadIdContext)
+  const { can } = useAuth()
+  const navigate = useNavigate()
+  const hidden = m.hidden ?? !m.phone
+  const phone = m.phone ? formatPhone(m.phone) : null
+  const label = m.name ?? (hidden ? 'Participante' : (phone ?? m.id))
+  const tip = phone ?? 'número oculto pelo WhatsApp'
+  const open = useMutation({
+    mutationFn: () => api.post<{ id: string }>(`/chat/conversas/${groupId}/abrir-mencao`, { jid: m.jid ?? `${m.id}@s.whatsapp.net` }),
+    onSuccess: (r) => navigate(`/chat?conversa=${r.id}`),
+    onError: (e) => toast.error(errorMessage(e), { duration: 8000 }),
+  })
+  const canOpen = !monitor && !!groupId && can('chat', 'create')
+  const chip = (
+    <span className="font-medium text-sky-700 dark:text-sky-300" title={tip}>
+      @{label}
+    </span>
+  )
+  if (!canOpen && !m.phone) return chip
+  return (
+    // O clique na menção não marca o balão (modo de encaminhar).
+    <span className="contents" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <span role="button" tabIndex={0} className="cursor-pointer rounded font-medium text-sky-700 hover:underline dark:text-sky-300" title={tip}>
+            @{label}
+          </span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-64">
+          <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+            {m.name ?? 'Participante'} · {tip}
+          </DropdownMenuLabel>
+          {canOpen && (
+            <DropdownMenuItem disabled={open.isPending} onSelect={() => open.mutate()}>
+              <MessageCircleIcon /> {open.isPending ? 'Abrindo…' : `Abrir conversa com ${m.name ?? 'esta pessoa'}`}
+            </DropdownMenuItem>
+          )}
+          {m.phone && (
+            <DropdownMenuItem
+              onSelect={() =>
+                void navigator.clipboard.writeText(m.phone!).then(
+                  () => toast.success('Número copiado.'),
+                  () => toast.error('Não foi possível copiar.'),
+                )
+              }
+            >
+              <CopyIcon /> Copiar número
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
+  )
 }
 
 function waFormatBase(text: string) {
@@ -2444,6 +2525,13 @@ function ImageViewer({ id, src, alt, sticker }: { id: string; src: string; alt: 
   )
 }
 
+/** Documento que é uma foto (ex.: banner enviado como documento para não perder qualidade): mostra como imagem. */
+function imageDocument(m: Pick<Message, 'type' | 'mime' | 'fileName'>) {
+  if (m.type !== 'documento') return false
+  if (m.mime && /^image\/(jpe?g|pjpeg|png|webp|gif)$/.test(m.mime)) return true
+  return (!m.mime || m.mime === 'application/octet-stream') && /\.(jpe?g|png|webp|gif)$/i.test(m.fileName ?? '')
+}
+
 function Bubble({ m }: { m: Message }) {
   const monitor = useContext(MonitorContext)
   if (m.deleted) {
@@ -2483,6 +2571,17 @@ function Bubble({ m }: { m: Message }) {
   }
   if (m.type === 'video') return <div className="space-y-1">{m.hasFile ? <video controls preload="none" src={src} className="max-h-72 max-w-full rounded" /> : pending || missing}{text}</div>
   if (m.type === 'contato') return <ContactBubble text={m.text} chat={(phone) => <PhoneLink phone={phone} button>{phone}</PhoneLink>} />
+  if (imageDocument(m) && m.hasFile) {
+    return (
+      <div className="space-y-1">
+        <ImageViewer id={m.id} src={src} alt={m.fileName ?? 'Imagem'} />
+        <a href={src} download={m.fileName ?? undefined} onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 rounded border bg-background/60 px-2 py-1 text-xs underline-offset-4 hover:underline" title="Baixar o arquivo original">
+          <DownloadIcon className="size-3.5 shrink-0" /> <span className="truncate">{m.fileName ?? 'Imagem'}</span>
+        </a>
+        {text}
+      </div>
+    )
+  }
   if (m.type === 'documento') {
     return (
       <div className="space-y-1">

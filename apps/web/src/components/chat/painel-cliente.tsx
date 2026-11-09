@@ -20,7 +20,7 @@ import { type ChatLabel, LabelChip } from './organizar'
  */
 
 interface PanelThread {
-  conversation: { id: string; name: string | null; phone: string | null; category: string; labels?: ChatLabel[] }
+  conversation: { id: string; name: string | null; phone: string | null; category: string; labels?: ChatLabel[]; photoId?: string | null }
   lead: { id: string; name: string | null; email: string | null; phone: string | null } | null
   service?: ChatService
   client?: ChatClient | null
@@ -54,6 +54,8 @@ export function ClientPanel({ id, monitor }: { id: string; monitor: boolean }) {
   const q = useQuery({ queryKey: ['chat-conversa', id, monitor], queryFn: () => api.get<PanelThread>(`/chat/conversas/${id}${mq}`), refetchInterval: 4000 })
   const [open, setOpen] = useState<{ kind: Kind; record: ServiceRecord | null; prefill?: RecordPrefill } | null>(null)
   const [loading, setLoading] = useState<string | null>(null)
+  /** Foto do perfil que não abriu: mostra as iniciais. */
+  const [photoFailed, setPhotoFailed] = useState<string | null>(null)
   const d = q.data
   if (!d) return <div className="p-4 text-sm text-muted-foreground">{q.error ? <InlineError error={q.error} onRetry={() => void q.refetch()} /> : q.isLoading ? 'Carregando…' : ''}</div>
 
@@ -85,7 +87,11 @@ export function ClientPanel({ id, monitor }: { id: string; monitor: boolean }) {
   return (
     <aside className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto border-l bg-muted/20 p-3" aria-label="Dados do cliente">
       <div className="flex flex-col items-center gap-1 pt-1 text-center">
-        <span className="flex size-14 items-center justify-center rounded-full bg-[color:var(--brand)]/15 text-lg font-semibold text-[color:var(--brand)]">{initials(name)}</span>
+        {d.conversation.photoId && photoFailed !== d.conversation.photoId ? (
+          <img src={`/api/files/${d.conversation.photoId}`} alt="" className="size-14 rounded-full bg-muted object-cover" onError={() => setPhotoFailed(d.conversation.photoId ?? null)} />
+        ) : (
+          <span className="flex size-14 items-center justify-center rounded-full bg-[color:var(--brand)]/15 text-lg font-semibold text-[color:var(--brand)]">{initials(name)}</span>
+        )}
         <p className="font-medium">{name}</p>
         {d.conversation.phone && <p className="text-xs text-muted-foreground">{formatPhone(d.conversation.phone)}</p>}
         <p className="text-xs text-muted-foreground">{CATEGORY[d.conversation.category] ?? d.conversation.category}</p>

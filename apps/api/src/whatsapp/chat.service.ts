@@ -15,12 +15,13 @@ import { SettingsService } from '../settings/settings.service'
 import { normalizePhone } from '../atendimento/br'
 import { callHoursOf, DEFAULT_ATENDIMENTO } from '../atendimento/service-records.service'
 import { type EvolutionClient, EvolutionError } from './evolution'
+import { cleanJid, downloadPhoto, HIDDEN_NUMBER_MESSAGE, jidKind, mentionView, phoneOfJid, photoDue, PhotoQueue } from './contato-wa'
 import { type Sector, servesNumber, splitWhere, teamOf, teamWhere } from './atendentes'
 import { type AgendaCategory, answersClient, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isClosingMessage, isOpen, LABEL_COLORS, subBusinessMs, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
 import { parseCsv } from '../atendimento/planilha'
 import { answersNote, type BotOutcome, botStateOf, chooseFlow, continueFlow, flowOf, startFlow } from './fluxo'
 import { HISTORY_NAME, historyFrom, historyName, historyNote, historyPatch, type HistoryPick, pickHistory } from './historico'
-import { extOf, INLINE_MEDIA_MAX_BYTES, MEDIA_MAX_BYTES, openSecretEdit, parseCalls, parseMessage, parseReaction, parseRevision, parseSecretEdit, type ParsedSecretEdit, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, UNREADABLE_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, whatsappOf, withReaction } from './mensagens'
+import { extOf, INLINE_MEDIA_MAX_BYTES, INLINE_MIME, MEDIA_MAX_BYTES, openSecretEdit, parseCalls, parseMessage, parseReaction, parseRevision, parseSecretEdit, type ParsedSecretEdit, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, UNREADABLE_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, whatsappOf, withReaction } from './mensagens'
 
 const PAGE = 60
 /** Nome que aparece nas mensagens e notas do chatbot. */
@@ -109,6 +110,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
    * Fica registrado na auditoria quanto foi apagado.
    */
   async applyRetention(now = Date.now()) {
+    await this.removeOrphanPhotos().catch((err: unknown) => this.logger.warn(`Fotos sem conversa: ${(err as Error).message}`))
     const tenants = await this.prisma.whatsappNumber.findMany({ distinct: ['tenantId'], select: { tenantId: true } })
     const out: { tenantId: string; files: number; messages: number; conversations: number }[] = []
     for (const { tenantId } of tenants) {
@@ -243,7 +245,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     await this.prisma.whatsappConversation.delete({ where: { id: hidden.id } })
     return this.prisma.whatsappConversation.update({
       where: { id: conv.id },
-      data: { lid, unread: { increment: hidden.unread }, ...(hidden.lastInboundAt && (!conv.lastInboundAt || hidden.lastInboundAt > conv.lastInboundAt) ? { lastInboundAt: hidden.lastInboundAt } : {}), ...(later ? { lastMessageAt: hidden.lastMessageAt, lastPreview: hidden.lastPreview, lastFromMe: hidden.lastFromMe, status: hidden.status === 'ABERTA' ? 'ABERTA' : conv.status } : {}) },
+      data: { lid, unread: { increment: hidden.unread }, ...(!conv.photoFileId && hidden.photoFileId ? { photoFileId: hidden.photoFileId, photoCheckedAt: hidden.photoCheckedAt } : {}), ...(hidden.lastInboundAt && (!conv.lastInboundAt || hidden.lastInboundAt > conv.lastInboundAt) ? { lastInboundAt: hidden.lastInboundAt } : {}), ...(later ? { lastMessageAt: hidden.lastMessageAt, lastPreview: hidden.lastPreview, lastFromMe: hidden.lastFromMe, status: hidden.status === 'ABERTA' ? 'ABERTA' : conv.status } : {}) },
     })
   }
 
@@ -882,6 +884,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       (await this.prisma.whatsappReminder.groupBy({ by: ['conversationId'], where: { userId: user.id, doneAt: null, conversationId: { in: rows.map((r) => r.id) } }, _min: { dueAt: true } })).map((r) => [r.conversationId, r._min.dueAt]),
     )
     const labels = await this.labelsOf(user, rows.map((r) => r.id))
+    // Fotos do perfil: busca em segundo plano as que faltam (a lista não espera).
+    this.queuePhotos(rows)
     // Fase do atendimento de cada contato: o atendimento mais recente do lead (pré ou pós-venda).
     const stageRows = await this.prisma.serviceRecord.findMany({
       where: { tenantId: user.tenantId, deletedAt: null, leadId: { in: [...new Set(rows.map((r) => r.leadId).filter((x): x is string => !!x))] } },
@@ -935,6 +939,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         sectorId: r.sectorId,
         labels: labels.get(r.id) ?? [],
         stage: r.leadId ? (stage.get(r.leadId) ?? null) : null,
+        photoId: r.photoFileId,
       })),
     }
   }
@@ -999,9 +1004,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const quotedIds = [...new Set(rows.map((r) => r.quotedWaId).filter((x): x is string => !!x))]
     // Mensagem respondida que está no CRM: se era da empresa e o id dela (para ir até ela na conversa).
     const quotedRows = new Map((quotedIds.length ? await this.prisma.whatsappMessage.findMany({ where: { conversationId: conv.id, waId: { in: quotedIds } }, select: { id: true, waId: true, fromMe: true } }) : []).map((q) => [q.waId, { id: q.id, fromMe: q.fromMe }]))
-    const mentionNames = conv.category === 'GRUPO' ? await this.mentionNames(conv.id, conv.numberId, rows, conv.jid) : new Map<string, string>()
+    const mentionNames = conv.category === 'GRUPO' ? await this.mentionNames(conv.id, conv.numberId, rows, conv.jid) : undefined
+    this.queuePhotos([conv], true)
     return {
-      conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, status: conv.status, assignedSellerId: conv.assignedSellerId, assignedUserId: conv.assignedUserId, assignedUserName: attendants.find((a) => a.id === conv.assignedUserId)?.name ?? null, helpers: attendants.filter((a) => conv.helperUserIds.includes(a.id)).map((a) => ({ id: a.id, name: a.name })), sectorId: conv.sectorId, category: conv.category, unread: conv.unread, noReplyNeeded: conv.noReplyNeeded, lastInboundAt: conv.lastInboundAt, labels: (await this.labelsOf(user, [conv.id])).get(conv.id) ?? [] },
+      conversation: { id: conv.id, name: lead?.name || conv.name, phone: conv.phone, jid: conv.jid, photoId: conv.photoFileId, status: conv.status, assignedSellerId: conv.assignedSellerId, assignedUserId: conv.assignedUserId, assignedUserName: attendants.find((a) => a.id === conv.assignedUserId)?.name ?? null, helpers: attendants.filter((a) => conv.helperUserIds.includes(a.id)).map((a) => ({ id: a.id, name: a.name })), sectorId: conv.sectorId, category: conv.category, unread: conv.unread, noReplyNeeded: conv.noReplyNeeded, lastInboundAt: conv.lastInboundAt, labels: (await this.labelsOf(user, [conv.id])).get(conv.id) ?? [] },
       /** Contato na agenda do número (ou na geral): nome e tipo salvos. */
       agenda: conv.category !== 'GRUPO' ? await this.agendaContact(user.tenantId, conv.numberId, conv.phone ?? conv.jid).then((c) => (c ? { name: c.name, category: c.category, general: c.scope === '' } : null)) : null,
       attendance: number ? { split: number.splitAttendance, sectors: numberSectors.map((x) => ({ id: x.id, name: x.name })), attendants: attendants.filter((a) => a.active && team?.ids.has(a.id)).map((a) => ({ id: a.id, name: a.name })) } : null,
@@ -1021,6 +1027,110 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         .reverse()
         .map((m) => (monitor ? { ...this.messageView(m, user, m.quotedWaId ? (quotedRows.get(m.quotedWaId) ?? null) : null, mentionNames), canEdit: false, canDelete: false } : this.messageView(m, user, m.quotedWaId ? (quotedRows.get(m.quotedWaId) ?? null) : null, mentionNames))),
     }
+  }
+
+  // ---------- Foto do perfil (contatos e grupos) ----------
+
+  /**
+   * Fotos buscadas uma por vez, com pausa de 2 s entre elas (não enche o WhatsApp de pedidos); a mesma conversa só
+   * volta depois de 1 hora se a busca falhar (número desconectado, serviço fora do ar).
+   */
+  private readonly photos = new PhotoQueue((id) => this.refreshPhoto(id), { concurrency: 1, delayMs: 2_000, max: 500, cooldownMs: 3_600_000 })
+
+  /** Conversas sem foto conferida (ou conferida há mais de 7 dias) entram na fila; a que a pessoa abriu vai na frente. */
+  private queuePhotos(rows: { id: string; photoCheckedAt: Date | null }[], first = false) {
+    if (!this.clientOf()) return
+    const now = Date.now()
+    for (const r of rows) if (photoDue(r.photoCheckedAt, now)) this.photos.add(r.id, first)
+  }
+
+  /**
+   * Busca a foto pelo número da própria conversa e guarda a imagem no CRM (o endereço do WhatsApp expira e não vai
+   * para o navegador). Sem foto (ou perfil fechado) também fica registrado, para não perguntar de novo por 7 dias.
+   */
+  private async refreshPhoto(id: string) {
+    const client = this.clientOf()
+    if (!client) return
+    const conv = await this.prisma.whatsappConversation.findUnique({ where: { id }, select: { id: true, tenantId: true, numberId: true, jid: true, photoFileId: true, photoCheckedAt: true } })
+    if (!conv || !photoDue(conv.photoCheckedAt)) return
+    const kind = jidKind(conv.jid)
+    if (kind === 'outro') {
+      await this.prisma.whatsappConversation.update({ where: { id }, data: { photoCheckedAt: new Date() } })
+      return
+    }
+    const number = await this.prisma.whatsappNumber.findUnique({ where: { id: conv.numberId }, select: { instanceName: true, status: true, deletedAt: true } })
+    if (!number || number.deletedAt || number.status !== 'CONECTADO') return
+    let image: Awaited<ReturnType<typeof downloadPhoto>> = null
+    try {
+      const url = await client.profilePicture(number.instanceName, conv.jid)
+      if (url) image = await downloadPhoto(url, detectImage)
+    } catch (err) {
+      this.logger.debug(`Foto do perfil não veio (${conv.id}): ${(err as Error).message}`)
+      return
+    }
+    const old = conv.photoFileId
+    if (!image) {
+      await this.prisma.whatsappConversation.update({ where: { id }, data: { photoFileId: null, photoCheckedAt: new Date() } })
+      if (old) await this.files.remove(old).catch(() => undefined)
+      return
+    }
+    // Mesma foto de antes: só renova a data.
+    const same = old ? await this.files.read(old).then((f) => f.content.equals(image.buffer)).catch(() => false) : false
+    if (same) {
+      await this.prisma.whatsappConversation.update({ where: { id }, data: { photoCheckedAt: new Date() } })
+      return
+    }
+    const asset = await this.files.saveBuffer(conv.tenantId, 'whatsapp-foto', image.buffer, image.mime, image.ext)
+    const r = await this.prisma.whatsappConversation.updateMany({ where: { id, photoFileId: old }, data: { photoFileId: asset.id, photoCheckedAt: new Date() } })
+    if (!r.count) return void (await this.files.remove(asset.id).catch(() => undefined))
+    if (old) await this.files.remove(old).catch(() => undefined)
+  }
+
+  /** Fotos que ficaram sem conversa (conversa apagada pelo prazo de guarda, pela exclusão do lead ou juntada a outra). */
+  private async removeOrphanPhotos() {
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT f.id FROM file_assets f
+      WHERE f.kind = 'whatsapp-foto' AND f."createdAt" < now() - interval '1 day'
+        AND NOT EXISTS (SELECT 1 FROM whatsapp_conversations c WHERE c."photoFileId" = f.id)
+      LIMIT 5000`
+    for (const r of rows) await this.files.remove(r.id).catch(() => undefined)
+    if (rows.length) this.logger.log(`${rows.length} foto(s) de perfil sem conversa apagada(s).`)
+  }
+
+  // ---------- Menção no grupo → conversa particular ----------
+
+  /**
+   * Clicou numa pessoa mencionada no grupo: abre a conversa particular com ela pelo MESMO número do grupo (os números
+   * não se misturam). O identificador escondido (@lid) vira telefone pela conversa que já existe, pelos participantes
+   * do grupo ou por uma mensagem dela; sem telefone, explica que o WhatsApp esconde o número.
+   */
+  async openMention(user: AuthUser, groupId: string, rawJid: string) {
+    this.assertAction(user, 'chat', 'create')
+    const group = await this.load(user, groupId)
+    if (group.category !== 'GRUPO') throw new BadRequestException('Só mensagens de grupo têm menções.')
+    const jid = cleanJid(rawJid)
+    const kind = jidKind(jid)
+    if (kind !== 'telefone' && kind !== 'lid') throw new BadRequestException('Menção inválida.')
+    if (!(await this.numbersForStart(user)).some((n) => n.id === group.numberId)) throw new ForbiddenException('Você não pode iniciar conversas pelo número deste grupo.')
+    let phone = phoneOfJid(jid)
+    if (kind === 'lid') {
+      // Conversa particular que já existe neste número com este identificador (a do telefone vem primeiro).
+      const own = await this.prisma.whatsappConversation.findMany({ where: { AND: [await this.chatWhere(user), { numberId: group.numberId, category: { not: 'GRUPO' }, OR: [{ lid: jid }, { jid }] }] }, select: { id: true, jid: true }, take: 5 })
+      const best = own.find((c) => c.jid.endsWith('@s.whatsapp.net')) ?? own[0]
+      if (best) return { id: best.id }
+      phone =
+        (await this.prisma.whatsappConversation.findFirst({ where: { tenantId: user.tenantId, OR: [{ lid: jid }, { jid }], phone: { not: null } }, select: { phone: true } }))?.phone ??
+        ((p) => (p ? `+${p}` : null))((await this.membersOf(group.numberId, group.jid)).find((m) => m.jid === jid)?.phone) ??
+        (await this.phoneFromSenders(group.id, jid))
+    }
+    if (!phone) throw new BadRequestException(HIDDEN_NUMBER_MESSAGE)
+    return this.start(user, { numberId: group.numberId, phone })
+  }
+
+  /** Mensagem da pessoa no grupo que veio com os dois identificadores (@lid e telefone). */
+  private async phoneFromSenders(conversationId: string, lid: string) {
+    const m = await this.prisma.whatsappMessage.findFirst({ where: { conversationId, senders: { has: lid } }, orderBy: { sentAt: 'desc' }, select: { senders: true } })
+    return m?.senders.map((s) => phoneOfJid(s)).find(Boolean) ?? null
   }
 
   /** Participantes de cada grupo (identificador escondido @lid → telefone), guardados por 10 minutos. */
@@ -1043,13 +1153,18 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
    * formatado (o WhatsApp esconde o número de muitos participantes: o grupo informa o telefone de cada @lid).
    */
   private async mentionNames(conversationId: string, numberId: string, rows: { mentions: Prisma.JsonValue; text?: string | null }[], groupJid?: string) {
+    const all = [...new Set(rows.flatMap((r) => mentionJids(r).flatMap((x) => x.jids)))]
     const jids = [...new Set(rows.flatMap((r) => mentionJids(r).filter((x) => !x.name).flatMap((x) => x.jids)))]
     const out = new Map<string, string>()
-    if (!jids.length) return out
+    /** @lid → telefone (+dígitos), quando o grupo informa: a tela mostra e deixa copiar. */
+    const lidPhones = new Map<string, string>()
+    if (!all.length) return { names: out, phones: lidPhones }
     // @lid → telefone, pelos participantes do grupo.
     const members = groupJid ? await this.membersOf(numberId, groupJid) : []
     const phoneOf = new Map<string, string>()
     for (const m of members) if (m.phone) phoneOf.set(m.jid, m.phone)
+    for (const j of all) if (j.endsWith('@lid') && phoneOf.has(j)) lidPhones.set(j, `+${phoneOf.get(j)}`)
+    if (!jids.length) return { names: out, phones: lidPhones }
     const keys = [...new Set([...jids, ...jids.map((j) => phoneOf.get(j)).filter((p): p is string => !!p).map((p) => `${p}@s.whatsapp.net`)])]
     const said = await this.prisma.whatsappMessage.findMany({ where: { conversationId, fromMe: false, senders: { hasSome: keys }, sentByName: { not: null } }, orderBy: { sentAt: 'desc' }, select: { senders: true, sentByName: true }, take: 500 })
     const named = new Map<string, string>()
@@ -1078,7 +1193,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       const name = named.get(j) ?? (phone ? named.get(`${phone}@s.whatsapp.net`) : undefined) ?? (phone && j.endsWith('@lid') ? fmt(phone) : undefined)
       if (name) out.set(j, name)
     }
-    return out
+    return { names: out, phones: lidPhones }
   }
 
   /** Participantes do grupo para mencionar (@): nome (como escreveram no grupo, ou o contato salvo) e o identificador. */
@@ -1087,7 +1202,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (c.conv.category !== 'GRUPO' || !c.conv.jid.endsWith('@g.us')) throw new BadRequestException('Só conversas de grupo têm participantes para mencionar.')
     const list = await c.client.groupParticipants(c.number.instanceName, c.conv.jid).catch(() => [])
     const all = [...new Set(list.flatMap((p) => [p.jid, ...(p.phone ? [`${p.phone}@s.whatsapp.net`] : [])]))]
-    const names = await this.mentionNames(id, c.number.id, [{ mentions: all.map((jid) => ({ jid, name: null })) }], c.conv.jid)
+    const { names } = await this.mentionNames(id, c.number.id, [{ mentions: all.map((jid) => ({ jid, name: null })) }], c.conv.jid)
     const own = (c.number.phone ?? '').replace(/\D/g, '')
     return list
       .filter((p) => !own || !p.phone || !(p.phone === own || p.phone.endsWith(own) || own.endsWith(p.phone)))
@@ -1289,7 +1404,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (monitor) await this.loadMonitor(user, m.conversationId)
     else await this.load(user, m.conversationId)
     const { asset, content } = await this.files.read(m.fileId)
-    return { mime: asset.mime, content, fileName: m.fileName, sentAt: m.sentAt }
+    // Foto enviada como documento sem o tipo certo (ex.: application/octet-stream): pelos bytes, abre como imagem.
+    const image = !INLINE_MIME.has(asset.mime) ? detectImage(content) : null
+    const mime = image && ['jpg', 'png', 'webp', 'gif'].includes(image.ext) ? image.mime : asset.mime
+    return { mime, content, fileName: m.fileName, sentAt: m.sentAt }
   }
 
   /**
@@ -1488,11 +1606,11 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /** Mensagem como a tela recebe (a apagada perde o texto e o arquivo). */
-  private messageView(m: Prisma.WhatsappMessageGetPayload<object>, user: AuthUser, quoted: { id: string; fromMe: boolean } | null = null, names?: Map<string, string>) {
+  private messageView(m: Prisma.WhatsappMessageGetPayload<object>, user: AuthUser, quoted: { id: string; fromMe: boolean } | null = null, known?: { names: Map<string, string>; phones: Map<string, string> }) {
     const gone = !!m.deletedAt
     const actions = sentActions(m)
-    // Menções: o número que aparece no texto ("@5511..." ou o @lid) e o nome de quem é.
-    const mentions = gone || !names ? [] : mentionJids(m).map((x) => ({ id: x.id, name: x.name || x.jids.map((j) => names.get(j)).find(Boolean) || null }))
+    // Menções: o número que aparece no texto ("@5511..." ou o @lid), o nome de quem é e o telefone (quando se sabe).
+    const mentions = gone || !known ? [] : mentionJids(m).map((x) => mentionView(x.id, x.jids, x.name || x.jids.map((j) => known.names.get(j)).find(Boolean) || null, known.phones))
     return {
       mentions,
       id: m.id, fromMe: m.fromMe, type: m.type, text: gone ? null : m.text, fileName: gone ? null : m.fileName, mime: gone ? null : m.mime, mediaStatus: gone ? null : m.mediaStatus, hasFile: !gone && !!m.fileId,

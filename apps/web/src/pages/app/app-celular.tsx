@@ -226,7 +226,7 @@ export function AppConversas() {
           return (
             <li key={c.id}>
               <Link to={`/app/conversa/${c.id}`} className="flex items-center gap-3 px-4 py-2.5 active:bg-muted">
-                <Avatar name={c.name} group={c.category === 'GRUPO'} className="size-12 text-base" />
+                <Avatar name={c.name} group={c.category === 'GRUPO'} photoId={c.photoId} className="size-12 text-base" />
                 <span className="min-w-0 flex-1 border-b py-1.5">
                   <span className="flex items-baseline gap-2">
                     <span className={cn('min-w-0 flex-1 truncate text-[16px]', unread && 'font-semibold')}>{name}</span>
@@ -392,7 +392,7 @@ export function AppMonitor() {
           return (
             <li key={c.id}>
               <Link to={`/app/monitor/${c.id}`} className="flex items-center gap-3 px-4 py-2.5 active:bg-muted">
-                <Avatar name={c.name} group={c.category === 'GRUPO'} className="size-12 text-base" />
+                <Avatar name={c.name} group={c.category === 'GRUPO'} photoId={c.photoId} className="size-12 text-base" />
                 <span className="min-w-0 flex-1 border-b py-1.5">
                   <span className="flex items-baseline gap-2">
                     <span className="min-w-0 flex-1 truncate text-[16px] font-medium">{name}</span>

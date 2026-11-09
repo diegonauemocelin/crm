@@ -1516,6 +1516,9 @@ model WhatsappConversation {
   /// Atendimento finalizado (quando e por quem): a próxima mensagem do cliente abre um atendimento novo (fila ou robô).
   closedAt         DateTime?
   closedByName     String?
+  /// Foto do perfil no WhatsApp (arquivo guardado no CRM, tipo whatsapp-foto) e quando foi conferida (vazia + data = sem foto).
+  photoFileId      String?   @db.Uuid
+  photoCheckedAt   DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

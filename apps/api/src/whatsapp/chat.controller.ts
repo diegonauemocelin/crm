@@ -35,6 +35,11 @@ class MentionDto {
   @IsOptional() @IsString() @MaxLength(120) name?: string | null
 }
 
+/** Pessoa mencionada no grupo (telefone ou identificador escondido @lid): abrir a conversa particular com ela. */
+class MentionOpenDto {
+  @IsString() @Matches(/^\d{5,20}(:\d+)?@(s\.whatsapp\.net|lid)$/) jid!: string
+}
+
 class TextDto {
   @IsString() @Length(1, 4000) text!: string
   /** Responder (citar) uma mensagem da conversa. */
@@ -471,6 +476,14 @@ export class ChatController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   groupParticipants(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.chat.groupParticipants(user, id)
+  }
+
+  /** Menção no grupo → conversa particular com a pessoa, pelo mesmo número do grupo. */
+  @Post('conversas/:id/abrir-mencao')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  openMention(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: MentionOpenDto) {
+    return this.chat.openMention(user, id, dto.jid)
   }
 
   @Post('conversas/:id/mensagens')

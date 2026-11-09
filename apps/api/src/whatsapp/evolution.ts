@@ -3,6 +3,8 @@
  * pela chave do .env (EVOLUTION_API_KEY). Nada aqui sai para a internet.
  */
 
+import { profilePictureUrl } from './contato-wa'
+
 export type EvolutionState = 'open' | 'connecting' | 'close'
 export type NumberStatus = 'CONECTADO' | 'CONECTANDO' | 'DESCONECTADO'
 
@@ -318,6 +320,14 @@ export class EvolutionClient {
   async contacts(instanceName: string) {
     // A resposta pode ser a lista solta ou um objeto com a lista dentro (varia com a versão): quem lê é contactsFromWhatsapp.
     return this.call<unknown>('POST', `/chat/findContacts/${encodeURIComponent(instanceName)}`, { where: {} }, 60_000)
+  }
+
+  /**
+   * Endereço da foto do perfil de um contato ou grupo (identificador completo: telefone, @lid ou @g.us). O endereço é
+   * assinado e expira: quem chama baixa a imagem na hora. Sem foto ou perfil fechado → null.
+   */
+  async profilePicture(instanceName: string, jid: string) {
+    return profilePictureUrl(await this.call<unknown>('POST', `/chat/fetchProfilePictureUrl/${encodeURIComponent(instanceName)}`, { number: jid }, 15_000))
   }
 
   /** Confere se os telefones (só dígitos, com o código do país) têm WhatsApp. */
