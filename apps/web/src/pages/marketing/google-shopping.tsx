@@ -1,0 +1,242 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { CheckCircle2Icon, Loader2Icon, PlayIcon, SettingsIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
+import { ErrorState, formatDateTime, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
+import { api, errorMessage } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
+import { money } from '@/lib/format'
+
+interface Config {
+  enabled: boolean
+  merchantId: string
+  service: string
+  handlingMin: number
+  handlingMax: number
+  batchSize: number
+  ceps: Record<string, string[]>
+  dataSource: string | null
+  preparedAt: string | null
+  lastRunAt: string | null
+  lastError: string | null
+}
+interface View {
+  config: Config
+  serviceAccount: string | null
+  running: boolean
+  totals: { products: number; withSku: number; sent: number; errors: number }
+  recent: { offerId: string; title: string | null; sku: string | null; states: number; min: number | null; max: number | null; sentAt: string | null; error: string | null }[]
+}
+
+const KEY = ['marketing', 'google-shopping-frete']
+const cepsText = (c: Record<string, string[]>) =>
+  Object.entries(c)
+    .map(([uf, list]) => `${uf}=${list.map((x) => x.replace(/^(\d{5})(\d{3})$/, '$1-$2')).join(', ')}`)
+    .join('\n')
+const parseCeps = (t: string) => {
+  const out: Record<string, string[]> = {}
+  for (const line of t.split('\n')) {
+    const m = /^\s*([A-Za-z]{2})\s*[=:]\s*(.+)$/.exec(line)
+    if (m) out[m[1]!.toUpperCase()] = m[2]!.split(/[,;\s]+/).map((c) => c.replace(/\D/g, '')).filter((c) => c.length === 8)
+  }
+  return out
+}
+
+export function GoogleShoppingPage() {
+  return (
+    <RequirePermission module="mi_config">
+      <GoogleShopping />
+    </RequirePermission>
+  )
+}
+
+function GoogleShopping() {
+  const qc = useQueryClient()
+  const { can } = useAuth()
+  const edit = can('mi_config', 'edit')
+  const q = useQuery({ queryKey: KEY, queryFn: () => api.get<View>('/marketing/google-shopping/frete'), refetchInterval: (s) => (s.state.data?.running ? 15_000 : false) })
+  const [form, setForm] = useState<(Config & { cepsText: string }) | null>(null)
+  useEffect(() => {
+    if (q.data && !form) setForm({ ...q.data.config, cepsText: cepsText(q.data.config.ceps) })
+  }, [q.data, form])
+  const save = useMutation({
+    mutationFn: () => api.put<View>('/marketing/google-shopping/frete', { enabled: form!.enabled, merchantId: form!.merchantId, service: form!.service, handlingMin: Number(form!.handlingMin), handlingMax: Number(form!.handlingMax), batchSize: Number(form!.batchSize), ceps: parseCeps(form!.cepsText) }),
+    onSuccess: (v) => {
+      qc.setQueryData(KEY, v)
+      setForm({ ...v.config, cepsText: cepsText(v.config.ceps) })
+      toast.success('Configuração salva.')
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const prepare = useMutation({
+    mutationFn: () => api.post<{ regions: number; primaries: number }>('/marketing/google-shopping/frete/preparar'),
+    onSuccess: (r) => {
+      toast.success(`Conta preparada: ${r.regions} estados e a fonte de frete ligada a ${r.primaries} fonte(s) de produtos.`)
+      void qc.invalidateQueries({ queryKey: KEY })
+    },
+    onError: (e) => {
+      toast.error(errorMessage(e))
+      void qc.invalidateQueries({ queryKey: KEY })
+    },
+  })
+  const run = useMutation({
+    mutationFn: () => api.post<{ started: boolean }>('/marketing/google-shopping/frete/atualizar'),
+    onSuccess: (r) => {
+      toast.success(r.started ? 'Atualização começou. Pode levar bastante tempo (uma simulação por estado para cada produto).' : 'Já existe uma atualização em andamento.')
+      void qc.invalidateQueries({ queryKey: KEY })
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+
+  if (q.isLoading || !form) return <TableSkeleton />
+  if (q.isError) return <ErrorState error={q.error} onRetry={() => q.refetch()} />
+  const v = q.data!
+  const set = <K extends keyof typeof form>(k: K, val: (typeof form)[K]) => setForm({ ...form, [k]: val })
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Frete no Google Shopping" description="O frete de cada produto é calculado na Magazord (as mesmas tabelas do carrinho) para os estados e enviado ao Google Merchant Center. A Magazord continua mandando os produtos; o CRM só acrescenta o frete." />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Configuração</CardTitle>
+            <CardDescription>
+              Antes: no Merchant Center, em Configurações › Pessoas e acesso, adicione {v.serviceAccount ? <strong className="break-all">{v.serviceAccount}</strong> : 'a conta de serviço do Google Analytics (Configurações › Google Analytics)'} como Administrador.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <label className="flex items-center justify-between gap-3 text-sm font-medium">
+              Atualizar o frete toda noite
+              <Switch checked={form.enabled} onCheckedChange={(on) => set('enabled', on)} disabled={!edit} />
+            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="mc-id">Número da conta do Merchant Center</Label>
+                <Input id="mc-id" inputMode="numeric" value={form.merchantId} onChange={(e) => set('merchantId', e.target.value.replace(/\D/g, ''))} disabled={!edit} placeholder="Ex.: 123456789" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="mc-service">Nome do serviço de entrega</Label>
+                <Input id="mc-service" maxLength={60} value={form.service} onChange={(e) => set('service', e.target.value)} disabled={!edit} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Prazo para postar (dias úteis)</Label>
+                <div className="flex items-center gap-2 text-sm">
+                  de <Input aria-label="Mínimo" type="number" min={0} max={30} className="w-20" value={form.handlingMin} onChange={(e) => set('handlingMin', Number(e.target.value))} disabled={!edit} />
+                  a <Input aria-label="Máximo" type="number" min={0} max={30} className="w-20" value={form.handlingMax} onChange={(e) => set('handlingMax', Number(e.target.value))} disabled={!edit} />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="mc-batch">Produtos por noite</Label>
+                <Input id="mc-batch" type="number" min={10} max={2000} value={form.batchSize} onChange={(e) => set('batchSize', Number(e.target.value))} disabled={!edit} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="mc-ceps">CEPs por estado (opcional)</Label>
+              <Textarea id="mc-ceps" rows={4} value={form.cepsText} onChange={(e) => set('cepsText', e.target.value)} disabled={!edit} placeholder={'SC=88010-000, 89874-000\nPR=80010-000, 85801-000'} />
+              <p className="text-xs text-muted-foreground">Um estado por linha. Vazio: o centro da capital. Com mais de um CEP, vale o frete mais alto (o anúncio nunca mostra menos que o carrinho), mas cada CEP a mais é uma simulação a mais por produto.</p>
+            </div>
+          </CardContent>
+          {edit && (
+            <CardFooter>
+              <Button onClick={() => save.mutate()} disabled={save.isPending}>
+                {save.isPending && <Loader2Icon className="animate-spin" />} Salvar
+              </Button>
+            </CardFooter>
+          )}
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Situação</CardTitle>
+            <CardDescription>Cada noite o CRM atualiza os produtos que estão há mais tempo sem atualizar.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <p className="flex items-center gap-2">
+              {v.config.dataSource ? <CheckCircle2Icon className="size-4 text-[#006300]" aria-hidden /> : <SettingsIcon className="size-4 text-muted-foreground" aria-hidden />}
+              {v.config.dataSource ? `Conta preparada em ${formatDateTime(v.config.preparedAt)} (fonte "CRM - Frete por estado").` : 'Conta ainda não preparada.'}
+            </p>
+            <ul className="grid grid-cols-2 gap-2">
+              <li className="rounded-md border p-2">
+                <span className="block text-xs text-muted-foreground">Produtos no Google</span>
+                <strong className="text-lg tabular-nums">{v.totals.products}</strong>
+              </li>
+              <li className="rounded-md border p-2">
+                <span className="block text-xs text-muted-foreground">Ligados à Magazord</span>
+                <strong className="text-lg tabular-nums">{v.totals.withSku}</strong>
+              </li>
+              <li className="rounded-md border p-2">
+                <span className="block text-xs text-muted-foreground">Com frete enviado</span>
+                <strong className="text-lg tabular-nums">{v.totals.sent}</strong>
+              </li>
+              <li className="rounded-md border p-2">
+                <span className="block text-xs text-muted-foreground">Com erro</span>
+                <strong className="text-lg tabular-nums">{v.totals.errors}</strong>
+              </li>
+            </ul>
+            {v.config.lastRunAt && <p className="text-xs text-muted-foreground">Última rodada: {formatDateTime(v.config.lastRunAt)}</p>}
+            {v.config.lastError && <p className="text-xs text-destructive">{v.config.lastError}</p>}
+            {v.running && (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2Icon className="size-3.5 animate-spin" aria-hidden /> Atualizando…
+              </p>
+            )}
+          </CardContent>
+          {edit && (
+            <CardFooter className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => prepare.mutate()} disabled={prepare.isPending || !v.config.merchantId}>
+                {prepare.isPending ? <Loader2Icon className="animate-spin" /> : <SettingsIcon />} Preparar a conta
+              </Button>
+              <Button onClick={() => run.mutate()} disabled={run.isPending || v.running || !v.config.dataSource}>
+                {run.isPending ? <Loader2Icon className="animate-spin" /> : <PlayIcon />} Atualizar agora
+              </Button>
+            </CardFooter>
+          )}
+        </Card>
+      </div>
+      {v.recent.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Últimos produtos</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Produto</TableHead>
+                    <TableHead className="text-right">Estados</TableHead>
+                    <TableHead className="text-right">Frete (menor – maior)</TableHead>
+                    <TableHead>Quando</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {v.recent.map((r) => (
+                    <TableRow key={r.offerId}>
+                      <TableCell>
+                        <span className="font-medium">{r.title ?? r.offerId}</span>
+                        <span className="block text-xs text-muted-foreground">
+                          {r.offerId}
+                          {r.sku && r.sku !== r.offerId ? ` · SKU ${r.sku}` : ''}
+                        </span>
+                        {r.error && <span className="block text-xs text-destructive">{r.error}</span>}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{r.states || '—'}</TableCell>
+                      <TableCell className="text-right tabular-nums">{r.min === null ? '—' : `${money(r.min)} – ${money(r.max)}`}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{formatDateTime(r.sentAt)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}

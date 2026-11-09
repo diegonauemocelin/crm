@@ -155,6 +155,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Recomendações', to: '/marketing/recomendacoes', icon: BrainCircuitIcon, module: 'mi_ia' },
       { title: 'Planejamento', to: '/marketing/planejamento', icon: CalendarRangeIcon, module: 'mi_orcamento' },
       { title: 'Relatórios e alertas', to: '/marketing/relatorios', icon: FileBarChartIcon, module: 'mi_relatorios' },
+      { title: 'Frete no Google Shopping', to: '/marketing/google-shopping', icon: TruckIcon, module: 'mi_config' },
       { title: 'Integrações', to: '/marketing/integracoes', icon: PlugIcon, module: 'mi_config' },
     ],
   },

@@ -25,6 +25,7 @@ import { TcarModule } from './tcar/tcar.module'
 import { FretesModule } from './fretes/fretes.module'
 import { TvModule } from './tv/tv.module'
 import { BrindesModule } from './brindes/brindes.module'
+import { MerchantModule } from './merchant/merchant.module'
 import { WhatsappModule } from './whatsapp/whatsapp.module'
 import { AppMovelModule } from './app-movel/app-movel.module'
 import { env } from './config/env'
@@ -81,6 +82,7 @@ import { UsersService } from './users/users.service'
     FretesModule,
     TvModule,
     BrindesModule,
+    MerchantModule,
   ],
   controllers: [UsersController, RolesController, SystemController],
   providers: [

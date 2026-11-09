@@ -3274,3 +3274,23 @@ model GiftDelivery {
   @@index([sellerId, date])
   @@map("gift_deliveries")
 }
+
+/// Frete no Google Shopping: produto do Merchant Center, o SKU da Magazord e o último frete por estado enviado.
+model MerchantShippingItem {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @db.Uuid
+  offerId         String
+  contentLanguage String
+  feedLabel       String
+  title           String?
+  sku             String?
+  /// [{ uf, price, days }] da última simulação.
+  quotes          Json?
+  sentAt          DateTime?
+  error           String?
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([tenantId, offerId, contentLanguage, feedLabel])
+  @@index([tenantId, sentAt])
+  @@map("merchant_shipping_items")
+}

@@ -1127,6 +1127,28 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'google-shopping-frete',
+    title: 'Frete no Google Shopping',
+    module: 'mi_config',
+    routes: ['/marketing/google-shopping'],
+    purpose: 'Mostrar o frete nos anúncios do Google Shopping, calculado nas mesmas tabelas do carrinho da loja (Magazord).',
+    howItWorks:
+      'A Magazord envia os produtos ao Google Merchant Center. Toda noite o CRM simula o frete de alguns produtos na Magazord para um CEP de cada estado (ou os CEPs que você escolher) e envia ao Merchant Center, numa fonte separada, um frete por estado. Com mais de um CEP no estado, vale o mais alto, para o anúncio nunca mostrar menos que o carrinho.',
+    lessons: [
+      {
+        id: 'google-shopping-frete.ligar',
+        title: 'Ligar o frete no Google Shopping',
+        steps: [
+          'No Merchant Center, em Configurações › Pessoas e acesso, adicione como Administrador o e-mail da conta de serviço mostrado na tela (o mesmo do Google Analytics).',
+          'Em Marketing Inteligente › Frete no Google Shopping, informe o número da conta do Merchant Center, o prazo para postar e salve.',
+          'Clique em Preparar a conta: o CRM cria os estados (faixas de CEP) e a fonte "CRM - Frete por estado", ligada à fonte de produtos da Magazord.',
+          'Ligue "Atualizar o frete toda noite" e, se quiser começar já, clique em Atualizar agora.',
+        ],
+        tip: 'Cada produto leva uma simulação por CEP de cada estado: com muitos produtos, a primeira volta completa leva alguns dias.',
+      },
+    ],
+  },
+  {
     key: 'marketing-config',
     title: 'Marketing Inteligente: regras e integrações',
     module: 'mi_config',

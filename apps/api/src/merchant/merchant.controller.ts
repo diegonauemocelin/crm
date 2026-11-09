@@ -1,0 +1,47 @@
+import { Body, Controller, Get, HttpCode, Post, Put } from '@nestjs/common'
+import { ApiTags } from '@nestjs/swagger'
+import { IsBoolean, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
+import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
+import type { AuthUser } from '../common/types'
+import type { MerchantFreteConfig } from './frete-google'
+import { MerchantFreteService } from './merchant-frete.service'
+
+class MerchantFreteDto {
+  @IsOptional() @IsBoolean() enabled?: boolean
+  @IsOptional() @IsString() @MaxLength(20) merchantId?: string
+  @IsOptional() @IsString() @MaxLength(60) service?: string
+  @IsOptional() @IsInt() @Min(0) @Max(30) handlingMin?: number
+  @IsOptional() @IsInt() @Min(0) @Max(30) handlingMax?: number
+  @IsOptional() @IsInt() @Min(10) @Max(2000) batchSize?: number
+  /** CEPs por estado (UF → lista de CEPs); conferidos em cleanConfig. */
+  @IsOptional() @IsObject() ceps?: Record<string, string[]>
+}
+
+/** Marketing › Frete no Google Shopping. */
+@ApiTags('merchant')
+@Controller('marketing/google-shopping/frete')
+export class MerchantController {
+  constructor(private readonly frete: MerchantFreteService) {}
+
+  @Get()
+  view(@CurrentUser() user: AuthUser) {
+    return this.frete.view(user)
+  }
+
+  @Put()
+  save(@CurrentUser() user: AuthUser, @Body() body: MerchantFreteDto, @ReqContext() ctx: RequestCtx) {
+    return this.frete.save(user, body as Partial<MerchantFreteConfig>, ctx)
+  }
+
+  @Post('preparar')
+  @HttpCode(200)
+  prepare(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
+    return this.frete.prepare(user, ctx)
+  }
+
+  @Post('atualizar')
+  @HttpCode(200)
+  run(@CurrentUser() user: AuthUser) {
+    return this.frete.runNow(user)
+  }
+}
