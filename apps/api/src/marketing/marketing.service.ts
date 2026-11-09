@@ -8,7 +8,11 @@ import { DEFAULT_GOOGLE_ADS, type GoogleAdsSettings, SCRIPT_KEY, type ScriptStat
 import { Prisma } from '../generated/prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { DEFAULT_GA4, type Ga4Settings, GA_TOKEN_URL, signJwt } from '../relatorios/ga4'
-import { SettingsService } from '../settings/settings.service'
+import { SettingsService, DEFAULT_SMTP, type SmtpSettings } from '../settings/settings.service'
+import { DEFAULT_ML, ML_CONFIG_KEY, ML_SYNC_KEY, type MlConfig, type MlSyncState } from '../marketplaces/mercadolivre'
+import { DEFAULT_MERCHANT_FRETE, MERCHANT_KEY, type MerchantFreteConfig } from '../merchant/frete-google'
+import { type AssistState, INTEGRATION_DEFAULTS, INTEGRATION_KEY as ASSIST_INTEGRATION_KEY, type IntegrationSettings as AssistIntegration, STATE_KEY as ASSIST_STATE_KEY } from '../assistente/constantes'
+import { POSTAGENS_ACCOUNTS_KEY } from '../postagens/instagram-login'
 import {
   GRAPH,
   SC_SCOPE,
@@ -668,6 +672,23 @@ export class MarketingService {
       this.settings.get<SyncStates>(T, SYNC_KEY, {}),
       this.settings.get<{ syncedAt?: string }>(T, 'google_ads_detalhes', {}),
     ])
+    const [ml, mlSync, merchant, assistInt, assistState, posting, smtp, adsSync, numbers, competitors, sefaz] = await Promise.all([
+      this.settings.get<MlConfig>(T, ML_CONFIG_KEY, DEFAULT_ML),
+      this.settings.get<MlSyncState>(T, ML_SYNC_KEY, {}),
+      this.settings.get<MerchantFreteConfig>(T, MERCHANT_KEY, DEFAULT_MERCHANT_FRETE),
+      this.settings.get<Partial<AssistIntegration>>(T, ASSIST_INTEGRATION_KEY, {}),
+      this.settings.get<AssistState>(T, ASSIST_STATE_KEY, {}),
+      this.settings.get<{ accounts?: { network: string; name: string }[] }>(T, POSTAGENS_ACCOUNTS_KEY, {}),
+      this.settings.get<SmtpSettings>(T, 'smtp', DEFAULT_SMTP),
+      this.settings.get<{ lastAutoAt?: string; lastManualAt?: string; pausedReason?: string | null }>(T, 'google_ads_sync', {}),
+      this.prisma.whatsappNumber.findMany({ where: { tenantId: T, deletedAt: null }, select: { name: true, status: true, statusReason: true, lastEventAt: true } }),
+      this.prisma.mlCompetitor.findMany({ where: { tenantId: T }, select: { lastSyncAt: true, lastError: true } }),
+      this.prisma.freightSefazConfig.findMany({ where: { tenantId: T }, select: { lastRunAt: true, lastStatus: true, lastMessage: true, certValidTo: true, intervalHours: true } }),
+    ])
+    const latest = (dates: (Date | string | null | undefined)[]) => {
+      const t = dates.map((d) => (d ? new Date(d).getTime() : 0)).filter((x) => x > 0)
+      return t.length ? new Date(Math.max(...t)).toISOString() : null
+    }
     const c = { ...DEFAULT_INTEGRATIONS, ...integ }
     const stale = (iso: string | null | undefined, hours: number) => !iso || Date.now() - Date.parse(iso) > hours * 3_600_000
     type Status = 'ok' | 'atencao' | 'erro' | 'desligado'
@@ -690,16 +711,131 @@ export class MarketingService {
         src('crm', 'Pré-Vendas (CRM)', 'ok', lastRecord?.createdAt.toISOString(), 'Fonte da verdade comercial: leads, atendimento, vendas e faturamento (valor da venda do Pré-Vendas).', 'Leads, atendimento, oportunidades, vendas, faturamento'),
         src('google_ads_custo', 'Google Ads: investimento (script)', costSync.syncedAt ? (stale(costSync.syncedAt, 36) ? 'erro' : 'ok') : 'atencao', costSync.syncedAt, script.lastError ? `Último envio recusado: ${script.lastError}` : script.lastCallAt ? `Último contato do script: ${new Date(script.lastCallAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}.` : 'Cole o script de Configurações › Google Ads e programe para rodar.', 'Investimento, cliques, impressões e conversões por campanha e palavra-chave'),
         src('google_ads_detalhe', 'Google Ads: detalhes (script ampliado)', detail.syncedAt ? (stale(detail.syncedAt, 36) ? 'atencao' : 'ok') : 'atencao', detail.syncedAt, detail.syncedAt ? 'Termos de pesquisa, dispositivo, rede, região, anúncios e páginas de destino.' : 'Cole o script novo de Configurações › Google Ads para trazer os detalhes.', 'Termos de pesquisa, dispositivo, rede, região, anúncios, grupos, páginas de destino e tipo de campanha'),
-        src('google_ads_conv', 'Google Ads: conversões enviadas', ads.enabled ? 'ok' : 'desligado', null, ads.enabled ? 'Vendas, perdas e retornos do Pré-Vendas voltam para o Google a cada 2 horas.' : 'Desligado em Configurações › Google Ads.', 'Conversões offline'),
-        src('ga4', 'Google Analytics 4', ga4.enabled ? 'ok' : 'desligado', ga4.updatedAt, ga4.enabled ? 'Relatórios de tráfego do site.' : 'Desligado em Configurações › Google Analytics.', 'Sessões, usuários, origem/mídia, páginas'),
+        src('google_ads_conv', 'Google Ads: conversões enviadas', !ads.enabled ? 'desligado' : adsSync.pausedReason ? 'atencao' : 'ok', latest([adsSync.lastAutoAt, adsSync.lastManualAt]), !ads.enabled ? 'Desligado em Configurações › Google Ads.' : adsSync.pausedReason ? `O Google pediu para esperar: ${adsSync.pausedReason}` : 'Vendas, perdas e retornos do Pré-Vendas voltam para o Google a cada 2 horas.', 'Conversões offline'),
+        src('ga4', 'Google Analytics 4', ga4.enabled ? 'ok' : 'desligado', null, ga4.enabled ? 'Relatórios de tráfego do site, consultados na hora no Google (não há sincronização).' : 'Desligado em Configurações › Google Analytics.', 'Sessões, usuários, origem/mídia, páginas'),
         src('magazord', 'Loja virtual (Magazord)', !magazord.enabled ? 'desligado' : magState.lastError ? 'erro' : stale(magState.lastOkAt, 24) ? 'atencao' : 'ok', magState.lastOkAt, magState.lastError ? `Erro: ${magState.lastError}` : 'Pedidos, carrinhos e catálogo.', 'Pedidos, carrinhos, produtos'),
         src('meta_leads', 'Meta Lead Ads (formulários)', meta.enabled ? 'ok' : 'desligado', null, meta.enabled ? 'Leads dos formulários do Facebook/Instagram entram no CRM.' : 'Desligado em Configurações › Meta Lead Ads.', 'Leads de formulário'),
         src('meta_ads', 'Meta Ads (investimento)', metaAds.status, metaAds.at, metaAds.detail ?? c.metaAds.lastTest?.message ?? 'Conta pronta para configurar em Configurações › Marketing Inteligente.', 'Investimento, alcance, frequência, cliques, leads e conversas por campanha e anúncio'),
         src('meta_organico', 'Instagram e Facebook orgânicos', metaOrg.status, metaOrg.at, metaOrg.detail ?? c.metaOrganic.lastTest?.message ?? 'Pronto para configurar em Configurações › Marketing Inteligente.', 'Seguidores, alcance, engajamento e publicações'),
         src('tiktok', 'TikTok Ads', tiktok.status, tiktok.at, tiktok.detail ?? c.tiktok.lastTest?.message ?? 'Pronto para configurar em Configurações › Marketing Inteligente.', 'Investimento, impressões, cliques, vídeo e conversões'),
         src('search_console', 'Google Search Console', sc.status, sc.at, sc.detail ?? c.searchConsole.lastTest?.message ?? 'Pronto para configurar em Configurações › Marketing Inteligente.', 'Cliques e impressões orgânicas, CTR, posição, consultas e páginas'),
-        src('email', 'E-mail marketing (CRM)', 'ok', lastEmail?.startedAt?.toISOString(), 'Envios, aberturas registradas, cliques e descadastros das campanhas do CRM.', 'Envios, aberturas, cliques, descadastros, vendas de quem clicou'),
-      ],
+        src('email', 'E-mail marketing (CRM)', smtp.host ? 'ok' : 'atencao', lastEmail?.startedAt?.toISOString(), smtp.host ? 'Envios, aberturas registradas, cliques e descadastros das campanhas do CRM.' : 'Configure o servidor de e-mail (SMTP) em Configurações › Servidor de e-mail (SMTP) para enviar campanhas.', 'Envios, aberturas, cliques, descadastros, vendas de quem clicou'),
+        whatsappSource(numbers, src),
+        src(
+          'mercado_livre_ads',
+          'Mercado Livre Ads',
+          ml.status === 'DESCONECTADO' ? 'desligado' : ml.status === 'ERRO' || mlSync.lastError ? 'erro' : stale(mlSync.lastOkAt, 30) ? 'atencao' : 'ok',
+          mlSync.lastOkAt,
+          ml.status === 'DESCONECTADO' ? 'Conecte a conta em Marketplaces › Mercado Livre Ads.' : ml.lastError || mlSync.lastError ? `Erro: ${ml.lastError || mlSync.lastError}` : `Conta ${ml.nickname ?? ''} conectada.${mlSync.rows != null ? ` ${mlSync.rows} linha(s) na última sincronização.` : ''}`.replace('  ', ' '),
+          'Investimento, vendas e ACOS do Product Ads e Display Ads',
+        ),
+        assistSource({ ...INTEGRATION_DEFAULTS, ...assistInt }, assistState, src, stale),
+        src(
+          'ml_concorrentes',
+          'Concorrentes do Mercado Livre',
+          !competitors.length ? 'desligado' : competitors.some((c) => c.lastError) ? 'atencao' : stale(latest(competitors.map((c) => c.lastSyncAt)), 48) ? 'atencao' : 'ok',
+          latest(competitors.map((c) => c.lastSyncAt)),
+          !competitors.length
+            ? 'Nenhum concorrente cadastrado em Marketplaces › Concorrentes.'
+            : `${competitors.length} concorrente(s) acompanhado(s)${competitors.filter((c) => c.lastError).length ? `; ${competitors.filter((c) => c.lastError).length} com erro na última leitura` : ''}.`,
+          'Preços e anúncios dos concorrentes por código',
+        ),
+        src(
+          'google_shopping_frete',
+          'Frete no Google Shopping',
+          !merchant.merchantId ? 'desligado' : merchant.lastError ? 'erro' : !merchant.preparedAt ? 'atencao' : !merchant.enabled ? 'desligado' : stale(merchant.lastRunAt, 36) ? 'atencao' : 'ok',
+          merchant.lastRunAt,
+          !merchant.merchantId
+            ? 'Configure em Marketing Inteligente › Frete no Google Shopping.'
+            : merchant.lastError
+              ? `Erro: ${merchant.lastError}`
+              : !merchant.preparedAt
+                ? 'Falta clicar em Preparar a conta.'
+                : merchant.enabled
+                  ? 'O frete por estado vai para o Merchant Center toda noite.'
+                  : 'Conta preparada; a atualização de toda noite está desligada.',
+          'Frete por estado dos produtos no Google Shopping',
+        ),
+        sefazSource(sefaz, src),
+        src(
+          'postagens',
+          'Postagens (Instagram e Facebook)',
+          posting.accounts?.length ? 'ok' : 'desligado',
+          null,
+          posting.accounts?.length ? `${posting.accounts.length} conta(s) conectada(s) para publicar: ${posting.accounts.map((a) => a.name).slice(0, 4).join(', ')}${posting.accounts.length > 4 ? '...' : ''}.` : 'Conecte as contas em Marketing › Postagens.',
+          'Publicação e agendamento de posts',
+        ),
+      ].map((x) => ({ ...x, group: GROUP_OF[x.key] ?? 'Outras' })),
+      groups: GROUPS,
     }
   }
+}
+
+type HealthStatus = 'ok' | 'atencao' | 'erro' | 'desligado'
+type SrcFn = (key: string, name: string, status: HealthStatus, lastAt: string | null | undefined, detail: string, metrics: string) => { key: string; name: string; status: HealthStatus; lastAt: string | null; detail: string; metrics: string }
+
+const GROUPS = ['Atendimento e vendas', 'Loja e marketplaces', 'Anúncios', 'Site e redes sociais', 'Fretes']
+const GROUP_OF: Record<string, string> = {
+  crm: 'Atendimento e vendas',
+  whatsapp: 'Atendimento e vendas',
+  email: 'Atendimento e vendas',
+  magazord: 'Loja e marketplaces',
+  mercado_livre_ads: 'Loja e marketplaces',
+  assistente_ml: 'Loja e marketplaces',
+  ml_concorrentes: 'Loja e marketplaces',
+  google_shopping_frete: 'Loja e marketplaces',
+  google_ads_custo: 'Anúncios',
+  google_ads_detalhe: 'Anúncios',
+  google_ads_conv: 'Anúncios',
+  meta_leads: 'Anúncios',
+  meta_ads: 'Anúncios',
+  tiktok: 'Anúncios',
+  ga4: 'Site e redes sociais',
+  search_console: 'Site e redes sociais',
+  meta_organico: 'Site e redes sociais',
+  postagens: 'Site e redes sociais',
+  sefaz_cte: 'Fretes',
+}
+
+function whatsappSource(numbers: { name: string; status: string; statusReason: string | null; lastEventAt: Date | null }[], src: SrcFn) {
+  if (!numbers.length) return src('whatsapp', 'WhatsApp', 'desligado', null, 'Nenhum número cadastrado em Configurações › Números de WhatsApp.', 'Conversas, mensagens e atendimentos')
+  const off = numbers.filter((n) => n.status !== 'CONECTADO')
+  const deaf = numbers.filter((n) => n.status === 'CONECTADO' && n.statusReason?.startsWith('Pode estar sem receber'))
+  const status: HealthStatus = off.length ? 'erro' : deaf.length ? 'atencao' : 'ok'
+  const last = numbers.map((n) => n.lastEventAt?.getTime() ?? 0).reduce((a, b) => Math.max(a, b), 0)
+  const detail = off.length
+    ? `Desconectado: ${off.map((n) => n.name).join(', ')}. Gere o QR Code em Configurações › Números de WhatsApp.`
+    : deaf.length
+      ? `Pode estar sem receber: ${deaf.map((n) => n.name).join(', ')}. Gere o QR Code de novo se continuar.`
+      : `${numbers.length} número(s) conectado(s).`
+  return src('whatsapp', 'WhatsApp', status, last ? new Date(last).toISOString() : null, detail, 'Conversas, mensagens e atendimentos')
+}
+
+function assistSource(cfg: AssistIntegration, st: AssistState, src: SrcFn, stale: (iso: string | null | undefined, hours: number) => boolean) {
+  const last = st.lastWebhookAt && (!st.lastQuestionsSyncAt || st.lastWebhookAt > st.lastQuestionsSyncAt) ? st.lastWebhookAt : st.lastQuestionsSyncAt
+  if (!cfg.active) return src('assistente_ml', 'Assistente ML (perguntas)', 'desligado', last, 'O CRM ainda não assumiu as perguntas do Mercado Livre (Configurações › Assistente ML: integração).', 'Perguntas, respostas e vendas do Mercado Livre')
+  const recentError = st.lastError && st.lastErrorAt && !stale(st.lastErrorAt, 6)
+  const status: HealthStatus = recentError || st.ordersError ? 'atencao' : stale(last, 6) ? 'atencao' : 'ok'
+  const detail = recentError ? `Último erro: ${st.lastError}` : st.ordersError ? `Vendas: ${st.ordersError}` : 'Lê as perguntas, responde e busca as vendas.'
+  return src('assistente_ml', 'Assistente ML (perguntas)', status, last, detail, 'Perguntas, respostas e vendas do Mercado Livre')
+}
+
+function sefazSource(rows: { lastRunAt: Date | null; lastStatus: string | null; lastMessage: string | null; certValidTo: Date | null; intervalHours: number }[], src: SrcFn) {
+  const name = 'SEFAZ: CT-e dos fretes'
+  const metrics = 'CT-e emitidos contra a empresa, para a conciliação dos fretes'
+  if (!rows.length) return src('sefaz_cte', name, 'desligado', null, 'Configure o certificado A1 em Fretes › Filiais e integrações › SEFAZ.', metrics)
+  const now = Date.now()
+  const expired = rows.filter((r) => r.certValidTo && r.certValidTo.getTime() < now)
+  const expiring = rows.filter((r) => r.certValidTo && r.certValidTo.getTime() >= now && r.certValidTo.getTime() < now + 30 * 86_400_000)
+  const failed = rows.filter((r) => r.lastStatus && r.lastStatus === 'ERRO')
+  const last = rows.map((r) => r.lastRunAt?.getTime() ?? 0).reduce((a, b) => Math.max(a, b), 0)
+  const status: HealthStatus = expired.length || failed.length ? 'erro' : expiring.length ? 'atencao' : 'ok'
+  const detail = expired.length
+    ? 'Certificado A1 vencido: envie o novo em Fretes › Filiais e integrações › SEFAZ.'
+    : failed.length
+      ? `Última captura com erro: ${failed[0]!.lastMessage ?? failed[0]!.lastStatus}`
+      : expiring.length
+        ? `Certificado A1 vence em ${expiring[0]!.certValidTo!.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}: providencie o novo.`
+        : `${rows.length} CNPJ(s) com captura ${rows.some((r) => r.intervalHours > 0) ? 'automática' : 'manual'}.`
+  return src('sefaz_cte', name, status, last ? new Date(last).toISOString() : null, detail, metrics)
 }

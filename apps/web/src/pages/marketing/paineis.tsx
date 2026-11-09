@@ -921,7 +921,8 @@ function RecList({ recs, more }: { recs: Recommendation[]; more: number }) {
 // ---------- 15. Integrações e saúde dos dados ----------
 
 interface Health {
-  sources: { key: string; name: string; status: 'ok' | 'atencao' | 'erro' | 'desligado'; lastAt: string | null; detail: string; metrics: string }[]
+  sources: { key: string; name: string; group?: string; status: 'ok' | 'atencao' | 'erro' | 'desligado'; lastAt: string | null; detail: string; metrics: string }[]
+  groups?: string[]
 }
 
 const STATUS = {
@@ -942,9 +943,13 @@ export function HealthCard({ compact }: { compact?: boolean }) {
       <CardContent className="space-y-2 text-sm">
         {q.isLoading && <TableSkeleton rows={4} />}
         {q.error && <ErrorState error={q.error} onRetry={() => q.refetch()} />}
-        {q.data?.sources
-          .filter((s) => !compact || s.status !== 'desligado')
-          .map((s) => {
+        {(q.data?.groups?.length ? q.data.groups : [undefined]).map((g) => {
+          const list = (q.data?.sources ?? []).filter((s) => (!compact || s.status !== 'desligado') && (g === undefined || s.group === g))
+          if (!list.length) return null
+          return (
+            <div key={g ?? 'todas'} className="space-y-2">
+              {g && !compact && <p className="pt-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">{g}</p>}
+              {list.map((s) => {
             const st = STATUS[s.status]
             return (
               <div key={s.key} className="flex items-start gap-2">
@@ -961,7 +966,10 @@ export function HealthCard({ compact }: { compact?: boolean }) {
                 </div>
               </div>
             )
-          })}
+              })}
+            </div>
+          )
+        })}
         {compact && (
           <Button asChild size="sm" variant="outline">
             <Link to="/marketing/integracoes">Ver todas as fontes</Link>
