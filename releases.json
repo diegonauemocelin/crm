@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.49",
+      "date": "2026-11-09",
+      "title": "Frete no Google Shopping: respeita o limite do Google",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Marketing",
+          "text": "Frete no Google Shopping: o CRM espaça os pedidos e tenta de novo quando o Google avisa que passou do limite por minuto (erro 429). Preparar a conta roda em segundo plano e a tela mostra o andamento."
+        }
+      ]
+    },
+    {
       "version": "2.0.48",
       "date": "2026-11-09",
       "title": "SEO Marketplace: texto fixo da loja",
