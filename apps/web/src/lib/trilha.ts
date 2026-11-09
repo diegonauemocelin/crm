@@ -889,6 +889,39 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'web-push',
+    title: 'Web Push',
+    module: 'web_push',
+    routes: ['/web-push'],
+    purpose: 'Mandar notificações no navegador (computador e Android) para quem visitou a loja virtual e aceitou receber.',
+    howItWorks: 'O script do CRM que já está na loja mostra uma caixa pedindo para ativar as notificações. Quem aceita vira inscrito. Você monta o web push (título, mensagem, link, ícone e imagem) e envia na hora ou agenda; a tela mostra disparos, entregas e cliques de cada um. Os inscritos do RD Station não passam para cá: a lista começa do zero.',
+    lessons: [
+      {
+        id: 'web-push.coleta',
+        title: 'Ativar a coleta de inscritos na loja',
+        steps: [
+          'Abra Marketing → Web Push e clique em Gerenciar coleta.',
+          'Passo 1: confira se o script do CRM está ligado no domínio da loja (Configurações › Rastreamento do site).',
+          'Passo 2: baixe o arquivo crm-push-sw.js e peça à Magazord para publicá-lo na raiz da loja (https://www.sualoja.com.br/crm-push-sw.js), sem alterar nada nele.',
+          'Clique em Verificar: fica verde quando o arquivo responde no endereço certo.',
+          'Ajuste os textos da caixa de permissão, ligue "Coleta ativa" e salve.',
+        ],
+        tip: 'No iPhone, o Safari só recebe notificações de sites instalados na tela de início: a maioria dos inscritos vem do computador e do Android.',
+      },
+      {
+        id: 'web-push.criar',
+        title: 'Criar, enviar e agendar um web push',
+        steps: [
+          'Clique em Criar Web Push. O nome é só para você achar depois.',
+          'Escreva o título (até 70 caracteres) e a mensagem (até 140), a URL https que abre no clique e, se quiser, um botão, o ícone e uma imagem grande. A prévia ao lado mostra como fica.',
+          'Clique em Enviar agora (confirma para quantos inscritos vai) ou em Agendar, com a data e a hora de Brasília. Salvar rascunho guarda para depois.',
+          'Na aba Enviados, veja disparos, entregas e cliques. Use Duplicar para repetir um envio com outro texto.',
+        ],
+        tip: 'Agendado pode ser editado ou cancelado até a hora do envio (volta para os rascunhos).',
+      },
+    ],
+  },
+  {
     key: 'meus-brindes',
     title: 'Meus brindes',
     routes: ['/meus-brindes'],
