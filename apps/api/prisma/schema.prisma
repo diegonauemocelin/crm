@@ -190,6 +190,8 @@ model User {
   layout LayoutMode?
   /// Modelo das telas: ATUAL (telas de sempre) ou NOVO (Minha fila, quadro de pré-vendas, chat com painel do cliente). Vazio = padrão da empresa.
   screens String?
+  /// Avisos do chat em pop-up (mensagem nova e cliente sem resposta). Desligado: só o número no sino e na aba.
+  chatPopups Boolean @default(true)
   /// Visões salvas por tela (telas novas): { leads: [{ id, name, query }], "pre-vendas": [...] }.
   savedViews Json?
   /// Como o nome aparece nas mensagens do WhatsApp enviadas pelo CRM (ex.: "Diego - Vendas"); vazio = primeiro nome.

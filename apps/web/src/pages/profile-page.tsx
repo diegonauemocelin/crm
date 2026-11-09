@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Switch } from '@/components/ui/switch'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useTheme } from '@/lib/theme'
@@ -31,6 +32,7 @@ export function ProfilePage() {
       <ProfileCard me={me} />
       {can('chat', 'create') && <ChatNameCard me={me} />}
       <AppearanceCard me={me} />
+      {can('chat') && <AlertsCard me={me} />}
       <PasswordCard />
       <TwoFactorCard me={me} />
       <SessionsCard />
@@ -153,6 +155,40 @@ function ProfileCard({ me }: { me: Me }) {
           </Button>
         </CardContent>
       </form>
+    </Card>
+  )
+}
+
+function AlertsCard({ me }: { me: Me }) {
+  const qc = useQueryClient()
+  const [busy, setBusy] = useState(false)
+  const on = me.chatPopups !== false
+  const save = async (v: boolean) => {
+    setBusy(true)
+    try {
+      qc.setQueryData(['me'], await api.patch<Me>('/me/preferences', { chatPopups: v }))
+      toast.success(v ? 'Avisos em pop-up ligados.' : 'Avisos em pop-up desligados: as novidades ficam só no sino.')
+    } catch (err) {
+      toast.error(errorMessage(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Avisos do WhatsApp</CardTitle>
+        <CardDescription>Escolha se mensagem nova e cliente sem resposta aparecem em pop-up na tela. O número no sino e no título da aba continua sempre.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Label className="flex items-center justify-between gap-4 font-normal">
+          <span>
+            <span className="block font-medium">Mostrar avisos em pop-up</span>
+            <span className="block text-sm text-muted-foreground">Desligado: sem pop-up, sem som e sem notificação do navegador para esses avisos. Lembretes de retorno que você agendou continuam aparecendo.</span>
+          </span>
+          <Switch checked={on} disabled={busy} onCheckedChange={(v) => void save(v)} aria-label="Mostrar avisos em pop-up" />
+        </Label>
+      </CardContent>
     </Card>
   )
 }

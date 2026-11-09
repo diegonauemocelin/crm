@@ -20,6 +20,7 @@ class PreferencesDto {
   @ApiProperty({ enum: LayoutMode, required: false }) @IsOptional() @IsEnum(LayoutMode) layout?: LayoutMode
   @ApiProperty({ enum: ThemeMode, required: false }) @IsOptional() @IsEnum(ThemeMode) theme?: ThemeMode
   @ApiProperty({ enum: ['ATUAL', 'NOVO'], required: false }) @IsOptional() @IsIn(['ATUAL', 'NOVO']) screens?: 'ATUAL' | 'NOVO'
+  @ApiPropertyOptional({ description: 'Avisos do chat em pop-up (false = só o número no sino)' }) @IsOptional() @IsBoolean() chatPopups?: boolean
 }
 
 class ViewsDto {

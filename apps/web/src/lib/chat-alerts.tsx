@@ -95,6 +95,9 @@ export function useChatAlerts() {
  */
 export function ChatNotifier() {
   const alerts = useChatAlerts()
+  const { me } = useAuth()
+  /** Preferência do perfil: sem pop-up, só o número no sino e na aba. */
+  const popups = me?.chatPopups !== false
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const qc = useQueryClient()
@@ -115,7 +118,7 @@ export function ChatNotifier() {
   useEffect(() => {
     if (!d) return
     const at = d.latest?.at ?? null
-    if (lastAt.current !== undefined && d.latest && at && at !== lastAt.current && d.unreadMessages > lastCount.current) {
+    if (popups && lastAt.current !== undefined && d.latest && at && at !== lastAt.current && d.unreadMessages > lastCount.current) {
       const open = () => navigate(`/chat?conversa=${d.latest!.conversationId}`)
       beep()
       const onChat = pathname === '/chat'
@@ -125,7 +128,7 @@ export function ChatNotifier() {
     }
     lastAt.current = at
     lastCount.current = d.unreadMessages
-  }, [d, navigate, pathname, qc])
+  }, [d, navigate, pathname, qc, popups])
 
   // Lembretes vencidos que ainda não apareceram.
   useEffect(() => {
@@ -152,7 +155,7 @@ export function ChatNotifier() {
   // vermelho, a cada 30 minutos. Vários de uma vez viram um aviso só.
   useEffect(() => {
     const w = d?.waiting
-    if (!w) return
+    if (!w || !popups) return
     const now = Date.now()
     const fresh: { conversationId: string; name: string; preview: string | null; min: number; red: boolean }[] = []
     const seen = new Set<string>()
@@ -177,7 +180,7 @@ export function ChatNotifier() {
     const opts = { id: `espera-${fresh.map((x) => x.conversationId).join('-')}`, description, action: { label: 'Responder', onClick: open }, duration: red ? 60_000 : 15_000 }
     if (red) toast.error(title, opts)
     else toast.warning(title, opts)
-  }, [d, navigate])
+  }, [d, navigate, popups])
 
   return null
 }

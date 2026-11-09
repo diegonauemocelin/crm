@@ -35,6 +35,8 @@ export interface Me {
   /** Antes da versão 0.50 o servidor não mandava: vale ATUAL. */
   screens?: ScreenModel
   theme: ThemeMode
+  /** Avisos do chat em pop-up; false = só o número no sino. Servidor antigo não manda: vale ligado. */
+  chatPopups?: boolean
   allowLayoutChoice: boolean
   lastLoginAt: string | null
   role: { id: string; name: string; isSystem: boolean; require2fa: boolean }
