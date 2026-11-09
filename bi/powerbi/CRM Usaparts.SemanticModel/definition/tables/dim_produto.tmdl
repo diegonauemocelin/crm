@@ -1,0 +1,102 @@
+/// Catálogo da loja virtual (Magazord). Grupo e subgrupo vêm do ERP (Tcar) quando o SKU é o mesmo código de lá. Sem custo.
+table dim_produto
+
+	/// Número interno (uuid).
+	column produto_id
+		dataType: string
+		isHidden
+		isKey
+		summarizeBy: none
+		sourceColumn: produto_id
+
+	/// Código (SKU) da derivação na loja.
+	column sku
+		dataType: string
+		summarizeBy: none
+		sourceColumn: sku
+
+	/// Id da derivação na Magazord.
+	column derivacao_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: derivacao_id
+
+	/// Nome do produto.
+	column nome
+		dataType: string
+		summarizeBy: none
+		sourceColumn: nome
+
+	/// Marca.
+	column marca
+		dataType: string
+		summarizeBy: none
+		sourceColumn: marca
+
+	/// Grupo do produto no ERP (Tcar).
+	column grupo
+		dataType: string
+		summarizeBy: none
+		sourceColumn: grupo
+
+	/// Subgrupo do produto no ERP (Tcar).
+	column subgrupo
+		dataType: string
+		summarizeBy: none
+		sourceColumn: subgrupo
+
+	/// Preço de venda atual na loja (R$).
+	column preco
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: preco
+
+	/// Preço "de" (antes do desconto), R$.
+	column preco_de
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: preco_de
+
+	/// Estoque informado pela loja.
+	column estoque
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: estoque
+
+	/// Apareceu na última sincronização da loja.
+	column ativo
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: ativo
+
+	hierarchy Produto
+
+		level Marca
+			column: marca
+
+		level Produto
+			column: nome
+
+	hierarchy 'Grupo do ERP'
+
+		level Grupo
+			column: grupo
+
+		level Subgrupo
+			column: subgrupo
+
+		level Produto
+			column: nome
+
+	partition dim_produto = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("dim_produto"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"produto_id", type text}, {"sku", type text}, {"derivacao_id", type text}, {"nome", type text}, {"marca", type text}, {"grupo", type text}, {"subgrupo", type text}, {"preco", Currency.Type}, {"preco_de", Currency.Type}, {"estoque", Int64.Type}, {"ativo", type logical}})
+			in
+			    Tipada

@@ -1,0 +1,82 @@
+/// Brindes entregues (retiradas) pelo vendedor ou pela filial, sem o cliente.
+table fato_brindes
+
+	/// Número interno (uuid).
+	column retirada_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: retirada_id
+
+	/// Dia da retirada.
+	column data
+		dataType: dateTime
+		formatString: dd/MM/yyyy
+		summarizeBy: none
+		sourceColumn: data
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// Brinde.
+	column brinde_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: brinde_id
+
+	/// VENDEDOR ou FILIAL (quem entregou).
+	column titular
+		dataType: string
+		summarizeBy: none
+		sourceColumn: titular
+
+	/// Vendedor que entregou.
+	column vendedor_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: vendedor_id
+
+	/// Filial que entregou, ou a do vendedor.
+	column filial_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: filial_id
+
+	/// Quantidade.
+	column quantidade
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: quantidade
+
+	/// Valor unitário no dia (R$).
+	column valor_unitario
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: valor_unitario
+
+	/// Quantidade × valor unitário (R$).
+	column valor_total
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: valor_total
+
+	/// Quando foi registrado.
+	column registrado_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: registrado_em
+
+	partition fato_brindes = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("fato_brindes"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"retirada_id", type text}, {"data", type date}, {"brinde_id", type text}, {"titular", type text}, {"vendedor_id", type text}, {"filial_id", type text}, {"quantidade", Int64.Type}, {"valor_unitario", Currency.Type}, {"valor_total", Currency.Type}, {"registrado_em", type datetime}})
+			in
+			    Tipada

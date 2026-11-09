@@ -1,0 +1,31 @@
+/// Motivos de perda da pré-venda.
+table dim_motivo_perda
+
+	/// Número interno (uuid).
+	column motivo_perda_id
+		dataType: string
+		isHidden
+		isKey
+		summarizeBy: none
+		sourceColumn: motivo_perda_id
+
+	/// Nome do item.
+	column nome
+		dataType: string
+		summarizeBy: none
+		sourceColumn: nome
+
+	/// Ainda aparece para escolher.
+	column ativo
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: ativo
+
+	partition dim_motivo_perda = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("dim_motivo_perda"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"motivo_perda_id", type text}, {"nome", type text}, {"ativo", type logical}})
+			in
+			    Tipada

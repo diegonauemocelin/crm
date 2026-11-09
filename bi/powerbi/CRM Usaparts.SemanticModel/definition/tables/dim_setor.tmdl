@@ -1,0 +1,31 @@
+/// Setores de atendimento do WhatsApp (Vendas, Pós-venda, Financeiro...).
+table dim_setor
+
+	/// Número interno (uuid).
+	column setor_id
+		dataType: string
+		isHidden
+		isKey
+		summarizeBy: none
+		sourceColumn: setor_id
+
+	/// Nome do setor.
+	column nome
+		dataType: string
+		summarizeBy: none
+		sourceColumn: nome
+
+	/// Setor ativo.
+	column ativo
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: ativo
+
+	partition dim_setor = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("dim_setor"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"setor_id", type text}, {"nome", type text}, {"ativo", type logical}})
+			in
+			    Tipada

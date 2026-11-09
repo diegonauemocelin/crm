@@ -47,6 +47,7 @@ export const MODULES = [
   { key: 'perfis', label: 'Perfis de acesso', group: 'Administração', help: 'Criar e alterar os perfis e estas permissões.' },
   { key: 'configuracoes', label: 'Configurações', group: 'Administração', help: 'Marca, e-mail, rastreamento, loja, Meta, GA4 e Google Ads (chaves e conversões).' },
   { key: 'sugestoes', label: 'Sugestões de melhoria (analisar)', group: 'Administração', help: 'Todos enviam e acompanham as próprias sugestões. Ver: ler as sugestões de todos. Editar: mudar a situação e responder (quem enviou é avisado).' },
+  { key: 'bi', label: 'Power BI (chaves de acesso aos dados)', group: 'Administração', help: 'Ver: chaves, endereço da API de BI e o contrato de dados. Criar: gerar chave (dá leitura de todas as tabelas de BI da empresa, sem dados pessoais de clientes). Excluir: revogar chave.' },
   { key: 'auditoria', label: 'Auditoria', group: 'Administração', help: 'Ver o registro de quem fez o quê.' },
 ] as const
 

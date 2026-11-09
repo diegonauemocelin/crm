@@ -1,0 +1,813 @@
+/// Medidas do relatório, em pastas por área.
+table _Medidas
+
+	/// Atendimentos de pré-venda (leads que chegaram), pela data do lead.
+	measure 'Pré-vendas' = CALCULATE ( COUNTROWS ( fato_atendimentos ), fato_atendimentos[tipo] = "PRE_VENDAS" )
+		formatString: #,0
+		displayFolder: Comercial
+
+	/// Pré-vendas que viraram venda, pela data do lead.
+	measure Vendas = CALCULATE ( [Pré-vendas], fato_atendimentos[venda] = TRUE () )
+		formatString: #,0
+		displayFolder: Comercial
+
+	measure Perdas = CALCULATE ( [Pré-vendas], fato_atendimentos[situacao_venda] = "NAO" )
+		formatString: #,0
+		displayFolder: Comercial
+
+	measure 'Em negociação' = CALCULATE ( [Pré-vendas], fato_atendimentos[situacao_venda] = "NEGOCIACAO" )
+		formatString: #,0
+		displayFolder: Comercial
+
+	measure 'Taxa de conversão' = DIVIDE ( [Vendas], [Pré-vendas] )
+		formatString: 0.0%
+		displayFolder: Comercial
+
+	measure 'Taxa de perda' = DIVIDE ( [Perdas], [Pré-vendas] )
+		formatString: 0.0%
+		displayFolder: Comercial
+
+	measure 'Receita das pré-vendas' = CALCULATE ( SUM ( fato_atendimentos[valor_venda] ), fato_atendimentos[tipo] = "PRE_VENDAS", fato_atendimentos[venda] = TRUE () )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Comercial
+
+	measure 'Ticket médio' = DIVIDE ( [Receita das pré-vendas], [Vendas] )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Comercial
+
+	measure 'Receita total (pré-vendas + loja)' = [Receita das pré-vendas] + [Receita da loja]
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Comercial
+
+	/// Vendas contadas no dia do resultado (relação inativa com o calendário).
+	measure 'Vendas pela data do resultado' = CALCULATE ( [Vendas], USERELATIONSHIP ( fato_atendimentos[data_resultado], Calendario[Data] ) )
+		formatString: #,0
+		displayFolder: Comercial
+
+	measure 'Receita pela data do resultado' = CALCULATE ( [Receita das pré-vendas], USERELATIONSHIP ( fato_atendimentos[data_resultado], Calendario[Data] ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Comercial
+
+	measure 'Tempo até o repasse (min, mediana)' = MEDIAN ( fato_atendimentos[minutos_ate_repasse] )
+		formatString: #,0.0
+		displayFolder: Comercial
+
+	measure 'Tempo até a primeira ação (min, mediana)' = MEDIAN ( fato_atendimentos[minutos_ate_primeira_acao] )
+		formatString: #,0.0
+		displayFolder: Comercial
+
+	measure 'Horas até o resultado (média)' = AVERAGE ( fato_atendimentos[horas_ate_resultado] )
+		formatString: #,0.0
+		displayFolder: Comercial
+
+	measure 'Pós-vendas' = CALCULATE ( COUNTROWS ( fato_atendimentos ), fato_atendimentos[tipo] = "POS_VENDAS" )
+		formatString: #,0
+		displayFolder: Comercial
+
+	measure 'Pós-vendas pendentes' = CALCULATE ( COUNTROWS ( fato_atendimentos ), fato_atendimentos[tipo] = "POS_VENDAS", fato_atendimentos[acompanhamento] = "PENDENTE" )
+		formatString: #,0
+		displayFolder: Comercial
+
+	/// Leads que entraram na base no período.
+	measure Leads = COUNTROWS ( fato_leads )
+		formatString: #,0
+		displayFolder: Comercial
+
+	measure 'Leads clientes' = CALCULATE ( [Leads], fato_leads[estagio] = "CLIENTE" )
+		formatString: #,0
+		displayFolder: Comercial
+
+	measure '% leads que viraram clientes' = DIVIDE ( [Leads clientes], [Leads] )
+		formatString: 0.0%
+		displayFolder: Comercial
+
+	/// Leads pelo vendedor da carteira (relação inativa).
+	measure 'Leads da carteira do vendedor' = CALCULATE ( [Leads], USERELATIONSHIP ( fato_leads[vendedor_carteira_id], dim_vendedor[vendedor_id] ) )
+		formatString: #,0
+		displayFolder: Comercial
+
+	measure 'Atendimentos WhatsApp' = COUNTROWS ( fato_conversas_whatsapp )
+		formatString: #,0
+		displayFolder: WhatsApp
+
+	measure 'Atendimentos recebidos' = CALCULATE ( [Atendimentos WhatsApp], fato_conversas_whatsapp[iniciado_por] = "cliente" )
+		formatString: #,0
+		displayFolder: WhatsApp
+
+	measure 'Primeira resposta (min, mediana)' = MEDIAN ( fato_conversas_whatsapp[minutos_primeira_resposta] )
+		formatString: #,0.0
+		displayFolder: WhatsApp
+
+	/// Só conta o horário comercial das regras do WhatsApp.
+	measure 'Primeira resposta comercial (min, mediana)' = MEDIAN ( fato_conversas_whatsapp[minutos_primeira_resposta_comercial] )
+		formatString: #,0.0
+		displayFolder: WhatsApp
+
+	measure 'Tempo médio de resposta (min)' = AVERAGE ( fato_conversas_whatsapp[minutos_resposta_media] )
+		formatString: #,0.0
+		displayFolder: WhatsApp
+
+	measure '% respondidos em 15 min' = DIVIDE ( CALCULATE ( [Atendimentos recebidos], fato_conversas_whatsapp[minutos_primeira_resposta_comercial] <= 15 ), CALCULATE ( [Atendimentos recebidos], NOT ISBLANK ( fato_conversas_whatsapp[minutos_primeira_resposta] ) ) )
+		formatString: 0.0%
+		displayFolder: WhatsApp
+
+	measure 'Sem resposta' = CALCULATE ( [Atendimentos recebidos], ISBLANK ( fato_conversas_whatsapp[primeira_resposta_em] ) )
+		formatString: #,0
+		displayFolder: WhatsApp
+
+	measure '% sem resposta' = DIVIDE ( [Sem resposta], [Atendimentos recebidos] )
+		formatString: 0.0%
+		displayFolder: WhatsApp
+
+	measure 'Aguardando agora' = CALCULATE ( [Atendimentos WhatsApp], fato_conversas_whatsapp[aguardando_resposta] = TRUE () )
+		formatString: #,0
+		displayFolder: WhatsApp
+
+	measure 'Mensagens recebidas' = SUM ( fato_conversas_whatsapp[mensagens_cliente] )
+		formatString: #,0
+		displayFolder: WhatsApp
+
+	measure 'Mensagens enviadas' = SUM ( fato_conversas_whatsapp[mensagens_empresa] )
+		formatString: #,0
+		displayFolder: WhatsApp
+
+	/// Atendimentos recebidos por quem deu a primeira resposta pelo CRM (relação inativa).
+	measure 'Respondidos por quem respondeu' = CALCULATE ( [Atendimentos recebidos], USERELATIONSHIP ( fato_conversas_whatsapp[respondido_por_id], dim_usuario[usuario_id] ) )
+		formatString: #,0
+		displayFolder: WhatsApp
+
+	measure Pedidos = COUNTROWS ( fato_pedidos_loja )
+		formatString: #,0
+		displayFolder: Loja
+
+	measure 'Pedidos pagos' = CALCULATE ( COUNTROWS ( fato_pedidos_loja ), fato_pedidos_loja[grupo_situacao] = "pago" )
+		formatString: #,0
+		displayFolder: Loja
+
+	measure 'Receita da loja' = CALCULATE ( SUM ( fato_pedidos_loja[total] ), fato_pedidos_loja[grupo_situacao] = "pago" )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Loja
+
+	measure 'Ticket médio da loja' = DIVIDE ( [Receita da loja], [Pedidos pagos] )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Loja
+
+	measure 'Itens vendidos' = CALCULATE ( SUM ( fato_itens_pedido[quantidade] ), fato_itens_pedido[grupo_situacao] = "pago" )
+		formatString: #,0
+		displayFolder: Loja
+
+	measure 'Receita dos itens' = CALCULATE ( SUM ( fato_itens_pedido[total] ), fato_itens_pedido[grupo_situacao] = "pago" )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Loja
+
+	measure Carrinhos = COUNTROWS ( fato_carrinhos )
+		formatString: #,0
+		displayFolder: Loja
+
+	measure 'Carrinhos abandonados' = CALCULATE ( COUNTROWS ( fato_carrinhos ), fato_carrinhos[situacao] = "abandonado" )
+		formatString: #,0
+		displayFolder: Loja
+
+	measure 'Taxa de compra dos carrinhos' = DIVIDE ( CALCULATE ( COUNTROWS ( fato_carrinhos ), fato_carrinhos[situacao] = "comprado" ), COUNTROWS ( fato_carrinhos ) )
+		formatString: 0.0%
+		displayFolder: Loja
+
+	measure 'Valor em carrinhos abandonados' = CALCULATE ( SUM ( fato_carrinhos[valor] ), fato_carrinhos[situacao] = "abandonado" )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Loja
+
+	measure 'Investimento ML Ads' = CALCULATE ( SUM ( fato_ml_ads_diario[investimento] ), fato_ml_ads_diario[nivel] = "campaign" )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Mercado Livre
+
+	measure 'Receita ML Ads' = CALCULATE ( SUM ( fato_ml_ads_diario[receita] ), fato_ml_ads_diario[nivel] = "campaign" )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Mercado Livre
+
+	measure 'ROAS ML' = DIVIDE ( [Receita ML Ads], [Investimento ML Ads] )
+		formatString: #,0.00
+		displayFolder: Mercado Livre
+
+	measure 'ACOS ML' = DIVIDE ( [Investimento ML Ads], [Receita ML Ads] )
+		formatString: 0.0%
+		displayFolder: Mercado Livre
+
+	measure Perguntas = COUNTROWS ( fato_ml_perguntas )
+		formatString: #,0
+		displayFolder: Mercado Livre
+
+	measure '% respondidas pelo CRM' = DIVIDE ( CALCULATE ( [Perguntas], fato_ml_perguntas[respondida_pelo_crm] = TRUE () ), [Perguntas] )
+		formatString: 0.0%
+		displayFolder: Mercado Livre
+
+	measure 'Tempo de resposta ML (min, mediana)' = MEDIAN ( fato_ml_perguntas[minutos_resposta] )
+		formatString: #,0.0
+		displayFolder: Mercado Livre
+
+	measure 'Vendas do assistente' = CALCULATE ( SUM ( fato_ml_vendas[quantidade] ), fato_ml_vendas[pago_antes] = FALSE () )
+		formatString: #,0
+		displayFolder: Mercado Livre
+
+	measure 'Receita do assistente' = CALCULATE ( SUM ( fato_ml_vendas[total] ), fato_ml_vendas[pago_antes] = FALSE () )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Mercado Livre
+
+	/// Investimento nas plataformas de anúncios (Google, Meta, TikTok).
+	measure Investimento = SUM ( fato_anuncios_diario[investimento] )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Marketing
+
+	measure 'Investimento Google' = CALCULATE ( [Investimento], fato_anuncios_diario[plataforma] = "google" )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Marketing
+
+	measure 'Investimento Meta' = CALCULATE ( [Investimento], fato_anuncios_diario[plataforma] = "meta" )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Marketing
+
+	/// Plataformas de anúncios + Mercado Livre Ads.
+	measure 'Investimento total em anúncios' = [Investimento] + [Investimento ML Ads]
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Marketing
+
+	measure Cliques = SUM ( fato_anuncios_diario[cliques] )
+		formatString: #,0
+		displayFolder: Marketing
+
+	measure 'Impressões' = SUM ( fato_anuncios_diario[impressoes] )
+		formatString: #,0
+		displayFolder: Marketing
+
+	measure CTR = DIVIDE ( [Cliques], [Impressões] )
+		formatString: 0.0%
+		displayFolder: Marketing
+
+	measure CPC = DIVIDE ( [Investimento], [Cliques] )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Marketing
+
+	/// Leads informados pela plataforma de anúncios.
+	measure 'Leads dos anúncios' = SUM ( fato_anuncios_diario[leads] )
+		formatString: #,0
+		displayFolder: Marketing
+
+	measure 'Conversões dos anúncios' = SUM ( fato_anuncios_diario[conversoes] )
+		formatString: #,0.0
+		displayFolder: Marketing
+
+	/// Custo por lead pelos leads que a plataforma informa.
+	measure 'CPL (plataforma)' = DIVIDE ( [Investimento], [Leads dos anúncios] )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Marketing
+
+	/// Custo por conversão pelas conversões que a plataforma informa.
+	measure 'CPA (plataforma)' = DIVIDE ( [Investimento], [Conversões dos anúncios] )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Marketing
+
+	/// Pré-vendas de quem clicou num anúncio do Google antes do contato.
+	measure 'Leads Google Ads' = CALCULATE ( [Pré-vendas], fato_atendimentos[veio_google_ads] = TRUE () )
+		formatString: #,0
+		displayFolder: Marketing
+
+	measure 'Vendas Google Ads' = CALCULATE ( [Vendas], fato_atendimentos[veio_google_ads] = TRUE () )
+		formatString: #,0
+		displayFolder: Marketing
+
+	measure 'Receita Google Ads' = CALCULATE ( [Receita das pré-vendas], fato_atendimentos[veio_google_ads] = TRUE () )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Marketing
+
+	measure 'CPL Google' = DIVIDE ( [Investimento Google], [Leads Google Ads] )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Marketing
+
+	measure 'CPA Google' = DIVIDE ( [Investimento Google], [Vendas Google Ads] )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Marketing
+
+	measure 'ROAS Google' = DIVIDE ( [Receita Google Ads], [Investimento Google] )
+		formatString: #,0.00
+		displayFolder: Marketing
+
+	/// Receita das pré-vendas do Google Ads ligada às campanhas do diário de anúncios (use por campanha).
+	measure 'Receita Google Ads da campanha' = CALCULATE ( [Receita Google Ads], TREATAS ( VALUES ( fato_anuncios_diario[campanha_id] ), fato_atendimentos[campanha_google_id] ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Marketing
+
+	measure 'Leads Google Ads da campanha' = CALCULATE ( [Leads Google Ads], TREATAS ( VALUES ( fato_anuncios_diario[campanha_id] ), fato_atendimentos[campanha_google_id] ) )
+		formatString: #,0
+		displayFolder: Marketing
+
+	measure 'CPL da campanha (CRM)' = DIVIDE ( [Investimento], [Leads Google Ads da campanha] )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Marketing
+
+	measure 'ROAS da campanha' = DIVIDE ( [Receita Google Ads da campanha], [Investimento] )
+		formatString: #,0.00
+		displayFolder: Marketing
+
+	measure 'E-mails enviados' = SUM ( fato_email_campanhas[enviados] )
+		formatString: #,0
+		displayFolder: Marketing\E-mail e Web Push
+
+	measure 'Taxa de abertura' = DIVIDE ( SUM ( fato_email_campanhas[abriram] ), [E-mails enviados] )
+		formatString: 0.0%
+		displayFolder: Marketing\E-mail e Web Push
+
+	measure 'Taxa de clique (e-mail)' = DIVIDE ( SUM ( fato_email_campanhas[clicaram] ), [E-mails enviados] )
+		formatString: 0.0%
+		displayFolder: Marketing\E-mail e Web Push
+
+	measure CTOR = DIVIDE ( SUM ( fato_email_campanhas[clicaram] ), SUM ( fato_email_campanhas[abriram] ) )
+		formatString: 0.0%
+		displayFolder: Marketing\E-mail e Web Push
+
+	measure Descadastro = DIVIDE ( SUM ( fato_email_campanhas[descadastros] ), [E-mails enviados] )
+		formatString: 0.0%
+		displayFolder: Marketing\E-mail e Web Push
+
+	measure 'Taxa de clique (Web Push)' = DIVIDE ( SUM ( fato_webpush[cliques] ), SUM ( fato_webpush[entregues] ) )
+		formatString: 0.0%
+		displayFolder: Marketing\E-mail e Web Push
+
+	measure 'Frete pago (CT-e)' = CALCULATE ( SUM ( fato_ctes[valor_frete] ), fato_ctes[situacao_fiscal] <> "CANCELADO" )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Fretes
+
+	measure 'Frete sobre a carga' = DIVIDE ( [Frete pago (CT-e)], CALCULATE ( SUM ( fato_ctes[valor_carga] ), fato_ctes[situacao_fiscal] <> "CANCELADO" ) )
+		formatString: 0.0%
+		displayFolder: Fretes
+
+	/// Frete dos CT-es sobre a receita das pré-vendas e da loja no mesmo período (visão geral).
+	measure 'Frete sobre a venda' = DIVIDE ( [Frete pago (CT-e)], [Receita das pré-vendas] + [Receita da loja] )
+		formatString: 0.0%
+		displayFolder: Fretes
+
+	measure 'Frete por kg' = DIVIDE ( [Frete pago (CT-e)], SUM ( fato_ctes[peso_kg] ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Fretes
+
+	measure 'CT-es' = COUNTROWS ( fato_ctes )
+		formatString: #,0
+		displayFolder: Fretes
+
+	measure 'Divergência cobrada' = CALCULATE ( SUM ( fato_ctes[diferenca] ), fato_ctes[situacao_conciliacao] = "DIVERGENTE" )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Fretes
+
+	measure 'Crédito das contestações' = SUM ( fato_ctes[valor_credito] )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Fretes
+
+	measure '% CT-es conciliados' = DIVIDE ( CALCULATE ( COUNTROWS ( fato_ctes ), fato_ctes[situacao_conciliacao] = "CONCILIADO" ), COUNTROWS ( fato_ctes ) )
+		formatString: 0.0%
+		displayFolder: Fretes
+
+	measure 'Cotações' = COUNTROWS ( fato_frete_cotacoes )
+		formatString: #,0
+		displayFolder: Fretes
+
+	measure '% cotações escolhidas' = DIVIDE ( CALCULATE ( [Cotações], fato_frete_cotacoes[situacao] = "SELECIONADA" ), [Cotações] )
+		formatString: 0.0%
+		displayFolder: Fretes
+
+	measure 'Frete cotado sobre a carga' = DIVIDE ( SUM ( fato_frete_cotacoes[total_escolhido] ), CALCULATE ( SUM ( fato_frete_cotacoes[valor_carga] ), fato_frete_cotacoes[situacao] = "SELECIONADA" ) )
+		formatString: 0.0%
+		displayFolder: Fretes
+
+	measure 'Brindes entregues' = SUM ( fato_brindes[quantidade] )
+		formatString: #,0
+		displayFolder: Brindes
+
+	measure 'Valor em brindes' = SUM ( fato_brindes[valor_total] )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Brindes
+
+	measure 'Brindes por venda' = DIVIDE ( [Brindes entregues], [Vendas] )
+		formatString: #,0.00
+		displayFolder: Brindes
+
+	measure 'Pré-vendas (ano anterior)' = CALCULATE ( [Pré-vendas], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
+		formatString: #,0
+		displayFolder: Comercial\Comparações
+
+	measure 'Pré-vendas vs. ano anterior (%)' =
+			VAR Atual = [Pré-vendas]
+			VAR Anterior = [Pré-vendas (ano anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Comercial\Comparações
+
+	measure 'Pré-vendas (mês anterior)' = CALCULATE ( [Pré-vendas], DATEADD ( Calendario[Data], -1, MONTH ) )
+		formatString: #,0
+		displayFolder: Comercial\Comparações
+
+	measure 'Pré-vendas vs. mês anterior (%)' =
+			VAR Atual = [Pré-vendas]
+			VAR Anterior = [Pré-vendas (mês anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Comercial\Comparações
+
+	measure 'Vendas (ano anterior)' = CALCULATE ( [Vendas], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
+		formatString: #,0
+		displayFolder: Comercial\Comparações
+
+	measure 'Vendas vs. ano anterior (%)' =
+			VAR Atual = [Vendas]
+			VAR Anterior = [Vendas (ano anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Comercial\Comparações
+
+	measure 'Vendas (mês anterior)' = CALCULATE ( [Vendas], DATEADD ( Calendario[Data], -1, MONTH ) )
+		formatString: #,0
+		displayFolder: Comercial\Comparações
+
+	measure 'Vendas vs. mês anterior (%)' =
+			VAR Atual = [Vendas]
+			VAR Anterior = [Vendas (mês anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Comercial\Comparações
+
+	measure 'Receita das pré-vendas (ano anterior)' = CALCULATE ( [Receita das pré-vendas], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Comercial\Comparações
+
+	measure 'Receita das pré-vendas vs. ano anterior (%)' =
+			VAR Atual = [Receita das pré-vendas]
+			VAR Anterior = [Receita das pré-vendas (ano anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Comercial\Comparações
+
+	measure 'Receita das pré-vendas (mês anterior)' = CALCULATE ( [Receita das pré-vendas], DATEADD ( Calendario[Data], -1, MONTH ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Comercial\Comparações
+
+	measure 'Receita das pré-vendas vs. mês anterior (%)' =
+			VAR Atual = [Receita das pré-vendas]
+			VAR Anterior = [Receita das pré-vendas (mês anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Comercial\Comparações
+
+	measure 'Ticket médio (ano anterior)' = CALCULATE ( [Ticket médio], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Comercial\Comparações
+
+	measure 'Ticket médio vs. ano anterior (%)' =
+			VAR Atual = [Ticket médio]
+			VAR Anterior = [Ticket médio (ano anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Comercial\Comparações
+
+	measure 'Ticket médio (mês anterior)' = CALCULATE ( [Ticket médio], DATEADD ( Calendario[Data], -1, MONTH ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Comercial\Comparações
+
+	measure 'Ticket médio vs. mês anterior (%)' =
+			VAR Atual = [Ticket médio]
+			VAR Anterior = [Ticket médio (mês anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Comercial\Comparações
+
+	measure 'Leads (ano anterior)' = CALCULATE ( [Leads], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
+		formatString: #,0
+		displayFolder: Comercial\Comparações
+
+	measure 'Leads vs. ano anterior (%)' =
+			VAR Atual = [Leads]
+			VAR Anterior = [Leads (ano anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Comercial\Comparações
+
+	measure 'Leads (mês anterior)' = CALCULATE ( [Leads], DATEADD ( Calendario[Data], -1, MONTH ) )
+		formatString: #,0
+		displayFolder: Comercial\Comparações
+
+	measure 'Leads vs. mês anterior (%)' =
+			VAR Atual = [Leads]
+			VAR Anterior = [Leads (mês anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Comercial\Comparações
+
+	measure 'Atendimentos WhatsApp (ano anterior)' = CALCULATE ( [Atendimentos WhatsApp], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
+		formatString: #,0
+		displayFolder: WhatsApp\Comparações
+
+	measure 'Atendimentos WhatsApp vs. ano anterior (%)' =
+			VAR Atual = [Atendimentos WhatsApp]
+			VAR Anterior = [Atendimentos WhatsApp (ano anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: WhatsApp\Comparações
+
+	measure 'Atendimentos WhatsApp (mês anterior)' = CALCULATE ( [Atendimentos WhatsApp], DATEADD ( Calendario[Data], -1, MONTH ) )
+		formatString: #,0
+		displayFolder: WhatsApp\Comparações
+
+	measure 'Atendimentos WhatsApp vs. mês anterior (%)' =
+			VAR Atual = [Atendimentos WhatsApp]
+			VAR Anterior = [Atendimentos WhatsApp (mês anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: WhatsApp\Comparações
+
+	measure 'Receita da loja (ano anterior)' = CALCULATE ( [Receita da loja], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Loja\Comparações
+
+	measure 'Receita da loja vs. ano anterior (%)' =
+			VAR Atual = [Receita da loja]
+			VAR Anterior = [Receita da loja (ano anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Loja\Comparações
+
+	measure 'Receita da loja (mês anterior)' = CALCULATE ( [Receita da loja], DATEADD ( Calendario[Data], -1, MONTH ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Loja\Comparações
+
+	measure 'Receita da loja vs. mês anterior (%)' =
+			VAR Atual = [Receita da loja]
+			VAR Anterior = [Receita da loja (mês anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Loja\Comparações
+
+	measure 'Pedidos pagos (ano anterior)' = CALCULATE ( [Pedidos pagos], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
+		formatString: #,0
+		displayFolder: Loja\Comparações
+
+	measure 'Pedidos pagos vs. ano anterior (%)' =
+			VAR Atual = [Pedidos pagos]
+			VAR Anterior = [Pedidos pagos (ano anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Loja\Comparações
+
+	measure 'Pedidos pagos (mês anterior)' = CALCULATE ( [Pedidos pagos], DATEADD ( Calendario[Data], -1, MONTH ) )
+		formatString: #,0
+		displayFolder: Loja\Comparações
+
+	measure 'Pedidos pagos vs. mês anterior (%)' =
+			VAR Atual = [Pedidos pagos]
+			VAR Anterior = [Pedidos pagos (mês anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Loja\Comparações
+
+	measure 'Receita ML Ads (ano anterior)' = CALCULATE ( [Receita ML Ads], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Mercado Livre\Comparações
+
+	measure 'Receita ML Ads vs. ano anterior (%)' =
+			VAR Atual = [Receita ML Ads]
+			VAR Anterior = [Receita ML Ads (ano anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Mercado Livre\Comparações
+
+	measure 'Receita ML Ads (mês anterior)' = CALCULATE ( [Receita ML Ads], DATEADD ( Calendario[Data], -1, MONTH ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Mercado Livre\Comparações
+
+	measure 'Receita ML Ads vs. mês anterior (%)' =
+			VAR Atual = [Receita ML Ads]
+			VAR Anterior = [Receita ML Ads (mês anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Mercado Livre\Comparações
+
+	measure 'Perguntas (ano anterior)' = CALCULATE ( [Perguntas], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
+		formatString: #,0
+		displayFolder: Mercado Livre\Comparações
+
+	measure 'Perguntas vs. ano anterior (%)' =
+			VAR Atual = [Perguntas]
+			VAR Anterior = [Perguntas (ano anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Mercado Livre\Comparações
+
+	measure 'Perguntas (mês anterior)' = CALCULATE ( [Perguntas], DATEADD ( Calendario[Data], -1, MONTH ) )
+		formatString: #,0
+		displayFolder: Mercado Livre\Comparações
+
+	measure 'Perguntas vs. mês anterior (%)' =
+			VAR Atual = [Perguntas]
+			VAR Anterior = [Perguntas (mês anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Mercado Livre\Comparações
+
+	measure 'Investimento (ano anterior)' = CALCULATE ( [Investimento], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Marketing\Comparações
+
+	measure 'Investimento vs. ano anterior (%)' =
+			VAR Atual = [Investimento]
+			VAR Anterior = [Investimento (ano anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Marketing\Comparações
+
+	measure 'Investimento (mês anterior)' = CALCULATE ( [Investimento], DATEADD ( Calendario[Data], -1, MONTH ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Marketing\Comparações
+
+	measure 'Investimento vs. mês anterior (%)' =
+			VAR Atual = [Investimento]
+			VAR Anterior = [Investimento (mês anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Marketing\Comparações
+
+	measure 'Frete pago (CT-e) (ano anterior)' = CALCULATE ( [Frete pago (CT-e)], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Fretes\Comparações
+
+	measure 'Frete pago (CT-e) vs. ano anterior (%)' =
+			VAR Atual = [Frete pago (CT-e)]
+			VAR Anterior = [Frete pago (CT-e) (ano anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Fretes\Comparações
+
+	measure 'Frete pago (CT-e) (mês anterior)' = CALCULATE ( [Frete pago (CT-e)], DATEADD ( Calendario[Data], -1, MONTH ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Fretes\Comparações
+
+	measure 'Frete pago (CT-e) vs. mês anterior (%)' =
+			VAR Atual = [Frete pago (CT-e)]
+			VAR Anterior = [Frete pago (CT-e) (mês anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Fretes\Comparações
+
+	measure 'Valor em brindes (ano anterior)' = CALCULATE ( [Valor em brindes], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Brindes\Comparações
+
+	measure 'Valor em brindes vs. ano anterior (%)' =
+			VAR Atual = [Valor em brindes]
+			VAR Anterior = [Valor em brindes (ano anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Brindes\Comparações
+
+	measure 'Valor em brindes (mês anterior)' = CALCULATE ( [Valor em brindes], DATEADD ( Calendario[Data], -1, MONTH ) )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Brindes\Comparações
+
+	measure 'Valor em brindes vs. mês anterior (%)' =
+			VAR Atual = [Valor em brindes]
+			VAR Anterior = [Valor em brindes (mês anterior)]
+			RETURN
+			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Brindes\Comparações
+
+	measure 'Taxa de conversão (ano anterior)' = CALCULATE ( [Taxa de conversão], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
+		formatString: 0.0%
+		displayFolder: Comercial\Comparações
+
+	/// Diferença em pontos percentuais.
+	measure 'Taxa de conversão vs. ano anterior (p.p.)' = [Taxa de conversão] - [Taxa de conversão (ano anterior)]
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Comercial\Comparações
+
+	/// Valor escolhido em "Variação da taxa de conversão (%)" (sem escolha: 0%).
+	measure 'Cenário: variação da conversão' = SELECTEDVALUE ( 'Variação da taxa de conversão (%)'[Variação da taxa de conversão (%)], 0 ) / 100
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Cenários\Parâmetros
+
+	/// Valor escolhido em "Variação do investimento em anúncios (%)" (sem escolha: 0%).
+	measure 'Cenário: variação do investimento' = SELECTEDVALUE ( 'Variação do investimento em anúncios (%)'[Variação do investimento em anúncios (%)], 0 ) / 100
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Cenários\Parâmetros
+
+	/// Valor escolhido em "Variação do ticket médio (%)" (sem escolha: 0%).
+	measure 'Cenário: variação do ticket médio' = SELECTEDVALUE ( 'Variação do ticket médio (%)'[Variação do ticket médio (%)], 0 ) / 100
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Cenários\Parâmetros
+
+	/// Valor escolhido em "Variação do frete (%)" (sem escolha: 0%).
+	measure 'Cenário: variação do frete' = SELECTEDVALUE ( 'Variação do frete (%)'[Variação do frete (%)], 0 ) / 100
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Cenários\Parâmetros
+
+	/// Hipótese: as pré-vendas que vieram do Google Ads crescem na mesma proporção do investimento.
+	measure 'Pré-vendas projetadas' = [Pré-vendas] + [Leads Google Ads] * [Cenário: variação do investimento]
+		formatString: #,0
+		displayFolder: Cenários
+
+	measure 'Taxa de conversão projetada' = MIN ( [Taxa de conversão] * ( 1 + [Cenário: variação da conversão] ), 1 )
+		formatString: 0.0%
+		displayFolder: Cenários
+
+	measure 'Vendas projetadas' = [Pré-vendas projetadas] * [Taxa de conversão projetada]
+		formatString: #,0.0
+		displayFolder: Cenários
+
+	measure 'Ticket médio projetado' = [Ticket médio] * ( 1 + [Cenário: variação do ticket médio] )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Cenários
+
+	/// Receita das pré-vendas no cenário (pré-vendas × conversão × ticket).
+	measure 'Receita projetada' = [Vendas projetadas] * [Ticket médio projetado]
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Cenários
+
+	measure 'Diferença de vendas' = [Vendas projetadas] - [Vendas]
+		formatString: +#,0.0;-#,0.0;0
+		displayFolder: Cenários
+
+	measure 'Diferença de receita' = [Receita projetada] - [Receita das pré-vendas]
+		formatString: +\R$ #,0.00;-\R$ #,0.00;\R$ 0.00
+		displayFolder: Cenários
+
+	measure 'Diferença de receita (%)' = DIVIDE ( [Diferença de receita], [Receita das pré-vendas] )
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Cenários
+
+	measure 'Investimento projetado' = [Investimento] * ( 1 + [Cenário: variação do investimento] )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Cenários
+
+	measure 'Investimento Google projetado' = [Investimento Google] * ( 1 + [Cenário: variação do investimento] )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Cenários
+
+	measure 'Receita Google Ads projetada' = [Receita Google Ads] * ( 1 + [Cenário: variação do investimento] ) * ( 1 + [Cenário: variação da conversão] ) * ( 1 + [Cenário: variação do ticket médio] )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Cenários
+
+	/// ROAS do Google Ads no cenário.
+	measure 'ROAS projetado' = DIVIDE ( [Receita Google Ads projetada], [Investimento Google projetado] )
+		formatString: #,0.00
+		displayFolder: Cenários
+
+	measure 'Diferença de ROAS' = [ROAS projetado] - [ROAS Google]
+		formatString: +#,0.00;-#,0.00;0.00
+		displayFolder: Cenários
+
+	measure 'Frete projetado' = [Frete pago (CT-e)] * ( 1 + [Cenário: variação do frete] )
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		displayFolder: Cenários
+
+	measure 'Diferença de frete' = [Frete projetado] - [Frete pago (CT-e)]
+		formatString: +\R$ #,0.00;-\R$ #,0.00;\R$ 0.00
+		displayFolder: Cenários
+
+	measure 'Frete sobre a venda projetado' = DIVIDE ( [Frete projetado], [Receita projetada] + [Receita da loja] * ( 1 + [Cenário: variação do ticket médio] ) )
+		formatString: 0.0%
+		displayFolder: Cenários
+
+	measure 'Diferença do frete sobre a venda (p.p.)' = [Frete sobre a venda projetado] - [Frete sobre a venda]
+		formatString: +0.0%;-0.0%;0.0%
+		displayFolder: Cenários
+
+	column Coluna
+		dataType: int64
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: [Coluna]
+
+	partition _Medidas = calculated
+		mode: import
+		source =
+			ROW ( "Coluna", 0 )

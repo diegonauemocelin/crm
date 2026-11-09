@@ -1,0 +1,298 @@
+/// Pré-vendas e pós-vendas: datas do lead, repasse, primeira ação, resultado e fechamento; venda, valor, perda, vendedor, origem e Google Ads.
+table fato_atendimentos
+
+	/// Número interno (uuid).
+	column atendimento_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: atendimento_id
+
+	/// PRE_VENDAS ou POS_VENDAS.
+	column tipo
+		dataType: string
+		summarizeBy: none
+		sourceColumn: tipo
+
+	/// Pós-venda: a pré-venda que o originou.
+	column pre_venda_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: pre_venda_id
+
+	/// Lead ligado (fato_leads).
+	column lead_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: lead_id
+
+	/// Quando o contato chegou.
+	column lead_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: lead_em
+
+	/// Dia em que o contato chegou.
+	column data_lead
+		dataType: dateTime
+		formatString: dd/MM/yyyy
+		summarizeBy: none
+		sourceColumn: data_lead
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// Vendedor.
+	column vendedor_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: vendedor_id
+
+	/// Unidade.
+	column filial_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: filial_id
+
+	/// Origem (dim_origem).
+	column origem_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: origem_id
+
+	/// Tipo de cliente.
+	column tipo_cliente_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: tipo_cliente_id
+
+	/// Motivo da perda.
+	column motivo_perda_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: motivo_perda_id
+
+	/// País.
+	column pais
+		dataType: string
+		summarizeBy: none
+		sourceColumn: pais
+
+	/// UF.
+	column uf
+		dataType: string
+		summarizeBy: none
+		sourceColumn: uf
+
+	/// Cidade.
+	column cidade
+		dataType: string
+		summarizeBy: none
+		sourceColumn: cidade
+
+	/// Repassado ao vendedor.
+	column repassado
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: repassado
+
+	/// Quando foi repassado.
+	column repassado_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: repassado_em
+
+	/// Retorno do vendedor: SIM, NAO ou PENDENTE.
+	column retorno
+		dataType: string
+		summarizeBy: none
+		sourceColumn: retorno
+
+	/// Quando o retorno foi marcado.
+	column retorno_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: retorno_em
+
+	/// Pós-venda: primeiro contato.
+	column primeira_acao_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: primeira_acao_em
+
+	/// Última vez que marcaram "Chamei o cliente".
+	column chamou_cliente_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: chamou_cliente_em
+
+	/// SIM (vendeu), NAO (perdeu) ou NEGOCIACAO.
+	column situacao_venda
+		dataType: string
+		summarizeBy: none
+		sourceColumn: situacao_venda
+
+	/// Vendeu (situacao_venda = SIM).
+	column venda
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: venda
+
+	/// Valor da venda (R$).
+	column valor_venda
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: valor_venda
+
+	/// Quando a venda ou a perda foi marcada.
+	column resultado_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: resultado_em
+
+	/// Dia do resultado.
+	column data_resultado
+		dataType: dateTime
+		formatString: dd/MM/yyyy
+		summarizeBy: none
+		sourceColumn: data_resultado
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// Atendimento encerrado.
+	column fechado_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: fechado_em
+
+	/// Pós-venda: PENDENTE, CONTATADO, ANALISANDO, RESOLVIDO ou VOLTOU_AO_VENDEDOR.
+	column acompanhamento
+		dataType: string
+		summarizeBy: none
+		sourceColumn: acompanhamento
+
+	/// Pós-venda: prazo do primeiro contato.
+	column prazo_acompanhamento_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: prazo_acompanhamento_em
+
+	/// Clicou num anúncio do Google Ads antes do contato (origem sozinha não conta).
+	column veio_google_ads
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: veio_google_ads
+
+	/// Campanha do anúncio (quando veio do Google Ads).
+	column campanha_google_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: campanha_google_id
+
+	/// Nome da campanha do anúncio.
+	column campanha_google
+		dataType: string
+		summarizeBy: none
+		sourceColumn: campanha_google
+
+	/// Palavra-chave do anúncio (utm_term).
+	column palavra_chave_google
+		dataType: string
+		summarizeBy: none
+		sourceColumn: palavra_chave_google
+
+	/// Por onde entrou no site (formulário, pop-up ou botão de WhatsApp).
+	column canal_entrada
+		dataType: string
+		summarizeBy: none
+		sourceColumn: canal_entrada
+
+	/// Página por onde chegou (sem parâmetros).
+	column pagina_entrada
+		dataType: string
+		summarizeBy: none
+		sourceColumn: pagina_entrada
+
+	/// Minutos do contato até o repasse ao vendedor.
+	column minutos_ate_repasse
+		dataType: double
+		formatString: #,0.0
+		summarizeBy: average
+		sourceColumn: minutos_ate_repasse
+
+	/// Pós-venda: minutos até o primeiro contato.
+	column minutos_ate_primeira_acao
+		dataType: double
+		formatString: #,0.0
+		summarizeBy: average
+		sourceColumn: minutos_ate_primeira_acao
+
+	/// Horas do contato até a venda ou perda.
+	column horas_ate_resultado
+		dataType: double
+		formatString: #,0.0
+		summarizeBy: average
+		sourceColumn: horas_ate_resultado
+
+	/// Registro criado.
+	column criado_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: criado_em
+
+	/// Última alteração.
+	column atualizado_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: atualizado_em
+
+	/// Nome da origem (dim_origem), para a hierarquia Origem.
+	column origem = RELATED ( dim_origem[nome] )
+		dataType: string
+		summarizeBy: none
+
+	hierarchy Geografia
+
+		level UF
+			column: uf
+
+		level Cidade
+			column: cidade
+
+	hierarchy Origem
+
+		level Canal
+			column: canal_entrada
+
+		level Origem
+			column: origem
+
+		level Campanha
+			column: campanha_google
+
+	partition fato_atendimentos = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("fato_atendimentos"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"atendimento_id", type text}, {"tipo", type text}, {"pre_venda_id", type text}, {"lead_id", type text}, {"lead_em", type datetime}, {"data_lead", type date}, {"vendedor_id", type text}, {"filial_id", type text}, {"origem_id", type text}, {"tipo_cliente_id", type text}, {"motivo_perda_id", type text}, {"pais", type text}, {"uf", type text}, {"cidade", type text}, {"repassado", type logical}, {"repassado_em", type datetime}, {"retorno", type text}, {"retorno_em", type datetime}, {"primeira_acao_em", type datetime}, {"chamou_cliente_em", type datetime}, {"situacao_venda", type text}, {"venda", type logical}, {"valor_venda", Currency.Type}, {"resultado_em", type datetime}, {"data_resultado", type date}, {"fechado_em", type datetime}, {"acompanhamento", type text}, {"prazo_acompanhamento_em", type datetime}, {"veio_google_ads", type logical}, {"campanha_google_id", type text}, {"campanha_google", type text}, {"palavra_chave_google", type text}, {"canal_entrada", type text}, {"pagina_entrada", type text}, {"minutos_ate_repasse", type number}, {"minutos_ate_primeira_acao", type number}, {"horas_ate_resultado", type number}, {"criado_em", type datetime}, {"atualizado_em", type datetime}})
+			in
+			    Tipada

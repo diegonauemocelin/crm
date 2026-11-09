@@ -1,0 +1,49 @@
+/// Unidades da empresa (matriz e filiais).
+table dim_filial
+
+	/// Número interno (uuid).
+	column filial_id
+		dataType: string
+		isHidden
+		isKey
+		summarizeBy: none
+		sourceColumn: filial_id
+
+	/// Nome da unidade.
+	column nome
+		dataType: string
+		summarizeBy: none
+		sourceColumn: nome
+
+	/// Cidade.
+	column cidade
+		dataType: string
+		summarizeBy: none
+		sourceColumn: cidade
+
+	/// UF (2 letras).
+	column uf
+		dataType: string
+		summarizeBy: none
+		sourceColumn: uf
+
+	/// É a matriz.
+	column matriz
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: matriz
+
+	/// Unidade ativa.
+	column ativa
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: ativa
+
+	partition dim_filial = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("dim_filial"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"filial_id", type text}, {"nome", type text}, {"cidade", type text}, {"uf", type text}, {"matriz", type logical}, {"ativa", type logical}})
+			in
+			    Tipada

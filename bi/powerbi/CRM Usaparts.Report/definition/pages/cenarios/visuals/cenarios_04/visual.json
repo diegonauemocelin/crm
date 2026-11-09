@@ -1,0 +1,74 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "cenarios_04",
+  "position": {
+    "x": 769,
+    "y": 8,
+    "z": 4000,
+    "height": 72,
+    "width": 243,
+    "tabOrder": 4000
+  },
+  "visual": {
+    "visualType": "slicer",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Variação do ticket médio (%)"
+                    }
+                  },
+                  "Property": "Variação do ticket médio (%)"
+                }
+              },
+              "queryRef": "Variação do ticket médio (%).Variação do ticket médio (%)",
+              "nativeQueryRef": "Variação do ticket médio (%)"
+            }
+          ]
+        }
+      }
+    },
+    "objects": {
+      "data": [
+        {
+          "properties": {
+            "mode": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Single'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Variação do ticket médio (%)'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,191 @@
+/// Atendimentos do WhatsApp (mesma regra do painel: começa depois de mais de 24 h sem mensagem na conversa). Tempos de resposta e contagem de mensagens, sem textos. Grupos ficam de fora.
+table fato_conversas_whatsapp
+
+	/// conversa_id + ":" + início (milissegundos). Estável entre leituras.
+	column atendimento_wa_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: atendimento_wa_id
+
+	/// Conversa (uuid).
+	column conversa_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: conversa_id
+
+	/// Número de WhatsApp da empresa.
+	column numero_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: numero_id
+
+	/// Setor atual da conversa.
+	column setor_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: setor_id
+
+	/// Atendente atual da conversa (dim_usuario).
+	column atendente_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: atendente_id
+
+	/// Vendedor ligado à conversa.
+	column vendedor_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: vendedor_id
+
+	/// Lead do contato.
+	column lead_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: lead_id
+
+	/// Pré-venda ligada à conversa (fato_atendimentos).
+	column atendimento_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: atendimento_id
+
+	/// CLIENTE, COLEGA, FORNECEDOR ou OUTRO.
+	column categoria
+		dataType: string
+		summarizeBy: none
+		sourceColumn: categoria
+
+	/// cliente ou empresa.
+	column iniciado_por
+		dataType: string
+		summarizeBy: none
+		sourceColumn: iniciado_por
+
+	/// Primeira mensagem do atendimento.
+	column inicio_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: inicio_em
+
+	/// Dia do início.
+	column data_inicio
+		dataType: dateTime
+		formatString: dd/MM/yyyy
+		summarizeBy: none
+		sourceColumn: data_inicio
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// Última mensagem do atendimento.
+	column fim_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: fim_em
+
+	/// Primeira mensagem do cliente (quando ele escreveu antes da empresa).
+	column primeira_mensagem_cliente_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: primeira_mensagem_cliente_em
+
+	/// Primeira resposta da empresa a essa mensagem.
+	column primeira_resposta_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: primeira_resposta_em
+
+	/// Minutos até a primeira resposta (corridos).
+	column minutos_primeira_resposta
+		dataType: double
+		formatString: #,0.0
+		summarizeBy: average
+		sourceColumn: minutos_primeira_resposta
+
+	/// Minutos até a primeira resposta, só no horário comercial das regras do WhatsApp.
+	column minutos_primeira_resposta_comercial
+		dataType: double
+		formatString: #,0.0
+		summarizeBy: average
+		sourceColumn: minutos_primeira_resposta_comercial
+
+	/// Quem deu a primeira resposta pelo CRM (dim_usuario); vazio se foi pelo celular ou sem resposta.
+	column respondido_por_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: respondido_por_id
+
+	/// A primeira resposta saiu do celular (fora do CRM).
+	column respondido_pelo_celular
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: respondido_pelo_celular
+
+	/// Mensagens recebidas do cliente.
+	column mensagens_cliente
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: mensagens_cliente
+
+	/// Mensagens enviadas pela empresa (sem notas internas).
+	column mensagens_empresa
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: mensagens_empresa
+
+	/// Vezes em que o cliente escreveu (mensagens seguidas contam uma).
+	column vezes_cliente
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: vezes_cliente
+
+	/// Vezes do cliente que tiveram resposta.
+	column vezes_respondidas
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: vezes_respondidas
+
+	/// Média dos tempos de resposta do atendimento (minutos corridos).
+	column minutos_resposta_media
+		dataType: double
+		formatString: #,0.0
+		summarizeBy: average
+		sourceColumn: minutos_resposta_media
+
+	/// Último atendimento da conversa, cliente esperando resposta agora.
+	column aguardando_resposta
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: aguardando_resposta
+
+	/// Há quantos minutos o cliente espera (quando aguardando_resposta).
+	column minutos_aguardando
+		dataType: double
+		formatString: #,0.0
+		summarizeBy: average
+		sourceColumn: minutos_aguardando
+
+	partition fato_conversas_whatsapp = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("fato_conversas_whatsapp"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"atendimento_wa_id", type text}, {"conversa_id", type text}, {"numero_id", type text}, {"setor_id", type text}, {"atendente_id", type text}, {"vendedor_id", type text}, {"lead_id", type text}, {"atendimento_id", type text}, {"categoria", type text}, {"iniciado_por", type text}, {"inicio_em", type datetime}, {"data_inicio", type date}, {"fim_em", type datetime}, {"primeira_mensagem_cliente_em", type datetime}, {"primeira_resposta_em", type datetime}, {"minutos_primeira_resposta", type number}, {"minutos_primeira_resposta_comercial", type number}, {"respondido_por_id", type text}, {"respondido_pelo_celular", type logical}, {"mensagens_cliente", Int64.Type}, {"mensagens_empresa", Int64.Type}, {"vezes_cliente", Int64.Type}, {"vezes_respondidas", Int64.Type}, {"minutos_resposta_media", type number}, {"aguardando_resposta", type logical}, {"minutos_aguardando", type number}})
+			in
+			    Tipada

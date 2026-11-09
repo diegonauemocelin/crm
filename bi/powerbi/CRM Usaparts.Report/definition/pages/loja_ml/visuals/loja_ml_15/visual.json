@@ -1,0 +1,116 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "loja_ml_15",
+  "position": {
+    "x": 640,
+    "y": 452,
+    "z": 15000,
+    "height": 256,
+    "width": 624,
+    "tabOrder": 15000
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "fato_ml_ads_diario"
+                    }
+                  },
+                  "Property": "campanha"
+                }
+              },
+              "queryRef": "fato_ml_ads_diario.campanha",
+              "nativeQueryRef": "campanha"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Investimento ML Ads"
+                }
+              },
+              "queryRef": "_Medidas.Investimento ML Ads",
+              "nativeQueryRef": "Investimento ML Ads"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Receita ML Ads"
+                }
+              },
+              "queryRef": "_Medidas.Receita ML Ads",
+              "nativeQueryRef": "Receita ML Ads"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "ROAS ML"
+                }
+              },
+              "queryRef": "_Medidas.ROAS ML",
+              "nativeQueryRef": "ROAS ML"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "ACOS ML"
+                }
+              },
+              "queryRef": "_Medidas.ACOS ML",
+              "nativeQueryRef": "ACOS ML"
+            }
+          ]
+        }
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Campanhas do Mercado Livre Ads'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

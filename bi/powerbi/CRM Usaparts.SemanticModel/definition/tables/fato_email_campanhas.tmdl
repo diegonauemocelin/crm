@@ -1,0 +1,142 @@
+/// Campanhas de e-mail marketing (e modelos das automações, tipo MODELO) com os totais de envio, aberturas e cliques.
+table fato_email_campanhas
+
+	/// Número interno (uuid).
+	column campanha_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: campanha_id
+
+	/// Nome da campanha.
+	column nome
+		dataType: string
+		summarizeBy: none
+		sourceColumn: nome
+
+	/// Assunto do e-mail.
+	column assunto
+		dataType: string
+		summarizeBy: none
+		sourceColumn: assunto
+
+	/// CAMPANHA ou MODELO (enviado pelas automações).
+	column tipo
+		dataType: string
+		summarizeBy: none
+		sourceColumn: tipo
+
+	/// RASCUNHO, AGENDADA, ENVIANDO, PAUSADA, ENVIADA ou CANCELADA.
+	column situacao
+		dataType: string
+		summarizeBy: none
+		sourceColumn: situacao
+
+	/// Agendamento.
+	column agendada_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: agendada_em
+
+	/// Início do envio.
+	column iniciada_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: iniciada_em
+
+	/// Fim do envio.
+	column finalizada_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: finalizada_em
+
+	/// Dia do envio (ou da criação, se ainda não enviou).
+	column data_envio
+		dataType: dateTime
+		formatString: dd/MM/yyyy
+		summarizeBy: none
+		sourceColumn: data_envio
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// Destinatários.
+	column destinatarios
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: destinatarios
+
+	/// Enviados.
+	column enviados
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: enviados
+
+	/// Recusados.
+	column falhas
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: falhas
+
+	/// Aberturas (todas).
+	column aberturas
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: aberturas
+
+	/// Cliques (todos).
+	column cliques
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: cliques
+
+	/// Descadastros.
+	column descadastros
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: descadastros
+
+	/// Destinatários que abriram (únicos).
+	column abriram
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: abriram
+
+	/// Destinatários que clicaram (únicos).
+	column clicaram
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: clicaram
+
+	/// Criação.
+	column criada_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: criada_em
+
+	/// Última alteração.
+	column atualizado_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: atualizado_em
+
+	partition fato_email_campanhas = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("fato_email_campanhas"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"campanha_id", type text}, {"nome", type text}, {"assunto", type text}, {"tipo", type text}, {"situacao", type text}, {"agendada_em", type datetime}, {"iniciada_em", type datetime}, {"finalizada_em", type datetime}, {"data_envio", type date}, {"destinatarios", Int64.Type}, {"enviados", Int64.Type}, {"falhas", Int64.Type}, {"aberturas", Int64.Type}, {"cliques", Int64.Type}, {"descadastros", Int64.Type}, {"abriram", Int64.Type}, {"clicaram", Int64.Type}, {"criada_em", type datetime}, {"atualizado_em", type datetime}})
+			in
+			    Tipada

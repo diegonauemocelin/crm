@@ -1,0 +1,37 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "cenarios_14",
+  "position": {
+    "x": 434,
+    "y": 180,
+    "z": 14000,
+    "height": 84,
+    "width": 201,
+    "tabOrder": 14000
+  },
+  "visual": {
+    "visualType": "card",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Diferença de ROAS"
+                }
+              },
+              "queryRef": "_Medidas.Diferença de ROAS",
+              "nativeQueryRef": "Diferença de ROAS"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

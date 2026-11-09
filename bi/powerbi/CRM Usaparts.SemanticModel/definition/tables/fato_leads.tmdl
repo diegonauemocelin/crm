@@ -1,0 +1,211 @@
+/// Base de leads (pessoas identificadas), sem nome, telefone nem e-mail.
+table fato_leads
+
+	/// Número interno do lead (uuid).
+	column lead_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: lead_id
+
+	/// Quando entrou na base.
+	column criado_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: criado_em
+
+	/// Dia em que entrou na base.
+	column data_criacao
+		dataType: dateTime
+		formatString: dd/MM/yyyy
+		summarizeBy: none
+		sourceColumn: data_criacao
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// LEAD, QUALIFICADO, OPORTUNIDADE ou CLIENTE.
+	column estagio
+		dataType: string
+		summarizeBy: none
+		sourceColumn: estagio
+
+	/// Unidade.
+	column filial_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: filial_id
+
+	/// Origem (dim_origem).
+	column origem_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: origem_id
+
+	/// Responsável pelo lead.
+	column vendedor_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: vendedor_id
+
+	/// Vendedor da carteira do cliente.
+	column vendedor_carteira_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: vendedor_carteira_id
+
+	/// País (BR...).
+	column pais
+		dataType: string
+		summarizeBy: none
+		sourceColumn: pais
+
+	/// UF.
+	column uf
+		dataType: string
+		summarizeBy: none
+		sourceColumn: uf
+
+	/// Cidade.
+	column cidade
+		dataType: string
+		summarizeBy: none
+		sourceColumn: cidade
+
+	/// Nota do lead scoring (A a D).
+	column nota
+		dataType: string
+		summarizeBy: none
+		sourceColumn: nota
+
+	/// Pontos de perfil.
+	column pontos_perfil
+		dataType: int64
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: pontos_perfil
+
+	/// Pontos de interesse.
+	column pontos_interesse
+		dataType: int64
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: pontos_interesse
+
+	/// utm_source da 1ª conversão.
+	column fonte_primeira_conversao
+		dataType: string
+		summarizeBy: none
+		sourceColumn: fonte_primeira_conversao
+
+	/// utm_medium da 1ª conversão.
+	column meio_primeira_conversao
+		dataType: string
+		summarizeBy: none
+		sourceColumn: meio_primeira_conversao
+
+	/// utm_campaign da 1ª conversão.
+	column campanha_primeira_conversao
+		dataType: string
+		summarizeBy: none
+		sourceColumn: campanha_primeira_conversao
+
+	/// Clicou num anúncio do Google Ads (campanha conhecida).
+	column passou_por_anuncio_google
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: passou_por_anuncio_google
+
+	/// Primeira campanha do Google Ads.
+	column campanha_google_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: campanha_google_id
+
+	/// Nome da primeira campanha do Google Ads.
+	column campanha_google
+		dataType: string
+		summarizeBy: none
+		sourceColumn: campanha_google
+
+	/// Primeira conversão (formulário, WhatsApp...).
+	column primeira_conversao_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: primeira_conversao_em
+
+	/// Última conversão.
+	column ultima_conversao_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: ultima_conversao_em
+
+	/// Última oportunidade (pré-venda).
+	column ultima_oportunidade_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: ultima_oportunidade_em
+
+	/// Última venda.
+	column ultima_venda_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: ultima_venda_em
+
+	/// Valor da última venda (R$).
+	column valor_ultima_venda
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: valor_ultima_venda
+
+	/// Permite e-mail marketing (LGPD) e não descadastrou.
+	column aceita_email
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: aceita_email
+
+	/// Tem cadastro na loja virtual.
+	column cliente_loja
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: cliente_loja
+
+	/// Dados pessoais apagados a pedido (fica só para estatística).
+	column anonimizado
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: anonimizado
+
+	/// Última alteração.
+	column atualizado_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: atualizado_em
+
+	hierarchy Geografia
+
+		level UF
+			column: uf
+
+		level Cidade
+			column: cidade
+
+	partition fato_leads = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("fato_leads"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"lead_id", type text}, {"criado_em", type datetime}, {"data_criacao", type date}, {"estagio", type text}, {"filial_id", type text}, {"origem_id", type text}, {"vendedor_id", type text}, {"vendedor_carteira_id", type text}, {"pais", type text}, {"uf", type text}, {"cidade", type text}, {"nota", type text}, {"pontos_perfil", Int64.Type}, {"pontos_interesse", Int64.Type}, {"fonte_primeira_conversao", type text}, {"meio_primeira_conversao", type text}, {"campanha_primeira_conversao", type text}, {"passou_por_anuncio_google", type logical}, {"campanha_google_id", type text}, {"campanha_google", type text}, {"primeira_conversao_em", type datetime}, {"ultima_conversao_em", type datetime}, {"ultima_oportunidade_em", type datetime}, {"ultima_venda_em", type datetime}, {"valor_ultima_venda", Currency.Type}, {"aceita_email", type logical}, {"cliente_loja", type logical}, {"anonimizado", type logical}, {"atualizado_em", type datetime}})
+			in
+			    Tipada

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "whatsapp_08",
+  "position": {
+    "x": 643,
+    "y": 72,
+    "z": 8000,
+    "height": 96,
+    "width": 201,
+    "tabOrder": 8000
+  },
+  "visual": {
+    "visualType": "card",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "% respondidos em 15 min"
+                }
+              },
+              "queryRef": "_Medidas.% respondidos em 15 min",
+              "nativeQueryRef": "% respondidos em 15 min"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

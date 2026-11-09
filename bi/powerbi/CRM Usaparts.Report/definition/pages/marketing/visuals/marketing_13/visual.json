@@ -1,0 +1,116 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "marketing_13",
+  "position": {
+    "x": 640,
+    "y": 452,
+    "z": 13000,
+    "height": 256,
+    "width": 624,
+    "tabOrder": 13000
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "fato_email_campanhas"
+                    }
+                  },
+                  "Property": "nome"
+                }
+              },
+              "queryRef": "fato_email_campanhas.nome",
+              "nativeQueryRef": "nome"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "E-mails enviados"
+                }
+              },
+              "queryRef": "_Medidas.E-mails enviados",
+              "nativeQueryRef": "E-mails enviados"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Taxa de abertura"
+                }
+              },
+              "queryRef": "_Medidas.Taxa de abertura",
+              "nativeQueryRef": "Taxa de abertura"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Taxa de clique (e-mail)"
+                }
+              },
+              "queryRef": "_Medidas.Taxa de clique (e-mail)",
+              "nativeQueryRef": "Taxa de clique (e-mail)"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Descadastro"
+                }
+              },
+              "queryRef": "_Medidas.Descadastro",
+              "nativeQueryRef": "Descadastro"
+            }
+          ]
+        }
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Campanhas de e-mail'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

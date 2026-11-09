@@ -1,0 +1,224 @@
+/// CT-es de frete: transportadora, rota (UF/cidade), valor, peso e a conciliação com a cotação ou a tabela. Sem os documentos das partes.
+table fato_ctes
+
+	/// Número interno (uuid).
+	column cte_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: cte_id
+
+	/// Número do CT-e.
+	column numero
+		dataType: string
+		summarizeBy: none
+		sourceColumn: numero
+
+	/// Série.
+	column serie
+		dataType: string
+		summarizeBy: none
+		sourceColumn: serie
+
+	/// Emissão.
+	column emitido_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: emitido_em
+
+	/// Dia da emissão (ou da importação, se não houver).
+	column data_emissao
+		dataType: dateTime
+		formatString: dd/MM/yyyy
+		summarizeBy: none
+		sourceColumn: data_emissao
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// Transportadora.
+	column transportadora_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: transportadora_id
+
+	/// Filial.
+	column filial_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: filial_id
+
+	/// UF de início.
+	column uf_inicio
+		dataType: string
+		summarizeBy: none
+		sourceColumn: uf_inicio
+
+	/// UF de destino.
+	column uf_fim
+		dataType: string
+		summarizeBy: none
+		sourceColumn: uf_fim
+
+	/// Cidade de início.
+	column cidade_inicio
+		dataType: string
+		summarizeBy: none
+		sourceColumn: cidade_inicio
+
+	/// Cidade de destino.
+	column cidade_fim
+		dataType: string
+		summarizeBy: none
+		sourceColumn: cidade_fim
+
+	/// CFOP.
+	column cfop
+		dataType: string
+		summarizeBy: none
+		sourceColumn: cfop
+
+	/// Valor total do CT-e (R$).
+	column valor_frete
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: valor_frete
+
+	/// Valor da carga (R$).
+	column valor_carga
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: valor_carga
+
+	/// Peso (kg).
+	column peso_kg
+		dataType: double
+		formatString: #,0.0
+		summarizeBy: sum
+		sourceColumn: peso_kg
+
+	/// NAO_VERIFICADO ou CANCELADO.
+	column situacao_fiscal
+		dataType: string
+		summarizeBy: none
+		sourceColumn: situacao_fiscal
+
+	/// MANUAL (XML enviado) ou SEFAZ (captura automática).
+	column origem
+		dataType: string
+		summarizeBy: none
+		sourceColumn: origem
+
+	/// Papel da empresa no CT-e (TOMADOR, REMETENTE...), separados por vírgula.
+	column papel_empresa
+		dataType: string
+		summarizeBy: none
+		sourceColumn: papel_empresa
+
+	/// PENDENTE, CONCILIADO, DIVERGENTE, SEM_REFERENCIA, COMPRA ou CANCELADO.
+	column situacao_conciliacao
+		dataType: string
+		summarizeBy: none
+		sourceColumn: situacao_conciliacao
+
+	/// De onde veio o valor esperado: COTACAO ou TABELA.
+	column base_esperado
+		dataType: string
+		summarizeBy: none
+		sourceColumn: base_esperado
+
+	/// Frete esperado (R$).
+	column valor_esperado
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: valor_esperado
+
+	/// Cobrado menos esperado (R$).
+	column diferenca
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: diferenca
+
+	/// Conciliação.
+	column conciliado_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: conciliado_em
+
+	/// APROVADO, APROVADO_COTADO ou CONTESTADO.
+	column decisao
+		dataType: string
+		summarizeBy: none
+		sourceColumn: decisao
+
+	/// Valor aprovado para pagar (R$).
+	column valor_aprovado
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: valor_aprovado
+
+	/// Decisão.
+	column decidido_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: decidido_em
+
+	/// ABERTA, ACEITA ou RECUSADA.
+	column situacao_contestacao
+		dataType: string
+		summarizeBy: none
+		sourceColumn: situacao_contestacao
+
+	/// Crédito obtido na contestação (R$).
+	column valor_credito
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: valor_credito
+
+	/// Fatura da transportadora.
+	column fatura_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: fatura_id
+
+	/// Pedido de expedição ligado.
+	column pedido_expedicao_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: pedido_expedicao_id
+
+	/// Quando entrou no CRM.
+	column importado_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: importado_em
+
+	hierarchy Destino
+
+		level UF
+			column: uf_fim
+
+		level Cidade
+			column: cidade_fim
+
+	partition fato_ctes = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("fato_ctes"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"cte_id", type text}, {"numero", type text}, {"serie", type text}, {"emitido_em", type datetime}, {"data_emissao", type date}, {"transportadora_id", type text}, {"filial_id", type text}, {"uf_inicio", type text}, {"uf_fim", type text}, {"cidade_inicio", type text}, {"cidade_fim", type text}, {"cfop", type text}, {"valor_frete", Currency.Type}, {"valor_carga", Currency.Type}, {"peso_kg", type number}, {"situacao_fiscal", type text}, {"origem", type text}, {"papel_empresa", type text}, {"situacao_conciliacao", type text}, {"base_esperado", type text}, {"valor_esperado", Currency.Type}, {"diferenca", Currency.Type}, {"conciliado_em", type datetime}, {"decisao", type text}, {"valor_aprovado", Currency.Type}, {"decidido_em", type datetime}, {"situacao_contestacao", type text}, {"valor_credito", Currency.Type}, {"fatura_id", type text}, {"pedido_expedicao_id", type text}, {"importado_em", type datetime}})
+			in
+			    Tipada

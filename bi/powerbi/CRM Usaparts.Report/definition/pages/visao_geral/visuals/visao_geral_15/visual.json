@@ -1,0 +1,138 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "visao_geral_15",
+  "position": {
+    "x": 640,
+    "y": 452,
+    "z": 15000,
+    "height": 256,
+    "width": 624,
+    "tabOrder": 15000
+  },
+  "visual": {
+    "visualType": "clusteredBarChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "HierarchyLevel": {
+                  "Expression": {
+                    "Hierarchy": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "fato_atendimentos"
+                        }
+                      },
+                      "Hierarchy": "Origem"
+                    }
+                  },
+                  "Level": "Canal"
+                }
+              },
+              "queryRef": "fato_atendimentos.Origem.Canal",
+              "nativeQueryRef": "Origem Canal",
+              "active": true
+            },
+            {
+              "field": {
+                "HierarchyLevel": {
+                  "Expression": {
+                    "Hierarchy": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "fato_atendimentos"
+                        }
+                      },
+                      "Hierarchy": "Origem"
+                    }
+                  },
+                  "Level": "Origem"
+                }
+              },
+              "queryRef": "fato_atendimentos.Origem.Origem",
+              "nativeQueryRef": "Origem Origem",
+              "active": false
+            },
+            {
+              "field": {
+                "HierarchyLevel": {
+                  "Expression": {
+                    "Hierarchy": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "fato_atendimentos"
+                        }
+                      },
+                      "Hierarchy": "Origem"
+                    }
+                  },
+                  "Level": "Campanha"
+                }
+              },
+              "queryRef": "fato_atendimentos.Origem.Campanha",
+              "nativeQueryRef": "Origem Campanha",
+              "active": false
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Vendas"
+                }
+              },
+              "queryRef": "_Medidas.Vendas",
+              "nativeQueryRef": "Vendas"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Receita das pré-vendas"
+                }
+              },
+              "queryRef": "_Medidas.Receita das pré-vendas",
+              "nativeQueryRef": "Receita das pré-vendas"
+            }
+          ]
+        }
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Vendas por origem (drill-down: canal, origem, campanha)'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

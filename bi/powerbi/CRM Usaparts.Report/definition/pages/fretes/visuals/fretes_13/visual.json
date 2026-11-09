@@ -1,0 +1,104 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "fretes_13",
+  "position": {
+    "x": 956,
+    "y": 180,
+    "z": 13000,
+    "height": 262,
+    "width": 308,
+    "tabOrder": 13000
+  },
+  "visual": {
+    "visualType": "clusteredBarChart",
+    "query": {
+      "queryState": {
+        "Category": {
+          "projections": [
+            {
+              "field": {
+                "HierarchyLevel": {
+                  "Expression": {
+                    "Hierarchy": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "fato_ctes"
+                        }
+                      },
+                      "Hierarchy": "Destino"
+                    }
+                  },
+                  "Level": "UF"
+                }
+              },
+              "queryRef": "fato_ctes.Destino.UF",
+              "nativeQueryRef": "Destino UF",
+              "active": true
+            },
+            {
+              "field": {
+                "HierarchyLevel": {
+                  "Expression": {
+                    "Hierarchy": {
+                      "Expression": {
+                        "SourceRef": {
+                          "Entity": "fato_ctes"
+                        }
+                      },
+                      "Hierarchy": "Destino"
+                    }
+                  },
+                  "Level": "Cidade"
+                }
+              },
+              "queryRef": "fato_ctes.Destino.Cidade",
+              "nativeQueryRef": "Destino Cidade",
+              "active": false
+            }
+          ]
+        },
+        "Y": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Frete pago (CT-e)"
+                }
+              },
+              "queryRef": "_Medidas.Frete pago (CT-e)",
+              "nativeQueryRef": "Frete pago (CT-e)"
+            }
+          ]
+        }
+      }
+    },
+    "visualContainerObjects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Frete por destino (drill-down: UF, cidade)'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "drillFilterOtherVisuals": true
+  }
+}

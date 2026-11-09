@@ -1,0 +1,169 @@
+/// Mercado Livre Ads por dia: investimento, receita atribuída, vendas e funil. Traz o nível campanha e o nível anúncio: some só um nível (filtre nivel).
+table fato_ml_ads_diario
+
+	/// Número interno (uuid).
+	column linha_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: linha_id
+
+	/// Dia.
+	column data
+		dataType: dateTime
+		formatString: dd/MM/yyyy
+		summarizeBy: none
+		sourceColumn: data
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// mercadolivre.
+	column marketplace
+		dataType: string
+		summarizeBy: none
+		sourceColumn: marketplace
+
+	/// product_ads ou display.
+	column produto
+		dataType: string
+		summarizeBy: none
+		sourceColumn: produto
+
+	/// campaign ou ad.
+	column nivel
+		dataType: string
+		summarizeBy: none
+		sourceColumn: nivel
+
+	/// Campanha.
+	column campanha_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: campanha_id
+
+	/// Nome da campanha.
+	column campanha
+		dataType: string
+		summarizeBy: none
+		sourceColumn: campanha
+
+	/// Anúncio (nível ad).
+	column anuncio_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: anuncio_id
+
+	/// Título do anúncio (nível ad).
+	column anuncio
+		dataType: string
+		summarizeBy: none
+		sourceColumn: anuncio
+
+	/// Impressões.
+	column impressoes
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: impressoes
+
+	/// Cliques.
+	column cliques
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: cliques
+
+	/// Custo (R$).
+	column investimento
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: investimento
+
+	/// Receita atribuída (direta + indireta).
+	column receita
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: receita
+
+	/// Receita direta.
+	column receita_direta
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: receita_direta
+
+	/// Receita indireta.
+	column receita_indireta
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: receita_indireta
+
+	/// Unidades vendidas atribuídas.
+	column unidades
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: unidades
+
+	/// Unidades orgânicas.
+	column unidades_organicas
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: unidades_organicas
+
+	/// Receita orgânica.
+	column receita_organica
+		dataType: decimal
+		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
+		summarizeBy: sum
+		sourceColumn: receita_organica
+
+	/// Visitas ao anúncio.
+	column visualizacoes
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: visualizacoes
+
+	/// Adições ao carrinho.
+	column adicoes_carrinho
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: adicoes_carrinho
+
+	/// Checkouts.
+	column checkouts
+		dataType: int64
+		formatString: #,0
+		summarizeBy: sum
+		sourceColumn: checkouts
+
+	/// api (CRM) ou bi (histórico trazido do Usaparts BI).
+	column fonte
+		dataType: string
+		summarizeBy: none
+		sourceColumn: fonte
+
+	hierarchy Campanha
+
+		level Campanha
+			column: campanha
+
+		level 'Anúncio'
+			column: anuncio
+
+	partition fato_ml_ads_diario = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("fato_ml_ads_diario"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"linha_id", type text}, {"data", type date}, {"marketplace", type text}, {"produto", type text}, {"nivel", type text}, {"campanha_id", type text}, {"campanha", type text}, {"anuncio_id", type text}, {"anuncio", type text}, {"impressoes", Int64.Type}, {"cliques", Int64.Type}, {"investimento", Currency.Type}, {"receita", Currency.Type}, {"receita_direta", Currency.Type}, {"receita_indireta", Currency.Type}, {"unidades", Int64.Type}, {"unidades_organicas", Int64.Type}, {"receita_organica", Currency.Type}, {"visualizacoes", Int64.Type}, {"adicoes_carrinho", Int64.Type}, {"checkouts", Int64.Type}, {"fonte", type text}})
+			in
+			    Tipada

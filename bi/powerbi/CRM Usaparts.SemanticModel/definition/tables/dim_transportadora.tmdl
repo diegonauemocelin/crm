@@ -1,0 +1,49 @@
+/// Transportadoras e prestadores do módulo de fretes (fornecedores da empresa).
+table dim_transportadora
+
+	/// Número interno (uuid).
+	column transportadora_id
+		dataType: string
+		isHidden
+		isKey
+		summarizeBy: none
+		sourceColumn: transportadora_id
+
+	/// Nome da transportadora.
+	column nome
+		dataType: string
+		summarizeBy: none
+		sourceColumn: nome
+
+	/// TRANSPORTADORA ou PRESTADOR.
+	column tipo
+		dataType: string
+		summarizeBy: none
+		sourceColumn: tipo
+
+	/// Cidade.
+	column cidade
+		dataType: string
+		summarizeBy: none
+		sourceColumn: cidade
+
+	/// UF.
+	column uf
+		dataType: string
+		summarizeBy: none
+		sourceColumn: uf
+
+	/// Ativa.
+	column ativa
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: ativa
+
+	partition dim_transportadora = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("dim_transportadora"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"transportadora_id", type text}, {"nome", type text}, {"tipo", type text}, {"cidade", type text}, {"uf", type text}, {"ativa", type logical}})
+			in
+			    Tipada

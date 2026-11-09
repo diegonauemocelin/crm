@@ -1,0 +1,146 @@
+/// Perguntas do Mercado Livre no Assistente ML (sem o texto e sem o cliente).
+table fato_ml_perguntas
+
+	/// Número da pergunta no assistente.
+	column pergunta_id
+		dataType: int64
+		isHidden
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: pergunta_id
+
+	/// mercadolivre.
+	column marketplace
+		dataType: string
+		summarizeBy: none
+		sourceColumn: marketplace
+
+	/// Anúncio (MLB...).
+	column anuncio_ml_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: anuncio_ml_id
+
+	/// Quando a pergunta chegou.
+	column recebida_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: recebida_em
+
+	/// Dia em que chegou.
+	column data_recebida
+		dataType: dateTime
+		formatString: dd/MM/yyyy
+		summarizeBy: none
+		sourceColumn: data_recebida
+
+		annotation UnderlyingDateTimeDataType = Date
+
+	/// nova, aguardando_analise, em_atendimento, respondida, resolvida, nao_aplicavel...
+	column situacao
+		dataType: string
+		summarizeBy: none
+		sourceColumn: situacao
+
+	/// Motivo da pendência (A a G).
+	column motivo_pendencia
+		dataType: string
+		summarizeBy: none
+		sourceColumn: motivo_pendencia
+
+	/// Marca da máquina identificada.
+	column marca_maquina
+		dataType: string
+		summarizeBy: none
+		sourceColumn: marca_maquina
+
+	/// Modelo da máquina identificado.
+	column modelo_maquina
+		dataType: string
+		summarizeBy: none
+		sourceColumn: modelo_maquina
+
+	/// Código da peça identificado.
+	column codigo_peca
+		dataType: string
+		summarizeBy: none
+		sourceColumn: codigo_peca
+
+	/// A pergunta mostra intenção de compra.
+	column intencao_compra
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: intencao_compra
+
+	/// Relevância calculada.
+	column relevancia
+		dataType: int64
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: relevancia
+
+	/// Pessoa responsável (dim_usuario).
+	column atendente_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: atendente_id
+
+	/// Confiança da sugestão da IA (0 a 1).
+	column confianca_ia
+		dataType: double
+		formatString: #,0.0
+		summarizeBy: average
+		sourceColumn: confianca_ia
+
+	/// Respondida pelo CRM.
+	column respondida_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: respondida_em
+
+	/// Respondida fora do CRM (Magazord ou direto no Mercado Livre).
+	column respondida_fora_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: respondida_fora_em
+
+	/// Resolvida.
+	column resolvida_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: resolvida_em
+
+	/// A resposta saiu pelo CRM.
+	column respondida_pelo_crm
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: respondida_pelo_crm
+
+	/// Minutos da chegada até a resposta (CRM ou fora).
+	column minutos_resposta
+		dataType: double
+		formatString: #,0.0
+		summarizeBy: average
+		sourceColumn: minutos_resposta
+
+	/// Última alteração.
+	column atualizado_em
+		dataType: dateTime
+		formatString: dd/MM/yyyy HH:mm
+		summarizeBy: none
+		sourceColumn: atualizado_em
+
+	partition fato_ml_perguntas = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("fato_ml_perguntas"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"pergunta_id", Int64.Type}, {"marketplace", type text}, {"anuncio_ml_id", type text}, {"recebida_em", type datetime}, {"data_recebida", type date}, {"situacao", type text}, {"motivo_pendencia", type text}, {"marca_maquina", type text}, {"modelo_maquina", type text}, {"codigo_peca", type text}, {"intencao_compra", type logical}, {"relevancia", Int64.Type}, {"atendente_id", type text}, {"confianca_ia", type number}, {"respondida_em", type datetime}, {"respondida_fora_em", type datetime}, {"resolvida_em", type datetime}, {"respondida_pelo_crm", type logical}, {"minutos_resposta", type number}, {"atualizado_em", type datetime}})
+			in
+			    Tipada

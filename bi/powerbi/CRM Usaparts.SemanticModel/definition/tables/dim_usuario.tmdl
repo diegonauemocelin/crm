@@ -1,0 +1,57 @@
+/// Pessoas com login no CRM (atendentes, gestores). Excluídos continuam, para o histórico.
+table dim_usuario
+
+	/// Número interno (uuid).
+	column usuario_id
+		dataType: string
+		isHidden
+		isKey
+		summarizeBy: none
+		sourceColumn: usuario_id
+
+	/// Nome da pessoa.
+	column nome
+		dataType: string
+		summarizeBy: none
+		sourceColumn: nome
+
+	/// Perfil de acesso.
+	column perfil
+		dataType: string
+		summarizeBy: none
+		sourceColumn: perfil
+
+	/// Unidade da pessoa.
+	column filial_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: filial_id
+
+	/// Vendedor ligado ao login.
+	column vendedor_id
+		dataType: string
+		isHidden
+		summarizeBy: none
+		sourceColumn: vendedor_id
+
+	/// Pode entrar no sistema (ativo e não excluído).
+	column ativo
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: ativo
+
+	/// Excluído (some das listas; o nome fica no histórico).
+	column excluido
+		dataType: boolean
+		summarizeBy: none
+		sourceColumn: excluido
+
+	partition dim_usuario = m
+		mode: import
+		source =
+			let
+			    Fonte = CRM_Tabela("dim_usuario"),
+			    Tipada = Table.TransformColumnTypes(Fonte, {{"usuario_id", type text}, {"nome", type text}, {"perfil", type text}, {"filial_id", type text}, {"vendedor_id", type text}, {"ativo", type logical}, {"excluido", type logical}})
+			in
+			    Tipada

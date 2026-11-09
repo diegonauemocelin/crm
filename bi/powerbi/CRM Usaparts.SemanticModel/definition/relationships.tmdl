@@ -1,0 +1,177 @@
+relationship dim_vendedor_filial_id
+	isActive: false
+	fromColumn: dim_vendedor.filial_id
+	toColumn: dim_filial.filial_id
+
+relationship dim_usuario_filial_id
+	isActive: false
+	fromColumn: dim_usuario.filial_id
+	toColumn: dim_filial.filial_id
+
+relationship dim_numero_whatsapp_filial_id
+	isActive: false
+	fromColumn: dim_numero_whatsapp.filial_id
+	toColumn: dim_filial.filial_id
+
+relationship fato_leads_filial_id
+	fromColumn: fato_leads.filial_id
+	toColumn: dim_filial.filial_id
+
+relationship fato_leads_origem_id
+	fromColumn: fato_leads.origem_id
+	toColumn: dim_origem.origem_id
+
+relationship fato_leads_vendedor_id
+	fromColumn: fato_leads.vendedor_id
+	toColumn: dim_vendedor.vendedor_id
+
+relationship fato_leads_vendedor_carteira_id
+	isActive: false
+	fromColumn: fato_leads.vendedor_carteira_id
+	toColumn: dim_vendedor.vendedor_id
+
+relationship fato_leads_data_criacao_calendario
+	fromColumn: fato_leads.data_criacao
+	toColumn: Calendario.Data
+
+relationship fato_atendimentos_vendedor_id
+	fromColumn: fato_atendimentos.vendedor_id
+	toColumn: dim_vendedor.vendedor_id
+
+relationship fato_atendimentos_filial_id
+	fromColumn: fato_atendimentos.filial_id
+	toColumn: dim_filial.filial_id
+
+relationship fato_atendimentos_origem_id
+	fromColumn: fato_atendimentos.origem_id
+	toColumn: dim_origem.origem_id
+
+relationship fato_atendimentos_tipo_cliente_id
+	fromColumn: fato_atendimentos.tipo_cliente_id
+	toColumn: dim_tipo_cliente.tipo_cliente_id
+
+relationship fato_atendimentos_motivo_perda_id
+	fromColumn: fato_atendimentos.motivo_perda_id
+	toColumn: dim_motivo_perda.motivo_perda_id
+
+relationship fato_atendimentos_data_lead_calendario
+	fromColumn: fato_atendimentos.data_lead
+	toColumn: Calendario.Data
+
+relationship fato_atendimentos_data_resultado_calendario
+	isActive: false
+	fromColumn: fato_atendimentos.data_resultado
+	toColumn: Calendario.Data
+
+relationship fato_conversas_whatsapp_numero_id
+	fromColumn: fato_conversas_whatsapp.numero_id
+	toColumn: dim_numero_whatsapp.numero_id
+
+relationship fato_conversas_whatsapp_setor_id
+	fromColumn: fato_conversas_whatsapp.setor_id
+	toColumn: dim_setor.setor_id
+
+relationship fato_conversas_whatsapp_atendente_id
+	fromColumn: fato_conversas_whatsapp.atendente_id
+	toColumn: dim_usuario.usuario_id
+
+relationship fato_conversas_whatsapp_respondido_por_id
+	isActive: false
+	fromColumn: fato_conversas_whatsapp.respondido_por_id
+	toColumn: dim_usuario.usuario_id
+
+relationship fato_conversas_whatsapp_vendedor_id
+	fromColumn: fato_conversas_whatsapp.vendedor_id
+	toColumn: dim_vendedor.vendedor_id
+
+relationship fato_conversas_whatsapp_data_inicio_calendario
+	fromColumn: fato_conversas_whatsapp.data_inicio
+	toColumn: Calendario.Data
+
+relationship fato_pedidos_loja_data_pedido_calendario
+	fromColumn: fato_pedidos_loja.data_pedido
+	toColumn: Calendario.Data
+
+relationship fato_itens_pedido_produto_id
+	fromColumn: fato_itens_pedido.produto_id
+	toColumn: dim_produto.produto_id
+
+relationship fato_itens_pedido_data_pedido_calendario
+	fromColumn: fato_itens_pedido.data_pedido
+	toColumn: Calendario.Data
+
+relationship fato_carrinhos_data_inicio_calendario
+	fromColumn: fato_carrinhos.data_inicio
+	toColumn: Calendario.Data
+
+relationship fato_ml_perguntas_atendente_id
+	fromColumn: fato_ml_perguntas.atendente_id
+	toColumn: dim_usuario.usuario_id
+
+relationship fato_ml_perguntas_data_recebida_calendario
+	fromColumn: fato_ml_perguntas.data_recebida
+	toColumn: Calendario.Data
+
+relationship fato_ml_vendas_data_pedido_calendario
+	fromColumn: fato_ml_vendas.data_pedido
+	toColumn: Calendario.Data
+
+relationship fato_ml_ads_diario_data_calendario
+	fromColumn: fato_ml_ads_diario.data
+	toColumn: Calendario.Data
+
+relationship fato_anuncios_diario_data_calendario
+	fromColumn: fato_anuncios_diario.data
+	toColumn: Calendario.Data
+
+relationship fato_email_campanhas_data_envio_calendario
+	fromColumn: fato_email_campanhas.data_envio
+	toColumn: Calendario.Data
+
+relationship fato_webpush_data_envio_calendario
+	fromColumn: fato_webpush.data_envio
+	toColumn: Calendario.Data
+
+relationship fato_frete_cotacoes_filial_id
+	fromColumn: fato_frete_cotacoes.filial_id
+	toColumn: dim_filial.filial_id
+
+relationship fato_frete_cotacoes_transportadora_id
+	fromColumn: fato_frete_cotacoes.transportadora_id
+	toColumn: dim_transportadora.transportadora_id
+
+relationship fato_frete_cotacoes_criado_por_id
+	fromColumn: fato_frete_cotacoes.criado_por_id
+	toColumn: dim_usuario.usuario_id
+
+relationship fato_frete_cotacoes_data_cotacao_calendario
+	fromColumn: fato_frete_cotacoes.data_cotacao
+	toColumn: Calendario.Data
+
+relationship fato_ctes_transportadora_id
+	fromColumn: fato_ctes.transportadora_id
+	toColumn: dim_transportadora.transportadora_id
+
+relationship fato_ctes_filial_id
+	fromColumn: fato_ctes.filial_id
+	toColumn: dim_filial.filial_id
+
+relationship fato_ctes_data_emissao_calendario
+	fromColumn: fato_ctes.data_emissao
+	toColumn: Calendario.Data
+
+relationship fato_brindes_brinde_id
+	fromColumn: fato_brindes.brinde_id
+	toColumn: dim_brinde.brinde_id
+
+relationship fato_brindes_vendedor_id
+	fromColumn: fato_brindes.vendedor_id
+	toColumn: dim_vendedor.vendedor_id
+
+relationship fato_brindes_filial_id
+	fromColumn: fato_brindes.filial_id
+	toColumn: dim_filial.filial_id
+
+relationship fato_brindes_data_calendario
+	fromColumn: fato_brindes.data
+	toColumn: Calendario.Data

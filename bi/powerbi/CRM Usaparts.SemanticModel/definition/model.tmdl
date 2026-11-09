@@ -1,0 +1,42 @@
+model Model
+	culture: pt-BR
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	sourceQueryCulture: pt-BR
+	dataAccessOptions
+		legacyRedirects
+		returnErrorValuesAsNull
+
+annotation __PBI_TimeIntelligenceEnabled = 0
+
+ref table _Medidas
+ref table Calendario
+ref table dim_filial
+ref table dim_vendedor
+ref table dim_usuario
+ref table dim_origem
+ref table dim_tipo_cliente
+ref table dim_motivo_perda
+ref table dim_numero_whatsapp
+ref table dim_setor
+ref table dim_produto
+ref table dim_transportadora
+ref table dim_brinde
+ref table fato_leads
+ref table fato_atendimentos
+ref table fato_conversas_whatsapp
+ref table fato_pedidos_loja
+ref table fato_itens_pedido
+ref table fato_carrinhos
+ref table fato_ml_perguntas
+ref table fato_ml_vendas
+ref table fato_ml_ads_diario
+ref table fato_anuncios_diario
+ref table fato_email_campanhas
+ref table fato_webpush
+ref table fato_frete_cotacoes
+ref table fato_ctes
+ref table fato_brindes
+ref table 'Variação da taxa de conversão (%)'
+ref table 'Variação do investimento em anúncios (%)'
+ref table 'Variação do ticket médio (%)'
+ref table 'Variação do frete (%)'

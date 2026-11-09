@@ -1,0 +1,37 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "cenarios_10",
+  "position": {
+    "x": 852,
+    "y": 88,
+    "z": 10000,
+    "height": 84,
+    "width": 201,
+    "tabOrder": 10000
+  },
+  "visual": {
+    "visualType": "card",
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "_Medidas"
+                    }
+                  },
+                  "Property": "Vendas projetadas"
+                }
+              },
+              "queryRef": "_Medidas.Vendas projetadas",
+              "nativeQueryRef": "Vendas projetadas"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

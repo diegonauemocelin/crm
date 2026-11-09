@@ -1,0 +1,13 @@
+/// Parâmetro de cenário (what-if): de -50% a 100%, de 5 em 5. Use no controle deslizante da página Cenários.
+table 'Variação da taxa de conversão (%)'
+
+	column 'Variação da taxa de conversão (%)'
+		dataType: int64
+		formatString: 0
+		summarizeBy: none
+		sourceColumn: [Value]
+
+	partition 'Variação da taxa de conversão (%)' = calculated
+		mode: import
+		source =
+			GENERATESERIES ( -50, 100, 5 )
