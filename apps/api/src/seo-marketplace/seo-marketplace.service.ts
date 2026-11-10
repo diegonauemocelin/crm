@@ -14,6 +14,7 @@ import {
   type MlSeoField,
   type MlSeoFields,
   mlSeoPrompt,
+  mlEditBlocked,
   aiRetryDelay,
   cleanMlFixed,
   DEFAULT_ML_FIXED,
@@ -42,6 +43,7 @@ interface MlItemLive {
   seller_id?: number | string | null
   title?: string
   status?: string
+  sub_status?: string[] | null
   permalink?: string
   thumbnail?: string
   secure_thumbnail?: string
@@ -60,6 +62,7 @@ interface Live {
   soldQuantity: number
   titleAllowed: boolean
   status: string | null
+  subStatus: string[]
   permalink: string | null
   thumbnail: string | null
   attributes: MlAttribute[]
@@ -122,6 +125,7 @@ export class SeoMarketplaceService {
       soldQuantity: it.sold_quantity ?? 0,
       titleAllowed: mlTitleAllowed(it),
       status: it.status ?? null,
+      subStatus: Array.isArray(it.sub_status) ? it.sub_status : [],
       permalink: it.permalink ?? null,
       thumbnail: it.secure_thumbnail ?? it.thumbnail ?? null,
       attributes,
@@ -385,6 +389,8 @@ export class SeoMarketplaceService {
 
   /** Confere o que não pode ir para o Mercado Livre antes de enviar. */
   private check(live: Live, fields: MlSeoField[], values: Partial<MlSeoFields>) {
+    const blocked = mlEditBlocked(live.status, live.subStatus)
+    if (blocked) throw new Error(blocked)
     if (fields.includes('title')) {
       if (!live.titleAllowed) throw new Error(`o anúncio já tem ${live.soldQuantity} venda(s) (ou é de catálogo) e o Mercado Livre não deixa mudar o título. Desmarque o título e envie só a descrição.`)
       const t = (values.title ?? '').trim()

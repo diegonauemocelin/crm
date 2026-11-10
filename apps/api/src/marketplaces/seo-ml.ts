@@ -265,3 +265,15 @@ export function aiRetryDelay(message: string, attempt: number): number | null {
   return null
 }
 
+const ML_EDITABLE = new Set(['not_yet_active', 'active', 'paused', 'payment_required'])
+const ML_STATUS_LABEL: Record<string, string> = { closed: 'finalizado', under_review: 'em revisão pelo Mercado Livre', inactive: 'inativo' }
+
+/**
+ * Por que o Mercado Livre não aceita mudar o anúncio agora (null = aceita). Ele só deixa alterar a descrição de anúncio
+ * ativo, pausado, ainda não ativo ou aguardando pagamento (ou com a pendência "waiting_for_patch").
+ */
+export function mlEditBlocked(status: string | null, subStatus: string[] = []): string | null {
+  if (!status || ML_EDITABLE.has(status) || subStatus.includes('waiting_for_patch')) return null
+  return `o anúncio está ${ML_STATUS_LABEL[status] ?? status} no Mercado Livre e não aceita alteração agora. Reative o anúncio e envie de novo.`
+}
+

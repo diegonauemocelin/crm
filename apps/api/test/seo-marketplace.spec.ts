@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { MODULE_KEYS } from '../src/common/permissions'
 import {
   aiRetryDelay,
+  mlEditBlocked,
   cleanMlDescription,
   cleanMlFixed,
   DEFAULT_ML_FIXED,
@@ -129,5 +130,15 @@ describe('SEO Marketplace: nova tentativa quando a IA falha', () => {
     expect(aiRetryDelay('Limite do plano gratuito do Gemini atingido.', 1)).toBe(90_000)
     expect(aiRetryDelay('O Gemini não respondeu agora.', 3)).toBeNull()
     expect(aiRetryDelay('A chave do Gemini não foi aceita.', 0)).toBeNull()
+  })
+})
+
+describe('SEO Marketplace: anúncio que não aceita alteração', () => {
+  it('só ativo, pausado, não ativo ou aguardando pagamento', () => {
+    expect(mlEditBlocked('active')).toBeNull()
+    expect(mlEditBlocked('paused')).toBeNull()
+    expect(mlEditBlocked('closed')).toMatch(/finalizado/)
+    expect(mlEditBlocked('under_review')).toMatch(/em revisão/)
+    expect(mlEditBlocked('under_review', ['waiting_for_patch'])).toBeNull()
   })
 })
