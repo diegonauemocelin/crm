@@ -1,6 +1,6 @@
 /** Visões salvas de cada usuário (telas novas): filtros de uma lista guardados com um nome. Funções puras. */
 
-export const VIEW_SCREENS = ['leads', 'pre-vendas'] as const
+export const VIEW_SCREENS = ['leads', 'pre-vendas', 'analises'] as const
 export type ViewScreen = (typeof VIEW_SCREENS)[number]
 
 export interface SavedView {

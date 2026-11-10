@@ -27,6 +27,7 @@ import { TcarModule } from './tcar/tcar.module'
 import { FretesModule } from './fretes/fretes.module'
 import { BrindesModule } from './brindes/brindes.module'
 import { BiModule } from './bi/bi.module'
+import { AnalisesModule } from './analises/analises.module'
 import { WebPushModule } from './webpush/webpush.module'
 import { MerchantModule } from './merchant/merchant.module'
 import { WhatsappModule } from './whatsapp/whatsapp.module'
@@ -92,6 +93,7 @@ import { UsersService } from './users/users.service'
     WebPushModule,
     MerchantModule,
     BiModule,
+    AnalisesModule,
   ],
   controllers: [UsersController, RolesController, SystemController],
   providers: [
