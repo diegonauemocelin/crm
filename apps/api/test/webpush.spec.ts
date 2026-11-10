@@ -4,6 +4,7 @@ import { buildScript } from '../src/rastreamento/script'
 import {
   buildPayload,
   buildServiceWorker,
+  buildServiceWorkerLoader,
   campaignError,
   cleanPrompt,
   DEFAULT_PROMPT,
@@ -151,6 +152,15 @@ describe('web push: navegador', () => {
     expect(p.delaySec).toBe(300)
     expect(p.askAgainDays).toBe(1)
     expect(p.color).toBe(DEFAULT_PROMPT.color)
+  })
+
+  it('arquivo da loja é uma linha que carrega o service worker do CRM', () => {
+    const sw = buildServiceWorkerLoader({ apiBase: 'https://crm.exemplo.com/', siteKey: 'chave-do-site-123' })
+    expect(sw).toContain(SW_MARKER)
+    expect(sw).toContain("importScripts('https://crm.exemplo.com/api/public/webpush/sw.js?k=chave-do-site-123');")
+    const urls: string[] = []
+    new Function('importScripts', sw)((u: string) => urls.push(u))
+    expect(urls).toEqual(['https://crm.exemplo.com/api/public/webpush/sw.js?k=chave-do-site-123'])
   })
 
   it('service worker e script do site são JavaScript válido', () => {
