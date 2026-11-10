@@ -22,6 +22,7 @@ import {
   UFS,
   ufQuote,
   weightIndex,
+  simulationSku,
 } from '../src/merchant/frete-google'
 
 describe('frete no Google Shopping', () => {
@@ -167,5 +168,13 @@ describe('frete no Google Shopping', () => {
     expect(crmOptions(results, ['z'])).toEqual([])
     // Dois CEPs no estado: a mais barata de cada, e a maior entre os CEPs.
     expect(ufQuote('SC', [crmOptions(results, ['a', 'b']), crmOptions(results)])).toEqual({ uf: 'SC', price: 55.56, days: 9 })
+  })
+})
+
+describe('simulação de frete da Magazord: código do produto', () => {
+  it('manda o código (não o id interno)', () => {
+    const by = new Map([['5435', { code: '044124' }]])
+    expect(simulationSku('5435', by)).toBe('044124')
+    expect(simulationSku('999', by)).toBe('999')
   })
 })

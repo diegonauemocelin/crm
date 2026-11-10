@@ -404,3 +404,11 @@ export function crmOptions(results: { status: string; total: number | null; dead
     .map((r) => ({ price: Math.round(r.total! * 100) / 100, days: r.deadlineDays }))
     .sort((a, b) => a.price - b.price || (a.days ?? 99) - (b.days ?? 99))
 }
+
+/**
+ * Código que a simulação de frete da Magazord aceita: o código do produto/derivação (ex.: "044124"), não o id interno
+ * (ex.: 5435) que fica em externalId — com o id ela responde 400 "verifique os parâmetros fornecidos".
+ */
+export function simulationSku(externalId: string, bySku: Map<string, { code: string }>): string {
+  return bySku.get(externalId)?.code?.trim() || externalId
+}

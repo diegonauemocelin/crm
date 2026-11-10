@@ -44,6 +44,7 @@ import {
   type UfQuote,
   UFS,
   ufQuote,
+  simulationSku,
   weightIndex,
 } from './frete-google'
 
@@ -447,7 +448,7 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
         const item = x.it
         try {
           if (crm && x.weight === null) throw new Error(x.weightError ?? 'Sem peso na Magazord.')
-          const quotes = crm ? await this.crmQuotes(tenantId, cfg, x.price, x.weight!, x.dims, cache) : await this.magazordQuotes(tenantId, cfg, item.sku!, x.price, pacer, cache)
+          const quotes = crm ? await this.crmQuotes(tenantId, cfg, x.price, x.weight!, x.dims, cache) : await this.magazordQuotes(tenantId, cfg, simulationSku(item.sku!, bySku), x.price, pacer, cache)
           const shipping = shippingAttribute(quotes, cfg)
           if (!shipping.length) throw new Error(crm ? 'As tabelas do CRM não calcularam frete para nenhum estado.' : 'A Magazord não calculou frete para nenhum estado.')
           await this.must(tenantId, 'POST', `/products/v1/${acc}/productInputs:insert?dataSource=${encodeURIComponent(cfg.dataSource!)}`, { offerId: item.offerId, contentLanguage: item.contentLanguage, feedLabel: item.feedLabel, productAttributes: { shipping } })
