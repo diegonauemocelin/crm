@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { balances, dayOf, deliveryProblem, holderKey, monthOf, monthRange, monthsBetween, parseHolder, reportOf } from '../src/brindes/brindes'
+import { balances, dayOf, deliveryProblem, holderKey, mergeLines, monthOf, monthRange, monthsBetween, parseHolder, reportOf } from '../src/brindes/brindes'
 
 describe('controle de brindes', () => {
   it('mês e dia', () => {
@@ -53,5 +53,17 @@ describe('brindes: filiais e resumo', () => {
     expect(r.byGift.map((g) => [g.giftId, g.quantity])).toEqual([['bone', 3], ['copo', 3]])
     expect(r.byHolder[0]).toMatchObject({ id: 's:a', quantity: 5, value: 65.5 })
     expect(r.byMonth).toEqual([{ month: '2026-10', quantity: 2, value: 20 }, { month: '2026-11', quantity: 4, value: 55.5 }])
+  })
+})
+
+describe('brindes: vários na mesma retirada e brinde sem cota', () => {
+  it('junta o mesmo brinde e descarta quantidade inválida', () => {
+    expect(mergeLines([{ giftId: 'a', quantity: 1 }, { giftId: 'b', quantity: 2 }, { giftId: 'a', quantity: 3 }, { giftId: 'c', quantity: 0 }])).toEqual([{ giftId: 'a', quantity: 4 }, { giftId: 'b', quantity: 2 }])
+    expect(mergeLines([])).toEqual([])
+  })
+  it('brinde sem cota só olha o estoque', () => {
+    expect(deliveryProblem({ quantity: 2, stock: 5, quota: null, used: 0, giftName: 'Caneta', hasQuota: false })).toBeNull()
+    expect(deliveryProblem({ quantity: 6, stock: 5, quota: null, used: 0, giftName: 'Caneta', hasQuota: false })).toBe('Estoque de Caneta: só 5.')
+    expect(deliveryProblem({ quantity: 1, stock: 5, quota: null, used: 0, giftName: 'Caneta' })).toMatch(/não tem cota/)
   })
 })
