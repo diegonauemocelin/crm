@@ -25,6 +25,8 @@ export interface TrailModule {
   title: string
   /** Permissão necessária (módulo do perfil). Sem módulo: todos veem. */
   module?: string
+  /** Aparece se a pessoa pode ver qualquer um destes módulos (tela que junta várias áreas). */
+  anyOf?: string[]
   /** Telas em que a ajuda "?" mostra este módulo (começo do endereço). */
   routes: string[]
   /** Para que serve, em uma frase. */
@@ -1054,6 +1056,56 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'analises',
+    title: 'Análises',
+    anyOf: ['pre_vendas', 'leads', 'chat'],
+    routes: ['/analises'],
+    purpose: 'Analisar leads, atendimentos, vendas e WhatsApp no próprio CRM, como num Power BI, com os dados de agora.',
+    howItWorks:
+      'Cada página junta indicadores, gráficos e tabelas que respondem aos mesmos filtros. Você vê só o que o seu perfil libera: os atendimentos seguem a permissão de Pré-Vendas, os leads a da Base de leads e o WhatsApp a do Chat, com o mesmo escopo (só os seus, da sua unidade ou todos). Os filtros ficam no endereço da página: copie o link para mostrar a mesma análise a um colega (ele vê com as permissões dele).',
+    media: { src: '/trilha/analise.jpg', alt: 'Análises' },
+    lessons: [
+      {
+        id: 'analises.filtrar',
+        title: 'Escolher o período e filtrar',
+        steps: [
+          'Abra Análise → Análises e escolha a página (Visão geral ou Comercial).',
+          'Escolha um período pronto (7 dias, este mês, mês passado...) ou as datas, e com o que comparar (período anterior, mês anterior ou ano anterior).',
+          'Use Filial, Vendedor, Origem e UF para filtrar a página toda.',
+          'Os filtros aplicados aparecem como etiquetas: clique no X para tirar um, ou em Limpar filtros.',
+        ],
+        tip: 'Os cartões mostram a variação contra a comparação escolhida; nas taxas (conversão, perda) a diferença é em pontos percentuais.',
+      },
+      {
+        id: 'analises.detalhar',
+        title: 'Descer nos gráficos e filtrar com um clique',
+        steps: [
+          'Clique numa barra do gráfico de evolução: escolha Ver por trimestre/mês/dia para descer um nível (o caminho aparece em cima; clique nele para voltar).',
+          'Nas barras de canal, filial e UF, clique num item para descer (origem, vendedor, cidade) ou em Filtrar a página para aplicar o valor em todos os quadros.',
+          'Na matriz de filial e vendedor, clique no + para abrir a filial; o funil e o ícone de filtro também filtram a página.',
+        ],
+      },
+      {
+        id: 'analises.registros',
+        title: 'Ver os registros e baixar a planilha',
+        steps: [
+          'Clique num cartão, numa barra (Ver registros) ou num número da matriz para abrir a lista de atendimentos ou leads por trás dele.',
+          'Clique no ícone de abrir para ir direto ao atendimento ou ao lead.',
+          'Com permissão de exportar, baixe a lista em Excel ou CSV. A planilha vai sem nome, telefone e e-mail do cliente.',
+        ],
+      },
+      {
+        id: 'analises.visoes',
+        title: 'Guardar uma análise',
+        steps: [
+          'Monte os filtros e clique em Salvar esta visão (no alto da página).',
+          'Dê um nome: a visão aparece como aba, só para você, em qualquer computador.',
+          'Período pronto (ex.: Este mês) é guardado como período pronto: a visão acompanha o mês atual.',
+        ],
+      },
+    ],
+  },
+  {
     key: 'google-ads',
     title: 'Google Ads',
     module: 'google_ads',
@@ -1529,7 +1581,7 @@ export const ALL_LESSONS = TRAIL.flatMap((m) => m.lessons)
 
 /** Módulos que a pessoa usa (pela permissão do perfil). */
 export function trailFor(can: (module: string) => boolean) {
-  return TRAIL.filter((m) => !m.module || can(m.module))
+  return TRAIL.filter((m) => (m.anyOf ? m.anyOf.some((x) => can(x)) : !m.module || can(m.module)))
 }
 
 /** Módulo da trilha para a tela aberta (o endereço mais específico ganha). */

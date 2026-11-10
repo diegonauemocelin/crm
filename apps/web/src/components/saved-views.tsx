@@ -33,7 +33,7 @@ function normalize(query: string) {
   return filtersOf(new URLSearchParams(query))
 }
 
-export function SavedViews({ screen, builtIn = [] }: { screen: 'leads' | 'pre-vendas'; builtIn?: { name: string; query: string }[] }) {
+export function SavedViews({ screen, builtIn = [] }: { screen: 'leads' | 'pre-vendas' | 'analises'; builtIn?: { name: string; query: string }[] }) {
   const qc = useQueryClient()
   const [params, setParams] = useSearchParams()
   const confirm = useConfirm()
