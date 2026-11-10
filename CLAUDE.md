@@ -31,6 +31,8 @@ Os fretes (branch `claude/tender-brown-6n5q8f`) entraram na v2.0.0 junto com o v
 2. Versão nos 3 `package.json` (raiz, `apps/api`, `apps/web`) e no `package-lock.json` (as entradas dos 3 pacotes). Numeração (decisão de 28/10/2026, para o número não crescer): depois da v0.104.1 a próxima entrega é a **v1.0.0**, e cada entrega seguinte soma 1 no último número (v1.0.1, v1.0.2...), novidade ou correção.
    A versão que trouxer o módulo de fretes é a **v2.0.0** (decisão de 30/10/2026), e as seguintes somam 1 no último
    número (v2.0.1, v2.0.2...).
+   Em 10/11/2026 o usuário pediu a **v3.0.0** (depois da v2.0.56); as seguintes somam 1 no último número
+   (v3.0.1, v3.0.2...).
    O SaaS continua na sua numeração (1.0.N).
 3. `node scripts/check-release.mjs`.
 4. Commit `vX.Y.Z: <resumo em português>`, tag `vX.Y.Z` no próprio commit, `git push origin main --tags`.
