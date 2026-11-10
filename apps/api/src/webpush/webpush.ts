@@ -280,19 +280,6 @@ export function buildPayload(p: PushPayload) {
 
 // ---------- Navegador: service worker e caixa de permissão ----------
 
-/** Endereço do service worker servido pelo CRM (o arquivo da loja só chama este). */
-export function swScriptUrl(apiBase: string, siteKey: string) {
-  return `${apiBase.replace(/\/+$/, '')}/api/public/webpush/sw.js?k=${encodeURIComponent(siteKey)}`
-}
-
-/**
- * Arquivo curto publicado na raiz da loja (/crm-push-sw.js): uma linha que carrega o service worker do CRM. Assim, uma
- * mudança no CRM chega à loja sem publicar o arquivo de novo.
- */
-export function buildServiceWorkerLoader(o: { apiBase: string; siteKey: string }) {
-  return `/* ${SW_MARKER} - publique na raiz do site: /${SW_FILE} */\nimportScripts('${swScriptUrl(o.apiBase, o.siteKey)}');\n`
-}
-
 /**
  * Arquivo crm-push-sw.js, publicado na raiz da loja. Mostra a notificação, avisa a entrega, abre o link no clique e,
  * quando o navegador troca a inscrição sozinho, inscreve de novo.

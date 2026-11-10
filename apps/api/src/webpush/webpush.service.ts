@@ -17,7 +17,6 @@ import { SettingsService } from '../settings/settings.service'
 import {
   buildPayload,
   buildServiceWorker,
-  buildServiceWorkerLoader,
   type CampaignInput,
   campaignError,
   cleanPrompt,
@@ -138,7 +137,6 @@ export class WebPushService implements OnApplicationBootstrap, OnModuleDestroy {
       subscribers,
       swFile: SW_FILE,
       swUrl: siteUrl ? `${siteUrl}/${SW_FILE}` : null,
-      swLoader: buildServiceWorkerLoader({ apiBase: env.appUrl, siteKey: track.siteKey }),
       tracking: { enabled: track.enabled, domains: track.domains, scriptOk },
       defaultIconUrl: await this.defaultIcon(user.tenantId),
     }
@@ -164,14 +162,7 @@ export class WebPushService implements OnApplicationBootstrap, OnModuleDestroy {
   async swFile(user: AuthUser) {
     this.assertCan(user, 'view')
     const track = await this.tracking.config(user.tenantId)
-    return buildServiceWorkerLoader({ apiBase: env.appUrl, siteKey: track.siteKey })
-  }
-
-  /** Service worker completo, carregado pela linha da loja (importScripts). Chave desconhecida: arquivo vazio. */
-  async publicSw(key: string) {
-    const site = await this.tracking.siteByKey(key)
-    if (!site) return '/* chave do site não encontrada */\n'
-    return buildServiceWorker({ apiBase: env.appUrl, siteKey: key })
+    return buildServiceWorker({ apiBase: env.appUrl, siteKey: track.siteKey })
   }
 
   /** Confere se https://loja/crm-push-sw.js responde com o arquivo certo. */
@@ -183,7 +174,7 @@ export class WebPushService implements OnApplicationBootstrap, OnModuleDestroy {
     const url = `${siteUrl}/${SW_FILE}`
     try {
       const body = (await downloadPublic(url, 64 * 1024)).toString('utf8')
-      if (!body.includes(SW_MARKER) && !body.includes('/api/public/webpush/sw.js')) return { ok: false, url, message: 'O endereço responde, mas não é o arquivo do CRM (baixe de novo e publique sem alterar).' }
+      if (!body.includes(SW_MARKER)) return { ok: false, url, message: 'O endereço responde, mas não é o arquivo do CRM (baixe de novo e publique sem alterar).' }
       return { ok: true, url, message: 'Arquivo encontrado na raiz da loja.' }
     } catch (err) {
       return { ok: false, url, message: `Arquivo não encontrado: ${(err as Error).message}.` }

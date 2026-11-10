@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Header, Headers, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
-import { SkipThrottle, Throttle } from '@nestjs/throttler'
+import { Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
 import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator'
 import type { Request, Response } from 'express'
@@ -95,17 +95,6 @@ export class PublicWebPushController {
   @HttpCode(204)
   async unsubscribe(@Req() req: Request, @Headers('origin') rawOrigin: string | undefined, @Headers('referer') referer: string | undefined) {
     await this.push.unsubscribe(req.body, originFrom(rawOrigin, referer))
-  }
-
-  /** Service worker completo, chamado pela linha publicada na loja (importScripts). */
-  @Public()
-  @SkipThrottle()
-  @Get('sw.js')
-  @Header('Content-Type', 'application/javascript; charset=utf-8')
-  @Header('Cache-Control', 'public, max-age=600')
-  @Header('Cross-Origin-Resource-Policy', 'cross-origin')
-  sw(@Query('k') key: unknown) {
-    return this.push.publicSw(typeof key === 'string' ? key : '')
   }
 
   /** Aviso do service worker: a notificação apareceu (Entregas). */

@@ -40,7 +40,6 @@ interface View {
   subscribers: number
   swFile: string
   swUrl: string | null
-  swLoader: string
   tracking: { enabled: boolean; domains: string[]; scriptOk: boolean }
   defaultIconUrl: string | null
 }
@@ -411,24 +410,10 @@ function ManageDialog({ view, onClose }: { view: View; onClose: () => void }) {
           </Step>
           <Step ok={check.isFetching ? null : !!check.data?.ok} title={`2. Arquivo ${view.swFile} na raiz da loja`}>
             <p>
-              Peça à Magazord para publicar, na raiz do domínio da loja, o arquivo {view.swUrl ? <code className="break-all text-foreground">{view.swUrl}</code> : '(informe o endereço da loja abaixo)'} com o conteúdo
-              abaixo. É só uma linha que chama o .js do CRM: quando o CRM for atualizado, não precisa publicar de novo.
+              Baixe o arquivo e peça à Magazord para publicá-lo, sem alterar, na raiz do domínio da loja: {view.swUrl ? <code className="break-all text-foreground">{view.swUrl}</code> : 'informe o endereço da loja abaixo'}. Ele
+              mostra as notificações no navegador do visitante.
             </p>
-            <pre className="whitespace-pre-wrap break-all rounded-md border bg-muted/50 p-2 font-mono text-xs text-foreground">{view.swLoader}</pre>
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  navigator.clipboard
-                    .writeText(view.swLoader)
-                    .then(() => toast.success('Conteúdo copiado.'))
-                    .catch(() => toast.error('Não deu para copiar: selecione o texto e copie.'))
-                }
-              >
-                <CopyIcon /> Copiar
-              </Button>
               <Button type="button" size="sm" variant="outline" onClick={() => api.download('/marketing/web-push/service-worker', view.swFile).catch((err) => toast.error(errorMessage(err)))}>
                 <DownloadIcon /> Baixar {view.swFile}
               </Button>
