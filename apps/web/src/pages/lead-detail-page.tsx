@@ -35,6 +35,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, errorMessage } from '@/lib/api'
 import { brl, formatPhone, KIND_INFO, type Kind, maskPhone, namesOf, SALE_LABEL, type SaleStatus, UF_LIST, UF_NAMES, useOptions, whatsappLink } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
+import { FidelidadeLeadCard, FidelidadeLeadTab } from '@/components/fidelidade-lead'
 import { usePageTitle } from '@/lib/page-title'
 import { type CustomField, type Lead, type LeadStage, STAGE_LABEL, STAGES, useCustomFields, type LeadOrigin } from '@/lib/leads'
 import { CONTACT_LABEL, DEVICE_LABEL, type LeadShop, type LeadSite, pathOf, SHOP_LABEL, touchLabel } from '@/lib/rastreamento'
@@ -305,6 +306,7 @@ function LeadView({ lead }: { lead: Lead | null }) {
             {chatAuth.can('chat') && <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>}
             <TabsTrigger value="site">Site</TabsTrigger>
             <TabsTrigger value="loja">Loja virtual</TabsTrigger>
+            {can('fidelidade') && <TabsTrigger value="fidelidade">Fidelidade</TabsTrigger>}
             <TabsTrigger value="privacidade">Privacidade (LGPD)</TabsTrigger>
           </TabsList>
         )}
@@ -414,6 +416,7 @@ function LeadView({ lead }: { lead: Lead | null }) {
             {lead && (
               <div className="space-y-4">
                 <Summary lead={lead} />
+                <FidelidadeLeadCard leadId={lead.id} />
                 <Origins lead={lead} />
               </div>
             )}
@@ -435,6 +438,11 @@ function LeadView({ lead }: { lead: Lead | null }) {
             <TabsContent value="loja">
               <ShopTab lead={lead} />
             </TabsContent>
+            {can('fidelidade') && (
+              <TabsContent value="fidelidade">
+                <FidelidadeLeadTab leadId={lead.id} />
+              </TabsContent>
+            )}
             <TabsContent value="privacidade">
               <Privacy lead={lead} />
             </TabsContent>

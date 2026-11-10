@@ -617,6 +617,12 @@ model Lead {
 
   automationRuns AutomationRun[]
 
+  loyaltyMember      LoyaltyMember?
+  loyaltyEntries     LoyaltyEntry[]
+  loyaltyRedemptions LoyaltyRedemption[]
+  loyaltyReviews     LoyaltyReview[]
+  loyaltyCodes       LoyaltyAccessCode[]
+
   @@unique([tenantId, email])
   @@index([tenantId, ecommerceId])
   @@index([tenantId, customerCode])
@@ -767,6 +773,8 @@ model EcommerceOrder {
   tenant Tenant @relation(fields: [tenantId], references: [id])
   lead   Lead?  @relation(fields: [leadId], references: [id], onDelete: SetNull)
   items  EcommerceOrderItem[]
+  loyalty       LoyaltyOrder?
+  loyaltyReview LoyaltyReview?
 
   @@unique([tenantId, externalId])
   @@index([leadId, orderedAt])
@@ -3408,6 +3416,7 @@ model Gift {
 
   quotas     GiftQuota[]
   deliveries GiftDelivery[]
+  loyaltyRewards LoyaltyReward[]
 
   @@unique([tenantId, name])
   @@map("gifts")
@@ -3501,4 +3510,213 @@ model BiKey {
 
   @@index([tenantId, createdAt])
   @@map("bi_keys")
+}
+
+/// Fidelidade (Marketing › Fidelidade): cliente no programa. Entra com o primeiro pedido pago da loja virtual.
+/// O saldo é a soma do extrato (loyalty_entries); aqui fica só o resumo para listas e o nível atual.
+model LoyaltyMember {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  leadId       String    @unique @db.Uuid
+  balance      Int       @default(0)
+  /// Nível atual (chave do nível nas configurações) e quando mudou.
+  levelKey     String?
+  levelAt      DateTime?
+  joinedAt     DateTime  @default(now())
+  /// Aceitou o texto de consentimento na página do cliente (o registro completo fica em lead_consents).
+  consentAt    DateTime?
+  /// Saiu do programa (LGPD): não ganha pontos nem recebe mensagens do programa.
+  optOutAt     DateTime?
+  /// Sobe a cada saída: os links e acessos antigos do cliente deixam de valer.
+  tokenEpoch   Int       @default(0)
+  lastAccessAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, levelKey])
+  @@index([tenantId, balance])
+  @@map("loyalty_members")
+}
+
+/// Extrato de pontos: cada movimento é uma linha (ganho, bônus, resgate, expiração, ajuste, estorno).
+/// Linhas positivas são "lotes" com o que ainda resta (remaining) e a validade; as negativas consomem os lotes.
+model LoyaltyEntry {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  leadId        String    @db.Uuid
+  /// GANHO, BONUS, RESGATE, EXPIRADO, AJUSTE, ESTORNO.
+  kind          String
+  points        Int
+  /// Lote: pontos deste ganho que ainda não foram usados nem venceram.
+  remaining     Int       @default(0)
+  expiresAt     DateTime?
+  /// Pedido da loja (ecommerce_orders.id) e o código dele, quando o movimento veio de um pedido.
+  orderId       String?   @db.Uuid
+  orderCode     String?
+  redemptionId  String?   @db.Uuid
+  reason        String
+  /// Evita lançar duas vezes o mesmo movimento automático (ex.: "ganho:<pedido>").
+  dedupeKey     String?
+  userId        String?   @db.Uuid
+  userName      String?
+  createdAt     DateTime  @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, leadId, createdAt])
+  @@index([tenantId, kind, createdAt])
+  @@index([tenantId, expiresAt])
+  @@map("loyalty_entries")
+}
+
+/// Pedido pago da loja visto pela Fidelidade: pontos dados, estorno, entrega e o convite para avaliar.
+model LoyaltyOrder {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  orderId        String    @unique @db.Uuid
+  leadId         String    @db.Uuid
+  points         Int       @default(0)
+  earnedAt       DateTime  @default(now())
+  reversedAt     DateTime?
+  /// Primeira vez que o pedido apareceu como entregue na loja.
+  deliveredAt    DateTime?
+  /// Quando o convite para avaliar deve sair (entrega ou X dias depois do pagamento).
+  inviteDueAt    DateTime?
+  /// Situação do convite: null = a enviar, ENVIADO, PULADO: motivo.
+  inviteStatus   String?
+  emailStatus    String?
+  whatsappStatus String?
+  invitedAt      DateTime?
+
+  order EcommerceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, inviteStatus, inviteDueAt])
+  @@index([tenantId, reversedAt])
+  @@index([leadId])
+  @@map("loyalty_orders")
+}
+
+/// Prêmio do catálogo: brinde (Controle de brindes), desconto ou cashback (código) ou benefício só do nível.
+model LoyaltyReward {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @db.Uuid
+  name         String
+  description  String?
+  /// BRINDE, DESCONTO, CASHBACK, BENEFICIO.
+  kind         String
+  pointsCost   Int      @default(0)
+  giftId       String?  @db.Uuid
+  /// Desconto: VALOR (R$) ou PERCENTUAL.
+  discountType String?
+  value        Decimal? @db.Decimal(12, 2)
+  /// Quantos ainda podem ser resgatados (vazio = sem limite).
+  stock        Int?
+  /// Resgates por cliente (vazio = sem limite).
+  perCustomer  Int?
+  /// Nível mínimo (chave do nível) para resgatar.
+  minLevel     String?
+  /// Validade do código, em dias (vazio = a das configurações).
+  validityDays Int?
+  active       Boolean  @default(true)
+  sort         Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  gift        Gift?               @relation(fields: [giftId], references: [id], onDelete: SetNull)
+  redemptions LoyaltyRedemption[]
+
+  @@index([tenantId, active])
+  @@map("loyalty_rewards")
+}
+
+/// Resgate: troca de pontos por um prêmio. Desconto e cashback geram um código que a equipe aplica à mão na venda.
+model LoyaltyRedemption {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  leadId         String    @db.Uuid
+  rewardId       String    @db.Uuid
+  code           String    @unique
+  rewardName     String
+  kind           String
+  points         Int
+  discountType   String?
+  value          Decimal?  @db.Decimal(12, 2)
+  /// PENDENTE, USADO, ENTREGUE, EXPIRADO, CANCELADO.
+  status         String    @default("PENDENTE")
+  expiresAt      DateTime?
+  usedAt         DateTime?
+  usedOrderCode  String?
+  usedById       String?   @db.Uuid
+  usedByName     String?
+  /// Retirada criada no Controle de brindes (prêmio brinde).
+  giftDeliveryId String?   @db.Uuid
+  /// PAGINA (o cliente pediu) ou PAINEL (a equipe lançou).
+  source         String    @default("PAGINA")
+  createdById    String?   @db.Uuid
+  createdByName  String?
+  cancelReason   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  lead   Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  reward LoyaltyReward @relation(fields: [rewardId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, status, createdAt])
+  @@index([leadId, createdAt])
+  @@map("loyalty_redemptions")
+}
+
+/// Avaliação depois da compra: estrelas, nota de 0 a 10 (NPS), comentário e notas por aspecto.
+model LoyaltyReview {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  leadId         String    @db.Uuid
+  orderId        String    @unique @db.Uuid
+  orderCode      String
+  stars          Int
+  nps            Int
+  comment        String?
+  /// Notas de 1 a 5 por aspecto: produto, entrega, atendimento.
+  aspects        Json?
+  detractor      Boolean   @default(false)
+  /// Detrator: PENDENTE até a equipe tratar (TRATADO).
+  followUpStatus String?
+  followUpNote   String?
+  treatedAt      DateTime?
+  treatedById    String?   @db.Uuid
+  treatedByName  String?
+  bonusPoints    Int       @default(0)
+  ip             String?
+  createdAt      DateTime  @default(now())
+
+  lead  Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  order EcommerceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, detractor, followUpStatus])
+  @@index([leadId])
+  @@map("loyalty_reviews")
+}
+
+/// Código de uso único (6 dígitos) para o cliente entrar na página de pontos sem senha. Só o resumo fica guardado.
+model LoyaltyAccessCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @db.Uuid
+  leadId    String    @db.Uuid
+  codeHash  String    @db.Char(64)
+  channel   String
+  expiresAt DateTime
+  attempts  Int       @default(0)
+  usedAt    DateTime?
+  ip        String?
+  createdAt DateTime  @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("loyalty_access_codes")
 }

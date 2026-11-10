@@ -983,6 +983,71 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'fidelidade',
+    title: 'Fidelidade',
+    module: 'fidelidade',
+    routes: ['/fidelidade'],
+    purpose: 'Programa de pontos da loja virtual: cada compra paga vale pontos, que o cliente troca por brindes, descontos e cashback, com níveis e a avaliação depois da compra.',
+    howItWorks: 'O cliente entra no programa com o primeiro pedido pago da loja virtual (Magazord) depois da data de início, e ganha pontos por R$ comprado. Cancelou ou devolveu, os pontos voltam. Os pontos vencem depois dos meses configurados. O nível (Bronze, Prata, Ouro, Diamante...) sai dos últimos 12 meses. O cliente vê saldo, extrato e prêmios na página Meus pontos, sem senha: pelo link que a empresa envia ou pedindo um código por e-mail/WhatsApp. Desconto e cashback geram um código FID-... que o vendedor aplica à mão na venda (o CRM não cria cupons na loja).',
+    lessons: [
+      {
+        id: 'fidelidade.configurar',
+        title: 'Ligar o programa e definir as regras',
+        steps: [
+          'Abra Marketing → Fidelidade → Configurações.',
+          'Ligue o programa e confira a data de início: só os pedidos pagos a partir dela ganham pontos (os antigos não entram).',
+          'Defina pontos por R$, arredondamento, pedido mínimo, validade dos pontos e se pedidos de marketplace contam.',
+          'Ajuste os níveis (nome, a partir de quanto e os benefícios) e os bônus: avaliação, primeira compra e aniversário (precisa de um campo personalizado do tipo data no lead).',
+          'Escolha quem entrega os brindes resgatados (o vendedor do cliente ou uma filial) e os canais de acesso do cliente.',
+          'Clique em Salvar configurações. Use Atualizar agora para lançar os pontos sem esperar a rotina (que roda a cada minuto).',
+        ],
+        tip: 'O link da página do cliente aparece no topo das Configurações; divulgue-o no site e nas mensagens.',
+      },
+      {
+        id: 'fidelidade.premios',
+        title: 'Cadastrar os prêmios',
+        steps: [
+          'Na aba Prêmios, clique em Novo prêmio.',
+          'Brinde: escolha um brinde do Controle de brindes. O resgate lança a retirada lá e baixa o estoque.',
+          'Desconto (R$ ou %) e cashback (R$): o resgate gera um código FID-... com validade, para usar na próxima compra.',
+          'Benefício do nível: só informativo (ex.: frete grátis), não é resgatado.',
+          'Defina os pontos, a quantidade disponível, o limite por cliente e o nível mínimo.',
+        ],
+      },
+      {
+        id: 'fidelidade.resgates',
+        title: 'Usar um código de resgate',
+        steps: [
+          'O cliente informa o código FID-... ao vendedor.',
+          'Abra Fidelidade → Resgates e busque pelo código (ou pelo nome do cliente).',
+          'Aplique o desconto ou o cashback à mão no pedido e clique em Marcar usado, informando o número do pedido.',
+          'Brinde: quando entregar, clique em Entregue. Cancelar devolve os pontos (e o brinde ao estoque).',
+        ],
+        tip: 'Código vencido não pode ser usado; se for o caso, cancele e os pontos voltam ao cliente.',
+      },
+      {
+        id: 'fidelidade.clientes',
+        title: 'Consultar e ajustar os pontos de um cliente',
+        steps: [
+          'Na aba Clientes, busque por nome, e-mail, telefone ou código do cliente e clique na linha.',
+          'Veja saldo, nível, extrato, resgates e avaliações. A ficha do lead também mostra isso (aba Fidelidade).',
+          'Ajustar pontos: informe os pontos (negativo para tirar) e o motivo. Fica no extrato e na auditoria.',
+          'Envie o link da página ao cliente por e-mail ou WhatsApp, ou faça o resgate por ele.',
+        ],
+      },
+      {
+        id: 'fidelidade.avaliacoes',
+        title: 'Avaliações e detratores',
+        steps: [
+          'Em Configurações, ligue o convite para avaliar e escolha e-mail e/ou WhatsApp. O convite sai depois da entrega (ou X dias depois do pagamento), uma vez por pedido; no WhatsApp, no horário comercial e com intervalo sorteado.',
+          'O cliente dá estrelas, uma nota de 0 a 10 e, se quiser, notas de produto, entrega e atendimento e um comentário. Ganha os pontos do bônus.',
+          'Nota baixa vira detrator: a equipe escolhida recebe aviso no celular e por e-mail. Em Avaliações → Detratores a tratar, registre o contato feito.',
+          'Quem dá nota 9 ou 10 é convidado a avaliar no Google (se o link estiver nas Configurações).',
+        ],
+      },
+    ],
+  },
+  {
     key: 'automacoes',
     title: 'Automações',
     module: 'automacoes',

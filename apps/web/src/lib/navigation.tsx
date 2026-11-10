@@ -1,5 +1,6 @@
 import {
   ActivityIcon,
+  AwardIcon,
   BarChart3Icon,
   BotIcon,
   ClipboardListIcon,
@@ -135,6 +136,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Captura', to: '/captura', icon: MegaphoneIcon, module: 'captura' },
       { title: 'Email marketing', to: '/email-marketing', icon: MailIcon, module: 'email_marketing' },
       { title: 'Landing pages', to: '/landing-pages', icon: LayoutTemplateIcon, module: 'email_marketing' },
+      { title: 'Fidelidade', to: '/fidelidade', icon: AwardIcon, module: 'fidelidade' },
       { title: 'Postagens', to: '/postagens', icon: CalendarClockIcon, module: 'postagens' },
       { title: 'Web Push', to: '/web-push', icon: BellRingIcon, module: 'web_push' },
       { title: 'Automações', to: '/automacoes', icon: BotIcon, module: 'automacoes' },
