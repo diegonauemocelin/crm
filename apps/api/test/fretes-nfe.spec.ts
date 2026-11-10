@@ -1,6 +1,6 @@
 import { zipSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
-import { confrontNfeCte, type CteSide, type NfeSide } from '../src/fretes/confronto'
+import { compareFreight, confrontNfeCte, matchesFreightFilter, type CteSide, type NfeSide } from '../src/fretes/confronto'
 import { parseCteXml } from '../src/fretes/cte'
 import { expandUpload, hasFreight, isCancellation, parseNfeEvent, parseNfeXml, unsafeXml } from '../src/fretes/nfe'
 
@@ -185,11 +185,43 @@ describe('Confronto NF-e × CT-e', () => {
 describe('confronto: frete da nota × CT-e', () => {
   const key = '42261100000000000191550010001493471000000010'
   const cte = { nfeKeys: [key], total: 234.99, cargoValue: 4921.06, weight: 134, volumes: null, ufFim: 'RS', cityFim: 'Arroio', emitCnpj: '00428307000198', tomadorDoc: null }
-  const nf = { key, number: 149347, value: 4921.06, grossWeight: 134, volumes: null, destUf: 'RS', destCity: 'Arroio', carrierCnpj: '00428307000198', freightMode: '1', emitCnpj: '11111111000191', destCnpj: null }
-  const frete = (freightValue: number | null) => confrontNfeCte(cte, [{ ...nf, freightValue }]).checks.find((k) => k.code === 'FRETE')!
-  it('compara o frete destacado na nota com o total do CT-e', () => {
-    expect(frete(234.99)).toMatchObject({ status: 'OK', nfe: 234.99, cte: 234.99 })
-    expect(frete(200)).toMatchObject({ status: 'DIVERGENTE', label: 'CT-e cobrou mais que o frete da nota' })
-    expect(frete(0)).toMatchObject({ status: 'SEM_DADO', label: 'A nota não destaca valor de frete.' })
+  const nf = { key, number: 149347, value: 4921.06, grossWeight: 134, volumes: null, destUf: 'RS', destCity: 'Arroio', carrierCnpj: '00428307000198', freightMode: '0', emitCnpj: '11111111000191', destCnpj: null }
+  const frete = (freightValue: number | null, freightMode = '0') => confrontNfeCte(cte, [{ ...nf, freightValue, freightMode }]).checks.find((k) => k.code === 'FRETE')!
+  it('CIF: a nota cobrir o CT-e é bom; menor que o CT-e diverge', () => {
+    expect(frete(234.99)).toMatchObject({ status: 'OK', nfe: 234.99, cte: 234.99, label: 'Frete da nota igual ao CT-e' })
+    expect(frete(235.5)).toMatchObject({ status: 'OK', label: expect.stringContaining('dentro da folga') })
+    expect(frete(300)).toMatchObject({ status: 'OK', label: 'Frete da nota cobre o CT-e (+R$ 65,01)' })
+    expect(frete(200)).toMatchObject({ status: 'DIVERGENTE', label: 'Frete da nota menor que o CT-e (−R$ 34,99)' })
+    expect(frete(0)).toMatchObject({ status: 'DIVERGENTE', nfe: 0 })
+    expect(frete(null)).toMatchObject({ status: 'DIVERGENTE', nfe: 0 })
+    expect(confrontNfeCte(cte, [{ ...nf, freightValue: 200 }]).divergences).toContain('Frete da nota menor que o CT-e (−R$ 34,99)')
+  })
+  it('FOB e outras modalidades só informam', () => {
+    expect(frete(100, '1')).toMatchObject({ status: 'SEM_DADO', label: 'Frete FOB: pago pelo destinatário' })
+    expect(frete(null, '9')).toMatchObject({ status: 'SEM_DADO', label: 'Nota sem frete' })
+    expect(confrontNfeCte(cte, [{ ...nf, freightValue: 1, freightMode: '1' }]).divergences).toEqual([])
+  })
+})
+
+describe('Pedidos: coluna "Frete na nota" e filtro', () => {
+  const cif = (v: number | null) => ({ freightMode: '0', freightValue: v })
+  it('cor só no CIF com CT-e, com a folga', () => {
+    expect(compareFreight(cif(150), 100)).toMatchObject({ kind: 'MAIOR', diff: 50 })
+    expect(compareFreight(cif(80), 100)).toMatchObject({ kind: 'MENOR', diff: -20 })
+    expect(compareFreight(cif(100.8), 100)).toMatchObject({ kind: 'IGUAL' })
+    expect(compareFreight(cif(101.5), 100, 2)).toMatchObject({ kind: 'IGUAL' })
+    expect(compareFreight(cif(101.5), 100, 0)).toMatchObject({ kind: 'MAIOR' })
+    expect(compareFreight(cif(150), null)).toMatchObject({ kind: 'SEM_CTE', nfe: 150 })
+    expect(compareFreight({ freightMode: '1', freightValue: 150 }, 100)).toMatchObject({ kind: 'NAO_CIF', label: 'Frete FOB: pago pelo destinatário' })
+    expect(compareFreight({ freightMode: '9', freightValue: null }, 100)).toMatchObject({ kind: 'NAO_CIF', label: 'Nota sem frete' })
+    expect(compareFreight(null, 100)).toMatchObject({ kind: 'SEM_NOTA' })
+  })
+  it('filtro: nota maior ou menor que o CT-e', () => {
+    const maior = compareFreight(cif(150), 100)
+    const menor = compareFreight(cif(50), 100)
+    const fob = compareFreight({ freightMode: '1', freightValue: 50 }, 100)
+    expect([maior, menor, fob].map((c) => matchesFreightFilter(c, 'NOTA_MAIOR'))).toEqual([true, false, false])
+    expect([maior, menor, fob].map((c) => matchesFreightFilter(c, 'NOTA_MENOR'))).toEqual([false, true, false])
+    expect([maior, menor, fob].every((c) => matchesFreightFilter(c, null))).toBe(true)
   })
 })

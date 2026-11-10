@@ -1,7 +1,7 @@
 import { AlertTriangleIcon, CheckCircle2Icon, MinusCircleIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { money } from '@/lib/format'
-import { fmtNum, NFE_CHECK_STATUS, type NfeCheck, type NfeConfront } from '@/lib/fretes'
+import { FREIGHT_BAD, FREIGHT_GOOD, fmtNum, NFE_CHECK_STATUS, type NfeCheck, type NfeConfront } from '@/lib/fretes'
 import { cn } from '@/lib/utils'
 
 const show = (code: NfeCheck['code'], v: string | number | null) => {
@@ -37,7 +37,9 @@ export function NfeConfrontView({ c }: { c: NfeConfront }) {
               <tr key={k.code} className="border-t align-top">
                 <td className="py-1 pr-2">
                   <span className="inline-flex items-start gap-1">
-                    {k.status === 'OK' ? (
+                    {k.code === 'FRETE' && k.status === 'DIVERGENTE' ? (
+                      <AlertTriangleIcon className={cn('mt-0.5 size-3.5 shrink-0', FREIGHT_BAD)} aria-label="nota menor que o CT-e" />
+                    ) : k.status === 'OK' ? (
                       <CheckCircle2Icon className="mt-0.5 size-3.5 shrink-0 text-[#006300] dark:text-[#0ca30c]" aria-label="confere" />
                     ) : k.status === 'DIVERGENTE' ? (
                       <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0 text-amber-600" aria-label="diverge" />
@@ -46,7 +48,7 @@ export function NfeConfrontView({ c }: { c: NfeConfront }) {
                     )}
                     <span>
                       {k.name}
-                      {k.label && <span className={cn('block', k.status === 'DIVERGENTE' ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-muted-foreground')}>{k.label}</span>}
+                      {k.label && <span className={cn('block', k.code === 'FRETE' && k.status === 'DIVERGENTE' ? cn('font-medium', FREIGHT_BAD) : k.code === 'FRETE' && k.status === 'OK' && k.label.includes('cobre') ? cn('font-medium', FREIGHT_GOOD) : k.status === 'DIVERGENTE' ? 'font-medium text-amber-700 dark:text-amber-400' : 'text-muted-foreground')}>{k.label}</span>}
                     </span>
                   </span>
                 </td>

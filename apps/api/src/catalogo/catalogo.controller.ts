@@ -78,9 +78,9 @@ export class CatalogoController {
   @Get('exportar')
   async export(@CurrentUser() user: AuthUser, @Query() q: FiltersDto, @ReqContext() ctx: RequestCtx, @Res() res: Response) {
     const rows = await this.catalogo.exportRows(user, q, ctx)
-    const header = ['Código', 'Produto', 'Marca', 'Preço', 'Preço de (antes do desconto)', 'Desconto (%)', 'Estoque', 'Ativo na loja', 'Carrinhos (90 dias)', 'Abandonados (90 dias)', 'Comprados (90 dias)', 'Visualizações da página (90 dias)', 'Link', 'Imagem']
+    const header = ['Código', 'Produto', 'Marca', 'Preço', 'Preço de (antes do desconto)', 'Desconto (%)', 'Estoque', 'Peso (kg)', 'Altura (cm)', 'Largura (cm)', 'Comprimento (cm)', 'Ativo na loja', 'Carrinhos (90 dias)', 'Abandonados (90 dias)', 'Comprados (90 dias)', 'Visualizações da página (90 dias)', 'Link', 'Imagem']
     const lines = rows.map((p) =>
-      [p.code, p.name, p.brand, money(p.price), money(p.priceFrom), p.discount ?? '', p.stock ?? '', p.active ? 'Sim' : 'Não', p.carts, p.abandoned, p.bought, p.views, p.url, p.image].map(csvCell).join(';'),
+      [p.code, p.name, p.brand, money(p.price), money(p.priceFrom), p.discount ?? '', p.stock ?? '', ...[p.weightKg, p.heightCm, p.widthCm, p.lengthCm].map((v) => (v === null ? '' : String(v).replace('.', ','))), p.active ? 'Sim' : 'Não', p.carts, p.abandoned, p.bought, p.views, p.url, p.image].map(csvCell).join(';'),
     )
     res.setHeader('Content-Type', 'text/csv; charset=utf-8')
     res.setHeader('Content-Disposition', `attachment; filename="catalogo-${new Date().toISOString().slice(0, 10)}.csv"`)

@@ -682,8 +682,10 @@ export class CotacaoService {
    * Frete pelas tabelas do CRM sem gravar cotação (Frete no Google Shopping): pessoa física, data de hoje, só tabelas
    * ativas e vigentes da filial (e das transportadoras escolhidas). Devolve os resultados em ordem (o mais barato primeiro).
    */
-  async tableResults(tenantId: string, d: { unitId: string; destZip: string; cargoValue: number; weight: number }, carrierIds: string[] = []) {
-    const { results } = await this.compute({ tenantId }, { unitId: d.unitId, destZip: d.destZip, personType: 'PF', cargoValue: d.cargoValue, weight: d.weight }, false, { carrierIds })
+  async tableResults(tenantId: string, d: { unitId: string; destZip: string; cargoValue: number; weight: number; dims?: { length: number; width: number; height: number } | null }, carrierIds: string[] = []) {
+    // Com as medidas, um volume com o peso do produto: a tabela aplica a cubagem como numa cotação.
+    const volumes = d.dims ? [{ quantity: 1, weight: d.weight, ...d.dims }] : undefined
+    const { results } = await this.compute({ tenantId }, { unitId: d.unitId, destZip: d.destZip, personType: 'PF', cargoValue: d.cargoValue, weight: d.weight, volumes }, false, { carrierIds })
     return results
   }
 

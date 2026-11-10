@@ -64,6 +64,52 @@ const r2 = (n: number) => Math.round(n * 100) / 100
 const r3 = (n: number) => Math.round(n * 1000) / 1000
 const MODE_LABEL: Record<string, string> = { '0': 'CIF (emitente)', '1': 'FOB (destinatário)', '2': 'terceiros', '3': 'próprio (remetente)', '4': 'próprio (destinatário)', '9': 'sem frete' }
 
+const brl = (v: number) => `R$ ${Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+/** Por que o frete da nota não é comparado com o CT-e (frete que não é CIF). */
+export function freightModeNote(mode: string | null): string {
+  if (mode === '1') return 'Frete FOB: pago pelo destinatário'
+  if (mode === '9') return 'Nota sem frete'
+  if (!mode) return 'A nota não informa a modalidade do frete.'
+  return `Frete por conta de ${MODE_LABEL[mode] ?? mode}: não compara com o CT-e`
+}
+
+/**
+ * Frete da nota × CT-e cobrado (soma dos CT-es do pedido), só no CIF:
+ * MAIOR (verde) quando a nota cobre o CT-e além da folga, MENOR (vermelho) quando a nota é menor, IGUAL dentro da
+ * folga; NAO_CIF (FOB, sem frete, terceiros), SEM_NOTA (sem XML importado) e SEM_CTE ficam sem cor. Nota CIF sem
+ * vFrete conta como frete zero.
+ */
+export type FreightCompareKind = 'MAIOR' | 'MENOR' | 'IGUAL' | 'SEM_CTE' | 'NAO_CIF' | 'SEM_NOTA'
+export interface FreightCompare {
+  kind: FreightCompareKind
+  /** Frete da nota (vFrete), quando há nota. */
+  nfe: number | null
+  /** Total dos CT-es. */
+  cte: number | null
+  /** Nota − CT-e (positivo: a nota cobre o CT-e). */
+  diff: number | null
+  label: string | null
+}
+export function compareFreight(nf: { freightMode: string | null; freightValue: number | null } | null, cteTotal: number | null, tolerance = DEFAULT_NFE_TOLERANCE.valor): FreightCompare {
+  if (!nf) return { kind: 'SEM_NOTA', nfe: null, cte: cteTotal, diff: null, label: null }
+  const value = nf.freightValue
+  if (nf.freightMode !== '0') return { kind: 'NAO_CIF', nfe: value, cte: cteTotal, diff: null, label: freightModeNote(nf.freightMode) }
+  const nfe = r2(value ?? 0)
+  if (cteTotal === null) return { kind: 'SEM_CTE', nfe, cte: null, diff: null, label: 'Sem CT-e' }
+  const diff = r2(nfe - cteTotal)
+  if (diff > tolerance) return { kind: 'MAIOR', nfe, cte: cteTotal, diff, label: `Frete da nota cobre o CT-e (+${brl(diff)})` }
+  if (diff < -tolerance) return { kind: 'MENOR', nfe, cte: cteTotal, diff, label: `Frete da nota menor que o CT-e (−${brl(diff)})` }
+  return { kind: 'IGUAL', nfe, cte: cteTotal, diff, label: diff === 0 ? 'Frete da nota igual ao CT-e' : `Frete da nota igual ao CT-e (diferença de ${brl(diff)}, dentro da folga)` }
+}
+
+/** Filtro da lista de pedidos: a nota CIF maior ou menor que o CT-e (além da folga). */
+export type FreightFilter = 'NOTA_MAIOR' | 'NOTA_MENOR'
+export function matchesFreightFilter(c: FreightCompare, f: FreightFilter | null | undefined): boolean {
+  if (!f) return true
+  return f === 'NOTA_MAIOR' ? c.kind === 'MAIOR' : c.kind === 'MENOR'
+}
+
 /** Confronta um CT-e com os XMLs das notas que ele cita. */
 export function confrontNfeCte(cte: CteSide, nfes: NfeSide[], tol: NfeTolerance = DEFAULT_NFE_TOLERANCE): Confrontation {
   const keys = [...new Set(cte.nfeKeys)]
@@ -88,16 +134,18 @@ export function confrontNfeCte(cte: CteSide, nfes: NfeSide[], tol: NfeTolerance 
     checks.push({ code: 'VALOR', name: 'Valor da carga', status: Math.abs(diff) > tol.valor ? 'DIVERGENTE' : 'OK', label: Math.abs(diff) > tol.valor ? (diff > 0 ? 'Valor da carga maior que o das notas' : 'Valor da carga menor que o das notas') : null, nfe: sum, cte: cte.cargoValue })
   }
 
-  // Frete: o destacado nas notas (vFrete) × o total cobrado no CT-e.
+  // Frete: o destacado nas notas (vFrete) × o total cobrado no CT-e. Só no CIF (emitente paga) faz sentido: a nota
+  // cobrir o CT-e é bom; a nota menor que o CT-e é frete pago pela empresa e não repassado.
+  const mode = found[0]!.freightMode
   const freights = found.map((n) => n.freightValue ?? null)
-  const nfFreight = all && freights.every((f) => f !== null) ? r2(freights.reduce<number>((s, f) => s + f!, 0)) : null
-  if (!all) checks.push({ code: 'FRETE', name: 'Frete (nota × CT-e)', status: 'SEM_DADO', label: incomplete, nfe: null, cte: cte.total ?? null })
-  else if (nfFreight === null || nfFreight === 0) checks.push({ code: 'FRETE', name: 'Frete (nota × CT-e)', status: 'SEM_DADO', label: 'A nota não destaca valor de frete.', nfe: nfFreight, cte: cte.total ?? null })
-  else if (cte.total == null) checks.push({ code: 'FRETE', name: 'Frete (nota × CT-e)', status: 'SEM_DADO', label: 'Sem valor no CT-e.', nfe: nfFreight, cte: null })
+  const nfFreight = all ? r2(freights.reduce<number>((s, f) => s + (f ?? 0), 0)) : null
+  const FRETE = 'Frete (nota × CT-e)'
+  if (!all) checks.push({ code: 'FRETE', name: FRETE, status: 'SEM_DADO', label: incomplete, nfe: null, cte: cte.total ?? null })
+  else if (mode !== '0') checks.push({ code: 'FRETE', name: FRETE, status: 'SEM_DADO', label: freightModeNote(mode), nfe: nfFreight, cte: cte.total ?? null })
+  else if (cte.total == null) checks.push({ code: 'FRETE', name: FRETE, status: 'SEM_DADO', label: 'Sem valor no CT-e.', nfe: nfFreight, cte: null })
   else {
-    const diff = r2(cte.total - nfFreight)
-    const bad = Math.abs(diff) > tol.valor
-    checks.push({ code: 'FRETE', name: 'Frete (nota × CT-e)', status: bad ? 'DIVERGENTE' : 'OK', label: bad ? (diff > 0 ? 'CT-e cobrou mais que o frete da nota' : 'CT-e cobrou menos que o frete da nota') : null, nfe: nfFreight, cte: cte.total })
+    const c = compareFreight({ freightMode: mode, freightValue: nfFreight }, cte.total, tol.valor)
+    checks.push({ code: 'FRETE', name: FRETE, status: c.kind === 'MENOR' ? 'DIVERGENTE' : 'OK', label: c.label, nfe: nfFreight, cte: cte.total })
   }
 
   // Peso: o do CT-e (cobrado) contra o peso bruto das notas.
@@ -141,7 +189,6 @@ export function confrontNfeCte(cte: CteSide, nfes: NfeSide[], tol: NfeTolerance 
   }
 
   // Quem paga: CIF (0) = o emitente da nota é o tomador; FOB (1) = o destinatário é o tomador.
-  const mode = first.freightMode
   const tomRoot = root(cte.tomadorDoc)
   const modeLabel = mode ? (MODE_LABEL[mode] ?? mode) : null
   if (mode === '0' && tomRoot && root(first.emitCnpj)) {

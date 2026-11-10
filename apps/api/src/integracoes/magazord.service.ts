@@ -11,7 +11,7 @@ import { env } from '../config/env'
 import { MailService } from '../settings/mail.service'
 import { SettingsService } from '../settings/settings.service'
 import type { SeoFields } from './seo'
-import { type CartItem, cartEmailItems, cartItems, cleanBaseUrl, cleanHttpsBase, type CustomerData, customerFrom, DEFAULT_CART_MESSAGE, type MagazordPessoa, type MzSiteProduct, mzDateTime, orderGroup, parseMzDate, PRODUCTS_MAX_ATTEMPTS, orderChannel, orderLines, productFrom, seoFromMagazord, seoToMagazord, type MzPage, type MzProductDetail, productsDue, shrinkError, spDay } from './magazord'
+import { type CartItem, cartEmailItems, cartItems, cleanBaseUrl, cleanHttpsBase, type CustomerData, customerFrom, DEFAULT_CART_MESSAGE, type MagazordPessoa, type MzSiteProduct, mzDateTime, orderGroup, parseMzDate, PRODUCTS_MAX_ATTEMPTS, orderChannel, orderLines, productFrom, measuresFrom, seoFromMagazord, seoToMagazord, type MzPage, type MzProductDetail, productsDue, shrinkError, spDay } from './magazord'
 
 export interface MagazordSettings {
   enabled: boolean
@@ -160,12 +160,17 @@ export class MagazordRateLimitError extends MagazordError {
   }
 }
 
+/** Peso e medidas: produtos lidos por vez e intervalo entre eles (cada produto faz 1 a 3 consultas). */
+const MEASURES_PER_RUN = 800
+const MEASURES_GAP_MS = 1_000
+
 @Injectable()
 export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(MagazordService.name)
   private timer: NodeJS.Timeout | null = null
   private readonly running = new Set<string>()
   private readonly productsRunning = new Set<string>()
+  private readonly measuresRunning = new Set<string>()
 
   constructor(
     private readonly prisma: PrismaService,
@@ -313,10 +318,21 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
     const s = await this.config(tenantId)
     if (!s.enabled) throw new MagazordError('Integração com a Magazord desligada.')
     const storeId = s.storeId || 1
+    const { d, code } = await this.findDetail(s, derivationCode)
+    if (!d) throw new MagazordError(`Produto ${derivationCode} não encontrado na consulta detalhada da Magazord (resposta: ${this.lastDetailShape || 'vazia'}).`)
+    const pages = this.page<MzPage>(await this.get(s, '/v2/site/paginas', { codigoDerivacao: code, id_loja: storeId, limit: 5 }))
+    return { storeId, ...seoFromMagazord(d, pages.items[0] ?? null, storeId) }
+  }
+
+  private lastDetailShape = ''
+
+  /**
+   * Detalhe de uma derivação. O catálogo pode trazer o código do produto pai (na Usaparts, o da derivação seguido de
+   * "P"): busca as derivações dele e lê a primeira.
+   */
+  private async findDetail(s: MagazordSettings, derivationCode: string) {
     let code = derivationCode
     let d = await this.detail(s, code)
-    // O catálogo pode trazer o código do produto pai (na Usaparts, o da derivação seguido de "P"): busca as
-    // derivações dele e lê a primeira.
     const parents = /p$/i.test(derivationCode) ? [derivationCode] : [`${derivationCode}P`, derivationCode]
     for (const parent of parents) {
       if (d) break
@@ -328,12 +344,8 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
         d = await this.detail(s, code)
       }
     }
-    if (!d) throw new MagazordError(`Produto ${derivationCode} não encontrado na consulta detalhada da Magazord (resposta: ${this.lastDetailShape || 'vazia'}).`)
-    const pages = this.page<MzPage>(await this.get(s, '/v2/site/paginas', { codigoDerivacao: code, id_loja: storeId, limit: 5 }))
-    return { storeId, ...seoFromMagazord(d, pages.items[0] ?? null, storeId) }
+    return { d, code }
   }
-
-  private lastDetailShape = ''
 
   /** GET /v3/produtos/derivacao/{codigo}/detail; aceita a resposta direta, em { data } ou em lista. */
   private async detail(s: MagazordSettings, code: string): Promise<MzProductDetail | null> {
@@ -753,6 +765,8 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
       await this.prisma.storeProduct.updateMany({ where: { tenantId, syncedAt: { lt: started } }, data: { active: false } })
       const fresh = await this.state(tenantId)
       await this.saveState(tenantId, { productsSyncedAt: started.toISOString(), productsError: null, productsAttempts: 0, totals: { ...fresh.totals, products: count } })
+      // Peso e medidas: lidos aos poucos, produto a produto, depois da cópia do catálogo.
+      void this.backfillMeasures(tenantId, s).catch((e: unknown) => this.logger.warn(`Magazord: peso e medidas não lidos: ${(e as Error).message}`))
     } catch (err) {
       const msg = (err as Error).message.slice(0, 500)
       this.logger.warn(`Magazord: catálogo de produtos falhou: ${msg}`)
@@ -766,6 +780,55 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
       }
     } finally {
       this.productsRunning.delete(tenantId)
+    }
+  }
+
+  /**
+   * Peso (kg) e medidas (cm) de cada produto do catálogo, do detalhe da derivação (GET /v3/produtos/derivacao/{codigo}/detail,
+   * campos dimensoes/dimensoesVolumes) e, se ali não houver peso, do produto pai (GET /v2/site/produto/{codigo}: peso,
+   * altura, largura, comprimento). Lê no máximo MEASURES_PER_RUN produtos por vez, com intervalo entre eles, os nunca
+   * lidos primeiro; sem peso, relê depois de 7 dias; com peso, depois de 30. Se a Magazord limitar (429), para e
+   * continua na próxima cópia do catálogo.
+   */
+  async backfillMeasures(tenantId: string, s: MagazordSettings, limit = MEASURES_PER_RUN) {
+    if (this.measuresRunning.has(tenantId)) return { read: 0, withWeight: 0 }
+    this.measuresRunning.add(tenantId)
+    let read = 0
+    let withWeight = 0
+    try {
+      const now = Date.now()
+      const rows = await this.prisma.storeProduct.findMany({
+        where: { tenantId, active: true, code: { not: '' }, OR: [{ measuresAt: null }, { weightKg: null, measuresAt: { lt: new Date(now - 7 * 86_400_000) } }, { measuresAt: { lt: new Date(now - 30 * 86_400_000) } }] },
+        orderBy: [{ measuresAt: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }],
+        take: limit,
+        select: { id: true, code: true },
+      })
+      for (const p of rows) {
+        let m: ReturnType<typeof measuresFrom>
+        try {
+          this.lastDetailShape = ''
+          const { d } = await this.findDetail(s, p.code)
+          if (!d && /429/.test(this.lastDetailShape)) throw new Error(this.lastDetailShape)
+          m = measuresFrom(d)
+          if (m.weightKg === null && d?.codigoProduto) {
+            const parent = await this.get<Record<string, unknown>>(s, `/v2/site/produto/${encodeURIComponent(d.codigoProduto)}`).catch(() => null)
+            const pm = measuresFrom(parent)
+            m = { weightKg: pm.weightKg, heightCm: m.heightCm ?? pm.heightCm, widthCm: m.widthCm ?? pm.widthCm, lengthCm: m.lengthCm ?? pm.lengthCm }
+          }
+        } catch (e) {
+          // Limite da Magazord mesmo depois das novas tentativas: continua na próxima vez.
+          if (/429/.test((e as Error).message)) break
+          m = { weightKg: null, heightCm: null, widthCm: null, lengthCm: null }
+        }
+        await this.prisma.storeProduct.update({ where: { id: p.id }, data: { ...m, measuresAt: new Date() } })
+        read++
+        if (m.weightKg !== null) withWeight++
+        await new Promise((r) => setTimeout(r, MEASURES_GAP_MS))
+      }
+      if (read) this.logger.log(`Magazord: peso e medidas lidos de ${read} produto(s), ${withWeight} com peso.`)
+      return { read, withWeight }
+    } finally {
+      this.measuresRunning.delete(tenantId)
     }
   }
 

@@ -347,7 +347,89 @@ export interface MzProductDetail {
   ean?: { codigo?: string; principal?: boolean }[]
   produtoLoja?: { loja?: number; titulo?: string | null; tituloComplemento?: string | null; descricao?: string | null; descricaoResumida?: string | null }[]
   imagens?: { url?: string; principal?: boolean }[]
+  /** Peso (kg) e medidas (cm) do produto; dimensoesVolumes quando vai em mais de um volume. */
+  dimensoes?: MzDims[] | null
+  volumes?: number | null
+  dimensoesVolumes?: MzDims[] | null
 }
+export interface MzDims {
+  peso?: number | string | null
+  altura?: number | string | null
+  largura?: number | string | null
+  comprimento?: number | string | null
+}
+
+// ---------- Peso e medidas (frete calculado pelo CRM) ----------
+
+export interface ProductMeasures {
+  weightKg: number | null
+  heightCm: number | null
+  widthCm: number | null
+  lengthCm: number | null
+}
+
+/** Limites de bom senso (iguais aos do motor de frete). */
+const MAX_KG = 30_000
+const MAX_CM = 1_500
+
+/**
+ * Número da Magazord em pt-BR ou JSON, com unidade opcional: "1,000" = 1 kg (a Magazord pede o peso com 3 casas
+ * depois da vírgula), "0,100" = 100 g, "500 g", "1.5", "12,5 cm", "1,2 m", "35 mm".
+ */
+export function parseMeasure(v: unknown, kind: 'peso' | 'medida'): number | null {
+  if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null
+  let n: number
+  let unit = ''
+  if (typeof v === 'number') n = v
+  else {
+    const m = String(v).trim().toLowerCase().match(/^(-?[\d.,]+)\s*([a-z]*)\.?$/)
+    if (!m) return null
+    unit = m[2]!
+    let num = m[1]!
+    // "1.234,5" (milhar com ponto) e "1,5" (vírgula decimal); só ponto vale como decimal ("1.5").
+    if (num.includes(',')) num = num.replace(/\./g, '').replace(',', '.')
+    else if ((num.match(/\./g) ?? []).length > 1) num = num.replace(/\./g, '')
+    n = Number(num)
+  }
+  if (!Number.isFinite(n) || n <= 0) return null
+  if (kind === 'peso') {
+    const factor = !unit || unit === 'kg' || unit === 'kgs' || unit === 'quilos' ? 1 : unit === 'g' || unit === 'gr' || unit === 'grs' || unit === 'gramas' ? 0.001 : unit === 't' || unit === 'ton' ? 1000 : null
+    if (factor === null) return null
+    const kg = Math.round(n * factor * 1000) / 1000
+    return kg > 0 && kg <= MAX_KG ? kg : null
+  }
+  const factor = !unit || unit === 'cm' ? 1 : unit === 'mm' ? 0.1 : unit === 'm' || unit === 'mt' || unit === 'mts' ? 100 : null
+  if (factor === null) return null
+  const cm = Math.round(n * factor * 10) / 10
+  return cm > 0 && cm <= MAX_CM ? cm : null
+}
+
+/**
+ * Peso e medidas do detalhe da derivação (GET /v3/produtos/derivacao/{codigo}/detail): "dimensoes" (peso em kg,
+ * medidas em cm); sem peso ali, a soma dos pesos de "dimensoesVolumes" e as medidas do maior volume.
+ */
+export function measuresFrom(d: Pick<MzProductDetail, 'dimensoes' | 'dimensoesVolumes'> | Record<string, unknown> | null | undefined): ProductMeasures {
+  const empty: ProductMeasures = { weightKg: null, heightCm: null, widthCm: null, lengthCm: null }
+  if (!d || typeof d !== 'object') return empty
+  const list = (v: unknown) => (Array.isArray(v) ? v : v && typeof v === 'object' ? [v] : []) as MzDims[]
+  const of = (x: MzDims | undefined): ProductMeasures => ({ weightKg: parseMeasure(x?.peso, 'peso'), heightCm: parseMeasure(x?.altura, 'medida'), widthCm: parseMeasure(x?.largura, 'medida'), lengthCm: parseMeasure(x?.comprimento, 'medida') })
+  const raw = d as Record<string, unknown>
+  // Também aceita o produto da v2 (peso, altura, largura e comprimento soltos).
+  const main = list(raw.dimensoes).map(of).find((x) => x.weightKg !== null || x.heightCm !== null) ?? of(raw as MzDims)
+  const vols = list(raw.dimensoesVolumes).map(of)
+  const sum = vols.reduce((s, v) => s + (v.weightKg ?? 0), 0)
+  const big = [...vols].sort((a, b) => (b.heightCm ?? 0) * (b.widthCm ?? 0) * (b.lengthCm ?? 0) - (a.heightCm ?? 0) * (a.widthCm ?? 0) * (a.lengthCm ?? 0))[0]
+  const dims = main.heightCm && main.widthCm && main.lengthCm ? main : big && big.heightCm && big.widthCm && big.lengthCm ? big : main
+  return {
+    weightKg: main.weightKg ?? (sum > 0 ? Math.round(sum * 1000) / 1000 : null),
+    heightCm: dims.heightCm,
+    widthCm: dims.widthCm,
+    lengthCm: dims.lengthCm,
+  }
+}
+
+/** As três medidas presentes (dá para cubar). */
+export const hasDims = (m: Pick<ProductMeasures, 'heightCm' | 'widthCm' | 'lengthCm'>) => !!(m.heightCm && m.widthCm && m.lengthCm)
 
 export interface MzPage {
   id: number

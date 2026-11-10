@@ -301,6 +301,20 @@ export const INVOICE_STATUS: Record<string, { label: string; className: string }
 /** Chave de 44 dígitos agrupada de 4 em 4 (como no DACTE/DANFE). */
 export const formatKey = (k: string | null | undefined) => (k ? k.replace(/(\d{4})(?=\d)/g, '$1 ') : '—')
 
+/** Frete na nota (vFrete) × soma dos CT-es do pedido. Cor só no CIF: verde quando a nota cobre o CT-e, vermelho quando é menor. */
+export interface FreightCheck {
+  kind: 'MAIOR' | 'MENOR' | 'IGUAL' | 'SEM_CTE' | 'NAO_CIF' | 'SEM_NOTA'
+  nfe: number | null
+  cte: number | null
+  diff: number | null
+  label: string | null
+}
+export const FREIGHT_GOOD = 'text-[#006300] dark:text-[#0ca30c]'
+export const FREIGHT_BAD = 'text-destructive'
+export const freightCheckClass = (k: FreightCheck['kind'] | undefined) => (k === 'MAIOR' ? FREIGHT_GOOD : k === 'MENOR' ? FREIGHT_BAD : '')
+/** Dica curta quando a nota não é CIF (FOB, sem frete...). */
+export const freightModeHint = (label: string | null) => (!label ? null : /FOB/.test(label) ? 'FOB' : /sem frete/i.test(label) ? 'sem frete' : /modalidade/.test(label) ? 'sem modalidade' : 'não CIF')
+
 /** Confronto NF-e × CT-e (XML da nota importado × CT-e). */
 export interface NfeCheck {
   code: 'NOTAS' | 'VALOR' | 'FRETE' | 'PESO' | 'VOLUMES' | 'DESTINO' | 'TRANSPORTADORA' | 'TOMADOR'

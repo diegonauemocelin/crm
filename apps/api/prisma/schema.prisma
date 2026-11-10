@@ -819,6 +819,13 @@ model StoreProduct {
   url        String?
   /// Caminho da página do produto (ver pagePath), para saber quem viu o produto no site.
   path       String?
+  /// Peso (kg) e medidas (cm) cadastrados na Magazord (detalhe da derivação), para o frete calculado pelo CRM.
+  weightKg   Decimal? @db.Decimal(12, 3)
+  heightCm   Decimal? @db.Decimal(8, 1)
+  widthCm    Decimal? @db.Decimal(8, 1)
+  lengthCm   Decimal? @db.Decimal(8, 1)
+  /// Quando o peso e as medidas foram lidos da Magazord (os mais antigos são relidos aos poucos).
+  measuresAt DateTime?
   active     Boolean  @default(true)
   /// Última sincronização em que o produto apareceu (os que somem ficam inativos).
   syncedAt   DateTime

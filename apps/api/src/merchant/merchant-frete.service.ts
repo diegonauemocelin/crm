@@ -25,6 +25,7 @@ import {
   matchSku,
   MERCHANT_API,
   MERCHANT_KEY,
+  type Dims,
   type MerchantFreteConfig,
   Pacer,
   parseRate,
@@ -36,6 +37,7 @@ import {
   type StoredQuotes,
   storedUfs,
   SUPPLEMENTAL_NAME,
+  productWeight,
   tcarWeightFor,
   UF_CEP_RANGES,
   type Uf,
@@ -379,7 +381,7 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
         if (!r.nextPageToken) break
         page = r.nextPageToken
       }
-      const store = await this.prisma.storeProduct.findMany({ where: { tenantId, active: true }, select: { externalId: true, code: true, path: true, url: true, price: true } })
+      const store = await this.prisma.storeProduct.findMany({ where: { tenantId, active: true }, select: { externalId: true, code: true, path: true, url: true, price: true, weightKg: true, heightCm: true, widthCm: true, lengthCm: true } })
       const bySku = new Map(store.map((s) => [s.externalId, s]))
       for (const p of products) {
         if (!p.offerId || !p.contentLanguage || !p.feedLabel) continue
@@ -406,7 +408,8 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
       })
       let weights = new Map<string, number | null>()
       if (crm) {
-        const codes = [...new Set(items.flatMap((i) => [i.sku!, bySku.get(i.sku!)?.code ?? '']).filter(Boolean))]
+        // Tcar só para os produtos sem peso na Magazord.
+        const codes = [...new Set(items.filter((i) => bySku.get(i.sku!)?.weightKg == null).flatMap((i) => [i.sku!, bySku.get(i.sku!)?.code ?? '']).filter(Boolean))]
         const rows: { code: string; grossWeight: Prisma.Decimal | null }[] = []
         for (let i = 0; i < codes.length; i += 2000) rows.push(...(await this.prisma.tcarProduct.findMany({ where: { tenantId, code: { in: codes.slice(i, i + 2000) } }, select: { code: true, grossWeight: true } })))
         // Código com outra caixa (maiúsculas/minúsculas) na Tcar: busca sem diferenciar, só para os que faltaram.
@@ -421,9 +424,12 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
         .map((it) => {
           const sp = bySku.get(it.sku!)
           const price = sp?.price === null || sp?.price === undefined ? 0 : Number(sp.price)
-          const weight = crm ? tcarWeightFor({ code: sp?.code ?? null, externalId: it.sku! }, weights) : null
-          const fp = fingerprint({ source: cfg.source, price, weight, ceps: cfg.ceps, unitId: cfg.unitId, carrierIds: cfg.carrierIds, tables })
-          return { it, price, weight, fp }
+          const num = (d: Prisma.Decimal | null | undefined) => (d === null || d === undefined ? null : Number(d))
+          const pw = crm ? productWeight(sp ? { weightKg: num(sp.weightKg), heightCm: num(sp.heightCm), widthCm: num(sp.widthCm), lengthCm: num(sp.lengthCm) } : null, tcarWeightFor({ code: sp?.code ?? null, externalId: it.sku! }, weights)) : null
+          const weight = pw && 'weight' in pw ? pw.weight : null
+          const dims = pw && 'weight' in pw ? pw.dims : null
+          const fp = fingerprint({ source: cfg.source, price, weight, dims, ceps: cfg.ceps, unitId: cfg.unitId, carrierIds: cfg.carrierIds, tables })
+          return { it, price, weight, dims, weightError: pw && 'error' in pw ? pw.error : null, fp }
         })
         .filter((x) => isDue(x.it, x.fp, cfg.refreshDays, now))
       const batch = crm ? due : due.slice(0, cfg.batchSize)
@@ -440,8 +446,8 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
       const one = async (x: (typeof batch)[number]) => {
         const item = x.it
         try {
-          if (crm && x.weight === null) throw new Error('Sem peso no Tcar (peso bruto do produto).')
-          const quotes = crm ? await this.crmQuotes(tenantId, cfg, x.price, x.weight!, cache) : await this.magazordQuotes(tenantId, cfg, item.sku!, x.price, pacer, cache)
+          if (crm && x.weight === null) throw new Error(x.weightError ?? 'Sem peso na Magazord.')
+          const quotes = crm ? await this.crmQuotes(tenantId, cfg, x.price, x.weight!, x.dims, cache) : await this.magazordQuotes(tenantId, cfg, item.sku!, x.price, pacer, cache)
           const shipping = shippingAttribute(quotes, cfg)
           if (!shipping.length) throw new Error(crm ? 'As tabelas do CRM não calcularam frete para nenhum estado.' : 'A Magazord não calculou frete para nenhum estado.')
           await this.must(tenantId, 'POST', `/products/v1/${acc}/productInputs:insert?dataSource=${encodeURIComponent(cfg.dataSource!)}`, { offerId: item.offerId, contentLanguage: item.contentLanguage, feedLabel: item.feedLabel, productAttributes: { shipping } })
@@ -531,15 +537,15 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
   }
 
   /** Frete por estado pelas tabelas de Fretes: em cada CEP a opção mais barata das transportadoras, sem cotação online. */
-  private async crmQuotes(tenantId: string, cfg: MerchantFreteConfig, price: number, weight: number, cache: Map<string, Promise<{ price: number; days: number | null }[]>>) {
+  private async crmQuotes(tenantId: string, cfg: MerchantFreteConfig, price: number, weight: number, dims: Dims | null, cache: Map<string, Promise<{ price: number; days: number | null }[]>>) {
     const quoteUf = async (uf: Uf) => {
       const perCep = await Promise.all(
         cepsOf(cfg, uf).map((cep) => {
-          // Produtos com o mesmo peso e preço dão o mesmo frete: calcula uma vez por rodada.
-          const key = `crm|${cep}|${weight}|${price}`
+          // Produtos com o mesmo peso, medidas e preço dão o mesmo frete: calcula uma vez por rodada.
+          const key = `crm|${cep}|${weight}|${dims ? `${dims.length}x${dims.width}x${dims.height}` : ''}|${price}`
           let p = cache.get(key)
           if (!p) {
-            p = this.cotacao.tableResults(tenantId, { unitId: cfg.unitId!, destZip: cep, cargoValue: price, weight }, cfg.carrierIds).then((r) => crmOptions(r, cfg.carrierIds))
+            p = this.cotacao.tableResults(tenantId, { unitId: cfg.unitId!, destZip: cep, cargoValue: price, weight, dims }, cfg.carrierIds).then((r) => crmOptions(r, cfg.carrierIds))
             cache.set(key, p)
             p.catch(() => cache.delete(key))
           }

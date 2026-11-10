@@ -30,6 +30,11 @@ interface Product {
   url: string | null
   active: boolean
   syncedAt: string
+  /** Peso (kg) e medidas (cm) da Magazord. */
+  weightKg: number | null
+  heightCm: number | null
+  widthCm: number | null
+  lengthCm: number | null
   carts: number
   abandoned: number
   bought: number
@@ -326,6 +331,12 @@ function Catalog() {
                                 {p.brand ? ` · ${p.brand}` : ''}
                                 {!p.active && ' · fora da loja'}
                               </p>
+                              {p.weightKg !== null && (
+                                <p className="text-xs text-muted-foreground" title="Peso e medidas do cadastro na Magazord (usados no frete do Google pelas tabelas do CRM)">
+                                  {p.weightKg.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg
+                                  {p.heightCm && p.widthCm && p.lengthCm ? ` · ${[p.heightCm, p.widthCm, p.lengthCm].map((x) => x.toLocaleString('pt-BR', { maximumFractionDigits: 1 })).join(' × ')} cm (A × L × C)` : ''}
+                                </p>
+                              )}
                             </div>
                           </div>
                         </TableCell>

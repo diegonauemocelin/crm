@@ -62,6 +62,11 @@ class ShipmentListDto {
   @IsOptional() @bool @IsBoolean() atrasados?: boolean
 }
 
+class PedidosListDto extends ShipmentListDto {
+  /** Frete da nota (CIF) × CT-e: NOTA_MAIOR ou NOTA_MENOR. */
+  @IsOptional() @IsIn(['NOTA_MAIOR', 'NOTA_MENOR']) freteNota?: 'NOTA_MAIOR' | 'NOTA_MENOR'
+}
+
 class CteListDto extends ShipmentListDto {
   @IsOptional() @IsString() @MaxLength(40) decisao?: string
   @IsOptional() @bool @IsBoolean() pendentes?: boolean
@@ -164,8 +169,8 @@ export class FretesOperacaoController {
   // ─────────── Pedidos ───────────
 
   @Get('pedidos')
-  listShipments(@CurrentUser() user: AuthUser, @Query() q: ShipmentListDto) {
-    return this.shipments.list(user, { unitId: q.filial, status: q.situacao, carrierId: q.transportadora, from: q.de, to: q.ate, search: q.busca, page: q.pagina, late: q.atrasados })
+  listShipments(@CurrentUser() user: AuthUser, @Query() q: PedidosListDto) {
+    return this.shipments.list(user, { unitId: q.filial, status: q.situacao, carrierId: q.transportadora, from: q.de, to: q.ate, search: q.busca, page: q.pagina, late: q.atrasados, freight: q.freteNota })
   }
 
   @Get('pedidos/:id')

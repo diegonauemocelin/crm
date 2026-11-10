@@ -35,6 +35,10 @@ interface Row {
   url: string | null
   active: boolean
   syncedAt: Date
+  weightKg: string | null
+  heightCm: string | null
+  widthCm: string | null
+  lengthCm: string | null
   carts: number
   abandoned: number
   bought: number
@@ -101,6 +105,7 @@ export class CatalogoService {
         GROUP BY 1
       )
       SELECT p.id, p.code, p."externalId", p.name, p.brand, p.price::text AS price, p."priceFrom"::text AS "priceFrom", p.stock, p.image, p.url, p.active, p."syncedAt",
+        p."weightKg"::text AS "weightKg", p."heightCm"::text AS "heightCm", p."widthCm"::text AS "widthCm", p."lengthCm"::text AS "lengthCm",
         coalesce(i.carts, 0) AS carts, coalesce(i.abandoned, 0) AS abandoned, coalesce(i.bought, 0) AS bought, coalesce(s.views, 0) AS views
       FROM store_products p LEFT JOIN interest i ON i.code = p.code LEFT JOIN seen s ON s.path = p.path
       WHERE ${this.where(tenantId, f)}
@@ -111,10 +116,15 @@ export class CatalogoService {
   private view(r: Row) {
     const price = r.price === null ? null : Number(r.price)
     const priceFrom = r.priceFrom === null ? null : Number(r.priceFrom)
+    const num = (v: string | null) => (v === null ? null : Number(v))
     return {
       ...r,
       price,
       priceFrom,
+      weightKg: num(r.weightKg),
+      heightCm: num(r.heightCm),
+      widthCm: num(r.widthCm),
+      lengthCm: num(r.lengthCm),
       discount: price !== null && priceFrom && priceFrom > price ? Math.round((1 - price / priceFrom) * 100) : null,
     }
   }

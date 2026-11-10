@@ -328,10 +328,12 @@ export function storedFp(json: unknown): string | null {
 }
 
 /** O que muda o frete do produto: fonte, preço, peso (CRM), CEPs, filial/transportadoras e versões das tabelas (CRM). */
-export function fingerprint(x: { source: FreteSource; price: number; weight: number | null; ceps: Partial<Record<Uf, string[]>>; unitId?: string | null; carrierIds?: string[]; tables?: string }) {
+export function fingerprint(x: { source: FreteSource; price: number; weight: number | null; dims?: Dims | null; ceps: Partial<Record<Uf, string[]>>; unitId?: string | null; carrierIds?: string[]; tables?: string }) {
   const ceps = UFS.map((uf) => cepsOf({ ceps: x.ceps }, uf).join(',')).join(';')
   const parts = [x.source, x.price.toFixed(2), ceps]
   if (x.source === 'crm') parts.push(x.weight === null ? '' : x.weight.toFixed(3), x.unitId ?? '', [...(x.carrierIds ?? [])].sort().join(','), x.tables ?? '')
+  // Medidas só entram quando existem (produto sem medidas mantém a impressão digital de antes).
+  if (x.source === 'crm' && x.dims) parts.push(`${x.dims.length}x${x.dims.width}x${x.dims.height}`)
   return parts.join('|')
 }
 
@@ -359,6 +361,27 @@ export function tcarWeightFor(product: { code: string | null; externalId: string
     if (w !== null && w !== undefined && w > 0) return w
   }
   return null
+}
+
+/** Medidas (cm) do produto para a cubagem. */
+export interface Dims {
+  length: number
+  width: number
+  height: number
+}
+
+/**
+ * Peso e medidas do produto para o frete pelas tabelas do CRM: primeiro o peso e as medidas da Magazord (copiados
+ * para o catálogo), depois o peso bruto da Tcar (sem medidas). Sem nenhum dos dois: erro.
+ */
+export function productWeight(magazord: { weightKg: number | null; heightCm: number | null; widthCm: number | null; lengthCm: number | null } | null | undefined, tcarWeight: number | null): { weight: number; dims: Dims | null; source: 'magazord' | 'tcar' } | { error: string } {
+  const w = magazord?.weightKg
+  if (w !== null && w !== undefined && w > 0) {
+    const { heightCm: h, widthCm: wd, lengthCm: l } = magazord!
+    return { weight: w, dims: h && wd && l ? { length: l, width: wd, height: h } : null, source: 'magazord' }
+  }
+  if (tcarWeight !== null && tcarWeight > 0) return { weight: tcarWeight, dims: null, source: 'tcar' }
+  return { error: 'Sem peso na Magazord (nem peso bruto na Tcar).' }
 }
 
 /** Índice de pesos para tcarWeightFor (monta uma vez por rodada). */

@@ -20,7 +20,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { dateTime, dayBr, money } from '@/lib/format'
-import { fmtNum, formatCep, maskCep, type NfeConfront, parseBr, REC_STATUS, SHIPMENT_STATUS, useActiveUnit, useFreightContext } from '@/lib/fretes'
+import { type FreightCheck, freightCheckClass, freightModeHint, fmtNum, formatCep, maskCep, type NfeConfront, parseBr, REC_STATUS, SHIPMENT_STATUS, useActiveUnit, useFreightContext } from '@/lib/fretes'
 import { cn } from '@/lib/utils'
 
 interface Shipment {
@@ -57,7 +57,31 @@ interface Shipment {
   cte?: { number: string | null; total: number; recStatus: string } | null
   events?: { id: string; status: string; note: string | null; userName: string; createdAt: string }[]
   ctes?: { id: string; number: string | null; total: number; recStatus: string; issuedAt: string | null; nfeConfront: NfeConfront | null }[]
-  nfe?: { number: number; series: string | null; status: string; freightMode: string | null; createdAt: string } | null
+  nfe?: { number: number; series: string | null; status: string; freightMode: string | null; freightValue: number | null; createdAt: string } | null
+  freightCheck?: FreightCheck
+}
+
+const FREIGHT_FILTER: Record<string, string> = { NOTA_MAIOR: 'Nota maior que o CT-e', NOTA_MENOR: 'Nota menor que o CT-e' }
+
+/** Texto do tooltip da coluna "Frete na nota". */
+function freightTitle(f: FreightCheck) {
+  if (f.kind === 'SEM_NOTA') return 'XML da nota não importado'
+  if (f.kind === 'NAO_CIF') return f.label ?? ''
+  if (f.kind === 'SEM_CTE') return 'Frete CIF; CT-e ainda não chegou'
+  return `${f.label ?? ''} · nota ${money(f.nfe)} × CT-e ${money(f.cte)}`
+}
+
+/** Frete na nota (vFrete) com a cor da comparação com o CT-e (só CIF). */
+function FreightCell({ f, detail }: { f: FreightCheck | undefined; detail?: boolean }) {
+  if (!f || f.kind === 'SEM_NOTA') return <span className="text-muted-foreground">—</span>
+  const hint = f.kind === 'NAO_CIF' ? freightModeHint(f.label) : null
+  return (
+    <span title={freightTitle(f)} className={cn('tabular-nums', freightCheckClass(f.kind), (f.kind === 'MAIOR' || f.kind === 'MENOR') && 'font-medium')}>
+      {f.nfe === null ? '—' : money(f.nfe)}
+      {hint && <span className="ml-1 text-xs text-muted-foreground">{hint}</span>}
+      {detail && f.label && f.kind !== 'NAO_CIF' && <span className="ml-1 text-xs">{f.label}</span>}
+    </span>
+  )
 }
 
 const ORDER = ['AGUARDANDO_COTACAO', 'AGUARDANDO_COLETA', 'DESPACHADO', 'EM_TRANSITO', 'COM_OCORRENCIA', 'ENTREGUE', 'AGUARDANDO_CONCILIACAO', 'CONCILIADO', 'CANCELADO']
@@ -79,9 +103,11 @@ function ShipmentList() {
   const [open, setOpen] = useState<string | 'novo' | null>(null)
   const [importing, setImporting] = useState(false)
   const [importingNfe, setImportingNfe] = useState(false)
+  const [freight, setFreight] = useState(params.get('freteNota') ?? '')
   const status = params.get('situacao') ?? ''
   const late = params.get('atrasados') === '1'
   const qs = new URLSearchParams({ pagina: String(page) })
+  if (freight) qs.set('freteNota', freight)
   if (late) qs.set('atrasados', '1')
   if (q) qs.set('busca', q)
   if (status) qs.set('situacao', status)
@@ -131,17 +157,38 @@ function ShipmentList() {
           </Button>
         ))}
       </div>
-      <form
-        className="relative max-w-xl"
-        onSubmit={(e) => {
-          e.preventDefault()
-          setQ(search.trim())
-          setPage(1)
-        }}
-      >
-        <SearchIcon className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-        <Input className="pl-8" placeholder="Nº, pedido, NF, chave da NF-e, cliente ou rastreio" value={search} onChange={(e) => setSearch(e.target.value)} />
-      </form>
+      <div className="flex flex-wrap items-center gap-2">
+        <form
+          className="relative max-w-xl min-w-0 flex-1"
+          onSubmit={(e) => {
+            e.preventDefault()
+            setQ(search.trim())
+            setPage(1)
+          }}
+        >
+          <SearchIcon className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+          <Input className="pl-8" placeholder="Nº, pedido, NF, chave da NF-e, cliente ou rastreio" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </form>
+        <Select
+          value={freight || '__todos__'}
+          onValueChange={(v) => {
+            setFreight(v === '__todos__' ? '' : v)
+            setPage(1)
+          }}
+        >
+          <SelectTrigger className="w-56" aria-label="Frete da nota × CT-e" title="Frete da nota × CT-e (só notas CIF com CT-e)">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__todos__">Frete da nota × CT-e: todos</SelectItem>
+            {Object.entries(FREIGHT_FILTER).map(([k, v]) => (
+              <SelectItem key={k} value={k}>
+                {v}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       {list.isLoading ? (
         <TableSkeleton />
       ) : list.error ? (
@@ -159,6 +206,9 @@ function ShipmentList() {
                 <TableHead>Transportadora</TableHead>
                 <TableHead className="text-right">Cotado</TableHead>
                 <TableHead className="hidden lg:table-cell">CT-e</TableHead>
+                <TableHead className="hidden text-right lg:table-cell" title="Frete destacado na NF-e (vFrete). Só CIF tem cor: verde quando cobre o CT-e, vermelho quando é menor.">
+                  Frete na nota
+                </TableHead>
                 <TableHead>Situação</TableHead>
               </TableRow>
             </TableHeader>
@@ -190,6 +240,9 @@ function ShipmentList() {
                     ) : (
                       '—'
                     )}
+                  </TableCell>
+                  <TableCell className="hidden text-right text-sm lg:table-cell">
+                    <FreightCell f={s.freightCheck} />
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className={SHIPMENT_STATUS[s.status]?.className}>
@@ -333,6 +386,11 @@ function ShipmentSheet({ id, defaultUnit, onClose }: { id: string | null; defaul
                   NF-e {s.nfe.number}
                   {s.nfe.series ? `/${s.nfe.series}` : ''} importada em {dateTime(s.nfe.createdAt)}
                   {s.nfe.status === 'CANCELADA' ? ' · cancelada' : ''}
+                </p>
+              )}
+              {s.nfe && (
+                <p className="text-sm">
+                  Frete na nota: <FreightCell f={s.freightCheck} detail />
                 </p>
               )}
               {s.ctes && s.ctes.length > 0 && (

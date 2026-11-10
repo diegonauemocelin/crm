@@ -169,7 +169,7 @@ function GoogleShopping() {
               <div className="space-y-1.5">
                 <Label htmlFor="mc-refresh">Refazer cada produto a cada (dias)</Label>
                 <Input id="mc-refresh" type="number" min={1} max={60} className="w-24" value={form.refreshDays} onChange={(e) => set('refreshDays', Number(e.target.value))} disabled={!edit} />
-                <p className="text-xs text-muted-foreground">Produto sem mudança de preço{crm ? ', peso ou tabela' : ''} fica de fora até lá.</p>
+                <p className="text-xs text-muted-foreground">Produto sem mudança de preço{crm ? ', peso, medidas ou tabela' : ''} fica de fora até lá.</p>
               </div>
             </div>
             <div className="space-y-2 rounded-md border p-3">
@@ -212,7 +212,7 @@ function GoogleShopping() {
                       <p className="text-xs text-muted-foreground">Nenhuma marcada: todas as ativas da filial. Vale a opção mais barata.</p>
                     </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">O peso vem do peso bruto do produto na Tcar (pelo código do produto na loja); produto sem peso fica de fora. Todos os produtos são calculados em cada rodada.</p>
+                  <p className="text-xs text-muted-foreground">O peso e as medidas (altura, largura e comprimento, para a cubagem) vêm do cadastro do produto na Magazord, lidos aos poucos depois da cópia diária do Catálogo. Sem peso na Magazord, vale o peso bruto da Tcar; sem nenhum dos dois, o produto fica de fora. Todos os produtos são calculados em cada rodada.</p>
                 </>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
