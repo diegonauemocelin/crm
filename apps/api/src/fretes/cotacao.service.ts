@@ -269,7 +269,7 @@ export class CotacaoService {
     }
   }
 
-  private async prepare(user: AuthUser, d: QuoteInput, simulation = false) {
+  private async prepare(user: Pick<AuthUser, 'tenantId'>, d: QuoteInput, simulation = false) {
     const unit = await this.prisma.unit.findFirst({ where: { id: d.unitId, tenantId: user.tenantId } })
     if (!unit) throw new BadRequestException('Filial de origem inválida.')
     const originZip = normalizeCep(d.originZip || unit.zip)
@@ -614,12 +614,17 @@ export class CotacaoService {
     return carrierIds.flatMap((id) => pickFees(ok.filter((f) => f.carrierId === id)))
   }
 
-  private async compute(user: AuthUser, d: QuoteInput, allowExpired: boolean) {
+  /**
+   * lean: só as tabelas do CRM (sem cotação online e sem listar transportadoras sem tabela), opcionalmente de algumas
+   * transportadoras; é o cálculo em massa do frete do Google Shopping.
+   */
+  private async compute(user: Pick<AuthUser, 'tenantId'>, d: QuoteInput, allowExpired: boolean, lean?: { carrierIds?: string[] }) {
     const p = await this.prepare(user, d)
     const sib = await this.siblingUnits(user.tenantId, p.unit.id)
     const tables = await this.prisma.freightTable.findMany({
       where: {
         tenantId: user.tenantId,
+        ...(lean?.carrierIds?.length ? { carrierId: { in: lean.carrierIds } } : {}),
         status: 'ATIVA',
         usage: { in: ['COTACAO_CONCILIACAO', 'COTACAO'] },
         OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }],
@@ -642,7 +647,7 @@ export class CotacaoService {
     )
     // Transportadoras ativas da filial sem nenhuma tabela ativa: aparecem para ninguém achar que foram esquecidas.
     const withTable = new Set(tables.map((t) => t.carrierId))
-    const carriers = await this.prisma.freightCarrier.findMany({
+    const carriers = lean ? [] : await this.prisma.freightCarrier.findMany({
       where: { tenantId: user.tenantId, active: true, kind: 'TRANSPORTADORA', id: { notIn: [...withTable] }, OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }] },
       select: { id: true, name: true, quoteName: true },
       take: 100,
@@ -668,9 +673,35 @@ export class CotacaoService {
         r.total = Math.round((r.total + cost) * 100) / 100
       }
     }
-    results.push(...(await this.onlineResults(user.tenantId, p, d)))
+    if (!lean) results.push(...(await this.onlineResults(user.tenantId, p, d)))
     results.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || (a.total ?? Infinity) - (b.total ?? Infinity) || (a.deadlineDays ?? 999) - (b.deadlineDays ?? 999))
     return { p, results }
+  }
+
+  /**
+   * Frete pelas tabelas do CRM sem gravar cotação (Frete no Google Shopping): pessoa física, data de hoje, só tabelas
+   * ativas e vigentes da filial (e das transportadoras escolhidas). Devolve os resultados em ordem (o mais barato primeiro).
+   */
+  async tableResults(tenantId: string, d: { unitId: string; destZip: string; cargoValue: number; weight: number }, carrierIds: string[] = []) {
+    const { results } = await this.compute({ tenantId }, { unitId: d.unitId, destZip: d.destZip, personType: 'PF', cargoValue: d.cargoValue, weight: d.weight }, false, { carrierIds })
+    return results
+  }
+
+  /** Versões publicadas das tabelas ativas da filial (para saber se alguma tabela mudou desde a última conta). */
+  async tablesKey(tenantId: string, unitId: string, carrierIds: string[] = []) {
+    const sib = await this.siblingUnits(tenantId, unitId)
+    const rows = await this.prisma.freightTable.findMany({
+      where: {
+        tenantId,
+        ...(carrierIds.length ? { carrierId: { in: carrierIds } } : {}),
+        status: 'ATIVA',
+        usage: { in: ['COTACAO_CONCILIACAO', 'COTACAO'] },
+        OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }],
+        carrier: { active: true, kind: 'TRANSPORTADORA' },
+      },
+      select: { id: true, publishedVersionId: true, validTo: true },
+    })
+    return rows.map((r) => `${r.id}:${r.publishedVersionId ?? ''}:${iso(r.validTo)}`).sort().join(',')
   }
 
   private inputSnapshot(d: QuoteInput, p: Awaited<ReturnType<CotacaoService['prepare']>>) {

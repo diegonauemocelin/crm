@@ -150,6 +150,16 @@ interface MzCartDetail {
 
 class MagazordError extends Error {}
 
+/** Cabeçalhos de limite de requisições da resposta (os nomes mais comuns). */
+const rateHeaders = (h: Headers) => ({ retryAfter: h.get('retry-after'), remaining: h.get('x-ratelimit-remaining') ?? h.get('ratelimit-remaining'), reset: h.get('x-ratelimit-reset') ?? h.get('ratelimit-reset') })
+
+/** A Magazord respondeu 429 (limite de requisições): quem chama decide quanto esperar (rate traz os cabeçalhos). */
+export class MagazordRateLimitError extends MagazordError {
+  constructor(readonly rate: ReturnType<typeof rateHeaders>) {
+    super('A Magazord não calculou o frete (429: limite de consultas).')
+  }
+}
+
 @Injectable()
 export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(MagazordService.name)
@@ -224,7 +234,7 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
    * Simulação de frete da loja (POST /v2/site/transporte/simulacao): usa o peso e as medidas cadastrados na Magazord
    * e as tabelas de frete da loja. Só consulta, não cria pedido. Devolve a resposta da Magazord como veio.
    */
-  async simulateFreight(tenantId: string, cep: string, items: { sku: string; quantity: number; price: number }[]) {
+  async simulateFreight(tenantId: string, cep: string, items: { sku: string; quantity: number; price: number }[], opts: { onRate?: (rate: ReturnType<typeof rateHeaders>) => void } = {}) {
     const s = await this.config(tenantId)
     if (!s.enabled) throw new MagazordError('Ligue a integração com a Magazord em Configurações › Loja virtual (Magazord).')
     const base = cleanBaseUrl(s.baseUrl)
@@ -238,6 +248,11 @@ export class MagazordService implements OnApplicationBootstrap, OnModuleDestroy 
       signal: AbortSignal.timeout(30_000),
       redirect: 'error',
     })
+    if (res.status === 429) {
+      await res.body?.cancel().catch(() => undefined)
+      throw new MagazordRateLimitError(rateHeaders(res.headers))
+    }
+    opts.onRate?.(rateHeaders(res.headers))
     const json = (await res.json().catch(() => null)) as { status?: string; data?: unknown; message?: string } | null
     if (res.status === 401 || res.status === 403) throw new MagazordError('A Magazord recusou o token/senha ou o usuário não tem permissão para simular frete.')
     if (!res.ok || !json || json.status === 'error') throw new MagazordError(`A Magazord não calculou o frete (${res.status}${json?.message ? `: ${json.message}` : ''}).`)

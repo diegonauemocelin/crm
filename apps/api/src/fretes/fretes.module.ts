@@ -22,6 +22,6 @@ import { NfeService } from './nfe.service'
   imports: [FilesModule, TcarModule],
   controllers: [FretesController, FretesOperacaoController, FretesSefazController],
   providers: [PainelService, TransportadorasService, TabelasService, ImportacaoService, CotacaoService, PedidosService, CteService, FaturasService, FretesRelatoriosService, SefazService, IntegracoesService, NfeService],
-  exports: [IntegracoesService],
+  exports: [IntegracoesService, CotacaoService],
 })
 export class FretesModule {}

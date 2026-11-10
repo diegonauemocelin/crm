@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { BadRequestException, ForbiddenException, Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
 import { parseFreightOptions } from '../assistente/frete'
 import { AuditService } from '../audit/audit.service'
@@ -6,7 +7,8 @@ import type { RequestCtx } from '../common/decorators'
 import { can } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import type { Prisma } from '../generated/prisma/client'
-import { MagazordService } from '../integracoes/magazord.service'
+import { CotacaoService } from '../fretes/cotacao.service'
+import { MagazordRateLimitError, MagazordService } from '../integracoes/magazord.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { DEFAULT_GA4, GA_TOKEN_URL, type Ga4Settings, signJwt } from '../relatorios/ga4'
 import { SettingsService } from '../settings/settings.service'
@@ -14,18 +16,33 @@ import {
   cepsOf,
   cleanConfig,
   CONTENT_SCOPE,
+  crmOptions,
   DEFAULT_MERCHANT_FRETE,
+  estimateRun,
+  fingerprint,
+  gapOf,
+  isDue,
   matchSku,
   MERCHANT_API,
   MERCHANT_KEY,
   type MerchantFreteConfig,
+  Pacer,
+  parseRate,
+  PAUSE_AFTER_LIMITED,
   regionId,
+  RESUME_AFTER_MS,
+  retryWait,
   shippingAttribute,
+  type StoredQuotes,
+  storedUfs,
   SUPPLEMENTAL_NAME,
+  tcarWeightFor,
   UF_CEP_RANGES,
+  type Uf,
   type UfQuote,
   UFS,
   ufQuote,
+  weightIndex,
 } from './frete-google'
 
 const MODULE = 'mi_config'
@@ -49,6 +66,14 @@ const NOT_REGISTERED = /not registered with the merchant account|register_as_a_d
 /** Intervalo mínimo entre chamadas à Merchant API (as regiões têm limite baixo de pedidos por minuto). */
 const MIN_GAP_MS = 1_100
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/** A Magazord não respondeu por causa do limite, mesmo depois de esperar: o produto fica para a próxima rodada. */
+class LimitedError extends Error {}
+
+/** Produtos calculados ao mesmo tempo com as tabelas do CRM (só banco, sem limite externo). */
+const CRM_PARALLEL = 4
+
 @Injectable()
 export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger('MerchantFrete')
@@ -58,6 +83,8 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
   private readonly preparing = new Set<string>()
   private timer: NodeJS.Timeout | null = null
   private readonly running = new Set<string>()
+  /** Andamento da rodada de cada empresa (a tela mostra "x de y"). */
+  private readonly progress = new Map<string, { done: number; total: number; source: string }>()
   private token: { value: string; until: number; tenantId: string } | null = null
 
   constructor(
@@ -65,10 +92,12 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
     private readonly settings: SettingsService,
     private readonly magazord: MagazordService,
     private readonly audit: AuditService,
+    private readonly cotacao: CotacaoService,
   ) {}
 
   onApplicationBootstrap() {
-    this.timer = setInterval(() => void this.tick(), HOUR)
+    // A cada 15 minutos: a rodada da noite começa logo depois da 1h e a pausada continua perto da hora marcada.
+    this.timer = setInterval(() => void this.tick(), HOUR / 4)
     this.timer.unref()
   }
 
@@ -109,9 +138,10 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
   private async api<T>(tenantId: string, method: string, path: string, body?: unknown): Promise<{ status: number; body: T | null }> {
     const waits = [5_000, 10_000, 20_000, 40_000, 60_000]
     for (let attempt = 0; ; attempt++) {
-      const gap = this.lastCall + MIN_GAP_MS - Date.now()
-      if (gap > 0) await new Promise((r) => setTimeout(r, gap))
-      this.lastCall = Date.now()
+      // Reserva a vez antes de esperar: chamadas em paralelo (fonte CRM) também saem espaçadas.
+      const at = Math.max(Date.now(), this.lastCall + MIN_GAP_MS)
+      this.lastCall = at
+      if (at > Date.now()) await sleep(at - Date.now())
       const token = await this.accessToken(tenantId)
       const res = await fetch(`${MERCHANT_API}${path}`, {
         method,
@@ -162,14 +192,22 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
       this.prisma.merchantShippingItem.findMany({ where: { tenantId: user.tenantId, OR: [{ sentAt: { not: null } }, { error: { not: null } }] }, orderBy: { updatedAt: 'desc' }, take: 30 }),
     ])
     const c = counts[0]?._count
+    const [units, carriers] = await Promise.all([
+      this.prisma.unit.findMany({ where: { tenantId: user.tenantId, active: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, zip: true, city: true, state: true } }),
+      this.prisma.freightCarrier.findMany({ where: { tenantId: user.tenantId, active: true, kind: 'TRANSPORTADORA' }, orderBy: { name: 'asc' }, select: { id: true, name: true }, take: 200 }),
+    ])
     return {
       config: cfg,
       serviceAccount: ga.clientEmail || null,
       running: this.running.has(user.tenantId),
+      progress: this.progress.get(user.tenantId) ?? null,
       preparing: this.preparing.has(user.tenantId),
       totals: { products: c?._all ?? 0, withSku: c?.sku ?? 0, sent: c?.sentAt ?? 0, errors: c?.error ?? 0 },
+      estimate: estimateRun(cfg, cfg.source === 'crm' ? (c?.sku ?? 0) : Math.min(cfg.batchSize, c?.sku || cfg.batchSize)),
+      units,
+      carriers,
       recent: recent.map((r) => {
-        const q = (Array.isArray(r.quotes) ? r.quotes : []) as unknown as UfQuote[]
+        const q = storedUfs(r.quotes)
         const prices = q.filter((x) => x.price !== null).map((x) => x.price!)
         return { offerId: r.offerId, title: r.title, sku: r.sku, states: prices.length, min: prices.length ? Math.min(...prices) : null, max: prices.length ? Math.max(...prices) : null, sentAt: r.sentAt, error: r.error }
       }),
@@ -181,8 +219,17 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
     const cur = await this.config(user.tenantId)
     const next = cleanConfig(input, cur)
     if ('error' in next) throw new BadRequestException(next.error)
+    if (next.source === 'crm') {
+      const unit = await this.prisma.unit.findFirst({ where: { id: next.unitId!, tenantId: user.tenantId }, select: { zip: true, name: true } })
+      if (!unit) throw new BadRequestException('Filial de origem inválida.')
+      if (!unit.zip) throw new BadRequestException(`Cadastre o CEP de expedição da filial ${unit.name} (Fretes › Filiais) para calcular o frete pelo CRM.`)
+    }
+    if (next.carrierIds.length) {
+      const ok = await this.prisma.freightCarrier.count({ where: { tenantId: user.tenantId, id: { in: next.carrierIds } } })
+      if (ok !== next.carrierIds.length) throw new BadRequestException('Transportadoras inválidas.')
+    }
     await this.settings.set(user.tenantId, MERCHANT_KEY, next)
-    await this.audit.byUser(user, ctx, 'merchant.frete.config', 'settings', MERCHANT_KEY, { ligado: next.enabled, conta: next.merchantId })
+    await this.audit.byUser(user, ctx, 'merchant.frete.config', 'settings', MERCHANT_KEY, { ligado: next.enabled, conta: next.merchantId, fonte: next.source })
     return this.view(user)
   }
 
@@ -301,14 +348,18 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
     for (const { tenantId } of rows) {
       const cfg = await this.config(tenantId)
       if (!cfg.enabled || !cfg.dataSource) continue
-      if (cfg.lastRunAt && Date.now() - Date.parse(cfg.lastRunAt) < 20 * HOUR) continue
+      // Rodada pausada pelo limite da Magazord continua na hora marcada; senão, uma por noite.
+      const resume = !!cfg.resumeAt && Date.now() >= Date.parse(cfg.resumeAt)
+      if (!resume && cfg.lastRunAt && Date.now() - Date.parse(cfg.lastRunAt) < 20 * HOUR) continue
       await this.run(tenantId).catch((e: unknown) => this.logger.warn(`Rodada (${tenantId}): ${(e as Error).message}`))
     }
   }
 
   /**
-   * Rodada: lê os produtos do Merchant Center, liga cada um ao SKU da Magazord e, para os que estão há mais tempo sem
-   * atualizar (até batchSize), simula o frete por estado e envia.
+   * Rodada: lê os produtos do Merchant Center, liga cada um ao SKU da Magazord e recalcula os que precisam (nunca
+   * enviados, com erro, com preço/peso/CEPs mudados ou passados os dias de refazer), os mais antigos primeiro.
+   * Fonte Magazord: até batchSize produtos, no ritmo configurado e respeitando o limite (429) da Magazord; se ela
+   * continuar limitando, a rodada pausa e continua mais tarde. Fonte CRM: todos, pelas tabelas de Fretes.
    */
   private async run(tenantId: string) {
     if (this.running.has(tenantId)) return
@@ -316,6 +367,8 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
     const cfg = await this.config(tenantId)
     const acc = `accounts/${cfg.merchantId}`
     let lastError: string | null = null
+    let lastSummary: string | null = null
+    let resumeAt: string | null = null
     try {
       // 1) Produtos da conta.
       const products: McProduct[] = []
@@ -327,7 +380,7 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
         page = r.nextPageToken
       }
       const store = await this.prisma.storeProduct.findMany({ where: { tenantId, active: true }, select: { externalId: true, code: true, path: true, url: true, price: true } })
-      const priceOf = new Map(store.map((s) => [s.externalId, s.price === null ? 0 : Number(s.price)]))
+      const bySku = new Map(store.map((s) => [s.externalId, s]))
       for (const p of products) {
         if (!p.offerId || !p.contentLanguage || !p.feedLabel) continue
         const sku = matchSku({ offerId: p.offerId, link: p.productAttributes?.link }, store)
@@ -338,40 +391,166 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
           update: { title: p.productAttributes?.title?.slice(0, 300) ?? null, sku, ...(sku ? {} : { error: 'Produto não encontrado no catálogo da Magazord do CRM (atualize o Catálogo).' }) },
         })
       }
-      // 2) Os mais antigos primeiro.
-      const batch = await this.prisma.merchantShippingItem.findMany({ where: { tenantId, sku: { not: null } }, orderBy: [{ sentAt: { sort: 'asc', nulls: 'first' } }], take: cfg.batchSize })
-      for (const item of batch) {
+
+      // 2) O que precisa recalcular, os mais antigos primeiro.
+      const crm = cfg.source === 'crm'
+      if (crm) {
+        const unit = cfg.unitId ? await this.prisma.unit.findFirst({ where: { id: cfg.unitId, tenantId }, select: { zip: true, name: true } }) : null
+        if (!unit) throw new Error('Escolha a filial de origem do frete calculado pelo CRM.')
+        if (!unit.zip) throw new Error(`Cadastre o CEP de expedição da filial ${unit.name} (Fretes › Filiais) para calcular o frete pelo CRM.`)
+      }
+      const items = await this.prisma.merchantShippingItem.findMany({
+        where: { tenantId, sku: { not: null } },
+        orderBy: [{ sentAt: { sort: 'asc', nulls: 'first' } }],
+        select: { id: true, offerId: true, contentLanguage: true, feedLabel: true, sku: true, sentAt: true, error: true, quotes: true },
+      })
+      let weights = new Map<string, number | null>()
+      if (crm) {
+        const codes = [...new Set(items.flatMap((i) => [i.sku!, bySku.get(i.sku!)?.code ?? '']).filter(Boolean))]
+        const rows: { code: string; grossWeight: Prisma.Decimal | null }[] = []
+        for (let i = 0; i < codes.length; i += 2000) rows.push(...(await this.prisma.tcarProduct.findMany({ where: { tenantId, code: { in: codes.slice(i, i + 2000) } }, select: { code: true, grossWeight: true } })))
+        // Código com outra caixa (maiúsculas/minúsculas) na Tcar: busca sem diferenciar, só para os que faltaram.
+        const found = new Set(rows.map((r) => r.code.toLowerCase()))
+        const missing = codes.filter((c) => !found.has(c.toLowerCase())).slice(0, 500)
+        if (missing.length) rows.push(...(await this.prisma.tcarProduct.findMany({ where: { tenantId, OR: missing.map((code) => ({ code: { equals: code, mode: 'insensitive' as const } })) }, select: { code: true, grossWeight: true } })))
+        weights = weightIndex(rows.map((r) => ({ code: r.code, grossWeight: r.grossWeight === null ? null : Number(r.grossWeight) })))
+      }
+      const tables = crm ? createHash('sha1').update(await this.cotacao.tablesKey(tenantId, cfg.unitId!, cfg.carrierIds)).digest('hex').slice(0, 16) : ''
+      const now = Date.now()
+      const due = items
+        .map((it) => {
+          const sp = bySku.get(it.sku!)
+          const price = sp?.price === null || sp?.price === undefined ? 0 : Number(sp.price)
+          const weight = crm ? tcarWeightFor({ code: sp?.code ?? null, externalId: it.sku! }, weights) : null
+          const fp = fingerprint({ source: cfg.source, price, weight, ceps: cfg.ceps, unitId: cfg.unitId, carrierIds: cfg.carrierIds, tables })
+          return { it, price, weight, fp }
+        })
+        .filter((x) => isDue(x.it, x.fp, cfg.refreshDays, now))
+      const batch = crm ? due : due.slice(0, cfg.batchSize)
+      const skipped = items.length - due.length
+
+      // 3) Frete de cada produto e envio ao Merchant Center.
+      const prog = { done: 0, total: batch.length, source: cfg.source }
+      this.progress.set(tenantId, prog)
+      let sent = 0
+      let failed = 0
+      let limitedRow = 0
+      const cache = new Map<string, Promise<{ price: number; days: number | null }[]>>()
+      const pacer = new Pacer(gapOf(cfg.magazordPerMinute))
+      const one = async (x: (typeof batch)[number]) => {
+        const item = x.it
         try {
-          const quotes: UfQuote[] = []
-          for (const uf of UFS) {
-            const perCep: { price: number; days: number | null }[][] = []
-            for (const cep of cepsOf(cfg, uf)) {
-              const raw = await this.magazord.simulateFreight(tenantId, cep, [{ sku: item.sku!, quantity: 1, price: priceOf.get(item.sku!) ?? 0 }])
-              perCep.push(parseFreightOptions(raw).map((o) => ({ price: o.price, days: o.days })))
-              await new Promise((r) => setTimeout(r, 200))
-            }
-            quotes.push(ufQuote(uf, perCep))
-          }
+          if (crm && x.weight === null) throw new Error('Sem peso no Tcar (peso bruto do produto).')
+          const quotes = crm ? await this.crmQuotes(tenantId, cfg, x.price, x.weight!, cache) : await this.magazordQuotes(tenantId, cfg, item.sku!, x.price, pacer, cache)
           const shipping = shippingAttribute(quotes, cfg)
-          if (!shipping.length) throw new Error('A Magazord não calculou frete para nenhum estado.')
+          if (!shipping.length) throw new Error(crm ? 'As tabelas do CRM não calcularam frete para nenhum estado.' : 'A Magazord não calculou frete para nenhum estado.')
           await this.must(tenantId, 'POST', `/products/v1/${acc}/productInputs:insert?dataSource=${encodeURIComponent(cfg.dataSource!)}`, { offerId: item.offerId, contentLanguage: item.contentLanguage, feedLabel: item.feedLabel, productAttributes: { shipping } })
-          await this.prisma.merchantShippingItem.update({ where: { id: item.id }, data: { quotes: quotes as unknown as Prisma.InputJsonValue, sentAt: new Date(), error: null } })
+          const stored: StoredQuotes = { ufs: quotes, fp: x.fp }
+          await this.prisma.merchantShippingItem.update({ where: { id: item.id }, data: { quotes: stored as unknown as Prisma.InputJsonValue, sentAt: new Date(), error: null } })
+          sent++
+          limitedRow = 0
         } catch (e) {
           const msg = (e as Error).message.slice(0, 300)
           // Sem acesso ao Merchant Center: para a rodada (os outros dariam o mesmo erro).
           if (/Sem acesso ao Merchant Center/.test(msg)) throw e
-          await this.prisma.merchantShippingItem.update({ where: { id: item.id }, data: { error: msg, sentAt: new Date() } })
+          failed++
+          if (e instanceof LimitedError) {
+            // Limite da Magazord: não mexe no sentAt, para o produto ser o primeiro da próxima rodada.
+            limitedRow++
+            await this.prisma.merchantShippingItem.update({ where: { id: item.id }, data: { error: msg } })
+          } else {
+            limitedRow = 0
+            await this.prisma.merchantShippingItem.update({ where: { id: item.id }, data: { error: msg, sentAt: new Date() } })
+          }
+        } finally {
+          prog.done++
         }
       }
-      this.logger.log(`Frete no Google: ${batch.length} produto(s) atualizado(s), ${products.length} na conta.`)
+      if (crm) {
+        for (let i = 0; i < batch.length; i += CRM_PARALLEL) await Promise.all(batch.slice(i, i + CRM_PARALLEL).map(one))
+      } else {
+        for (const x of batch) {
+          await one(x)
+          if (limitedRow >= PAUSE_AFTER_LIMITED) {
+            resumeAt = new Date(Date.now() + RESUME_AFTER_MS).toISOString()
+            lastError = `A Magazord limitou as consultas de frete (429) em ${limitedRow} produtos seguidos: a rodada parou em ${prog.done} de ${batch.length} e continua sozinha em 30 minutos (de madrugada) ou na próxima noite. Se repetir, diminua as consultas por minuto.`
+            break
+          }
+        }
+      }
+      lastSummary = `${prog.done} produto(s) calculado(s) ${crm ? 'pelas tabelas do CRM' : 'na Magazord'}: ${sent} enviado(s), ${failed} com erro${skipped ? `; ${skipped} sem mudança (refeitos a cada ${cfg.refreshDays} dia(s))` : ''}${!crm && due.length > batch.length ? `; ${due.length - batch.length} ficam para as próximas noites` : ''}.`
+      this.logger.log(`Frete no Google: ${lastSummary} ${products.length} na conta.`)
     } catch (e) {
       lastError = (e as Error).message.slice(0, 400)
       this.logger.warn(`Frete no Google: ${lastError}`)
     } finally {
       this.running.delete(tenantId)
+      this.progress.delete(tenantId)
       const cur = await this.config(tenantId)
-      await this.settings.set(tenantId, MERCHANT_KEY, { ...cur, lastRunAt: new Date().toISOString(), lastError })
+      await this.settings.set(tenantId, MERCHANT_KEY, { ...cur, lastRunAt: new Date().toISOString(), lastError, lastSummary: lastSummary ?? cur.lastSummary, resumeAt })
     }
+  }
+
+  /** Frete por estado simulado na Magazord, no ritmo do Pacer; 429 espera e tenta de novo (5, 15, 30 e 60 s). */
+  private async magazordQuotes(tenantId: string, cfg: MerchantFreteConfig, sku: string, price: number, pacer: Pacer, cache: Map<string, Promise<{ price: number; days: number | null }[]>>) {
+    const quotes: UfQuote[] = []
+    for (const uf of UFS) {
+      const perCep: { price: number; days: number | null }[][] = []
+      for (const cep of cepsOf(cfg, uf)) {
+        // A mesma oferta em outro idioma/país (mesmo SKU e preço) usa a simulação já feita nesta rodada.
+        const key = `${sku}|${price}|${cep}`
+        let p = cache.get(key)
+        if (!p) {
+          p = this.simulate(tenantId, sku, price, cep, pacer)
+          cache.set(key, p)
+          p.catch(() => cache.delete(key))
+        }
+        perCep.push(await p)
+      }
+      quotes.push(ufQuote(uf, perCep))
+    }
+    return quotes
+  }
+
+  private async simulate(tenantId: string, sku: string, price: number, cep: string, pacer: Pacer) {
+    for (let attempt = 0; ; attempt++) {
+      const wait = pacer.take(Date.now())
+      if (wait > 0) await sleep(wait)
+      try {
+        const raw = await this.magazord.simulateFreight(tenantId, cep, [{ sku, quantity: 1, price }], { onRate: (h) => pacer.ok(parseRate(h), Date.now()) })
+        return parseFreightOptions(raw).map((o) => ({ price: o.price, days: o.days }))
+      } catch (e) {
+        if (!(e instanceof MagazordRateLimitError)) throw e
+        pacer.limited()
+        const ms = retryWait(attempt, parseRate(e.rate))
+        if (ms === null) throw new LimitedError('A Magazord limitou as consultas de frete (429) mesmo depois de esperar: este produto fica para a próxima rodada.')
+        this.logger.warn(`Magazord 429 na simulação de frete (SKU ${sku}, CEP ${cep}): nova tentativa em ${Math.round(ms / 1000)} s; intervalo agora ${pacer.gap} ms`)
+        await sleep(ms)
+      }
+    }
+  }
+
+  /** Frete por estado pelas tabelas de Fretes: em cada CEP a opção mais barata das transportadoras, sem cotação online. */
+  private async crmQuotes(tenantId: string, cfg: MerchantFreteConfig, price: number, weight: number, cache: Map<string, Promise<{ price: number; days: number | null }[]>>) {
+    const quoteUf = async (uf: Uf) => {
+      const perCep = await Promise.all(
+        cepsOf(cfg, uf).map((cep) => {
+          // Produtos com o mesmo peso e preço dão o mesmo frete: calcula uma vez por rodada.
+          const key = `crm|${cep}|${weight}|${price}`
+          let p = cache.get(key)
+          if (!p) {
+            p = this.cotacao.tableResults(tenantId, { unitId: cfg.unitId!, destZip: cep, cargoValue: price, weight }, cfg.carrierIds).then((r) => crmOptions(r, cfg.carrierIds))
+            cache.set(key, p)
+            p.catch(() => cache.delete(key))
+          }
+          return p
+        }),
+      )
+      return ufQuote(uf, perCep)
+    }
+    const quotes: UfQuote[] = []
+    for (let i = 0; i < UFS.length; i += 9) quotes.push(...(await Promise.all(UFS.slice(i, i + 9).map(quoteUf))))
+    return quotes
   }
 }
 

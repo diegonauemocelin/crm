@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Post, Put } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger'
-import { Allow, IsBoolean, IsObject, IsOptional, IsString, MaxLength } from 'class-validator'
+import { Allow, IsArray, IsBoolean, IsObject, IsOptional, IsString, MaxLength } from 'class-validator'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import type { MerchantFreteConfig } from './frete-google'
@@ -15,6 +15,13 @@ class MerchantFreteDto {
   @Allow() handlingMin?: number
   @Allow() handlingMax?: number
   @Allow() batchSize?: number
+  @Allow() magazordPerMinute?: number
+  @Allow() refreshDays?: number
+  /** 'magazord' ou 'crm' (conferido em cleanConfig). */
+  @Allow() source?: string
+  @IsOptional() @IsString() @MaxLength(40) unitId?: string | null
+  /** Transportadoras (ids); conferidas em cleanConfig. */
+  @IsOptional() @IsArray() carrierIds?: string[]
   /** CEPs por estado (UF → lista de CEPs); conferidos em cleanConfig. */
   @IsOptional() @IsObject() ceps?: Record<string, string[]>
 }
