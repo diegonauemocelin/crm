@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.53",
+      "date": "2026-11-10",
+      "title": "Conciliação do CT-e com o frete da nota fiscal",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Conciliação do CT-e: nova coluna Na nota fiscal com o frete destacado no XML da NF-e, ao lado do esperado pela tabela do CRM e do cobrado no CT-e. O confronto com a NF-e também compara o frete da nota com o do CT-e."
+        }
+      ]
+    },
+    {
       "version": "2.0.52",
       "date": "2026-11-10",
       "title": "Análises (BI no CRM), brindes em lote e frete do Google Shopping sem bloqueio",
