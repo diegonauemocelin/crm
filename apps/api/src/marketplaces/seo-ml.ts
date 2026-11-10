@@ -253,3 +253,15 @@ export function withFixedText(description: string, fixed: string, max = ML_DESCR
   const room = Math.max(0, max - block.length - 2)
   return `${desc.slice(0, room).trim()}\n\n${block}`.trim()
 }
+
+/**
+ * Espera antes de tentar de novo uma sugestão que falhou por instabilidade da IA (Gemini fora do ar, limite por minuto
+ * ou resposta fora do formato). null = não tenta de novo (erro de configuração ou do anúncio).
+ */
+export function aiRetryDelay(message: string, attempt: number): number | null {
+  if (attempt >= 3) return null
+  if (/limite do plano gratuito/i.test(message)) return [60_000, 90_000, 120_000][attempt]!
+  if (/não respondeu agora|formato esperado|timeout|aborted|fetch failed/i.test(message)) return [15_000, 45_000, 90_000][attempt]!
+  return null
+}
+

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { MODULE_KEYS } from '../src/common/permissions'
 import {
+  aiRetryDelay,
   cleanMlDescription,
   cleanMlFixed,
   DEFAULT_ML_FIXED,
@@ -119,5 +120,14 @@ describe('SEO Marketplace: texto fixo da loja', () => {
   it('não aceita contato no texto fixo', () => {
     expect(cleanMlFixed('Chame no WhatsApp (49) 99999-0000')).toHaveProperty('error')
     expect(cleanMlFixed(DEFAULT_ML_FIXED)).toEqual({ text: DEFAULT_ML_FIXED })
+  })
+})
+
+describe('SEO Marketplace: nova tentativa quando a IA falha', () => {
+  it('espera e tenta de novo só em erro passageiro, até 3 vezes', () => {
+    expect(aiRetryDelay('O Gemini não respondeu agora. Tente de novo em instantes.', 0)).toBe(15_000)
+    expect(aiRetryDelay('Limite do plano gratuito do Gemini atingido.', 1)).toBe(90_000)
+    expect(aiRetryDelay('O Gemini não respondeu agora.', 3)).toBeNull()
+    expect(aiRetryDelay('A chave do Gemini não foi aceita.', 0)).toBeNull()
   })
 })
