@@ -14,6 +14,8 @@ import {
   type MlSeoField,
   type MlSeoFields,
   mlSeoPrompt,
+  mlEditBlocked,
+  aiRetryDelay,
   cleanMlFixed,
   DEFAULT_ML_FIXED,
   ML_FIXED_KEY,
@@ -41,6 +43,7 @@ interface MlItemLive {
   seller_id?: number | string | null
   title?: string
   status?: string
+  sub_status?: string[] | null
   permalink?: string
   thumbnail?: string
   secure_thumbnail?: string
@@ -59,6 +62,7 @@ interface Live {
   soldQuantity: number
   titleAllowed: boolean
   status: string | null
+  subStatus: string[]
   permalink: string | null
   thumbnail: string | null
   attributes: MlAttribute[]
@@ -121,6 +125,7 @@ export class SeoMarketplaceService {
       soldQuantity: it.sold_quantity ?? 0,
       titleAllowed: mlTitleAllowed(it),
       status: it.status ?? null,
+      subStatus: Array.isArray(it.sub_status) ? it.sub_status : [],
       permalink: it.permalink ?? null,
       thumbnail: it.secure_thumbnail ?? it.thumbnail ?? null,
       attributes,
@@ -292,11 +297,22 @@ export class SeoMarketplaceService {
       try {
         for (const [i, id] of list.entries()) {
           if (i) await sleep(AI_GAP_MS)
-          try {
-            await this.suggestOne(user, id, system, instr)
-          } catch (err) {
-            job.errors++
-            job.lastError = `${id}: ${(err as Error).message}`.slice(0, 300)
+          // Instabilidade da IA (Gemini sem resposta, limite por minuto): espera e tenta de novo, até 3 vezes.
+          for (let attempt = 0; ; attempt++) {
+            try {
+              await this.suggestOne(user, id, system, instr)
+              break
+            } catch (err) {
+              const msg = (err as Error).message
+              const wait = aiRetryDelay(msg, attempt)
+              if (wait === null) {
+                job.errors++
+                job.lastError = `${id}: ${msg}`.slice(0, 300)
+                break
+              }
+              job.lastError = `${id}: ${msg} Tentando de novo em ${Math.round(wait / 1000)} s.`.slice(0, 300)
+              await sleep(wait)
+            }
           }
           job.done++
         }
@@ -373,6 +389,8 @@ export class SeoMarketplaceService {
 
   /** Confere o que não pode ir para o Mercado Livre antes de enviar. */
   private check(live: Live, fields: MlSeoField[], values: Partial<MlSeoFields>) {
+    const blocked = mlEditBlocked(live.status, live.subStatus)
+    if (blocked) throw new Error(blocked)
     if (fields.includes('title')) {
       if (!live.titleAllowed) throw new Error(`o anúncio já tem ${live.soldQuantity} venda(s) (ou é de catálogo) e o Mercado Livre não deixa mudar o título. Desmarque o título e envie só a descrição.`)
       const t = (values.title ?? '').trim()
