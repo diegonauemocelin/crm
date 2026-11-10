@@ -2,6 +2,38 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "2.0.52",
+      "date": "2026-11-10",
+      "title": "Análises (BI no CRM), brindes em lote e frete do Google Shopping sem bloqueio",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Análises",
+          "text": "Análises (BI dentro do CRM), fase 1: Visão geral e Comercial com dados ao vivo, filtros no link, filtro cruzado ao clicar, explosão de dados (Ano › Trimestre › Mês › Dia, Filial › Vendedor, UF › Cidade, Canal › Origem › Campanha), ver os registros de cada número, exportação e visões salvas. Cada pessoa vê só o que o perfil permite."
+        },
+        {
+          "type": "novo",
+          "area": "Marketing",
+          "text": "Controle de brindes: vários brindes na mesma retirada; brinde sem cota mensal (só baixa o estoque); Replicar para todos nas Cotas mensais; a retirada mostra todos os vendedores e filiais e avisa quando falta definir as cotas."
+        },
+        {
+          "type": "correcao",
+          "area": "Marketing",
+          "text": "Frete no Google Shopping: as consultas à Magazord seguem um ritmo (padrão 40 por minuto, ajustável), esperam e tentam de novo quando a Magazord pede, pausam e continuam depois em vez de dar erro em tudo, e só recalculam o que mudou. A tela mostra quanto tempo a rodada leva."
+        },
+        {
+          "type": "novo",
+          "area": "Marketing",
+          "text": "Frete no Google Shopping: opção de calcular pelas tabelas das transportadoras do CRM (filial de origem, transportadoras e peso das peças do Tcar), com o aviso de que o Google exige o mesmo frete do carrinho da loja."
+        },
+        {
+          "type": "correcao",
+          "area": "Sistema",
+          "text": "Projeto do Power BI abre sem erro: nomes de hierarquias, medidas e campos que se repetiam foram ajustados."
+        }
+      ]
+    },
+    {
       "version": "2.0.51",
       "date": "2026-11-09",
       "title": "Tcar com peso e fotos, orçamento e pré-nota na cotação e importação de XML das notas",
