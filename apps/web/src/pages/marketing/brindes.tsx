@@ -582,8 +582,11 @@ function Cotas({ view }: { view: ReturnType<typeof useQuery<MonthView>> }) {
 
 function DeliverDialog({ view, initial, onClose }: { view: MonthView; initial: { holderId?: string; giftId?: string }; onClose: () => void }) {
   const qc = useQueryClient()
-  const sellers = view.holders.filter((s) => s.items.some((i) => i.quota > 0))
-  const [sellerId, setSellerId] = useState(initial.holderId ?? (sellers.length === 1 ? sellers[0]!.id : ''))
+  // Todos aparecem; quem não tem cota no mês fica desativado com o aviso (antes a lista vinha vazia sem explicação).
+  const hasQuota = (s: Holder) => s.items.some((i) => i.quota > 0)
+  const sellers = [...view.holders].sort((a, b) => Number(hasQuota(b)) - Number(hasQuota(a)))
+  const withQuota = sellers.filter(hasQuota)
+  const [sellerId, setSellerId] = useState(initial.holderId ?? (withQuota.length === 1 ? withQuota[0]!.id : ''))
   const [giftId, setGiftId] = useState(initial.giftId ?? '')
   const [code, setCode] = useState('')
   const [customerName, setCustomerName] = useState('')
@@ -632,13 +635,20 @@ function DeliverDialog({ view, initial, onClose }: { view: MonthView; initial: {
                 <SelectValue placeholder="Selecione" />
               </SelectTrigger>
               <SelectContent>
+                {!sellers.length && (
+                  <div className="px-2 py-3 text-sm text-muted-foreground">Nenhum vendedor ou filial ativo no seu acesso.</div>
+                )}
                 {sellers.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
+                  <SelectItem key={s.id} value={s.id} disabled={!hasQuota(s)}>
                     {s.kind === 'unit' ? `Filial ${s.name}` : s.name}
+                    {!hasQuota(s) && ' · sem cota'}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {!withQuota.length && (
+              <p className="text-xs text-destructive">Ninguém tem cota de brinde por mês ainda. Defina na aba Cotas mensais quantos brindes cada vendedor ou filial pode entregar e depois registre a retirada.</p>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="d-gift" required>
@@ -649,6 +659,7 @@ function DeliverDialog({ view, initial, onClose }: { view: MonthView; initial: {
                 <SelectValue placeholder={seller ? 'Selecione' : 'Escolha o vendedor ou a filial'} />
               </SelectTrigger>
               <SelectContent>
+                {seller && !options.length && <div className="px-2 py-3 text-sm text-muted-foreground">Sem cota de brinde para este vendedor ou filial.</div>}
                 {options.map((i) => {
                   const g = giftOf(i.giftId)
                   return (
