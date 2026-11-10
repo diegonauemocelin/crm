@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.1",
+      "date": "2026-11-10",
+      "title": "SEO Marketplace mais estável",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "SEO Marketplace",
+          "text": "Quando o Gemini não responde ou atinge o limite, o sistema espera e tenta de novo sozinho (até 3 vezes) antes de marcar erro."
+        },
+        {
+          "type": "correcao",
+          "area": "SEO Marketplace",
+          "text": "Anúncio finalizado, inativo ou em revisão não é enviado ao Mercado Livre: aparece o motivo em português, em vez do erro 400 em inglês."
+        }
+      ]
+    },
+    {
       "version": "3.0.0",
       "date": "2026-11-10",
       "title": "Versão 3.0.0",
