@@ -25,14 +25,14 @@
                           "Entity": "fato_anuncios_diario"
                         }
                       },
-                      "Hierarchy": "Campanha"
+                      "Hierarchy": "Plataforma e campanha"
                     }
                   },
                   "Level": "Plataforma"
                 }
               },
-              "queryRef": "fato_anuncios_diario.Campanha.Plataforma",
-              "nativeQueryRef": "Campanha Plataforma",
+              "queryRef": "fato_anuncios_diario.Plataforma e campanha.Plataforma",
+              "nativeQueryRef": "Plataforma e campanha Plataforma",
               "active": true
             },
             {
@@ -45,14 +45,14 @@
                           "Entity": "fato_anuncios_diario"
                         }
                       },
-                      "Hierarchy": "Campanha"
+                      "Hierarchy": "Plataforma e campanha"
                     }
                   },
                   "Level": "Campanha"
                 }
               },
-              "queryRef": "fato_anuncios_diario.Campanha.Campanha",
-              "nativeQueryRef": "Campanha Campanha",
+              "queryRef": "fato_anuncios_diario.Plataforma e campanha.Campanha",
+              "nativeQueryRef": "Plataforma e campanha Campanha",
               "active": false
             }
           ]
@@ -67,11 +67,11 @@
                       "Entity": "_Medidas"
                     }
                   },
-                  "Property": "Investimento"
+                  "Property": "Investimento nas plataformas"
                 }
               },
-              "queryRef": "_Medidas.Investimento",
-              "nativeQueryRef": "Investimento"
+              "queryRef": "_Medidas.Investimento nas plataformas",
+              "nativeQueryRef": "Investimento nas plataformas"
             }
           ]
         }

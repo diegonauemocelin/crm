@@ -149,13 +149,13 @@ export function paginas(): Pagina[] {
     grafico('lineChart', 'Receita das pré-vendas e da loja (drill-down: ano, trimestre, mês, dia)', CALENDARIO_H, ['Receita das pré-vendas', 'Receita das pré-vendas (ano anterior)', 'Receita da loja'], { x: M, y: A1, w: 820, h: H1 }),
     grafico('donutChart', 'Receita das pré-vendas por filial', [col('dim_filial', 'nome')], ['Receita das pré-vendas'], { x: 844, y: A1, w: 420, h: H1 }),
     grafico('clusteredColumnChart', 'Pré-vendas e vendas por mês', [MES_ANO], ['Pré-vendas', 'Vendas'], { x: M, y: A2, w: 616, h: H2 }),
-    grafico('clusteredBarChart', 'Vendas por origem (drill-down: canal, origem, campanha)', hier('fato_atendimentos', 'Origem', ['Canal', 'Origem', 'Campanha']), ['Vendas', 'Receita das pré-vendas'], { x: 640, y: A2, w: 624, h: H2 }),
+    grafico('clusteredBarChart', 'Vendas por origem (drill-down: canal, origem, campanha)', hier('fato_atendimentos', 'Canal e origem', ['Canal', 'Origem', 'Campanha']), ['Vendas', 'Receita das pré-vendas'], { x: 640, y: A2, w: 624, h: H2 }),
   ])
 
   const comercial = montar('comercial', 'Comercial', [
     ...segmentacoes([FILIAL, VENDEDOR, ORIGEM]),
     ...cartoes(['Pré-vendas', 'Vendas', 'Perdas', 'Em negociação', 'Taxa de conversão', 'Taxa de conversão vs. ano anterior (p.p.)', 'Tempo até o repasse (min, mediana)']),
-    grafico('funnel', 'Funil de leads por estágio', [col('fato_leads', 'estagio')], ['Leads'], { x: M, y: A1, w: 400, h: H1 }),
+    grafico('funnel', 'Funil de leads por estágio', [col('fato_leads', 'estagio')], ['Total de leads'], { x: M, y: A1, w: 400, h: H1 }),
     grafico('clusteredBarChart', 'Conversão por filial e vendedor (drill-down)', hier('dim_vendedor', 'Comercial', ['Filial', 'Vendedor']), ['Taxa de conversão'], { x: 424, y: A1, w: 420, h: H1 }),
     grafico('clusteredBarChart', 'Perdas por motivo', [col('dim_motivo_perda', 'nome')], ['Perdas'], { x: 852, y: A1, w: 412, h: H1 }),
     matriz('Resultado por filial e vendedor (expanda as linhas)', [col('dim_filial', 'nome'), col('dim_vendedor', 'nome')], ['Pré-vendas', 'Vendas', 'Taxa de conversão', 'Receita das pré-vendas', 'Ticket médio', 'Perdas', 'Receita das pré-vendas vs. ano anterior (%)'], { x: M, y: A2, w: 1248, h: H2 }),
@@ -179,7 +179,7 @@ export function paginas(): Pagina[] {
     ...segmentacoes([['fato_pedidos_loja', 'canal', 'Canal da loja']]),
     ...cartoes(['Receita da loja', 'Pedidos pagos', 'Ticket médio da loja', 'Valor em carrinhos abandonados', 'Receita ML Ads', 'ROAS ML', 'Perguntas', '% respondidas pelo CRM']),
     grafico('lineChart', 'Receita da loja (drill-down por data)', CALENDARIO_H, ['Receita da loja', 'Receita da loja (ano anterior)'], { x: M, y: A1, w: 616, h: H1 }),
-    grafico('clusteredBarChart', 'Receita por marca e produto (drill-down)', hier('dim_produto', 'Produto', ['Marca', 'Produto']), ['Receita dos itens'], { x: 640, y: A1, w: 308, h: H1 }),
+    grafico('clusteredBarChart', 'Receita por marca e produto (drill-down)', hier('dim_produto', 'Marca e produto', ['Marca', 'Produto']), ['Receita dos itens'], { x: 640, y: A1, w: 308, h: H1 }),
     grafico('clusteredBarChart', 'Receita da loja por UF e cidade (drill-down)', hier('fato_pedidos_loja', 'Geografia', ['UF', 'Cidade']), ['Receita da loja'], { x: 956, y: A1, w: 308, h: H1 }),
     grafico('clusteredColumnChart', 'Mercado Livre Ads por mês', [MES_ANO], ['Investimento ML Ads', 'Receita ML Ads'], { x: M, y: A2, w: 616, h: H2 }),
     tabela('Campanhas do Mercado Livre Ads', [col('fato_ml_ads_diario', 'campanha'), med('Investimento ML Ads'), med('Receita ML Ads'), med('ROAS ML'), med('ACOS ML')], { x: 640, y: A2, w: 624, h: H2 }),
@@ -187,10 +187,10 @@ export function paginas(): Pagina[] {
 
   const marketing = montar('marketing', 'Marketing', [
     ...segmentacoes([['fato_anuncios_diario', 'plataforma', 'Plataforma']]),
-    ...cartoes(['Investimento', 'Cliques', 'CTR', 'CPC', 'CPL Google', 'CPA Google', 'ROAS Google']),
-    grafico('clusteredColumnChart', 'Investimento por plataforma e campanha (drill-down)', hier('fato_anuncios_diario', 'Campanha', ['Plataforma', 'Campanha']), ['Investimento'], { x: M, y: A1, w: 400, h: H1 }),
-    tabela('Campanhas: CPL, CPA e ROAS', [col('fato_anuncios_diario', 'campanha'), med('Investimento'), med('Cliques'), med('CTR'), med('CPC'), med('Leads dos anúncios'), med('CPL (plataforma)'), med('CPA (plataforma)'), med('ROAS da campanha')], { x: 424, y: A1, w: 840, h: H1 }),
-    matriz('Resultado por origem (expanda: canal, origem, campanha)', hier('fato_atendimentos', 'Origem', ['Canal', 'Origem', 'Campanha']), ['Pré-vendas', 'Vendas', 'Taxa de conversão', 'Receita das pré-vendas'], { x: M, y: A2, w: 616, h: H2 }),
+    ...cartoes(['Investimento nas plataformas', 'Cliques nos anúncios', 'CTR', 'CPC', 'CPL Google', 'CPA Google', 'ROAS Google']),
+    grafico('clusteredColumnChart', 'Investimento por plataforma e campanha (drill-down)', hier('fato_anuncios_diario', 'Plataforma e campanha', ['Plataforma', 'Campanha']), ['Investimento nas plataformas'], { x: M, y: A1, w: 400, h: H1 }),
+    tabela('Campanhas: CPL, CPA e ROAS', [col('fato_anuncios_diario', 'campanha'), med('Investimento nas plataformas'), med('Cliques nos anúncios'), med('CTR'), med('CPC'), med('Leads dos anúncios'), med('CPL (plataforma)'), med('CPA (plataforma)'), med('ROAS da campanha')], { x: 424, y: A1, w: 840, h: H1 }),
+    matriz('Resultado por origem (expanda: canal, origem, campanha)', hier('fato_atendimentos', 'Canal e origem', ['Canal', 'Origem', 'Campanha']), ['Pré-vendas', 'Vendas', 'Taxa de conversão', 'Receita das pré-vendas'], { x: M, y: A2, w: 616, h: H2 }),
     tabela('Campanhas de e-mail', [col('fato_email_campanhas', 'nome'), med('E-mails enviados'), med('Taxa de abertura'), med('Taxa de clique (e-mail)'), med('Descadastro')], { x: 640, y: A2, w: 624, h: H2 }),
   ])
 

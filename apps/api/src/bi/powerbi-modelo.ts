@@ -146,21 +146,21 @@ const EXTRAS: Record<string, { colunas: PbiColumn[]; hierarquias: PbiHierarchy[]
   dim_produto: {
     colunas: [],
     hierarquias: [
-      { nome: 'Produto', niveis: [{ nome: 'Marca', coluna: 'marca' }, { nome: 'Produto', coluna: 'nome' }] },
+      { nome: 'Marca e produto', niveis: [{ nome: 'Marca', coluna: 'marca' }, { nome: 'Produto', coluna: 'nome' }] },
       { nome: 'Grupo do ERP', niveis: [{ nome: 'Grupo', coluna: 'grupo' }, { nome: 'Subgrupo', coluna: 'subgrupo' }, { nome: 'Produto', coluna: 'nome' }] },
     ],
   },
   fato_atendimentos: {
-    colunas: [calc('origem', 'RELATED ( dim_origem[nome] )', 'Nome da origem (dim_origem), para a hierarquia Origem.')],
-    hierarquias: [geo(), { nome: 'Origem', niveis: [{ nome: 'Canal', coluna: 'canal_entrada' }, { nome: 'Origem', coluna: 'origem' }, { nome: 'Campanha', coluna: 'campanha_google' }] }],
+    colunas: [calc('origem', 'RELATED ( dim_origem[nome] )', 'Nome da origem (dim_origem), para a hierarquia Canal e origem.')],
+    hierarquias: [geo(), { nome: 'Canal e origem', niveis: [{ nome: 'Canal', coluna: 'canal_entrada' }, { nome: 'Origem', coluna: 'origem' }, { nome: 'Campanha', coluna: 'campanha_google' }] }],
   },
   fato_leads: { colunas: [], hierarquias: [geo()] },
   fato_pedidos_loja: { colunas: [], hierarquias: [geo()] },
   fato_carrinhos: { colunas: [], hierarquias: [geo()] },
   fato_frete_cotacoes: { colunas: [], hierarquias: [{ nome: 'Destino', niveis: [{ nome: 'UF', coluna: 'uf_destino' }, { nome: 'Cidade', coluna: 'cidade_destino' }] }] },
   fato_ctes: { colunas: [], hierarquias: [{ nome: 'Destino', niveis: [{ nome: 'UF', coluna: 'uf_fim' }, { nome: 'Cidade', coluna: 'cidade_fim' }] }] },
-  fato_anuncios_diario: { colunas: [], hierarquias: [{ nome: 'Campanha', niveis: [{ nome: 'Plataforma', coluna: 'plataforma' }, { nome: 'Campanha', coluna: 'campanha' }] }] },
-  fato_ml_ads_diario: { colunas: [], hierarquias: [{ nome: 'Campanha', niveis: [{ nome: 'Campanha', coluna: 'campanha' }, { nome: 'Anúncio', coluna: 'anuncio' }] }] },
+  fato_anuncios_diario: { colunas: [], hierarquias: [{ nome: 'Plataforma e campanha', niveis: [{ nome: 'Plataforma', coluna: 'plataforma' }, { nome: 'Campanha', coluna: 'campanha' }] }] },
+  fato_ml_ads_diario: { colunas: [], hierarquias: [{ nome: 'Campanha e anúncio', niveis: [{ nome: 'Campanha', coluna: 'campanha' }, { nome: 'Anúncio', coluna: 'anuncio' }] }] },
 }
 
 // ---------- Calendário ----------

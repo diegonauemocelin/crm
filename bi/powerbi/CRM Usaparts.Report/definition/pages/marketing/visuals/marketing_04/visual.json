@@ -23,11 +23,11 @@
                       "Entity": "_Medidas"
                     }
                   },
-                  "Property": "Cliques"
+                  "Property": "Cliques nos anúncios"
                 }
               },
-              "queryRef": "_Medidas.Cliques",
-              "nativeQueryRef": "Cliques"
+              "queryRef": "_Medidas.Cliques nos anúncios",
+              "nativeQueryRef": "Cliques nos anúncios"
             }
           ]
         }

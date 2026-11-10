@@ -73,7 +73,7 @@ table dim_produto
 		summarizeBy: none
 		sourceColumn: ativo
 
-	hierarchy Produto
+	hierarchy 'Marca e produto'
 
 		level Marca
 			column: marca

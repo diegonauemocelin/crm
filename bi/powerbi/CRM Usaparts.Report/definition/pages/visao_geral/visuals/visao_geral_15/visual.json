@@ -25,14 +25,14 @@
                           "Entity": "fato_atendimentos"
                         }
                       },
-                      "Hierarchy": "Origem"
+                      "Hierarchy": "Canal e origem"
                     }
                   },
                   "Level": "Canal"
                 }
               },
-              "queryRef": "fato_atendimentos.Origem.Canal",
-              "nativeQueryRef": "Origem Canal",
+              "queryRef": "fato_atendimentos.Canal e origem.Canal",
+              "nativeQueryRef": "Canal e origem Canal",
               "active": true
             },
             {
@@ -45,14 +45,14 @@
                           "Entity": "fato_atendimentos"
                         }
                       },
-                      "Hierarchy": "Origem"
+                      "Hierarchy": "Canal e origem"
                     }
                   },
                   "Level": "Origem"
                 }
               },
-              "queryRef": "fato_atendimentos.Origem.Origem",
-              "nativeQueryRef": "Origem Origem",
+              "queryRef": "fato_atendimentos.Canal e origem.Origem",
+              "nativeQueryRef": "Canal e origem Origem",
               "active": false
             },
             {
@@ -65,14 +65,14 @@
                           "Entity": "fato_atendimentos"
                         }
                       },
-                      "Hierarchy": "Origem"
+                      "Hierarchy": "Canal e origem"
                     }
                   },
                   "Level": "Campanha"
                 }
               },
-              "queryRef": "fato_atendimentos.Origem.Campanha",
-              "nativeQueryRef": "Origem Campanha",
+              "queryRef": "fato_atendimentos.Canal e origem.Campanha",
+              "nativeQueryRef": "Canal e origem Campanha",
               "active": false
             }
           ]
