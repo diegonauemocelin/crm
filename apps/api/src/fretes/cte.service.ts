@@ -58,12 +58,12 @@ export class CteService {
   async confrontFor(tenantId: string, ctes: Prisma.FreightCteGetPayload<object>[]) {
     const keys = [...new Set(ctes.flatMap((c) => c.nfeKeys))]
     const [nfes, rec] = await Promise.all([keys.length ? this.prisma.freightNfe.findMany({ where: { tenantId, key: { in: keys } } }) : [], this.recSettings(tenantId)])
-    const side = nfes.map((x) => ({ key: x.key, number: x.number, value: n(x.value), grossWeight: n(x.grossWeight), volumes: x.volumes, destUf: x.destUf, destCity: x.destCity, carrierCnpj: x.carrierCnpj, freightMode: x.freightMode, emitCnpj: x.emitCnpj, destCnpj: x.destCnpj }))
+    const side = nfes.map((x) => ({ key: x.key, number: x.number, value: n(x.value), grossWeight: n(x.grossWeight), volumes: x.volumes, destUf: x.destUf, destCity: x.destCity, carrierCnpj: x.carrierCnpj, freightMode: x.freightMode, emitCnpj: x.emitCnpj, destCnpj: x.destCnpj, freightValue: n(x.freightValue) }))
     const tol = { pesoPercentual: rec.nfePesoPercentual, pesoKg: rec.nfePesoKg, valor: rec.nfeValor }
     return new Map(
       ctes.map((c) => [
         c.id,
-        confrontNfeCte({ nfeKeys: c.nfeKeys, cargoValue: n(c.cargoValue), weight: n(c.weight), volumes: c.volumes, ufFim: c.ufFim, cityFim: c.cityFim, emitCnpj: c.emitCnpj, tomadorDoc: c.tomadorDoc }, side.filter((x) => c.nfeKeys.includes(x.key)), tol),
+        confrontNfeCte({ nfeKeys: c.nfeKeys, total: n(c.total), cargoValue: n(c.cargoValue), weight: n(c.weight), volumes: c.volumes, ufFim: c.ufFim, cityFim: c.cityFim, emitCnpj: c.emitCnpj, tomadorDoc: c.tomadorDoc }, side.filter((x) => c.nfeKeys.includes(x.key)), tol),
       ]),
     )
   }

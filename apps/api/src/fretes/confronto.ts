@@ -13,6 +13,8 @@ export const DEFAULT_NFE_TOLERANCE: NfeTolerance = { pesoPercentual: 2, pesoKg: 
 
 export interface CteSide {
   nfeKeys: string[]
+  /** Valor total cobrado no CT-e (frete). */
+  total?: number | null
   cargoValue: number | null
   weight: number | null
   volumes: number | null
@@ -33,11 +35,13 @@ export interface NfeSide {
   freightMode: string | null
   emitCnpj: string | null
   destCnpj: string | null
+  /** Frete destacado na nota (vFrete). */
+  freightValue?: number | null
 }
 
 export type CheckStatus = 'OK' | 'DIVERGENTE' | 'SEM_DADO'
 export interface Check {
-  code: 'NOTAS' | 'VALOR' | 'PESO' | 'VOLUMES' | 'DESTINO' | 'TRANSPORTADORA' | 'TOMADOR'
+  code: 'NOTAS' | 'VALOR' | 'FRETE' | 'PESO' | 'VOLUMES' | 'DESTINO' | 'TRANSPORTADORA' | 'TOMADOR'
   /** O que foi conferido. */
   name: string
   status: CheckStatus
@@ -82,6 +86,18 @@ export function confrontNfeCte(cte: CteSide, nfes: NfeSide[], tol: NfeTolerance 
     const sum = r2(values.reduce<number>((s, v) => s + v!, 0))
     const diff = r2(cte.cargoValue - sum)
     checks.push({ code: 'VALOR', name: 'Valor da carga', status: Math.abs(diff) > tol.valor ? 'DIVERGENTE' : 'OK', label: Math.abs(diff) > tol.valor ? (diff > 0 ? 'Valor da carga maior que o das notas' : 'Valor da carga menor que o das notas') : null, nfe: sum, cte: cte.cargoValue })
+  }
+
+  // Frete: o destacado nas notas (vFrete) × o total cobrado no CT-e.
+  const freights = found.map((n) => n.freightValue ?? null)
+  const nfFreight = all && freights.every((f) => f !== null) ? r2(freights.reduce<number>((s, f) => s + f!, 0)) : null
+  if (!all) checks.push({ code: 'FRETE', name: 'Frete (nota × CT-e)', status: 'SEM_DADO', label: incomplete, nfe: null, cte: cte.total ?? null })
+  else if (nfFreight === null || nfFreight === 0) checks.push({ code: 'FRETE', name: 'Frete (nota × CT-e)', status: 'SEM_DADO', label: 'A nota não destaca valor de frete.', nfe: nfFreight, cte: cte.total ?? null })
+  else if (cte.total == null) checks.push({ code: 'FRETE', name: 'Frete (nota × CT-e)', status: 'SEM_DADO', label: 'Sem valor no CT-e.', nfe: nfFreight, cte: null })
+  else {
+    const diff = r2(cte.total - nfFreight)
+    const bad = Math.abs(diff) > tol.valor
+    checks.push({ code: 'FRETE', name: 'Frete (nota × CT-e)', status: bad ? 'DIVERGENTE' : 'OK', label: bad ? (diff > 0 ? 'CT-e cobrou mais que o frete da nota' : 'CT-e cobrou menos que o frete da nota') : null, nfe: nfFreight, cte: cte.total })
   }
 
   // Peso: o do CT-e (cobrado) contra o peso bruto das notas.

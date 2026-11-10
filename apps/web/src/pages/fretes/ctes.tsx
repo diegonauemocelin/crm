@@ -489,8 +489,9 @@ function CteDetail() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Componente</TableHead>
-                    <TableHead className="text-right">Esperado</TableHead>
-                    <TableHead className="text-right">Cobrado</TableHead>
+                    <TableHead className="text-right">Esperado (tabela do CRM)</TableHead>
+                    <TableHead className="text-right">Cobrado (CT-e)</TableHead>
+                    <TableHead className="text-right">Na nota fiscal</TableHead>
                     <TableHead className="text-right">Diferença</TableHead>
                     <TableHead>Situação</TableHead>
                   </TableRow>
@@ -501,6 +502,7 @@ function CteDetail() {
                       <TableCell>{l.name}</TableCell>
                       <TableCell className="text-right tabular-nums">{l.expected === null ? '—' : money(l.expected)}</TableCell>
                       <TableCell className="text-right tabular-nums">{l.charged === null ? '—' : money(l.charged)}</TableCell>
+                      <TableCell className="text-right tabular-nums text-muted-foreground">—</TableCell>
                       <TableCell className="text-right tabular-nums">{money(l.difference)}</TableCell>
                       <TableCell className={cn('text-sm', LINE_STATUS[l.status].className)}>{LINE_STATUS[l.status].label}</TableCell>
                     </TableRow>
@@ -509,6 +511,12 @@ function CteDetail() {
                     <TableCell>Total</TableCell>
                     <TableCell className="text-right tabular-nums">{money(c.expectedTotal)}</TableCell>
                     <TableCell className="text-right tabular-nums">{money(c.total)}</TableCell>
+                    <TableCell className="text-right tabular-nums" title="Frete destacado no XML da nota (vFrete); importe o XML em Fretes › Pedidos">
+                      {(() => {
+                        const v = c.nfeConfront?.checks.find((k) => k.code === 'FRETE')?.nfe
+                        return typeof v === 'number' && v > 0 ? money(v) : '—'
+                      })()}
+                    </TableCell>
                     <TableCell className={cn('text-right tabular-nums', (c.difference ?? 0) > 0.009 && 'text-destructive')}>{money(c.difference)}</TableCell>
                     <TableCell />
                   </TableRow>

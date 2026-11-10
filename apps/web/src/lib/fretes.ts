@@ -303,7 +303,7 @@ export const formatKey = (k: string | null | undefined) => (k ? k.replace(/(\d{4
 
 /** Confronto NF-e × CT-e (XML da nota importado × CT-e). */
 export interface NfeCheck {
-  code: 'NOTAS' | 'VALOR' | 'PESO' | 'VOLUMES' | 'DESTINO' | 'TRANSPORTADORA' | 'TOMADOR'
+  code: 'NOTAS' | 'VALOR' | 'FRETE' | 'PESO' | 'VOLUMES' | 'DESTINO' | 'TRANSPORTADORA' | 'TOMADOR'
   name: string
   status: 'OK' | 'DIVERGENTE' | 'SEM_DADO'
   label: string | null

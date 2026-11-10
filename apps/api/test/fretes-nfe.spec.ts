@@ -132,7 +132,7 @@ describe('Confronto NF-e × CT-e', () => {
     const r = confrontNfeCte(cte, [nf])
     expect(r.status).toBe('OK')
     expect(r.divergences).toEqual([])
-    expect(r.checks.map((c) => `${c.code}:${c.status}`)).toEqual(['NOTAS:OK', 'VALOR:OK', 'PESO:OK', 'VOLUMES:OK', 'DESTINO:OK', 'TRANSPORTADORA:OK', 'TOMADOR:OK'])
+    expect(r.checks.map((c) => `${c.code}:${c.status}`)).toEqual(['NOTAS:OK', 'VALOR:OK', 'FRETE:SEM_DADO', 'PESO:OK', 'VOLUMES:OK', 'DESTINO:OK', 'TRANSPORTADORA:OK', 'TOMADOR:OK'])
   })
 
   it('aponta as divergências com frases claras', () => {
@@ -178,6 +178,18 @@ describe('Confronto NF-e × CT-e', () => {
     expect(confrontNfeCte(cte, [fob]).divergences).toEqual(['Frete FOB na nota, mas o tomador do CT-e não é o destinatário'])
     const r = confrontNfeCte({ ...cte, volumes: null }, [{ ...nf, carrierCnpj: null, freightMode: '9' }])
     expect(r.status).toBe('OK')
-    expect(r.checks.filter((c) => c.status === 'SEM_DADO').map((c) => c.code)).toEqual(['VOLUMES', 'TRANSPORTADORA', 'TOMADOR'])
+    expect(r.checks.filter((c) => c.status === 'SEM_DADO').map((c) => c.code)).toEqual(['FRETE', 'VOLUMES', 'TRANSPORTADORA', 'TOMADOR'])
+  })
+})
+
+describe('confronto: frete da nota × CT-e', () => {
+  const key = '42261100000000000191550010001493471000000010'
+  const cte = { nfeKeys: [key], total: 234.99, cargoValue: 4921.06, weight: 134, volumes: null, ufFim: 'RS', cityFim: 'Arroio', emitCnpj: '00428307000198', tomadorDoc: null }
+  const nf = { key, number: 149347, value: 4921.06, grossWeight: 134, volumes: null, destUf: 'RS', destCity: 'Arroio', carrierCnpj: '00428307000198', freightMode: '1', emitCnpj: '11111111000191', destCnpj: null }
+  const frete = (freightValue: number | null) => confrontNfeCte(cte, [{ ...nf, freightValue }]).checks.find((k) => k.code === 'FRETE')!
+  it('compara o frete destacado na nota com o total do CT-e', () => {
+    expect(frete(234.99)).toMatchObject({ status: 'OK', nfe: 234.99, cte: 234.99 })
+    expect(frete(200)).toMatchObject({ status: 'DIVERGENTE', label: 'CT-e cobrou mais que o frete da nota' })
+    expect(frete(0)).toMatchObject({ status: 'SEM_DADO', label: 'A nota não destaca valor de frete.' })
   })
 })

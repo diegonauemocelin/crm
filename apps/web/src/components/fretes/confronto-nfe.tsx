@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 
 const show = (code: NfeCheck['code'], v: string | number | null) => {
   if (v === null || v === undefined) return '—'
-  if (typeof v === 'number') return code === 'VALOR' ? money(v) : code === 'PESO' ? `${fmtNum(v, 3)} kg` : fmtNum(v, 0)
+  if (typeof v === 'number') return code === 'VALOR' || code === 'FRETE' ? money(v) : code === 'PESO' ? `${fmtNum(v, 3)} kg` : fmtNum(v, 0)
   if (/^\d{14}$/.test(v)) return v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
   return v
 }
