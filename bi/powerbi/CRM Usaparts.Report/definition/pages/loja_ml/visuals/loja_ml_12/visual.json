@@ -25,14 +25,14 @@
                           "Entity": "dim_produto"
                         }
                       },
-                      "Hierarchy": "Produto"
+                      "Hierarchy": "Marca e produto"
                     }
                   },
                   "Level": "Marca"
                 }
               },
-              "queryRef": "dim_produto.Produto.Marca",
-              "nativeQueryRef": "Produto Marca",
+              "queryRef": "dim_produto.Marca e produto.Marca",
+              "nativeQueryRef": "Marca e produto Marca",
               "active": true
             },
             {
@@ -45,14 +45,14 @@
                           "Entity": "dim_produto"
                         }
                       },
-                      "Hierarchy": "Produto"
+                      "Hierarchy": "Marca e produto"
                     }
                   },
                   "Level": "Produto"
                 }
               },
-              "queryRef": "dim_produto.Produto.Produto",
-              "nativeQueryRef": "Produto Produto",
+              "queryRef": "dim_produto.Marca e produto.Produto",
+              "nativeQueryRef": "Marca e produto Produto",
               "active": false
             }
           ]

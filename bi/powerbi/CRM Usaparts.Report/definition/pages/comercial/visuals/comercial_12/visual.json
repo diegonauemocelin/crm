@@ -41,11 +41,11 @@
                       "Entity": "_Medidas"
                     }
                   },
-                  "Property": "Leads"
+                  "Property": "Total de leads"
                 }
               },
-              "queryRef": "_Medidas.Leads",
-              "nativeQueryRef": "Leads"
+              "queryRef": "_Medidas.Total de leads",
+              "nativeQueryRef": "Total de leads"
             }
           ]
         }

@@ -199,6 +199,19 @@ describe('Projeto do Power BI (bi/powerbi)', () => {
     expect(todas.find((m) => m.nome === 'Receita projetada')!.expressao).toBe('[Vendas projetadas] * [Ticket médio projetado]')
   })
 
+  it('nomes sem repetir dentro de cada tabela (o Power BI ignora maiúsculas: coluna, hierarquia e medida)', () => {
+    const low = (x: string) => x.toLocaleLowerCase('pt-BR')
+    for (const t of tabelas) {
+      const nomes = [...t.colunas.map((c) => c.nome), ...t.hierarquias.map((h) => h.nome), ...t.medidas.map((m) => m.nome)].map(low)
+      const repetidos = nomes.filter((n, i) => nomes.indexOf(n) !== i)
+      expect(repetidos, t.nome).toEqual([])
+    }
+    const colunas = new Set(tabelas.flatMap((t) => t.colunas.map((c) => low(c.nome))))
+    const medidasNomes = tabelas.flatMap((t) => t.medidas.map((m) => low(m.nome)))
+    expect(new Set(medidasNomes).size).toBe(medidasNomes.length)
+    for (const m of medidasNomes) expect(colunas.has(m), m).toBe(false)
+  })
+
   it('todo campo dos visuais existe no modelo (colunas, medidas e níveis de hierarquia)', () => {
     const existe = (c: Campo) => {
       if (c.tipo === 'medida') return medidaNomes.has(c.nome)

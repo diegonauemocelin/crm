@@ -42,8 +42,10 @@ export function balances(quotas: { giftId: string; monthly: number }[], used: { 
 }
 
 /** Por que a retirada não pode ser feita (null = pode). */
-export function deliveryProblem(d: { quantity: number; stock: number; quota: number | null; used: number; giftName: string; who?: string }): string | null {
+export function deliveryProblem(d: { quantity: number; stock: number; quota: number | null; used: number; giftName: string; who?: string; hasQuota?: boolean }): string | null {
   if (!Number.isInteger(d.quantity) || d.quantity < 1) return 'Informe a quantidade (1 ou mais).'
+  // Brinde sem cota mensal: só o estoque limita.
+  if (d.hasQuota === false) return d.quantity > d.stock ? (d.stock > 0 ? `Estoque de ${d.giftName}: só ${d.stock}.` : `${d.giftName} sem estoque.`) : null
   if (d.quota === null || d.quota <= 0) return `${d.who ?? 'O vendedor'} não tem cota de ${d.giftName} por mês. Defina em Cotas mensais.`
   const left = d.quota - d.used
   if (d.quantity > left) return left > 0 ? `Saldo do mês de ${d.giftName}: só ${left}.` : `A cota do mês de ${d.giftName} já acabou (${d.quota} de ${d.quota}).`
@@ -128,4 +130,14 @@ export function reportOf(rows: ReportRow[], months: string[]) {
     byMonth: [...byMonth.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, x]) => ({ ...x, value: round(x.value) })) as ({ month: string } & Sum)[],
     customers: customers.size,
   }
+}
+
+/** Linhas da retirada: junta o mesmo brinde repetido e descarta quantidade inválida (máx. 30 brindes por vez). */
+export function mergeLines(items: { giftId: string; quantity: number }[]): { giftId: string; quantity: number }[] {
+  const out = new Map<string, number>()
+  for (const it of items.slice(0, 30)) {
+    if (!it?.giftId || !Number.isInteger(it.quantity) || it.quantity < 1) continue
+    out.set(it.giftId, (out.get(it.giftId) ?? 0) + it.quantity)
+  }
+  return [...out].map(([giftId, quantity]) => ({ giftId, quantity }))
 }

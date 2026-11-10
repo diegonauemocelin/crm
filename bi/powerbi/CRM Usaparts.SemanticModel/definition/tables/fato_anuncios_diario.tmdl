@@ -78,7 +78,7 @@ table fato_anuncios_diario
 		summarizeBy: sum
 		sourceColumn: conversas
 
-	hierarchy Campanha
+	hierarchy 'Plataforma e campanha'
 
 		level Plataforma
 			column: plataforma

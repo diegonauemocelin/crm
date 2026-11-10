@@ -264,7 +264,7 @@ table fato_atendimentos
 		summarizeBy: none
 		sourceColumn: atualizado_em
 
-	/// Nome da origem (dim_origem), para a hierarquia Origem.
+	/// Nome da origem (dim_origem), para a hierarquia Canal e origem.
 	column origem = RELATED ( dim_origem[nome] )
 		dataType: string
 		summarizeBy: none
@@ -277,7 +277,7 @@ table fato_atendimentos
 		level Cidade
 			column: cidade
 
-	hierarchy Origem
+	hierarchy 'Canal e origem'
 
 		level Canal
 			column: canal_entrada

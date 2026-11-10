@@ -5,7 +5,7 @@ import { type Action, can, type Scope } from '../common/permissions'
 import type { AuthUser } from '../common/types'
 import type { Prisma } from '../generated/prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
-import { balances, dayOf, deliveryProblem, type Holder, holderKey, monthOf, monthRange, monthsBetween, parseHolder, reportOf } from './brindes'
+import { balances, dayOf, deliveryProblem, mergeLines, type Holder, holderKey, monthOf, monthRange, monthsBetween, parseHolder, reportOf } from './brindes'
 
 const MODULE = 'brindes'
 const n = (d: Prisma.Decimal | number) => Number(d)
@@ -16,10 +16,13 @@ export interface GiftInput {
   stock?: number
   unitCost?: number
   active?: boolean
+  hasQuota?: boolean
 }
 
 export interface DeliveryInput {
-  giftId: string
+  /** Um brinde (forma antiga) ou vários em items. */
+  giftId?: string
+  items?: { giftId: string; quantity: number }[]
   /** "s:<vendedor>" ou "u:<filial>". */
   holderId: string
   customerCode: string
@@ -81,7 +84,7 @@ export class BrindesService {
   async gifts(user: AuthUser) {
     this.assertCan(user)
     const rows = await this.prisma.gift.findMany({ where: { tenantId: user.tenantId }, orderBy: [{ active: 'desc' }, { name: 'asc' }], include: { _count: { select: { deliveries: true } } } })
-    return rows.map((g) => ({ id: g.id, name: g.name, stock: g.stock, unitCost: n(g.unitCost), active: g.active, stockValue: Math.round(g.stock * n(g.unitCost) * 100) / 100, deliveries: g._count.deliveries }))
+    return rows.map((g) => ({ id: g.id, name: g.name, stock: g.stock, unitCost: n(g.unitCost), active: g.active, hasQuota: g.hasQuota, stockValue: Math.round(g.stock * n(g.unitCost) * 100) / 100, deliveries: g._count.deliveries }))
   }
 
   async saveGift(user: AuthUser, id: string | null, d: GiftInput, ctx: RequestCtx) {
@@ -92,7 +95,7 @@ export class BrindesService {
     if (d.unitCost !== undefined && !(d.unitCost >= 0)) throw new BadRequestException('Valor unitário inválido.')
     const dup = name ? await this.prisma.gift.findFirst({ where: { tenantId: user.tenantId, name: { equals: name, mode: 'insensitive' }, ...(id ? { id: { not: id } } : {}) }, select: { id: true } }) : null
     if (dup) throw new BadRequestException('Já existe um brinde com esse nome.')
-    const data = { ...(name ? { name: name.slice(0, 80) } : {}), ...(d.stock !== undefined ? { stock: d.stock } : {}), ...(d.unitCost !== undefined ? { unitCost: Math.round(d.unitCost * 100) / 100 } : {}), ...(d.active !== undefined ? { active: d.active } : {}) }
+    const data = { ...(name ? { name: name.slice(0, 80) } : {}), ...(d.stock !== undefined ? { stock: d.stock } : {}), ...(d.unitCost !== undefined ? { unitCost: Math.round(d.unitCost * 100) / 100 } : {}), ...(d.active !== undefined ? { active: d.active } : {}), ...(d.hasQuota !== undefined ? { hasQuota: d.hasQuota } : {}) }
     let gift
     if (id) {
       const cur = await this.prisma.gift.findFirst({ where: { id, tenantId: user.tenantId } })
@@ -100,7 +103,7 @@ export class BrindesService {
       gift = await this.prisma.gift.update({ where: { id }, data })
       await this.audit.byUser(user, ctx, 'brinde.updated', 'gift', id, { de: { stock: cur.stock, unitCost: n(cur.unitCost), active: cur.active }, para: data })
     } else {
-      gift = await this.prisma.gift.create({ data: { tenantId: user.tenantId, name: name!.slice(0, 80), stock: d.stock ?? 0, unitCost: Math.round((d.unitCost ?? 0) * 100) / 100, active: d.active ?? true } })
+      gift = await this.prisma.gift.create({ data: { tenantId: user.tenantId, name: name!.slice(0, 80), stock: d.stock ?? 0, unitCost: Math.round((d.unitCost ?? 0) * 100) / 100, active: d.active ?? true, hasQuota: d.hasQuota ?? true } })
       await this.audit.byUser(user, ctx, 'brinde.created', 'gift', gift.id, { name: gift.name })
     }
     return { id: gift.id }
@@ -130,7 +133,7 @@ export class BrindesService {
     const unitIds = units.map((u) => u.id)
     const of = { OR: [{ sellerId: { in: sellerIds } }, { unitId: { in: unitIds } }] }
     const [gifts, quotas, used] = await Promise.all([
-      this.prisma.gift.findMany({ where: { tenantId: user.tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true, stock: true, unitCost: true, active: true } }),
+      this.prisma.gift.findMany({ where: { tenantId: user.tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true, stock: true, unitCost: true, active: true, hasQuota: true } }),
       this.prisma.giftQuota.findMany({ where: { tenantId: user.tenantId, ...of }, select: { sellerId: true, unitId: true, giftId: true, monthly: true } }),
       this.prisma.giftDelivery.groupBy({ by: ['sellerId', 'unitId', 'giftId'], where: { tenantId: user.tenantId, ...of, date: { gte: start, lt: end } }, _sum: { quantity: true } }),
     ])
@@ -138,7 +141,7 @@ export class BrindesService {
     const holders = [...sellers.map((s) => ({ id: `s:${s.id}`, kind: 'seller' as const, name: s.name })), ...units.map((u) => ({ id: `u:${u.id}`, kind: 'unit' as const, name: u.name }))]
     return {
       month,
-      gifts: gifts.map((g) => ({ id: g.id, name: g.name, stock: g.stock, unitCost: n(g.unitCost), active: g.active })),
+      gifts: gifts.map((g) => ({ id: g.id, name: g.name, stock: g.stock, unitCost: n(g.unitCost), active: g.active, hasQuota: g.hasQuota })),
       holders: holders.map((h) => {
         const items = balances(
           quotas.filter((q) => holderKey(q) === h.id),
@@ -232,46 +235,57 @@ export class BrindesService {
     }
   }
 
+  /**
+   * Retirada de um ou vários brindes para o mesmo cliente, numa vez só: tudo ou nada (se um brinde não tiver saldo ou
+   * estoque, nenhum é lançado). Cada brinde vira uma linha de retirada.
+   */
   async deliver(user: AuthUser, d: DeliveryInput, ctx: RequestCtx) {
     this.assertCan(user, 'create')
     const holder = await this.assertHolder(user, d.holderId)
     const code = d.customerCode?.trim()
     if (!code) throw new BadRequestException('Informe o código do cliente.')
-    const quantity = d.quantity ?? 1
+    const lines = mergeLines(d.items?.length ? d.items : d.giftId ? [{ giftId: d.giftId, quantity: d.quantity ?? 1 }] : [])
+    if (!lines.length) throw new BadRequestException('Escolha ao menos um brinde.')
     const day = dayOf(d.date)
     const date = new Date(`${day}T00:00:00Z`)
     const { start, end } = monthRange(day.slice(0, 7))
+    const who = holder.kind === 'unit' ? `A filial ${holder.name}` : holder.name
     const created = await this.prisma.$transaction(async (tx) => {
-      // Trava o brinde: duas retiradas ao mesmo tempo não passam do estoque nem da cota.
-      await tx.$queryRaw`SELECT id FROM gifts WHERE id = ${d.giftId}::uuid FOR UPDATE`
-      const gift = await tx.gift.findFirst({ where: { id: d.giftId, tenantId: user.tenantId } })
-      if (!gift) throw new BadRequestException('Brinde não encontrado.')
-      if (!gift.active) throw new BadRequestException(`${gift.name} está desativado.`)
-      const [quota, used] = await Promise.all([
-        tx.giftQuota.findFirst({ where: { ...holder.where, giftId: gift.id }, select: { monthly: true } }),
-        tx.giftDelivery.aggregate({ where: { ...holder.where, giftId: gift.id, date: { gte: start, lt: end } }, _sum: { quantity: true } }),
-      ])
-      const problem = deliveryProblem({ quantity, stock: gift.stock, quota: quota?.monthly ?? null, used: used._sum.quantity ?? 0, giftName: gift.name, who: holder.kind === 'unit' ? `A filial ${holder.name}` : holder.name })
-      if (problem) throw new BadRequestException(problem)
-      await tx.gift.update({ where: { id: gift.id }, data: { stock: { decrement: quantity } } })
-      return tx.giftDelivery.create({
-        data: {
-          tenantId: user.tenantId,
-          giftId: gift.id,
-          ...holder.where,
-          customerCode: code.slice(0, 40),
-          customerName: d.customerName?.trim().slice(0, 160) || null,
-          date,
-          quantity,
-          unitCost: gift.unitCost,
-          notes: d.notes?.trim().slice(0, 500) || null,
-          createdById: user.id,
-          createdByName: user.name,
-        },
-      })
+      const ids: string[] = []
+      // Trava os brindes (sempre na mesma ordem): duas retiradas ao mesmo tempo não passam do estoque nem da cota.
+      for (const line of [...lines].sort((a, b) => a.giftId.localeCompare(b.giftId))) await tx.$queryRaw`SELECT id FROM gifts WHERE id = ${line.giftId}::uuid FOR UPDATE`
+      for (const line of lines) {
+        const gift = await tx.gift.findFirst({ where: { id: line.giftId, tenantId: user.tenantId } })
+        if (!gift) throw new BadRequestException('Brinde não encontrado.')
+        if (!gift.active) throw new BadRequestException(`${gift.name} está desativado.`)
+        const [quota, used] = await Promise.all([
+          tx.giftQuota.findFirst({ where: { ...holder.where, giftId: gift.id }, select: { monthly: true } }),
+          tx.giftDelivery.aggregate({ where: { ...holder.where, giftId: gift.id, date: { gte: start, lt: end } }, _sum: { quantity: true } }),
+        ])
+        const problem = deliveryProblem({ quantity: line.quantity, stock: gift.stock, quota: quota?.monthly ?? null, used: used._sum.quantity ?? 0, giftName: gift.name, hasQuota: gift.hasQuota, who })
+        if (problem) throw new BadRequestException(problem)
+        await tx.gift.update({ where: { id: gift.id }, data: { stock: { decrement: line.quantity } } })
+        const row = await tx.giftDelivery.create({
+          data: {
+            tenantId: user.tenantId,
+            giftId: gift.id,
+            ...holder.where,
+            customerCode: code.slice(0, 40),
+            customerName: d.customerName?.trim().slice(0, 160) || null,
+            date,
+            quantity: line.quantity,
+            unitCost: gift.unitCost,
+            notes: d.notes?.trim().slice(0, 500) || null,
+            createdById: user.id,
+            createdByName: user.name,
+          },
+        })
+        ids.push(row.id)
+      }
+      return ids
     })
-    await this.audit.byUser(user, ctx, 'brinde.retirada', 'gift_delivery', created.id, { giftId: d.giftId, holder: d.holderId, quantity, customerCode: code })
-    return { id: created.id }
+    await this.audit.byUser(user, ctx, 'brinde.retirada', 'gift_delivery', created[0], { holder: d.holderId, customerCode: code, itens: lines })
+    return { id: created[0], ids: created }
   }
 
   /** Desfaz uma retirada lançada errada: o brinde volta ao estoque e ao saldo do mês. */

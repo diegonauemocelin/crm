@@ -12,6 +12,7 @@ class GiftDto {
   @IsOptional() @IsInt() @Min(0) @Max(10_000_000) stock?: number
   @IsOptional() @IsNumber() @Min(0) @Max(1_000_000) unitCost?: number
   @IsOptional() @IsBoolean() active?: boolean
+  @IsOptional() @IsBoolean() hasQuota?: boolean
 }
 
 class QuotaDto {
@@ -25,8 +26,15 @@ class QuotasDto {
   @IsArray() @ArrayMaxSize(5000) @ValidateNested({ each: true }) @Type(() => QuotaDto) list!: QuotaDto[]
 }
 
-class DeliveryDto {
+class DeliveryItemDto {
   @IsUUID() giftId!: string
+  @IsInt() @Min(1) @Max(10_000) quantity!: number
+}
+
+class DeliveryDto {
+  @IsOptional() @IsUUID() giftId?: string
+  /** Vários brindes na mesma retirada. */
+  @IsOptional() @IsArray() @ArrayMaxSize(30) @ValidateNested({ each: true }) @Type(() => DeliveryItemDto) items?: DeliveryItemDto[]
   @Matches(HOLDER_RE) holderId!: string
   @IsString() @MaxLength(40) customerCode!: string
   @IsOptional() @IsString() @MaxLength(160) customerName?: string | null

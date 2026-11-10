@@ -23,11 +23,11 @@
                       "Entity": "_Medidas"
                     }
                   },
-                  "Property": "Investimento"
+                  "Property": "Investimento nas plataformas"
                 }
               },
-              "queryRef": "_Medidas.Investimento",
-              "nativeQueryRef": "Investimento"
+              "queryRef": "_Medidas.Investimento nas plataformas",
+              "nativeQueryRef": "Investimento nas plataformas"
             }
           ]
         }

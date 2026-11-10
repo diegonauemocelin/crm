@@ -151,7 +151,7 @@ table fato_ml_ads_diario
 		summarizeBy: none
 		sourceColumn: fonte
 
-	hierarchy Campanha
+	hierarchy 'Campanha e anúncio'
 
 		level Campanha
 			column: campanha

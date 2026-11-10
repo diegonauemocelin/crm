@@ -69,20 +69,20 @@ table _Medidas
 		displayFolder: Comercial
 
 	/// Leads que entraram na base no período.
-	measure Leads = COUNTROWS ( fato_leads )
+	measure 'Total de leads' = COUNTROWS ( fato_leads )
 		formatString: #,0
 		displayFolder: Comercial
 
-	measure 'Leads clientes' = CALCULATE ( [Leads], fato_leads[estagio] = "CLIENTE" )
+	measure 'Leads clientes' = CALCULATE ( [Total de leads], fato_leads[estagio] = "CLIENTE" )
 		formatString: #,0
 		displayFolder: Comercial
 
-	measure '% leads que viraram clientes' = DIVIDE ( [Leads clientes], [Leads] )
+	measure '% leads que viraram clientes' = DIVIDE ( [Leads clientes], [Total de leads] )
 		formatString: 0.0%
 		displayFolder: Comercial
 
 	/// Leads pelo vendedor da carteira (relação inativa).
-	measure 'Leads da carteira do vendedor' = CALCULATE ( [Leads], USERELATIONSHIP ( fato_leads[vendedor_carteira_id], dim_vendedor[vendedor_id] ) )
+	measure 'Leads da carteira do vendedor' = CALCULATE ( [Total de leads], USERELATIONSHIP ( fato_leads[vendedor_carteira_id], dim_vendedor[vendedor_id] ) )
 		formatString: #,0
 		displayFolder: Comercial
 
@@ -213,24 +213,24 @@ table _Medidas
 		displayFolder: Mercado Livre
 
 	/// Investimento nas plataformas de anúncios (Google, Meta, TikTok).
-	measure Investimento = SUM ( fato_anuncios_diario[investimento] )
+	measure 'Investimento nas plataformas' = SUM ( fato_anuncios_diario[investimento] )
 		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
 		displayFolder: Marketing
 
-	measure 'Investimento Google' = CALCULATE ( [Investimento], fato_anuncios_diario[plataforma] = "google" )
+	measure 'Investimento Google' = CALCULATE ( [Investimento nas plataformas], fato_anuncios_diario[plataforma] = "google" )
 		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
 		displayFolder: Marketing
 
-	measure 'Investimento Meta' = CALCULATE ( [Investimento], fato_anuncios_diario[plataforma] = "meta" )
+	measure 'Investimento Meta' = CALCULATE ( [Investimento nas plataformas], fato_anuncios_diario[plataforma] = "meta" )
 		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
 		displayFolder: Marketing
 
 	/// Plataformas de anúncios + Mercado Livre Ads.
-	measure 'Investimento total em anúncios' = [Investimento] + [Investimento ML Ads]
+	measure 'Investimento total em anúncios' = [Investimento nas plataformas] + [Investimento ML Ads]
 		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
 		displayFolder: Marketing
 
-	measure Cliques = SUM ( fato_anuncios_diario[cliques] )
+	measure 'Cliques nos anúncios' = SUM ( fato_anuncios_diario[cliques] )
 		formatString: #,0
 		displayFolder: Marketing
 
@@ -238,11 +238,11 @@ table _Medidas
 		formatString: #,0
 		displayFolder: Marketing
 
-	measure CTR = DIVIDE ( [Cliques], [Impressões] )
+	measure CTR = DIVIDE ( [Cliques nos anúncios], [Impressões] )
 		formatString: 0.0%
 		displayFolder: Marketing
 
-	measure CPC = DIVIDE ( [Investimento], [Cliques] )
+	measure CPC = DIVIDE ( [Investimento nas plataformas], [Cliques nos anúncios] )
 		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
 		displayFolder: Marketing
 
@@ -256,12 +256,12 @@ table _Medidas
 		displayFolder: Marketing
 
 	/// Custo por lead pelos leads que a plataforma informa.
-	measure 'CPL (plataforma)' = DIVIDE ( [Investimento], [Leads dos anúncios] )
+	measure 'CPL (plataforma)' = DIVIDE ( [Investimento nas plataformas], [Leads dos anúncios] )
 		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
 		displayFolder: Marketing
 
 	/// Custo por conversão pelas conversões que a plataforma informa.
-	measure 'CPA (plataforma)' = DIVIDE ( [Investimento], [Conversões dos anúncios] )
+	measure 'CPA (plataforma)' = DIVIDE ( [Investimento nas plataformas], [Conversões dos anúncios] )
 		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
 		displayFolder: Marketing
 
@@ -299,11 +299,11 @@ table _Medidas
 		formatString: #,0
 		displayFolder: Marketing
 
-	measure 'CPL da campanha (CRM)' = DIVIDE ( [Investimento], [Leads Google Ads da campanha] )
+	measure 'CPL da campanha (CRM)' = DIVIDE ( [Investimento nas plataformas], [Leads Google Ads da campanha] )
 		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
 		displayFolder: Marketing
 
-	measure 'ROAS da campanha' = DIVIDE ( [Receita Google Ads da campanha], [Investimento] )
+	measure 'ROAS da campanha' = DIVIDE ( [Receita Google Ads da campanha], [Investimento nas plataformas] )
 		formatString: #,0.00
 		displayFolder: Marketing
 
@@ -484,25 +484,25 @@ table _Medidas
 		formatString: +0.0%;-0.0%;0.0%
 		displayFolder: Comercial\Comparações
 
-	measure 'Leads (ano anterior)' = CALCULATE ( [Leads], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
+	measure 'Total de leads (ano anterior)' = CALCULATE ( [Total de leads], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
 		formatString: #,0
 		displayFolder: Comercial\Comparações
 
-	measure 'Leads vs. ano anterior (%)' =
-			VAR Atual = [Leads]
-			VAR Anterior = [Leads (ano anterior)]
+	measure 'Total de leads vs. ano anterior (%)' =
+			VAR Atual = [Total de leads]
+			VAR Anterior = [Total de leads (ano anterior)]
 			RETURN
 			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
 		formatString: +0.0%;-0.0%;0.0%
 		displayFolder: Comercial\Comparações
 
-	measure 'Leads (mês anterior)' = CALCULATE ( [Leads], DATEADD ( Calendario[Data], -1, MONTH ) )
+	measure 'Total de leads (mês anterior)' = CALCULATE ( [Total de leads], DATEADD ( Calendario[Data], -1, MONTH ) )
 		formatString: #,0
 		displayFolder: Comercial\Comparações
 
-	measure 'Leads vs. mês anterior (%)' =
-			VAR Atual = [Leads]
-			VAR Anterior = [Leads (mês anterior)]
+	measure 'Total de leads vs. mês anterior (%)' =
+			VAR Atual = [Total de leads]
+			VAR Anterior = [Total de leads (mês anterior)]
 			RETURN
 			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
 		formatString: +0.0%;-0.0%;0.0%
@@ -628,25 +628,25 @@ table _Medidas
 		formatString: +0.0%;-0.0%;0.0%
 		displayFolder: Mercado Livre\Comparações
 
-	measure 'Investimento (ano anterior)' = CALCULATE ( [Investimento], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
+	measure 'Investimento nas plataformas (ano anterior)' = CALCULATE ( [Investimento nas plataformas], SAMEPERIODLASTYEAR ( Calendario[Data] ) )
 		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
 		displayFolder: Marketing\Comparações
 
-	measure 'Investimento vs. ano anterior (%)' =
-			VAR Atual = [Investimento]
-			VAR Anterior = [Investimento (ano anterior)]
+	measure 'Investimento nas plataformas vs. ano anterior (%)' =
+			VAR Atual = [Investimento nas plataformas]
+			VAR Anterior = [Investimento nas plataformas (ano anterior)]
 			RETURN
 			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
 		formatString: +0.0%;-0.0%;0.0%
 		displayFolder: Marketing\Comparações
 
-	measure 'Investimento (mês anterior)' = CALCULATE ( [Investimento], DATEADD ( Calendario[Data], -1, MONTH ) )
+	measure 'Investimento nas plataformas (mês anterior)' = CALCULATE ( [Investimento nas plataformas], DATEADD ( Calendario[Data], -1, MONTH ) )
 		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
 		displayFolder: Marketing\Comparações
 
-	measure 'Investimento vs. mês anterior (%)' =
-			VAR Atual = [Investimento]
-			VAR Anterior = [Investimento (mês anterior)]
+	measure 'Investimento nas plataformas vs. mês anterior (%)' =
+			VAR Atual = [Investimento nas plataformas]
+			VAR Anterior = [Investimento nas plataformas (mês anterior)]
 			RETURN
 			    IF ( NOT ISBLANK ( Anterior ), DIVIDE ( Atual - Anterior, Anterior ) )
 		formatString: +0.0%;-0.0%;0.0%
@@ -763,7 +763,7 @@ table _Medidas
 		formatString: +0.0%;-0.0%;0.0%
 		displayFolder: Cenários
 
-	measure 'Investimento projetado' = [Investimento] * ( 1 + [Cenário: variação do investimento] )
+	measure 'Investimento projetado' = [Investimento nas plataformas] * ( 1 + [Cenário: variação do investimento] )
 		formatString: \R$ #,0.00;-\R$ #,0.00;\R$ #,0.00
 		displayFolder: Cenários
 

@@ -29,6 +29,7 @@ interface Gift {
   active: boolean
   stockValue: number
   deliveries: number
+  hasQuota?: boolean
 }
 interface Balance {
   giftId: string
@@ -38,7 +39,7 @@ interface Balance {
 }
 interface MonthView {
   month: string
-  gifts: { id: string; name: string; stock: number; unitCost: number; active: boolean }[]
+  gifts: { id: string; name: string; stock: number; unitCost: number; active: boolean; hasQuota?: boolean }[]
   /** Vendedores ("s:<id>") e filiais ("u:<id>"). */
   holders: Holder[]
 }
@@ -391,7 +392,14 @@ function Cadastro() {
               <TableBody>
                 {gifts.map((g) => (
                   <TableRow key={g.id} className={cn(!g.active && 'text-muted-foreground')}>
-                    <TableCell className="font-medium">{g.name}</TableCell>
+                    <TableCell className="font-medium">
+                      {g.name}
+                      {g.hasQuota === false && (
+                        <Badge variant="outline" className="ml-2 font-normal">
+                          sem cota
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {g.stock === 0 ? <Badge variant="outline">sem estoque</Badge> : g.stock}
                     </TableCell>
@@ -436,9 +444,10 @@ function GiftDialog({ gift, onClose }: { gift: Gift | null; onClose: () => void 
   const [name, setName] = useState(gift?.name ?? '')
   const [stock, setStock] = useState(String(gift?.stock ?? 0))
   const [unitCost, setUnitCost] = useState<number | null>(gift?.unitCost ?? null)
+  const [hasQuota, setHasQuota] = useState(gift?.hasQuota !== false)
   const save = useMutation({
     mutationFn: () => {
-      const body = { name: name.trim(), stock: Number(stock) || 0, unitCost: unitCost ?? 0 }
+      const body = { name: name.trim(), stock: Number(stock) || 0, unitCost: unitCost ?? 0, hasQuota }
       return gift ? api.put(`/marketing/brindes/${gift.id}`, body) : api.post('/marketing/brindes', body)
     },
     onSuccess: () => {
@@ -478,6 +487,13 @@ function GiftDialog({ gift, onClose }: { gift: Gift | null; onClose: () => void 
               <MoneyInput id="g-cost" value={unitCost} onChange={setUnitCost} />
             </div>
           </div>
+          <Label className="flex items-start justify-between gap-4 font-normal">
+            <span>
+              <span className="block font-medium">Controlado por cota mensal</span>
+              <span className="block text-xs text-muted-foreground">Desligado: o brinde não aparece em Cotas mensais e qualquer vendedor ou filial pode retirar, só baixando o estoque.</span>
+            </span>
+            <Switch checked={hasQuota} onCheckedChange={setHasQuota} aria-label="Controlado por cota mensal" />
+          </Label>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
@@ -496,7 +512,8 @@ function Cotas({ view }: { view: ReturnType<typeof useQuery<MonthView>> }) {
   const qc = useQueryClient()
   const [draft, setDraft] = useState<Record<string, string>>({})
   const d = view.data
-  const gifts = useMemo(() => (d?.gifts ?? []).filter((g) => g.active), [d])
+  const gifts = useMemo(() => (d?.gifts ?? []).filter((g) => g.active && g.hasQuota !== false), [d])
+  const [all, setAll] = useState<Record<string, string>>({})
   const current = useMemo(() => {
     const m = new Map<string, number>()
     for (const s of d?.holders ?? []) for (const i of s.items) m.set(`${s.id}|${i.giftId}`, i.quota)
@@ -546,6 +563,39 @@ function Cotas({ view }: { view: ReturnType<typeof useQuery<MonthView>> }) {
               </TableRow>
             </TableHeader>
             <TableBody>
+              <TableRow className="bg-muted/40">
+                <TableCell className="font-medium whitespace-nowrap">
+                  Replicar para todos
+                  <span className="block text-xs font-normal text-muted-foreground">Digite e clique em Aplicar; depois Salvar</span>
+                </TableCell>
+                {gifts.map((g) => (
+                  <TableCell key={g.id} className="text-center">
+                    <div className="mx-auto flex w-28 items-center gap-1">
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        step={1}
+                        aria-label={`${g.name}: mesma cota para todos`}
+                        className="h-8 w-16 text-center tabular-nums"
+                        value={all[g.id] ?? ''}
+                        placeholder="—"
+                        onChange={(e) => setAll((x) => ({ ...x, [g.id]: e.target.value }))}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 px-2"
+                        disabled={(all[g.id] ?? '') === ''}
+                        onClick={() => setDraft((x) => ({ ...x, ...Object.fromEntries(d!.holders.map((h) => [`${h.id}|${g.id}`, all[g.id]!])) }))}
+                      >
+                        Aplicar
+                      </Button>
+                    </div>
+                  </TableCell>
+                ))}
+              </TableRow>
               {d!.holders.map((s) => (
                 <TableRow key={s.id}>
                   <TableCell className="font-medium whitespace-nowrap">
@@ -582,22 +632,43 @@ function Cotas({ view }: { view: ReturnType<typeof useQuery<MonthView>> }) {
 
 function DeliverDialog({ view, initial, onClose }: { view: MonthView; initial: { holderId?: string; giftId?: string }; onClose: () => void }) {
   const qc = useQueryClient()
-  const sellers = view.holders.filter((s) => s.items.some((i) => i.quota > 0))
-  const [sellerId, setSellerId] = useState(initial.holderId ?? (sellers.length === 1 ? sellers[0]!.id : ''))
-  const [giftId, setGiftId] = useState(initial.giftId ?? '')
+  // Brindes sem cota mensal: qualquer vendedor ou filial retira (só o estoque limita).
+  const free = view.gifts.filter((g) => g.active && g.hasQuota === false)
+  const hasQuota = (s: Holder) => s.items.some((i) => i.quota > 0)
+  const canDeliver = (s: Holder) => hasQuota(s) || free.length > 0
+  const sellers = [...view.holders].sort((a, b) => Number(canDeliver(b)) - Number(canDeliver(a)))
+  const allowed = sellers.filter(canDeliver)
+  const [sellerId, setSellerId] = useState(initial.holderId ?? (allowed.length === 1 ? allowed[0]!.id : ''))
+  const [lines, setLines] = useState<{ giftId: string; quantity: string }[]>(() => [{ giftId: initial.giftId ?? '', quantity: '1' }])
   const [code, setCode] = useState('')
   const [customerName, setCustomerName] = useState('')
   const [date, setDate] = useState(() => todaySP())
-  const [quantity, setQuantity] = useState('1')
   const [notes, setNotes] = useState('')
   const seller = view.holders.find((s) => s.id === sellerId)
-  const options = (seller?.items ?? []).filter((i) => i.quota > 0)
   const giftOf = (id: string) => view.gifts.find((g) => g.id === id)
   const sameMonth = date.slice(0, 7) === view.month
+  /** Brindes que este vendedor/filial pode retirar: os com cota (saldo do mês) e os sem cota. */
+  const options = [
+    ...(seller?.items ?? []).filter((i) => i.quota > 0 && giftOf(i.giftId)?.hasQuota !== false).map((i) => {
+      const g = giftOf(i.giftId)
+      return { giftId: i.giftId, label: `${g?.name ?? 'Brinde'} · saldo ${i.remaining} de ${i.quota} · estoque ${g?.stock ?? 0}`, disabled: !g?.active || (sameMonth && i.remaining === 0) || (g?.stock ?? 0) === 0 }
+    }),
+    ...(seller ? free : []).map((g) => ({ giftId: g.id, label: `${g.name} · sem cota · estoque ${g.stock}`, disabled: g.stock === 0 })),
+  ]
+  const valid = lines.filter((l) => l.giftId && (Number(l.quantity) || 0) >= 1)
+  const setLine = (idx: number, patch: Partial<{ giftId: string; quantity: string }>) => setLines((x) => x.map((l, k) => (k === idx ? { ...l, ...patch } : l)))
   const save = useMutation({
-    mutationFn: () => api.post('/marketing/brindes/mes/retiradas', { holderId: sellerId, giftId, customerCode: code.trim(), customerName: customerName.trim() || null, date, quantity: Number(quantity) || 1, notes: notes.trim() || null }),
+    mutationFn: () =>
+      api.post('/marketing/brindes/mes/retiradas', {
+        holderId: sellerId,
+        items: valid.map((l) => ({ giftId: l.giftId, quantity: Math.floor(Number(l.quantity)) })),
+        customerCode: code.trim(),
+        customerName: customerName.trim() || null,
+        date,
+        notes: notes.trim() || null,
+      }),
     onSuccess: () => {
-      toast.success('Retirada registrada.')
+      toast.success(valid.length > 1 ? `Retirada de ${valid.length} brindes registrada.` : 'Retirada registrada.')
       qc.invalidateQueries({ queryKey: ['brindes'] })
       onClose()
     },
@@ -605,10 +676,10 @@ function DeliverDialog({ view, initial, onClose }: { view: MonthView; initial: {
   })
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Registrar retirada</DialogTitle>
-          <DialogDescription>Baixa do estoque e do saldo do mês do vendedor ou da filial.</DialogDescription>
+          <DialogDescription>Um ou vários brindes para o mesmo cliente. Baixa do estoque e do saldo do mês do vendedor ou da filial.</DialogDescription>
         </DialogHeader>
         <form
           className="space-y-4"
@@ -625,40 +696,55 @@ function DeliverDialog({ view, initial, onClose }: { view: MonthView; initial: {
               value={sellerId}
               onValueChange={(v) => {
                 setSellerId(v)
-                setGiftId('')
+                setLines([{ giftId: '', quantity: '1' }])
               }}
             >
               <SelectTrigger id="d-seller" className="w-full">
                 <SelectValue placeholder="Selecione" />
               </SelectTrigger>
               <SelectContent>
+                {!sellers.length && <div className="px-2 py-3 text-sm text-muted-foreground">Nenhum vendedor ou filial ativo no seu acesso.</div>}
                 {sellers.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
+                  <SelectItem key={s.id} value={s.id} disabled={!canDeliver(s)}>
                     {s.kind === 'unit' ? `Filial ${s.name}` : s.name}
+                    {!canDeliver(s) && ' · sem cota'}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            {!allowed.length && (
+              <p className="text-xs text-destructive">Ninguém tem cota de brinde por mês ainda. Defina na aba Cotas mensais (e clique em Salvar) quantos brindes cada vendedor ou filial pode entregar.</p>
+            )}
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="d-gift" required>
-              Brinde
-            </Label>
-            <Select value={giftId} onValueChange={setGiftId} disabled={!seller}>
-              <SelectTrigger id="d-gift" className="w-full">
-                <SelectValue placeholder={seller ? 'Selecione' : 'Escolha o vendedor ou a filial'} />
-              </SelectTrigger>
-              <SelectContent>
-                {options.map((i) => {
-                  const g = giftOf(i.giftId)
-                  return (
-                    <SelectItem key={i.giftId} value={i.giftId} disabled={!g?.active || (sameMonth && i.remaining === 0) || (g?.stock ?? 0) === 0}>
-                      {g?.name ?? 'Brinde'} · saldo {i.remaining} de {i.quota} · estoque {g?.stock ?? 0}
-                    </SelectItem>
-                  )
-                })}
-              </SelectContent>
-            </Select>
+          <div className="space-y-2">
+            <Label required>Brindes</Label>
+            {lines.map((l, idx) => {
+              const used = new Set(lines.filter((_, k) => k !== idx).map((x) => x.giftId))
+              return (
+                <div key={idx} className="flex items-center gap-2">
+                  <Select value={l.giftId} onValueChange={(v) => setLine(idx, { giftId: v })} disabled={!seller}>
+                    <SelectTrigger className="min-w-0 flex-1" aria-label={`Brinde ${idx + 1}`}>
+                      <SelectValue placeholder={seller ? 'Selecione o brinde' : 'Escolha o vendedor ou a filial'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {seller && !options.length && <div className="px-2 py-3 text-sm text-muted-foreground">Sem brinde disponível para este vendedor ou filial.</div>}
+                      {options.map((o) => (
+                        <SelectItem key={o.giftId} value={o.giftId} disabled={o.disabled || used.has(o.giftId)}>
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input type="number" inputMode="numeric" min={1} step={1} className="w-20 text-center tabular-nums" aria-label={`Quantidade do brinde ${idx + 1}`} value={l.quantity} onChange={(e) => setLine(idx, { quantity: e.target.value })} />
+                  <Button type="button" size="icon" variant="ghost" aria-label="Tirar este brinde" disabled={lines.length === 1} onClick={() => setLines((x) => x.filter((_, k) => k !== idx))}>
+                    <Trash2Icon />
+                  </Button>
+                </div>
+              )
+            })}
+            <Button type="button" size="sm" variant="outline" disabled={!seller || lines.length >= Math.min(30, options.length)} onClick={() => setLines((x) => [...x, { giftId: '', quantity: '1' }])}>
+              <PlusIcon /> Adicionar brinde
+            </Button>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
@@ -678,22 +764,16 @@ function DeliverDialog({ view, initial, onClose }: { view: MonthView; initial: {
               <Input id="d-date" type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="d-qty" required>
-                Quantidade
-              </Label>
-              <Input id="d-qty" type="number" inputMode="numeric" min={1} step={1} required value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+              <Label htmlFor="d-notes">Observação</Label>
+              <Input id="d-notes" maxLength={500} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Opcional" />
             </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="d-notes">Observação</Label>
-            <Input id="d-notes" maxLength={500} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Opcional" />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={save.isPending || !sellerId || !giftId || !code.trim()}>
-              {save.isPending && <Loader2Icon className="animate-spin" />} Registrar
+            <Button type="submit" disabled={save.isPending || !sellerId || !valid.length || !code.trim()}>
+              {save.isPending && <Loader2Icon className="animate-spin" />} Registrar{valid.length > 1 ? ` (${valid.length} brindes)` : ''}
             </Button>
           </DialogFooter>
         </form>
