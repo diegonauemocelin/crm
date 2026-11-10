@@ -27,7 +27,7 @@
                 }
               },
               "queryRef": "dim_vendedor.nome",
-              "nativeQueryRef": "nome"
+              "nativeQueryRef": "Vendedor"
             }
           ]
         }

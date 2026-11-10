@@ -27,7 +27,7 @@
                 }
               },
               "queryRef": "dim_filial.nome",
-              "nativeQueryRef": "nome",
+              "nativeQueryRef": "Filial",
               "active": true
             },
             {
@@ -42,7 +42,7 @@
                 }
               },
               "queryRef": "dim_vendedor.nome",
-              "nativeQueryRef": "nome",
+              "nativeQueryRef": "Vendedor",
               "active": false
             }
           ]

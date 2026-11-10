@@ -27,7 +27,7 @@
                 }
               },
               "queryRef": "dim_origem.nome",
-              "nativeQueryRef": "nome"
+              "nativeQueryRef": "Origem"
             }
           ]
         }

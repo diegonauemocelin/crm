@@ -27,7 +27,7 @@
                 }
               },
               "queryRef": "dim_numero_whatsapp.nome",
-              "nativeQueryRef": "nome"
+              "nativeQueryRef": "Número de WhatsApp"
             }
           ]
         },

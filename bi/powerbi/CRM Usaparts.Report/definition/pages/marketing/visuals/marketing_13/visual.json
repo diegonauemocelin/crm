@@ -27,7 +27,7 @@
                 }
               },
               "queryRef": "fato_email_campanhas.nome",
-              "nativeQueryRef": "nome"
+              "nativeQueryRef": "email_campanhas (nome)"
             },
             {
               "field": {

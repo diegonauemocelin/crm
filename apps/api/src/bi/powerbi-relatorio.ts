@@ -31,9 +31,25 @@ const MES_ANO = col(CALENDARIO, 'Mês/Ano')
 const lit = (v: string) => ({ expr: { Literal: { Value: v } } })
 const texto = (s: string) => lit(`'${s.replace(/'/g, "''")}'`)
 
+/** Nome mostrado no visual: o Power BI não aceita dois campos com o mesmo nome (ex.: filial e vendedor, ambos "nome"). */
+const ROTULO_NOME: Record<string, string> = {
+  dim_filial: 'Filial',
+  dim_vendedor: 'Vendedor',
+  dim_usuario: 'Atendente',
+  dim_origem: 'Origem',
+  dim_tipo_cliente: 'Tipo de cliente',
+  dim_motivo_perda: 'Motivo da perda',
+  dim_numero_whatsapp: 'Número de WhatsApp',
+  dim_setor: 'Setor',
+  dim_produto: 'Produto',
+  dim_transportadora: 'Transportadora',
+  dim_brinde: 'Brinde',
+}
+export const rotuloColuna = (tabela: string, coluna: string) => (coluna === 'nome' ? (ROTULO_NOME[tabela] ?? `${tabela.replace(/^(dim|fato)_/, '')} (nome)`) : coluna)
+
 function fieldOf(c: Campo) {
   const src = (e: string) => ({ SourceRef: { Entity: e } })
-  if (c.tipo === 'coluna') return { field: { Column: { Expression: src(c.tabela), Property: c.coluna } }, queryRef: `${c.tabela}.${c.coluna}`, nativeQueryRef: c.coluna }
+  if (c.tipo === 'coluna') return { field: { Column: { Expression: src(c.tabela), Property: c.coluna } }, queryRef: `${c.tabela}.${c.coluna}`, nativeQueryRef: rotuloColuna(c.tabela, c.coluna) }
   if (c.tipo === 'medida') return { field: { Measure: { Expression: src(MEDIDAS), Property: c.nome } }, queryRef: `${MEDIDAS}.${c.nome}`, nativeQueryRef: c.nome }
   return {
     field: { HierarchyLevel: { Expression: { Hierarchy: { Expression: src(c.tabela), Hierarchy: c.hierarquia } }, Level: c.nivel } },

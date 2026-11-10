@@ -212,6 +212,14 @@ describe('Projeto do Power BI (bi/powerbi)', () => {
     for (const m of medidasNomes) expect(colunas.has(m), m).toBe(false)
   })
 
+  it('dentro de cada visual, os campos têm nomes diferentes (o Power BI recusa nativeQueryRef repetido)', () => {
+    for (const [arquivo, conteudo] of files) {
+      if (!arquivo.endsWith('visual.json')) continue
+      const refs = [...conteudo.matchAll(/"nativeQueryRef":\s*"([^"]+)"/g)].map((m) => m[1]!.toLocaleLowerCase('pt-BR'))
+      expect(refs.filter((r, i) => refs.indexOf(r) !== i), arquivo).toEqual([])
+    }
+  })
+
   it('todo campo dos visuais existe no modelo (colunas, medidas e níveis de hierarquia)', () => {
     const existe = (c: Campo) => {
       if (c.tipo === 'medida') return medidaNomes.has(c.nome)

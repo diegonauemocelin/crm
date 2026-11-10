@@ -27,7 +27,7 @@
                 }
               },
               "queryRef": "dim_motivo_perda.nome",
-              "nativeQueryRef": "nome"
+              "nativeQueryRef": "Motivo da perda"
             }
           ]
         },

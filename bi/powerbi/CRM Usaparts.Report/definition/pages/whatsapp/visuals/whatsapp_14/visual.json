@@ -27,7 +27,7 @@
                 }
               },
               "queryRef": "dim_usuario.nome",
-              "nativeQueryRef": "nome"
+              "nativeQueryRef": "Atendente"
             },
             {
               "field": {

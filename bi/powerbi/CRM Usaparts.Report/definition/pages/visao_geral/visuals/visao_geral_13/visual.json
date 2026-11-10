@@ -27,7 +27,7 @@
                 }
               },
               "queryRef": "dim_filial.nome",
-              "nativeQueryRef": "nome"
+              "nativeQueryRef": "Filial"
             }
           ]
         },

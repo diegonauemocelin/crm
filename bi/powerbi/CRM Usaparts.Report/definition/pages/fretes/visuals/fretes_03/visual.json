@@ -27,7 +27,7 @@
                 }
               },
               "queryRef": "dim_transportadora.nome",
-              "nativeQueryRef": "nome"
+              "nativeQueryRef": "Transportadora"
             }
           ]
         }

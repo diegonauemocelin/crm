@@ -27,7 +27,7 @@
                 }
               },
               "queryRef": "dim_setor.nome",
-              "nativeQueryRef": "nome"
+              "nativeQueryRef": "Setor"
             }
           ]
         },
