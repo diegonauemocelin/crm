@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.9",
+      "date": "2026-11-11",
+      "title": "Editar agendamento do e-mail marketing",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "E-mail marketing",
+          "text": "Campanha agendada: botão Alterar data (nova data e hora do envio) e botão Editar, que volta a campanha para rascunho para mudar conteúdo ou público e agendar de novo."
+        }
+      ]
+    },
+    {
       "version": "3.0.8",
       "date": "2026-11-11",
       "title": "Importar mensagens do celular",
