@@ -344,7 +344,8 @@ export class EvolutionClient {
 
   /** Corrige o texto de uma mensagem enviada (o WhatsApp aceita até 15 minutos depois do envio). */
   async editText(instanceName: string, key: { id: string; remoteJid: string }, text: string) {
-    const number = key.remoteJid.endsWith('@s.whatsapp.net') ? key.remoteJid.split('@')[0]! : key.remoteJid
+    // O "number" precisa virar exatamente o remoteJid do envio (a Evolution confere): o jid completo, inclusive @lid.
+    const number = key.remoteJid
     await this.send(instanceName, `/chat/updateMessage/${encodeURIComponent(instanceName)}`, { number, key: { id: key.id, remoteJid: key.remoteJid, fromMe: true }, text }, 20_000)
   }
 

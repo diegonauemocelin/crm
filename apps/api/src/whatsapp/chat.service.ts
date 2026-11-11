@@ -578,7 +578,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       const data = { sentByName: BOT_NAME, status: 'ENVIADA' }
       await this.prisma.whatsappMessage.upsert({
         where: { conversationId_waId: { conversationId: conv.id, waId: r.waId } },
-        create: { tenantId: n.tenantId, conversationId: conv.id, waId: r.waId, fromMe: true, type: 'texto', text, sentAt: r.at, ...data },
+        create: { tenantId: n.tenantId, conversationId: conv.id, waId: r.waId, waRemoteJid: r.remoteJid, fromMe: true, type: 'texto', text, sentAt: r.at, ...data },
         update: data,
       })
       await this.prisma.whatsappConversation.update({ where: { id: conv.id }, data: { lastMessageAt: r.at, lastPreview: previewOf({ type: 'texto', text }), lastFromMe: true } })
@@ -1463,7 +1463,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     // O evento da Evolution pode chegar antes desta resposta: aí a mensagem já existe e só ganha quem enviou.
     const msg = await this.prisma.whatsappMessage.upsert({
       where: { conversationId_waId: { conversationId: c.conv.id, waId: r.waId } },
-      create: { tenantId: c.conv.tenantId, conversationId: c.conv.id, waId: r.waId, fromMe: true, type: m.type, text: m.text, sentAt: r.at, ...data },
+      create: { tenantId: c.conv.tenantId, conversationId: c.conv.id, waId: r.waId, waRemoteJid: r.remoteJid, fromMe: true, type: m.type, text: m.text, sentAt: r.at, ...data },
       update: data,
     })
     await this.prisma.whatsappConversation.update({
@@ -1524,7 +1524,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const data = { sentByName: label, status: 'ENVIADA', ...(file && doc ? { fileId: file.id, fileName: doc.fileName, mime: doc.mime, mediaStatus: 'OK' } : {}) }
     await this.prisma.whatsappMessage.upsert({
       where: { conversationId_waId: { conversationId: conv.id, waId: r.waId } },
-      create: { tenantId: n.tenantId, conversationId: conv.id, waId: r.waId, fromMe: true, type, text, sentAt: r.at, ...data },
+      create: { tenantId: n.tenantId, conversationId: conv.id, waId: r.waId, waRemoteJid: r.remoteJid, fromMe: true, type, text, sentAt: r.at, ...data },
       update: data,
     })
     await this.prisma.whatsappConversation.update({
@@ -1587,7 +1587,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const sign = /^\*[^*\n]{1,40}:\*\n/.exec(m.text ?? '')?.[0] ?? ''
     const body = sign && !text.startsWith(sign) ? `${sign}${text}` : text
     if (body === m.text) return this.messageView(m, user)
-    await c.client.editText(c.number.instanceName, { id: m.waId, remoteJid: c.conv.jid }, body).catch((e: unknown) => this.fail(e, 'Não foi corrigida'))
+    await c.client.editText(c.number.instanceName, { id: m.waId, remoteJid: m.waRemoteJid ?? c.conv.jid }, body).catch((e: unknown) => this.fail(e, 'Não foi corrigida'))
     const saved = await this.prisma.whatsappMessage.update({ where: { id: m.id }, data: { text: body, editedAt: new Date() } })
     await this.prisma.whatsappConversation.updateMany({ where: { id: m.conversationId, lastMessageAt: m.sentAt }, data: { lastPreview: previewOf({ type: 'texto', text: body }) } })
     await this.audit.byUser(user, ctx, 'chat.message_edited', 'whatsapp_message', m.id, { conversa: m.conversationId, antes: m.text, depois: body })
@@ -1597,7 +1597,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   /** Apaga para todos uma mensagem enviada: some do WhatsApp do cliente e, no CRM, fica "Mensagem apagada". */
   async deleteMessage(user: AuthUser, messageId: string, ctx: RequestCtx) {
     const { m, c } = await this.changeable(user, messageId, 'delete')
-    await c.client.deleteForEveryone(c.number.instanceName, { id: m.waId, remoteJid: c.conv.jid }).catch((e: unknown) => this.fail(e, 'Não foi apagada'))
+    await c.client.deleteForEveryone(c.number.instanceName, { id: m.waId, remoteJid: m.waRemoteJid ?? c.conv.jid }).catch((e: unknown) => this.fail(e, 'Não foi apagada'))
     const saved = await this.prisma.whatsappMessage.update({ where: { id: m.id }, data: { deletedAt: new Date(), text: null } })
     await this.prisma.whatsappConversation.updateMany({ where: { id: m.conversationId, lastMessageAt: m.sentAt }, data: { lastPreview: 'Mensagem apagada' } })
     // O que foi apagado fica só na auditoria (para o administrador), não na conversa.
