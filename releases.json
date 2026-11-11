@@ -2,6 +2,33 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.6",
+      "date": "2026-11-11",
+      "title": "Correções no chat, fretes, preços e pré-venda",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "WhatsApp",
+          "text": "Corrigir ou apagar uma mensagem enviada agora muda também no WhatsApp do cliente (antes, em alguns contatos, mudava só no CRM). Vale para mensagens enviadas a partir desta versão."
+        },
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Importar o .zip de XML de NF-e com muitas notas não fica mais travado: a importação segue em segundo plano e o resultado aparece em Importações anteriores."
+        },
+        {
+          "type": "correcao",
+          "area": "Marketplaces",
+          "text": "Preços e promoções: quando o Mercado Livre recusa a leitura em lote (erro 403), os anúncios são lidos um por um. Na aba Cupons, botão para escolher os anúncios."
+        },
+        {
+          "type": "melhoria",
+          "area": "Pré-vendas",
+          "text": "Cliente internacional: telefone com DDI de outro país (ex.: +54 Argentina) preenche o país sozinho e não leva a máscara brasileira. Também dá para escolher Exterior em Estado."
+        }
+      ]
+    },
+    {
       "version": "3.0.5",
       "date": "2026-11-11",
       "title": "Gráfico de sazonalidade corrigido",
