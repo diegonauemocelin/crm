@@ -354,6 +354,53 @@ function DevicesDialog({ user, onClose }: { user: UserRow; onClose: () => void }
   )
 }
 
+/**
+ * Monitoramento de conversas deste usuário (vale com a permissão "Monitorar conversas" no perfil): quem e quais
+ * números ele monitora. Salva à parte do cadastro.
+ */
+function MonitorSection({ userId }: { userId: string }) {
+  const qc = useQueryClient()
+  const base = useQuery({ queryKey: ['whatsapp-setores'], queryFn: () => api.get<{ users: { id: string; name: string }[]; numbers: { id: string; name: string }[] }>('/whatsapp/setores'), retry: false })
+  const q = useQuery({ queryKey: ['user-monitor', userId], queryFn: () => api.get<{ everyone: boolean; userIds: string[]; numberIds: string[]; monitoredBy: { id: string; name: string }[] }>(`/whatsapp/setores/monitoramento/${userId}`), retry: false })
+  const [form, setForm] = useState<{ everyone: boolean; userIds: string[]; numberIds: string[] } | null>(null)
+  const f = form ?? (q.data ? { everyone: q.data.everyone, userIds: q.data.userIds, numberIds: q.data.numberIds } : null)
+  const save = useMutation({
+    mutationFn: () => api.put(`/whatsapp/setores/monitoramento/${userId}`, f ?? undefined),
+    onSuccess: () => {
+      setForm(null)
+      void qc.invalidateQueries({ queryKey: ['user-monitor', userId] })
+      toast.success('Monitoramento salvo.')
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  if (q.isError || base.isError) return null
+  if (!f || !base.data) return null
+  const people = base.data.users.filter((u) => u.id !== userId)
+  return (
+    <div className="space-y-3 rounded-md border p-3">
+      <p className="text-sm font-medium">Monitorar conversas</p>
+      <p className="text-xs text-muted-foreground">Vale quando o perfil do usuário tem a permissão “Monitorar conversas” (só leitura). Números vazios = os liberados no perfil; nunca passa do que o perfil permite.</p>
+      <label className="flex items-center gap-2 text-sm">
+        <Checkbox checked={f.everyone} onCheckedChange={(c) => setForm({ ...f, everyone: c === true })} /> Monitorar todas as pessoas
+      </label>
+      {!f.everyone && (
+        <div className="space-y-2">
+          <Label htmlFor="mon-people">Pessoas que este usuário monitora</Label>
+          <MultiSelect id="mon-people" items={people} value={f.userIds} onChange={(userIds) => setForm({ ...f, userIds })} placeholder="Escolha as pessoas" />
+        </div>
+      )}
+      <div className="space-y-2">
+        <Label htmlFor="mon-numbers">Números que este usuário monitora</Label>
+        <MultiSelect id="mon-numbers" items={base.data.numbers} value={f.numberIds} onChange={(numberIds) => setForm({ ...f, numberIds })} placeholder="Os do perfil de acesso" />
+      </div>
+      {!!q.data?.monitoredBy.length && <p className="text-xs text-muted-foreground">Monitorado por: {q.data.monitoredBy.map((m) => m.name).join(', ')}.</p>}
+      <Button type="button" size="sm" variant="outline" disabled={!form || save.isPending} onClick={() => save.mutate()}>
+        Salvar monitoramento
+      </Button>
+    </div>
+  )
+}
+
 function UserDialog({ user, onClose }: { user: UserRow | null; onClose: () => void }) {
   const qc = useQueryClient()
   const { me } = useAuth()
@@ -447,6 +494,7 @@ function UserDialog({ user, onClose }: { user: UserRow | null; onClose: () => vo
             <MultiSelect id="u-extra-units" items={(options.data?.units ?? []).filter((u) => u.id !== unitId)} value={extraUnitIds.filter((id) => id !== unitId)} onChange={setExtraUnitIds} placeholder="Só a unidade acima" />
             <p className="text-xs text-muted-foreground">Para gestores de mais de uma filial: no módulo de fretes, o escopo “somente da unidade” passa a incluir estas também.</p>
           </div>
+          {user && <MonitorSection userId={user.id} />}
           {!user && (
             <div className="space-y-3 rounded-md border p-3">
               <label className="flex items-start gap-2 text-sm">

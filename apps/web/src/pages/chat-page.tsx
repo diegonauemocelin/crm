@@ -298,7 +298,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
   const [labelId, setLabelId] = useState<string | null>(null)
   const labels = useLabels()
   // Monitorar: tudo (permissão) ou a equipe de quem é gestor (Configurações › Setores e equipes).
-  const monitorAccess = useQuery({ queryKey: ['chat-monitoramento'], queryFn: () => api.get<{ scope: 'TODOS' | 'NUMEROS' | 'EQUIPE' | null }>('/chat/monitoramento'), staleTime: 5 * 60_000 })
+  const monitorAccess = useQuery({ queryKey: ['chat-monitoramento'], queryFn: () => api.get<{ scope: 'TODOS' | 'NUMEROS' | 'PESSOAS' | 'EQUIPE' | null }>('/chat/monitoramento'), staleTime: 5 * 60_000 })
   const canWatch = !!monitorAccess.data?.scope
   const [starting, setStarting] = useState(false)
   const { can } = useAuth()
@@ -377,7 +377,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
       <PageHeader
         compact
         title={monitor ? 'Monitorar conversas' : 'Chat WhatsApp'}
-        description={monitor ? `${monitorAccess.data?.scope === 'EQUIPE' ? 'Conversas da sua equipe e dos setores que você gerencia' : monitorAccess.data?.scope === 'NUMEROS' ? 'Conversas dos números liberados para o seu perfil' : 'Conversas de todos os números e vendedores'}, só para leitura. Abrir aqui não marca como lida: quem atende continua vendo as mensagens novas.` : undefined}
+        description={monitor ? `${monitorAccess.data?.scope === 'EQUIPE' ? 'Conversas da sua equipe e dos setores que você gerencia' : monitorAccess.data?.scope === 'NUMEROS' ? 'Conversas dos números liberados para você' : monitorAccess.data?.scope === 'PESSOAS' ? 'Conversas das pessoas que você monitora' : 'Conversas de todos os números e vendedores'}, só para leitura. Abrir aqui não marca como lida: quem atende continua vendo as mensagens novas.` : undefined}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {!onlyMonitor && canWatch && (

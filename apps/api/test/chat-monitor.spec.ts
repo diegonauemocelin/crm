@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ChatService } from '../src/whatsapp/chat.service'
 
 // Sem equipe: ninguém tem a pessoa como gestora e não há setores.
-const empty = { user: { findMany: async () => [] }, whatsappSector: { findMany: async () => [] } }
+const empty = { user: { findMany: async () => [], findUnique: async () => null }, whatsappSector: { findMany: async () => [] } }
 const svc = () => new ChatService(empty as never, {} as never, {} as never, {} as never, {} as never, {} as never)
 const user = (permissions: Record<string, unknown>, isSystem = false) => ({ id: 'u', tenantId: 't', role: { isSystem }, permissions }) as never
 const view = { view: true, create: false, edit: false, delete: false, export: false, scope: 'OWN' }
@@ -142,12 +142,12 @@ describe('vários atendentes no mesmo número', () => {
   })
 
   it('gestor sem a permissão de monitoramento só monitora a equipe dele', async () => {
-    const prisma = { user: { findMany: async () => [{ id: 'v1', managerIds: ['g'] }] }, whatsappSector: { findMany: async () => [] } }
+    const prisma = { user: { findMany: async () => [{ id: 'v1', managerIds: ['g'] }], findUnique: async () => null }, whatsappSector: { findMany: async () => [] } }
     const s = new ChatService(prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never)
     const gestor = { id: 'g', tenantId: 't', role: { isSystem: false }, permissions: { chat: view } } as never
-    expect(await s.monitorAccess(gestor)).toEqual({ scope: 'EQUIPE' })
+    expect(await s.monitorAccess(gestor)).toMatchObject({ scope: 'EQUIPE' })
     expect(await s.monitorScope(gestor)).toEqual({ tenantId: 't', OR: [{ assignedUserId: { in: ['v1'] } }, { helperUserIds: { hasSome: ['v1'] } }] })
-    expect(await svc().monitorAccess(gestor)).toEqual({ scope: null })
+    expect(await svc().monitorAccess(gestor)).toMatchObject({ scope: null })
   })
 })
 
@@ -177,5 +177,27 @@ describe('aba Aguardando vendedor', () => {
     const s = new ChatService(prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never)
     expect(await (s as unknown as { waitingSellerIds: (t: string) => Promise<string[]> }).waitingSellerIds('t')).toEqual(['c1'])
     expect(where.OR).toEqual([{ recordId: { in: ['r1'] } }, { phone: { in: ['+5542999751979', '+554299751979'] } }])
+  })
+})
+
+describe('monitoramento escolhido no cadastro do usuário', () => {
+  it('números: lista própria dentro do perfil; vazio segue o perfil', async () => {
+    const { effectiveMonitorNumbers } = await import('../src/whatsapp/monitoramento')
+    expect(effectiveMonitorNumbers(null, null)).toBeNull()
+    expect(effectiveMonitorNumbers(['a', 'b'], null)).toEqual(['a', 'b'])
+    expect(effectiveMonitorNumbers(null, ['c'])).toEqual(['c'])
+    expect(effectiveMonitorNumbers(['a', 'b'], ['b', 'c'])).toEqual(['b'])
+  })
+  it('pessoas escolhidas: só as conversas delas, sempre dentro dos números permitidos', async () => {
+    const { monitorWhere } = await import('../src/whatsapp/monitoramento')
+    const people = { userIds: ['v1'], sectorIds: [], sellerIds: [], sharedNumberIds: [] }
+    expect(monitorWhere({ tenantId: 't', canMonitor: true, everyone: true, numbers: null, people })).toEqual({ tenantId: 't' })
+    expect(monitorWhere({ tenantId: 't', canMonitor: true, everyone: false, numbers: ['n1'], people })).toEqual({ tenantId: 't', AND: [{ numberId: { in: ['n1'] } }, { OR: [{ assignedUserId: { in: ['v1'] } }, { helperUserIds: { hasSome: ['v1'] } }] }] })
+    expect(monitorWhere({ tenantId: 't', canMonitor: true, everyone: false, numbers: null, people: { ...people, userIds: [] } })).toBeNull()
+    expect(monitorWhere({ tenantId: 't', canMonitor: true, everyone: true, numbers: [], people })).toBeNull()
+  })
+  it('vínculos: adiciona e tira gestores sem incluir a própria pessoa', async () => {
+    const { monitorLinkChanges } = await import('../src/whatsapp/monitoramento')
+    expect(monitorLinkChanges('g', ['a', 'b'], ['b', 'c', 'g'])).toEqual({ add: ['c'], remove: ['a'] })
   })
 })

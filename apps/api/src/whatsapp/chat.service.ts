@@ -17,6 +17,7 @@ import { callHoursOf, DEFAULT_ATENDIMENTO } from '../atendimento/service-records
 import { type EvolutionClient, EvolutionError } from './evolution'
 import { cleanJid, downloadPhoto, HIDDEN_NUMBER_MESSAGE, jidKind, mentionView, phoneOfJid, photoDue, PhotoQueue } from './contato-wa'
 import { type Sector, servesNumber, splitWhere, teamOf, teamWhere } from './atendentes'
+import { effectiveMonitorNumbers, monitorAccessOf, monitorWhere } from './monitoramento'
 import { type AgendaCategory, answersClient, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isClosingMessage, isOpen, LABEL_COLORS, subBusinessMs, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
 import { parseCsv } from '../atendimento/planilha'
 import { answersNote, type BotOutcome, botStateOf, chooseFlow, continueFlow, flowOf, startFlow } from './fluxo'
@@ -835,29 +836,36 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
    * (quem a tem como gestora e os setores que ela gerencia). null = nada.
    */
   async monitorScope(user: AuthUser): Promise<Prisma.WhatsappConversationWhereInput | null> {
-    if (this.canMonitor(user)) {
-      const ids = await this.monitorNumbers(user)
-      return ids ? { tenantId: user.tenantId, numberId: { in: ids } } : { tenantId: user.tenantId }
-    }
-    const [users, sectors] = await Promise.all([
-      this.prisma.user.findMany({ where: { tenantId: user.tenantId, active: true, managerIds: { has: user.id } }, select: { id: true, managerIds: true } }),
+    return (await this.monitorInput(user)).where
+  }
+
+  /**
+   * Regras do monitoramento (monitoramento.ts): com a permissão, os números (perfil ∩ escolhidos no cadastro do
+   * usuário) e as pessoas (todas, ou só as que o têm como gestor e os setores que gerencia); sem a permissão, a equipe.
+   */
+  private async monitorInput(user: AuthUser) {
+    const canMonitor = this.canMonitor(user)
+    const [me, users, sectors, role] = await Promise.all([
+      canMonitor ? this.prisma.user.findUnique({ where: { id: user.id }, select: { monitorEveryone: true, monitorNumberIds: true } }) : Promise.resolve(null),
+      this.prisma.user.findMany({ where: { tenantId: user.tenantId, active: true, deletedAt: null, managerIds: { has: user.id } }, select: { id: true, managerIds: true } }),
       this.sectors(user.tenantId),
+      user.role.isSystem || !canMonitor ? Promise.resolve(null) : this.prisma.role.findUnique({ where: { id: user.role.id }, select: { monitorNumberIds: true } }),
     ])
-    const team = teamWhere(teamOf(user.id, users, sectors))
-    return team ? { tenantId: user.tenantId, ...team } : null
+    const team = teamOf(user.id, users, sectors)
+    const input = {
+      tenantId: user.tenantId,
+      canMonitor,
+      everyone: me?.monitorEveryone !== false,
+      numbers: effectiveMonitorNumbers(role?.monitorNumberIds ?? null, me?.monitorNumberIds ?? null),
+      people: { userIds: team.userIds, sectorIds: team.sectorIds, sellerIds: [], sharedNumberIds: [] },
+    }
+    return { input, where: monitorWhere(input) }
   }
 
-  /** Números que o perfil pode monitorar (escolhidos no perfil de acesso); null = todos. */
-  private async monitorNumbers(user: AuthUser): Promise<string[] | null> {
-    if (user.role.isSystem) return null
-    const role = await this.prisma.role.findUnique({ where: { id: user.role.id }, select: { monitorNumberIds: true } })
-    return role?.monitorNumberIds.length ? role.monitorNumberIds : null
-  }
-
-  /** Para a tela: pode monitorar tudo, só alguns números, só a equipe, ou nada. */
+  /** Para a tela: pode monitorar tudo, só alguns números, só algumas pessoas, só a equipe, ou nada. */
   async monitorAccess(user: AuthUser) {
-    if (this.canMonitor(user)) return { scope: (await this.monitorNumbers(user)) ? ('NUMEROS' as const) : ('TODOS' as const) }
-    return { scope: (await this.monitorScope(user)) ? ('EQUIPE' as const) : null }
+    const { input, where } = await this.monitorInput(user)
+    return monitorAccessOf(input, !!where)
   }
 
   private async assertMonitor(user: AuthUser) {
