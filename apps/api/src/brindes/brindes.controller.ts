@@ -54,6 +54,19 @@ class RangeQuery {
   @IsOptional() @Matches(/^\d{4}-\d{2}$/) ate?: string
 }
 
+class PurchaseDto {
+  @IsUUID() giftId!: string
+  @Matches(/^\d{4}-\d{2}-\d{2}$/) date!: string
+  @IsOptional() @IsString() @MaxLength(60) document?: string | null
+  @IsOptional() @IsString() @MaxLength(120) supplier?: string | null
+  @IsInt() @Min(1) @Max(10_000_000) quantity!: number
+  @IsOptional() @IsNumber() @Min(0) @Max(1_000_000) unitCost?: number | null
+  @IsOptional() @IsNumber() @Min(0) @Max(100_000_000) total?: number | null
+  @IsOptional() @IsBoolean() addToStock?: boolean
+  @IsOptional() @IsBoolean() updateCost?: boolean
+  @IsOptional() @IsString() @MaxLength(500) notes?: string | null
+}
+
 /** Marketing › Controle de brindes: cadastro, cota mensal por vendedor ou filial, retiradas e resumo. */
 @ApiTags('brindes')
 @Controller('marketing/brindes')
@@ -98,6 +111,21 @@ export class BrindesController {
   @Get('mes/relatorio')
   report(@CurrentUser() user: AuthUser, @Query() q: RangeQuery) {
     return this.brindes.report(user, q.de, q.ate)
+  }
+
+  @Get('compras')
+  purchases(@CurrentUser() user: AuthUser, @Query() q: RangeQuery) {
+    return this.brindes.purchases(user, q.de, q.ate)
+  }
+
+  @Post('compras')
+  addPurchase(@CurrentUser() user: AuthUser, @Body() body: PurchaseDto, @ReqContext() ctx: RequestCtx) {
+    return this.brindes.addPurchase(user, body, ctx)
+  }
+
+  @Delete('compras/:id')
+  removePurchase(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    return this.brindes.removePurchase(user, id, ctx)
   }
 
   @Get('mes/retiradas')

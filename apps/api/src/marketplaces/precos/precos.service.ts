@@ -338,10 +338,19 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
           try {
             got = await this.ml.apiGet<{ code?: number; body?: MlItem }[]>(T, '/items', { ids: chunk.join(','), attributes: 'id,title,price,status,sub_status,seller_id,category_id,listing_type_id,condition,available_quantity,shipping,variations' })
           } catch (e) {
-            job.errors += chunk.length
-            job.done += chunk.length
-            job.lastError = (e as Error).message.slice(0, 300)
-            continue
+            // O ML às vezes recusa a leitura em lote (403 "Resource deprecated" em alguns anúncios): lê um por um.
+            job.lastError = `lote recusado, lendo um por um: ${(e as Error).message}`.slice(0, 300)
+            got = []
+            for (const id of chunk) {
+              try {
+                const body = await this.ml.apiGet<MlItem>(T, `/items/${id}`)
+                got.push({ code: 200, body })
+              } catch (err) {
+                got.push({ code: 0, body: { id } as MlItem })
+                job.lastError = `${id}: ${(err as Error).message}`.slice(0, 300)
+              }
+              await sleep(this.readGapMs)
+            }
           }
           for (const g of got) {
             const it = g.body

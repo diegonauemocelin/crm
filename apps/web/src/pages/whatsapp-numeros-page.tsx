@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangleIcon, Loader2Icon, PencilIcon, PlugIcon, PlusIcon, QrCodeIcon, SmartphoneIcon, Trash2Icon, UnplugIcon, UsersIcon, XIcon } from 'lucide-react'
+import { AlertTriangleIcon, HistoryIcon, Loader2Icon, PencilIcon, PlugIcon, PlusIcon, QrCodeIcon, SmartphoneIcon, Trash2Icon, UnplugIcon, UsersIcon, XIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -41,6 +41,13 @@ interface WaNumber {
   signMessages: boolean
   /** ATENDIMENTO (chat) ou MONITORAMENTO (só a direção acompanha; fora do chat). */
   purpose?: 'ATENDIMENTO' | 'MONITORAMENTO'
+  /** Importar mensagens do aparelho ao ler o QR Code (período em dias) e o andamento da última importação. */
+  importHistory?: boolean
+  importHistoryDays?: number
+  historyStatus?: 'AGUARDANDO' | 'IMPORTANDO' | 'CONCLUIDO' | null
+  historyCount?: number
+  historyStartedAt?: string | null
+  historyFinishedAt?: string | null
   connectedAt: string | null
   disconnectedAt: string | null
 }
@@ -64,6 +71,30 @@ const STATUS: Record<Status, { label: string; className: string }> = {
   DESCONECTADO: { label: 'Desconectado', className: 'border-transparent bg-muted text-muted-foreground' },
 }
 const NONE = '__none__'
+const IMPORT_DAYS = [2, 7, 15, 30] as const
+const plural = (n: number, one: string, many: string) => `${n.toLocaleString('pt-BR')} ${n === 1 ? one : many}`
+
+/** Andamento da importação do histórico do aparelho, no cartão do número. */
+function HistoryProgress({ n }: { n: WaNumber }) {
+  if (n.historyStatus === 'IMPORTANDO')
+    return (
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
+        <Loader2Icon className="size-3.5 animate-spin" /> Importando histórico: {plural(n.historyCount ?? 0, 'mensagem', 'mensagens')}
+      </p>
+    )
+  if (n.historyStatus === 'AGUARDANDO' && n.status !== 'DESCONECTADO')
+    return <p className="text-xs text-muted-foreground">Importar mensagens do aparelho: o histórico chega depois que o celular ler o QR Code.</p>
+  if (n.historyStatus === 'CONCLUIDO')
+    return (
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <HistoryIcon className="size-3.5 shrink-0" />
+        Histórico importado: {plural(n.historyCount ?? 0, 'mensagem', 'mensagens')}
+        {n.historyFinishedAt ? ` · terminou ${formatDateTime(n.historyFinishedAt)}` : ''}
+      </p>
+    )
+  if (n.importHistory) return <p className="text-xs text-muted-foreground">Importar mensagens do aparelho ligado ({n.importHistoryDays ?? 15} dias): vale na próxima leitura do QR Code.</p>
+  return null
+}
 
 export function Numbers() {
   const { can } = useAuth()
@@ -181,6 +212,7 @@ export function Numbers() {
                       {n.splitAttendance ? ` · atendimento dividido${n.defaultUserId ? ` · clientes novos para ${d?.users.find((u) => u.id === n.defaultUserId)?.name ?? 'usuário removido'}` : ''}` : ''}
                     </p>
                     {n.status === 'CONECTADO' && n.connectedAt && <p className="text-xs text-muted-foreground">Conectado desde {formatDateTime(n.connectedAt)}</p>}
+                    <HistoryProgress n={n} />
                     {n.status === 'CONECTADO' && n.statusReason?.startsWith('Pode estar sem receber') && (
                       <p role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-900 dark:text-amber-200">
                         {n.statusReason}
@@ -273,14 +305,16 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
   const [createRecords, setCreateRecords] = useState(number?.createRecords ?? true)
   const [signMessages, setSignMessages] = useState(number?.signMessages ?? true)
   const [purpose, setPurpose] = useState<'ATENDIMENTO' | 'MONITORAMENTO'>(number?.purpose ?? 'ATENDIMENTO')
+  const [importHistory, setImportHistory] = useState(number?.importHistory ?? false)
+  const [importHistoryDays, setImportHistoryDays] = useState(number?.importHistoryDays ?? 15)
   const monitor = purpose === 'MONITORAMENTO'
   const [error, setError] = useState<string | null>(null)
-  const current = { name, unitId, sellerIds, userIds, split, defaultUserId, createRecords, signMessages, purpose }
+  const current = { name, unitId, sellerIds, userIds, split, defaultUserId, createRecords, signMessages, purpose, importHistory, importHistoryDays }
   const [initial] = useState(current)
   const guard = useCloseGuard(isDirty(initial, current), onClose, 'o número')
   const save = useMutation({
     mutationFn: () => {
-      const body = { name, unitId, sellerIds, userIds, splitAttendance: split && !monitor, defaultUserId: !monitor && split && defaultUserId && userIds.includes(defaultUserId) ? defaultUserId : null, createRecords, signMessages, purpose }
+      const body = { name, unitId, sellerIds, userIds, splitAttendance: split && !monitor, defaultUserId: !monitor && split && defaultUserId && userIds.includes(defaultUserId) ? defaultUserId : null, createRecords, signMessages, purpose, importHistory, importHistoryDays }
       return number ? api.put(`/whatsapp/numeros/${number.id}`, body) : api.post('/whatsapp/numeros', body)
     },
     onSuccess: () => {
@@ -418,6 +452,39 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
           </label>
           </>
           )}
+          <div className="space-y-3 rounded-md border p-3 text-sm">
+            <label className="flex items-start justify-between gap-3">
+              <span>
+                Importar mensagens do aparelho
+                <span className="block text-xs text-muted-foreground">
+                  Traz para o CRM as conversas que já estão no celular, do período escolhido, com a data e a hora originais. Nenhuma mensagem automática é enviada e não abre lead nem pré-venda.
+                </span>
+              </span>
+              <Switch checked={importHistory} onCheckedChange={setImportHistory} aria-label="Importar mensagens do aparelho" />
+            </label>
+            {importHistory && (
+              <div className="space-y-2 border-t pt-3">
+                <Label htmlFor="wa-n-history-days" className="text-xs font-medium">
+                  Período
+                </Label>
+                <Select value={String(importHistoryDays)} onValueChange={(v) => setImportHistoryDays(Number(v))}>
+                  <SelectTrigger id="wa-n-history-days" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {IMPORT_DAYS.map((d) => (
+                      <SelectItem key={d} value={String(d)}>
+                        Últimos {d} dias
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  O WhatsApp só manda o histórico no momento em que o número é conectado pelo QR Code. Se este número já está conectado, é preciso clicar em Desconectar e depois em Conectar, lendo o QR Code de novo. As conversas ficam só neste número (não se misturam com as de outros números). Mensagens com mais de 2 dias entram como registro: não contam como não lidas nem no tempo de espera.
+                </p>
+              </div>
+            )}
+          </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => void guard()}>

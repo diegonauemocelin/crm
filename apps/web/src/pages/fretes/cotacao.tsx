@@ -652,6 +652,11 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
                         {money(r.total)}
                         {r.total !== null && r.total === cheapest && <span className="block text-[11px] font-normal text-[#006300] dark:text-[#0ca30c]">menor preço</span>}
                         {bestBalance === r && ok.length > 1 && <span className="block text-[11px] font-normal text-violet-700 dark:text-violet-300">melhor equilíbrio</span>}
+                        {r.campaign && (
+                          <span className="block text-[11px] font-normal text-amber-700 dark:text-amber-300" title={`Campanha: ${r.campaign.name} (${r.campaign.label})`}>
+                            cobrar do cliente {r.campaign.customerPrice === 0 ? 'frete grátis' : money(r.campaign.customerPrice)} · {r.campaign.name}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="hidden text-right tabular-nums md:table-cell">{money(fp)}</TableCell>
                       <TableCell className="hidden text-right tabular-nums md:table-cell">{r.total === null ? '—' : money(taxes)}</TableCell>

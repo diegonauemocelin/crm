@@ -101,8 +101,30 @@ class BraspressDto {
   @IsOptional() @IsIn(['R', 'A']) modal?: 'R' | 'A'
 }
 
+class JadlogModalityDto {
+  @IsInt() @Min(0) @Max(9999) code!: number
+  @IsString() @MaxLength(40) name!: string
+}
+
+class JadlogDto {
+  @IsOptional() @IsBoolean() enabled?: boolean
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(500) token?: string | null
+  @IsOptional() @IsString() @MaxLength(20) cnpj?: string
+  @IsOptional() @IsString() @MaxLength(10) account?: string
+  @IsOptional() @IsString() @MaxLength(5) contract?: string
+  @IsOptional() @IsArray() @ArrayMaxSize(3) @ValidateNested({ each: true }) @Type(() => JadlogModalityDto) modalities?: JadlogModalityDto[]
+  @IsOptional() @IsIn(['D', 'R']) delivery?: 'D' | 'R'
+  @IsOptional() @IsNumber() @Min(0) @Max(1000) cubageFactor?: number
+}
+
+class CampaignsDto {
+  /** Lista completa das campanhas (validada e limpa no serviço: cleanCampaigns). */
+  @IsArray() @ArrayMaxSize(100) list!: unknown[]
+}
+
 class IntegrationsDto {
   @IsOptional() @IsObject() @ValidateNested() @Type(() => BraspressDto) braspress?: BraspressDto
+  @IsOptional() @IsObject() @ValidateNested() @Type(() => JadlogDto) jadlog?: JadlogDto
   @IsOptional() @IsObject() @ValidateNested() @Type(() => MelhorEnvioDto) melhorEnvio?: MelhorEnvioDto
   @IsOptional() @IsObject() @ValidateNested() @Type(() => CorreiosDto) correios?: CorreiosDto
 }
@@ -350,6 +372,17 @@ export class FretesController {
   @HttpCode(200)
   seedUnits(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
     return this.painel.seedUsaparts(user, ctx)
+  }
+
+  @Get('campanhas')
+  campaigns(@CurrentUser() user: AuthUser) {
+    if (!(['fretes_cotacao', 'fretes_tabelas'] as const).some((m) => can(user.permissions, user.role.isSystem, m, 'view'))) throw new ForbiddenException('Você não tem permissão para esta ação.')
+    return this.quotes.campaigns(user.tenantId)
+  }
+
+  @Put('campanhas')
+  saveCampaigns(@CurrentUser() user: AuthUser, @Body() dto: CampaignsDto, @ReqContext() ctx: RequestCtx) {
+    return this.quotes.saveCampaigns(user, dto.list, ctx)
   }
 
   @Get('icms')

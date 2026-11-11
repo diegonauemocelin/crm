@@ -1435,6 +1435,16 @@ model WhatsappNumber {
   /// ATENDIMENTO (aparece no chat) ou MONITORAMENTO (só a direção acompanha: fora do chat, sem robô, sem pré-venda,
   /// sem mensagem automática; entra no painel do WhatsApp e em Monitorar conversas, só leitura).
   purpose        String    @default("ATENDIMENTO")
+  /// Importar mensagens do aparelho: ao ler o QR Code, o histórico do celular entra no CRM (importHistoryDays dias; 2, 7, 15 ou 30).
+  /// Desligado, entra só o que faltou nas últimas 48 h (queda da sessão).
+  importHistory     Boolean   @default(false)
+  importHistoryDays Int       @default(15)
+  /// Andamento da importação: AGUARDANDO (QR Code pedido), IMPORTANDO ou CONCLUIDO; historyCount = mensagens gravadas.
+  historyStatus     String?
+  historyCount      Int       @default(0)
+  historyStartedAt  DateTime?
+  historyUpdatedAt  DateTime?
+  historyFinishedAt DateTime?
   connectingAt   DateTime?
   connectedAt    DateTime?
   disconnectedAt DateTime?
@@ -1562,6 +1572,8 @@ model WhatsappMessage {
   conversationId String   @db.Uuid
   /// Id da mensagem no WhatsApp (evita gravar a mesma duas vezes).
   waId           String
+  /// Endereço (remoteJid) que o WhatsApp confirmou no envio: corrigir/apagar precisa dele (pode ser @lid ou o celular sem o 9).
+  waRemoteJid    String?
   fromMe         Boolean
   /// texto, imagem, audio, video, documento, figurinha, localizacao, contato, outro
   type           String
@@ -3428,6 +3440,7 @@ model Gift {
 
   quotas     GiftQuota[]
   deliveries GiftDelivery[]
+  purchases  GiftPurchase[]
   loyaltyRewards LoyaltyReward[]
 
   @@unique([tenantId, name])
@@ -3456,6 +3469,31 @@ model GiftQuota {
 }
 
 /// Brinde entregue pelo vendedor (ou pela filial) a um cliente: baixa do estoque e da cota do mês.
+/// Compra de brinde (custos e despesas): pedido ou nota fiscal, data, quantidade e valor. Pode dar entrada no estoque.
+model GiftPurchase {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  giftId        String   @db.Uuid
+  date          DateTime @db.Date
+  /// Número do pedido ou da nota fiscal de compra.
+  document      String?
+  supplier      String?
+  quantity      Int
+  unitCost      Decimal  @db.Decimal(12, 2)
+  total         Decimal  @db.Decimal(14, 2)
+  /// A compra somou a quantidade no estoque do brinde (excluir a compra tira de novo).
+  addedToStock  Boolean  @default(true)
+  notes         String?
+  createdById   String?  @db.Uuid
+  createdByName String?
+  createdAt     DateTime @default(now())
+
+  gift Gift @relation(fields: [giftId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, date])
+  @@map("gift_purchases")
+}
+
 model GiftDelivery {
   id            String   @id @default(uuid()) @db.Uuid
   tenantId      String   @db.Uuid

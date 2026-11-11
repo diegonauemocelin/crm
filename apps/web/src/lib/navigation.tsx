@@ -62,6 +62,7 @@ import {
   ReceiptIcon,
   BellIcon,
   PieChartIcon,
+  TicketPercentIcon,
 } from 'lucide-react'
 import type { Action } from './types'
 
@@ -200,6 +201,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Relatórios de frete', to: '/fretes/relatorios', icon: FileBarChartIcon, module: 'fretes_cte' },
       { title: 'Alertas de frete', to: '/fretes/alertas', icon: BellIcon, module: 'fretes_painel' },
       { title: 'Tabelas de frete', to: '/fretes/tabelas', icon: TableIcon, module: 'fretes_tabelas' },
+      { title: 'Campanhas de frete', to: '/fretes/campanhas', icon: TicketPercentIcon, module: 'fretes_cotacao' },
       { title: 'Transportadoras', to: '/fretes/transportadoras', icon: TruckIcon, module: 'fretes_transportadoras' },
       { title: 'Cidades atendidas', to: '/fretes/cidades-atendidas', icon: MapPinnedIcon, module: 'fretes_transportadoras' },
       { title: 'Filiais e integrações', to: '/fretes/filiais', icon: Building2Icon, module: 'fretes_filiais' },

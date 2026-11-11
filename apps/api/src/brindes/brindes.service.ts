@@ -326,7 +326,71 @@ export class BrindesService {
       })),
       months,
     )
-    return { from: months[0], to: months[months.length - 1], ...report }
+    // Compras do período (custos e despesas): comparar o comprado com o distribuído.
+    const buys = await this.prisma.giftPurchase.findMany({ where: { tenantId: user.tenantId, date: { gte: start, lt: end } }, select: { date: true, quantity: true, total: true } })
+    const purchasedByMonth = new Map(months.map((m) => [m, { quantity: 0, value: 0 }]))
+    let purchasedQty = 0
+    let purchasedValue = 0
+    for (const b of buys) {
+      const m = purchasedByMonth.get(b.date.toISOString().slice(0, 7))
+      purchasedQty += b.quantity
+      purchasedValue += n(b.total)
+      if (m) {
+        m.quantity += b.quantity
+        m.value += n(b.total)
+      }
+    }
+    const round = (x: number) => Math.round(x * 100) / 100
+    return {
+      from: months[0],
+      to: months[months.length - 1],
+      ...report,
+      byMonth: report.byMonth.map((x) => ({ ...x, purchasedQuantity: purchasedByMonth.get(x.month)?.quantity ?? 0, purchasedValue: round(purchasedByMonth.get(x.month)?.value ?? 0) })),
+      purchased: { quantity: purchasedQty, value: round(purchasedValue) },
+    }
+  }
+
+  // ---------- Compras (custos e despesas) ----------
+
+  async purchases(user: AuthUser, fromIn?: string, toIn?: string) {
+    this.assertCan(user)
+    const to = monthOf(toIn)
+    const months = monthsBetween(monthOf(fromIn ?? to), to)
+    const start = monthRange(months[0]!).start
+    const end = monthRange(months[months.length - 1]!).end
+    const rows = await this.prisma.giftPurchase.findMany({ where: { tenantId: user.tenantId, date: { gte: start, lt: end } }, orderBy: [{ date: 'desc' }, { createdAt: 'desc' }], take: 2000, include: { gift: { select: { name: true } } } })
+    return rows.map((r) => ({ id: r.id, date: r.date.toISOString().slice(0, 10), giftId: r.giftId, gift: r.gift.name, document: r.document, supplier: r.supplier, quantity: r.quantity, unitCost: n(r.unitCost), total: n(r.total), addedToStock: r.addedToStock, notes: r.notes, createdByName: r.createdByName }))
+  }
+
+  async addPurchase(user: AuthUser, d: { giftId: string; date: string; document?: string | null; supplier?: string | null; quantity: number; unitCost?: number | null; total?: number | null; addToStock?: boolean; updateCost?: boolean; notes?: string | null }, ctx: RequestCtx) {
+    this.assertCan(user, 'create')
+    const gift = await this.prisma.gift.findFirst({ where: { id: d.giftId, tenantId: user.tenantId } })
+    if (!gift) throw new BadRequestException('Brinde não encontrado.')
+    if (!Number.isInteger(d.quantity) || d.quantity < 1) throw new BadRequestException('Informe a quantidade.')
+    // Informe o valor unitário ou o total da compra; o outro é calculado.
+    const total = d.total != null && d.total > 0 ? Math.round(d.total * 100) / 100 : d.unitCost != null && d.unitCost >= 0 ? Math.round(d.unitCost * d.quantity * 100) / 100 : null
+    if (total === null) throw new BadRequestException('Informe o valor unitário ou o total da compra.')
+    const unitCost = Math.round((total / d.quantity) * 100) / 100
+    const addToStock = d.addToStock !== false
+    const created = await this.prisma.$transaction(async (tx) => {
+      const p = await tx.giftPurchase.create({
+        data: { tenantId: user.tenantId, giftId: gift.id, date: new Date(`${d.date}T00:00:00Z`), document: d.document?.trim().slice(0, 60) || null, supplier: d.supplier?.trim().slice(0, 120) || null, quantity: d.quantity, unitCost, total, addedToStock: addToStock, notes: d.notes?.trim().slice(0, 500) || null, createdById: user.id, createdByName: user.name.slice(0, 120) },
+      })
+      await tx.gift.update({ where: { id: gift.id }, data: { ...(addToStock ? { stock: { increment: d.quantity } } : {}), ...(d.updateCost !== false ? { unitCost } : {}) } })
+      return p
+    })
+    await this.audit.byUser(user, ctx, 'brinde.compra', 'gift_purchase', created.id, { brinde: gift.name, documento: created.document, quantidade: d.quantity, total, estoque: addToStock })
+    return { id: created.id }
+  }
+
+  async removePurchase(user: AuthUser, id: string, ctx: RequestCtx) {
+    this.assertCan(user, 'delete')
+    const p = await this.prisma.giftPurchase.findFirst({ where: { id, tenantId: user.tenantId }, include: { gift: { select: { name: true, stock: true } } } })
+    if (!p) throw new BadRequestException('Compra não encontrada.')
+    if (p.addedToStock && p.gift.stock < p.quantity) throw new BadRequestException(`O estoque de ${p.gift.name} (${p.gift.stock}) é menor que a quantidade da compra (${p.quantity}): parte já foi distribuída.`)
+    await this.prisma.$transaction([this.prisma.giftPurchase.delete({ where: { id } }), ...(p.addedToStock ? [this.prisma.gift.update({ where: { id: p.giftId }, data: { stock: { decrement: p.quantity } } })] : [])])
+    await this.audit.byUser(user, ctx, 'brinde.compra_excluida', 'gift_purchase', id, { brinde: p.gift.name, documento: p.document, quantidade: p.quantity, total: n(p.total) })
+    return { ok: true }
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { braspressBody, correiosDeclaredService, correiosPriceQuery, melhorEnvioBody, packageOf, parseBraspress, parseCorreiosDeadline, parseCorreiosPrice, parseMelhorEnvio } from '../src/fretes/integracoes'
+import { braspressBody, jadlogBody, jadlogWeight, parseJadlog, correiosDeclaredService, correiosPriceQuery, melhorEnvioBody, packageOf, parseBraspress, parseCorreiosDeadline, parseCorreiosPrice, parseMelhorEnvio } from '../src/fretes/integracoes'
 
 describe('fretes: cotação online (Melhor Envio, Correios, Braspress)', () => {
   const pkg = packageOf({ realWeight: 3.5, volumes: [{ quantity: 2, height: 10, width: 20, length: 30 }] }, 1500)
@@ -42,5 +42,26 @@ describe('fretes: despacho até a transportadora', () => {
     const { dropOffOf } = await import('../src/fretes/cotacao.service')
     expect(dropOffOf({ components: [{ code: 'FRETE_PESO', value: 100 }, { code: 'DESPACHO_TERCEIRO', value: 25 }] })).toBe(25)
     expect(dropOffOf({ components: [] })).toBe(0)
+  })
+})
+
+describe('fretes: Jadlog (simulador de frete)', () => {
+  const pkg = packageOf({ realWeight: 2, volumes: [{ quantity: 1, height: 50, width: 40, length: 30 }] }, 120.456)
+  const cfg = { account: '000123', contract: '', delivery: 'D' as const, cubageFactor: 0 }
+  it('peso: o maior entre real e cubado (fator da Jadlog)', () => {
+    expect(jadlogWeight(pkg, 0)).toBe(2)
+    expect(jadlogWeight(pkg, 300)).toBe(18) // 0,06 m³ × 300
+  })
+  it('pedido no formato da documentação', () => {
+    const b = jadlogBody({ ...cfg, cubageFactor: 300 }, { from: '89874-000', to: '01001-000', cnpj: '01.704.079/0001-00' }, pkg, [3, 5, 7, 9])
+    expect(b.frete).toHaveLength(3)
+    expect(b.frete[0]).toEqual({ cepori: '89874000', cepdes: '01001000', frap: 'N', peso: 18, cnpj: '01704079000100', conta: '000123', contrato: null, modalidade: 3, tpentrega: 'D', tpseguro: 'N', vldeclarado: 120.46, vlcoleta: 0 })
+  })
+  it('resposta: preço e prazo por modalidade; erro geral', () => {
+    const mods = [{ code: 3, name: '.Package' }]
+    expect(parseJadlog({ frete: [{ modalidade: 3, vltotal: 7.5, prazo: 5 }] }, mods)).toEqual([{ source: 'JADLOG', serviceId: '3', carrier: 'Jadlog', service: '.Package', price: 7.5, deadlineDays: 5, error: null }])
+    const e = parseJadlog({ frete: [{ modalidade: 3 }], error: { id: -1, descricao: 'frete[0].contrato Numero de contrato invalido' } }, mods)
+    expect(e[0]).toMatchObject({ price: null, error: 'frete[0].contrato Numero de contrato invalido' })
+    expect(parseJadlog({}, mods)[0]).toMatchObject({ service: '.Package', price: null })
   })
 })

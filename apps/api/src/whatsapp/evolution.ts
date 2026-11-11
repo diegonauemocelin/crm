@@ -14,6 +14,23 @@ export type NumberStatus = 'CONECTADO' | 'CONECTANDO' | 'DESCONECTADO'
  */
 export const WEBHOOK_EVENTS = ['CONNECTION_UPDATE', 'QRCODE_UPDATED', 'MESSAGES_UPSERT', 'MESSAGES_SET', 'MESSAGES_UPDATE', 'MESSAGES_EDITED', 'MESSAGES_DELETE', 'SEND_MESSAGE', 'CALL']
 
+/**
+ * Ajustes da instância na Evolution (a /settings/set exige todos). syncFullHistory: com "Importar mensagens do aparelho"
+ * ligado no número, o WhatsApp manda o histórico completo ao ler o QR Code (vale para a próxima leitura; a Evolution lê
+ * o ajuste ao abrir a conexão). Desligado, só o recente (o CRM aproveita as últimas 48 h).
+ */
+export function instanceSettings(fullHistory: boolean) {
+  return {
+    rejectCall: false,
+    // Grupos chegam e ficam na aba Grupos do chat (sem lead nem pré-venda).
+    groupsIgnore: false,
+    alwaysOnline: false,
+    readMessages: false,
+    readStatus: false,
+    syncFullHistory: fullHistory,
+  }
+}
+
 export class EvolutionError extends Error {
   constructor(
     message: string,
@@ -203,19 +220,13 @@ export class EvolutionClient {
   }
 
   /** Cria a instância já com o endereço de eventos do CRM (com o segredo no caminho). */
-  createInstance(instanceName: string, webhookUrl: string) {
+  createInstance(instanceName: string, webhookUrl: string, fullHistory = false) {
     return this.call('POST', '/instance/create', {
       instanceName,
       integration: 'WHATSAPP-BAILEYS',
       qrcode: false,
       // Não guarda conversas na Evolution: o CRM é quem guarda (e aplica as regras de LGPD).
-      rejectCall: false,
-      // Grupos chegam e ficam na aba Grupos do chat (sem lead nem pré-venda).
-      groupsIgnore: false,
-      alwaysOnline: false,
-      readMessages: false,
-      readStatus: false,
-      syncFullHistory: false,
+      ...instanceSettings(fullHistory),
       webhook: { url: webhookUrl, byEvents: false, base64: false, events: WEBHOOK_EVENTS },
     })
   }
@@ -270,15 +281,8 @@ export class EvolutionClient {
   }
 
   /** Ajustes da instância (as já criadas recebem de novo depois de uma atualização do CRM: ex. passar a receber grupos). */
-  setSettings(instanceName: string) {
-    return this.call('POST', `/settings/set/${encodeURIComponent(instanceName)}`, {
-      rejectCall: false,
-      groupsIgnore: false,
-      alwaysOnline: false,
-      readMessages: false,
-      readStatus: false,
-      syncFullHistory: false,
-    })
+  setSettings(instanceName: string, fullHistory = false) {
+    return this.call('POST', `/settings/set/${encodeURIComponent(instanceName)}`, instanceSettings(fullHistory))
   }
 
   /** Nome (assunto) de um grupo. */
