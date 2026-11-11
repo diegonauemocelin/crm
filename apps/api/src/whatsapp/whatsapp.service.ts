@@ -527,11 +527,18 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
         }
       }
       // Importação do histórico do aparelho parada (o aviso de fim pode não vir): encerra com o que chegou.
-      const importing = await this.prisma.whatsappNumber.findMany({ where: { deletedAt: null, historyStatus: { in: ['AGUARDANDO', 'IMPORTANDO'] } }, select: { id: true, historyStatus: true, historyUpdatedAt: true } })
-      for (const n of importing) {
-        if (n.historyStatus === 'IMPORTANDO' && n.historyUpdatedAt && Date.now() - n.historyUpdatedAt.getTime() <= HISTORY_IDLE_MS) continue
-        // Sem esperar: se ainda houver um pedaço sendo gravado, encerra depois dele (e só se continuar parado).
-        void this.chat.finishStaleHistory(n, n.historyStatus === 'AGUARDANDO' ? 'o WhatsApp não mandou histórico' : 'sem novos pedaços do histórico').catch((err: unknown) => this.logger.warn(`Importação do histórico não encerrada: ${(err as Error).message}`))
+      // Isolado: um problema aqui não impede o resto da conferência (limpeza das instâncias sem número).
+      try {
+        const importing = await this.prisma.whatsappNumber.findMany({ where: { deletedAt: null, historyStatus: { in: ['AGUARDANDO', 'IMPORTANDO'] } }, select: { id: true, historyStatus: true, historyUpdatedAt: true } })
+        for (const n of importing ?? []) {
+          if (n.historyStatus === 'IMPORTANDO' && n.historyUpdatedAt && Date.now() - n.historyUpdatedAt.getTime() <= HISTORY_IDLE_MS) continue
+          // Sem esperar: se ainda houver um pedaço sendo gravado, encerra depois dele (e só se continuar parado).
+          void Promise.resolve()
+            .then(() => this.chat.finishStaleHistory(n, n.historyStatus === 'AGUARDANDO' ? 'o WhatsApp não mandou histórico' : 'sem novos pedaços do histórico'))
+            .catch((err: unknown) => this.logger.warn(`Importação do histórico não encerrada: ${(err as Error).message}`))
+        }
+      } catch (err) {
+        this.logger.warn(`Importação do histórico (conferência): ${(err as Error).message}`)
       }
       if (Date.now() - this.lastOrphanCheck >= ORPHAN_CHECK_MS) {
         this.lastOrphanCheck = Date.now()
