@@ -157,6 +157,7 @@ interface OnlineView {
   melhorEnvio: { enabled: boolean; hasToken: boolean; email: string; sandbox: boolean; services: number[] }
   correios: { enabled: boolean; user: string; hasAccessCode: boolean; postCard: string; products: { code: string; name: string }[] }
   braspress: { enabled: boolean; user: string; hasPassword: boolean; modal: 'R' | 'A' }
+  jadlog: { enabled: boolean; hasToken: boolean; cnpj: string; account: string; contract: string; modalities: { code: number; name: string }[]; delivery: 'D' | 'R'; cubageFactor: number }
 }
 
 /** Cotação online: Melhor Envio (token da conta, escolhendo quais transportadoras aparecem) e Correios (contrato). */
@@ -175,7 +176,7 @@ function OnlineQuotes() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <PlugIcon className="size-4" aria-hidden /> Cotação online: Melhor Envio, Correios e Braspress
+          <PlugIcon className="size-4" aria-hidden /> Cotação online: Melhor Envio, Correios, Braspress e Jadlog
         </CardTitle>
         <CardDescription>
           Ligadas, a cotação de frete também consulta essas APIs na hora e mostra os valores junto com as tabelas, para comparar. As chaves ficam criptografadas e nunca voltam para a tela.
@@ -187,6 +188,7 @@ function OnlineQuotes() {
             <MelhorEnvioForm v={d.melhorEnvio} editable={editable} saving={save.isPending} onSave={(m) => save.mutate({ melhorEnvio: m })} />
             <CorreiosForm v={d.correios} editable={editable} saving={save.isPending} onSave={(c) => save.mutate({ correios: c })} />
             <BraspressForm v={d.braspress} editable={editable} saving={save.isPending} onSave={(b) => save.mutate({ braspress: b })} />
+            {d.jadlog && <JadlogForm v={d.jadlog} editable={editable} saving={save.isPending} onSave={(j) => save.mutate({ jadlog: j })} />}
           </>
         )}
       </CardContent>
@@ -345,6 +347,95 @@ function BraspressForm({ v, editable, saving, onSave }: { v: OnlineView['braspre
             <option value="A">Aéreo</option>
           </select>
         </div>
+      </div>
+      {editable && (
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={saving} onClick={() => onSave(body(v.enabled))}>
+            {saving && <Loader2Icon className="animate-spin" aria-hidden />} Salvar
+          </Button>
+          <Button variant="outline" disabled={saving} onClick={() => onSave(body(!v.enabled))}>
+            {v.enabled ? 'Desligar' : 'Salvar e ligar'}
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function JadlogForm({ v, editable, saving, onSave }: { v: OnlineView['jadlog']; editable: boolean; saving: boolean; onSave: (b: Record<string, unknown>) => void }) {
+  const [token, setToken] = useState('')
+  const [cnpj, setCnpj] = useState(v.cnpj)
+  const [account, setAccount] = useState(v.account)
+  const [contract, setContract] = useState(v.contract)
+  const [delivery, setDelivery] = useState<'D' | 'R'>(v.delivery)
+  const [cubage, setCubage] = useState(v.cubageFactor ? String(v.cubageFactor) : '')
+  const [mods, setMods] = useState<{ code: string; name: string }[]>(() => (v.modalities.length ? v.modalities.map((m) => ({ code: String(m.code), name: m.name })) : [{ code: '', name: '' }]))
+  const body = (enabled: boolean) => ({
+    enabled,
+    cnpj,
+    account,
+    contract,
+    delivery,
+    cubageFactor: Number(cubage.replace(',', '.')) || 0,
+    modalities: mods.filter((m) => m.code.trim() && m.name.trim()).map((m) => ({ code: Number(m.code), name: m.name.trim() })),
+    ...(token.trim() ? { token: token.trim() } : {}),
+  })
+  return (
+    <div className="space-y-3 rounded-md border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-medium">Jadlog</p>
+        <Badge variant="outline" className={v.enabled ? 'border-[#0ca30c]/50 text-[#006300] dark:text-[#0ca30c]' : 'text-muted-foreground'}>{v.enabled ? 'Ligado' : v.hasToken ? 'Desligado' : 'Não conectado'}</Badge>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Simulador de frete da API do embarcador. O token, a conta corrente, o contrato, os códigos das modalidades e o fator de cubagem são fornecidos pela Jadlog. O peso enviado é o maior entre o real e o cubado.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="space-y-1.5 sm:col-span-3">
+          <Label htmlFor="jl-token">Token da API {v.hasToken && <span className="text-xs text-muted-foreground">(em branco mantém)</span>}</Label>
+          <Input id="jl-token" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="jl-cnpj">CNPJ do tomador</Label>
+          <Input id="jl-cnpj" inputMode="numeric" placeholder="Vazio = CNPJ da filial" value={cnpj} onChange={(e) => setCnpj(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="jl-conta">Conta corrente</Label>
+          <Input id="jl-conta" inputMode="numeric" placeholder="Só para correntistas" value={account} onChange={(e) => setAccount(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="jl-contrato">Contrato</Label>
+          <Input id="jl-contrato" inputMode="numeric" placeholder="Se a Jadlog fornecer" value={contract} onChange={(e) => setContract(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="jl-entrega">Entrega</Label>
+          <select id="jl-entrega" className="h-9 w-full rounded-md border bg-transparent px-2" value={delivery} onChange={(e) => setDelivery(e.target.value === 'R' ? 'R' : 'D')} disabled={!editable}>
+            <option value="D">No endereço do cliente</option>
+            <option value="R">Retira na unidade Jadlog</option>
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="jl-cub">Fator de cubagem (kg/m³)</Label>
+          <Input id="jl-cub" inputMode="decimal" placeholder="Vazio = só peso real" value={cubage} onChange={(e) => setCubage(e.target.value)} disabled={!editable} />
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Modalidades do contrato (até 3)</Label>
+        {mods.map((m, i) => (
+          <div key={i} className="flex gap-2">
+            <Input aria-label="Código da modalidade" className="w-28" inputMode="numeric" placeholder="Código" value={m.code} onChange={(e) => setMods(mods.map((x, j) => (j === i ? { ...x, code: e.target.value.replace(/\D/g, '') } : x)))} disabled={!editable} />
+            <Input aria-label="Nome da modalidade" placeholder="Nome (ex.: .Package)" value={m.name} onChange={(e) => setMods(mods.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} disabled={!editable} />
+            {editable && mods.length > 1 && (
+              <Button variant="ghost" size="sm" onClick={() => setMods(mods.filter((_, j) => j !== i))}>
+                Tirar
+              </Button>
+            )}
+          </div>
+        ))}
+        {editable && mods.length < 3 && (
+          <Button variant="outline" size="sm" onClick={() => setMods([...mods, { code: '', name: '' }])}>
+            Adicionar modalidade
+          </Button>
+        )}
       </div>
       {editable && (
         <div className="flex flex-wrap gap-2">
