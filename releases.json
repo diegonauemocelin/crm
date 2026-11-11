@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.3",
+      "date": "2026-11-11",
+      "title": "Imagens no e-mail marketing e correção nas mensagens automáticas",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "E-mail marketing",
+          "text": "Imagens mais fáceis de organizar: lista das imagens do e-mail com subir, descer e duplicar, busca na biblioteca e atalhos de 2 ou 3 imagens lado a lado."
+        },
+        {
+          "type": "novo",
+          "area": "E-mail marketing",
+          "text": "Formatos prontos (widescreen 16:9, 4:3, quadrado e banner), tamanho proporcional com botões, régua ou arrastando os cantos, alinhamento e o editor de imagem com recorte, girar, espelhar, brilho, contraste e saturação. A imagem original não é alterada."
+        },
+        {
+          "type": "correcao",
+          "area": "Mensagens automáticas",
+          "text": "Alterar as mensagens automáticas (inclusive a que vai ao vendedor) não dá mais o erro byType quando há texto por tipo de cliente na reativação."
+        }
+      ]
+    },
+    {
       "version": "3.0.2",
       "date": "2026-11-11",
       "title": "Marketplaces: Preços e promoções e Planejamento",
