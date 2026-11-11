@@ -3435,6 +3435,7 @@ model Gift {
 
   quotas     GiftQuota[]
   deliveries GiftDelivery[]
+  purchases  GiftPurchase[]
   loyaltyRewards LoyaltyReward[]
 
   @@unique([tenantId, name])
@@ -3463,6 +3464,31 @@ model GiftQuota {
 }
 
 /// Brinde entregue pelo vendedor (ou pela filial) a um cliente: baixa do estoque e da cota do mês.
+/// Compra de brinde (custos e despesas): pedido ou nota fiscal, data, quantidade e valor. Pode dar entrada no estoque.
+model GiftPurchase {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  giftId        String   @db.Uuid
+  date          DateTime @db.Date
+  /// Número do pedido ou da nota fiscal de compra.
+  document      String?
+  supplier      String?
+  quantity      Int
+  unitCost      Decimal  @db.Decimal(12, 2)
+  total         Decimal  @db.Decimal(14, 2)
+  /// A compra somou a quantidade no estoque do brinde (excluir a compra tira de novo).
+  addedToStock  Boolean  @default(true)
+  notes         String?
+  createdById   String?  @db.Uuid
+  createdByName String?
+  createdAt     DateTime @default(now())
+
+  gift Gift @relation(fields: [giftId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, date])
+  @@map("gift_purchases")
+}
+
 model GiftDelivery {
   id            String   @id @default(uuid()) @db.Uuid
   tenantId      String   @db.Uuid
