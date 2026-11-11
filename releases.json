@@ -2,6 +2,33 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.2",
+      "date": "2026-11-11",
+      "title": "Marketplaces: Preços e promoções e Planejamento",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Marketplaces",
+          "text": "Preços e promoções: altere o preço dos anúncios do Mercado Livre, crie promoções com desconto e cupons do vendedor direto do CRM, um a um ou em lote, com revisão antes de enviar, agendamento, histórico e desfazer."
+        },
+        {
+          "type": "novo",
+          "area": "Marketplaces",
+          "text": "Margem por anúncio com tarifa do Mercado Livre, frete, impostos e custo; preço mínimo, preço sugerido para a margem desejada e uma dica de melhoria em cada anúncio (também com a IA)."
+        },
+        {
+          "type": "novo",
+          "area": "Marketplaces",
+          "text": "Custos das peças informados no CRM: por item, em massa (valor ou % do preço) ou por planilha. Impostos aprendidos das notas de venda do Mercado Envios importadas em Fretes."
+        },
+        {
+          "type": "novo",
+          "area": "Marketplaces",
+          "text": "Planejamento: curva ABC e saúde do catálogo com nota de qualidade, auditoria da conta com análise SWOT, metas mensais com tarefas, sugestão de envio ao Full, sazonalidade, histórico de preço dos concorrentes e DRE do Mercado Livre."
+        }
+      ]
+    },
+    {
       "version": "3.0.1",
       "date": "2026-11-10",
       "title": "SEO Marketplace mais estável",
