@@ -184,8 +184,9 @@ export function MarketplacePrecosPage() {
   const { can } = useAuth()
   const canEdit = can('marketplace_precos', 'edit')
   const [tab, setTab] = useState('anuncios')
-  const [search, setSearch] = useState('')
-  const [q, setQ] = useState('')
+  // Vindo do Planejamento: /marketplaces/precos?busca=MLB...
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get('busca') ?? '')
+  const [q, setQ] = useState(() => new URLSearchParams(window.location.search).get('busca') ?? '')
   const [status, setStatus] = useState('ativos')
   const [full, setFull] = useState('todos')
   const [problem, setProblem] = useState('todos')

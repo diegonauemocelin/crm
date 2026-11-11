@@ -1433,6 +1433,37 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'planejamento-marketplace',
+    title: 'Planejamento (Mercado Livre)',
+    module: 'marketplace_planejamento',
+    routes: ['/marketplaces/planejamento'],
+    purpose: 'Planejar o canal Mercado Livre: o que vende e dá margem, o que está parado, metas do mês, envio ao Full, meses fortes, concorrência e o resultado (DRE).',
+    howItWorks:
+      'O CRM lê os pedidos da conta do Mercado Livre (os 12 meses que a API guarda e, depois, a cada 6 horas) e cruza com os custos, os impostos aprendidos e o frete de Preços e promoções. A curva ABC separa os anúncios por faturamento e por margem; a auditoria junta reputação, qualidade, perguntas sem resposta, Ads e margem; a IA gratuita monta a análise SWOT só com esses números. Metas e tarefas ficam por mês e canal. O Full é sugerido pelo giro (vendas por dia) e pela margem. O histórico de preço dos concorrentes vem da leitura diária de Concorrentes. Nada é alterado no Mercado Livre por esta tela.',
+    lessons: [
+      {
+        id: 'plan.abc',
+        title: 'Ver a curva ABC e os alertas',
+        steps: [
+          'Abra Marketplaces → Planejamento e clique em Ler pedidos agora (a primeira leitura traz 12 meses).',
+          'Escolha o período (60, 90 ou 180 dias) e se a curva é por faturamento ou por margem; filtre por classe ou alerta.',
+          'Clique no anúncio para ver a nota de qualidade (botão Ler qualidade) e abrir em Preços e promoções.',
+        ],
+      },
+      {
+        id: 'plan.metas',
+        title: 'Metas, auditoria e DRE',
+        steps: [
+          'Na aba Metas, escolha o mês, informe faturamento, margem e ACOS e salve; acrescente tarefas com responsável e prazo.',
+          'Acompanhe o real × meta e a projeção do mês pelo ritmo atual.',
+          'Na aba Auditoria, veja o diagnóstico e clique em Gerar análise SWOT (fica guardada com a data).',
+          'Na aba DRE, escolha os meses, veja por mês ou por produto e exporte o CSV. Os itens com * são estimados.',
+        ],
+        tip: 'Sem custo cadastrado, a margem não é calculada: informe os custos em Preços e promoções.',
+      },
+    ],
+  },
+  {
     key: 'assistente-ml',
     title: 'Assistente das perguntas do Mercado Livre',
     module: 'assist_atendimento',

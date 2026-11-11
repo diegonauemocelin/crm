@@ -241,6 +241,8 @@ export class ConcorrentesService implements OnApplicationBootstrap, OnModuleDest
     try {
       if (!c) return
       const now = new Date()
+      // Dia de Brasília (UTC−3) para o histórico de preço.
+      const day = new Date(`${new Date(now.getTime() - 3 * 3_600_000).toISOString().slice(0, 10)}T00:00:00Z`)
       let read = 0
       let withCode = 0
       const seen = new Set<string>()
@@ -252,6 +254,11 @@ export class ConcorrentesService implements OnApplicationBootstrap, OnModuleDest
         const changed = old?.price != null && it.price != null && Number(old.price) !== it.price
         const data = { title: it.title, permalink: it.permalink, price: it.price, status: it.status, freeShipping: it.freeShipping, codes: it.codes, syncedAt: now, ...(changed ? { previousPrice: old.price, priceChangedAt: now } : {}) }
         await this.prisma.mlCompetitorItem.upsert({ where: { competitorId_itemId: { competitorId: c.id, itemId: it.id } }, create: { tenantId: c.tenantId, competitorId: c.id, itemId: it.id, ...data }, update: data })
+        // Histórico de preço por dia (Marketplaces › Planejamento); falha aqui não atrapalha a leitura da loja.
+        if (it.price != null)
+          await this.prisma.mlCompetitorPriceDay
+            .upsert({ where: { competitorId_itemId_date: { competitorId: c.id, itemId: it.id, date: day } }, create: { tenantId: c.tenantId, competitorId: c.id, itemId: it.id, date: day, price: it.price }, update: { price: it.price } })
+            .catch((e: unknown) => this.logger.warn(`Histórico de preço ${it.id}: ${(e as Error).message}`))
       }
       // 1) Busca dos anúncios do vendedor e leitura de cada um. O Mercado Livre pode fechar a busca (403) ou a leitura
       //    de anúncios de outras lojas: aí vale o caminho 2.
