@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.8",
+      "date": "2026-11-11",
+      "title": "Importar mensagens do celular",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "WhatsApp",
+          "text": "Importar mensagens do aparelho: em cada número (WhatsApp › Números), ligue a opção e escolha o período (2, 7, 15 ou 30 dias). Ao ler o QR Code, as conversas do celular desse período entram no CRM com a data original, sem respostas automáticas, alertas ou pré-venda nova. Número já conectado: desconecte e leia o QR Code de novo. Cada mensagem entra só na conversa do número que a recebeu."
+        }
+      ]
+    },
+    {
       "version": "3.0.7",
       "date": "2026-11-11",
       "title": "Cotação online da Jadlog",
