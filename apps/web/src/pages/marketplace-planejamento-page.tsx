@@ -19,6 +19,8 @@ import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
 
 const brl = (n: number | null | undefined) => (n === null || n === undefined ? '—' : n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))
+/** ROAS: quanto volta em vendas para cada R$ 1 investido em anúncios. */
+const roasTxt = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x`)
 const pct = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `${n.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`)
 const int = (n: number | null | undefined) => (n === null || n === undefined ? '—' : n.toLocaleString('pt-BR'))
 const parseNum = (s: string) => {
@@ -423,6 +425,7 @@ interface GoalData {
   revenue: { target: number | null; actual: number; pct: number | null; projection: number; projectionPct: number | null }
   marginPct: { target: number | null; actual: number | null; noCostPct: number | null }
   acos: { target: number | null; actual: number | null }
+  roas: { target: number | null; actual: number | null; revenue: number; cost: number }
   users: { id: string; name: string }[]
 }
 
@@ -471,7 +474,7 @@ function GoalsTab() {
         <TableSkeleton rows={4} />
       ) : (
         <>
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <Card className="gap-2 p-4">
               <p className="text-xs text-muted-foreground">Faturamento</p>
               <p className="text-xl font-semibold tabular-nums">{brl(d.revenue.actual)}</p>
@@ -495,6 +498,15 @@ function GoalsTab() {
               <p className="text-xl font-semibold tabular-nums">{pct(d.acos.actual)}</p>
               <p className="text-xs">Meta: até {pct(d.acos.target)}</p>
               <Bar value={d.acos.actual} max={Math.max(1, (d.acos.target ?? 20) * 1.5)} tone={d.acos.target !== null && d.acos.actual !== null && d.acos.actual > d.acos.target ? 'bad' : 'ok'} />
+            </Card>
+            <Card className="gap-2 p-4">
+              <p className="text-xs text-muted-foreground">ROAS (Mercado Livre Ads)</p>
+              <p className="text-xl font-semibold tabular-nums">{roasTxt(d.roas.actual)}</p>
+              <p className="text-xs">Meta: pelo menos {roasTxt(d.roas.target)}{d.roas.target !== null ? ` (igual ao ACOS de ${pct(d.acos.target)})` : ''}</p>
+              <Bar value={d.roas.actual} max={Math.max(1, (d.roas.target ?? 5) * 1.5)} tone={d.roas.target !== null && d.roas.actual !== null && d.roas.actual < d.roas.target ? 'bad' : 'ok'} />
+              <p className="text-xs text-muted-foreground">
+                Vendas pelos anúncios {brl(d.roas.revenue)} · investimento {brl(d.roas.cost)}
+              </p>
             </Card>
           </div>
           {canEdit && (

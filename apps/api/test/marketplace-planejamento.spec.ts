@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { MODULE_KEYS } from '../src/common/permissions'
 import {
+  roasOf,
   abcClasses,
   addLine,
   auditFindings,
@@ -155,5 +156,14 @@ describe('DRE', () => {
 
   it('módulo de permissão novo', () => {
     expect(MODULE_KEYS).toContain('marketplace_planejamento')
+  })
+})
+
+describe('ROAS', () => {
+  it('é o ACOS ao contrário', () => {
+    expect(roasOf(15)).toBe(6.67)
+    expect(roasOf(10.7)).toBe(9.35)
+    expect(roasOf(null)).toBeNull()
+    expect(roasOf(0)).toBeNull()
   })
 })
