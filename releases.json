@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.11",
+      "date": "2026-11-11",
+      "title": "Campanhas de frete",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Campanhas de frete (Fretes › Campanhas de frete): escolha transportadoras, estados e cidades de destino, valor mínimo da nota e vigência, e como será a campanha: % sobre o valor da nota, desconto na tabela ou frete grátis. Na cotação, cada opção mostra quanto cobrar do cliente pela campanha."
+        }
+      ]
+    },
+    {
       "version": "3.0.10",
       "date": "2026-11-11",
       "title": "Compras de brindes",
