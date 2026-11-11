@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.7",
+      "date": "2026-11-11",
+      "title": "Cotação online da Jadlog",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Jadlog na cotação online: com o token da API e as modalidades do contrato (Fretes › Filiais › Cotação online), a cotação de frete consulta a Jadlog na hora e mostra preço e prazo junto com as tabelas. O peso enviado é o maior entre o real e o cubado (fator informado pela Jadlog)."
+        }
+      ]
+    },
+    {
       "version": "3.0.6",
       "date": "2026-11-11",
       "title": "Correções no chat, fretes, preços e pré-venda",
