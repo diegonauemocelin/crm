@@ -324,7 +324,10 @@ export function auditFindings(s: AuditSummary, minMarginPct: number): Finding[] 
     if (miss) f.push({ level: 'atencao', area: 'Ficha técnica', text: `Atributos vazios: ${s.attributes.missingBrand} sem marca e ${s.attributes.missingPartNumber} sem número de peça (de ${s.attributes.measured}).` })
   }
   if (s.questions.unanswered) f.push({ level: s.questions.oldestHours !== null && s.questions.oldestHours > 24 ? 'alerta' : 'atencao', area: 'Perguntas', text: `${s.questions.unanswered} pergunta(s) sem resposta${s.questions.oldestHours !== null ? `; a mais antiga há ${Math.round(s.questions.oldestHours)} h` : ''}.` })
-  if (s.ads.acos !== null) f.push({ level: 'ok', area: 'Publicidade', text: `ACOS de ${pctTxt(s.ads.acos)} nos últimos ${s.ads.days} dias (investimento R$ ${s.ads.cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}).` })
+  if (s.ads.acos !== null) {
+    const roas = roasOf(s.ads.acos)
+    f.push({ level: 'ok', area: 'Publicidade', text: `ACOS de ${pctTxt(s.ads.acos)}${roas !== null ? ` (ROAS ${roas.toLocaleString('pt-BR', { maximumFractionDigits: 2 })})` : ''} nos últimos ${s.ads.days} dias (investimento R$ ${s.ads.cost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}).` })
+  }
   if (s.sales.contributionPct !== null) f.push({ level: s.sales.contributionPct < minMarginPct ? 'atencao' : 'ok', area: 'Resultado', text: `Margem de contribuição estimada de ${pctTxt(s.sales.contributionPct)} nas vendas dos últimos ${s.sales.days} dias.` })
   const order = { alerta: 0, atencao: 1, ok: 2 }
   return f.sort((a, b) => order[a.level] - order[b.level])
@@ -473,4 +476,9 @@ export function dreCsv(rows: DreRow[], first: string) {
   const head = [first, 'Venda bruta', 'Tarifas ML', 'Frete (estimado)', 'Ads', 'Impostos (estimado)', 'Outras taxas', 'Custo das peças', 'Custo fixo', 'Margem de contribuição', 'Margem %', 'Pedidos', 'Unidades', '% vendas sem custo', 'Estimado']
   const lines = rows.map((d) => [d.label, d.gross, d.fees, d.shipping, d.ads, d.taxes, d.extra, d.cogs, d.fixed, d.contribution, d.contributionPct ?? '', d.orders, d.units, d.noCostPct ?? '', d.estimated ? 'sim' : 'não'].map((v, i) => (i >= 11 && i <= 12 ? String(v) : csvCell(v))).join(';'))
   return `﻿${[head.join(';'), ...lines].join('\r\n')}\r\n`
+}
+
+/** ROAS a partir do ACOS (%): ACOS 15% = ROAS 6,67 (cada R$ 1 investido volta R$ 6,67 em vendas dos anúncios). */
+export function roasOf(acosPct: number | null): number | null {
+  return acosPct !== null && acosPct > 0 ? Math.round((100 / acosPct) * 100) / 100 : null
 }

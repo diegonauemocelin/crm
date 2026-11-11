@@ -38,6 +38,7 @@ import {
   parsePurchaseExperience,
   parseReputation,
   PLAN_CONFIG_KEY,
+  roasOf,
   type PlanConfig,
   seasonality,
   swotPrompt,
@@ -493,13 +494,13 @@ export class PlanejamentoService implements OnApplicationBootstrap, OnModuleDest
     d.orders = orders.size
     d.ads = Number(ads._sum.cost ?? 0)
     const adRevenue = Number(ads._sum.revenue ?? 0)
-    return { dre: closeDre(d), acos: adRevenue > 0 ? round2((d.ads / adRevenue) * 100) : null }
+    return { dre: closeDre(d), acos: adRevenue > 0 ? round2((d.ads / adRevenue) * 100) : null, adRevenue: round2(adRevenue) }
   }
 
   async goals(user: AuthUser, month: string, channel: string) {
     const T = user.tenantId
     const goal = await this.prisma.marketplaceGoal.findUnique({ where: { tenantId_channel_month: { tenantId: T, channel, month } }, include: { tasks: { orderBy: [{ done: 'asc' }, { dueDate: 'asc' }, { createdAt: 'asc' }] } } })
-    const { dre, acos } = await this.monthResult(T, month)
+    const { dre, acos, adRevenue } = await this.monthResult(T, month)
     const nowMonth = monthOf(new Date())
     const total = daysInMonth(month)
     const day = month < nowMonth ? total : month > nowMonth ? 0 : Number(new Date(Date.now() - 3 * 3_600_000).toISOString().slice(8, 10))
@@ -513,6 +514,8 @@ export class PlanejamentoService implements OnApplicationBootstrap, OnModuleDest
       revenue: goalProgress(num(goal?.revenueTarget), dre.gross, day, total),
       marginPct: { target: num(goal?.marginPctTarget), actual: dre.revenueNoCost > 0 ? null : dre.contributionPct, estimated: true, noCostPct: dre.noCostPct },
       acos: { target: num(goal?.acosTarget), actual: acos },
+      // ROAS = receita dos anúncios ÷ investimento; a meta é a mesma do ACOS vista ao contrário (ACOS 15% = ROAS 6,67).
+      roas: { target: roasOf(num(goal?.acosTarget)), actual: dre.ads > 0 ? round2(adRevenue / dre.ads) : null, revenue: adRevenue, cost: round2(dre.ads) },
       dre,
       users,
     }
