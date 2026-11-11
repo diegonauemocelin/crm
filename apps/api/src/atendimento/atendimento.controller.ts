@@ -201,6 +201,8 @@ class ReactivationStepDto {
   @ApiProperty() @IsBoolean() enabled!: boolean
   @ApiProperty({ minimum: 1, maximum: 1095, description: 'Dias depois do resultado' }) @IsInt() @Min(1) @Max(1095) days!: number
   @ApiProperty() @IsString() @Length(1, 1000) text!: string
+  /** Texto por tipo de cliente (id do tipo -> texto); vazio usa o texto padrão. Limpo no serviço (cleanByType). */
+  @ApiPropertyOptional({ description: 'Texto por tipo de cliente' }) @IsOptional() @IsObject() byType?: Record<string, string>
 }
 
 class ReactivationDto {

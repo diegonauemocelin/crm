@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type Block, cleanBlocks, collectLinks, htmlToText, personalize, renderEmail, safeUrl, sanitizeRich, whatsappUrl } from '../src/email/blocos'
+import { type Block, cleanBlocks, cleanImageName, collectLinks, imageLayout, htmlToText, personalize, renderEmail, safeUrl, sanitizeRich, whatsappUrl } from '../src/email/blocos'
 
 const brand = { appName: 'Usaparts', color: '#1d4ed8', logoUrl: 'https://crm.usaparts.com.br/api/files/public/logo', footerText: 'Usaparts Importadora\nMaravilha/SC' }
 const base = { brand, subject: 'Ofertas para {primeiro_nome}', person: { name: 'Maria Souza', email: 'maria@x.com' }, unsubscribeUrl: 'https://crm/descadastro/tok?c=1' }
@@ -404,5 +404,60 @@ describe('Recusa temporária do servidor de e-mail (4xx)', () => {
     // O limite do servidor (Configurações › E-mail) vale quando é menor que o da campanha.
     expect(batchSize(600, 20, 0)).toBe(5)
     expect(batchSize(0, 0, 0)).toBe(15)
+  })
+})
+
+describe('imagens: tamanho, posição e formatos', () => {
+  it('e-mail antigo continua igual (centro, largura inteira)', () => {
+    const blocks = clean([{ type: 'imagem', url: 'https://cdn.exemplo.com/a.jpg', alt: 'Peça', width: 50 }])
+    expect(blocks[0]).toEqual({ type: 'imagem', url: 'https://cdn.exemplo.com/a.jpg', alt: 'Peça', width: 50 })
+    const html = renderEmail(blocks, base).html
+    expect(html).toContain('<td align="center" style="padding:8px 32px;font-size:0;line-height:0">')
+    expect(html).toContain('width="268" style="display:block;width:100%;max-width:268px;height:auto;border:0;border-radius:6px;margin:0 auto"')
+  })
+
+  it('aceita largura de 10% a 100%, posição e formato; descarta o que não conhece', () => {
+    const blocks = clean([
+      { type: 'imagem', url: 'https://cdn.exemplo.com/a.jpg', width: 10, align: 'right', ratio: '16:9', original: 'https://cdn.exemplo.com/o.jpg' },
+      { type: 'imagem', url: 'https://cdn.exemplo.com/b.jpg', width: 5, align: 'center', ratio: '2:1' },
+      { type: 'imagem', url: 'https://cdn.exemplo.com/c.jpg', width: 150, align: 'meio', original: 'https://cdn.exemplo.com/c.jpg' },
+    ])
+    expect(blocks[0]).toMatchObject({ width: 10, align: 'right', ratio: '16:9', original: 'https://cdn.exemplo.com/o.jpg' })
+    expect(blocks[1]).toMatchObject({ width: 100, align: undefined, ratio: undefined })
+    // A original igual à atual não precisa ficar guardada.
+    expect(blocks[2]).toMatchObject({ width: 100, align: undefined, original: undefined })
+    expect(cleanBlocks([{ type: 'imagem', url: 'https://cdn.exemplo.com/a.jpg', original: 'javascript:x' }])).toMatchObject({ error: expect.stringMatching(/original/) })
+  })
+
+  it('posição pela célula (Outlook) e pela margem (os demais), altura automática', () => {
+    const html = renderEmail(clean([
+      { type: 'imagem', url: 'https://cdn.exemplo.com/l.jpg', width: 50, align: 'left' },
+      { type: 'imagem', url: 'https://cdn.exemplo.com/r.jpg', width: 25, align: 'right' },
+    ]), base).html
+    expect(html).toContain('<td align="left" style="padding:8px 32px;font-size:0;line-height:0"><img src="https://cdn.exemplo.com/l.jpg" alt="" width="268" style="display:block;width:100%;max-width:268px;height:auto;border:0;border-radius:6px;margin:0">')
+    expect(html).toContain('<td align="right" style="padding:8px 32px;font-size:0;line-height:0"><img src="https://cdn.exemplo.com/r.jpg" alt="" width="134" style="display:block;width:100%;max-width:134px;height:auto;border:0;border-radius:6px;margin:0 0 0 auto">')
+  })
+
+  it('largura em px conforme o lugar (e-mail, bordas ou coluna)', () => {
+    expect(imageLayout({}, { px: 32, w: 536 })).toEqual({ w: 536, align: 'center', margin: '0 auto' })
+    expect(imageLayout({ edge: true }, { px: 32, w: 536 })).toMatchObject({ w: 600 })
+    expect(imageLayout({ width: 50, align: 'right' }, { px: 6, w: 260 })).toEqual({ w: 130, align: 'right', margin: '0 0 0 auto' })
+  })
+
+  it('imagens lado a lado (colunas) com posição própria', () => {
+    const html = renderEmail(clean([{ type: 'linha', cols: [[{ type: 'imagem', url: 'https://cdn.exemplo.com/a.jpg', align: 'left', width: 80 }], [{ type: 'imagem', url: 'https://cdn.exemplo.com/b.jpg' }]] }]), base).html
+    expect(html).toContain('<td align="left" style="padding:8px 6px;font-size:0;line-height:0"><img src="https://cdn.exemplo.com/a.jpg" alt="" width="')
+    expect(html).toContain('src="https://cdn.exemplo.com/b.jpg"')
+  })
+
+  it('nome da imagem a partir do arquivo', () => {
+    expect(cleanImageName('banner-promo.JPG')).toBe('banner-promo')
+    expect(cleanImageName('C:\\fotos\\filtro óleo.png')).toBe('filtro óleo')
+    // UTF-8 lido como Latin-1 pelo envio do formulário.
+    expect(cleanImageName(Buffer.from('coroa de giro aço.webp', 'utf8').toString('latin1'))).toBe('coroa de giro aço')
+    expect(cleanImageName('  promo <x>\u0007  junho.gif')).toBe('promo x junho')
+    expect(cleanImageName('')).toBeNull()
+    expect(cleanImageName(undefined)).toBeNull()
+    expect(cleanImageName('a'.repeat(300))).toHaveLength(120)
   })
 })

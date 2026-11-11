@@ -15,6 +15,7 @@ import {
   Columns2Icon,
   Columns3Icon,
   CopyIcon,
+  CropIcon,
   EyeIcon,
   GripVerticalIcon,
   HeadingIcon,
@@ -79,6 +80,8 @@ import { useBranding } from '@/lib/branding'
 import { usePageTitle } from '@/lib/page-title'
 import { useConfirm, useUnsavedChangesPrompt } from '@/components/confirm'
 import { AiAssist, AiSuggest } from '@/components/email/ai-assist'
+import { ImageEditDialog } from '@/components/email/image-editor'
+import type { RatioChoice } from '@/lib/image-edit'
 import { PaletteError, Swatches, useEmailPalette } from '@/components/email/palette'
 import {
   type Align,
@@ -94,7 +97,7 @@ import {
   productItem,
   type ProductSearch,
   type Segment,
-  type WhatsappNumber, COLUMN_BLOCKS, type ButtonStyle, BUTTON_SIZES, EMAIL_FONTS, EMAIL_ICONS, youtubeId, SOCIAL_LABEL, SOCIAL_NETWORKS, SOCIAL_PLACEHOLDER, socialIcon, type ColumnContent, type TextAlign } from '@/lib/email'
+  type WhatsappNumber, COLUMN_BLOCKS, EMAIL_CONTENT_WIDTH, IMAGE_MIN_WIDTH, IMAGE_RATIOS, type ButtonStyle, BUTTON_SIZES, EMAIL_FONTS, EMAIL_ICONS, youtubeId, SOCIAL_LABEL, SOCIAL_NETWORKS, SOCIAL_PLACEHOLDER, socialIcon, type ColumnContent, type TextAlign } from '@/lib/email'
 import { cleanRich, legacyToHtml } from '@/lib/rich-text'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
@@ -109,7 +112,14 @@ type Payload = { kind: 'move'; id: string } | { kind: 'moveChild'; id: string; c
 /** O que está sendo arrastado agora (o navegador só deixa ler os dados no "soltar"). */
 let dragging: Payload | null = null
 
+/** Redimensionando uma imagem pelas alças: o bloco não pode começar a ser arrastado. */
+let resizing = false
+
 function startDrag(e: DragEvent, p: Payload) {
+  if (resizing) {
+    e.preventDefault()
+    return
+  }
   dragging = p
   e.dataTransfer.effectAllowed = p.kind === 'move' ? 'move' : 'copy'
   e.dataTransfer.setData('text/plain', 'crm-email')
@@ -125,6 +135,8 @@ type Target =
   | { side: string; dir: 'left' | 'right' }
   | { cell: string; col: number; pos: number }
   | { colSide: string; col: number; dir: 'left' | 'right' }
+  /** Sobre uma imagem dentro da coluna: troca a imagem. */
+  | { onChild: string; col: number; idx: number }
   | null
 
 interface Item {
@@ -288,8 +300,40 @@ export function Editor({ campaign }: { campaign: Campaign }) {
   }
 
   const addImage = (url: string) => {
-    if (path && selectedBlock?.type === 'imagem') updateAt(path, { ...selectedBlock, url })
+    if (path && selectedBlock?.type === 'imagem') updateAt(path, { ...selectedBlock, url, original: undefined, ratio: undefined })
     else insertAfterSelected({ type: 'imagem', url, alt: '', width: 100 })
+  }
+  /** Imagens do e-mail, na ordem (as de dentro das colunas também), para organizar pela aba Imagens. */
+  const emailImages: EmailImageEntry[] = items.flatMap((it, i): EmailImageEntry[] => {
+    if (it.b.type === 'imagem') return [{ key: it.id, block: it.b, up: i > 0, down: i < items.length - 1, inColumn: false }]
+    if (it.b.type !== 'linha') return []
+    return it.b.cols.flatMap((col, ci) => col.flatMap((cb, idx): EmailImageEntry[] => (cb.type === 'imagem' ? [{ key: childKey(it.id, ci, idx), block: cb, up: idx > 0, down: idx < col.length - 1, inColumn: true }] : [])))
+  })
+  const imageAction = (key: string, a: 'up' | 'down' | 'duplicate' | 'remove' | 'select') => {
+    const p = parseSel(key)
+    if (!p) return
+    if (a === 'select') {
+      select(key)
+      requestAnimationFrame(() => document.querySelector(`[data-key="${CSS.escape(key)}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }))
+      return
+    }
+    if ('col' in p) childAction(p, a)
+    else if (a === 'up' || a === 'down') {
+      const i = itemsRef.current.findIndex((x) => x.id === p.id)
+      move(p.id, a === 'up' ? i - 1 : i + 2)
+    } else if (a === 'duplicate') duplicate(p.id)
+    else remove(p.id)
+    // Continua na aba Imagens (duplicar seleciona a cópia, mas não troca de aba).
+    setTab('imagens')
+  }
+  /** Imagem selecionada: põe outra imagem (vazia) ao lado, criando as colunas ou mais uma coluna. */
+  const imageSideBySide = (p: Path) => {
+    const empty: Block = { type: 'imagem', url: '', alt: '', width: 100 }
+    if ('col' in p) return void placeBlock({ colSide: p.id, col: p.col, dir: 'right' }, empty)
+    const x = itemsRef.current
+    const it = x.find((i) => i.id === p.id)
+    if (!it || it.b.type !== 'imagem') return
+    commit(x.map((i) => (i.id === p.id ? { ...i, b: { type: 'linha', cols: [[it.b], [empty]] } } : i)), childKey(p.id, 1, 0))
   }
   const addProduct = (item: ProductItem) => {
     if (selected?.b.type === 'produtos') {
@@ -304,6 +348,19 @@ export function Editor({ campaign }: { campaign: Campaign }) {
     const p = dragging
     dragging = null
     if (!target) return
+    if ('onChild' in target) {
+      // Imagem solta sobre uma imagem de dentro da coluna: troca a imagem (do painel ou do computador).
+      const cp = { id: target.onChild, col: target.col, idx: target.idx }
+      const cur = rowOf(itemsRef.current, cp.id)?.cols[cp.col]?.[cp.idx]
+      if (cur?.type !== 'imagem') return
+      let url = p?.kind === 'image' ? p.url : null
+      if (!p) {
+        const f = files.find((x) => x.type.startsWith('image/'))
+        url = f ? ((await upload.mutateAsync(f).catch(() => null))?.url ?? null) : null
+      }
+      if (url) updateAt(cp, { ...cur, url, original: undefined, ratio: undefined })
+      return
+    }
     if (!p) {
       // Arquivo arrastado do computador: envia e coloca no e-mail.
       const at = 'at' in target ? target.at : 'on' in target ? target.on : items.length
@@ -340,7 +397,7 @@ export function Editor({ campaign }: { campaign: Campaign }) {
     }
     if ('on' in target) {
       const it = items[target.on]
-      if (it && p.kind === 'image' && it.b.type === 'imagem') return updateBlock(it.id, { ...it.b, url: p.url })
+      if (it && p.kind === 'image' && it.b.type === 'imagem') return updateBlock(it.id, { ...it.b, url: p.url, original: undefined, ratio: undefined })
       if (it && p.kind === 'product' && it.b.type === 'produtos') {
         if (it.b.items.length >= 12) return toast.error('No máximo 12 produtos por bloco.')
         return updateBlock(it.id, { ...it.b, items: [...it.b.items, p.item] })
@@ -526,17 +583,21 @@ export function Editor({ campaign }: { campaign: Campaign }) {
             </TabsList>
             <div className="max-h-[calc(100vh-9rem)] overflow-y-auto border-t p-3">
               <TabsContent value="blocos">
-                <BlocksPanel canEdit={canEdit} onAdd={(t) => insertAfterSelected(newBlock(t, numbers.data?.[0]?.phone ?? '', settings.data?.social))} />
+                <BlocksPanel
+                  canEdit={canEdit}
+                  onAdd={(t) => insertAfterSelected(newBlock(t, numbers.data?.[0]?.phone ?? '', settings.data?.social))}
+                  onAddImages={(n) => insertAfterSelected({ type: 'linha', cols: Array.from({ length: n }, () => [{ type: 'imagem', url: '', alt: '', width: 100 } as Block]) })}
+                />
               </TabsContent>
               <TabsContent value="imagens">
-                <ImagesPanel canEdit={canEdit} onPick={addImage} replacing={selectedBlock?.type === 'imagem'} />
+                <ImagesPanel canEdit={canEdit} onPick={addImage} replacing={selectedBlock?.type === 'imagem'} inEmail={emailImages} selectedKey={sel} onImageAction={imageAction} />
               </TabsContent>
               <TabsContent value="produtos">
                 <ProductsPanel canEdit={canEdit} onPick={addProduct} intoSelected={selected?.b.type === 'produtos'} />
               </TabsContent>
               <TabsContent value="editar">
                 {selectedBlock && path ? (
-                  <Inspector key={sel} block={selectedBlock} numbers={numbers.data ?? []} disabled={!canEdit} onChange={(b) => updateAt(path, b)} onPickImage={() => setTab('imagens')} onUnwrap={selectedBlock.type === 'linha' ? () => unwrapRow(path.id) : undefined} />
+                  <Inspector key={sel} block={selectedBlock} numbers={numbers.data ?? []} disabled={!canEdit} onChange={(b) => updateAt(path, b)} onPickImage={() => setTab('imagens')} onUnwrap={selectedBlock.type === 'linha' ? () => unwrapRow(path.id) : undefined} onSideBySide={selectedBlock.type === 'imagem' && !('col' in path && (rowOf(items, path.id)?.cols.length ?? 0) >= MAX_COLS) ? () => imageSideBySide(path) : undefined} />
                 ) : (
                   <p className="py-6 text-center text-sm text-muted-foreground">Clique em um bloco do e-mail para editar.</p>
                 )}
@@ -791,6 +852,7 @@ function CanvasBlock(props: {
         selected ? 'outline-[color:var(--brand)]' : 'hover:outline-[#93c5fd]',
         props.highlighted && 'outline-dashed outline-[color:var(--brand)]',
       )}
+      data-key={item.id}
       draggable={canEdit && !(selected && rich)}
       onDragStart={(e) => startDrag(e, { kind: 'move', id: item.id })}
       onDragOver={props.onDragOver}
@@ -875,7 +937,7 @@ function place(items: Item[], target: NonNullable<Target>, b: Block): { items: I
     const id = nextId()
     return { items: [...items.slice(0, target.at), { id, b }, ...items.slice(target.at)], sel: id }
   }
-  if ('on' in target) return 'skip'
+  if ('on' in target || 'onChild' in target) return 'skip'
   if (!inColumn(b)) return NOT_IN_COLUMN
   if ('side' in target) {
     const i = items.findIndex((x) => x.id === target.side)
@@ -954,14 +1016,30 @@ function RowView({ rowId, row, brand, canEdit, ctx }: { rowId: string; row: Row;
               <div key={idx}>
                 {t && 'cell' in t && t.cell === rowId && t.col === ci && t.pos === idx && <DropLine />}
                 <div
-                  className={cn('relative cursor-pointer rounded outline-2 -outline-offset-2 outline-transparent', selected ? 'outline-[color:var(--brand)]' : 'hover:outline-[#93c5fd]')}
+                  data-key={key}
+                  className={cn(
+                    'relative cursor-pointer rounded outline-2 -outline-offset-2 outline-transparent',
+                    selected ? 'outline-[color:var(--brand)]' : 'hover:outline-[#93c5fd]',
+                    t && 'onChild' in t && t.onChild === rowId && t.col === ci && t.idx === idx && 'outline-dashed outline-[color:var(--brand)]',
+                  )}
                   draggable={canEdit && !(selected && rich)}
                   onDragStart={(e) => {
                     e.stopPropagation()
                     startDrag(e, { kind: 'moveChild', id: rowId, col: ci, idx })
                   }}
                   onDragOver={(e) => {
-                    if (!ctx.accepts(e) || !fitsColumn(dragging)) return
+                    if (!ctx.accepts(e)) return
+                    // Imagem (do painel ou do computador) no meio de uma imagem da coluna: troca a imagem.
+                    if (cb.type === 'imagem' && (dragging?.kind === 'image' || (!dragging && e.dataTransfer.types.includes('Files')))) {
+                      const ir = e.currentTarget.getBoundingClientRect()
+                      const iy = (e.clientY - ir.top) / ir.height
+                      if (iy > 0.2 && iy < 0.8) {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        return ctx.setTarget({ onChild: rowId, col: ci, idx })
+                      }
+                    }
+                    if (!fitsColumn(dragging)) return
                     e.preventDefault()
                     e.stopPropagation()
                     const r = e.currentTarget.getBoundingClientRect()
@@ -1102,18 +1180,7 @@ function BlockView({ block: b, brand, editing, onChange }: { block: Block; brand
       )
     }
     case 'imagem':
-      return (
-        <div className="flex justify-center" style={{ padding: `${b.space ?? 8}px ${b.edge ? 0 : 32}px` }}>
-          {b.url ? (
-            <img src={b.url} alt={b.alt ?? ''} draggable={false} className={cn('block h-auto', !b.edge && 'rounded-md')} style={{ width: `${b.width ?? 100}%` }} />
-          ) : (
-            <div className="flex w-full flex-col items-center gap-1 rounded-md border-2 border-dashed border-[#d1d5db] p-8 text-sm text-[#6b7280]">
-              <ImageIcon className="size-6" />
-              Arraste uma imagem para cá ou escolha na aba Imagens.
-            </div>
-          )}
-        </div>
-      )
+      return <ImageView block={b} editing={editing} onChange={onChange} />
     case 'botao':
     case 'whatsapp': {
       const wa = b.type === 'whatsapp'
@@ -1241,6 +1308,87 @@ function BlockView({ block: b, brand, editing, onChange }: { block: Block; brand
     case 'espaco':
       return <div style={{ height: b.height ?? 24 }} className="bg-[repeating-linear-gradient(45deg,transparent,transparent_6px,#f3f4f6_6px,#f3f4f6_7px)] opacity-0 group-hover:opacity-100" />
   }
+}
+
+type ImageBlock = Extract<Block, { type: 'imagem' }>
+
+/**
+ * Imagem no editor: mesma largura (%) e posição do e-mail. Selecionada, mostra alças nos cantos para aumentar ou
+ * diminuir arrastando (a altura acompanha: a proporção não muda).
+ */
+function ImageView({ block: b, editing, onChange }: { block: ImageBlock; editing: boolean; onChange: (b: Block) => void }) {
+  const box = useRef<HTMLDivElement>(null)
+  const [live, setLive] = useState<number | null>(null)
+  const width = live ?? b.width ?? 100
+  const align = b.align ?? 'center'
+  const startResize = (corner: 'left' | 'right') => (e: React.PointerEvent<HTMLSpanElement>) => {
+    const el = box.current
+    if (!el) return
+    e.preventDefault()
+    e.stopPropagation()
+    resizing = true
+    const full = el.clientWidth
+    const x0 = e.clientX
+    const w0 = (full * (b.width ?? 100)) / 100
+    // Imagem no centro cresce para os dois lados: o arraste conta em dobro.
+    const factor = (align === 'center' ? 2 : 1) * (corner === 'right' ? 1 : -1)
+    let last = b.width ?? 100
+    const move = (ev: PointerEvent) => {
+      last = Math.round(Math.min(100, Math.max(IMAGE_MIN_WIDTH, ((w0 + (ev.clientX - x0) * factor) / full) * 100)))
+      setLive(last)
+    }
+    const end = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', end)
+      window.removeEventListener('pointercancel', end)
+      setTimeout(() => (resizing = false), 0)
+      setLive(null)
+      if (last !== (b.width ?? 100)) onChange({ ...b, width: last })
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', end)
+  }
+  const handle = (corner: 'left' | 'right', pos: string) => (
+    <span
+      role="presentation"
+      title="Arraste para aumentar ou diminuir"
+      draggable={false}
+      onPointerDown={startResize(corner)}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={(e) => e.stopPropagation()}
+      className={cn('absolute z-10 size-3.5 touch-none rounded-sm border-2 border-white bg-[color:var(--brand)] shadow', pos, corner === 'right' ? 'cursor-nwse-resize' : 'cursor-nesw-resize')}
+    />
+  )
+  return (
+    <div style={{ padding: `${b.space ?? 8}px ${b.edge ? 0 : 32}px` }}>
+      <div ref={box} className="flex" style={{ justifyContent: justify(align, 'center') }}>
+        {b.url ? (
+          <div className="relative" style={{ width: `${width}%` }}>
+            <img src={b.url} alt={b.alt ?? ''} draggable={false} className={cn('block h-auto w-full', !b.edge && 'rounded-md')} />
+            {editing && (
+              <>
+                {handle('left', '-bottom-1.5 -left-1.5')}
+                {handle('right', '-right-1.5 -bottom-1.5')}
+                {handle('left', '-top-1.5 -left-1.5')}
+                {handle('right', '-top-1.5 -right-1.5')}
+                {live !== null && (
+                  <span className="pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 rounded bg-black/75 px-1.5 py-0.5 text-[11px] font-medium text-white tabular-nums">
+                    {live}%
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="flex w-full flex-col items-center gap-1 rounded-md border-2 border-dashed border-[#d1d5db] p-8 text-center text-sm text-[#6b7280]">
+            <ImageIcon className="size-6" />
+            Arraste uma imagem para cá ou escolha na aba Imagens.
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 /** Texto editável no próprio e-mail. Colar entra como texto puro (sem a formatação de outro site). */
@@ -1461,7 +1609,7 @@ function ColorPick({ label, icon, onPick }: { label: string; icon: ReactNode; on
 
 // ---------- Painéis ----------
 
-function BlocksPanel({ canEdit, onAdd }: { canEdit: boolean; onAdd: (t: BlockType) => void }) {
+function BlocksPanel({ canEdit, onAdd, onAddImages }: { canEdit: boolean; onAdd: (t: BlockType) => void; onAddImages: (n: 2 | 3) => void }) {
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">Arraste para o e-mail ou clique para colocar abaixo do bloco selecionado.</p>
@@ -1484,9 +1632,39 @@ function BlocksPanel({ canEdit, onAdd }: { canEdit: boolean; onAdd: (t: BlockTyp
           )
         })}
       </div>
+      <p className="pt-1 text-xs font-medium text-muted-foreground">Atalhos</p>
+      <div className="grid grid-cols-2 gap-2">
+        {([2, 3] as const).map((n) => (
+          <button
+            key={n}
+            type="button"
+            disabled={!canEdit}
+            onClick={() => onAddImages(n)}
+            className="flex flex-col items-center gap-1.5 rounded-md border bg-card p-3 text-xs font-medium hover:border-[color:var(--brand)] hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <span className="flex gap-0.5 text-muted-foreground">
+              {Array.from({ length: n }, (_, i) => (
+                <ImageIcon key={i} className="size-4" />
+              ))}
+            </span>
+            {n} imagens lado a lado
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
+
+/** Imagem do e-mail na lista da aba Imagens (as de dentro das colunas também). */
+interface EmailImageEntry {
+  key: string
+  block: ImageBlock
+  up: boolean
+  down: boolean
+  inColumn: boolean
+}
+
+type ImageSort = 'recentes' | 'antigas' | 'nome' | 'maiores'
 
 function useImageUpload() {
   const qc = useQueryClient()
@@ -1501,13 +1679,29 @@ function useImageUpload() {
   })
 }
 
-function ImagesPanel({ canEdit, onPick, replacing }: { canEdit: boolean; onPick: (url: string) => void; replacing: boolean }) {
+function ImagesPanel({
+  canEdit,
+  onPick,
+  replacing,
+  inEmail,
+  selectedKey,
+  onImageAction,
+}: {
+  canEdit: boolean
+  onPick: (url: string) => void
+  replacing: boolean
+  inEmail: EmailImageEntry[]
+  selectedKey: string | null
+  onImageAction: (key: string, a: 'up' | 'down' | 'duplicate' | 'remove' | 'select') => void
+}) {
   const qc = useQueryClient()
   const q = useQuery({ queryKey: ['email-images'], queryFn: () => api.get<EmailImage[]>('/email/imagens') })
   const confirm = useConfirm()
   const upload = useImageUpload()
   const input = useRef<HTMLInputElement>(null)
   const [over, setOver] = useState(false)
+  const [term, setTerm] = useState('')
+  const [sort, setSort] = useState<ImageSort>('recentes')
   const del = useMutation({
     mutationFn: (id: string) => api.delete(`/email/imagens/${id}`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['email-images'] }),
@@ -1516,8 +1710,62 @@ function ImagesPanel({ canEdit, onPick, replacing }: { canEdit: boolean; onPick:
   const send = async (files: File[]) => {
     for (const f of files.filter((x) => x.type.startsWith('image/'))) await upload.mutateAsync(f).catch(() => null)
   }
+  const used = new Set(inEmail.map((x) => x.block.url))
+  const nameOf = (url: string) => q.data?.find((x) => x.url === url)?.name
+  const norm = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  const words = norm(term).split(/\s+/).filter(Boolean)
+  const list = (q.data ?? [])
+    .filter((img) => !words.length || words.every((w) => norm(img.name ?? '').includes(w)))
+    .sort((a, b) =>
+      sort === 'nome'
+        ? (a.name ?? '\uffff').localeCompare(b.name ?? '\uffff', 'pt-BR')
+        : sort === 'maiores'
+          ? b.size - a.size
+          : sort === 'antigas'
+            ? a.createdAt.localeCompare(b.createdAt)
+            : b.createdAt.localeCompare(a.createdAt),
+    )
   return (
     <div className="space-y-3">
+      {inEmail.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">Neste e-mail ({inEmail.length}), de cima para baixo</p>
+          <ul className="space-y-1">
+            {inEmail.map((e, n) => (
+              <li key={e.key} className={cn('flex items-center gap-1 rounded-md border p-1', selectedKey === e.key && 'border-[color:var(--brand)] bg-muted/50')}>
+                <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => onImageAction(e.key, 'select')} title="Selecionar no e-mail">
+                  <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded bg-muted">
+                    {e.block.url ? <img src={e.block.url} alt="" className="size-full object-cover" loading="lazy" /> : <ImageIcon className="size-4 text-muted-foreground" />}
+                  </span>
+                  <span className="min-w-0 text-xs">
+                    <span className="block truncate font-medium">{e.block.alt || nameOf(e.block.original || e.block.url) || (e.block.url ? `Imagem ${n + 1}` : 'Sem imagem')}</span>
+                    <span className="block text-muted-foreground">
+                      {e.block.width ?? 100}%{e.block.ratio ? ` · ${e.block.ratio}` : ''}
+                      {e.inColumn ? ' · em colunas' : ''}
+                    </span>
+                  </span>
+                </button>
+                {canEdit && (
+                  <>
+                    <ToolButton label="Subir" disabled={!e.up} onClick={() => onImageAction(e.key, 'up')}>
+                      <ArrowUpIcon />
+                    </ToolButton>
+                    <ToolButton label="Descer" disabled={!e.down} onClick={() => onImageAction(e.key, 'down')}>
+                      <ArrowDownIcon />
+                    </ToolButton>
+                    <ToolButton label="Duplicar" onClick={() => onImageAction(e.key, 'duplicate')}>
+                      <CopyIcon />
+                    </ToolButton>
+                    <ToolButton label="Tirar do e-mail" onClick={() => onImageAction(e.key, 'remove')}>
+                      <Trash2Icon />
+                    </ToolButton>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {canEdit && (
         <div
           className={cn('rounded-md border-2 border-dashed p-4 text-center text-xs text-muted-foreground transition-colors', over && 'border-[color:var(--brand)] bg-muted/50')}
@@ -1540,6 +1788,23 @@ function ImagesPanel({ canEdit, onPick, replacing }: { canEdit: boolean; onPick:
           <p className="mt-2">ou solte os arquivos aqui. PNG, JPG, GIF ou WEBP até 1,5 MB (banner: 1200 px de largura).</p>
         </div>
       )}
+      <div className="flex gap-2">
+        <div className="relative min-w-0 flex-1">
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Buscar pelo nome" aria-label="Buscar imagem pelo nome" className="h-8 pl-7 text-xs" />
+        </div>
+        <Select value={sort} onValueChange={(v) => setSort(v as ImageSort)}>
+          <SelectTrigger size="sm" className="h-8 w-[118px] text-xs" aria-label="Ordem das imagens">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="recentes">Mais recentes</SelectItem>
+            <SelectItem value="antigas">Mais antigas</SelectItem>
+            <SelectItem value="nome">Nome (A-Z)</SelectItem>
+            <SelectItem value="maiores">Maiores</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       <p className="text-xs text-muted-foreground">{replacing ? 'Clique para trocar a imagem do bloco selecionado, ou arraste para o e-mail.' : 'Arraste para o e-mail ou clique para inserir.'}</p>
       {q.error ? (
         <InlineError error={q.error} onRetry={() => void q.refetch()} />
@@ -1547,20 +1812,27 @@ function ImagesPanel({ canEdit, onPick, replacing }: { canEdit: boolean; onPick:
         <Loader2Icon className="mx-auto animate-spin text-muted-foreground" />
       ) : !q.data?.length ? (
         <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma imagem enviada ainda.</p>
+      ) : !list.length ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">Nenhuma imagem com esse nome.</p>
       ) : (
         <div className="grid grid-cols-2 gap-2">
-          {q.data.map((img) => (
-            <div key={img.id} className="group relative">
+          {list.map((img) => (
+            <div key={img.id} className="group relative min-w-0">
               <button
                 type="button"
                 draggable={canEdit}
                 disabled={!canEdit}
                 onDragStart={(e) => startDrag(e, { kind: 'image', url: img.url })}
                 onClick={() => onPick(img.url)}
-                className="block aspect-square w-full cursor-grab overflow-hidden rounded-md border bg-[repeating-conic-gradient(#f3f4f6_0_25%,#fff_0_50%)] bg-[length:16px_16px] active:cursor-grabbing"
+                title={img.name ?? undefined}
+                className={cn('block aspect-square w-full cursor-grab overflow-hidden rounded-md border bg-[repeating-conic-gradient(#f3f4f6_0_25%,#fff_0_50%)] bg-[length:16px_16px] active:cursor-grabbing', used.has(img.url) && 'border-[color:var(--brand)]')}
               >
-                <img src={img.url} alt="" draggable={false} className="size-full object-contain" loading="lazy" />
+                <img src={img.url} alt={img.name ?? ''} draggable={false} className="size-full object-contain" loading="lazy" />
               </button>
+              <p className="mt-0.5 truncate text-[11px] text-muted-foreground" title={img.name ?? undefined}>
+                {used.has(img.url) && <span className="font-medium text-foreground">No e-mail · </span>}
+                {img.name || formatDateTime(img.createdAt)} · {Math.max(1, Math.round(img.size / 1024))} KB
+              </p>
               {canEdit && (
                 <button
                   type="button"
@@ -1820,10 +2092,136 @@ function IconGrid({ value, onPick, disabled, withNone }: { value?: string; onPic
   )
 }
 
+/** Imagem selecionada: trocar, editar (recorte e ajustes), formato, tamanho proporcional e posição. */
+function ImageInspector({ block: b, head, disabled, onChange, onPickImage, onSideBySide }: { block: ImageBlock; head: ReactNode; disabled: boolean; onChange: (b: Block) => void; onPickImage: () => void; onSideBySide?: () => void }) {
+  const upload = useImageUpload()
+  const lib = useQuery({ queryKey: ['email-images'], queryFn: () => api.get<EmailImage[]>('/email/imagens') })
+  const [edit, setEdit] = useState<{ src: string; ratio?: RatioChoice } | null>(null)
+  const width = b.width ?? 100
+  // Campo % enquanto digita (null = mostra a largura atual).
+  const [typed, setTyped] = useState<string | null>(null)
+  const setWidth = (w: number) => {
+    setTyped(null)
+    if (!Number.isFinite(w)) return
+    const v = Math.round(Math.min(100, Math.max(IMAGE_MIN_WIDTH, w)))
+    onChange({ ...b, width: v })
+  }
+  const px = Math.round(((b.edge ? 600 : EMAIL_CONTENT_WIDTH) * width) / 100)
+  const source = b.original || b.url
+  const nameOf = (url: string) => lib.data?.find((x) => x.url === url)?.name ?? null
+  return (
+    <div className="space-y-3">
+      {head}
+      {b.url && (
+        <div className="flex h-28 items-center justify-center overflow-hidden rounded-md border bg-[repeating-conic-gradient(#f3f4f6_0_25%,#fff_0_50%)] bg-[length:16px_16px]">
+          <img src={b.url} alt="" className="max-h-full max-w-full object-contain" />
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={onPickImage} disabled={disabled}>
+          <ImageIcon /> {b.url ? 'Trocar' : 'Escolher'}
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => setEdit({ src: b.url })} disabled={disabled || !b.url} title="Recortar, girar, espelhar e ajustar brilho, contraste e saturação">
+          <CropIcon /> Editar imagem
+        </Button>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label className="text-sm font-normal">Formato</Label>
+        <div className="flex flex-wrap gap-1">
+          <Button type="button" size="sm" variant={!b.ratio ? 'secondary' : 'outline'} className="h-7 px-2 text-xs" disabled={disabled || !b.original} onClick={() => onChange({ ...b, url: b.original ?? b.url, original: undefined, ratio: undefined })} title={b.original ? 'Voltar para a imagem original, sem recorte nem ajustes' : 'A imagem está no formato original'}>
+            Original
+          </Button>
+          {IMAGE_RATIOS.map((r) => (
+            <Button key={r.id} type="button" size="sm" variant={b.ratio === r.id ? 'secondary' : 'outline'} className="h-7 px-2 text-xs" disabled={disabled || !source} onClick={() => setEdit({ src: source, ratio: r.id })} title={`Recortar em ${r.label} ${r.id}`}>
+              {r.label === r.id ? r.id : `${r.label} ${r.id}`}
+            </Button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">O formato abre o recorte: ajuste o quadro e salve. A imagem original não muda.</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <Label className="text-sm font-normal" htmlFor="i-width">
+            Tamanho
+          </Label>
+          <span className="text-xs text-muted-foreground tabular-nums">{px} px de largura</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <ToolButton label="Diminuir" disabled={disabled || width <= IMAGE_MIN_WIDTH} onClick={() => setWidth(width - 5)}>
+            <MinusIcon />
+          </ToolButton>
+          <input type="range" min={IMAGE_MIN_WIDTH} max={100} step={1} value={width} onChange={(e) => setWidth(Number(e.target.value))} disabled={disabled} aria-label="Tamanho da imagem" className="w-full min-w-0 accent-[color:var(--brand)]" />
+          <ToolButton label="Aumentar" disabled={disabled || width >= 100} onClick={() => setWidth(width + 5)}>
+            <PlusIcon />
+          </ToolButton>
+          <div className="relative w-16 shrink-0">
+            <Input
+              id="i-width"
+              inputMode="numeric"
+              value={typed ?? String(width)}
+              onChange={(e) => setTyped(e.target.value.replace(/\D/g, '').slice(0, 3))}
+              onBlur={() => (typed ? setWidth(Number(typed)) : setTyped(null))}
+              onKeyDown={(e) => e.key === 'Enter' && typed && setWidth(Number(typed))}
+              disabled={disabled}
+              className="h-8 pr-5 text-right text-xs"
+            />
+            <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {[25, 33, 50, 75, 100].map((w) => (
+            <Button key={w} type="button" size="sm" variant={width === w ? 'secondary' : 'ghost'} className="h-6 px-2 text-xs" onClick={() => setWidth(w)} disabled={disabled}>
+              {w === 100 ? 'Inteira' : `${w}%`}
+            </Button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">A altura acompanha (a imagem não deforma). Também dá para arrastar os cantos da imagem no e-mail.</p>
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-sm font-normal">Posição</Label>
+        <AlignPick<Align> value={b.align ?? 'center'} onChange={(a) => onChange({ ...b, align: a === 'center' ? undefined : a })} disabled={disabled || width >= 100} />
+      </div>
+
+      <Field label="Link ao clicar (opcional)" htmlFor="i-link">
+        <Input id="i-link" placeholder="https://..." value={b.link ?? ''} onChange={(e) => onChange({ ...b, link: e.target.value })} disabled={disabled} />
+      </Field>
+      <Field label="Descrição (para quem não vê a imagem)" htmlFor="i-alt">
+        <Input id="i-alt" maxLength={200} value={b.alt ?? ''} onChange={(e) => onChange({ ...b, alt: e.target.value })} disabled={disabled} />
+      </Field>
+      <Field label="Endereço da imagem" htmlFor="i-url">
+        <Input id="i-url" placeholder="https://..." value={b.url} onChange={(e) => onChange({ ...b, url: e.target.value, original: undefined, ratio: undefined })} disabled={disabled} />
+      </Field>
+      {onSideBySide && (
+        <Button type="button" size="sm" variant="outline" className="w-full" onClick={onSideBySide} disabled={disabled}>
+          <Columns2Icon /> Pôr outra imagem ao lado
+        </Button>
+      )}
+
+      {edit && (
+        <ImageEditDialog
+          open
+          onOpenChange={(v) => !v && setEdit(null)}
+          src={edit.src}
+          name={nameOf(edit.src) ?? b.alt}
+          initialRatio={edit.ratio}
+          onSave={async (file, ratio) => {
+            const img = await upload.mutateAsync(file)
+            onChange({ ...b, url: img.url, original: b.original || b.url, ratio })
+            toast.success('Imagem editada. A original continua na biblioteca.')
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
 /** Espaço padrão de cada tipo de bloco (o mesmo do e-mail enviado). */
 const DEFAULT_SPACE: Partial<Record<BlockType, number>> = { linha: 4, titulo: 8, texto: 8, colunas: 8, imagem: 8, video: 8, botao: 16, whatsapp: 16, redes: 12, divisor: 12 }
 
-function Inspector(props: { block: Block; numbers: WhatsappNumber[]; disabled: boolean; onChange: (b: Block) => void; onPickImage: () => void; onUnwrap?: () => void }) {
+function Inspector(props: { block: Block; numbers: WhatsappNumber[]; disabled: boolean; onChange: (b: Block) => void; onPickImage: () => void; onUnwrap?: () => void; onSideBySide?: () => void }) {
   const { block: b, disabled, onChange } = props
   const def = DEFAULT_SPACE[b.type]
   return (
@@ -1884,7 +2282,7 @@ function Inspector(props: { block: Block; numbers: WhatsappNumber[]; disabled: b
   )
 }
 
-function InspectorFields({ block: b, numbers, disabled, onChange, onPickImage, onUnwrap }: { block: Block; numbers: WhatsappNumber[]; disabled: boolean; onChange: (b: Block) => void; onPickImage: () => void; onUnwrap?: () => void }) {
+function InspectorFields({ block: b, numbers, disabled, onChange, onPickImage, onUnwrap, onSideBySide }: { block: Block; numbers: WhatsappNumber[]; disabled: boolean; onChange: (b: Block) => void; onPickImage: () => void; onUnwrap?: () => void; onSideBySide?: () => void }) {
   const head = (
     <p className="mb-3 flex items-center gap-2 text-sm font-semibold">
       {(() => {
@@ -2026,38 +2424,7 @@ function InspectorFields({ block: b, numbers, disabled, onChange, onPickImage, o
       )
     }
     case 'imagem':
-      return (
-        <div className="space-y-3">
-          {head}
-          <Button type="button" size="sm" variant="outline" className="w-full" onClick={onPickImage} disabled={disabled}>
-            <ImageIcon /> Escolher ou enviar imagem
-          </Button>
-          <Field label="Endereço da imagem" htmlFor="i-url">
-            <Input id="i-url" placeholder="https://..." value={b.url} onChange={(e) => onChange({ ...b, url: e.target.value })} disabled={disabled} />
-          </Field>
-          <Field label="Link ao clicar (opcional)" htmlFor="i-link">
-            <Input id="i-link" placeholder="https://..." value={b.link ?? ''} onChange={(e) => onChange({ ...b, link: e.target.value })} disabled={disabled} />
-          </Field>
-          <Field label="Descrição (para quem não vê a imagem)" htmlFor="i-alt">
-            <Input id="i-alt" maxLength={200} value={b.alt ?? ''} onChange={(e) => onChange({ ...b, alt: e.target.value })} disabled={disabled} />
-          </Field>
-          <div className="flex items-center justify-between gap-2">
-            <Label className="text-sm font-normal">Largura</Label>
-            <Select value={String(b.width ?? 100)} onValueChange={(v) => onChange({ ...b, width: Number(v) })} disabled={disabled}>
-              <SelectTrigger size="sm" className="w-28">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[100, 75, 50, 33].map((w) => (
-                  <SelectItem key={w} value={String(w)}>
-                    {w === 100 ? 'Inteira' : `${w}%`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      )
+      return <ImageInspector block={b} head={head} disabled={disabled} onChange={onChange} onPickImage={onPickImage} onSideBySide={onSideBySide} />
     case 'botao':
       return (
         <div className="space-y-3">
