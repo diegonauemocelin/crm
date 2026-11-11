@@ -738,13 +738,27 @@ interface SeasonGroup {
   months: SeasonMonth[]
 }
 
+/** Valor curto para caber sobre a barra: R$ 12,3 mil. */
+const shortBrl = (n: number) => (n >= 1000 ? `R$ ${(n / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mil` : brl(n))
+
 function SeasonChart({ months }: { months: SeasonMonth[] }) {
   const max = Math.max(1, ...months.map((m) => m.avgRevenue ?? 0))
   return (
-    <div className="flex h-32 items-end gap-1">
+    <div className="flex h-44 gap-1">
       {months.map((m) => (
-        <div key={m.month} className="flex flex-1 flex-col items-center gap-1" title={`${m.label}: ${brl(m.avgRevenue)} (índice ${m.index ?? '—'}; ${m.years} ano(s) com dado)`}>
-          <div className={cn('w-full rounded-t', m.strong ? 'bg-green-600' : m.weak ? 'bg-amber-500' : 'bg-primary/60')} style={{ height: `${((m.avgRevenue ?? 0) / max) * 100}%`, minHeight: m.avgRevenue ? 2 : 0 }} />
+        <div key={m.month} className="flex h-full flex-1 flex-col items-center gap-1" title={`${m.label}: ${brl(m.avgRevenue)} (índice ${m.index ?? '—'}; ${m.years} ano(s) com dado)`}>
+          {/* A barra precisa de uma área com altura definida para o % funcionar. */}
+          <div className="relative w-full flex-1">
+            <div
+              className={cn('absolute inset-x-0 bottom-0 rounded-t', m.strong ? 'bg-green-600' : m.weak ? 'bg-amber-500' : 'bg-primary/60')}
+              style={{ height: `${((m.avgRevenue ?? 0) / max) * 100}%`, minHeight: m.avgRevenue ? 2 : 0 }}
+            />
+            {m.avgRevenue ? (
+              <span className="absolute inset-x-0 text-center text-[10px] tabular-nums text-muted-foreground" style={{ bottom: `calc(${((m.avgRevenue ?? 0) / max) * 100}% + 2px)` }}>
+                {shortBrl(m.avgRevenue)}
+              </span>
+            ) : null}
+          </div>
           <span className="text-[10px] text-muted-foreground">{m.label}</span>
         </div>
       ))}
