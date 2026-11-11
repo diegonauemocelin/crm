@@ -4,6 +4,7 @@ import type { RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { PrismaService } from '../prisma/prisma.service'
 import { cleanSector } from './atendentes'
+import { monitorLinkChanges } from './monitoramento'
 
 /**
  * Setores de atendimento da empresa e gestores de cada pessoa (Configurações › Setores e equipes).
@@ -67,5 +68,36 @@ export class SetoresService {
     await this.prisma.user.update({ where: { id: userId }, data: { managerIds: ids } })
     await this.audit.byUser(user, ctx, 'whatsapp.gestores_alterados', 'user', userId, { pessoa: person.name, gestores: ids.length })
     return { id: userId, managerIds: ids }
+  }
+
+  /** O que a pessoa monitora: todas as pessoas ou as escolhidas (managerIds dos monitorados) e os números. */
+  async monitorOf(user: AuthUser, userId: string) {
+    const person = await this.prisma.user.findFirst({ where: { id: userId, tenantId: user.tenantId, deletedAt: null }, select: { monitorEveryone: true, monitorNumberIds: true } })
+    if (!person) throw new NotFoundException('Pessoa não encontrada.')
+    const [monitored, monitoredBy] = await Promise.all([
+      this.prisma.user.findMany({ where: { tenantId: user.tenantId, deletedAt: null, managerIds: { has: userId } }, select: { id: true } }),
+      this.prisma.user.findUnique({ where: { id: userId }, select: { managerIds: true } }),
+    ])
+    const names = monitoredBy?.managerIds.length ? await this.prisma.user.findMany({ where: { id: { in: monitoredBy.managerIds }, deletedAt: null }, select: { id: true, name: true } }) : []
+    return { everyone: person.monitorEveryone, userIds: monitored.map((u) => u.id), numberIds: person.monitorNumberIds, monitoredBy: names }
+  }
+
+  /** Grava quem a pessoa monitora (no managerIds de cada monitorado, a mesma lista de "gestores") e os números. */
+  async setMonitor(user: AuthUser, userId: string, d: { everyone: boolean; userIds: string[]; numberIds: string[] }, ctx: RequestCtx) {
+    const person = await this.prisma.user.findFirst({ where: { id: userId, tenantId: user.tenantId, deletedAt: null } })
+    if (!person) throw new NotFoundException('Pessoa não encontrada.')
+    const wanted = [...new Set(d.userIds)]
+    if (wanted.length && (await this.prisma.user.count({ where: { tenantId: user.tenantId, deletedAt: null, id: { in: wanted } } })) !== wanted.length) throw new BadRequestException('Pessoa inválida na lista.')
+    const numbers = [...new Set(d.numberIds)]
+    if (numbers.length && (await this.prisma.whatsappNumber.count({ where: { tenantId: user.tenantId, deletedAt: null, id: { in: numbers } } })) !== numbers.length) throw new BadRequestException('Número inválido na lista.')
+    const current = (await this.prisma.user.findMany({ where: { tenantId: user.tenantId, managerIds: { has: userId } }, select: { id: true } })).map((u) => u.id)
+    const { add, remove } = monitorLinkChanges(userId, current, d.everyone ? current : wanted)
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: userId }, data: { monitorEveryone: d.everyone, monitorNumberIds: numbers } }),
+      ...add.map((id) => this.prisma.$executeRaw`UPDATE users SET "managerIds" = array_append("managerIds", ${userId}::uuid) WHERE id = ${id}::uuid AND NOT (${userId}::uuid = ANY("managerIds"))`),
+      ...remove.map((id) => this.prisma.$executeRaw`UPDATE users SET "managerIds" = array_remove("managerIds", ${userId}::uuid) WHERE id = ${id}::uuid`),
+    ])
+    await this.audit.byUser(user, ctx, 'whatsapp.monitoramento_alterado', 'user', userId, { pessoa: person.name, todas: d.everyone, pessoas: d.everyone ? undefined : wanted.length, numeros: numbers.length })
+    return this.monitorOf(user, userId)
   }
 }

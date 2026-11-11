@@ -105,6 +105,12 @@ class ManagersDto {
   @ApiProperty({ type: [String] }) @IsArray() @ArrayMaxSize(20) @IsUUID('all', { each: true }) managerIds!: string[]
 }
 
+class MonitorDto {
+  @ApiProperty({ description: 'true = monitora todas as pessoas; false = só as escolhidas' }) @IsBoolean() everyone!: boolean
+  @ApiProperty({ type: [String], description: 'Pessoas monitoradas (quando não é todas)' }) @IsArray() @ArrayMaxSize(500) @IsUUID('all', { each: true }) userIds!: string[]
+  @ApiProperty({ type: [String], description: 'Números monitorados; vazio = os do perfil' }) @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) numberIds!: string[]
+}
+
 /** Setores de atendimento e gestores de cada pessoa (Configurações › Setores e equipes). */
 @ApiTags('WhatsApp')
 @Controller('whatsapp/setores')
@@ -135,6 +141,19 @@ export class SetoresController {
   async remove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
     await this.setores.remove(user, id, ctx)
     return { ok: true }
+  }
+
+  /** Monitoramento escolhido no cadastro do usuário: quem e quais números ele monitora. */
+  @Get('monitoramento/:userId')
+  @RequirePermission('usuarios', 'view')
+  monitorOf(@CurrentUser() user: AuthUser, @Param('userId', ParseUUIDPipe) userId: string) {
+    return this.setores.monitorOf(user, userId)
+  }
+
+  @Put('monitoramento/:userId')
+  @RequirePermission('usuarios', 'edit')
+  setMonitor(@CurrentUser() user: AuthUser, @Param('userId', ParseUUIDPipe) userId: string, @Body() dto: MonitorDto, @ReqContext() ctx: RequestCtx) {
+    return this.setores.setMonitor(user, userId, dto, ctx)
   }
 
   @Put('gestores/:userId')
