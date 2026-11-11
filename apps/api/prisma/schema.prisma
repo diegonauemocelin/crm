@@ -1430,6 +1430,16 @@ model WhatsappNumber {
   /// ATENDIMENTO (aparece no chat) ou MONITORAMENTO (só a direção acompanha: fora do chat, sem robô, sem pré-venda,
   /// sem mensagem automática; entra no painel do WhatsApp e em Monitorar conversas, só leitura).
   purpose        String    @default("ATENDIMENTO")
+  /// Importar mensagens do aparelho: ao ler o QR Code, o histórico do celular entra no CRM (importHistoryDays dias; 2, 7, 15 ou 30).
+  /// Desligado, entra só o que faltou nas últimas 48 h (queda da sessão).
+  importHistory     Boolean   @default(false)
+  importHistoryDays Int       @default(15)
+  /// Andamento da importação: AGUARDANDO (QR Code pedido), IMPORTANDO ou CONCLUIDO; historyCount = mensagens gravadas.
+  historyStatus     String?
+  historyCount      Int       @default(0)
+  historyStartedAt  DateTime?
+  historyUpdatedAt  DateTime?
+  historyFinishedAt DateTime?
   connectingAt   DateTime?
   connectedAt    DateTime?
   disconnectedAt DateTime?
