@@ -198,6 +198,11 @@ model User {
   chatSignature String?
   /// Gestores desta pessoa no chat: podem acompanhar (monitorar, só leitura) as conversas que ela atende.
   managerIds    String[]  @default([]) @db.Uuid
+  /// Monitorar conversas (com a permissão): true = todas as pessoas; false = só quem tem esta pessoa como gestora
+  /// (managerIds dos outros) e os setores que ela gerencia.
+  monitorEveryone Boolean @default(true)
+  /// Números que esta pessoa monitora; vazio = os do perfil (Role.monitorNumberIds). Nunca passa do que o perfil permite.
+  monitorNumberIds String[] @default([]) @db.Uuid
   /// Lições da trilha de conhecimento concluídas (ids definidos na tela).
   trailDone String[] @default([])
   theme  ThemeMode   @default(SYSTEM)
