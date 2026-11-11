@@ -8,6 +8,10 @@ import { assertCan } from './acesso'
 import {
   BRASPRESS_URL,
   braspressBody,
+  DEFAULT_JADLOG,
+  JADLOG_QUOTE_URL,
+  jadlogBody,
+  parseJadlog,
   parseBraspress,
   CORREIOS_BASE,
   correiosError,
@@ -30,6 +34,7 @@ export interface IntegrationsInput {
   melhorEnvio?: { enabled?: boolean; token?: string | null; email?: string; sandbox?: boolean; services?: number[] }
   correios?: { enabled?: boolean; user?: string; accessCode?: string | null; postCard?: string; products?: { code: string; name: string }[] }
   braspress?: { enabled?: boolean; user?: string; password?: string | null; modal?: 'R' | 'A' }
+  jadlog?: { enabled?: boolean; token?: string | null; cnpj?: string; account?: string; contract?: string; modalities?: { code: number; name: string }[]; delivery?: 'D' | 'R'; cubageFactor?: number }
 }
 
 const TIMEOUT_MS = 10_000
@@ -58,6 +63,7 @@ export class IntegracoesService {
       melhorEnvio: { enabled: c.melhorEnvio.enabled, hasToken: !!c.melhorEnvio.tokenEnc, email: c.melhorEnvio.email, sandbox: c.melhorEnvio.sandbox, services: c.melhorEnvio.services },
       correios: { enabled: c.correios.enabled, user: c.correios.user, hasAccessCode: !!c.correios.accessCodeEnc, postCard: c.correios.postCard, products: c.correios.products },
       braspress: { enabled: c.braspress?.enabled ?? false, user: c.braspress?.user ?? '', hasPassword: !!c.braspress?.passwordEnc, modal: c.braspress?.modal ?? 'R' },
+      jadlog: (({ tokenEnc, ...rest }) => ({ ...rest, hasToken: !!tokenEnc }))({ ...DEFAULT_JADLOG, ...(c.jadlog ?? {}) }),
     }
   }
 
@@ -93,12 +99,27 @@ export class IntegracoesService {
       if (b.enabled !== undefined) br.enabled = b.enabled
       if (br.enabled && (!br.user || !br.passwordEnc)) throw new BadRequestException('Para ligar a Braspress, informe o usuário e a senha da API (fornecidos pela Braspress).')
     }
-    await this.settings.set(user.tenantId, INTEGRATIONS_KEY, { melhorEnvio: me, correios: co, braspress: br })
+    const jl = { ...DEFAULT_JADLOG, ...(c.jadlog ?? {}) }
+    if (d.jadlog) {
+      const j = d.jadlog
+      if (j.token !== undefined) jl.tokenEnc = j.token && j.token.trim() ? encrypt(j.token.trim()) : null
+      if (j.cnpj !== undefined) jl.cnpj = j.cnpj.replace(/\D/g, '').slice(0, 14)
+      if (j.account !== undefined) jl.account = j.account.replace(/\D/g, '').slice(0, 6)
+      if (j.contract !== undefined) jl.contract = j.contract.replace(/\D/g, '').slice(0, 3)
+      if (j.modalities !== undefined) jl.modalities = j.modalities.map((m) => ({ code: Math.trunc(Number(m.code)), name: String(m.name ?? '').trim().slice(0, 40) })).filter((m) => Number.isInteger(m.code) && m.code >= 0 && m.name).slice(0, 3)
+      if (j.delivery !== undefined) jl.delivery = j.delivery === 'R' ? 'R' : 'D'
+      if (j.cubageFactor !== undefined) jl.cubageFactor = Number.isFinite(j.cubageFactor) && j.cubageFactor > 0 ? Math.min(1000, j.cubageFactor) : 0
+      if (j.enabled !== undefined) jl.enabled = j.enabled
+      if (jl.cnpj && jl.cnpj.length !== 14) throw new BadRequestException('CNPJ do tomador da Jadlog inválido (14 dígitos).')
+      if (jl.enabled && (!jl.tokenEnc || !jl.modalities.length)) throw new BadRequestException('Para ligar a Jadlog, informe o token da API e ao menos uma modalidade do contrato (fornecidos pela Jadlog).')
+    }
+    await this.settings.set(user.tenantId, INTEGRATIONS_KEY, { melhorEnvio: me, correios: co, braspress: br, jadlog: jl })
     if (co.user !== c.correios.user || co.accessCodeEnc !== c.correios.accessCodeEnc || co.postCard !== c.correios.postCard) this.correiosTokens.delete(user.tenantId)
     await this.audit.byUser(user, ctx, 'frete.integracoes.alteradas', 'settings', INTEGRATIONS_KEY, {
       melhorEnvio: { ligado: me.enabled, token: d.melhorEnvio?.token !== undefined ? 'alterado' : undefined, servicos: me.services.length },
       correios: { ligado: co.enabled, usuario: co.user, codigoAcesso: d.correios?.accessCode !== undefined ? 'alterado' : undefined, cartao: co.postCard, servicos: co.products.map((p) => p.code) },
       braspress: { ligado: br.enabled, usuario: br.user, senha: d.braspress?.password !== undefined ? 'alterada' : undefined, modal: br.modal },
+      jadlog: { ligado: jl.enabled, token: d.jadlog?.token !== undefined ? 'alterado' : undefined, cnpj: jl.cnpj, conta: jl.account, contrato: jl.contract, modalidades: jl.modalities.map((m) => m.code), entrega: jl.delivery, cubagem: jl.cubageFactor },
     })
     return this.view(user)
   }
@@ -183,6 +204,22 @@ export class IntegracoesService {
     return [{ ...base, price: res.ok ? r.price : null, deadlineDays: r.deadlineDays, error: res.ok ? r.error : (r.error ?? `HTTP ${res.status}`) }]
   }
 
+  private async jadlog(c: NonNullable<IntegrationsConfig['jadlog']>, d: { from: string; to: string; senderDoc: string | null }, p: PackageInput): Promise<OnlineQuote[]> {
+    const fail = (error: string) => c.modalities.map((m) => ({ source: 'JADLOG' as const, serviceId: String(m.code), carrier: 'Jadlog', service: m.name, price: null, deadlineDays: null, error }))
+    const cnpj = c.cnpj || d.senderDoc
+    if (!cnpj) return fail('Informe o CNPJ do tomador na integração da Jadlog ou cadastre o CNPJ da filial de origem.')
+    const res = await fetch(JADLOG_QUOTE_URL, {
+      method: 'POST',
+      headers: { Authorization: decrypt(c.tokenEnc!), 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(jadlogBody(c, { from: d.from, to: d.to, cnpj }, p, c.modalities.map((m) => m.code))),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    })
+    const body = await res.json().catch(() => null)
+    if (res.status === 401 || res.status === 403) return fail('A Jadlog recusou o token da API.')
+    if (!res.ok && !body) return fail(`HTTP ${res.status}`)
+    return parseJadlog(body, c.modalities)
+  }
+
   /** Só os Correios (contrato), para a resposta automática de frete no Mercado Livre. Erro quando não está configurado. */
   async correiosQuote(tenantId: string, from: string, to: string, p: PackageInput): Promise<OnlineQuote[]> {
     const c = await this.config(tenantId)
@@ -197,6 +234,11 @@ export class IntegracoesService {
     if (c.braspress?.enabled && c.braspress.passwordEnc) {
       jobs.push(
         this.braspress(c.braspress, { from, to, ...docs }, p).catch((e: unknown) => [{ source: 'BRASPRESS' as const, serviceId: '', carrier: 'Braspress', service: '', price: null, deadlineDays: null, error: `Braspress: ${(e as Error).message}`.slice(0, 200) }]),
+      )
+    }
+    if (c.jadlog?.enabled && c.jadlog.tokenEnc && c.jadlog.modalities.length) {
+      jobs.push(
+        this.jadlog(c.jadlog, { from, to, senderDoc: docs.senderDoc }, p).catch((e: unknown) => [{ source: 'JADLOG' as const, serviceId: '', carrier: 'Jadlog', service: '', price: null, deadlineDays: null, error: `Jadlog: ${(e as Error).message}`.slice(0, 200) }]),
       )
     }
     if (c.melhorEnvio.enabled && c.melhorEnvio.tokenEnc) {
