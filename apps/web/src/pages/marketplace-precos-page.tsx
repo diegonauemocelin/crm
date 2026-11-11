@@ -338,6 +338,9 @@ export function MarketplacePrecosPage() {
               </>
             )}
           </div>
+          {selected.length === 0 && canEdit && (d?.total ?? 0) > 0 && (
+            <p className="text-xs text-muted-foreground">Marque os anúncios na caixa à esquerda para alterar preço, criar promoção ou cupom.</p>
+          )}
           {selected.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 p-2 text-sm">
               <span>{selected.length} selecionado(s)</span>
@@ -471,7 +474,7 @@ export function MarketplacePrecosPage() {
           )}
         </TabsContent>
         <TabsContent value="cupons">
-          <CouponsTab selected={selected} />
+          <CouponsTab selected={selected} onPick={() => setTab('anuncios')} />
         </TabsContent>
         <TabsContent value="historico">
           <HistoryTab />
@@ -1176,7 +1179,7 @@ interface MlCoupon {
 }
 const COUPON_STATUS: Record<string, string> = { pending: 'Programado', started: 'Ativo', finished: 'Finalizado', deleted: 'Excluído' }
 
-function CouponsTab({ selected }: { selected: string[] }) {
+function CouponsTab({ selected, onPick }: { selected: string[]; onPick: () => void }) {
   const qc = useQueryClient()
   const confirm = useConfirm()
   const { can } = useAuth()
@@ -1198,7 +1201,14 @@ function CouponsTab({ selected }: { selected: string[] }) {
           </Button>
         </Can>
       </div>
-      {!selected.length && canEdit && <p className="text-xs text-muted-foreground">Para criar, selecione os anúncios na aba Anúncios.</p>}
+      {!selected.length && canEdit && (
+        <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          Para criar, marque os anúncios na aba Anúncios (a caixa à esquerda de cada um) e volte aqui.
+          <Button size="sm" variant="outline" onClick={onPick}>
+            Escolher anúncios
+          </Button>
+        </p>
+      )}
       {q.error ? (
         <ErrorState error={q.error} onRetry={() => void q.refetch()} />
       ) : !q.data ? (

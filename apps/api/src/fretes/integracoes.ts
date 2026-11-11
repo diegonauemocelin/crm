@@ -29,6 +29,7 @@ export interface IntegrationsConfig {
     postCard: string
     products: CorreiosProduct[]
   }
+  jadlog?: JadlogConfig
   braspress: {
     enabled: boolean
     /** Usuário e senha da API, fornecidos pela Braspress (senha criptografada). */
@@ -52,6 +53,84 @@ export const DEFAULT_INTEGRATIONS: IntegrationsConfig = {
     ],
   },
   braspress: { enabled: false, user: '', passwordEnc: null, modal: 'R' },
+  jadlog: { enabled: false, tokenEnc: null, cnpj: '', account: '', contract: '', modalities: [], delivery: 'D', cubageFactor: 0 },
+}
+
+/** Modalidade negociada com a Jadlog (código numérico do contrato e um nome para a cotação). */
+export interface JadlogModality {
+  code: number
+  name: string
+}
+
+/** Jadlog: simulador de frete da API do embarcador (documento de integração Jadlog v2.3, ago/2025). */
+export interface JadlogConfig {
+  enabled: boolean
+  /** Token fornecido pela Jadlog (criptografado); vai no cabeçalho Authorization. */
+  tokenEnc: string | null
+  /** CNPJ do tomador do serviço (vincula a tabela especial). Vazio = CNPJ da filial de origem. */
+  cnpj: string
+  /** Conta corrente Jadlog (6 dígitos), só para correntistas. */
+  account: string
+  /** Número do contrato (até 3), só quando a Jadlog fornece. */
+  contract: string
+  /** Modalidades negociadas (a tabela de códigos é passada pela Jadlog). */
+  modalities: JadlogModality[]
+  /** D = entrega no domicílio; R = retira na unidade. */
+  delivery: 'D' | 'R'
+  /** Fator de cubagem em kg/m³ informado pela Jadlog; 0 = usa só o peso real. */
+  cubageFactor: number
+}
+
+export const DEFAULT_JADLOG: JadlogConfig = { enabled: false, tokenEnc: null, cnpj: '', account: '', contract: '', modalities: [], delivery: 'D', cubageFactor: 0 }
+
+export const JADLOG_QUOTE_URL = 'https://www.jadlog.com.br/embarcador/api/frete/valor'
+
+/** Peso para a Jadlog: o maior entre o real e o cubado (a API pede sempre o maior). */
+export function jadlogWeight(p: PackageInput, cubageFactor: number) {
+  const cubed = cubageFactor > 0 ? ((p.heightCm * p.widthCm * p.lengthCm) / 1_000_000) * cubageFactor : 0
+  return Math.round(Math.max(p.weightKg, cubed) * 1000) / 1000
+}
+
+/** Corpo do simulador (POST /embarcador/api/frete/valor): um item por modalidade (a API aceita até 3). */
+export function jadlogBody(c: Pick<JadlogConfig, 'account' | 'contract' | 'delivery' | 'cubageFactor'>, d: { from: string; to: string; cnpj: string }, p: PackageInput, modalities: number[]) {
+  return {
+    frete: modalities.slice(0, 3).map((m) => ({
+      cepori: d.from.replace(/\D/g, ''),
+      cepdes: d.to.replace(/\D/g, ''),
+      frap: 'N',
+      peso: jadlogWeight(p, c.cubageFactor),
+      cnpj: d.cnpj.replace(/\D/g, ''),
+      conta: c.account ? c.account : null,
+      contrato: c.contract ? c.contract : null,
+      modalidade: m,
+      tpentrega: c.delivery,
+      tpseguro: 'N',
+      vldeclarado: Math.round(p.value * 100) / 100,
+      vlcoleta: 0,
+    })),
+  }
+}
+
+/** Resposta do simulador: vltotal e prazo por item; erro no item ou geral ("erro" ou "error"). */
+export function parseJadlog(body: unknown, modalities: JadlogModality[]): OnlineQuote[] {
+  const b = (body ?? {}) as Record<string, unknown>
+  const errOf = (e: unknown) => {
+    const o = (e ?? null) as Record<string, unknown> | null
+    if (!o || typeof o !== 'object') return null
+    const t = [o.descricao, o.detalhe].filter((x) => typeof x === 'string' && x.trim()).join(' · ')
+    return t ? t.slice(0, 200) : null
+  }
+  const general = errOf(b.erro) ?? errOf(b.error)
+  const list = Array.isArray(b.frete) ? (b.frete as Record<string, unknown>[]) : []
+  const nameOf = (code: number) => modalities.find((m) => m.code === code)?.name ?? `Modalidade ${code}`
+  if (!list.length) return modalities.slice(0, 3).map((m) => ({ source: 'JADLOG' as const, serviceId: String(m.code), carrier: 'Jadlog', service: m.name, price: null, deadlineDays: null, error: general ?? 'Sem preço para este envio.' }))
+  return list.map((f, i) => {
+    const code = Number(f.modalidade ?? modalities[i]?.code)
+    const price = money(f.vltotal)
+    const days = Number(f.prazo)
+    const err = errOf(f.erro) ?? (price === null ? general ?? 'Sem preço para este envio.' : null)
+    return { source: 'JADLOG' as const, serviceId: String(code), carrier: 'Jadlog', service: nameOf(code), price: err ? null : price, deadlineDays: err || !Number.isFinite(days) ? null : days, error: err }
+  })
 }
 
 export const BRASPRESS_URL = 'https://api.braspress.com/v1/cotacao/calcular/json'
@@ -103,7 +182,7 @@ export function packageOf(m: { realWeight: number; volumes?: { height?: number |
 }
 
 export interface OnlineQuote {
-  source: 'MELHOR_ENVIO' | 'CORREIOS' | 'BRASPRESS'
+  source: 'MELHOR_ENVIO' | 'CORREIOS' | 'BRASPRESS' | 'JADLOG'
   serviceId: string
   carrier: string
   service: string

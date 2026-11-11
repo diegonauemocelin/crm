@@ -78,7 +78,7 @@ export interface QuoteResult {
   /** Coletas da transportadora no dia da cotação, na filial de origem: até que horas tirar pedido e a hora da coleta. */
   pickups?: { cutoff: string; pickup: string; note: string | null }[]
   /** Cotação online (API): de onde veio; não tem tabela no CRM. */
-  online?: 'MELHOR_ENVIO' | 'CORREIOS' | 'BRASPRESS'
+  online?: 'MELHOR_ENVIO' | 'CORREIOS' | 'BRASPRESS' | 'JADLOG'
   /** Como a carga chega à transportadora: ela coleta na empresa ou a empresa despacha (leva até ela). */
   pickupMode?: 'COLETA' | 'DESPACHO'
   /** Despacho pago a um prestador (somado ao total da cotação, fora da conciliação do CT-e). */
@@ -498,7 +498,7 @@ export class CotacaoService {
     const quotes = await this.online.quote(tenantId, p.originZip, p.destZip, packageOf({ realWeight: p.measures.realWeight, volumes: d.volumes }, d.cargoValue), { senderDoc: p.unit.cnpj?.replace(/\D/g, '') || null, recipientDoc: p.doc }).catch(() => [])
     return quotes.map((q) => {
       const ok = q.price !== null && !q.error
-      const label = q.source === 'CORREIOS' ? 'Correios (contrato) · cotação online' : q.source === 'BRASPRESS' ? 'Braspress · cotação online' : 'Melhor Envio · cotação online'
+      const label = q.source === 'CORREIOS' ? 'Correios (contrato) · cotação online' : q.source === 'BRASPRESS' ? 'Braspress · cotação online' : q.source === 'JADLOG' ? 'Jadlog · cotação online' : 'Melhor Envio · cotação online'
       return {
         tableId: null,
         tableName: label,

@@ -1567,6 +1567,8 @@ model WhatsappMessage {
   conversationId String   @db.Uuid
   /// Id da mensagem no WhatsApp (evita gravar a mesma duas vezes).
   waId           String
+  /// Endereço (remoteJid) que o WhatsApp confirmou no envio: corrigir/apagar precisa dele (pode ser @lid ou o celular sem o 9).
+  waRemoteJid    String?
   fromMe         Boolean
   /// texto, imagem, audio, video, documento, figurinha, localizacao, contato, outro
   type           String

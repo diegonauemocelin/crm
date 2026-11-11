@@ -37,6 +37,7 @@ import {
   UF_LIST,
   UF_NAMES,
   ufFromPhoneInput,
+  countryFromPhone,
   useOptions,
   whatsappLink,
 } from '@/lib/atendimento'
@@ -97,7 +98,7 @@ function initial(kind: Kind, r: ServiceRecord | null, prefill?: RecordPrefill): 
     unitId: r?.unitId ?? null,
     originId: r?.originId ?? null,
     customerTypeId: r?.customerTypeId ?? null,
-    country: r?.country ?? 'BR',
+    country: r?.country ?? countryFromPhone(prefill?.phone) ?? 'BR',
     state: r?.state ?? null,
     city: r?.city ?? '',
     brandIds: r?.brandIds ?? prefill?.brandIds ?? [],
@@ -563,6 +564,8 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                         value={form.phone}
                         onChange={(e) => set('phone', maskPhone(e.target.value))}
                         onBlur={() => {
+                          const foreign = countryFromPhone(form.phone)
+                          if (foreign && form.country === 'BR') return setForm((f) => ({ ...f, country: foreign, state: null }))
                           const uf = ufFromPhoneInput(form.phone)
                           if (uf && !form.state && form.country === 'BR') set('state', uf)
                         }}
@@ -591,7 +594,7 @@ export function RecordSheet({ kind, record, onClose, prefill }: { kind: Kind; re
                               {UF_NAMES[uf]} ({uf})
                             </SelectItem>
                           ))}
-                          <SelectItem value="EX">Exterior</SelectItem>
+                          <SelectItem value="EX">Exterior (cliente internacional)</SelectItem>
                         </SelectContent>
                       </Select>
                     </Field>
