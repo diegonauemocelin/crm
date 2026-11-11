@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
 import type { RequestCtx } from '../common/decorators'
@@ -17,6 +18,7 @@ import { FEE_LABEL, FEE_ORDER, type FeeCode } from './taxas'
 import { ibgeByCity } from './regioes'
 import { internalRateFrom, parseCteXml, type RateLearning } from './cte'
 import { IntegracoesService } from './integracoes.service'
+import { bestCampaign, CAMPAIGNS_KEY, cleanCampaigns, type FreightCampaign } from './campanhas'
 import { packageOf } from './integracoes'
 import { parseNumber } from './importacao'
 import { TcarService } from '../tcar/tcar.service'
@@ -81,6 +83,8 @@ export interface QuoteResult {
   online?: 'MELHOR_ENVIO' | 'CORREIOS' | 'BRASPRESS' | 'JADLOG'
   /** Como a carga chega à transportadora: ela coleta na empresa ou a empresa despacha (leva até ela). */
   pickupMode?: 'COLETA' | 'DESPACHO'
+  /** Campanha de frete que vale para esta opção: o que cobrar do cliente em vez do total da tabela. */
+  campaign?: { id: string; name: string; label: string; customerPrice: number; discount: number } | null
   /** Despacho pago a um prestador (somado ao total da cotação, fora da conciliação do CT-e). */
   dropOff?: { cost: number; provider: string | null } | null
 }
@@ -159,6 +163,19 @@ export class CotacaoService {
     private readonly online: IntegracoesService,
     private readonly tcar: TcarService,
   ) {}
+
+  /** Campanhas de frete da empresa. */
+  campaigns(tenantId: string) {
+    return this.settings.get<FreightCampaign[]>(tenantId, CAMPAIGNS_KEY, [])
+  }
+
+  async saveCampaigns(user: AuthUser, raw: unknown, ctx: RequestCtx) {
+    assertCan(user, 'fretes_tabelas', 'edit')
+    const list = cleanCampaigns(raw, () => randomUUID())
+    await this.settings.set(user.tenantId, CAMPAIGNS_KEY, list)
+    await this.audit.byUser(user, ctx, 'frete.campanhas.alteradas', 'settings', CAMPAIGNS_KEY, { campanhas: list.map((c) => ({ nome: c.name, ativa: c.active, tipo: c.mode, valor: c.value, ufs: c.ufs, cidades: c.cities.length, transportadoras: c.carrierIds.length })) })
+    return list
+  }
 
   /** Alíquotas internas de ICMS por UF cadastradas pela empresa (frete dentro do mesmo estado). */
   icmsRates(tenantId: string) {
@@ -674,6 +691,15 @@ export class CotacaoService {
       }
     }
     if (!lean) results.push(...(await this.onlineResults(user.tenantId, p, d)))
+    // Campanhas de frete (Fretes › Campanhas): quanto cobrar do cliente em cada opção.
+    const campaigns = (await this.campaigns(user.tenantId)).filter((c) => c.active)
+    if (campaigns.length) {
+      const date = p.quoteDate.toISOString().slice(0, 10)
+      for (const r of results) {
+        if (r.status !== 'OK' || r.total === null) continue
+        r.campaign = bestCampaign(campaigns, { carrierId: r.carrierId, destUf: p.destUf, destCity: p.destCity, cargoValue: d.cargoValue, date }, r.total)
+      }
+    }
     results.sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || (a.total ?? Infinity) - (b.total ?? Infinity) || (a.deadlineDays ?? 999) - (b.deadlineDays ?? 999))
     return { p, results }
   }
