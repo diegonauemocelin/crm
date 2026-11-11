@@ -20,6 +20,8 @@ class NumberDto {
   @ApiPropertyOptional() @IsOptional() @IsBoolean() createRecords?: boolean
   @ApiPropertyOptional() @IsOptional() @IsBoolean() signMessages?: boolean
   @ApiPropertyOptional({ enum: ['ATENDIMENTO', 'MONITORAMENTO'] }) @IsOptional() @IsIn(['ATENDIMENTO', 'MONITORAMENTO']) purpose?: 'ATENDIMENTO' | 'MONITORAMENTO'
+  @ApiPropertyOptional({ description: 'Importar mensagens do aparelho ao ler o QR Code' }) @IsOptional() @IsBoolean() importHistory?: boolean
+  @ApiPropertyOptional({ description: 'Período da importação, em dias (2 a 30)' }) @IsOptional() @IsInt() @Min(2) @Max(30) importHistoryDays?: number
 }
 
 /** Eventos da Evolution API (só pela rede interna do Docker; o segredo vai no caminho). */

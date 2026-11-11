@@ -9,6 +9,7 @@ import { ChatService } from './chat.service'
 import type { Prisma } from '../generated/prisma/client'
 import { DEAF_REASON, DISCONNECTED_BY_CRM, EvolutionClient, EvolutionError, SESSION_DEAD_REASON, acceptedStatus, cleanQr, deafAction, type NumberStatus, silentTooLong } from './evolution'
 import { isOpen } from './envio'
+import { HISTORY_IDLE_MS, importDays } from './historico'
 
 export interface NumberInput {
   name: string
@@ -20,6 +21,9 @@ export interface NumberInput {
   createRecords?: boolean
   signMessages?: boolean
   purpose?: 'ATENDIMENTO' | 'MONITORAMENTO'
+  /** Importar mensagens do aparelho ao ler o QR Code, e o período (2, 7, 15 ou 30 dias). */
+  importHistory?: boolean
+  importHistoryDays?: number
 }
 
 /** QR Code vale ~40 s na Evolution; sem leitura em 3 minutos, a conexão é cancelada. */
@@ -138,10 +142,10 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
 
   private async syncWebhooks() {
     if (!this.client || !env.evolutionWebhookSecret) return
-    const numbers = await this.prisma.whatsappNumber.findMany({ where: { deletedAt: null, status: { not: 'DESCONECTADO' } }, select: { instanceName: true, name: true } })
+    const numbers = await this.prisma.whatsappNumber.findMany({ where: { deletedAt: null, status: { not: 'DESCONECTADO' } }, select: { instanceName: true, name: true, importHistory: true } })
     for (const n of numbers) {
       await this.client.setWebhook(n.instanceName, this.webhookUrl()).catch((err: unknown) => this.logger.warn(`Eventos do número ${n.name} não atualizados: ${(err as Error).message}`))
-      await this.client.setSettings(n.instanceName).catch((err: unknown) => this.logger.warn(`Ajustes do número ${n.name} não atualizados: ${(err as Error).message}`))
+      await this.client.setSettings(n.instanceName, n.importHistory).catch((err: unknown) => this.logger.warn(`Ajustes do número ${n.name} não atualizados: ${(err as Error).message}`))
     }
   }
 
@@ -217,7 +221,7 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
       const count = await tx.whatsappNumber.count({ where: { tenantId: user.tenantId, deletedAt: null } })
       if (count >= env.whatsappMaxNumbers) throw new BadRequestException(`Limite de ${env.whatsappMaxNumbers} números cadastrados. Exclua um para cadastrar outro.`)
       return tx.whatsappNumber.create({
-        data: { tenantId: user.tenantId, name, instanceName: `crm-${randomToken(9).toLowerCase().replace(/[^a-z0-9]/g, 'x')}`, unitId: d.unitId ?? null, sellerIds, userIds, splitAttendance: d.splitAttendance ?? false, defaultUserId: d.defaultUserId && userIds.includes(d.defaultUserId) ? d.defaultUserId : null, createRecords: d.createRecords ?? true, signMessages: d.signMessages ?? true, purpose: d.purpose ?? 'ATENDIMENTO' },
+        data: { tenantId: user.tenantId, name, instanceName: `crm-${randomToken(9).toLowerCase().replace(/[^a-z0-9]/g, 'x')}`, unitId: d.unitId ?? null, sellerIds, userIds, splitAttendance: d.splitAttendance ?? false, defaultUserId: d.defaultUserId && userIds.includes(d.defaultUserId) ? d.defaultUserId : null, createRecords: d.createRecords ?? true, signMessages: d.signMessages ?? true, purpose: d.purpose ?? 'ATENDIMENTO', importHistory: d.importHistory ?? false, importHistoryDays: importDays(d.importHistoryDays) },
       })
     })
     await this.audit.byUser(user, ctx, 'whatsapp.numero_criado', 'whatsapp_number', n.id, { nome: name })
@@ -231,13 +235,18 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
     const sellerIds = await this.assertRefs(user.tenantId, d)
     // Sem a lista na requisição (tela antiga), mantém os usuários atuais.
     const userIds = d.userIds ? await this.assertUsers(user.tenantId, d) : undefined
-    const current = await this.prisma.whatsappNumber.findUnique({ where: { id }, select: { userIds: true, defaultUserId: true } })
+    const current = await this.prisma.whatsappNumber.findUnique({ where: { id }, select: { userIds: true, defaultUserId: true, importHistory: true, importHistoryDays: true, instanceName: true } })
     // Atendente padrão: precisa ser um dos usuários do número (saiu do número: deixa de receber).
     const finalUsers = userIds ?? current?.userIds ?? []
     const wanted = d.defaultUserId === undefined ? (current?.defaultUserId ?? null) : d.defaultUserId
     const defaultUserId = wanted && finalUsers.includes(wanted) ? wanted : null
-    const n = await this.prisma.whatsappNumber.update({ where: { id }, data: { name, unitId: d.unitId ?? null, sellerIds, defaultUserId, ...(userIds ? { userIds } : {}), ...(d.splitAttendance !== undefined ? { splitAttendance: d.splitAttendance } : {}), ...(d.createRecords !== undefined ? { createRecords: d.createRecords } : {}), ...(d.signMessages !== undefined ? { signMessages: d.signMessages } : {}), ...(d.purpose ? { purpose: d.purpose } : {}) } })
-    await this.audit.byUser(user, ctx, 'whatsapp.numero_alterado', 'whatsapp_number', id, { nome: name, vendedores: sellerIds.length, usuarios: userIds?.length ?? null, uso: n.purpose })
+    const n = await this.prisma.whatsappNumber.update({ where: { id }, data: { name, unitId: d.unitId ?? null, sellerIds, defaultUserId, ...(userIds ? { userIds } : {}), ...(d.splitAttendance !== undefined ? { splitAttendance: d.splitAttendance } : {}), ...(d.createRecords !== undefined ? { createRecords: d.createRecords } : {}), ...(d.signMessages !== undefined ? { signMessages: d.signMessages } : {}), ...(d.purpose ? { purpose: d.purpose } : {}), ...(d.importHistory !== undefined ? { importHistory: d.importHistory } : {}), ...(d.importHistoryDays !== undefined ? { importHistoryDays: importDays(d.importHistoryDays) } : {}) } })
+    // Importar mensagens do aparelho: a Evolution passa a pedir (ou não) o histórico completo na próxima leitura do QR Code.
+    if (this.client && current && n.importHistory !== current.importHistory) {
+      await this.client.setSettings(n.instanceName, n.importHistory).catch((err: unknown) => this.logger.warn(`Ajustes do número ${n.name} não atualizados: ${(err as Error).message}`))
+    }
+    const historico = n.importHistory !== current?.importHistory || n.importHistoryDays !== current?.importHistoryDays ? { importarHistorico: n.importHistory ? `${n.importHistoryDays} dias` : 'desligado' } : {}
+    await this.audit.byUser(user, ctx, 'whatsapp.numero_alterado', 'whatsapp_number', id, { nome: name, vendedores: sellerIds.length, usuarios: userIds?.length ?? null, uso: n.purpose, ...historico })
     return this.view(n)
   }
 
@@ -285,6 +294,8 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
         if (reuse) {
           // Eventos em dia antes do QR Code (instância de versão anterior): o histórico que o WhatsApp manda ao conectar não se perde.
           await evo.setWebhook(instanceName, webhook).catch(() => undefined)
+          // Importar mensagens do aparelho ligado ou desligado: ajuste antes de pedir o QR Code.
+          await evo.setSettings(instanceName, n.importHistory).catch(() => undefined)
         } else {
           instanceName = await this.retireInstance(n)
           retired = true
@@ -292,13 +303,15 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
         let r = await evo.connect(instanceName).catch(async (err: unknown) => {
           // Instância nova (ou apagada na Evolution): cria antes de pedir o QR Code.
           if (err instanceof EvolutionError && err.status === 404) {
-            await evo.createInstance(instanceName, webhook)
+            await evo.createInstance(instanceName, webhook, n.importHistory)
             return evo.connect(instanceName)
           }
           throw err
         })
         if (!r.qr && r.state !== 'open') r = await evo.connect(instanceName)
         if (r.qr) this.qrs.set(id, { qr: r.qr, at: Date.now(), instanceName })
+        // Importar mensagens do aparelho: a importação começa quando o celular ler o QR Code e o WhatsApp mandar o histórico.
+        if (n.importHistory) await this.prisma.whatsappNumber.update({ where: { id }, data: { historyStatus: 'AGUARDANDO', historyCount: 0, historyStartedAt: null, historyUpdatedAt: null, historyFinishedAt: null } })
         if (r.state === 'open') await this.applyState(n.id, instanceName, 'open', null)
       }
     } catch (err) {
@@ -307,7 +320,7 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
       await this.prisma.whatsappNumber.update({ where: { id }, data: back })
       throw err instanceof EvolutionError ? new BadRequestException(err.message) : err
     }
-    await this.audit.byUser(user, ctx, 'whatsapp.conexao_iniciada', 'whatsapp_number', id, { nome: n.name, ...(fresh ? { qrCodeNovo: true } : {}) })
+    await this.audit.byUser(user, ctx, 'whatsapp.conexao_iniciada', 'whatsapp_number', id, { nome: n.name, ...(fresh ? { qrCodeNovo: true } : {}), ...(n.importHistory ? { importarHistorico: `${importDays(n.importHistoryDays)} dias` } : {}) })
     return this.qrStatus(user, id)
   }
 
@@ -372,7 +385,7 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
   /** Eventos da Evolution (rede interna), autenticados pelo segredo no caminho. */
   async webhook(secret: string, body: unknown) {
     if (!env.evolutionWebhookSecret || !safeEqual(secret, env.evolutionWebhookSecret)) return false
-    const b = (body ?? {}) as { event?: string; instance?: string; data?: Record<string, unknown> }
+    const b = (body ?? {}) as { event?: string; instance?: string; data?: Record<string, unknown>; isLatest?: unknown; progress?: unknown }
     if (typeof b.instance !== 'string' || !/^crm-[a-z0-9x]{6,20}$/.test(b.instance)) return true
     const n = await this.prisma.whatsappNumber.findUnique({ where: { instanceName: b.instance } })
     if (!n || n.deletedAt) return true
@@ -387,7 +400,8 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
     }
     // Histórico que o WhatsApp manda ao conectar pelo QR Code: entram só as mensagens recentes que faltam no CRM.
     if (event === 'messages.set') {
-      void this.chat.importHistory(n, b.data, this.client).catch((err: unknown) => this.logger.warn(`Histórico do WhatsApp não importado (${n.name}): ${(err as Error).message}`))
+      // Responde na hora; os pedaços são gravados em segundo plano, um de cada vez por número.
+      void this.chat.importHistory(n, b.data, this.client, { isLatest: b.isLatest, progress: b.progress }).catch((err: unknown) => this.logger.warn(`Histórico do WhatsApp não importado (${n.name}): ${(err as Error).message}`))
       return true
     }
     // Confirmação de entrega e leitura (os tracinhos do WhatsApp); a edição de uma mensagem também vem aqui.
@@ -511,6 +525,13 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
           // Envia mas não recebe (o WhatsApp parou de entregar ao CRM): renova e, se não voltar, avisa na tela.
           if (state === 'open') await this.checkDeaf(n)
         }
+      }
+      // Importação do histórico do aparelho parada (o aviso de fim pode não vir): encerra com o que chegou.
+      const importing = await this.prisma.whatsappNumber.findMany({ where: { deletedAt: null, historyStatus: { in: ['AGUARDANDO', 'IMPORTANDO'] } }, select: { id: true, historyStatus: true, historyUpdatedAt: true } })
+      for (const n of importing) {
+        if (n.historyStatus === 'IMPORTANDO' && n.historyUpdatedAt && Date.now() - n.historyUpdatedAt.getTime() <= HISTORY_IDLE_MS) continue
+        // Sem esperar: se ainda houver um pedaço sendo gravado, encerra depois dele (e só se continuar parado).
+        void this.chat.finishStaleHistory(n, n.historyStatus === 'AGUARDANDO' ? 'o WhatsApp não mandou histórico' : 'sem novos pedaços do histórico').catch((err: unknown) => this.logger.warn(`Importação do histórico não encerrada: ${(err as Error).message}`))
       }
       if (Date.now() - this.lastOrphanCheck >= ORPHAN_CHECK_MS) {
         this.lastOrphanCheck = Date.now()
