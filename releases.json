@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.5",
+      "date": "2026-11-11",
+      "title": "Gráfico de sazonalidade corrigido",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Marketplaces",
+          "text": "Planejamento › Sazonalidade: as barras de vendas por mês voltaram a aparecer com a altura certa (antes ficavam achatadas) e mostram o valor médio do mês."
+        }
+      ]
+    },
+    {
       "version": "3.0.4",
       "date": "2026-11-11",
       "title": "ROAS nas metas de Marketplaces",

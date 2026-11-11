@@ -1,6 +1,6 @@
 {
   "name": "@crm/api",
-  "version": "3.0.4",
+  "version": "3.0.5",
   "private": true,
   "scripts": {
     "prebuild": "prisma generate",
