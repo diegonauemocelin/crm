@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.12",
+      "date": "2026-11-11",
+      "title": "Monitoramento no cadastro do usuário",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "WhatsApp",
+          "text": "Monitorar conversas no cadastro do usuário (Usuários › editar): escolha se ele monitora todas as pessoas ou só as escolhidas, e quais números (vazio = os do perfil de acesso, sem passar do que o perfil permite). Vale para quem tem a permissão Monitorar conversas, sempre só leitura."
+        }
+      ]
+    },
+    {
       "version": "3.0.11",
       "date": "2026-11-11",
       "title": "Campanhas de frete",
