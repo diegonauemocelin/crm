@@ -78,7 +78,11 @@ class StartDto {
 }
 
 class StatusDto {
-  @ApiProperty() @IsIn(['pausar', 'retomar', 'cancelar']) action!: 'pausar' | 'retomar' | 'cancelar'
+  @ApiProperty() @IsIn(['pausar', 'retomar', 'cancelar', 'desagendar']) action!: 'pausar' | 'retomar' | 'cancelar' | 'desagendar'
+}
+
+class RescheduleDto {
+  @ApiProperty({ description: 'Nova data e hora do envio' }) @IsDateString() scheduledAt!: string
 }
 
 class AiConfigDto {
@@ -310,6 +314,13 @@ export class EmailController {
   @HttpCode(200)
   start(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: StartDto, @ReqContext() ctx: RequestCtx) {
     return this.email.start(user, id, dto.scheduledAt ? new Date(dto.scheduledAt) : null, ctx)
+  }
+
+  /** Muda a data e a hora de uma campanha agendada (o público fixado continua o mesmo). */
+  @Post('campanhas/:id/reagendar')
+  @HttpCode(200)
+  reschedule(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RescheduleDto, @ReqContext() ctx: RequestCtx) {
+    return this.email.reschedule(user, id, new Date(dto.scheduledAt), ctx)
   }
 
   @Post('campanhas/:id/situacao')

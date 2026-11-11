@@ -432,10 +432,31 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     return { total: leads.length, status: future ? 'AGENDADA' : 'ENVIANDO' }
   }
 
-  async setStatus(user: AuthUser, id: string, action: 'pausar' | 'retomar' | 'cancelar', ctx: RequestCtx) {
+  /** Nova data e hora para uma campanha agendada (pelo menos 1 minuto à frente). */
+  async reschedule(user: AuthUser, id: string, at: Date, ctx: RequestCtx) {
     this.assertCan(user, 'edit')
     const c = await this.load(user, id)
-    const next: Record<typeof action, { from: CampaignStatus[]; to: CampaignStatus }> = {
+    if (c.status !== 'AGENDADA') throw new BadRequestException('Só dá para mudar a data de uma campanha agendada.')
+    if (!(at.getTime() > Date.now() + 60_000)) throw new BadRequestException('Escolha uma data e hora no futuro.')
+    const { count } = await this.prisma.emailCampaign.updateMany({ where: { id, tenantId: user.tenantId, status: 'AGENDADA' }, data: { scheduledAt: at } })
+    if (!count) throw new BadRequestException('A campanha já começou a ser enviada.')
+    await this.audit.byUser(user, ctx, 'email.campaign_rescheduled', 'email_campaign', id, { antes: c.scheduledAt, depois: at })
+    return { ok: true, scheduledAt: at }
+  }
+
+  async setStatus(user: AuthUser, id: string, action: 'pausar' | 'retomar' | 'cancelar' | 'desagendar', ctx: RequestCtx) {
+    this.assertCan(user, 'edit')
+    const c = await this.load(user, id)
+    if (action === 'desagendar') {
+      // Volta para rascunho para editar conteúdo, público ou data; os destinatários são fixados de novo ao agendar.
+      if (c.status !== 'AGENDADA') throw new BadRequestException('Só uma campanha agendada volta para rascunho.')
+      const { count } = await this.prisma.emailCampaign.updateMany({ where: { id, tenantId: user.tenantId, status: 'AGENDADA' }, data: { status: 'RASCUNHO', scheduledAt: null, total: 0 } })
+      if (!count) throw new BadRequestException('A campanha já começou a ser enviada.')
+      await this.prisma.emailRecipient.deleteMany({ where: { campaignId: id } })
+      await this.audit.byUser(user, ctx, 'email.campaign_desagendar', 'email_campaign', id, { agendadaPara: c.scheduledAt })
+      return { ok: true }
+    }
+    const next: Record<'pausar' | 'retomar' | 'cancelar', { from: CampaignStatus[]; to: CampaignStatus }> = {
       pausar: { from: ['ENVIANDO', 'AGENDADA'], to: 'PAUSADA' },
       retomar: { from: ['PAUSADA'], to: 'ENVIANDO' },
       cancelar: { from: ['ENVIANDO', 'AGENDADA', 'PAUSADA'], to: 'CANCELADA' },

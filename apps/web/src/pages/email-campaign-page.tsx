@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeftIcon, ClockIcon, CopyIcon, PauseIcon, PlayIcon, RotateCcwIcon } from 'lucide-react'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { useConfirm } from '@/components/confirm'
 import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -36,6 +39,13 @@ function CampaignLoader() {
   return editable || q.data.status === 'RASCUNHO' ? <Editor key={q.data.id} campaign={q.data} /> : <Report campaign={q.data} />
 }
 
+/** Data ISO → valor do campo datetime-local (horário local). */
+function toLocalInput(iso: string | null | undefined) {
+  const d = iso ? new Date(iso) : new Date(Date.now() + 3_600_000)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
 // ---------- Relatório ----------
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -58,7 +68,7 @@ function Report({ campaign: c }: { campaign: Campaign }) {
   usePageTitle(c.name)
   const r = useQuery({ queryKey: ['email-report', c.id], queryFn: () => api.get<CampaignReport>(`/email/campanhas/${c.id}/relatorio`), refetchInterval: c.status === 'ENVIANDO' ? 5_000 : false })
   const status = useMutation({
-    mutationFn: (action: 'pausar' | 'retomar' | 'cancelar') => api.post(`/email/campanhas/${c.id}/situacao`, { action }),
+    mutationFn: (action: 'pausar' | 'retomar' | 'cancelar' | 'desagendar') => api.post(`/email/campanhas/${c.id}/situacao`, { action }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['email-campaign', c.id] })
       void qc.invalidateQueries({ queryKey: ['email-report', c.id] })
@@ -77,6 +87,16 @@ function Report({ campaign: c }: { campaign: Campaign }) {
   const duplicate = useMutation({
     mutationFn: () => api.post<{ id: string }>(`/email/campanhas/${c.id}/duplicar`),
     onSuccess: (x) => navigate(`/email-marketing/${x.id}`),
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const [when, setWhen] = useState<string | null>(null)
+  const reschedule = useMutation({
+    mutationFn: (at: string) => api.post(`/email/campanhas/${c.id}/reagendar`, { scheduledAt: new Date(at).toISOString() }),
+    onSuccess: () => {
+      setWhen(null)
+      toast.success('Agendamento alterado.')
+      void qc.invalidateQueries({ queryKey: ['email-campaign', c.id] })
+    },
     onError: (err) => toast.error(errorMessage(err)),
   })
   const d = r.data
@@ -106,6 +126,22 @@ function Report({ campaign: c }: { campaign: Campaign }) {
                 <PlayIcon /> Retomar
               </Button>
             )}
+            {can('email_marketing', 'edit') && c.status === 'AGENDADA' && (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setWhen(toLocalInput(c.scheduledAt))}>
+                  <ClockIcon /> Alterar data
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    if (await confirm({ title: 'Editar a campanha?', description: 'Ela volta para rascunho (sai da agenda). Depois de editar, agende de novo; o público é conferido outra vez.', confirmLabel: 'Voltar para rascunho' })) status.mutate('desagendar')
+                  }}
+                >
+                  Editar
+                </Button>
+              </>
+            )}
             {can('email_marketing', 'edit') && ['ENVIANDO', 'PAUSADA', 'AGENDADA'].includes(c.status) && (
               <Button variant="ghost" size="sm" onClick={async () => {
                   if (await confirm({ title: `Cancelar o envio de “${c.name}”?`, description: 'Quem ainda não recebeu não vai receber. Não dá para retomar uma campanha cancelada.', confirmLabel: 'Cancelar envio', cancelLabel: 'Continuar enviando' })) status.mutate('cancelar')
@@ -121,6 +157,23 @@ function Report({ campaign: c }: { campaign: Campaign }) {
           </div>
         }
       />
+      <Dialog open={when !== null} onOpenChange={(o) => !o && setWhen(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Alterar agendamento</DialogTitle>
+            <DialogDescription>Nova data e hora do envio (horário deste computador).</DialogDescription>
+          </DialogHeader>
+          <Input type="datetime-local" value={when ?? ''} onChange={(e) => setWhen(e.target.value)} aria-label="Nova data e hora" />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWhen(null)}>
+              Cancelar
+            </Button>
+            <Button disabled={!when || reschedule.isPending} onClick={() => when && reschedule.mutate(when)}>
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {(c.status === 'ENVIANDO' || c.status === 'PAUSADA') && (
         <div className="mb-4">
           <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={progress} aria-valuemax={100}>
