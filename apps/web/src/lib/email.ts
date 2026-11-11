@@ -75,7 +75,8 @@ export type Block = (
   | { type: 'titulo'; html: string; align?: TextAlign; size?: number; color?: string; bg?: string }
   | { type: 'texto'; html: string; align?: TextAlign; size?: number; color?: string; bg?: string }
   | { type: 'colunas'; columns: [ColumnContent, ColumnContent]; ratio?: 40 | 50 | 60; align?: TextAlign; color?: string; buttonColor?: string }
-  | { type: 'imagem'; url: string; alt?: string; link?: string; width?: number }
+  /** width: % do espaço (10 a 100); align: posição (padrão centro); ratio: formato do recorte; original: antes da edição. */
+  | { type: 'imagem'; url: string; alt?: string; link?: string; width?: number; align?: Align; ratio?: ImageRatio; original?: string }
   | ({ type: 'botao'; text: string; url: string; color?: string; textColor?: string; align?: Align } & ButtonStyle)
   | ({ type: 'whatsapp'; text: string; phone: string; message?: string; align?: Align; color?: string; textColor?: string } & ButtonStyle)
   | { type: 'video'; url: string; title?: string; label?: string; color?: string }
@@ -97,6 +98,18 @@ export type Block = (
 }
 
 export type BlockType = Block['type']
+
+/** Formatos prontos de imagem (os mesmos aceitos pelo servidor). */
+export const IMAGE_RATIOS = [
+  { id: '16:9', label: 'Widescreen', value: 16 / 9 },
+  { id: '4:3', label: '4:3', value: 4 / 3 },
+  { id: '1:1', label: 'Quadrado', value: 1 },
+  { id: '3:1', label: 'Banner', value: 3 },
+] as const
+export type ImageRatio = (typeof IMAGE_RATIOS)[number]['id']
+/** Largura mínima da imagem (% do espaço) e a largura útil do e-mail (600 px menos as margens). */
+export const IMAGE_MIN_WIDTH = 10
+export const EMAIL_CONTENT_WIDTH = 536
 
 export type SocialNetwork = 'facebook' | 'instagram' | 'youtube' | 'tiktok'
 export type SocialLinks = Partial<Record<SocialNetwork, string>>
@@ -200,6 +213,9 @@ export interface EmailImage {
   id: string
   url: string
   size: number
+  /** Nome do arquivo enviado (imagens antigas não têm). */
+  name?: string | null
+  mime?: string
   createdAt: string
 }
 

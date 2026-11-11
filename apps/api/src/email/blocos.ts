@@ -64,7 +64,11 @@ export type Block = (
   | { type: 'titulo'; html: string; text?: string; align?: TextAlign; size?: number; color?: string; bg?: string }
   | { type: 'texto'; html: string; text?: string; align?: TextAlign; size?: number; color?: string; bg?: string }
   | { type: 'colunas'; columns: [ColumnContent, ColumnContent]; ratio?: 40 | 50 | 60; align?: TextAlign; color?: string; buttonColor?: string }
-  | { type: 'imagem'; url: string; alt?: string; link?: string; width?: number }
+  /**
+   * width: largura em % do espaço (10 a 100). align: posição quando não ocupa a largura toda (padrão: centro).
+   * ratio: formato pronto do recorte (só informativo; a imagem já vem recortada). original: imagem antes da edição.
+   */
+  | { type: 'imagem'; url: string; alt?: string; link?: string; width?: number; align?: Align; ratio?: ImageRatio; original?: string }
   | ({ type: 'botao'; text: string; url: string; color?: string; textColor?: string; align?: Align } & ButtonStyle)
   | ({ type: 'whatsapp'; text: string; phone: string; message?: string; align?: Align; color?: string; textColor?: string } & ButtonStyle)
   | { type: 'video'; url: string; title?: string; label?: string; color?: string }
@@ -83,6 +87,36 @@ export type Block = (
   edge?: boolean
   /** titulo/texto: espaçamento entre linhas, em % do tamanho da letra (100 a 200). */
   lineHeight?: number
+}
+
+/** Formatos prontos de imagem (recorte no editor). */
+export const IMAGE_RATIOS = ['16:9', '4:3', '1:1', '3:1'] as const
+export type ImageRatio = (typeof IMAGE_RATIOS)[number]
+/** Largura da imagem: de 10% a 100% do espaço. */
+export const IMAGE_MIN_WIDTH = 10
+
+/**
+ * Nome da imagem na biblioteca, a partir do nome do arquivo: sem pasta, sem extensão, sem caracteres de controle,
+ * até 120 letras. O envio por formulário às vezes chega com o UTF-8 lido como Latin-1 ("aÃ§o"): conserta.
+ */
+export function cleanImageName(raw: string | null | undefined): string | null {
+  let s = String(raw ?? '')
+  if (/[\u00c2-\u00f4][\u0080-\u00bf]/.test(s)) {
+    const fixed = Buffer.from(s, 'latin1').toString('utf8')
+    if (!fixed.includes('\ufffd')) s = fixed
+  }
+  s = s.split(/[\\/]/).pop() ?? ''
+  s = s.replace(/\.(png|jpe?g|gif|webp)$/i, '').replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim()
+  return s ? s.slice(0, 120) : null
+}
+
+/** Imagem no e-mail: largura (px) e posição. A largura vai no atributo width (Outlook) e no estilo (os demais). */
+export function imageLayout(b: { width?: number; align?: Align; edge?: boolean }, L: { px: number; w: number }) {
+  const full = b.edge ? L.w + 2 * L.px : L.w
+  const w = Math.round((full * clamp(b.width, IMAGE_MIN_WIDTH, 100, 100)) / 100)
+  const align = alignOf(b.align, 'center')
+  const margin = align === 'center' ? '0 auto' : align === 'right' ? '0 0 0 auto' : '0'
+  return { w, align, margin }
 }
 
 export const BLOCK_TYPES = ['titulo', 'texto', 'colunas', 'imagem', 'video', 'botao', 'whatsapp', 'produtos', 'carrinho', 'redes', 'divisor', 'espaco', 'linha'] as const
@@ -563,10 +597,11 @@ export function renderEmail(blocks: Block[], o: RenderOptions) {
         const src = safeUrl(b.url)
         if (!src) break
         // Encostada nas bordas: largura total (600) e sem canto arredondado, para emendar imagens sem faixa branca.
-        const w = Math.round(((b.edge ? L.w + 2 * L.px : L.w) * clamp(b.width, 20, 100, 100)) / 100)
-        const img = `<img src="${escape(src)}" alt="${escape(b.alt ?? '')}" width="${w}" style="display:block;width:100%;max-width:${w}px;height:auto;border:0;${b.edge ? '' : 'border-radius:6px;'}margin:0 auto">`
+        // Posição pelo align da célula (Outlook) e pela margem (os demais); altura sempre automática (proporcional).
+        const { w, align, margin } = imageLayout(b, L)
+        const img = `<img src="${escape(src)}" alt="${escape(b.alt ?? '')}" width="${w}" style="display:block;width:100%;max-width:${w}px;height:auto;border:0;${b.edge ? '' : 'border-radius:6px;'}margin:${margin}">`
         const link = href(b.link)
-        rows.push(`<tr><td align="center" style="padding:${sp(b, 8)}px ${b.edge ? 0 : L.px}px;font-size:0;line-height:0">${link ? `<a href="${escape(link)}" target="_blank">${img}</a>` : img}</td></tr>`)
+        rows.push(`<tr><td align="${align}" style="padding:${sp(b, 8)}px ${b.edge ? 0 : L.px}px;font-size:0;line-height:0">${link ? `<a href="${escape(link)}" target="_blank">${img}</a>` : img}</td></tr>`)
         break
       }
       case 'botao': {
@@ -750,7 +785,18 @@ export function cleanBlocks(raw: unknown): { blocks: Block[] } | { error: string
       case 'imagem':
         if (b.url && !safeUrl(String(b.url))) return { error: 'Imagem com endereço inválido (use https://).' }
         if (b.link && !safeUrl(String(b.link))) return { error: 'Link da imagem inválido (use https://).' }
-        out.push({ type: 'imagem', url: str(b.url, 500), alt: str(b.alt, 200), link: str(b.link, 500) || undefined, width: b.width === undefined ? undefined : clamp(b.width, 20, 100, 100) })
+        if (b.original && !safeUrl(String(b.original))) return { error: 'Imagem original com endereço inválido (use https://).' }
+        out.push({
+          type: 'imagem',
+          url: str(b.url, 500),
+          alt: str(b.alt, 200),
+          link: str(b.link, 500) || undefined,
+          width: b.width === undefined || b.width === null ? undefined : clamp(b.width, IMAGE_MIN_WIDTH, 100, 100),
+          // Centro é o padrão: só guarda esquerda/direita (e-mails antigos ficam iguais).
+          align: b.align === 'left' || b.align === 'right' ? b.align : undefined,
+          ratio: (IMAGE_RATIOS as readonly unknown[]).includes(b.ratio) ? (b.ratio as ImageRatio) : undefined,
+          original: b.original && String(b.original).trim() !== String(b.url ?? '').trim() ? str(b.original, 500) : undefined,
+        })
         break
       case 'botao':
         if (String(b.url ?? '').trim() !== '{link_carrinho}' && !safeUrl(String(b.url ?? ''), true)) return { error: `Botão "${str(b.text, 40)}" sem um link válido (https://... ou {link_carrinho}).` }
