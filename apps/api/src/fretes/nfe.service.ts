@@ -69,6 +69,37 @@ export class NfeService {
       if (issues.length < MAX_ISSUES) issues.push({ file, reason, kind })
     }
     for (const s of expanded.skipped) issue(s.name, s.reason, 'ignorada')
+    // Muitos XMLs passam do tempo da requisição (o navegador ficava "importando" sem fim): a importação segue em segundo
+    // plano e o resultado aparece em "Importações anteriores" (a tela acompanha pelo id).
+    const total = expanded.docs.length
+    void (async () => {
+      try {
+        await this.runImport(user, ctx, T, units, cnpjs, allowed, expanded, importId, counts, issues, issue, files.map((f) => f.originalname))
+      } catch (e) {
+        this.logger.error(`Importação de NF-e ${importId}: ${(e as Error).message}`)
+        issue('importação', `Parou no meio: ${(e as Error).message}`.slice(0, 300), 'erro')
+        await this.prisma.freightNfeImport
+          .create({ data: { id: importId, tenantId: T, fileNames: files.map((f) => f.originalname).join(', ').slice(0, 500), counts: counts as unknown as Prisma.InputJsonValue, issues: issues as unknown as Prisma.InputJsonValue, createdById: user.id, createdByName: user.name.slice(0, 120) } })
+          .catch(() => undefined)
+      }
+    })()
+    return { id: importId, background: true, total, message: `Importando ${total} XML(s) em segundo plano. O resultado aparece em "Importações anteriores".` }
+  }
+
+  private async runImport(
+    user: AuthUser,
+    ctx: RequestCtx,
+    T: string,
+    units: Awaited<ReturnType<NfeService['ownUnits']>>['units'],
+    cnpjs: Set<string>,
+    allowed: ReturnType<typeof allowedUnits>,
+    expanded: ReturnType<typeof expandUpload>,
+    importId: string,
+    counts: NfeImportCounts,
+    issues: { file: string; reason: string; kind: 'ignorada' | 'erro' }[],
+    issue: (file: string, reason: string, kind: 'ignorada' | 'erro') => void,
+    fileNames: string[],
+  ) {
     // Impostos das vendas do Mercado Livre (Marketplaces › Preços e promoções): notas do Mercado Envios.
     const knownMe = await this.mlTaxes.knownCnpjs(T).catch(() => [] as string[])
     let mlTaxChanged = false
@@ -150,7 +181,7 @@ export class NfeService {
       }
     }
     if (mlTaxChanged) await this.mlTaxes.recompute(T).catch((e: unknown) => this.logger.warn(`Impostos do Mercado Livre: ${(e as Error).message}`))
-    const names = files.map((f) => f.originalname).join(', ').slice(0, 500)
+    const names = fileNames.join(', ').slice(0, 500)
     await this.prisma.freightNfeImport.create({ data: { id: importId, tenantId: T, fileNames: names, counts: counts as unknown as Prisma.InputJsonValue, issues: issues as unknown as Prisma.InputJsonValue, createdById: user.id, createdByName: user.name.slice(0, 120) } })
     await this.audit.byUser(user, ctx, 'frete.nfe.importadas', 'freight_nfe_import', importId, { arquivos: names, ...counts })
     return { id: importId, counts, issues }

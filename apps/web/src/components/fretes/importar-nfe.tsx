@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileArchiveIcon, Loader2Icon, UploadIcon } from 'lucide-react'
-import { type DragEvent, useRef, useState } from 'react'
+import { type DragEvent, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -78,17 +78,35 @@ export function ImportNfeDialog({ onClose }: { onClose: () => void }) {
   const input = useRef<HTMLInputElement>(null)
   const [files, setFiles] = useState<File[]>([])
   const [over, setOver] = useState(false)
-  const history = useQuery({ queryKey: ['fretes', 'nfe', 'importacoes'], queryFn: () => api.get<ImportRow[]>('/fretes/nfe/importacoes') })
+  // Importação em segundo plano: acompanha pelo id até ela aparecer nas importações anteriores.
+  const [waiting, setWaiting] = useState<string | null>(null)
+  const history = useQuery({
+    queryKey: ['fretes', 'nfe', 'importacoes'],
+    queryFn: () => api.get<ImportRow[]>('/fretes/nfe/importacoes'),
+    refetchInterval: waiting ? 4000 : false,
+  })
+  const finished = waiting ? history.data?.find((h) => h.id === waiting) : undefined
+  useEffect(() => {
+    if (!finished) return
+    setWaiting(null)
+    void qc.invalidateQueries({ queryKey: ['fretes'] })
+    toast.success(`Importação concluída: ${finished.counts.novas} nota(s) nova(s), ${finished.counts.pedidosCriados} pedido(s) criado(s), ${finished.counts.ctesLigados} CT-e casado(s).`)
+  }, [finished, qc])
   const m = useMutation({
     mutationFn: () => {
       const fd = new FormData()
       for (const f of files) fd.append('arquivos', f)
-      return api.post<{ id: string; counts: Counts; issues: Issue[] }>('/fretes/nfe/importar', fd)
+      return api.post<{ id: string; counts?: Counts; issues?: Issue[]; background?: boolean; message?: string }>('/fretes/nfe/importar', fd)
     },
     onSuccess: (r) => {
       setFiles([])
+      if (r.background) {
+        setWaiting(r.id)
+        toast.info(r.message ?? 'Importando em segundo plano.')
+        return
+      }
       void qc.invalidateQueries({ queryKey: ['fretes'] })
-      toast.success(`${r.counts.novas} nota(s) nova(s), ${r.counts.pedidosCriados} pedido(s) criado(s), ${r.counts.ctesLigados} CT-e casado(s).`)
+      if (r.counts) toast.success(`${r.counts.novas} nota(s) nova(s), ${r.counts.pedidosCriados} pedido(s) criado(s), ${r.counts.ctesLigados} CT-e casado(s).`)
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -127,10 +145,15 @@ export function ImportNfeDialog({ onClose }: { onClose: () => void }) {
           {files.length ? <span className="break-all text-foreground">{files.map((f) => f.name).join(', ')}</span> : <span>Arraste o .zip (ou os .xml) aqui, ou clique para escolher</span>}
         </button>
         <input ref={input} type="file" multiple accept=".xml,.zip" className="hidden" onChange={(e) => (pick(e.target.files), (e.target.value = ''))} />
-        {r && (
+        {waiting && (
+          <p className="flex items-center gap-2 rounded-md border bg-muted/40 p-2 text-sm">
+            <Loader2Icon className="size-4 animate-spin" /> Importando em segundo plano… pode fechar esta janela; o resultado aparece em Importações anteriores.
+          </p>
+        )}
+        {(finished ?? (r?.counts ? r : null)) && (
           <div className="space-y-2">
-            <Summary c={r.counts} />
-            <Issues issues={r.issues} />
+            <Summary c={(finished ?? r)!.counts!} />
+            <Issues issues={(finished ?? r)!.issues ?? []} />
           </div>
         )}
         <div className="space-y-1">

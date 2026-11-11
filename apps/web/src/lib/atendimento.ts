@@ -162,8 +162,24 @@ export function formatPhone(e164: string | null) {
   return e164
 }
 
-/** Máscara de digitação de telefone BR. */
+/** DDI → país (América Latina e vizinhos mais comuns). Telefone com + e DDI diferente de 55 = cliente internacional. */
+const DDI_COUNTRY: [string, string][] = [
+  ['598', 'Uruguai'], ['595', 'Paraguai'], ['591', 'Bolívia'], ['593', 'Equador'], ['592', 'Guiana'], ['597', 'Suriname'],
+  ['506', 'Costa Rica'], ['507', 'Panamá'], ['502', 'Guatemala'], ['503', 'El Salvador'], ['504', 'Honduras'], ['505', 'Nicarágua'],
+  ['54', 'Argentina'], ['56', 'Chile'], ['57', 'Colômbia'], ['58', 'Venezuela'], ['51', 'Peru'], ['52', 'México'], ['53', 'Cuba'],
+  ['1', 'Estados Unidos / Canadá'], ['351', 'Portugal'], ['34', 'Espanha'],
+]
+export function countryFromPhone(value: string | null | undefined): string | null {
+  const v = (value ?? '').trim()
+  if (!v.startsWith('+')) return null
+  const d = v.replace(/\D/g, '')
+  if (d.startsWith('55')) return null
+  return DDI_COUNTRY.find(([ddi]) => d.startsWith(ddi))?.[1] ?? 'Exterior'
+}
+
+/** Máscara de digitação de telefone BR (número com + e DDI de outro país fica como digitado). */
 export function maskPhone(value: string) {
+  if (/^\s*\+/.test(value) && !/^\s*\+\s*55/.test(value)) return `+${value.replace(/\D/g, '').slice(0, 15)}`
   const d = value.replace(/\D/g, '').slice(0, 11)
   if (d.length <= 2) return d.length ? `(${d}` : ''
   if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`
