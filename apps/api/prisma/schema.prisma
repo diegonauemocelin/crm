@@ -3727,3 +3727,242 @@ model LoyaltyAccessCode {
   @@index([tenantId, createdAt])
   @@map("loyalty_access_codes")
 }
+
+/// Preços e promoções (Marketplaces): custo por SKU informado pela empresa (o custo contábil da Tcar nunca é copiado).
+model MarketplaceCost {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  /// SKU do anúncio (seller_sku), normalizado em maiúsculas; sem SKU, o próprio MLB.
+  sku           String
+  cost          Decimal  @db.Decimal(14, 2)
+  /// manual, planilha, percentual (% do preço de venda) ou tcar (reservado para a API da Tcar).
+  source        String   @default("manual")
+  /// % do preço usado quando source = percentual.
+  percent       Decimal? @db.Decimal(6, 2)
+  updatedById   String?  @db.Uuid
+  updatedByName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([tenantId, sku])
+  @@map("marketplace_costs")
+}
+
+/// Preços e promoções: dados de preço de cada anúncio lidos do Mercado Livre (tarifa, frete, promoção e vendas).
+model MarketplacePriceItem {
+  tenantId              String    @db.Uuid
+  itemId                String
+  title                 String?
+  sellerSku             String?
+  status                String?
+  categoryId            String?
+  listingTypeId         String?
+  condition             String?
+  shippingMode          String?
+  logisticType          String?
+  freeShipping          Boolean   @default(false)
+  mandatoryFreeShipping Boolean   @default(false)
+  availableQuantity     Int?
+  /// Preço cheio (standard) do anúncio.
+  price                 Decimal?  @db.Decimal(14, 2)
+  /// Preço de venda de agora (sale_price); menor que o cheio quando há promoção.
+  salePrice             Decimal?  @db.Decimal(14, 2)
+  promoType             String?
+  promoId               String?
+  /// Tarifa de venda no preço de venda atual e o modelo (percentual e fixo).
+  saleFee               Decimal?  @db.Decimal(14, 2)
+  saleFeePct            Decimal?  @db.Decimal(6, 2)
+  saleFeeFixed          Decimal?  @db.Decimal(14, 2)
+  /// Tarifa no outro tipo de anúncio (Clássico ↔ Premium), para a dica.
+  otherListingTypeId    String?
+  otherFee              Decimal?  @db.Decimal(14, 2)
+  otherFeePct           Decimal?  @db.Decimal(6, 2)
+  /// Custo do frete para a loja (frete grátis); 0 quando o comprador paga; null = não calculado.
+  shippingCost          Decimal?  @db.Decimal(14, 2)
+  shippingNote          String?
+  hasVariations         Boolean   @default(false)
+  sales30               Int?
+  sales60               Int?
+  lastSaleAt            DateTime?
+  readError             String?
+  syncedAt              DateTime
+
+  @@id([tenantId, itemId])
+  @@index([tenantId, status])
+  @@map("marketplace_price_items")
+}
+
+/// Preços e promoções: cada alteração enviada (ou agendada) ao Mercado Livre, com o antes e o depois para desfazer.
+model MarketplacePriceChange {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  batchId        String?   @db.Uuid
+  /// Anúncio (MLB...); vazio nas operações só de cupom.
+  itemId         String?
+  itemTitle      String?
+  /// preco, promocao, encerrar_promocao, cupom, cupom_item ou encerrar_cupom.
+  kind           String
+  before         Json?
+  after          Json
+  /// Id do Mercado Livre ligado à alteração (campanha de cupom).
+  mlRef          String?
+  marginBefore   Decimal?  @db.Decimal(14, 2)
+  marginAfter    Decimal?  @db.Decimal(14, 2)
+  marginPctAfter Decimal?  @db.Decimal(8, 2)
+  /// Quem enviou marcou "estou ciente" da margem abaixo do mínimo.
+  lowMarginAck   Boolean   @default(false)
+  /// AGENDADA, PENDENTE, ENVIANDO, ENVIADA, ERRO, CANCELADA ou DESFEITA.
+  status         String    @default("PENDENTE")
+  scheduledAt    DateTime?
+  error          String?
+  undoOfId       String?   @db.Uuid
+  createdById    String?   @db.Uuid
+  createdByName  String?
+  sentAt         DateTime?
+  undoneAt       DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([tenantId, status, scheduledAt])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, itemId])
+  @@map("marketplace_price_changes")
+}
+
+/// Impostos das NF-e de venda entregues pelo Mercado Envios (lidos na importação de XML em Fretes), por item.
+model MarketplaceNfeTax {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  key           String    @db.Char(44)
+  issuedAt      DateTime?
+  carrierName   String?
+  carrierCnpj   String?   @db.Char(14)
+  productsValue Decimal   @db.Decimal(14, 2)
+  taxValue      Decimal   @db.Decimal(14, 2)
+  /// [{ sku, ncm, value, tax }]
+  items         Json
+  cancelled     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+
+  @@unique([tenantId, key])
+  @@index([tenantId, issuedAt])
+  @@map("marketplace_nfe_taxes")
+}
+
+/// Planejamento (Marketplaces): linhas dos pedidos do Mercado Livre (até 12 meses que a API guarda, e daí em diante).
+model MarketplaceOrderLine {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  marketplace   String    @default("mercadolivre")
+  orderId       String
+  itemId        String
+  /// Variação do anúncio ('' sem variação).
+  variationId   String    @default("")
+  title         String?
+  sellerSku     String?
+  quantity      Int
+  unitPrice     Decimal   @db.Decimal(14, 2)
+  total         Decimal   @db.Decimal(14, 2)
+  /// Tarifa de venda da linha (sale_fee × quantidade), quando o pedido traz.
+  saleFee       Decimal?  @db.Decimal(14, 2)
+  listingTypeId String?
+  status        String?
+  dateCreated   DateTime
+  dateClosed    DateTime?
+  shippingId    String?
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([tenantId, orderId, itemId, variationId])
+  @@index([tenantId, dateCreated])
+  @@index([tenantId, itemId])
+  @@map("marketplace_order_lines")
+}
+
+/// Planejamento: nota de qualidade do anúncio e experiência de compra, lidas da API do Mercado Livre.
+model MarketplaceItemQuality {
+  tenantId        String   @db.Uuid
+  itemId          String
+  score           Int?
+  level           String?
+  levelWording    String?
+  /// [{ area, text, warning }]
+  pending         Json?
+  experienceValue Int?
+  experienceColor String?
+  experienceText  String?
+  problems        String[] @default([])
+  error           String?
+  syncedAt        DateTime
+
+  @@id([tenantId, itemId])
+  @@map("marketplace_item_quality")
+}
+
+/// Planejamento: análises SWOT geradas pela IA gratuita a partir do resumo da conta (para comparar com o tempo).
+model MarketplaceSwot {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  channel       String   @default("mercadolivre")
+  summary       Json
+  findings      Json
+  text          String
+  createdById   String?  @db.Uuid
+  createdByName String?
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@map("marketplace_swot")
+}
+
+/// Planejamento: meta mensal por canal (faturamento, margem e ACOS).
+model MarketplaceGoal {
+  id              String                @id @default(uuid()) @db.Uuid
+  tenantId        String                @db.Uuid
+  channel         String                @default("mercadolivre")
+  /// AAAA-MM
+  month           String                @db.Char(7)
+  revenueTarget   Decimal?              @db.Decimal(14, 2)
+  marginPctTarget Decimal?              @db.Decimal(8, 2)
+  acosTarget      Decimal?              @db.Decimal(8, 2)
+  notes           String?
+  updatedByName   String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  tasks           MarketplaceGoalTask[]
+
+  @@unique([tenantId, channel, month])
+  @@map("marketplace_goals")
+}
+
+/// Planejamento: tarefa ligada à meta do mês.
+model MarketplaceGoalTask {
+  id            String          @id @default(uuid()) @db.Uuid
+  tenantId      String          @db.Uuid
+  goalId        String          @db.Uuid
+  goal          MarketplaceGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  title         String
+  assigneeId    String?         @db.Uuid
+  assigneeName  String?
+  dueDate       DateTime?       @db.Date
+  done          Boolean         @default(false)
+  doneAt        DateTime?
+  createdByName String?
+  createdAt     DateTime        @default(now())
+
+  @@index([tenantId, goalId])
+  @@map("marketplace_goal_tasks")
+}
+
+/// Concorrentes: preço de cada anúncio concorrente por dia (histórico; a leitura diária já existente grava aqui).
+model MlCompetitorPriceDay {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @db.Uuid
+  competitorId String   @db.Uuid
+  itemId       String
+  date         DateTime @db.Date
+  price        Decimal  @db.Decimal(14, 2)
+
+  @@unique([competitorId, itemId, date])
+  @@index([tenantId, itemId])
+  @@map("ml_competitor_price_days")
+}

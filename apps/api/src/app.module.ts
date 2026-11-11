@@ -11,6 +11,8 @@ import { CapturaModule } from './captura/captura.module'
 import { LandingModule } from './landing/landing.module'
 import { SeoModule } from './seo/seo.module'
 import { SeoMarketplaceModule } from './seo-marketplace/seo-marketplace.module'
+import { MarketplacePrecosModule } from './marketplaces/precos/precos.module'
+import { MarketplacePlanejamentoModule } from './marketplaces/planejamento/planejamento.module'
 import { PostagensModule } from './postagens/postagens.module'
 import { CsrfMiddleware } from './common/csrf.middleware'
 import { EmailModule } from './email/email.module'
@@ -77,6 +79,8 @@ import { UsersService } from './users/users.service'
     LandingModule,
     SeoModule,
     SeoMarketplaceModule,
+    MarketplacePrecosModule,
+    MarketplacePlanejamentoModule,
     PostagensModule,
     EmailModule,
     AutomacoesModule,

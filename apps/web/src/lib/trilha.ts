@@ -1401,6 +1401,69 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'precos-marketplace',
+    title: 'Preços e promoções (Mercado Livre)',
+    module: 'marketplace_precos',
+    routes: ['/marketplaces/precos'],
+    purpose: 'Ver a margem de cada anúncio do Mercado Livre e mudar preço, criar desconto e cupom sem sair do CRM, sempre com revisão antes.',
+    howItWorks:
+      'O CRM lê do Mercado Livre o preço de venda, a promoção ativa, a tarifa (API de custos por vender), o custo do frete grátis e as vendas dos últimos 60 dias. O imposto vem das notas de venda entregues pelo Mercado Envios (importadas em Fretes › Pedidos): primeiro a carga do SKU, depois a do NCM, a média geral e, por último, a alíquota manual. O custo é o que você informa (à mão, em massa ou por planilha): o custo contábil da Tcar nunca é copiado. Margem = preço − tarifa − frete − imposto − outras taxas − custo − custo fixo. Toda alteração passa por uma revisão (antes → depois e a margem), vai em segundo plano, um anúncio por segundo, e fica no histórico com Desfazer.',
+    lessons: [
+      {
+        id: 'precos.custos',
+        title: 'Informar os custos e as regras da margem',
+        steps: [
+          'Abra Marketplaces → Preços e promoções e clique em Ler do Mercado Livre (a primeira leitura demora alguns minutos).',
+          'Em Configurações da tela, informe a margem mínima, a margem alvo, o custo fixo por venda, outras taxas e, se não houver notas, a alíquota manual.',
+          'Digite o custo na coluna Custo, use Custo em massa (valor ou % do preço) ou importe a planilha com as colunas SKU e custo.',
+        ],
+        tip: 'Para o imposto real, importe os XML das vendas em Fretes › Pedidos: o CRM usa só as notas do Mercado Envios e recalcula a cada importação.',
+      },
+      {
+        id: 'precos.alterar',
+        title: 'Mudar preço, criar promoção ou cupom',
+        steps: [
+          'Selecione os anúncios e clique em Alterar preço (valor, +/− % ou preço para uma margem) ou Criar promoção (preço ou % de desconto, início e fim, até 14 dias).',
+          'Confira a revisão: cada anúncio com o antes → depois e a margem. Margem abaixo do mínimo fica em vermelho e pede "estou ciente".',
+          'Confirme. Se quiser, agende o envio para outra data e hora.',
+          'Na aba Cupons, crie o cupom do vendedor (valor ou %, até 31 dias, um uso por comprador) e escolha os anúncios.',
+          'No Histórico, acompanhe cada envio e use Desfazer para voltar o preço ou encerrar a promoção.',
+        ],
+      },
+    ],
+  },
+  {
+    key: 'planejamento-marketplace',
+    title: 'Planejamento (Mercado Livre)',
+    module: 'marketplace_planejamento',
+    routes: ['/marketplaces/planejamento'],
+    purpose: 'Planejar o canal Mercado Livre: o que vende e dá margem, o que está parado, metas do mês, envio ao Full, meses fortes, concorrência e o resultado (DRE).',
+    howItWorks:
+      'O CRM lê os pedidos da conta do Mercado Livre (os 12 meses que a API guarda e, depois, a cada 6 horas) e cruza com os custos, os impostos aprendidos e o frete de Preços e promoções. A curva ABC separa os anúncios por faturamento e por margem; a auditoria junta reputação, qualidade, perguntas sem resposta, Ads e margem; a IA gratuita monta a análise SWOT só com esses números. Metas e tarefas ficam por mês e canal. O Full é sugerido pelo giro (vendas por dia) e pela margem. O histórico de preço dos concorrentes vem da leitura diária de Concorrentes. Nada é alterado no Mercado Livre por esta tela.',
+    lessons: [
+      {
+        id: 'plan.abc',
+        title: 'Ver a curva ABC e os alertas',
+        steps: [
+          'Abra Marketplaces → Planejamento e clique em Ler pedidos agora (a primeira leitura traz 12 meses).',
+          'Escolha o período (60, 90 ou 180 dias) e se a curva é por faturamento ou por margem; filtre por classe ou alerta.',
+          'Clique no anúncio para ver a nota de qualidade (botão Ler qualidade) e abrir em Preços e promoções.',
+        ],
+      },
+      {
+        id: 'plan.metas',
+        title: 'Metas, auditoria e DRE',
+        steps: [
+          'Na aba Metas, escolha o mês, informe faturamento, margem e ACOS e salve; acrescente tarefas com responsável e prazo.',
+          'Acompanhe o real × meta e a projeção do mês pelo ritmo atual.',
+          'Na aba Auditoria, veja o diagnóstico e clique em Gerar análise SWOT (fica guardada com a data).',
+          'Na aba DRE, escolha os meses, veja por mês ou por produto e exporte o CSV. Os itens com * são estimados.',
+        ],
+        tip: 'Sem custo cadastrado, a margem não é calculada: informe os custos em Preços e promoções.',
+      },
+    ],
+  },
+  {
     key: 'assistente-ml',
     title: 'Assistente das perguntas do Mercado Livre',
     module: 'assist_atendimento',

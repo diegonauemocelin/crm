@@ -7,6 +7,7 @@ import type { Prisma } from '../generated/prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { allowedUnits, assertCan } from './acesso'
 import { CteService } from './cte.service'
+import { MarketplaceTaxService } from '../marketplaces/precos/impostos.service'
 import { expandUpload, hasFreight, isCancellation, type NfeData, parseNfeEvent, parseNfeXml, unsafeXml } from './nfe'
 
 const MAX_ISSUES = 200
@@ -34,6 +35,7 @@ export class NfeService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly ctes: CteService,
+    private readonly mlTaxes: MarketplaceTaxService,
   ) {}
 
   /** CNPJs da empresa: filiais (Fretes › Filiais) e o certificado da captura na SEFAZ. */
@@ -67,6 +69,9 @@ export class NfeService {
       if (issues.length < MAX_ISSUES) issues.push({ file, reason, kind })
     }
     for (const s of expanded.skipped) issue(s.name, s.reason, 'ignorada')
+    // Impostos das vendas do Mercado Livre (Marketplaces › Preços e promoções): notas do Mercado Envios.
+    const knownMe = await this.mlTaxes.knownCnpjs(T).catch(() => [] as string[])
+    let mlTaxChanged = false
     // Notas primeiro, cancelamentos depois (o cancelamento pode vir no mesmo .zip da nota).
     const docs = [...expanded.docs].sort((a, b) => Number(/infEvento/.test(a.text)) - Number(/infEvento/.test(b.text)))
     for (const d of docs) {
@@ -81,6 +86,7 @@ export class NfeService {
             issue(d.name, `Evento ${ev.type} da NF-e ignorado (só o cancelamento é usado).`, 'ignorada')
             continue
           }
+          if (await this.mlTaxes.cancel(T, ev.key).catch(() => false)) mlTaxChanged = true
           const done = await this.cancel(T, ev.key, user)
           if (done === 'NAO_ENCONTRADA') issue(d.name, 'Cancelamento de nota que não está no CRM.', 'ignorada')
           else if (done === 'JA') counts.existentes++
@@ -118,6 +124,8 @@ export class NfeService {
           issue(d.name, `NF-e ${nf.number ?? ''} não autorizada (situação ${nf.protocolStatus}).`, 'ignorada')
           continue
         }
+        // Também para notas já importadas: reimportar o .zip antigo ensina os impostos das vendas passadas.
+        if (await this.mlTaxes.record(T, d.text, nf, knownMe).catch((e: unknown) => (this.logger.warn(`Impostos da NF-e ${nf.key}: ${(e as Error).message}`), false))) mlTaxChanged = true
         if (await this.prisma.freightNfe.count({ where: { tenantId: T, key: nf.key } })) {
           counts.existentes++
           continue
@@ -141,6 +149,7 @@ export class NfeService {
         issue(d.name, 'Não foi possível gravar esta nota.', 'erro')
       }
     }
+    if (mlTaxChanged) await this.mlTaxes.recompute(T).catch((e: unknown) => this.logger.warn(`Impostos do Mercado Livre: ${(e as Error).message}`))
     const names = files.map((f) => f.originalname).join(', ').slice(0, 500)
     await this.prisma.freightNfeImport.create({ data: { id: importId, tenantId: T, fileNames: names, counts: counts as unknown as Prisma.InputJsonValue, issues: issues as unknown as Prisma.InputJsonValue, createdById: user.id, createdByName: user.name.slice(0, 120) } })
     await this.audit.byUser(user, ctx, 'frete.nfe.importadas', 'freight_nfe_import', importId, { arquivos: names, ...counts })
