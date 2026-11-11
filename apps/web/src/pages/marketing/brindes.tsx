@@ -58,7 +58,22 @@ interface Report {
   customers: number
   byGift: { giftId: string; name: string; quantity: number; value: number }[]
   byHolder: { id: string; name: string; kind: 'seller' | 'unit'; quantity: number; value: number }[]
-  byMonth: { month: string; quantity: number; value: number }[]
+  byMonth: { month: string; quantity: number; value: number; purchasedQuantity?: number; purchasedValue?: number }[]
+  purchased?: { quantity: number; value: number }
+}
+interface Purchase {
+  id: string
+  date: string
+  giftId: string
+  gift: string
+  document: string | null
+  supplier: string | null
+  quantity: number
+  unitCost: number
+  total: number
+  addedToStock: boolean
+  notes: string | null
+  createdByName: string | null
 }
 interface Delivery {
   id: string
@@ -133,6 +148,7 @@ function Brindes() {
           <TabsTrigger value="saldo">Saldo do mês</TabsTrigger>
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="retiradas">Retiradas</TabsTrigger>
+          <TabsTrigger value="compras">Compras</TabsTrigger>
           <TabsTrigger value="brindes">Brindes</TabsTrigger>
           {can('brindes', 'edit') && <TabsTrigger value="cotas">Cotas mensais</TabsTrigger>}
         </TabsList>
@@ -144,6 +160,9 @@ function Brindes() {
         </TabsContent>
         <TabsContent value="retiradas" className="mt-4">
           <Retiradas month={month} holders={view.data?.holders ?? []} />
+        </TabsContent>
+        <TabsContent value="compras" className="mt-4">
+          <Compras month={month} />
         </TabsContent>
         <TabsContent value="brindes" className="mt-4">
           <Cadastro />
@@ -788,6 +807,199 @@ const addMonths = (m: string, k: number) => {
 }
 
 /** Resumo dos brindes entregues num período: totais, por brinde, por vendedor/filial e mês a mês. */
+function Compras({ month }: { month: string }) {
+  const { can } = useAuth()
+  const qc = useQueryClient()
+  const confirm = useConfirm()
+  const [to, setTo] = useState(month)
+  const [from, setFrom] = useState(() => addMonths(month, -2))
+  const [open, setOpen] = useState(false)
+  const q = useQuery({ queryKey: ['brindes', 'compras', from, to], queryFn: () => api.get<Purchase[]>(`/marketing/brindes/compras?de=${from}&ate=${to}`) })
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/marketing/brindes/compras/${id}`),
+    onSuccess: () => (toast.success('Compra excluída.'), void qc.invalidateQueries({ queryKey: ['brindes'] })),
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const rows = q.data ?? []
+  const total = rows.reduce((s, r) => s + r.total, 0)
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="c-from">De</Label>
+          <Input id="c-from" type="month" className="w-44" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="c-to">Até</Label>
+          <Input id="c-to" type="month" className="w-44" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} />
+        </div>
+        <div className="ml-auto flex items-center gap-3 pb-0.5 text-sm">
+          <span className="text-muted-foreground">
+            {rows.length} compra(s) · <strong className="text-foreground">{money(total)}</strong>
+          </span>
+          {can('brindes', 'create') && (
+            <Button onClick={() => setOpen(true)}>
+              <PlusIcon /> Registrar compra
+            </Button>
+          )}
+        </div>
+      </div>
+      {q.isLoading ? (
+        <TableSkeleton />
+      ) : q.isError ? (
+        <ErrorState error={q.error} onRetry={() => q.refetch()} />
+      ) : !rows.length ? (
+        <EmptyState icon={GiftIcon} title="Nenhuma compra no período" description="Registre o pedido ou a nota fiscal de compra dos brindes: data, item, quantidade e valor. A compra pode dar entrada no estoque." />
+      ) : (
+        <Card className="py-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Data</TableHead>
+                <TableHead>Pedido / NF</TableHead>
+                <TableHead>Brinde</TableHead>
+                <TableHead className="text-right">Qtd.</TableHead>
+                <TableHead className="text-right">Unitário</TableHead>
+                <TableHead className="text-right">Total</TableHead>
+                <TableHead>Fornecedor</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell className="whitespace-nowrap">{r.date.split('-').reverse().join('/')}</TableCell>
+                  <TableCell>{r.document ?? '—'}</TableCell>
+                  <TableCell>
+                    {r.gift}
+                    {!r.addedToStock && <span className="ml-1 text-xs text-muted-foreground">(sem entrada no estoque)</span>}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{r.quantity.toLocaleString('pt-BR')}</TableCell>
+                  <TableCell className="text-right tabular-nums">{money(r.unitCost)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{money(r.total)}</TableCell>
+                  <TableCell className="max-w-48 truncate" title={r.notes ?? undefined}>
+                    {r.supplier ?? '—'}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {can('brindes', 'delete') && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Excluir compra"
+                        onClick={async () => {
+                          if (await confirm({ title: 'Excluir a compra?', description: r.addedToStock ? `As ${r.quantity} unidade(s) saem do estoque de ${r.gift}.` : 'A compra sai do controle de custos.', confirmLabel: 'Excluir' })) remove.mutate(r.id)
+                        }}
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
+      {open && <PurchaseDialog onClose={() => setOpen(false)} />}
+    </div>
+  )
+}
+
+function PurchaseDialog({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient()
+  const gifts = useQuery({ queryKey: ['brindes', 'cadastro'], queryFn: () => api.get<Gift[]>('/marketing/brindes') })
+  const [giftId, setGiftId] = useState('')
+  const [date, setDate] = useState(() => todaySP())
+  const [document, setDocument] = useState('')
+  const [supplier, setSupplier] = useState('')
+  const [quantity, setQuantity] = useState('')
+  const [unitCost, setUnitCost] = useState<number | null>(null)
+  const [total, setTotal] = useState<number | null>(null)
+  const [addToStock, setAddToStock] = useState(true)
+  const [updateCost, setUpdateCost] = useState(true)
+  const [notes, setNotes] = useState('')
+  const qty = Number(quantity) || 0
+  const shownTotal = total ?? (unitCost !== null && qty ? Math.round(unitCost * qty * 100) / 100 : null)
+  const save = useMutation({
+    mutationFn: () => api.post('/marketing/brindes/compras', { giftId, date, document: document || null, supplier: supplier || null, quantity: qty, unitCost, total, addToStock, updateCost, notes: notes || null }),
+    onSuccess: () => {
+      toast.success('Compra registrada.')
+      void qc.invalidateQueries({ queryKey: ['brindes'] })
+      onClose()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Registrar compra de brinde</DialogTitle>
+          <DialogDescription>Pedido ou nota fiscal de compra. Informe o valor unitário ou o total; o outro é calculado.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="p-gift">Brinde</Label>
+            <Select value={giftId} onValueChange={setGiftId}>
+              <SelectTrigger id="p-gift" className="w-full">
+                <SelectValue placeholder="Escolha o brinde" />
+              </SelectTrigger>
+              <SelectContent>
+                {(gifts.data ?? []).map((g) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {g.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="p-date">Data</Label>
+            <Input id="p-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="p-doc">Pedido ou nota fiscal</Label>
+            <Input id="p-doc" value={document} maxLength={60} onChange={(e) => setDocument(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="p-qty">Quantidade</Label>
+            <Input id="p-qty" inputMode="numeric" value={quantity} onChange={(e) => setQuantity(e.target.value.replace(/\D/g, ''))} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="p-unit">Valor unitário</Label>
+            <MoneyInput id="p-unit" value={unitCost} onChange={(v) => (setUnitCost(v), setTotal(null))} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="p-total">Total da compra</Label>
+            <MoneyInput id="p-total" value={shownTotal} onChange={(v) => (setTotal(v), setUnitCost(v !== null && qty ? Math.round((v / qty) * 100) / 100 : null))} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="p-sup">Fornecedor</Label>
+            <Input id="p-sup" value={supplier} maxLength={120} onChange={(e) => setSupplier(e.target.value)} />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="p-notes">Observações</Label>
+            <Input id="p-notes" value={notes} maxLength={500} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2">
+            <Switch checked={addToStock} onCheckedChange={setAddToStock} /> Dar entrada no estoque do brinde
+          </label>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2">
+            <Switch checked={updateCost} onCheckedChange={setUpdateCost} /> Usar este valor unitário como custo do brinde (valoriza as próximas retiradas)
+          </label>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button disabled={!giftId || !qty || shownTotal === null || save.isPending} onClick={() => save.mutate()}>
+            {save.isPending && <Loader2Icon className="animate-spin" />} Registrar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function Dashboard({ month }: { month: string }) {
   const [to, setTo] = useState(month)
   const [from, setFrom] = useState(() => addMonths(month, -5))
@@ -823,8 +1035,8 @@ function Dashboard({ month }: { month: string }) {
         <TableSkeleton />
       ) : q.isError ? (
         <ErrorState error={q.error} onRetry={() => q.refetch()} />
-      ) : !d || d.quantity === 0 ? (
-        <EmptyState icon={GiftIcon} title="Nenhum brinde entregue no período" description="As retiradas registradas aparecem aqui somadas por brinde, vendedor, filial e mês." />
+      ) : !d || (d.quantity === 0 && !d.purchased?.quantity) ? (
+        <EmptyState icon={GiftIcon} title="Nenhum brinde entregue ou comprado no período" description="As retiradas e as compras registradas aparecem aqui somadas por brinde, vendedor, filial e mês." />
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -833,14 +1045,22 @@ function Dashboard({ month }: { month: string }) {
             <Kpi label="Clientes que receberam" value={d.customers.toLocaleString('pt-BR')} hint={`Média de ${money(d.customers ? d.value / d.customers : 0)} por cliente`} />
             <Kpi label="Vendedores e filiais" value={String(d.byHolder.length)} hint={`${sellers.length} ${sellers.length === 1 ? 'vendedor' : 'vendedores'}, ${units.length} ${units.length === 1 ? 'filial' : 'filiais'}`} />
           </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Kpi label="Comprado no período" value={money(d.purchased?.value ?? 0)} hint={`${(d.purchased?.quantity ?? 0).toLocaleString('pt-BR')} unidade(s) · aba Compras`} spark={d.byMonth.map((m) => m.purchasedValue ?? 0)} />
+            <Kpi label="Distribuído no período" value={money(d.value)} hint={`${d.quantity.toLocaleString('pt-BR')} unidade(s)`} spark={d.byMonth.map((m) => m.value)} />
+            <Kpi label="Comprado − distribuído" value={money((d.purchased?.value ?? 0) - d.value)} hint={(d.purchased?.value ?? 0) >= d.value ? 'Comprou mais do que distribuiu (sobra em estoque)' : 'Distribuiu mais do que comprou no período (usou estoque anterior)'} />
+          </div>
           {d.byMonth.length > 1 && (
             <TrendChart
               title="Mês a mês"
-              description="Valor dos brindes entregues em cada mês."
+              description="Valor comprado e valor dos brindes distribuídos em cada mês."
               kind="bar"
               format={money}
-              data={d.byMonth.map((m) => ({ label: shortMonth(m.month), valor: m.value }))}
-              series={[{ key: 'valor', label: 'Valor', color: 'var(--chart-1)' }]}
+              data={d.byMonth.map((m) => ({ label: shortMonth(m.month), comprado: m.purchasedValue ?? 0, valor: m.value }))}
+              series={[
+                { key: 'comprado', label: 'Comprado', color: 'var(--chart-2)' },
+                { key: 'valor', label: 'Distribuído', color: 'var(--chart-1)' },
+              ]}
             />
           )}
           <div className="grid gap-4 lg:grid-cols-2">
