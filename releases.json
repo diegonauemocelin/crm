@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.10",
+      "date": "2026-11-11",
+      "title": "Compras de brindes",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Brindes",
+          "text": "Aba Compras: registre o pedido ou a nota fiscal de compra dos brindes (data, item, quantidade, valor e fornecedor). A compra pode dar entrada no estoque e atualizar o custo do brinde."
+        },
+        {
+          "type": "melhoria",
+          "area": "Brindes",
+          "text": "Dashboard: valor comprado × valor distribuído no período, com o gráfico mês a mês das duas coisas."
+        }
+      ]
+    },
+    {
       "version": "3.0.9",
       "date": "2026-11-11",
       "title": "Editar agendamento do e-mail marketing",
