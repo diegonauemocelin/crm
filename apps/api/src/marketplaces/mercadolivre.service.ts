@@ -286,6 +286,43 @@ export class MercadoLivreService implements OnApplicationBootstrap, OnModuleDest
     throw new MlError('O Mercado Livre recusou o acesso. Reconecte a conta.', 401, true)
   }
 
+  /**
+   * Chamada de escrita que pode repetir (Preços e promoções): 429 e erro do servidor esperam e tentam de novo (até 3
+   * vezes; o Mercado Livre não gravou nada nesses casos, ou a repetição é recusada como duplicada). Aceita DELETE.
+   * A mensagem de recusa traz o código (error) e os motivos (cause) que o Mercado Livre mandar.
+   */
+  async apiSend<T>(tenantId: string, method: 'GET' | 'PUT' | 'POST' | 'DELETE', path: string, body?: unknown, params: Record<string, string | number> = {}, retryDelay: (status: number, attempt: number) => number | null = () => null): Promise<T> {
+    const url = new URL(ML_API + path)
+    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v))
+    let authRetried = false
+    for (let attempt = 0; ; attempt++) {
+      const token = await this.accessToken(tenantId)
+      const res = await this.fetcher(url, {
+        method,
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        signal: AbortSignal.timeout(30_000),
+        redirect: 'error',
+      })
+      if (res.ok) return (await res.json().catch(() => ({}))) as T
+      if (res.status === 401 && !authRetried) {
+        authRetried = true
+        await this.patch(tenantId, { tokenExpiresAt: new Date(0).toISOString() })
+        continue
+      }
+      const wait = retryDelay(res.status, attempt)
+      if (wait !== null) {
+        await sleep(this.gapMs ? wait : 0)
+        continue
+      }
+      const b = (await res.json().catch(() => ({}))) as { message?: string; error?: string; cause?: { message?: string; code?: string }[] | string }
+      const causes = Array.isArray(b.cause) ? b.cause.map((c) => [c?.code, c?.message].filter(Boolean).join(': ')).filter(Boolean).join('; ') : ''
+      const msg = [b.error && b.message && b.error !== b.message ? `${b.error}: ${b.message}` : (b.message ?? b.error ?? res.statusText), causes].filter(Boolean).join(' — ')
+      if (res.status === 401) throw new MlError('O Mercado Livre recusou o acesso. Reconecte a conta.', 401, true)
+      throw new MlError(`O Mercado Livre respondeu ${res.status}: ${msg}`, res.status)
+    }
+  }
+
   async listAdvertisers(tenantId: string, product: 'PADS' | 'DISPLAY' = 'PADS', counter?: { calls: number }) {
     const r = await this.apiGet<{ advertisers?: { advertiser_id: number; site_id: string; advertiser_name: string; account_name: string }[] }>(tenantId, '/advertising/advertisers', { product_id: product }, '1', counter)
     return (r.advertisers ?? []).map((a) => ({ advertiserId: String(a.advertiser_id), siteId: a.site_id, name: a.advertiser_name, account: a.account_name }))
