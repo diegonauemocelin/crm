@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.4",
+      "date": "2026-11-11",
+      "title": "ROAS nas metas de Marketplaces",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Marketplaces",
+          "text": "Planejamento › Metas mostra o ROAS do Mercado Livre Ads (quanto volta em vendas para cada R$ 1 investido), com as vendas pelos anúncios e o investimento do mês. A meta de ROAS acompanha a de ACOS (ACOS 15% = ROAS 6,67)."
+        }
+      ]
+    },
+    {
       "version": "3.0.3",
       "date": "2026-11-11",
       "title": "Imagens no e-mail marketing e correção nas mensagens automáticas",
