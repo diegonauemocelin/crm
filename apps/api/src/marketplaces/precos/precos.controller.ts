@@ -24,6 +24,7 @@ class PrecosListQueryDto {
 }
 
 class PrecosConfigDto {
+  @ApiPropertyOptional({ enum: ['CUSTO', 'CUSTO_IMPOSTO', 'PRECO'] }) @IsOptional() @IsIn(['CUSTO', 'CUSTO_IMPOSTO', 'PRECO']) marginMode?: 'CUSTO' | 'CUSTO_IMPOSTO' | 'PRECO'
   @ApiPropertyOptional({ nullable: true }) @IsOptional() taxPct?: number | null
   @ApiPropertyOptional() @IsOptional() @IsNumber() minMarginPct?: number
   @ApiPropertyOptional({ nullable: true }) @IsOptional() targetMarginPct?: number | null

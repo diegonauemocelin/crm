@@ -31,6 +31,7 @@ import {
   pickListingPrice,
   PRECOS_CONFIG_KEY,
   type PrecosConfig,
+  marginPctOf,
   priceForMargin,
   pricingTips,
   promoDealPrice,
@@ -483,13 +484,13 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     const cost = c ? Number(c.cost) : null
     const shipping = num(s.shippingCost)
     const fee = num(s.saleFee)
-    const base = { shipping, taxPct: tax.pct, cost, fixedCost: config.fixedCostPerSale, extraPct: config.extraFeePct }
+    const base = { shipping, taxPct: tax.pct, cost, fixedCost: config.fixedCostPerSale, extraPct: config.extraFeePct, marginMode: config.marginMode }
     const margin = computeMargin({ price: sale ?? 0, fee, ...base })
     const promo = price !== null && sale !== null && sale < price ? { type: s.promoType, price: sale } : null
     let regularMarginPct: number | null = null
     const model: FeeModel | null = s.saleFeePct === null ? null : { pct: Number(s.saleFeePct), fixed: Number(s.saleFeeFixed ?? 0) }
     if (promo && model && price !== null) regularMarginPct = computeMargin({ price, fee: round2((price * model.pct) / 100 + model.fixed), ...base }).marginPct
-    const pm = model && cost !== null && tax.pct !== null ? { fee: model, shipping: shipping ?? 0, taxPct: tax.pct, extraPct: config.extraFeePct, cost, fixedCost: config.fixedCostPerSale } : null
+    const pm = model && cost !== null && tax.pct !== null ? { fee: model, shipping: shipping ?? 0, taxPct: tax.pct, extraPct: config.extraFeePct, cost, fixedCost: config.fixedCostPerSale, marginMode: config.marginMode } : null
     const minPrice = pm ? priceForMargin(0, pm) : null
     const goal = config.targetMarginPct ?? (config.minMarginPct > 0 ? config.minMarginPct : null)
     const suggestedPrice = pm && goal !== null ? priceForMargin(goal, pm) : null
@@ -787,7 +788,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
           else if (r.taxPct === null) error = 'Sem imposto: importe as notas do Mercado Envios ou informe a alíquota manual.'
           else if (s.saleFeePct === null) error = 'Tarifa do Mercado Livre não lida. Clique em Ler do Mercado Livre.'
           else {
-            const pm = { fee: { pct: Number(s.saleFeePct), fixed: Number(s.saleFeeFixed ?? 0) }, shipping: r.margin.shipping ?? 0, taxPct: r.taxPct, extraPct: cfg.extraFeePct, cost: r.cost, fixedCost: cfg.fixedCostPerSale }
+            const pm = { fee: { pct: Number(s.saleFeePct), fixed: Number(s.saleFeeFixed ?? 0) }, shipping: r.margin.shipping ?? 0, taxPct: r.taxPct, extraPct: cfg.extraFeePct, cost: r.cost, fixedCost: cfg.fixedCostPerSale, marginMode: cfg.marginMode }
             p = await refinePrice(target, pm, async (price) => (await this.feeAt(T, s, price))?.model ?? null)
             if (p === null) error = 'Não dá para chegar a essa margem (tarifa, imposto e taxas somam demais) ou a tarifa não pôde ser lida.'
           }
@@ -812,7 +813,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
       let marginAfter: MarginResult | null = null
       if (after) {
         const fee = await this.feeAt(T, s, after.price)
-        marginAfter = computeMargin({ price: after.price, fee: fee?.amount ?? null, shipping: r.margin.shipping, taxPct: r.taxPct, cost: r.cost, fixedCost: cfg.fixedCostPerSale, extraPct: cfg.extraFeePct })
+        marginAfter = computeMargin({ price: after.price, fee: fee?.amount ?? null, shipping: r.margin.shipping, taxPct: r.taxPct, cost: r.cost, fixedCost: cfg.fixedCostPerSale, extraPct: cfg.extraFeePct, marginMode: cfg.marginMode })
         if (!fee) warnings.push('Tarifa no preço novo não lida: margem sem a tarifa.')
         if (r.freeShipping) warnings.push('Frete considerado: o custo atual (pode mudar com o preço).')
       }
@@ -1025,8 +1026,8 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
       let m: MarginResult | null = null
       if (unit !== null) {
         // A tarifa do Mercado Livre é sobre o preço do anúncio; o cupom sai do bolso da loja.
-        m = computeMargin({ price: r.salePrice!, fee: r.margin.fee, shipping: r.margin.shipping, taxPct: r.taxPct, cost: r.cost, fixedCost: ctx.config.fixedCostPerSale, extraPct: ctx.config.extraFeePct })
-        if (m.margin !== null) m = { ...m, margin: round2(m.margin - (r.salePrice! - unit)), marginPct: round2(((m.margin - (r.salePrice! - unit)) / r.salePrice!) * 100) }
+        m = computeMargin({ price: r.salePrice!, fee: r.margin.fee, shipping: r.margin.shipping, taxPct: r.taxPct, cost: r.cost, fixedCost: ctx.config.fixedCostPerSale, extraPct: ctx.config.extraFeePct, marginMode: ctx.config.marginMode })
+        if (m.margin !== null) m = { ...m, margin: round2(m.margin - (r.salePrice! - unit)), marginPct: marginPctOf(round2(m.margin - (r.salePrice! - unit)), unit, r.cost, m.tax, ctx.config.marginMode) }
       }
       out.push({
         itemId: r.id,

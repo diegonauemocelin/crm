@@ -17,6 +17,7 @@ import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { api, errorMessage } from '@/lib/api'
+import { averageTax, ICMS_INTERNO, ICMS_REF_DATE, PIS_COFINS, type TaxRegime, taxForSale } from '@/lib/impostos-ref'
 import { useAuth } from '@/lib/auth'
 import { usePageTitle } from '@/lib/page-title'
 import { cn } from '@/lib/utils'
@@ -73,6 +74,7 @@ interface Row {
   syncedAt: string
 }
 interface Config {
+  marginMode?: 'CUSTO' | 'CUSTO_IMPOSTO' | 'PRECO'
   taxPct: number | null
   minMarginPct: number
   targetMarginPct: number | null
@@ -832,18 +834,76 @@ function ImportCostsDialog({ onClose }: { onClose: () => void }) {
 
 // ---------- Configurações e impostos ----------
 
+/** Referência de impostos para venda a CPF (ICMS por UF + DIFAL + PIS/COFINS pelo regime): sugere a alíquota manual. */
+function TaxReference({ onUse }: { onUse: (pct: number) => void }) {
+  const [origin, setOrigin] = useState('SC')
+  const [regime, setRegime] = useState<TaxRegime>('PRESUMIDO')
+  const [dest, setDest] = useState('MEDIA')
+  const [simples, setSimples] = useState('')
+  const sp = parseNum(simples) ?? 0
+  const est = dest === 'MEDIA' ? null : taxForSale(origin, dest, regime, sp)
+  const value = est ? est.total : averageTax(origin, regime, sp)
+  const ufs = Object.keys(ICMS_INTERNO).sort()
+  return (
+    <Card className="gap-2 p-4 text-sm">
+      <p className="font-medium">Referência de impostos (venda para CPF)</p>
+      <p className="text-xs text-muted-foreground">
+        ICMS interno de cada estado ({ICMS_REF_DATE}, com fundo de pobreza): na venda para outro estado, interestadual (7% ou 12%) + DIFAL = alíquota do destino. PIS/COFINS pelo regime. Valores de referência: confira com a contabilidade (alguns estados têm divergência entre tabelas).
+      </p>
+      <div className="grid gap-2 sm:grid-cols-4">
+        <select aria-label="Estado de origem" className="h-9 rounded-md border bg-transparent px-2" value={origin} onChange={(e) => setOrigin(e.target.value)}>
+          {ufs.map((u) => (
+            <option key={u} value={u}>
+              Origem {u}
+            </option>
+          ))}
+        </select>
+        <select aria-label="Regime tributário" className="h-9 rounded-md border bg-transparent px-2" value={regime} onChange={(e) => setRegime(e.target.value as TaxRegime)}>
+          <option value="PRESUMIDO">Lucro Presumido</option>
+          <option value="REAL">Lucro Real</option>
+          <option value="SIMPLES">Simples Nacional</option>
+        </select>
+        <select aria-label="Destino" className="h-9 rounded-md border bg-transparent px-2" value={dest} onChange={(e) => setDest(e.target.value)}>
+          <option value="MEDIA">Média do Brasil</option>
+          {ufs.map((u) => (
+            <option key={u} value={u}>
+              Destino {u}
+            </option>
+          ))}
+        </select>
+        {regime === 'SIMPLES' && <Input aria-label="Alíquota efetiva do DAS (%)" placeholder="DAS efetivo (%)" inputMode="decimal" value={simples} onChange={(e) => setSimples(e.target.value)} />}
+      </div>
+      <p>
+        {est && regime !== 'SIMPLES'
+          ? `ICMS ${pct(est.icmsOrigin)}${est.difal ? ` + DIFAL ${pct(est.difal)}` : ''} + PIS/COFINS ${pct(est.pisCofins)} = `
+          : regime === 'SIMPLES'
+            ? 'Simples Nacional: a carga é a alíquota efetiva do DAS = '
+            : `Média das 27 UFs (ICMS + DIFAL + PIS/COFINS ${pct(PIS_COFINS[regime as 'PRESUMIDO' | 'REAL'])}) = `}
+        <strong>{pct(value)}</strong>
+      </p>
+      <div>
+        <Button size="sm" variant="outline" onClick={() => onUse(value)}>
+          Usar {pct(value)} como alíquota manual
+        </Button>
+      </div>
+    </Card>
+  )
+}
+
 function SettingsDialog({ canEdit, onClose }: { canEdit: boolean; onClose: () => void }) {
   const qc = useQueryClient()
   const cfg = useQuery({ queryKey: ['precos-config'], queryFn: () => api.get<Config>('/marketplace-precos/configuracao') })
   const taxes = useQuery({ queryKey: ['precos-impostos'], queryFn: () => api.get<{ stored: number; notes: number; overall: { pct: number; notes: number } | null; skus: number; ncms: number; updatedAt: string | null }>('/marketplace-precos/impostos') })
   const [form, setForm] = useState<Record<string, string>>({})
   const [useNfe, setUseNfe] = useState(true)
+  const [mode, setMode] = useState<'CUSTO' | 'CUSTO_IMPOSTO' | 'PRECO'>('CUSTO')
   useEffect(() => {
     if (!cfg.data) return
     const c = cfg.data
     const s = (n: number | null) => (n === null ? '' : String(n).replace('.', ','))
     setForm({ taxPct: s(c.taxPct), minMarginPct: s(c.minMarginPct), targetMarginPct: s(c.targetMarginPct), fixedCostPerSale: s(c.fixedCostPerSale), extraFeePct: s(c.extraFeePct) })
     setUseNfe(c.useNfeTaxes)
+    setMode(c.marginMode ?? 'CUSTO')
   }, [cfg.data])
   const save = useMutation({
     mutationFn: () =>
@@ -854,6 +914,7 @@ function SettingsDialog({ canEdit, onClose }: { canEdit: boolean; onClose: () =>
         fixedCostPerSale: parseNum(form.fixedCostPerSale ?? '') ?? 0,
         extraFeePct: parseNum(form.extraFeePct ?? '') ?? 0,
         useNfeTaxes: useNfe,
+        marginMode: mode,
       }),
     onSuccess: () => {
       toast.success('Configurações salvas.')
@@ -891,6 +952,15 @@ function SettingsDialog({ canEdit, onClose }: { canEdit: boolean; onClose: () =>
           <TableSkeleton rows={3} />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1 sm:col-span-2">
+              <Label htmlFor="cfg-mode">Como calcular a margem</Label>
+              <select id="cfg-mode" className="h-9 w-full rounded-md border bg-transparent px-2 text-sm" value={mode} disabled={!canEdit} onChange={(e) => setMode(e.target.value as typeof mode)}>
+                <option value="CUSTO">Margem somada ao custo do produto (custo + margem + imposto + tarifa + frete)</option>
+                <option value="CUSTO_IMPOSTO">Margem sobre o custo do produto mais o imposto</option>
+                <option value="PRECO">Margem ao final de todos os custos (sobre o preço de venda)</option>
+              </select>
+              <p className="text-xs text-muted-foreground">Vale para a margem % da lista, a margem mínima, a alvo e o preço sugerido.</p>
+            </div>
             {field('minMarginPct', 'Margem mínima (%)', 'Abaixo dela a tela alerta e o envio pede "estou ciente".')}
             {field('targetMarginPct', 'Margem alvo (%)', 'Usada no preço sugerido. Vazio = não calcula.')}
             {field('fixedCostPerSale', 'Custo fixo por venda (R$)', 'Ex.: embalagem e etiqueta. Opcional.')}
@@ -901,6 +971,7 @@ function SettingsDialog({ canEdit, onClose }: { canEdit: boolean; onClose: () =>
             </label>
           </div>
         )}
+        {canEdit && <TaxReference onUse={(v) => setForm((f) => ({ ...f, taxPct: String(v).replace('.', ',') }))} />}
         <Card className="gap-2 p-4 text-sm">
           <p className="font-medium">Impostos pelas notas de venda</p>
           <p className="text-muted-foreground">

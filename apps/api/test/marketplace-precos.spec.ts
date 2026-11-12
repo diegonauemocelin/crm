@@ -241,3 +241,16 @@ describe('impostos pelas NF-e do Mercado Envios', () => {
     expect(MODULE_KEYS).toContain('marketplace_precos')
   })
 })
+
+describe('formas de cálculo da margem', () => {
+  it('custo, custo + imposto e ao final de todos os custos', async () => {
+    const { priceForMargin, marginPctOf } = await import('../src/marketplaces/precos/margem')
+    const m = { fee: { pct: 17, fixed: 0 }, shipping: 27.05, taxPct: 30, extraPct: 0, cost: 86, fixedCost: 0 }
+    // Custo 86 + 45% = 124,70; + frete 27,05; ÷ (1 − 47% de tarifa e imposto) = 286,33 (arredonda para cima)
+    expect(priceForMargin(45, { ...m, marginMode: 'CUSTO' })).toBe(286.33)
+    expect(priceForMargin(45, { ...m, marginMode: 'CUSTO_IMPOSTO' })).toBeGreaterThan(286.33)
+    expect(priceForMargin(45, { ...m, marginMode: 'PRECO' })).toBe(1413.13)
+    expect(marginPctOf(38.7, 286.32, 86, 85.9, 'CUSTO')).toBe(45)
+    expect(marginPctOf(10, 100, 50, 10, 'PRECO')).toBe(10)
+  })
+})

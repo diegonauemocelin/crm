@@ -10,7 +10,18 @@
 export const PRECOS_CONFIG_KEY = 'marketplace_precos_config'
 export const PRECOS_TAX_KEY = 'marketplace_precos_impostos'
 
+/**
+ * Como a margem é calculada (escolha da empresa):
+ * - CUSTO: margem sobre o custo do produto (markup): preço = custo + margem + imposto % + tarifa % + frete...
+ * - CUSTO_IMPOSTO: margem sobre o custo do produto mais o imposto da venda.
+ * - PRECO: margem ao final de todos os custos (sobre o preço de venda).
+ */
+export type MarginMode = 'CUSTO' | 'CUSTO_IMPOSTO' | 'PRECO'
+export const MARGIN_MODES: MarginMode[] = ['CUSTO', 'CUSTO_IMPOSTO', 'PRECO']
+
 export interface PrecosConfig {
+  /** Base da margem (CUSTO, CUSTO_IMPOSTO ou PRECO). */
+  marginMode: MarginMode
   /** Alíquota manual sobre a venda (%): último recurso quando não há notas do Mercado Envios. null = não informada. */
   taxPct: number | null
   /** Margem mínima (%): abaixo dela a tela alerta e o envio pede "estou ciente". */
@@ -25,7 +36,7 @@ export interface PrecosConfig {
   useNfeTaxes: boolean
 }
 
-export const DEFAULT_PRECOS_CONFIG: PrecosConfig = { taxPct: null, minMarginPct: 0, targetMarginPct: null, fixedCostPerSale: 0, extraFeePct: 0, useNfeTaxes: true }
+export const DEFAULT_PRECOS_CONFIG: PrecosConfig = { marginMode: 'CUSTO', taxPct: null, minMarginPct: 0, targetMarginPct: null, fixedCostPerSale: 0, extraFeePct: 0, useNfeTaxes: true }
 
 const finite = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v.replace(',', '.'))) ? Number(v.replace(',', '.')) : null)
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
@@ -35,6 +46,7 @@ export const round2 = (n: number) => Math.round(n * 100) / 100
 export function cleanPrecosConfig(raw: Partial<Record<keyof PrecosConfig, unknown>>, base: PrecosConfig = DEFAULT_PRECOS_CONFIG): PrecosConfig {
   const pct = (v: unknown, fallback: number | null, min = 0) => (v === null || v === '' ? null : finite(v) === null ? fallback : round2(clamp(finite(v)!, min, 95)))
   return {
+    marginMode: 'marginMode' in raw && MARGIN_MODES.includes(raw.marginMode as MarginMode) ? (raw.marginMode as MarginMode) : (base.marginMode ?? 'CUSTO'),
     taxPct: 'taxPct' in raw ? pct(raw.taxPct, base.taxPct) : base.taxPct,
     minMarginPct: 'minMarginPct' in raw ? (pct(raw.minMarginPct, base.minMarginPct, -50) ?? 0) : base.minMarginPct,
     targetMarginPct: 'targetMarginPct' in raw ? pct(raw.targetMarginPct, base.targetMarginPct, -50) : base.targetMarginPct,
@@ -89,6 +101,8 @@ export interface MarginInput {
   cost: number | null
   fixedCost: number
   extraPct: number
+  /** Base da margem %; sem informar = sobre o preço de venda. */
+  marginMode?: MarginMode
 }
 
 export interface MarginResult {
@@ -127,9 +141,16 @@ export function computeMargin(i: MarginInput): MarginResult {
     cost: i.cost,
     fixedCost: i.fixedCost,
     margin,
-    marginPct: margin === null || i.price <= 0 ? null : round2((margin / i.price) * 100),
+    marginPct: marginPctOf(margin, i.price, i.cost, tax, i.marginMode),
     missing,
   }
+}
+
+/** Margem % conforme a base escolhida: sobre o preço, sobre o custo ou sobre custo + imposto. */
+export function marginPctOf(margin: number | null, price: number, cost: number | null, tax: number | null, mode: MarginMode = 'PRECO'): number | null {
+  if (margin === null) return null
+  const base = mode === 'CUSTO' ? cost : mode === 'CUSTO_IMPOSTO' ? (cost === null || tax === null ? null : cost + tax) : price
+  return base === null || base <= 0 ? null : round2((margin / base) * 100)
 }
 
 export interface PriceModel {
@@ -139,6 +160,7 @@ export interface PriceModel {
   extraPct: number
   cost: number
   fixedCost: number
+  marginMode?: MarginMode
 }
 
 /**
@@ -147,9 +169,14 @@ export interface PriceModel {
  * null = impossível (os percentuais somam 100% ou mais).
  */
 export function priceForMargin(targetPct: number, m: PriceModel): number | null {
-  const denom = 1 - (m.fee.pct + m.taxPct + m.extraPct + targetPct) / 100
+  const mode = m.marginMode ?? 'PRECO'
+  const t = targetPct / 100
+  // Percentuais sobre o preço (tarifa, imposto, outras taxas) e, no modo PRECO, a própria margem.
+  const onPrice = (m.fee.pct + m.taxPct + m.extraPct) / 100 + (mode === 'PRECO' ? t : mode === 'CUSTO_IMPOSTO' ? (t * m.taxPct) / 100 : 0)
+  const denom = 1 - onPrice
   if (denom <= 0.01) return null
-  const p = (m.cost + m.fixedCost + m.fee.fixed + m.shipping) / denom
+  const cost = mode === 'PRECO' ? m.cost : m.cost * (1 + t)
+  const p = (cost + m.fixedCost + m.fee.fixed + m.shipping) / denom
   if (!Number.isFinite(p) || p <= 0) return null
   return Math.ceil(p * 100 - 1e-6) / 100
 }
