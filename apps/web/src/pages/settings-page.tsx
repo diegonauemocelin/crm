@@ -15,6 +15,7 @@ import { Switch } from '@/components/ui/switch'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { applyBranding } from '@/lib/branding'
+import { emailDomain, SMTP_PROVIDERS } from '@/lib/smtp-provedores'
 import type { Branding } from '@/lib/types'
 import { FormError } from './auth/auth-layout'
 
@@ -338,7 +339,20 @@ function SmtpEditor({ initial }: { initial: SmtpView }) {
   const canEdit = can('configuracoes', 'edit')
   const qc = useQueryClient()
   const [form, setForm] = useState<SmtpView>(initial)
+  // Provedor reconhecido pelo servidor já salvo (HostGator: mail.<domínio>).
+  const [provider, setProvider] = useState(() => SMTP_PROVIDERS.find((p) => p.host === initial.host)?.id ?? (/^mail\./.test(initial.host) ? 'hostgator' : ''))
   const [password, setPassword] = useState('')
+  /** Usuário da conta: no HostGator monta o servidor pelo domínio; o remetente vazio recebe o mesmo e-mail. */
+  const onUser = (username: string) => {
+    const p = SMTP_PROVIDERS.find((x) => x.id === provider)
+    const domain = emailDomain(username)
+    setForm((f) => ({
+      ...f,
+      username,
+      ...(p?.hostFromDomain && domain ? { host: p.hostFromDomain(domain) } : {}),
+      ...(!f.fromEmail || f.fromEmail === f.username ? { fromEmail: username } : {}),
+    }))
+  }
   const [testTo, setTestTo] = useState(me?.email ?? '')
   const [result, setResult] = useState<TestResult>(null)
   const [busy, setBusy] = useState<'save' | 'conn' | 'mail' | null>(null)
@@ -393,16 +407,29 @@ function SmtpEditor({ initial }: { initial: SmtpView }) {
           </CardHeader>
           <CardContent className="mt-4 space-y-4">
             {canEdit && (
-              <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 p-3 text-sm">
-                <span className="flex-1">Usa a hospedagem de e-mail da Locaweb?</span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setForm({ ...form, host: 'email-ssl.com.br', port: 465, security: 'ssl' })}
+              <div className="space-y-2 rounded-md border bg-muted/40 p-3 text-sm">
+                <Label htmlFor="s-provider">Seu e-mail é de qual provedor?</Label>
+                <select
+                  id="s-provider"
+                  className="h-9 w-full rounded-md border bg-background px-2"
+                  value={provider}
+                  onChange={(e) => {
+                    const p = SMTP_PROVIDERS.find((x) => x.id === e.target.value)
+                    setProvider(e.target.value)
+                    if (!p) return
+                    const domain = emailDomain(form.username)
+                    setForm({ ...form, host: p.hostFromDomain && domain ? p.hostFromDomain(domain) : p.host, port: p.port, security: p.security })
+                    setTimeout(() => document.getElementById('s-user')?.focus(), 0)
+                  }}
                 >
-                  Preencher dados da Locaweb
-                </Button>
+                  <option value="">Outro (preencher à mão)</option>
+                  {SMTP_PROVIDERS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">{SMTP_PROVIDERS.find((x) => x.id === provider)?.hint ?? 'Escolha o provedor para preencher servidor, porta e segurança; depois informe o usuário e a senha da conta.'}</p>
               </div>
             )}
             <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_7rem_10rem]">
@@ -431,7 +458,7 @@ function SmtpEditor({ initial }: { initial: SmtpView }) {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="s-user">Usuário</Label>
-                <Input id="s-user" autoComplete="off" placeholder="contato@usaparts.com.br" value={form.username} onChange={(e) => set('username', e.target.value.trim())} disabled={!canEdit} />
+                <Input id="s-user" autoComplete="off" placeholder="contato@usaparts.com.br" value={form.username} onChange={(e) => onUser(e.target.value.trim())} disabled={!canEdit} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="s-pass">Senha</Label>
