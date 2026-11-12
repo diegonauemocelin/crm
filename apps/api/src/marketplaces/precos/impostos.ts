@@ -53,7 +53,9 @@ export function parseNfeTaxes(raw: string): NfeTaxNote {
     const imp = block(det, 'imposto') ?? ''
     const sku = normSku(tag(prod, 'cProd'))
     if (!sku) continue
-    const value = num(tag(prod, 'vProd')) - num(tag(prod, 'vDesc'))
+    // Valor que o cliente paga pelo item, como o "Valor líquido" do ERP: produtos − desconto + IPI (o IPI vai por fora).
+    const ipi = num(tag(block(imp, 'IPI') ?? '', 'vIPI'))
+    const value = num(tag(prod, 'vProd')) - num(tag(prod, 'vDesc')) + ipi
     const icms = block(imp, 'ICMS') ?? ''
     const dest = block(imp, 'ICMSUFDest') ?? ''
     const tax =
@@ -63,7 +65,7 @@ export function parseNfeTaxes(raw: string): NfeTaxNote {
       num(tag(icms, 'vFCPST')) +
       num(tag(dest, 'vICMSUFDest')) +
       num(tag(dest, 'vFCPUFDest')) +
-      num(tag(block(imp, 'IPI') ?? '', 'vIPI')) +
+      ipi +
       num(tag(block(imp, 'PIS') ?? '', 'vPIS')) +
       num(tag(block(imp, 'COFINS') ?? '', 'vCOFINS'))
     const ncm = (tag(prod, 'NCM') ?? '').replace(/\D/g, '')
@@ -78,10 +80,20 @@ const plain = (s: string) =>
     .replace(/[̀-ͯ]/g, '')
     .toUpperCase()
 
-/** Nota entregue pelo Mercado Envios: nome do transportador com "MERCADO ENVIOS" ou CNPJ cadastrado como Mercado Envios. */
-export function isMercadoEnvios(carrierName: string | null | undefined, carrierCnpj: string | null | undefined, knownCnpjs: readonly string[] = []) {
-  if (carrierName && /MERCADO\s*ENVIOS/.test(plain(carrierName))) return true
+/**
+ * Venda do Mercado Livre: transportador Mercado Envios ou EBAZAR (empresa de logística do Mercado Livre), CNPJ
+ * cadastrado como Mercado Envios, ou "MERCADO LIVRE" nas informações complementares da nota (infCpl).
+ */
+export function isMercadoEnvios(carrierName: string | null | undefined, carrierCnpj: string | null | undefined, knownCnpjs: readonly string[] = [], infCpl?: string | null) {
+  if (carrierName && /MERCADO\s*ENVIOS|EBAZAR/.test(plain(carrierName))) return true
+  if (infCpl && /MERCADO\s*LIVRE|MERCADOLIVRE/.test(plain(infCpl))) return true
   return !!carrierCnpj && knownCnpjs.includes(carrierCnpj)
+}
+
+/** Informações complementares da NF-e (infAdic/infCpl), para achar "Mercado Livre" escrito na nota. */
+export function infCplOf(raw: string): string | null {
+  const m = /<(?:\w+:)?infCpl>([\s\S]*?)<\/(?:\w+:)?infCpl>/.exec(raw)
+  return m ? m[1]!.slice(0, 5000) : null
 }
 
 export interface TaxRate {

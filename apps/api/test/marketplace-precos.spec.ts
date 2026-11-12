@@ -265,6 +265,21 @@ describe('lucro por produto', () => {
     expect(profitTargetOf({ profitValue: 93.99, profitPct: null }, 48.7, 181)).toEqual({ value: 93.99, source: 'produto' })
     expect(profitTargetOf({ profitValue: null, profitPct: 50 }, 48.7, null)).toEqual({ value: 24.35, source: 'produto_pct' })
     expect(profitTargetOf(null, 48.7, 181)).toEqual({ value: 132.3, source: 'erp' })
+    // Como o Tcar (030592): venda 224,56 − custo 86,37 − 27,03% de impostos = 77,49
+    expect(profitTargetOf(null, 86.37, 224.56, 27.03)).toEqual({ value: 77.49, source: 'erp' })
     expect(profitTargetOf(null, null, 181)).toBeNull()
+  })
+})
+
+describe('venda do Mercado Livre na NF-e', () => {
+  it('EBAZAR, Mercado Envios ou "Mercado Livre" na observação', async () => {
+    const { isMercadoEnvios, infCplOf, parseNfeTaxes } = await import('../src/marketplaces/precos/impostos')
+    expect(isMercadoEnvios('EBAZAR.COM.BR. LTDA', null)).toBe(true)
+    expect(isMercadoEnvios('Transportadora X', null, [], 'Pedido 123 - Venda MERCADO LIVRE')).toBe(true)
+    expect(isMercadoEnvios('Transportadora X', null, [], 'Venda balcão')).toBe(false)
+    expect(infCplOf('<infAdic><infCpl>Mercado Livre pedido 9</infCpl></infAdic>')).toBe('Mercado Livre pedido 9')
+    const xml = '<nfeProc><NFe><infNFe><det nItem="1"><prod><cProd>030592</cProd><NCM>40093100</NCM><vProd>224.56</vProd></prod><imposto><ICMS><ICMS00><vICMS>40.00</vICMS></ICMS00></ICMS><IPI><IPITrib><vIPI>7.30</vIPI></IPITrib></IPI></imposto></det></infNFe></NFe></nfeProc>'
+    const t = parseNfeTaxes(xml)
+    expect(t.items[0]).toMatchObject({ sku: '030592', value: 231.86, tax: 47.3 })
   })
 })

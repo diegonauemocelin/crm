@@ -506,7 +506,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     const goal = config.targetMarginPct ?? (config.minMarginPct > 0 ? config.minMarginPct : null)
     // Lucro do produto (R$ ou % do custo informado, ou preço do ERP − custo): o preço sugerido deixa esse lucro em R$.
     const erpPrice = sku ? (erpPriceBy.get(normSku(sku)) ?? null) : null
-    const profitTarget = profitTargetOf(c ? { profitValue: c.profitValue === null ? null : Number(c.profitValue), profitPct: c.profitPct === null ? null : Number(c.profitPct) } : null, cost, erpPrice)
+    const profitTarget = profitTargetOf(c ? { profitValue: c.profitValue === null ? null : Number(c.profitValue), profitPct: c.profitPct === null ? null : Number(c.profitPct) } : null, cost, erpPrice, tax.pct)
     const salePct = c?.profitSalePct != null ? Number(c.profitSalePct) : null
     const suggestedPrice = pm
       ? salePct !== null
