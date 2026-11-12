@@ -12,6 +12,7 @@ import { SettingsService } from '../../settings/settings.service'
 import { todayBr } from '../mercadolivre'
 import { MercadoLivreService } from '../mercadolivre.service'
 import { aiRetryDelay, isMlItemId, mlEditBlocked } from '../seo-ml'
+import { cheapestRivals, itemLink, type RivalOffer } from './concorrentes-preco'
 import { normSku, taxRateFor, type TaxRates } from './impostos'
 import { MarketplaceTaxService } from './impostos.service'
 import {
@@ -139,6 +140,8 @@ export interface PriceRow {
   minPrice: number | null
   suggestedPrice: number | null
   competitorMin: number | null
+  /** Os 2 concorrentes mais baratos (lojas cadastradas com o mesmo código; no detalhe, também o catálogo do ML). */
+  competitors: RivalOffer[]
   tips: Tip[]
   hasVariations: boolean
   sales30: number | null
@@ -466,19 +469,21 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
       this.config(tenantId),
       this.taxes.rates(tenantId),
       this.prisma.marketplaceCost.findMany({ where: { tenantId } }),
-      this.prisma.mlCompetitorItem.findMany({ where: { tenantId, status: 'active', price: { not: null } }, select: { price: true, codes: true } }),
+      this.prisma.mlCompetitorItem.findMany({ where: { tenantId, status: 'active', price: { not: null } }, select: { itemId: true, title: true, permalink: true, price: true, freeShipping: true, codes: true, competitor: { select: { nickname: true } } } }),
       // Preço de venda do ERP (Tcar) por código: base do lucro do produto quando não há lucro informado.
       this.prisma.tcarProduct.findMany({ where: { tenantId, price: { not: null } }, select: { code: true, price: true } }).catch(() => [] as { code: string; price: unknown }[]),
     ])
     const costBy = new Map(costs.map((c) => [c.sku, c]))
     const erpPriceBy = new Map(erp.map((e) => [normSku(e.code), Number(e.price)]))
-    const rivalBy = new Map<string, { min: number; count: number }>()
-    for (const r of rivals)
+    const rivalBy = new Map<string, RivalOffer[]>()
+    for (const r of rivals) {
+      const offer: RivalOffer = { itemId: r.itemId, title: r.title, price: Number(r.price), permalink: r.permalink ?? itemLink(r.itemId), seller: r.competitor?.nickname ?? null, freeShipping: r.freeShipping, source: 'CODIGO' }
       for (const code of r.codes) {
-        const p = Number(r.price)
         const a = rivalBy.get(code)
-        rivalBy.set(code, a ? { min: Math.min(a.min, p), count: a.count + 1 } : { min: p, count: 1 })
+        if (a) a.push(offer)
+        else rivalBy.set(code, [offer])
       }
+    }
     return { config, rates, costBy, rivalBy, erpPriceBy }
   }
 
@@ -518,13 +523,11 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
             : null
       : null
     const codes = ownCodes({ title: s.title ?? a?.title ?? null, sellerSku: sku, partNumber: a?.partNumber ?? null, attributes: a?.attributes })
-    let competitorMin: number | null = null
-    let competitorCount = 0
-    for (const code of codes) {
-      const r = rivalBy.get(code)
-      if (r && (competitorMin === null || r.min < competitorMin)) competitorMin = r.min
-      if (r) competitorCount += r.count
-    }
+    const offers = codes.flatMap((code) => rivalBy.get(code) ?? [])
+    const all = cheapestRivals(offers, s.itemId, Number.MAX_SAFE_INTEGER)
+    const competitorMin = all[0]?.price ?? null
+    const competitorCount = all.length
+    const competitors = all.slice(0, 2)
     const tips = pricingTips({
       status: s.status,
       availableQuantity: s.availableQuantity,
@@ -580,6 +583,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
       minPrice,
       suggestedPrice,
       competitorMin,
+      competitors,
       tips,
       hasVariations: s.hasVariations,
       sales30: s.sales30,
@@ -651,8 +655,42 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     const { list } = await this.rows(user.tenantId, { status: 'todos' }, [itemId])
     const row = list[0]
     if (!row) throw new NotFoundException('Anúncio não encontrado (leia os anúncios do Mercado Livre nesta tela primeiro).')
-    const changes = await this.prisma.marketplacePriceChange.findMany({ where: { tenantId: user.tenantId, itemId }, orderBy: { createdAt: 'desc' }, take: 20 })
-    return { ...row, changes, aiAvailable: await this.ai.available(user.tenantId) }
+    const [changes, catalog] = await Promise.all([
+      this.prisma.marketplacePriceChange.findMany({ where: { tenantId: user.tenantId, itemId }, orderBy: { createdAt: 'desc' }, take: 20 }),
+      this.catalogRivals(user.tenantId, itemId),
+    ])
+    const competitors = cheapestRivals([...row.competitors, ...catalog.offers], itemId)
+    return { ...row, competitors, catalogProductId: catalog.productId, changes, aiAvailable: await this.ai.available(user.tenantId) }
+  }
+
+  /**
+   * Outros vendedores do mesmo produto do catálogo do Mercado Livre (é o mesmo produto, vendido no ML), pelos
+   * endpoints públicos /items/{id} (catalog_product_id) e /products/{id}/items. Sem catálogo ou se o ML recusar: vazio.
+   */
+  private async catalogRivals(T: string, itemId: string): Promise<{ productId: string | null; offers: RivalOffer[] }> {
+    try {
+      const it = await this.ml.apiGet<{ catalog_product_id?: string | null; seller_id?: number }>(T, `/items/${itemId}`, { attributes: 'id,catalog_product_id,seller_id' })
+      const pid = it?.catalog_product_id
+      if (!pid) return { productId: null, offers: [] }
+      const [page, product] = await Promise.all([
+        this.ml.apiGet<{ results?: { item_id?: string; seller_id?: number; price?: number; shipping?: { free_shipping?: boolean } }[] }>(T, `/products/${pid}/items`, { limit: 20 }),
+        this.ml.apiGet<{ name?: string }>(T, `/products/${pid}`).catch(() => null),
+      ])
+      const others = (page?.results ?? [])
+        .filter((r) => r.item_id && r.item_id !== itemId && typeof r.price === 'number' && String(r.seller_id ?? '') !== String(it.seller_id ?? ''))
+        .sort((a, b) => a.price! - b.price!)
+        .slice(0, 2)
+      const offers = await Promise.all(
+        others.map(async (r): Promise<RivalOffer> => {
+          const u = r.seller_id ? await this.ml.apiGet<{ nickname?: string }>(T, `/users/${r.seller_id}`).catch(() => null) : null
+          return { itemId: r.item_id!, title: product?.name ?? null, price: r.price!, permalink: itemLink(r.item_id!), seller: u?.nickname ?? null, freeShipping: !!r.shipping?.free_shipping, source: 'CATALOGO' }
+        }),
+      )
+      return { productId: pid, offers }
+    } catch (e) {
+      this.logger.warn(`Concorrentes do catálogo de ${itemId}: ${(e as Error).message}`)
+      return { productId: null, offers: [] }
+    }
   }
 
   /** Dica da IA gratuita (Gemini já configurado) com os números do anúncio. Só sugere: nada muda no Mercado Livre. */
@@ -669,6 +707,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
       `Margem: ${f(r.margin.margin)} (${r.margin.marginPct ?? 'sem dado'}%); mínima: ${cfg.minMarginPct}%; alvo: ${cfg.targetMarginPct ?? 'não configurada'}%`,
       `Preço mínimo (margem zero): ${f(r.minPrice)}; preço sugerido: ${f(r.suggestedPrice)}`,
       `Concorrente mais barato com o mesmo código: ${f(r.competitorMin)}`,
+      `Concorrentes mais baratos (mesmo código ou mesmo produto do catálogo): ${r.competitors.map((c) => `${f(c.price)}${c.seller ? ` (${c.seller})` : ''}`).join('; ') || 'nenhum encontrado'}`,
       `Vendas em 30 dias: ${r.sales30 ?? 'sem dado'}; em 60 dias: ${r.sales60 ?? 'sem dado'}`,
       `Dicas automáticas: ${r.tips.map((t) => t.text).join(' | ') || 'nenhuma'}`,
     ].join('\n')

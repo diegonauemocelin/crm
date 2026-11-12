@@ -72,6 +72,7 @@ interface Row {
   minPrice: number | null
   suggestedPrice: number | null
   competitorMin: number | null
+  competitors?: Rival[]
   tips: Tip[]
   sales30: number | null
   sales60: number | null
@@ -398,6 +399,7 @@ export function MarketplacePrecosPage() {
                     <TableHead className="text-right">Imposto</TableHead>
                     <TableHead className="text-right">Margem</TableHead>
                     <TableHead className="text-right">Mínimo / sugerido</TableHead>
+                    <TableHead className="text-right">Concorrentes</TableHead>
                     <TableHead className="min-w-56">Dica</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -449,6 +451,17 @@ export function MarketplacePrecosPage() {
                       <TableCell className="text-right text-xs whitespace-nowrap tabular-nums">
                         <span className="block text-muted-foreground">{brl(r.minPrice)}</span>
                         <span className="font-medium">{brl(r.suggestedPrice)}</span>
+                      </TableCell>
+                      <TableCell className="text-right text-xs whitespace-nowrap tabular-nums">
+                        {r.competitors?.length ? (
+                          r.competitors.map((c) => (
+                            <span key={c.itemId} className="block" title={c.seller ?? c.itemId}>
+                              {brl(c.price)}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="max-w-80">
                         {r.tips[0] ? (
@@ -1097,8 +1110,56 @@ function SettingsDialog({ canEdit, onClose }: { canEdit: boolean; onClose: () =>
 
 // ---------- Anúncio ----------
 
+interface Rival {
+  itemId: string
+  title: string | null
+  price: number
+  permalink: string | null
+  seller: string | null
+  freeShipping: boolean
+  source: 'CODIGO' | 'CATALOGO'
+}
+
+/** Os 2 concorrentes mais baratos: lojas cadastradas com o mesmo código e outros vendedores do mesmo produto do catálogo. */
+function RivalsCard({ row, catalogProductId }: { row: Row; catalogProductId?: string | null }) {
+  const list = row.competitors ?? []
+  const now = row.salePrice ?? row.price
+  return (
+    <Card className="gap-2 px-4 py-3">
+      <p className="text-sm font-medium">Preço de concorrentes (2 mais baratos)</p>
+      {!list.length ? (
+        <p className="text-xs text-muted-foreground">
+          Nenhum concorrente encontrado. Cadastre lojas em Marketplaces › Concorrentes (compara pelo código){catalogProductId ? '' : '; este anúncio não está num produto do catálogo do Mercado Livre, então não há outros vendedores do mesmo produto'}.
+        </p>
+      ) : (
+        list.map((c) => {
+          const diff = now !== null && now > 0 ? ((c.price - now) / now) * 100 : null
+          return (
+            <div key={c.itemId} className="flex items-start justify-between gap-3 border-b pb-2 text-sm last:border-0 last:pb-0">
+              <div className="min-w-0">
+                <a href={c.permalink ?? '#'} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-primary hover:underline">
+                  {c.seller ?? c.itemId} <ExternalLinkIcon className="size-3" />
+                </a>
+                {c.title && <p className="line-clamp-1 text-xs text-muted-foreground">{c.title}</p>}
+                <p className="text-xs text-muted-foreground">
+                  {c.source === 'CATALOGO' ? 'Mesmo produto do catálogo do ML' : 'Loja concorrente, mesmo código'}
+                  {c.freeShipping ? ' · frete grátis' : ''}
+                </p>
+              </div>
+              <div className="text-right tabular-nums">
+                <p className="font-medium">{brl(c.price)}</p>
+                {diff !== null && <p className={cn('text-xs', diff < 0 ? 'text-destructive' : 'text-emerald-700 dark:text-emerald-400')}>{diff < 0 ? `${pct(Math.abs(Math.round(diff * 10) / 10))} abaixo do seu` : diff > 0 ? `${pct(Math.round(diff * 10) / 10)} acima do seu` : 'igual ao seu'}</p>}
+              </div>
+            </div>
+          )
+        })
+      )}
+    </Card>
+  )
+}
+
 function ItemSheet({ id, config, onClose, onApply }: { id: string; config: Config; onClose: () => void; onApply: (ids: string[], a: Action) => void }) {
-  const q = useQuery({ queryKey: ['precos-anuncio', id], queryFn: () => api.get<Row & { changes: Change[]; aiAvailable: boolean }>(`/marketplace-precos/anuncios/${id}`) })
+  const q = useQuery({ queryKey: ['precos-anuncio', id], queryFn: () => api.get<Row & { changes: Change[]; aiAvailable: boolean; catalogProductId?: string | null }>(`/marketplace-precos/anuncios/${id}`) })
   const ai = useMutation({ mutationFn: () => api.post<{ text: string }>(`/marketplace-precos/anuncios/${id}/dica-ia`), onError: (e) => toast.error(errorMessage(e), { duration: 8000 }) })
   const r = q.data
   const line = (k: string, v: string, hint?: string) => (
@@ -1153,6 +1214,7 @@ function ItemSheet({ id, config, onClose, onApply }: { id: string; config: Confi
               {line('Lido em', formatDateTime(r.syncedAt))}
             </Card>
             {r.readError && <p className="text-xs text-destructive">{r.readError}</p>}
+            <RivalsCard row={r} catalogProductId={r.catalogProductId} />
             <ProfitEditor row={r} />
             <CalcMemory row={r} />
             <div className="flex flex-wrap gap-2">
