@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.16",
+      "date": "2026-11-12",
+      "title": "Impostos das vendas do Mercado Livre",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Marketplaces",
+          "text": "Impostos pelas notas: as vendas do Mercado Livre agora são reconhecidas pela transportadora EBAZAR (ou Mercado Envios) e pelo texto \"Mercado Livre\" nas informações complementares da nota. Reimporte o .zip das notas em Fretes › Pedidos para o CRM aprender os impostos de cada produto."
+        },
+        {
+          "type": "melhoria",
+          "area": "Marketplaces",
+          "text": "O imposto de cada produto passa a ser calculado sobre o valor com IPI, como o valor líquido do ERP, e o lucro pelo preço do ERP desconta os impostos, como o lucro líquido do ERP."
+        }
+      ]
+    },
+    {
       "version": "3.0.15",
       "date": "2026-11-12",
       "title": "Lucro por produto no Mercado Livre",
