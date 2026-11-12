@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.18",
+      "date": "2026-11-12",
+      "title": "Lucro pelo ERP com IPI",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Marketplaces",
+          "text": "Preços e promoções: o lucro pelo ERP agora é calculado como o lucro líquido do Tcar: preço do ERP + IPI (valor líquido) − custo − impostos. O IPI de cada produto é aprendido das notas de venda do Mercado Livre; reimporte o .zip das notas para ele entrar no cálculo."
+        }
+      ]
+    },
+    {
       "version": "3.0.17",
       "date": "2026-11-12",
       "title": "Preço dos concorrentes",
