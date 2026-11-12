@@ -57,6 +57,11 @@ interface Row {
   promo: { type: string | null; price: number } | null
   cost: number | null
   costSource: string | null
+  profitTarget?: { value: number; source: 'produto' | 'produto_pct' | 'produto_venda' | 'erp'; pct?: number } | null
+  erpPrice?: number | null
+  feeFixed?: number | null
+  extraPct?: number
+  fixedCost?: number
   costPercent: number | null
   costUpdatedAt: string | null
   feePct: number | null
@@ -890,6 +895,90 @@ function TaxReference({ onUse }: { onUse: (pct: number) => void }) {
   )
 }
 
+const PROFIT_SOURCE: Record<string, string> = { produto_venda: '% do preço de venda informado no produto', produto: 'informado no produto', produto_pct: '% do custo informado no produto', erp: 'preço de venda do ERP − custo' }
+
+/** Lucro desejado do produto em R$ (o que tem que sobrar em cada venda no Mercado Livre) ou em % do custo. */
+function ProfitEditor({ row: r }: { row: Row }) {
+  const qc = useQueryClient()
+  const { can } = useAuth()
+  const [value, setValue] = useState('')
+  const [mode, setMode] = useState<'valor' | 'pct' | 'venda'>('valor')
+  const save = useMutation({
+    mutationFn: (clear: boolean) =>
+      api.put('/marketplace-precos/lucro', { sku: r.costKey, profitValue: clear || mode !== 'valor' ? null : parseNum(value), profitPct: clear || mode !== 'pct' ? null : parseNum(value), profitSalePct: clear || mode !== 'venda' ? null : parseNum(value) }),
+    onSuccess: () => {
+      toast.success('Lucro do produto salvo.')
+      setValue('')
+      void qc.invalidateQueries({ queryKey: ['precos-anuncios'] })
+      void qc.invalidateQueries({ queryKey: ['precos-anuncio', r.id] })
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <Card className="gap-2 p-3 text-sm">
+      <p className="font-medium">Lucro desejado deste produto</p>
+      <p className="text-muted-foreground">
+        {r.profitTarget ? `${brl(r.profitTarget.value)} por unidade${r.profitTarget.pct !== undefined ? ` (${pct(r.profitTarget.pct)} do preço)` : ''} (${PROFIT_SOURCE[r.profitTarget.source]}).` : 'Não informado: o preço sugerido usa a margem alvo geral.'}
+        {r.erpPrice ? ` Preço de venda no ERP: ${brl(r.erpPrice)}.` : ''}
+      </p>
+      {can('marketplace_precos', 'edit') && (
+        <div className="flex flex-wrap items-center gap-2">
+          <select aria-label="Tipo do lucro" className="h-8 rounded-md border bg-transparent px-2" value={mode} onChange={(e) => setMode(e.target.value as 'valor' | 'pct' | 'venda')}>
+            <option value="valor">R$ por unidade vendida</option>
+            <option value="venda">% do preço de venda (% Lucro do ERP)</option>
+            <option value="pct">% do custo</option>
+          </select>
+          <Input className="h-8 w-28" inputMode="decimal" placeholder={mode === 'valor' ? 'Ex.: 469,93' : 'Ex.: 50'} value={value} onChange={(e) => setValue(e.target.value)} />
+          <Button size="sm" disabled={!value.trim() || r.cost === null || save.isPending} onClick={() => save.mutate(false)}>
+            Salvar
+          </Button>
+          {r.profitTarget && r.profitTarget.source !== 'erp' && (
+            <Button size="sm" variant="ghost" onClick={() => save.mutate(true)}>
+              Limpar
+            </Button>
+          )}
+          {r.cost === null && <span className="text-xs text-muted-foreground">Informe o custo antes.</span>}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+/** Memória de cálculo do preço sugerido: cada parcela e a conferência do lucro que sobra. */
+function CalcMemory({ row: r }: { row: Row }) {
+  const P = r.suggestedPrice
+  if (P === null || r.cost === null || r.taxPct === null || r.feePct === null) return null
+  const fee = Math.round(((P * r.feePct) / 100 + (r.feeFixed ?? 0)) * 100) / 100
+  const tax = Math.round(((P * r.taxPct) / 100) * 100) / 100
+  const extra = Math.round(((P * (r.extraPct ?? 0)) / 100) * 100) / 100
+  const ship = r.margin.shipping ?? 0
+  const fixed = r.fixedCost ?? 0
+  const left = Math.round((P - fee - tax - extra - ship - r.cost - fixed) * 100) / 100
+  const pctSum = r.feePct + r.taxPct + (r.extraPct ?? 0)
+  const row = (label: string, v: string, strong = false) => (
+    <div className={cn('flex justify-between gap-3 py-0.5', strong && 'font-semibold')}>
+      <span>{label}</span>
+      <span className="tabular-nums">{v}</span>
+    </div>
+  )
+  return (
+    <Card className="gap-1 p-3 text-sm">
+      <p className="font-medium">Memória de cálculo do preço sugerido</p>
+      {row('Preço sugerido', brl(P), true)}
+      {row(`− Tarifa do ML (${pct(r.feePct)}${r.feeFixed ? ` + ${brl(r.feeFixed)} fixa` : ''})`, brl(fee))}
+      {row(`− Imposto (${pct(r.taxPct)} do preço)`, brl(tax))}
+      {!!extra && row(`− Outras taxas (${pct(r.extraPct ?? 0)})`, brl(extra))}
+      {row('− Frete', brl(ship))}
+      {!!fixed && row('− Custo fixo por venda', brl(fixed))}
+      {row('− Custo do produto', brl(r.cost))}
+      {row('= Lucro que sobra', brl(left), true)}
+      <p className="pt-1 text-xs text-muted-foreground">
+        Conta: (custo + lucro + frete{fixed ? ' + custo fixo' : ''}{r.feeFixed ? ' + tarifa fixa' : ''}) ÷ (1 − {pct(pctSum)} de tarifa, imposto e taxas sobre o preço). A tarifa e o frete são os do preço atual do anúncio; o Mercado Livre pode cobrar diferente em outra faixa de preço.
+      </p>
+    </Card>
+  )
+}
+
 function SettingsDialog({ canEdit, onClose }: { canEdit: boolean; onClose: () => void }) {
   const qc = useQueryClient()
   const cfg = useQuery({ queryKey: ['precos-config'], queryFn: () => api.get<Config>('/marketplace-precos/configuracao') })
@@ -1055,15 +1144,20 @@ function ItemSheet({ id, config, onClose, onApply }: { id: string; config: Confi
               {line('Custo', `${brl(r.cost)}${r.costSource ? ` · ${COST_SOURCE[r.costSource] ?? r.costSource}` : ''}`)}
               {line('Margem', r.margin.margin === null ? 'sem dado' : `${brl(r.margin.margin)} (${pct(r.margin.marginPct)})`)}
               {line('Preço mínimo (margem zero)', brl(r.minPrice))}
-              {line(`Preço sugerido${config.targetMarginPct !== null ? ` (${pct(config.targetMarginPct)})` : ''}`, brl(r.suggestedPrice))}
+              {line(
+                r.profitTarget ? `Preço sugerido (lucro de ${brl(r.profitTarget.value)})` : `Preço sugerido${config.targetMarginPct !== null ? ` (${pct(config.targetMarginPct)})` : ''}`,
+                brl(r.suggestedPrice),
+              )}
               {line('Concorrente mais barato', brl(r.competitorMin))}
               {line('Vendas em 30 / 60 dias', r.sales30 === null ? 'não lidas' : `${r.sales30} / ${r.sales60}`)}
               {line('Lido em', formatDateTime(r.syncedAt))}
             </Card>
             {r.readError && <p className="text-xs text-destructive">{r.readError}</p>}
+            <ProfitEditor row={r} />
+            <CalcMemory row={r} />
             <div className="flex flex-wrap gap-2">
               {r.suggestedPrice !== null && (
-                <Button size="sm" onClick={() => onApply([r.id], config.targetMarginPct !== null ? { tipo: 'preco', modo: 'sugerido' } : { tipo: 'preco', modo: 'valor', valor: r.suggestedPrice! })}>
+                <Button size="sm" onClick={() => onApply([r.id], config.targetMarginPct !== null && !r.profitTarget ? { tipo: 'preco', modo: 'sugerido' } : { tipo: 'preco', modo: 'valor', valor: r.suggestedPrice! })}>
                   <PercentIcon /> Aplicar preço sugerido ({brl(r.suggestedPrice)})
                 </Button>
               )}

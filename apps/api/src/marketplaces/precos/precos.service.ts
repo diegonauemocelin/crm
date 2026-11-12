@@ -32,6 +32,8 @@ import {
   PRECOS_CONFIG_KEY,
   type PrecosConfig,
   marginPctOf,
+  priceForProfit,
+  profitTargetOf,
   priceForMargin,
   pricingTips,
   promoDealPrice,
@@ -119,6 +121,12 @@ export interface PriceRow {
   promo: { type: string | null; price: number } | null
   cost: number | null
   costSource: string | null
+  /** Lucro desejado do produto em R$ e de onde veio; null = margem alvo geral. */
+  profitTarget: { value: number; source: 'produto' | 'produto_pct' | 'produto_venda' | 'erp'; pct?: number } | null
+  erpPrice: number | null
+  feeFixed: number | null
+  extraPct: number
+  fixedCost: number
   costPercent: number | null
   costUpdatedAt: Date | null
   feePct: number | null
@@ -454,13 +462,16 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
   // ---------- Lista ----------
 
   private async context(tenantId: string) {
-    const [config, rates, costs, rivals] = await Promise.all([
+    const [config, rates, costs, rivals, erp] = await Promise.all([
       this.config(tenantId),
       this.taxes.rates(tenantId),
       this.prisma.marketplaceCost.findMany({ where: { tenantId } }),
       this.prisma.mlCompetitorItem.findMany({ where: { tenantId, status: 'active', price: { not: null } }, select: { price: true, codes: true } }),
+      // Preço de venda do ERP (Tcar) por código: base do lucro do produto quando não há lucro informado.
+      this.prisma.tcarProduct.findMany({ where: { tenantId, price: { not: null } }, select: { code: true, price: true } }).catch(() => [] as { code: string; price: unknown }[]),
     ])
     const costBy = new Map(costs.map((c) => [c.sku, c]))
+    const erpPriceBy = new Map(erp.map((e) => [normSku(e.code), Number(e.price)]))
     const rivalBy = new Map<string, { min: number; count: number }>()
     for (const r of rivals)
       for (const code of r.codes) {
@@ -468,11 +479,11 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
         const a = rivalBy.get(code)
         rivalBy.set(code, a ? { min: Math.min(a.min, p), count: a.count + 1 } : { min: p, count: 1 })
       }
-    return { config, rates, costBy, rivalBy }
+    return { config, rates, costBy, rivalBy, erpPriceBy }
   }
 
   private buildRow(s: Snapshot, a: { title: string | null; permalink: string | null; partNumber: string | null; attributes: unknown } | undefined, ctx: Awaited<ReturnType<PrecosService['context']>>): PriceRow {
-    const { config, rates, costBy, rivalBy } = ctx
+    const { config, rates, costBy, rivalBy, erpPriceBy } = ctx
     const sku = s.sellerSku?.trim() || null
     const costKey = sku ? normSku(sku) : s.itemId
     const c = costBy.get(costKey)
@@ -493,7 +504,19 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     const pm = model && cost !== null && tax.pct !== null ? { fee: model, shipping: shipping ?? 0, taxPct: tax.pct, extraPct: config.extraFeePct, cost, fixedCost: config.fixedCostPerSale, marginMode: config.marginMode } : null
     const minPrice = pm ? priceForMargin(0, pm) : null
     const goal = config.targetMarginPct ?? (config.minMarginPct > 0 ? config.minMarginPct : null)
-    const suggestedPrice = pm && goal !== null ? priceForMargin(goal, pm) : null
+    // Lucro do produto (R$ ou % do custo informado, ou preço do ERP − custo): o preço sugerido deixa esse lucro em R$.
+    const erpPrice = sku ? (erpPriceBy.get(normSku(sku)) ?? null) : null
+    const profitTarget = profitTargetOf(c ? { profitValue: c.profitValue === null ? null : Number(c.profitValue), profitPct: c.profitPct === null ? null : Number(c.profitPct) } : null, cost, erpPrice)
+    const salePct = c?.profitSalePct != null ? Number(c.profitSalePct) : null
+    const suggestedPrice = pm
+      ? salePct !== null
+        ? priceForMargin(salePct, { ...pm, marginMode: 'PRECO' })
+        : profitTarget
+          ? priceForProfit(profitTarget.value, pm)
+          : goal !== null
+            ? priceForMargin(goal, pm)
+            : null
+      : null
     const codes = ownCodes({ title: s.title ?? a?.title ?? null, sellerSku: sku, partNumber: a?.partNumber ?? null, attributes: a?.attributes })
     let competitorMin: number | null = null
     let competitorCount = 0
@@ -541,6 +564,11 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
       promo,
       cost,
       costSource: c?.source ?? null,
+      profitTarget: salePct !== null ? { value: suggestedPrice === null ? 0 : round2((suggestedPrice * salePct) / 100), source: 'produto_venda' as const, pct: salePct } : profitTarget,
+      erpPrice,
+      feeFixed: model?.fixed ?? null,
+      extraPct: config.extraFeePct,
+      fixedCost: config.fixedCostPerSale,
       costPercent: c?.percent === null || c?.percent === undefined ? null : Number(c.percent),
       costUpdatedAt: c?.updatedAt ?? null,
       feePct: model?.pct ?? null,
@@ -677,6 +705,20 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     return { ok: true }
   }
 
+  /** Lucro desejado do produto: em R$ ou em % do custo (o outro fica vazio); os dois vazios = margem geral. */
+  async setProfit(user: AuthUser, sku: string, d: { profitValue: number | null; profitPct: number | null; profitSalePct?: number | null }, ctx: RequestCtx) {
+    const key = normSku(sku)
+    if (!key || key.length > 60) throw new BadRequestException('SKU inválido.')
+    const cur = await this.prisma.marketplaceCost.findUnique({ where: { tenantId_sku: { tenantId: user.tenantId, sku: key } } })
+    if (!cur) throw new BadRequestException('Informe o custo do produto antes do lucro.')
+    const value = d.profitValue != null && d.profitValue >= 0 ? round2(d.profitValue) : null
+    const pct = value === null && d.profitPct != null && d.profitPct >= 0 ? round2(Math.min(1000, d.profitPct)) : null
+    const salePct = value === null && pct === null && d.profitSalePct != null && d.profitSalePct >= 0 ? round2(Math.min(90, d.profitSalePct)) : null
+    await this.prisma.marketplaceCost.update({ where: { id: cur.id }, data: { profitValue: value, profitPct: pct, profitSalePct: salePct, updatedById: user.id, updatedByName: user.name.slice(0, 120) } })
+    await this.audit.byUser(user, ctx, 'marketplace_precos.lucro', 'marketplace_cost', cur.id, { sku: key, lucro: value, lucroPct: pct, lucroVendaPct: salePct })
+    return { ok: true }
+  }
+
   /** Custo em massa: um valor ou um % sobre o preço cheio de venda, para os selecionados, um filtro ou todos. */
   async bulkCost(user: AuthUser, sel: Selection, mode: 'valor' | 'percentual', value: number, ctx: RequestCtx) {
     if (!(value >= 0) || (mode === 'percentual' && value > 100) || value > 10_000_000) throw new BadRequestException('Valor inválido.')
@@ -714,11 +756,14 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     }
     let skuCol = 0
     let costCol = 1
+    // Terceira coluna (opcional): lucro desejado em R$ ("lucro", ex.: o Lucro Líquido do produto no ERP).
+    let profitCol = -1
     const head = (rows[0] ?? []).map((c) => c.trim().toLowerCase())
     if (head.some((h) => /sku|c[oó]digo/.test(h))) {
       skuCol = Math.max(0, head.findIndex((h) => /sku|c[oó]digo/.test(h)))
       const ci = head.findIndex((h) => /custo|cost/.test(h))
       costCol = ci >= 0 ? ci : skuCol === 0 ? 1 : 0
+      profitCol = head.findIndex((h) => /lucro|profit/.test(h))
       rows = rows.slice(1)
     }
     const parse = (s: string) => {
@@ -728,16 +773,22 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     }
     const invalid: { line: number; reason: string }[] = []
     const ok = new Map<string, number>()
+    const profits = new Map<string, number>()
     rows.slice(0, 50_000).forEach((r, i) => {
       const sku = normSku(r[skuCol])
       const cost = parse(r[costCol] ?? '')
       if (!sku || sku.length > 60) invalid.push({ line: i + 2, reason: 'SKU vazio ou longo demais' })
       else if (cost === null) invalid.push({ line: i + 2, reason: `custo inválido (${(r[costCol] ?? '').slice(0, 20)})` })
-      else ok.set(sku, cost)
+      else {
+        ok.set(sku, cost)
+        const p = profitCol >= 0 && (r[profitCol] ?? '').trim() ? parse(r[profitCol] ?? '') : null
+        if (p !== null) profits.set(sku, p)
+      }
     })
     const by = { updatedById: user.id, updatedByName: user.name.slice(0, 120) }
     for (const [sku, cost] of ok) {
-      const data = { cost, source: 'planilha', percent: null, ...by }
+      const profit = profits.get(sku)
+      const data = { cost, source: 'planilha', percent: null, ...(profit !== undefined ? { profitValue: profit, profitPct: null, profitSalePct: null } : {}), ...by }
       await this.prisma.marketplaceCost.upsert({ where: { tenantId_sku: { tenantId: user.tenantId, sku } }, create: { tenantId: user.tenantId, sku, ...data }, update: data })
     }
     await this.audit.byUser(user, ctx, 'marketplace_precos.custo_planilha', 'marketplace_cost', undefined, { arquivo: file.originalname.slice(0, 200), skus: ok.size, invalidas: invalid.length })

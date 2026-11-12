@@ -182,6 +182,26 @@ export function priceForMargin(targetPct: number, m: PriceModel): number | null 
 }
 
 /**
+ * Preço que deixa um lucro em R$ depois de tarifa, imposto, outras taxas, frete, custo e custo fixo:
+ * preço = (custo + lucro + custo fixo + parte fixa da tarifa + frete) ÷ (1 − tarifa% − imposto% − outras%).
+ */
+export function priceForProfit(profit: number, m: PriceModel): number | null {
+  const denom = 1 - (m.fee.pct + m.taxPct + m.extraPct) / 100
+  if (denom <= 0.01) return null
+  const p = (m.cost + profit + m.fixedCost + m.fee.fixed + m.shipping) / denom
+  if (!Number.isFinite(p) || p <= 0) return null
+  return Math.ceil(p * 100 - 1e-6) / 100
+}
+
+/** Lucro desejado do produto: R$ informado, % do custo, ou preço de venda do ERP − custo. null = usa a margem geral. */
+export function profitTargetOf(c: { profitValue: number | null; profitPct: number | null } | null, cost: number | null, erpPrice: number | null): { value: number; source: 'produto' | 'produto_pct' | 'erp' } | null {
+  if (c?.profitValue != null && c.profitValue >= 0) return { value: round2(c.profitValue), source: 'produto' }
+  if (c?.profitPct != null && cost !== null) return { value: round2((cost * c.profitPct) / 100), source: 'produto_pct' }
+  if (erpPrice !== null && cost !== null && erpPrice > cost) return { value: round2(erpPrice - cost), source: 'erp' }
+  return null
+}
+
+/**
  * Busca do preço para a margem alvo com a tarifa real: calcula, pergunta a tarifa no preço achado e recalcula até
  * estabilizar (no máximo 4 voltas). feeAt devolve o modelo da tarifa naquele preço (ou null se não deu para ler).
  */

@@ -254,3 +254,17 @@ describe('formas de cálculo da margem', () => {
     expect(marginPctOf(10, 100, 50, 10, 'PRECO')).toBe(10)
   })
 })
+
+describe('lucro por produto', () => {
+  it('preço que deixa o lucro em R$ e de onde vem o lucro', async () => {
+    const { priceForProfit, profitTargetOf } = await import('../src/marketplaces/precos/margem')
+    const m = { fee: { pct: 17, fixed: 0 }, shipping: 27.05, taxPct: 24.4, extraPct: 0, cost: 48.7, fixedCost: 0 }
+    const p = priceForProfit(93.99, m)!
+    const left = p - p * 0.17 - p * 0.244 - 27.05 - 48.7
+    expect(Math.abs(left - 93.99)).toBeLessThan(0.02)
+    expect(profitTargetOf({ profitValue: 93.99, profitPct: null }, 48.7, 181)).toEqual({ value: 93.99, source: 'produto' })
+    expect(profitTargetOf({ profitValue: null, profitPct: 50 }, 48.7, null)).toEqual({ value: 24.35, source: 'produto_pct' })
+    expect(profitTargetOf(null, 48.7, 181)).toEqual({ value: 132.3, source: 'erp' })
+    expect(profitTargetOf(null, null, 181)).toBeNull()
+  })
+})
