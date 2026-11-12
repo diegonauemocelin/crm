@@ -90,6 +90,8 @@ export function ufFromText(text: string | null | undefined): UF | null {
  */
 export function normalizePhone(raw: string | null | undefined): string | null {
   if (!raw) return null
+  const intl = internationalPhone(raw)
+  if (intl) return intl
   let digits = raw.replace(/\D/g, '')
   // Remove o código do país (às vezes repetido, como em "+55 +5547999998888" vindo do RD Station).
   while (digits.length >= 12 && digits.startsWith('55')) digits = digits.slice(2)
@@ -101,6 +103,21 @@ export function normalizePhone(raw: string | null | undefined): string | null {
   // Celular com 11 dígitos começa com 9 depois do DDD.
   if (digits.length === 11 && digits[2] !== '9') return null
   return `+55${digits}`
+}
+
+/**
+ * Telefone de outro país em E.164 (+DDI + número, 8 a 15 dígitos), quando vem com "+" ou "00" e o DDI não é 55.
+ * Ex.: "+54 9 3755 30-1066" → "+5493755301066"; "0034 612 345 678" → "+34612345678". Sem "+"/"00" é tratado como BR.
+ */
+export function internationalPhone(raw: string | null | undefined): string | null {
+  const t = (raw ?? '').trim()
+  const m = /^(\+|00)\s*(.*)$/.exec(t)
+  if (!m) return null
+  const digits = m[2]!.replace(/\D/g, '')
+  if (digits.startsWith('55') || digits.startsWith('0')) return null
+  // Com "00" (discagem internacional) exige um número completo: "00 99999-9999" é número brasileiro mal digitado.
+  const min = m[1] === '00' ? 11 : 8
+  return digits.length >= min && digits.length <= 15 ? `+${digits}` : null
 }
 
 export function ufFromPhone(e164: string | null | undefined): UF | null {

@@ -247,3 +247,19 @@ describe('Google Ads × fora do Ads', () => {
     expect([r.byCampaign, r.byOrigin]).toEqual([2, 1])
   })
 })
+
+describe('telefone internacional', () => {
+  it('com + ou 00 e DDI de outro país: salva em E.164', async () => {
+    const { normalizePhone, internationalPhone } = await import('../src/atendimento/br')
+    expect(normalizePhone('+54 9 3755 30-1066')).toBe('+5493755301066')
+    expect(normalizePhone('+5493755301066')).toBe('+5493755301066')
+    expect(normalizePhone('0034 612 345 678')).toBe('+34612345678')
+    expect(normalizePhone('+598 94 123 456')).toBe('+59894123456')
+    // Brasil continua igual (com ou sem +55).
+    expect(normalizePhone('+55 (47) 99647-0159')).toBe('+5547996470159')
+    expect(normalizePhone('(47) 99647-0159')).toBe('+5547996470159')
+    // Sem + não vira internacional (é tratado como número brasileiro).
+    expect(normalizePhone('5493755301066')).toBeNull()
+    expect(internationalPhone('+12')).toBeNull()
+  })
+})
