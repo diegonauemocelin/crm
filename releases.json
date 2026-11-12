@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.19",
+      "date": "2026-11-12",
+      "title": "E-mail: provedores prontos",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Configurações",
+          "text": "Servidor de e-mail (SMTP): escolha o provedor (Gmail, Outlook/Hotmail, Microsoft 365, Locaweb, Hostinger ou HostGator) e o servidor, a porta e a segurança são preenchidos sozinhos; falta só o usuário e a senha da conta, com a dica de cada provedor (ex.: senha de app no Gmail). O e-mail do remetente acompanha o usuário."
+        }
+      ]
+    },
+    {
       "version": "3.0.18",
       "date": "2026-11-12",
       "title": "Lucro pelo ERP com IPI",
