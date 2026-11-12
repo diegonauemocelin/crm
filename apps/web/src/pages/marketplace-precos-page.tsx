@@ -59,6 +59,7 @@ interface Row {
   costSource: string | null
   profitTarget?: { value: number; source: 'produto' | 'produto_pct' | 'produto_venda' | 'erp'; pct?: number } | null
   erpPrice?: number | null
+  ipiPct?: number | null
   feeFixed?: number | null
   extraPct?: number
   fixedCost?: number
@@ -908,7 +909,7 @@ function TaxReference({ onUse }: { onUse: (pct: number) => void }) {
   )
 }
 
-const PROFIT_SOURCE: Record<string, string> = { produto_venda: '% do preço de venda informado no produto', produto: 'informado no produto', produto_pct: '% do custo informado no produto', erp: 'como o lucro líquido do ERP: preço de venda do ERP − custo − impostos' }
+const PROFIT_SOURCE: Record<string, string> = { produto_venda: '% do preço de venda informado no produto', produto: 'informado no produto', produto_pct: '% do custo informado no produto', erp: 'como o lucro líquido do ERP: valor líquido (preço do ERP + IPI) − custo − impostos' }
 
 /** Lucro desejado do produto em R$ (o que tem que sobrar em cada venda no Mercado Livre) ou em % do custo. */
 function ProfitEditor({ row: r }: { row: Row }) {
@@ -932,7 +933,7 @@ function ProfitEditor({ row: r }: { row: Row }) {
       <p className="font-medium">Lucro desejado deste produto</p>
       <p className="text-muted-foreground">
         {r.profitTarget ? `${brl(r.profitTarget.value)} por unidade${r.profitTarget.pct !== undefined ? ` (${pct(r.profitTarget.pct)} do preço)` : ''} (${PROFIT_SOURCE[r.profitTarget.source]}).` : 'Não informado: o preço sugerido usa a margem alvo geral.'}
-        {r.erpPrice ? ` Preço de venda no ERP: ${brl(r.erpPrice)}.` : ''}
+        {r.erpPrice ? ` Preço de venda no ERP: ${brl(r.erpPrice)}${r.ipiPct ? ` + IPI ${pct(r.ipiPct)} = líquido ${brl(Math.round(r.erpPrice * (1 + r.ipiPct / 100) * 100) / 100)}` : ''}.` : ''}
       </p>
       {can('marketplace_precos', 'edit') && (
         <div className="flex flex-wrap items-center gap-2">
