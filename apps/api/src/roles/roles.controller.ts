@@ -26,7 +26,7 @@ class RoleDto {
   @ApiProperty() @IsBoolean() active!: boolean
   @ApiProperty({ type: [PermissionDto] })
   @IsArray()
-  @ArrayMaxSize(50)
+  @ArrayMaxSize(200)
   @ValidateNested({ each: true })
   @Type(() => PermissionDto)
   permissions!: PermissionDto[]
