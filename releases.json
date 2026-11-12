@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.17",
+      "date": "2026-11-12",
+      "title": "Preço dos concorrentes",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Marketplaces",
+          "text": "Preços e promoções: preço dos 2 concorrentes mais baratos de cada anúncio, na lista (coluna Concorrentes) e no anúncio, com a loja, o link e quanto está acima ou abaixo do seu preço. Vêm das lojas concorrentes cadastradas (mesmo código) e de outros vendedores do mesmo produto do catálogo do Mercado Livre."
+        }
+      ]
+    },
+    {
       "version": "3.0.16",
       "date": "2026-11-12",
       "title": "Impostos das vendas do Mercado Livre",
