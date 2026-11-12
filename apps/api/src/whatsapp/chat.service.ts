@@ -989,15 +989,30 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       and.push({ OR: [{ name: { contains: s, mode: 'insensitive' } }, ...(digits.length >= 4 ? [{ phone: { contains: digits } }] : []), { lastPreview: { contains: s, mode: 'insensitive' } }] })
     }
     const page = Math.max(1, q.page ?? 1)
+    // Lista e selos só dos números que aparecem para a pessoa (quem tem números cadastrados vê só os seus).
+    const numbers = q.monitor ? await this.monitorNumbersList(user) : await this.visibleNumbers(user, scope)
+    if (!q.leadId && !q.numberId) and.push({ numberId: { in: numbers.map((n) => n.id) } })
     const where = { AND: and }
     const groupsTab = q.category === 'GRUPO'
-    const [total, rows, unread, numbers, unreadGroups] = await Promise.all([
+    const visible = q.numberId ? [{ numberId: q.numberId }] : [{ numberId: { in: numbers.map((n) => n.id) } }]
+    const [total, rows, unread, unreadGroups] = await Promise.all([
       this.prisma.whatsappConversation.count({ where }),
       this.prisma.whatsappConversation.findMany({ where, orderBy: { lastMessageAt: 'desc' }, skip: (page - 1) * 50, take: 50 }),
-      this.prisma.whatsappConversation.aggregate({ where: { AND: [scope, { unread: { gt: 0 } }, groupsTab ? { category: 'GRUPO' } : { category: { not: 'GRUPO' } }] }, _count: { _all: true } }),
-      q.monitor ? this.allNumbers(user.tenantId) : this.visibleNumbers(user, scope),
-      this.prisma.whatsappConversation.count({ where: { AND: [scope, { unread: { gt: 0 }, status: 'ABERTA', category: 'GRUPO' }] } }),
+      this.prisma.whatsappConversation.aggregate({ where: { AND: [scope, { unread: { gt: 0 } }, groupsTab ? { category: 'GRUPO' } : { category: { not: 'GRUPO' } }, ...visible] }, _count: { _all: true } }),
+      // Selos de não lidas: só do número escolhido (todos os números = soma dos que a pessoa vê).
+      this.prisma.whatsappConversation.count({ where: { AND: [scope, { unread: { gt: 0 }, status: 'ABERTA', category: 'GRUPO' }, ...visible] } }),
     ])
+    // Não lidas por número (marca na lista de números): conversas da aba atual (grupos ou não).
+    const perNumber = new Map(
+      (
+        await this.prisma.whatsappConversation.groupBy({
+          by: ['numberId'],
+          where: { AND: [scope, { unread: { gt: 0 }, status: 'ABERTA' }, groupsTab ? { category: 'GRUPO' } : { category: { not: 'GRUPO' } }] },
+          _count: { _all: true },
+        })
+      ).map((g) => [g.numberId, g._count._all]),
+    )
+    const numbersOut = numbers.map((n) => ({ ...n, unread: perNumber.get(n.id) ?? 0 }))
     const waitingSellerCount = waitingIds?.length ? await this.prisma.whatsappConversation.count({ where: { AND: [scope, { id: { in: waitingIds } }, { status: 'ABERTA', lastMessageAt: { not: null } }] } }) : 0
     const leads = new Map((await this.prisma.lead.findMany({ where: { id: { in: rows.map((r) => r.leadId).filter((x): x is string => !!x) } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]))
     const reminders = new Map(
@@ -1034,7 +1049,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       waitingSeller: waitingSellerCount,
       // Prazos das cores de atraso de resposta (verde, amarelo, vermelho).
       responseColors: await this.rules(user.tenantId).then((r) => ({ yellowMinutes: r.yellowMinutes, redMinutes: r.redMinutes, hours: r.businessHours })),
-      numbers,
+      numbers: numbersOut,
       ...(q.monitor ? { sellers: [...(sellerName ?? new Map()).entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)) } : {}),
       items: rows.map((r) => ({
         attendant: attendant(r),
@@ -1072,11 +1087,20 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     return new Map((await this.prisma.seller.findMany({ where: { tenantId }, select: { id: true, name: true } })).map((s) => [s.id, s.name]))
   }
 
+  /** Monitorar: só os números que a pessoa pode monitorar (perfil e cadastro do usuário); null = todos. */
+  private async monitorNumbersList(user: AuthUser) {
+    const all = await this.allNumbers(user.tenantId)
+    const allowed = (await this.monitorInput(user)).input.numbers
+    return allowed ? all.filter((n) => allowed.includes(n.id)) : all
+  }
+
   private async visibleNumbers(user: AuthUser, scope: Prisma.WhatsappConversationWhereInput) {
     const all = await this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, deletedAt: null, purpose: 'ATENDIMENTO' }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, phone: true, status: true, splitAttendance: true } })
     // attends: números em que a pessoa atende (o app no celular abre só neles).
     const mine = (await this.ownNumbers(user)).numberIds
     const marked = all.map((n) => ({ ...n, attends: mine.includes(n.id) }))
+    // Quem tem números cadastrados vê só os seus na lista (os outros não aparecem).
+    if (mine.length) return marked.filter((n) => n.attends)
     if (this.scopeOf(user) === 'ALL') return marked
     const ids = new Set((await this.prisma.whatsappConversation.findMany({ where: scope, select: { numberId: true }, distinct: ['numberId'] })).map((c) => c.numberId))
     return marked.filter((n) => ids.has(n.id) || n.attends)

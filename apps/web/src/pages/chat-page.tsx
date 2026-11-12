@@ -39,6 +39,8 @@ import { cn } from '@/lib/utils'
 export interface NumberRef {
   id: string
   name: string
+  /** Conversas com mensagem não lida neste número (aba atual). */
+  unread?: number
   phone: string | null
   status: string
   /** Atendimento dividido entre os atendentes do número. */
@@ -440,7 +442,14 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                     <SelectItem value={ALL}>Todos os números</SelectItem>
                     {list.data.numbers.map((n) => (
                       <SelectItem key={n.id} value={n.id}>
-                        {n.name}
+                        <span className="flex w-full items-center gap-2">
+                          {n.name}
+                          {!!n.unread && n.id !== numberId && (
+                            <span className="ml-auto rounded-full bg-[color:var(--brand)] px-1.5 text-[10px] font-semibold text-white" aria-label={`${n.unread} conversa(s) não lida(s)`}>
+                              {n.unread}
+                            </span>
+                          )}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
