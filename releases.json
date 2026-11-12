@@ -2,6 +2,33 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.14",
+      "date": "2026-11-12",
+      "title": "Números do chat, margem e impostos",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "WhatsApp",
+          "text": "Chat e Monitorar conversas mostram só os números cadastrados para a pessoa (lista e conversas). As não lidas são do número escolhido, e cada número da lista mostra quantas conversas não lidas tem."
+        },
+        {
+          "type": "novo",
+          "area": "Marketplaces",
+          "text": "Preços e promoções: escolha como calcular a margem (somada ao custo do produto, sobre o custo mais o imposto, ou ao final de todos os custos). O padrão passa a ser a margem no custo: custo + margem + imposto + tarifa + frete."
+        },
+        {
+          "type": "novo",
+          "area": "Marketplaces",
+          "text": "Referência de impostos para venda a CPF: ICMS do estado de destino (interestadual + DIFAL) e PIS/COFINS pelo regime, com botão para usar como alíquota manual."
+        },
+        {
+          "type": "correcao",
+          "area": "Perfis de acesso",
+          "text": "Perfis com muitos módulos liberados não dão mais o erro de limite de 50 permissões."
+        }
+      ]
+    },
+    {
       "version": "3.0.13",
       "date": "2026-11-12",
       "title": "Telefone internacional",
