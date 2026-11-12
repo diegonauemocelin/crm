@@ -156,6 +156,12 @@ export function ufFromPhoneInput(value: string): string | null {
 /** +5547996470159 → (47) 99647-0159 */
 export function formatPhone(e164: string | null) {
   if (!e164) return ''
+  // Outro país: "+54 93755301066" (DDI separado do número).
+  if (/^\+(?!55)\d{8,15}$/.test(e164)) {
+    const d = e164.slice(1)
+    const ddi = DDI_COUNTRY.find(([c]) => d.startsWith(c))?.[0] ?? d.slice(0, 2)
+    return `+${ddi} ${d.slice(ddi.length)}`
+  }
   const d = e164.replace(/^\+55/, '')
   if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`
   if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`
