@@ -38,6 +38,13 @@ class PrecosCostDto {
   @ApiProperty({ nullable: true }) @IsOptional() @IsNumber() @Min(0) @Max(10_000_000) cost!: number | null
 }
 
+class PrecosProfitDto {
+  @ApiProperty() @IsString() @MaxLength(60) sku!: string
+  @ApiPropertyOptional({ nullable: true, description: 'Lucro desejado em R$' }) @IsOptional() @IsNumber() @Min(0) @Max(10_000_000) profitValue?: number | null
+  @ApiPropertyOptional({ nullable: true, description: 'Lucro desejado em % do custo' }) @IsOptional() @IsNumber() @Min(0) @Max(1000) profitPct?: number | null
+  @ApiPropertyOptional({ nullable: true, description: 'Lucro desejado em % do preço de venda' }) @IsOptional() @IsNumber() @Min(0) @Max(90) profitSalePct?: number | null
+}
+
 class PrecosFilterDto {
   @IsOptional() @IsString() @MaxLength(120) busca?: string
   @IsOptional() @IsIn(['ativos', 'active', 'paused', 'closed', 'todos']) situacao?: string
@@ -178,6 +185,12 @@ export class PrecosController {
   @RequirePermission('marketplace_precos', 'edit')
   saveConfig(@CurrentUser() user: AuthUser, @Body() dto: PrecosConfigDto, @ReqContext() ctx: RequestCtx) {
     return this.precos.saveConfig(user, dto, ctx)
+  }
+
+  @Put('lucro')
+  @RequirePermission('marketplace_precos', 'edit')
+  setProfit(@CurrentUser() user: AuthUser, @Body() dto: PrecosProfitDto, @ReqContext() ctx: RequestCtx) {
+    return this.precos.setProfit(user, dto.sku, { profitValue: dto.profitValue ?? null, profitPct: dto.profitPct ?? null, profitSalePct: dto.profitSalePct ?? null }, ctx)
   }
 
   @Put('custos')

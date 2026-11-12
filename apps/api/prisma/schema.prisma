@@ -3782,6 +3782,12 @@ model MarketplaceCost {
   source        String   @default("manual")
   /// % do preço usado quando source = percentual.
   percent       Decimal? @db.Decimal(6, 2)
+  /// Lucro desejado deste produto no marketplace: em R$ (profitValue) ou em % do custo (profitPct). Vazio = usa o
+  /// lucro pelo preço de venda do ERP (preço − custo) ou a margem alvo geral.
+  profitValue   Decimal? @db.Decimal(14, 2)
+  profitPct     Decimal? @db.Decimal(6, 2)
+  /// Lucro desejado em % do preço de venda (como o "% Lucro" do ERP: lucro ÷ valor da venda).
+  profitSalePct Decimal? @db.Decimal(6, 2)
   updatedById   String?  @db.Uuid
   updatedByName String?
   createdAt     DateTime @default(now())
