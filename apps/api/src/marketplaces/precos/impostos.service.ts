@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import type { Prisma } from '../../generated/prisma/client'
 import { PrismaService } from '../../prisma/prisma.service'
 import { SettingsService } from '../../settings/settings.service'
-import { aggregateTaxRates, EMPTY_TAX_RATES, isMercadoEnvios, type NfeTaxItem, parseNfeTaxes, type TaxRates } from './impostos'
+import { aggregateTaxRates, EMPTY_TAX_RATES, infCplOf, isMercadoEnvios, type NfeTaxItem, parseNfeTaxes, type TaxRates } from './impostos'
 import { PRECOS_TAX_KEY } from './margem'
 
 /** Só as notas do último ano entram na média (a carga muda com a legislação e o mix de produtos). */
@@ -23,13 +23,13 @@ export class MarketplaceTaxService {
 
   /** CNPJs das transportadoras cadastradas com o nome Mercado Envios (Fretes › Transportadoras), se houver. */
   async knownCnpjs(tenantId: string) {
-    const rows = await this.prisma.freightCarrier.findMany({ where: { tenantId, OR: [{ name: { contains: 'mercado envios', mode: 'insensitive' } }, { legalName: { contains: 'mercado envios', mode: 'insensitive' } }] }, select: { cnpj: true } })
+    const rows = await this.prisma.freightCarrier.findMany({ where: { tenantId, OR: ['mercado envios', 'ebazar'].flatMap((t) => [{ name: { contains: t, mode: 'insensitive' as const } }, { legalName: { contains: t, mode: 'insensitive' as const } }]) }, select: { cnpj: true } })
     return rows.map((r) => r.cnpj)
   }
 
   /** Guarda a nota se o transportador for o Mercado Envios. true = guardou (nova ou atualizada). */
   async record(tenantId: string, xml: string, nf: { key: string; issuedAt: string | null; carrierName: string | null; carrierCnpj: string | null }, known: readonly string[]) {
-    if (!isMercadoEnvios(nf.carrierName, nf.carrierCnpj, known)) return false
+    if (!isMercadoEnvios(nf.carrierName, nf.carrierCnpj, known, infCplOf(xml))) return false
     let t
     try {
       t = parseNfeTaxes(xml)

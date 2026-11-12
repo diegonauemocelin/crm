@@ -194,10 +194,14 @@ export function priceForProfit(profit: number, m: PriceModel): number | null {
 }
 
 /** Lucro desejado do produto: R$ informado, % do custo, ou preço de venda do ERP − custo. null = usa a margem geral. */
-export function profitTargetOf(c: { profitValue: number | null; profitPct: number | null } | null, cost: number | null, erpPrice: number | null): { value: number; source: 'produto' | 'produto_pct' | 'erp' } | null {
+export function profitTargetOf(c: { profitValue: number | null; profitPct: number | null } | null, cost: number | null, erpPrice: number | null, taxPct: number | null = null): { value: number; source: 'produto' | 'produto_pct' | 'erp' } | null {
   if (c?.profitValue != null && c.profitValue >= 0) return { value: round2(c.profitValue), source: 'produto' }
   if (c?.profitPct != null && cost !== null) return { value: round2((cost * c.profitPct) / 100), source: 'produto_pct' }
-  if (erpPrice !== null && cost !== null && erpPrice > cost) return { value: round2(erpPrice - cost), source: 'erp' }
+  // Como o "Lucro líquido" do ERP: preço de venda − custo − impostos da venda (sem tarifa de marketplace).
+  if (erpPrice !== null && cost !== null) {
+    const v = erpPrice - cost - (taxPct === null ? 0 : (erpPrice * taxPct) / 100)
+    if (v > 0) return { value: round2(v), source: 'erp' }
+  }
   return null
 }
 

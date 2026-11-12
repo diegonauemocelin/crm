@@ -895,7 +895,7 @@ function TaxReference({ onUse }: { onUse: (pct: number) => void }) {
   )
 }
 
-const PROFIT_SOURCE: Record<string, string> = { produto_venda: '% do preço de venda informado no produto', produto: 'informado no produto', produto_pct: '% do custo informado no produto', erp: 'preço de venda do ERP − custo' }
+const PROFIT_SOURCE: Record<string, string> = { produto_venda: '% do preço de venda informado no produto', produto: 'informado no produto', produto_pct: '% do custo informado no produto', erp: 'como o lucro líquido do ERP: preço de venda do ERP − custo − impostos' }
 
 /** Lucro desejado do produto em R$ (o que tem que sobrar em cada venda no Mercado Livre) ou em % do custo. */
 function ProfitEditor({ row: r }: { row: Row }) {
