@@ -125,6 +125,8 @@ export interface PriceRow {
   /** Lucro desejado do produto em R$ e de onde veio; null = margem alvo geral. */
   profitTarget: { value: number; source: 'produto' | 'produto_pct' | 'produto_venda' | 'erp'; pct?: number } | null
   erpPrice: number | null
+  /** IPI (%) aprendido das notas, somado ao preço do ERP para chegar ao valor líquido. */
+  ipiPct: number | null
   feeFixed: number | null
   extraPct: number
   fixedCost: number
@@ -511,7 +513,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     const goal = config.targetMarginPct ?? (config.minMarginPct > 0 ? config.minMarginPct : null)
     // Lucro do produto (R$ ou % do custo informado, ou preço do ERP − custo): o preço sugerido deixa esse lucro em R$.
     const erpPrice = sku ? (erpPriceBy.get(normSku(sku)) ?? null) : null
-    const profitTarget = profitTargetOf(c ? { profitValue: c.profitValue === null ? null : Number(c.profitValue), profitPct: c.profitPct === null ? null : Number(c.profitPct) } : null, cost, erpPrice, tax.pct)
+    const profitTarget = profitTargetOf(c ? { profitValue: c.profitValue === null ? null : Number(c.profitValue), profitPct: c.profitPct === null ? null : Number(c.profitPct) } : null, cost, erpPrice, tax.pct, tax.ipiPct ?? 0)
     const salePct = c?.profitSalePct != null ? Number(c.profitSalePct) : null
     const suggestedPrice = pm
       ? salePct !== null
@@ -569,6 +571,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
       costSource: c?.source ?? null,
       profitTarget: salePct !== null ? { value: suggestedPrice === null ? 0 : round2((suggestedPrice * salePct) / 100), source: 'produto_venda' as const, pct: salePct } : profitTarget,
       erpPrice,
+      ipiPct: tax.ipiPct ?? null,
       feeFixed: model?.fixed ?? null,
       extraPct: config.extraFeePct,
       fixedCost: config.fixedCostPerSale,

@@ -209,7 +209,7 @@ describe('impostos pelas NF-e do Mercado Envios', () => {
   it('lê os impostos por item', () => {
     const n = parseNfeTaxes(NFE('MERCADO ENVIOS SERVICOS DE LOGISTICA LTDA', DET(' abc-1 ', '84212300', 100, 12, 1.65, 7.6, 5) + DET('XYZ', '40169300', 50, 6, 0.83, 3.8)))
     expect(n.items).toHaveLength(2)
-    expect(n.items[0]).toEqual({ sku: 'ABC-1', ncm: '84212300', value: 100, tax: 26.25 })
+    expect(n.items[0]).toEqual({ sku: 'ABC-1', ncm: '84212300', value: 100, tax: 26.25, ipi: 0 })
     expect(n.productsValue).toBe(150)
     expect(() => parseNfeTaxes('<x/>')).toThrow()
   })
@@ -267,7 +267,18 @@ describe('lucro por produto', () => {
     expect(profitTargetOf(null, 48.7, 181)).toEqual({ value: 132.3, source: 'erp' })
     // Como o Tcar (030592): venda 224,56 − custo 86,37 − 27,03% de impostos = 77,49
     expect(profitTargetOf(null, 86.37, 224.56, 27.03)).toEqual({ value: 77.49, source: 'erp' })
+    // Com o IPI de 3,25% (líquido 231,86) e 26,18% de impostos sobre o líquido: 84,78, igual ao Tcar
+    expect(profitTargetOf(null, 86.37, 224.56, 26.18, 3.25)).toEqual({ value: 84.79, source: 'erp' })
     expect(profitTargetOf(null, null, 181)).toBeNull()
+  })
+})
+
+describe('IPI aprendido das notas', () => {
+  it('guarda o IPI do item e calcula o % sobre o valor sem IPI', () => {
+    const r = aggregateTaxRates([{ key: 'n1', items: [{ sku: '030592', ncm: null, value: 231.86, tax: 60.71, ipi: 7.3 }] }, { key: 'n0', items: [{ sku: 'VELHA', ncm: null, value: 100, tax: 20 }] }])
+    expect(r.bySku['030592']).toMatchObject({ pct: 26.18, ipiPct: 3.25 })
+    expect(r.bySku['VELHA']!.ipiPct).toBeUndefined()
+    expect(taxRateFor('030592', null, r, null)).toMatchObject({ pct: 26.18, ipiPct: 3.25 })
   })
 })
 

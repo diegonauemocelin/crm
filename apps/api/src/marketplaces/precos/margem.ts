@@ -194,12 +194,14 @@ export function priceForProfit(profit: number, m: PriceModel): number | null {
 }
 
 /** Lucro desejado do produto: R$ informado, % do custo, ou preço de venda do ERP − custo. null = usa a margem geral. */
-export function profitTargetOf(c: { profitValue: number | null; profitPct: number | null } | null, cost: number | null, erpPrice: number | null, taxPct: number | null = null): { value: number; source: 'produto' | 'produto_pct' | 'erp' } | null {
+export function profitTargetOf(c: { profitValue: number | null; profitPct: number | null } | null, cost: number | null, erpPrice: number | null, taxPct: number | null = null, ipiPct = 0): { value: number; source: 'produto' | 'produto_pct' | 'erp' } | null {
   if (c?.profitValue != null && c.profitValue >= 0) return { value: round2(c.profitValue), source: 'produto' }
   if (c?.profitPct != null && cost !== null) return { value: round2((cost * c.profitPct) / 100), source: 'produto_pct' }
-  // Como o "Lucro líquido" do ERP: preço de venda − custo − impostos da venda (sem tarifa de marketplace).
+  // Como o "Lucro líquido" do ERP: valor líquido (preço de venda + IPI, que vai por fora) − custo − impostos da venda
+  // (com o IPI; a carga das notas é sobre o valor com IPI). Sem tarifa de marketplace.
   if (erpPrice !== null && cost !== null) {
-    const v = erpPrice - cost - (taxPct === null ? 0 : (erpPrice * taxPct) / 100)
+    const liquid = erpPrice * (1 + Math.max(0, ipiPct) / 100)
+    const v = liquid - cost - (taxPct === null ? 0 : (liquid * taxPct) / 100)
     if (v > 0) return { value: round2(v), source: 'erp' }
   }
   return null
