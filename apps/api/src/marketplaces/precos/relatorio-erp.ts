@@ -35,8 +35,13 @@ export function erpTextReportRows(text: string): string[][] {
     // Do fim para o começo: status (texto) e os números das colunas numéricas, na ordem do cabeçalho.
     let end = t.length
     while (end > 0 && !NUM.test(t[end - 1]!)) end--
-    const nums = t.slice(Math.max(0, end - numeric.length), end)
-    if (nums.length !== numeric.length || !nums.every((n) => NUM.test(n))) continue
+    let start = end
+    while (start > skuIdx + 1 && NUM.test(t[start - 1]!)) start--
+    const run = end - start
+    if (run < 1) continue
+    // Linha completa: as últimas colunas numéricas. Linha incompleta ("REVISAR TRIBUTACAO", sem impostos e lucro):
+    // só as primeiras colunas vieram (custo e preço).
+    const nums = run >= numeric.length ? t.slice(end - numeric.length, end) : t.slice(start, end)
     const sku = t[skuIdx]
     if (!sku || sku.length > 60) continue
     const val = (k: string) => nums[numeric.findIndex((c) => c.key === k)] ?? ''
