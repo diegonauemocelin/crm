@@ -375,6 +375,8 @@ export interface Tip {
 }
 
 export interface TipInput {
+  /** Lucro esperado do produto em R$ por unidade (planilha, ERP ou informado à mão). */
+  profitTarget?: number | null
   status: string | null
   availableQuantity: number | null
   /** Margem no preço de venda de hoje (com a promoção, se houver). */
@@ -420,6 +422,9 @@ export function pricingTips(t: TipInput): Tip[] {
     if (promoHurts) out.push({ level: 'alerta', code: 'promocao_margem', text: `A promoção (${brl(t.promoPrice!)}) derruba a margem para ${pctTxt(m.marginPct)}, abaixo do mínimo de ${pctTxt(t.minMarginPct)}. Sem ela, a margem é ${pctTxt(t.regularMarginPct!)}.` })
     else out.push({ level: 'alerta', code: 'margem_baixa', text: `Margem de ${pctTxt(m.marginPct)}, abaixo do mínimo de ${pctTxt(t.minMarginPct)}.${t.suggestedPrice ? ` Suba o preço para ${brl(t.suggestedPrice)} para ter ${pctTxt(goal)}.` : ''}` })
   }
+  // Lucro esperado do produto (planilha/ERP/manual): abaixo dele é alerta, mesmo com margem % boa.
+  if (t.profitTarget != null && m.margin !== null && m.margin >= 0 && m.margin < t.profitTarget - 0.01)
+    out.push({ level: 'alerta', code: 'lucro_abaixo', text: `Lucro de ${brl(m.margin)} por unidade, abaixo do esperado de ${brl(t.profitTarget)}.${t.suggestedPrice ? ` Suba o preço para ${brl(t.suggestedPrice)}.` : ''}` })
   if (t.mandatoryFreeShipping && !t.freeShipping) out.push({ level: 'alerta', code: 'frete_obrigatorio', text: 'O Mercado Livre exige frete grátis neste preço e o anúncio está sem.' })
   if (t.competitorMin !== null) {
     const now = t.promoPrice ?? t.regularPrice

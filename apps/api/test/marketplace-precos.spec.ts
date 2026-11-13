@@ -184,6 +184,11 @@ describe('dicas', () => {
     expect(codes({ margin: computeMargin({ price: 100, ...base, cost: null }) })).toContain('sem_custo')
     expect(codes({ competitorMin: 70, competitorCount: 2 })).toContain('concorrente')
     expect(pricingTips({ ...t, competitorMin: 70 }).find((i) => i.code === 'concorrente')!.text).toMatch(/preço mínimo/)
+    // Lucro esperado do produto (planilha): abaixo dele é alerta
+    const low = pricingTips({ ...t, profitTarget: 1000 }).find((i) => i.code === 'lucro_abaixo')
+    expect(low?.level).toBe('alerta')
+    expect(low!.text).toMatch(/abaixo do esperado de R\$\s?1\.000,00/)
+    expect(codes({ profitTarget: 0 })).not.toContain('lucro_abaixo')
     expect(codes({ status: 'paused' })).toContain('pausado')
     expect(codes({ sales60: 0, sales30: 0 })).toContain('sem_venda_60')
     expect(codes({ sales60: null, sales30: null })).not.toContain('sem_venda_30')

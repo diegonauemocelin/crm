@@ -165,9 +165,10 @@ const STATUS: Record<string, string> = { AGENDADA: 'Agendada', PENDENTE: 'Na fil
 const COST_SOURCE: Record<string, string> = { manual: 'manual', planilha: 'planilha', percentual: '% do preço', tcar: 'Tcar' }
 const MISSING: Record<string, string> = { custo: 'sem custo', tarifa: 'sem tarifa', imposto: 'sem imposto', frete: 'sem o frete' }
 
-function MarginCell({ m, min }: { m: Margin; min: number }) {
+function MarginCell({ m, min, target }: { m: Margin; min: number; target?: number | null }) {
   if (m.margin === null) return <span className="text-xs text-muted-foreground">{m.missing.filter((x) => x !== 'frete').map((x) => MISSING[x]).join(', ')}</span>
-  const low = m.marginPct !== null && m.marginPct < min
+  // Abaixo da margem mínima % ou do lucro esperado do produto (R$, da planilha ou informado).
+  const low = (m.marginPct !== null && m.marginPct < min) || (target != null && m.margin < target - 0.01)
   return (
     <span className={cn('tabular-nums', low ? 'font-semibold text-destructive' : 'text-green-700 dark:text-green-500')}>
       {brl(m.margin)}
@@ -447,7 +448,7 @@ export function MarketplacePrecosPage() {
                         <span className="block text-xs text-muted-foreground">{pct(r.taxPct)}</span>
                       </TableCell>
                       <TableCell className="text-right">
-                        <MarginCell m={r.margin} min={d.config.minMarginPct} />
+                        <MarginCell m={r.margin} min={d.config.minMarginPct} target={r.profitTarget?.value ?? null} />
                       </TableCell>
                       <TableCell className="text-right text-xs whitespace-nowrap tabular-nums">
                         <span className="block text-muted-foreground">{brl(r.minPrice)}</span>
