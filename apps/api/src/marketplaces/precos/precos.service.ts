@@ -534,6 +534,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     const competitorCount = all.length
     const competitors = all.slice(0, 2)
     const tips = pricingTips({
+      profitTarget: salePct !== null ? (suggestedPrice === null ? null : round2((suggestedPrice * salePct) / 100)) : (profitTarget?.value ?? null),
       status: s.status,
       availableQuantity: s.availableQuantity,
       margin,
