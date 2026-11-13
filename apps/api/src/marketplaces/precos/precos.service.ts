@@ -42,6 +42,8 @@ import {
   promoDealPrice,
   refinePrice,
   roundTo90,
+  depositStatus,
+  type DepositStatus,
   round2,
   sendRetryDelay,
   type Tip,
@@ -100,6 +102,8 @@ export interface ListQuery {
   full?: string
   noCost?: boolean
   lowMargin?: boolean
+  /** Depósito do Mercado Livre comparado ao preço de venda no e-commerce. */
+  deposit?: DepositStatus
   order?: string
   page?: number
 }
@@ -130,6 +134,8 @@ export interface PriceRow {
   erpPrice: number | null
   /** Modo depósito: o que o Mercado Livre deve depositar (valor líquido do ERP ou preço da loja); null = fora do modo. */
   depositTarget: { value: number; source: 'erp' | 'loja' } | null
+  /** O que o Mercado Livre deposita: preço de venda − tarifa − frete (null sem a tarifa). */
+  received: number | null
   /** IPI (%) aprendido das notas, somado ao preço do ERP para chegar ao valor líquido. */
   ipiPct: number | null
   feeFixed: number | null
@@ -599,6 +605,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
       profitTarget: salePct !== null ? { value: suggestedPrice === null ? 0 : round2((suggestedPrice * salePct) / 100), source: 'produto_venda' as const, pct: salePct } : profitTarget,
       erpPrice,
       depositTarget,
+      received: sale !== null && margin.fee !== null ? round2(sale - margin.fee - (margin.shipping ?? 0)) : null,
       ipiPct: tax.ipiPct ?? null,
       feeFixed: model?.fixed ?? null,
       extraPct: config.extraFeePct,
@@ -642,6 +649,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     if (q.full === 'nao') list = list.filter((r) => !r.full)
     if (q.noCost) list = list.filter((r) => r.cost === null)
     if (q.lowMargin) list = list.filter((r) => r.margin.marginPct !== null && r.margin.marginPct < ctx.config.minMarginPct)
+    if (q.deposit) list = list.filter((r) => r.received !== null && r.depositTarget && depositStatus(r.received, r.depositTarget.value) === q.deposit)
     const s = q.search?.trim().toLowerCase()
     if (s) list = list.filter((r) => [r.id, r.title, r.sku, aBy.get(r.id)?.partNumber, aBy.get(r.id)?.brand].some((v) => (v ?? '').toLowerCase().includes(s)))
     const m = (r: PriceRow) => r.margin.marginPct ?? Number.POSITIVE_INFINITY

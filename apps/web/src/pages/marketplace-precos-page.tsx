@@ -61,6 +61,7 @@ interface Row {
   erpPrice?: number | null
   /** Modo depósito: o que o Mercado Livre deve depositar (valor líquido do ERP ou preço da loja). */
   depositTarget?: { value: number; source: 'erp' | 'loja' } | null
+  received?: number | null
   ipiPct?: number | null
   feeFixed?: number | null
   extraPct?: number
@@ -185,6 +186,18 @@ function MarginCell({ m, min, target, deposit }: { m: Margin; min: number; targe
   )
 }
 
+/** Depósito do Mercado Livre x preço do e-commerce: vermelho (menos), âmbar (igual, até R$ 1,00 acima), verde (mais). */
+function DepositBadge({ received, target }: { received: number | null; target: number }) {
+  if (received === null) return <span className="block text-[11px] text-muted-foreground">deposita {brl(target)}</span>
+  const st = received < target - 0.01 ? 'menos' : received <= target + 1 ? 'igual' : 'mais'
+  const cls = st === 'menos' ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' : st === 'igual' ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' : 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300'
+  return (
+    <span className={cn('mt-0.5 inline-block rounded px-1.5 py-0.5 text-[11px] font-medium', cls)} title={`O Mercado Livre deposita ${brl(received)}; preço de venda no e-commerce ${brl(target)}.`}>
+      recebe {brl(received)} · e-com {brl(target)}
+    </span>
+  )
+}
+
 function TipIcon({ tip }: { tip: Tip | undefined }) {
   if (!tip) return null
   const Icon = tip.level === 'alerta' ? AlertTriangleIcon : tip.level === 'dica' ? LightbulbIcon : InfoIcon
@@ -218,8 +231,8 @@ export function MarketplacePrecosPage() {
     const t = setTimeout(() => (setQ(search), setPage(1)), 350)
     return () => clearTimeout(t)
   }, [search])
-  const filter = { situacao: status, full, ...(q ? { busca: q } : {}), ...(problem === 'sem_custo' ? { semCusto: true } : {}), ...(problem === 'margem_baixa' ? { margemBaixa: true } : {}) }
-  const params = new URLSearchParams({ pagina: String(page), ordem: order, situacao: status, full, ...(q ? { busca: q } : {}), ...(problem === 'sem_custo' ? { semCusto: 'true' } : {}), ...(problem === 'margem_baixa' ? { margemBaixa: 'true' } : {}) })
+  const filter = { situacao: status, full, ...(q ? { busca: q } : {}), ...(problem === 'sem_custo' ? { semCusto: true } : {}), ...(problem === 'margem_baixa' ? { margemBaixa: true } : {}), ...(problem.startsWith('deposito_') ? { deposito: problem.slice(9) } : {}) }
+  const params = new URLSearchParams({ pagina: String(page), ordem: order, situacao: status, full, ...(q ? { busca: q } : {}), ...(problem === 'sem_custo' ? { semCusto: 'true' } : {}), ...(problem === 'margem_baixa' ? { margemBaixa: 'true' } : {}), ...(problem.startsWith('deposito_') ? { deposito: problem.slice(9) } : {}) })
   const list = useQuery({
     queryKey: ['precos-anuncios', params.toString()],
     queryFn: () => api.get<ListData>(`/marketplace-precos/anuncios?${params}`),
@@ -329,6 +342,9 @@ export function MarketplacePrecosPage() {
                 <SelectItem value="todos">Todas as margens</SelectItem>
                 <SelectItem value="margem_baixa">Margem abaixo do mínimo</SelectItem>
                 <SelectItem value="sem_custo">Sem custo</SelectItem>
+                <SelectItem value="deposito_menos">Recebe menos que o preço do e-commerce</SelectItem>
+                <SelectItem value="deposito_igual">Recebe igual ao preço do e-commerce</SelectItem>
+                <SelectItem value="deposito_mais">Recebe mais que o preço do e-commerce</SelectItem>
               </SelectContent>
             </Select>
             <Select value={order} onValueChange={(v) => (setOrder(v), setPage(1))}>
@@ -460,7 +476,7 @@ export function MarketplacePrecosPage() {
                         <span className="font-medium">{brl(r.suggestedPrice)}</span>
                         {r.suggestedPrice !== null &&
                           (r.depositTarget ? (
-                            <span className="block text-[11px] text-muted-foreground">deposita {brl(r.depositTarget.value)}</span>
+                            <DepositBadge received={r.received ?? null} target={r.depositTarget.value} />
                           ) : (
                             r.profitTarget && <span className="block text-[11px] text-muted-foreground">lucro {brl(r.profitTarget.value)}</span>
                           ))}
