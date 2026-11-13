@@ -62,8 +62,7 @@ import {
   ReceiptIcon,
   BellIcon,
   PieChartIcon,
-  TicketPercentIcon,
-} from 'lucide-react'
+  TicketPercentIcon, SparklesIcon } from 'lucide-react'
 import type { Action } from './types'
 
 export interface NavItem {
@@ -112,6 +111,7 @@ export const NAVIGATION: NavGroup[] = [
     items: [
       { title: 'Pré-Vendas', to: '/pre-vendas', icon: HeadsetIcon, module: 'pre_vendas' },
       { title: 'Pós-Vendas', to: '/pos-vendas', icon: ClipboardListIcon, module: 'pos_vendas' },
+      { title: 'Análise das perdas (IA)', to: '/atendimento/perdas-ia', icon: SparklesIcon, anyOf: ['mi_relatorios', 'cadastros'] },
       { title: 'Chat WhatsApp', to: '/chat', icon: MessageCircleIcon, module: 'chat' },
       { title: 'Agenda de contatos', to: '/agenda', icon: BookUserIcon, module: 'whatsapp' },
       { title: 'Monitorar conversas', to: '/chat?monitorar=1', icon: EyeIcon, module: 'monitoramento' },

@@ -180,6 +180,26 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'perdas-ia',
+    title: 'Análise das perdas (IA)',
+    module: 'mi_relatorios',
+    routes: ['/atendimento/perdas-ia'],
+    purpose: 'Entender por que as vendas da pré-venda foram perdidas e decidir o que mudar (estoque, preço, prazo, atendimento).',
+    howItWorks: 'O Claude lê o motivo e as observações das pré-vendas perdidas no período e aponta as causas, os códigos e as peças pedidos, o que foi respondido ao cliente e as decisões sugeridas, com o cliente e o vendedor de cada perda. Usa a chave da Anthropic cadastrada na própria tela (só para isto; o resto do CRM continua no Gemini gratuito). Para a IA vão só códigos no lugar dos nomes.',
+    lessons: [
+      {
+        id: 'perdasia.gerar',
+        title: 'Gerar a análise',
+        steps: [
+          'Abra Atendimento Comercial → Análise das perdas (IA). Na primeira vez, cole a chave da Anthropic (Claude Console › Chaves › Criar chave) e salve.',
+          'Escolha o período (de/até) e clique em Gerar análise. Leva alguns minutos; a tela atualiza sozinha.',
+          'Leia o resumo e as decisões sugeridas e confira a lista perda por perda (busque por cliente, código ou peça). Use Imprimir para salvar em PDF.',
+          'Para receber toda semana no WhatsApp dos gestores, marque “Análise das perdas com IA” no Resumo do vendedor (Marketing › Relatórios e alertas).',
+        ],
+      },
+    ],
+  },
+  {
     key: 'pos-vendas',
     title: 'Pós-Vendas',
     module: 'pos_vendas',

@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2Icon, PrinterIcon, SparklesIcon } from 'lucide-react'
+import { KeyRoundIcon, Loader2Icon, PrinterIcon, SparklesIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router'
 import { toast } from 'sonner'
-import { ErrorState, formatDateTime, TableSkeleton } from '@/components/page'
+import { useConfirm } from '@/components/confirm'
+import { ErrorState, formatDateTime, PageHeader, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -36,9 +36,15 @@ interface LossResult {
   records: string
   items: { id: string; client: string; person: string | null; stage: 'vendedor' | 'pre_venda'; date: string; reason: string | null; notes: string | null; codes: string[]; parts: string[]; answer: string; cause: string; action: string }[]
 }
+interface KeyInfo {
+  masked: string | null
+  updatedAt: string | null
+  updatedBy: string | null
+}
 interface View {
   config: { model: string }
   keyConfigured: boolean
+  key: KeyInfo | null
   models: { id: string; label: string }[]
   max: number
   reports: ReportMeta[]
@@ -48,6 +54,16 @@ const PRIORITY = { alta: { label: 'Alta', cls: 'bg-red-500/15 text-red-700 dark:
 const isoDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
 const brDate = (s: string) => s.split('-').reverse().join('/')
 const usd = (v: number) => `US$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+/** Página em Atendimento Comercial › Análise das perdas (IA). Só gestores (a API confere). */
+export function PerdasIaPage() {
+  return (
+    <div>
+      <PageHeader title="Análise das perdas (IA)" description="Pré-vendas perdidas analisadas pelo Claude: causas, códigos e peças pedidos, respostas dadas e decisões sugeridas." />
+      <PerdasIa />
+    </div>
+  )
+}
 
 /**
  * Análise das perdas com IA (Claude): lê o motivo e as observações das pré-vendas perdidas e mostra as causas, os
@@ -94,15 +110,11 @@ export function PerdasIa() {
             <SparklesIcon className="size-5" aria-hidden /> Análise das perdas com IA
           </CardTitle>
           <CardDescription>
-            O Claude lê o motivo e as observações das pré-vendas perdidas no período e aponta as causas, os códigos e as peças pedidas, o que foi respondido ao cliente e as decisões sugeridas. Usa o saldo da sua conta na Anthropic (o custo de cada relatório aparece abaixo); o resto do CRM continua no Gemini gratuito. Para a IA vão só códigos no lugar dos nomes, sem telefone, e-mail ou documento. Para receber no WhatsApp toda semana, marque “Análise das perdas com IA” no Resumo do vendedor (aba Relatórios agendados).
+            O Claude lê o motivo e as observações das pré-vendas perdidas no período e aponta as causas, os códigos e as peças pedidas, o que foi respondido ao cliente e as decisões sugeridas. Usa o saldo da sua conta na Anthropic (o custo de cada relatório aparece abaixo); o resto do CRM continua no Gemini gratuito. Para a IA vão só códigos no lugar dos nomes, sem telefone, e-mail ou documento. Para receber no WhatsApp toda semana, marque “Análise das perdas com IA” no Resumo do vendedor (Marketing › Relatórios e alertas › Relatórios agendados).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!v.keyConfigured && (
-            <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-              Falta a chave da Anthropic (Claude). Cadastre em <Link to="/marketplaces/assistente/configuracoes" className="underline">Assistente ML › Configurações</Link> (Chaves de IA, Claude). A mesma chave serve aqui.
-            </p>
-          )}
+          <ChaveClaude info={v.key} />
           <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end">
             <div className="space-y-1.5">
               <Label>Modelo</Label>
@@ -152,6 +164,69 @@ export function PerdasIa() {
         </CardContent>
       </Card>
       {current && <Report id={current} meta={reports.find((r) => r.id === current) ?? null} />}
+    </div>
+  )
+}
+
+/** Chave da Anthropic (Claude) usada só na análise das perdas. É a mesma do Assistente ML, mas salvar aqui não muda o motor dele. */
+function ChaveClaude({ info }: { info: KeyInfo | null }) {
+  const qc = useQueryClient()
+  const confirm = useConfirm()
+  const [key, setKey] = useState('')
+  const done = () => qc.invalidateQueries({ queryKey: ['relatorios', 'perdas-ia'] })
+  const save = useMutation({
+    mutationFn: () => api.put<{ ok: boolean; detail: string }>('/relatorios/perdas-ia/chave', { key }),
+    onSuccess: (r) => {
+      setKey('')
+      ;(r.ok ? toast.success : toast.warning)(r.ok ? 'Chave salva e conferida.' : `Chave salva, mas não deu para conferir agora: ${r.detail}`)
+      void done()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const remove = useMutation({
+    mutationFn: () => api.delete('/relatorios/perdas-ia/chave'),
+    onSuccess: () => {
+      toast.success('Chave removida.')
+      void done()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <div className={`space-y-2 rounded-md border p-3 text-sm ${info ? '' : 'border-amber-500/40 bg-amber-500/10'}`}>
+      <p className="flex flex-wrap items-center gap-2 font-medium">
+        <KeyRoundIcon className="size-4" aria-hidden /> Chave da Anthropic (Claude)
+        {info ? <Badge variant="secondary">{info.masked ?? 'salva'}</Badge> : <Badge variant="outline">Sem chave</Badge>}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        {info
+          ? `Salva${info.updatedBy ? ` por ${info.updatedBy}` : ''}${info.updatedAt ? ` em ${formatDateTime(info.updatedAt)}` : ''}. Fica criptografada; ninguém vê a chave inteira.`
+          : 'Crie no Claude Console (platform.claude.com) › Chaves › Criar chave, copie (começa com sk-ant-) e cole aqui. Não envie a chave por WhatsApp ou e-mail.'}{' '}
+        Serve só para esta análise; o Assistente ML continua com o motor que estiver escolhido nele (ex.: Gemini gratuito).
+      </p>
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault()
+          save.mutate()
+        }}
+      >
+        <Input type="password" autoComplete="off" placeholder={info ? 'Trocar a chave' : 'Cole a chave (sk-ant-...)'} value={key} onChange={(e) => setKey(e.target.value)} />
+        <Button type="submit" disabled={save.isPending || key.trim().length < 20}>
+          {save.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Salvar
+        </Button>
+        {info && (
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={remove.isPending}
+            onClick={async () => {
+              if (await confirm({ title: 'Remover a chave da Anthropic?', description: 'A análise das perdas para de funcionar (e o Assistente ML, se o motor dele for o Claude).', confirmLabel: 'Remover chave' })) remove.mutate()
+            }}
+          >
+            Remover
+          </Button>
+        )}
+      </form>
     </div>
   )
 }

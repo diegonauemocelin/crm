@@ -1,11 +1,13 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Injectable, Logger, NotFoundException, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Injectable, Logger, NotFoundException, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
-import { IsIn, IsOptional, Matches } from 'class-validator'
+import { Throttle } from '@nestjs/throttler'
+import { IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator'
 import { SECRET_KEY } from '../assistente/constantes'
+import { testClaudeKey } from '../assistente/ia'
 import { AuditService } from '../audit/audit.service'
 import { buildLossPayload, LOSS_AI_MAX, LOSS_AI_MODEL_LABEL, LOSS_AI_MODELS, LOSS_AI_SCHEMA, LOSS_AI_SYSTEM, lossAiCost, lossAiWhatsapp, type LossAiModel, type LossInput, type LossReportResult, restoreLossReport } from '../atendimento/perdas-ia'
-import { decrypt } from '../common/crypto'
+import { decrypt, encrypt } from '../common/crypto'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import { type Action, can } from '../common/permissions'
 import type { AuthUser } from '../common/types'
@@ -59,16 +61,41 @@ export class PerdasIaService {
     }
   }
 
+  /**
+   * Chave da Anthropic (a mesma do Assistente ML, guardada criptografada). Salvar aqui não muda o motor de respostas do
+   * Assistente ML (que continua no Gemini, se for o escolhido lá).
+   */
+  async saveKey(user: AuthUser, raw: string, ctx: RequestCtx) {
+    this.assertCan(user, 'edit')
+    const key = raw.replace(/\s+/g, '').replace(/^["']|["']$/g, '')
+    if (!/^sk-ant-[A-Za-z0-9_-]{20,}$/.test(key)) throw new BadRequestException('Chave inválida: ela começa com "sk-ant-". Copie de novo no Claude Console › Chaves.')
+    const test = await testClaudeKey(key)
+    if (!test.ok && /inválida|permissão/.test(test.detail)) throw new BadRequestException(`A chave não foi aceita: ${test.detail}`)
+    const masked = `${key.slice(0, 7)}••••${key.slice(-4)}`
+    await this.settings.set(user.tenantId, SECRET_KEY('claude'), { enc: encrypt(key), masked, updated_at: new Date().toISOString(), updated_by: user.name })
+    await this.audit.byUser(user, ctx, 'relatorios.perdas_ia_chave', 'settings', SECRET_KEY('claude'), { chave: masked, validada: test.ok })
+    return { ok: test.ok, detail: test.detail }
+  }
+
+  async removeKey(user: AuthUser, ctx: RequestCtx) {
+    this.assertCan(user, 'edit')
+    await this.settings.set(user.tenantId, SECRET_KEY('claude'), {})
+    await this.audit.byUser(user, ctx, 'relatorios.perdas_ia_chave', 'settings', SECRET_KEY('claude'), { chave: 'removida' })
+    return { ok: true }
+  }
+
   async view(user: AuthUser) {
     this.assertCan(user, 'view')
-    const [config, key, rows] = await Promise.all([
+    const [config, key, keyRow, rows] = await Promise.all([
       this.config(user.tenantId),
       this.apiKey(user.tenantId),
+      this.settings.get<{ masked?: string; updated_at?: string; updated_by?: string }>(user.tenantId, SECRET_KEY('claude'), {}),
       this.prisma.lossAiReport.findMany({ where: { tenantId: user.tenantId }, orderBy: { createdAt: 'desc' }, take: KEEP, select: { id: true, label: true, from: true, to: true, cycleKey: true, status: true, error: true, model: true, total: true, omitted: true, inputTokens: true, outputTokens: true, createdBy: true, createdAt: true, finishedAt: true } }),
     ])
     return {
       config,
       keyConfigured: !!key,
+      key: key ? { masked: keyRow.masked ?? null, updatedAt: keyRow.updated_at ?? null, updatedBy: keyRow.updated_by ?? null } : null,
       models: LOSS_AI_MODELS.map((m) => ({ id: m, label: LOSS_AI_MODEL_LABEL[m] })),
       max: LOSS_AI_MAX,
       reports: rows.map((r) => ({ ...this.fixStale(r), cost: lossAiCost(r.model, r.inputTokens, r.outputTokens) })),
@@ -102,7 +129,7 @@ export class PerdasIaService {
     to.setUTCDate(to.getUTCDate() + 1)
     if (!(from < to)) throw new BadRequestException('Período inválido.')
     if (to.getTime() - from.getTime() > 92 * 86_400_000) throw new BadRequestException('Escolha um período de até 3 meses.')
-    if (!(await this.apiKey(user.tenantId))) throw new BadRequestException('Falta a chave da Anthropic (Claude). Cadastre em Assistente ML › Configurações › Chaves de IA.')
+    if (!(await this.apiKey(user.tenantId))) throw new BadRequestException('Falta a chave da Anthropic (Claude). Cadastre em Atendimento Comercial › Análise das perdas (IA).')
     const busy = await this.prisma.lossAiReport.findFirst({ where: { tenantId: user.tenantId, status: 'GERANDO', createdAt: { gt: new Date(Date.now() - STALE_MS) } } })
     if (busy) throw new BadRequestException('Já tem uma análise sendo gerada. Aguarde terminar.')
     const label = `${day(from)} a ${day(new Date(to.getTime() - 1))}`
@@ -124,14 +151,14 @@ export class PerdasIaService {
   async forCycle(tenantId: string, cycle: { key: string; from: Date; to: Date; label: string }): Promise<string | 'wait'> {
     let row = await this.prisma.lossAiReport.findFirst({ where: { tenantId, cycleKey: cycle.key }, orderBy: { createdAt: 'desc' } })
     if (!row) {
-      if (!(await this.apiKey(tenantId))) return '🤖 Análise das perdas com IA: falta a chave da Anthropic (Claude) em Assistente ML › Configurações.'
+      if (!(await this.apiKey(tenantId))) return '🤖 Análise das perdas com IA: falta a chave da Anthropic (Claude) em Atendimento Comercial › Análise das perdas (IA).'
       row = await this.create(tenantId, { from: cycle.from, to: cycle.to, label: cycle.label, cycleKey: cycle.key }, { id: null, name: 'Resumo semanal' })
       void this.run(row.id)
       return 'wait'
     }
     const r = this.fixStale(row)
     if (r.status === 'GERANDO') return 'wait'
-    if (r.status === 'ERRO') return `🤖 Análise das perdas com IA não saiu: ${r.error ?? 'erro'}. Gere de novo em Marketing › Relatórios e alertas › Análise das perdas.`
+    if (r.status === 'ERRO') return `🤖 Análise das perdas com IA não saiu: ${r.error ?? 'erro'}. Gere de novo em Atendimento Comercial › Análise das perdas (IA).`
     if (!r.total) return '🤖 Análise das perdas com IA: nenhuma perda registrada no período.'
     return lossAiWhatsapp(r.result as unknown as LossReportResult, r.total, r.omitted)
   }
@@ -183,7 +210,7 @@ export class PerdasIaService {
         return
       }
       const apiKey = await this.apiKey(row.tenantId)
-      if (!apiKey) return void (await fail('Falta a chave da Anthropic (Claude) em Assistente ML › Configurações.'))
+      if (!apiKey) return void (await fail('Falta a chave da Anthropic (Claude) em Atendimento Comercial › Análise das perdas (IA).'))
       const payload = buildLossPayload(items)
       const { raw, input, output } = await this.callClaude(apiKey, row.model, payload.content)
       const result = restoreLossReport(raw, payload)
@@ -236,11 +263,15 @@ class LossAiStartDto {
   @ApiProperty({ example: '2026-11-12' }) @Matches(/^\d{4}-\d{2}-\d{2}$/) to!: string
 }
 
+class LossAiKeyDto {
+  @ApiProperty() @IsString() @MaxLength(400) key!: string
+}
+
 class LossAiConfigDto {
   @ApiPropertyOptional({ enum: LOSS_AI_MODELS }) @IsOptional() @IsIn(LOSS_AI_MODELS) model?: string
 }
 
-/** Análise das perdas com IA, em Marketing › Relatórios e alertas (só gestores). */
+/** Análise das perdas com IA, em Atendimento Comercial (só gestores). */
 @ApiTags('Relatórios')
 @Controller('relatorios/perdas-ia')
 export class PerdasIaController {
@@ -249,6 +280,17 @@ export class PerdasIaController {
   @Get()
   view(@CurrentUser() user: AuthUser) {
     return this.svc.view(user)
+  }
+
+  @Put('chave')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  saveKey(@CurrentUser() user: AuthUser, @Body() dto: LossAiKeyDto, @ReqContext() ctx: RequestCtx) {
+    return this.svc.saveKey(user, dto.key, ctx)
+  }
+
+  @Delete('chave')
+  removeKey(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
+    return this.svc.removeKey(user, ctx)
   }
 
   @Get(':id')
