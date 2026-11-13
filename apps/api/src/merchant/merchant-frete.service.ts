@@ -14,7 +14,7 @@ import { DEFAULT_GA4, GA_TOKEN_URL, type Ga4Settings, signJwt } from '../relator
 import { SettingsService } from '../settings/settings.service'
 import {
   cepsOf,
-  UF_REF_CEP,
+  CEP_KEYS,
   isPickup,
   cleanConfig,
   CONTENT_SCOPE,
@@ -32,7 +32,11 @@ import {
   Pacer,
   parseRate,
   PAUSE_AFTER_LIMITED,
-  regionId,
+  REGIONS,
+  REGIONS_OUTDATED_MSG,
+  REGIONS_VERSION,
+  regionsReady,
+  type RegionKey,
   RESUME_AFTER_MS,
   retryWait,
   shippingAttribute,
@@ -41,10 +45,8 @@ import {
   SUPPLEMENTAL_NAME,
   productWeight,
   tcarWeightFor,
-  UF_CEP_RANGES,
-  type Uf,
+  toPostalCodes,
   type UfQuote,
-  UFS,
   ufQuote,
   simulationSku,
   weightIndex,
@@ -207,6 +209,9 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
       running: this.running.has(user.tenantId),
       progress: this.progress.get(user.tenantId) ?? null,
       preparing: this.preparing.has(user.tenantId),
+      // Conta preparada com as regiões antigas (um estado inteiro): falta criar as de capital e interior.
+      regionsOutdated: !!cfg.dataSource && !regionsReady(cfg),
+      regionsMessage: cfg.dataSource && !regionsReady(cfg) ? REGIONS_OUTDATED_MSG : null,
       totals: { products: c?._all ?? 0, withSku: c?.sku ?? 0, sent: c?.sentAt ?? 0, errors: c?.error ?? 0 },
       estimate: estimateRun(cfg, cfg.source === 'crm' ? (c?.sku ?? 0) : Math.min(cfg.batchSize, c?.sku || cfg.batchSize)),
       units,
@@ -228,6 +233,16 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
       const unit = await this.prisma.unit.findFirst({ where: { id: next.unitId!, tenantId: user.tenantId }, select: { zip: true, name: true } })
       if (!unit) throw new BadRequestException('Filial de origem inválida.')
       if (!unit.zip) throw new BadRequestException(`Cadastre o CEP de expedição da filial ${unit.name} (Fretes › Filiais) para calcular o frete pelo CRM.`)
+    }
+    // CEPs por estado/região conferidos na base dos Correios (pelo ViaCEP, com cache): CEP que não existe faz a loja
+    // recusar a simulação (ex.: 29010-000). Sem resposta da consulta, aceita (não dá para conferir agora). Capital e
+    // interior (SC-CAP, SC-INT) já foram conferidos pelas faixas de CEP em cleanConfig.
+    const changed = CEP_KEYS.flatMap((key) => (input.ceps?.[key] !== undefined ? (next.ceps[key] ?? []).map((cep) => ({ key, uf: key.slice(0, 2), cep })) : []))
+    for (const { key, uf, cep } of changed) {
+      const info = await this.cotacao.cep(cep)
+      const fmt = `${cep.slice(0, 5)}-${cep.slice(5)}`
+      if (info.source !== 'faixa' && !info.found) throw new BadRequestException(`O CEP ${fmt} (${key}) não existe na base dos Correios. Use um CEP de rua (confira em buscacepinter.correios.com.br).`)
+      if (info.uf && info.uf !== uf) throw new BadRequestException(`O CEP ${fmt} é de ${info.uf}, não de ${uf}.`)
     }
     if (next.carrierIds.length) {
       const ok = await this.prisma.freightCarrier.count({ where: { tenantId: user.tenantId, id: { in: next.carrierIds } } })
@@ -266,7 +281,7 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
   }
 
   /**
-   * Preparar a conta roda em segundo plano: são umas 60 chamadas ao Google, espaçadas por causa do limite por minuto,
+   * Preparar a conta roda em segundo plano: são umas 110 chamadas ao Google (53 regiões), espaçadas por causa do limite por minuto,
    * e pode levar alguns minutos. A tela acompanha pela situação (preparing) e mostra o erro, se houver.
    */
   async prepare(user: AuthUser, ctx: RequestCtx) {
@@ -288,9 +303,11 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
     try {
       await this.registerProject(user.tenantId, acc)
       await this.must(user.tenantId, 'GET', `/accounts/v1/${acc}`)
-      for (const uf of UFS) {
-        const id = regionId(uf)
-        const body = { displayName: `CRM ${uf}`, postalCodeArea: { regionCode: 'BR', postalCodes: UF_CEP_RANGES[uf].map(([begin, end]) => ({ begin, end })) } }
+      // Capital e interior de cada estado e o DF inteiro (53 regiões). As antigas (crm-uf-sc, um estado inteiro) ficam
+      // na conta sem uso; a do DF continua a mesma.
+      for (const r of REGIONS) {
+        const id = r.id
+        const body = { displayName: r.name, postalCodeArea: { regionCode: 'BR', postalCodes: toPostalCodes(r.intervals) } }
         const got = await this.api(user.tenantId, 'GET', `/accounts/v1/${acc}/regions/${id}`)
         if (got.status === 404) await this.must(user.tenantId, 'POST', `/accounts/v1/${acc}/regions?regionId=${id}`, body)
         else if (got.status === 200) await this.must(user.tenantId, 'PATCH', `/accounts/v1/${acc}/regions/${id}?updateMask=displayName,postalCodeArea`, body)
@@ -313,9 +330,9 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
         await this.must(user.tenantId, 'PATCH', `/datasources/v1/${p.name}?updateMask=primaryProductDataSource.defaultRule`, { primaryProductDataSource: { ...p.primaryProductDataSource, defaultRule: { takeFromDataSources } } })
         linked++
       }
-      await this.settings.set(user.tenantId, MERCHANT_KEY, { ...cfg, dataSource: supp.name, preparedAt: new Date().toISOString(), lastError: null })
+      await this.settings.set(user.tenantId, MERCHANT_KEY, { ...(await this.config(user.tenantId)), dataSource: supp.name, preparedAt: new Date().toISOString(), regionsVersion: REGIONS_VERSION, lastError: null })
       await this.audit.byUser(user, ctx, 'merchant.frete.preparado', 'settings', MERCHANT_KEY, { conta: cfg.merchantId, fonte: supp.name, principais: linked })
-      return { ok: true, regions: UFS.length, dataSource: supp.name, primaries: linked }
+      return { ok: true, regions: REGIONS.length, dataSource: supp.name, primaries: linked }
     } catch (e) {
       const msg = (e as Error).message.slice(0, 400)
       await this.settings.set(user.tenantId, MERCHANT_KEY, { ...(await this.config(user.tenantId)), lastError: msg })
@@ -340,6 +357,7 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
     this.assertCan(user, 'edit')
     const cfg = await this.config(user.tenantId)
     if (!cfg.dataSource) throw new BadRequestException('Clique antes em "Preparar a conta".')
+    if (!regionsReady(cfg)) throw new BadRequestException(REGIONS_OUTDATED_MSG)
     if (this.running.has(user.tenantId)) return { started: false }
     void this.run(user.tenantId).catch((e: unknown) => this.logger.warn(`Rodada: ${(e as Error).message}`))
     return { started: true }
@@ -352,7 +370,8 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
     const rows = await this.prisma.tenantSetting.findMany({ where: { key: MERCHANT_KEY }, select: { tenantId: true } })
     for (const { tenantId } of rows) {
       const cfg = await this.config(tenantId)
-      if (!cfg.enabled || !cfg.dataSource) continue
+      // Sem as regiões novas no Merchant Center o Google recusaria o frete: espera o Preparar a conta (a tela avisa).
+      if (!cfg.enabled || !regionsReady(cfg)) continue
       // Rodada pausada pelo limite da Magazord continua na hora marcada; senão, uma por noite.
       const resume = !!cfg.resumeAt && Date.now() >= Date.parse(cfg.resumeAt)
       if (!resume && cfg.lastRunAt && Date.now() - Date.parse(cfg.lastRunAt) < 20 * HOUR) continue
@@ -454,7 +473,7 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
           if (crm && x.weight === null) throw new Error(x.weightError ?? 'Sem peso na Magazord.')
           const quotes = crm ? await this.crmQuotes(tenantId, cfg, x.price, x.weight!, x.dims, cache) : await this.magazordQuotes(tenantId, cfg, await this.workingSku(tenantId, cfg, [simulationSku(item.sku!, bySku), item.offerId, item.sku!], x.price, pacer, cache), x.price, pacer, cache)
           const shipping = shippingAttribute(quotes, cfg)
-          if (!shipping.length) throw new Error(crm ? 'As tabelas do CRM não calcularam frete para nenhum estado.' : 'A Magazord não calculou frete para nenhum estado.')
+          if (!shipping.length) throw new Error(crm ? 'As tabelas do CRM não calcularam frete para nenhuma região.' : 'A Magazord não calculou frete para nenhuma região.')
           await this.must(tenantId, 'POST', `/products/v1/${acc}/productInputs:insert?dataSource=${encodeURIComponent(cfg.dataSource!)}`, { offerId: item.offerId, contentLanguage: item.contentLanguage, feedLabel: item.feedLabel, productAttributes: { shipping } })
           const stored: StoredQuotes = { ufs: quotes, fp: x.fp }
           await this.prisma.merchantShippingItem.update({ where: { id: item.id }, data: { quotes: stored as unknown as Prisma.InputJsonValue, sentAt: new Date(), error: null } })
@@ -502,13 +521,13 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
     }
   }
 
-  /** Frete por estado simulado na Magazord, no ritmo do Pacer; 429 espera e tenta de novo (5, 15, 30 e 60 s). */
+  /** Frete por região (capital e interior) simulado na Magazord, no ritmo do Pacer; 429 espera e tenta de novo (5, 15, 30 e 60 s). */
   private async magazordQuotes(tenantId: string, cfg: MerchantFreteConfig, sku: string, price: number, pacer: Pacer, cache: Map<string, Promise<{ price: number; days: number | null }[]>>) {
     const quotes: UfQuote[] = []
     const errors: string[] = []
-    for (const uf of UFS) {
+    for (const { key: region } of REGIONS) {
       const perCep: { price: number; days: number | null }[][] = []
-      for (const cep of cepsOf(cfg, uf)) {
+      for (const cep of cepsOf(cfg, region)) {
         // A mesma oferta em outro idioma/país (mesmo SKU e preço) usa a simulação já feita nesta rodada.
         const key = `${sku}|${price}|${cep}`
         let p = cache.get(key)
@@ -522,10 +541,10 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
         } catch (e) {
           // Limite da Magazord (429) adia o produto; erro de um CEP (ex.: "CEP inválido") só tira esse CEP da conta.
           if (e instanceof LimitedError) throw e
-          errors.push(`${uf} ${cep.replace(/^(\d{5})(\d{3})$/, '$1-$2')}: ${(e as Error).message}`)
+          errors.push(`${region} ${cep.replace(/^(\d{5})(\d{3})$/, '$1-$2')}: ${(e as Error).message}`)
         }
       }
-      quotes.push(perCep.length ? ufQuote(uf, perCep) : { uf, price: null, days: null })
+      quotes.push(ufQuote(region, perCep))
     }
     if (errors.length) this.logger.warn(`Frete Google (SKU ${sku}): ${errors.length} CEP(s) sem cálculo na Magazord. ${errors.slice(0, 3).join(' | ')}`)
     if (!quotes.some((q) => q.price !== null) && errors.length) throw new Error(errors[0]!.slice(0, 300))
@@ -538,7 +557,7 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
    */
   private async workingSku(tenantId: string, cfg: MerchantFreteConfig, candidates: (string | null | undefined)[], price: number, pacer: Pacer, cache: Map<string, Promise<{ price: number; days: number | null }[]>>) {
     const list = [...new Set(candidates.map((c) => (c ?? '').trim()).filter(Boolean))]
-    const cep = cepsOf(cfg, 'SP')[0] ?? UF_REF_CEP.SP
+    const cep = cepsOf(cfg, 'SP-CAP')[0]!
     const tried: string[] = []
     for (const sku of list) {
       const key = `${sku}|${price}|${cep}`
@@ -580,11 +599,11 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
     }
   }
 
-  /** Frete por estado pelas tabelas de Fretes: em cada CEP a opção mais barata das transportadoras, sem cotação online. */
+  /** Frete por região (capital e interior) pelas tabelas de Fretes, nos mesmos CEPs: em cada CEP a opção mais barata das transportadoras. */
   private async crmQuotes(tenantId: string, cfg: MerchantFreteConfig, price: number, weight: number, dims: Dims | null, cache: Map<string, Promise<{ price: number; days: number | null }[]>>) {
-    const quoteUf = async (uf: Uf) => {
+    const quoteRegion = async (key: RegionKey) => {
       const perCep = await Promise.all(
-        cepsOf(cfg, uf).map((cep) => {
+        cepsOf(cfg, key).map((cep) => {
           // Produtos com o mesmo peso, medidas e preço dão o mesmo frete: calcula uma vez por rodada.
           const key = `crm|${cep}|${weight}|${dims ? `${dims.length}x${dims.width}x${dims.height}` : ''}|${price}`
           let p = cache.get(key)
@@ -596,10 +615,10 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
           return p
         }),
       )
-      return ufQuote(uf, perCep)
+      return ufQuote(key, perCep)
     }
     const quotes: UfQuote[] = []
-    for (let i = 0; i < UFS.length; i += 9) quotes.push(...(await Promise.all(UFS.slice(i, i + 9).map(quoteUf))))
+    for (let i = 0; i < REGIONS.length; i += 9) quotes.push(...(await Promise.all(REGIONS.slice(i, i + 9).map((r) => quoteRegion(r.key)))))
     return quotes
   }
 }
