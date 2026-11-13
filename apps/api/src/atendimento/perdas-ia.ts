@@ -186,6 +186,6 @@ export function lossAiWhatsapp(r: LossReportResult, total: number, omitted = 0) 
   if (r.causes.length) out.push('', '*Principais causas*', ...r.causes.slice(0, 6).map((c) => `• ${c.cause}: ${c.count}`))
   if (r.codes.length) out.push('', '*Códigos e peças pedidos*', ...r.codes.slice(0, 10).map((c) => `• ${[c.code, c.part].filter(Boolean).join(' · ')}${c.count > 1 ? ` (${c.count}x)` : ''}`))
   if (r.decisions.length) out.push('', '*Decisões sugeridas*', ...r.decisions.slice(0, 6).map((d) => `${PRIORITY[d.priority]} ${d.action}`))
-  out.push('', 'Relatório completo (cliente, vendedor, códigos e respostas): CRM › Marketing › Relatórios e alertas › Análise das perdas.')
+  out.push('', 'Relatório completo (cliente, vendedor, códigos e respostas): CRM › Atendimento Comercial › Análise das perdas (IA).')
   return out.join('\n')
 }
