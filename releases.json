@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.33",
+      "date": "2026-11-13",
+      "title": "Filtro e cores do depósito do Mercado Livre",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Marketplaces",
+          "text": "Preços e promoções (modo \"Mercado Livre deposita o preço de venda\"): filtro para ver os anúncios que recebem menos, igual ou mais que o preço de venda no e-commerce, e a etiqueta \"recebe R$ X · e-com R$ Y\" em cores: vermelho (recebe menos), amarelo (igual, até R$ 1,00 acima) e verde (recebe mais)."
+        }
+      ]
+    },
+    {
       "version": "3.0.32",
       "date": "2026-11-13",
       "title": "Opção: Mercado Livre deposita o preço de venda",
