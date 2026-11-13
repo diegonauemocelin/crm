@@ -449,3 +449,11 @@ export function pricingTips(t: TipInput): Tip[] {
   const order = { alerta: 0, dica: 1, info: 2 }
   return out.sort((a, b) => order[a.level] - order[b.level])
 }
+
+/** Preço de venda com centavos ,90 (sempre para cima, para não perder lucro): 102,35 → 102,90; 102,95 → 103,90. */
+export function roundTo90(price: number | null): number | null {
+  if (price === null || !Number.isFinite(price) || price <= 0) return price
+  const base = Math.floor(price)
+  const p = Math.round(price * 100) / 100
+  return p <= base + 0.9 ? Math.round((base + 0.9) * 100) / 100 : Math.round((base + 1.9) * 100) / 100
+}
