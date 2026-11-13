@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.34",
+      "date": "2026-11-13",
+      "title": "Vendas perdidas completas no resumo dos gestores",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Marketing",
+          "text": "Resumo do vendedor para os gestores: o resumo da equipe vai numa mensagem e as vendas perdidas em mensagens seguidas, sem cortar a lista nem as observações (parte 1 de N, parte 2 de N...)."
+        }
+      ]
+    },
+    {
       "version": "3.0.33",
       "date": "2026-11-13",
       "title": "Filtro e cores do depósito do Mercado Livre",
