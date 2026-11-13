@@ -173,9 +173,10 @@ export class CotacaoService {
     private readonly tcar: TcarService,
   ) {}
 
-  /** Campanhas de frete da empresa. */
-  campaigns(tenantId: string) {
-    return this.settings.get<FreightCampaign[]>(tenantId, CAMPAIGNS_KEY, [])
+  /** Campanhas de frete da empresa. A configuração devolve um objeto ({...padrão, ...valor}): a lista sai dos valores. */
+  async campaigns(tenantId: string): Promise<FreightCampaign[]> {
+    const raw = await this.settings.get<Record<string, unknown>>(tenantId, CAMPAIGNS_KEY, {})
+    return cleanCampaigns(Array.isArray(raw) ? raw : Object.values(raw), () => randomUUID())
   }
 
   async saveCampaigns(user: AuthUser, raw: unknown, ctx: RequestCtx) {
