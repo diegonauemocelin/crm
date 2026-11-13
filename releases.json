@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.41",
+      "date": "2026-11-13",
+      "title": "Preço do Mercado Livre com a mesma margem da tabela",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Marketplaces",
+          "text": "Preços do Mercado Livre › Configurações › Base do preço sugerido: nova opção \"Mesma margem da tabela do ERP\". O preço sugerido deixa a mesma margem % da tabela (lucro líquido ÷ valor líquido) sobre o preço do anúncio, já com a tarifa, o frete e o imposto do próprio preço (que aumenta quando o preço sobe), e nunca menos lucro em R$ que a tabela."
+        }
+      ]
+    },
+    {
       "version": "3.0.40",
       "date": "2026-11-13",
       "title": "Análise das perdas em Atendimento Comercial",
