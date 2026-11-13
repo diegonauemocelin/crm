@@ -89,11 +89,13 @@ export class LeadCaptureService {
     if (!existing) {
       // Com e-mail novo, cria mesmo que o telefone já exista em outro lead (regra da base):
       // telefone compartilhado (empresa, família) não identifica uma pessoa.
+      // E-mail de um lead excluído ou anonimizado continua reservado (único por empresa): o lead novo entra sem ele.
+      const reserved = email ? await this.prisma.lead.findFirst({ where: { tenantId, email, OR: [{ deletedAt: { not: null } }, { anonymizedAt: { not: null } }] }, select: { id: true } }) : null
       const lead = await this.prisma.lead.create({
         data: {
           tenantId,
           name: clean(c.name, 160),
-          email,
+          email: reserved ? null : email,
           phone,
           company: clean(c.company, 160),
           jobTitle: clean(c.jobTitle, 120),
