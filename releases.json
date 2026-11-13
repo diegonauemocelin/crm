@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.29",
+      "date": "2026-11-13",
+      "title": "Correções de integrações",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Integrações",
+          "text": "Frete no Google Shopping: quando a Magazord responde \"verifique os parâmetros fornecidos\", o CRM tenta os outros códigos do produto (código da derivação, id da oferta e id interno). Se nenhum servir, o erro diz quais códigos foram tentados, para conferir o produto na Magazord."
+        },
+        {
+          "type": "correcao",
+          "area": "Integrações",
+          "text": "Loja virtual (Magazord): a sincronização parava com \"Unique constraint failed ... leads_tenantId_email_key\" quando o cliente tinha o e-mail de um lead excluído. Agora o lead novo entra sem esse e-mail e a sincronização continua."
+        },
+        {
+          "type": "correcao",
+          "area": "Integrações",
+          "text": "Google Search Console: a sincronização falhava em dias com muitas consultas (\"transaction ... timeout 5000 ms\"). Agora grava o dia em partes, com mais tempo."
+        }
+      ]
+    },
+    {
       "version": "3.0.28",
       "date": "2026-11-13",
       "title": "Frete no Google Shopping volta a enviar",
