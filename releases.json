@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.28",
+      "date": "2026-11-13",
+      "title": "Frete no Google Shopping volta a enviar",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Integrações",
+          "text": "Frete no Google Shopping: o CEP de referência do Espírito Santo (29010-000) não existe nos Correios e a Magazord recusava, o que derrubava o frete do produto inteiro. Agora o ES usa 29010-001 e um CEP recusado só fica de fora daquele estado: os outros estados seguem para o Google."
+        }
+      ]
+    },
+    {
       "version": "3.0.27",
       "date": "2026-11-13",
       "title": "Preço sugerido com centavos ,90",
