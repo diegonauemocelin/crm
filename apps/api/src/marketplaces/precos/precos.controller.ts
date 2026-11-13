@@ -32,7 +32,7 @@ class PrecosConfigDto {
   @ApiPropertyOptional() @IsOptional() @IsNumber() fixedCostPerSale?: number
   @ApiPropertyOptional() @IsOptional() @IsNumber() extraFeePct?: number
   @ApiPropertyOptional() @IsOptional() @IsBoolean() useNfeTaxes?: boolean
-  @ApiPropertyOptional({ enum: ['LUCRO', 'DEPOSITO'] }) @IsOptional() @IsIn(['LUCRO', 'DEPOSITO']) suggestBase?: 'LUCRO' | 'DEPOSITO'
+  @ApiPropertyOptional({ enum: ['LUCRO', 'DEPOSITO', 'MARGEM'] }) @IsOptional() @IsIn(['LUCRO', 'DEPOSITO', 'MARGEM']) suggestBase?: 'LUCRO' | 'DEPOSITO' | 'MARGEM'
 }
 
 class PrecosCostDto {

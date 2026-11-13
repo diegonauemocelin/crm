@@ -23,9 +23,11 @@ export const MARGIN_MODES: MarginMode[] = ['CUSTO', 'CUSTO_IMPOSTO', 'PRECO']
  * Base do preço sugerido:
  * - LUCRO: deixa o lucro do produto (custo + lucro + impostos + tarifa + frete).
  * - DEPOSITO: o Mercado Livre deposita (preço − tarifa − frete) o preço de venda do ERP/loja.
+ * - MARGEM: a mesma margem % da tabela do ERP (lucro líquido ÷ valor líquido) sobre o preço do Mercado Livre, e nunca
+ *   menos lucro em R$ que a tabela. Como o imposto cresce com o preço, o lucro é conferido já com o imposto do preço novo.
  */
-export type SuggestBase = 'LUCRO' | 'DEPOSITO'
-export const SUGGEST_BASES: SuggestBase[] = ['LUCRO', 'DEPOSITO']
+export type SuggestBase = 'LUCRO' | 'DEPOSITO' | 'MARGEM'
+export const SUGGEST_BASES: SuggestBase[] = ['LUCRO', 'DEPOSITO', 'MARGEM']
 
 export interface PrecosConfig {
   /** Base da margem (CUSTO, CUSTO_IMPOSTO ou PRECO). */
@@ -215,6 +217,23 @@ export function priceForDeposit(deposit: number, m: Pick<PriceModel, 'fee' | 'sh
   const p = (deposit + m.shipping + m.fixedCost + m.fee.fixed) / denom
   if (!Number.isFinite(p) || p <= 0) return null
   return Math.ceil(p * 100 - 1e-6) / 100
+}
+
+/** Margem da tabela do ERP: lucro líquido ÷ valor líquido × 100 (a coluna MARGEM % do relatório). null sem os dois. */
+export function tableMarginPct(profit: number | null, net: number | null): number | null {
+  if (profit === null || net === null || net <= 0 || profit < 0) return null
+  return round2((profit / net) * 100)
+}
+
+/**
+ * Preço com a mesma margem % da tabela sobre o preço de venda (já com tarifa, frete, custo fixo, outras taxas e o
+ * imposto do próprio preço) e que nunca deixa menos lucro em R$ que a tabela: o maior dos dois preços.
+ */
+export function priceForTableMargin(pct: number, profit: number, m: PriceModel): number | null {
+  const byPct = priceForMargin(pct, { ...m, marginMode: 'PRECO' })
+  const byProfit = priceForProfit(profit, m)
+  if (byPct === null) return byProfit
+  return byProfit === null ? byPct : Math.max(byPct, byProfit)
 }
 
 /** Lucro desejado do produto: R$ informado, % do custo, ou preço de venda do ERP − custo. null = usa a margem geral. */

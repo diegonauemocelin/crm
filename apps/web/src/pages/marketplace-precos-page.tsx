@@ -61,6 +61,8 @@ interface Row {
   erpPrice?: number | null
   /** Modo depósito: o que o Mercado Livre deve depositar (valor líquido do ERP ou preço da loja). */
   depositTarget?: { value: number; source: 'erp' | 'loja' } | null
+  /** Modo margem da tabela: lucro em R$ da tabela que o preço nunca deixa de cobrir. */
+  profitFloor?: number | null
   received?: number | null
   ipiPct?: number | null
   feeFixed?: number | null
@@ -91,7 +93,7 @@ interface Config {
   fixedCostPerSale: number
   extraFeePct: number
   useNfeTaxes: boolean
-  suggestBase?: 'LUCRO' | 'DEPOSITO'
+  suggestBase?: 'LUCRO' | 'DEPOSITO' | 'MARGEM'
 }
 interface ListData {
   total: number
@@ -960,7 +962,7 @@ function ProfitEditor({ row: r }: { row: Row }) {
     <Card className="gap-2 p-3 text-sm">
       <p className="font-medium">Lucro desejado deste produto</p>
       <p className="text-muted-foreground">
-        {r.profitTarget ? `${brl(r.profitTarget.value)} por unidade${r.profitTarget.pct !== undefined ? ` (${pct(r.profitTarget.pct)} do preço)` : ''} (${PROFIT_SOURCE[r.profitTarget.source]}).` : 'Não informado: o preço sugerido usa a margem alvo geral.'}
+        {r.profitTarget ? `${brl(r.profitTarget.value)} por unidade${r.profitTarget.pct !== undefined ? ` (${pct(r.profitTarget.pct)} do preço)` : ''} (${r.profitFloor != null ? `mesma margem da tabela do ERP, nunca menos que ${brl(r.profitFloor)}` : PROFIT_SOURCE[r.profitTarget.source]}).` : 'Não informado: o preço sugerido usa a margem alvo geral.'}
         {r.erpPrice ? ` Preço de venda no ERP: ${brl(r.erpPrice)}${r.ipiPct ? ` + IPI ${pct(r.ipiPct)} = líquido ${brl(Math.round(r.erpPrice * (1 + r.ipiPct / 100) * 100) / 100)}` : ''}.` : ''}
       </p>
       {can('marketplace_precos', 'edit') && (
@@ -1028,7 +1030,7 @@ function SettingsDialog({ canEdit, onClose }: { canEdit: boolean; onClose: () =>
   const [form, setForm] = useState<Record<string, string>>({})
   const [useNfe, setUseNfe] = useState(true)
   const [mode, setMode] = useState<'CUSTO' | 'CUSTO_IMPOSTO' | 'PRECO'>('CUSTO')
-  const [suggestBase, setSuggestBase] = useState<'LUCRO' | 'DEPOSITO'>('LUCRO')
+  const [suggestBase, setSuggestBase] = useState<'LUCRO' | 'DEPOSITO' | 'MARGEM'>('LUCRO')
   useEffect(() => {
     if (!cfg.data) return
     const c = cfg.data
@@ -1099,9 +1101,12 @@ function SettingsDialog({ canEdit, onClose }: { canEdit: boolean; onClose: () =>
               <Label htmlFor="cfg-suggest-base">Base do preço sugerido</Label>
               <select id="cfg-suggest-base" className="h-9 w-full rounded-md border bg-transparent px-2 text-sm" value={suggestBase} disabled={!canEdit} onChange={(e) => setSuggestBase(e.target.value as typeof suggestBase)}>
                 <option value="LUCRO">Lucro do produto (custo + lucro + impostos)</option>
+                <option value="MARGEM">Mesma margem da tabela do ERP (%), nunca menos lucro (recomendado)</option>
                 <option value="DEPOSITO">Mercado Livre deposita o preço de venda (tabela do ERP/Magazord)</option>
               </select>
-              <p className="text-xs text-muted-foreground">No modo depósito, o preço cobre a tarifa e o frete para o Mercado Livre depositar o mesmo valor da venda no site. O imposto da nota é sobre o preço do anúncio.</p>
+              <p className="text-xs text-muted-foreground">
+                Mesma margem: o anúncio deixa a mesma margem % da tabela (lucro líquido ÷ valor líquido, a coluna MARGEM %) sobre o preço do Mercado Livre, já com tarifa, frete e o imposto do próprio preço (que cresce quando o preço sobe), e nunca menos lucro em R$ que a tabela. No modo depósito, o preço só cobre a tarifa e o frete para o Mercado Livre depositar o valor da venda no site: o imposto maior pode diminuir o lucro.
+              </p>
             </div>
             {field('minMarginPct', 'Margem mínima (%)', 'Abaixo dela a tela alerta e o envio pede "estou ciente".')}
             {field('targetMarginPct', 'Margem alvo (%)', 'Usada no preço sugerido. Vazio = não calcula.')}

@@ -35,6 +35,8 @@ import {
   type PrecosConfig,
   marginPctOf,
   priceForDeposit,
+  priceForTableMargin,
+  tableMarginPct,
   priceForProfit,
   profitTargetOf,
   priceForMargin,
@@ -134,6 +136,8 @@ export interface PriceRow {
   erpPrice: number | null
   /** Modo depósito: o que o Mercado Livre deve depositar (valor líquido do ERP ou preço da loja); null = fora do modo. */
   depositTarget: { value: number; source: 'erp' | 'loja' } | null
+  /** Modo margem da tabela: o lucro em R$ da tabela, que o preço nunca deixa de cobrir. */
+  profitFloor: number | null
   /** O que o Mercado Livre deposita: preço de venda − tarifa − frete (null sem a tarifa). */
   received: number | null
   /** IPI (%) aprendido das notas, somado ao preço do ERP para chegar ao valor líquido. */
@@ -541,8 +545,15 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
       if (net !== null && net > 0) depositTarget = { value: round2(net), source: 'erp' }
       else if (storePrice !== null) depositTarget = { value: round2(storePrice), source: 'loja' }
     }
+    // Modo margem da tabela: a mesma margem % do ERP (lucro ÷ valor líquido) no preço do Mercado Livre, nunca menos lucro.
+    const tableProfit = c?.profitValue != null ? Number(c.profitValue) : null
+    const tablePct = config.suggestBase === 'MARGEM' ? tableMarginPct(tableProfit, c?.erpNet != null ? Number(c.erpNet) : erpPrice) : null
     // Preço de venda sempre com centavos ,90 (arredondado para cima).
-    const suggestedPrice = roundTo90(depositTarget
+    const suggestedPrice = roundTo90(tablePct !== null
+      ? pm
+        ? priceForTableMargin(tablePct, tableProfit!, pm)
+        : null
+      : depositTarget
       ? model
         ? priceForDeposit(depositTarget.value, { fee: model, shipping: shipping ?? 0, extraPct: config.extraFeePct, fixedCost: config.fixedCostPerSale })
         : null
@@ -562,7 +573,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     const competitorCount = all.length
     const competitors = all.slice(0, 2)
     const tips = pricingTips({
-      profitTarget: depositTarget ? null : salePct !== null ? (suggestedPrice === null ? null : round2((suggestedPrice * salePct) / 100)) : (profitTarget?.value ?? null),
+      profitTarget: tablePct !== null ? (suggestedPrice === null ? null : round2(Math.max((suggestedPrice * tablePct) / 100, tableProfit!))) : depositTarget ? null : salePct !== null ? (suggestedPrice === null ? null : round2((suggestedPrice * salePct) / 100)) : (profitTarget?.value ?? null),
       depositTarget: depositTarget?.value ?? null,
       status: s.status,
       availableQuantity: s.availableQuantity,
@@ -602,9 +613,15 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
       promo,
       cost,
       costSource: c?.source ?? null,
-      profitTarget: salePct !== null ? { value: suggestedPrice === null ? 0 : round2((suggestedPrice * salePct) / 100), source: 'produto_venda' as const, pct: salePct } : profitTarget,
+      profitTarget:
+        tablePct !== null
+          ? { value: suggestedPrice === null ? tableProfit! : round2(Math.max((suggestedPrice * tablePct) / 100, tableProfit!)), source: 'produto_venda' as const, pct: tablePct }
+          : salePct !== null
+            ? { value: suggestedPrice === null ? 0 : round2((suggestedPrice * salePct) / 100), source: 'produto_venda' as const, pct: salePct }
+            : profitTarget,
       erpPrice,
       depositTarget,
+      profitFloor: tablePct !== null ? tableProfit : null,
       received: sale !== null && margin.fee !== null ? round2(sale - margin.fee - (margin.shipping ?? 0)) : null,
       ipiPct: tax.ipiPct ?? null,
       feeFixed: model?.fixed ?? null,
@@ -967,6 +984,12 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
           else {
             const pm = { fee: { pct: Number(s.saleFeePct), fixed: Number(s.saleFeeFixed ?? 0) }, shipping: r.margin.shipping ?? 0, taxPct: r.taxPct, extraPct: cfg.extraFeePct, cost: r.cost, fixedCost: cfg.fixedCostPerSale, marginMode: own?.source === 'produto_venda' ? ('PRECO' as const) : cfg.marginMode }
             p = await refinePrice(target, pm, async (price) => (await this.feeAt(T, s, price))?.model ?? null)
+            // Margem da tabela: nunca menos lucro em R$ que a tabela (com a tarifa do preço achado).
+            if (p !== null && r.profitFloor !== null) {
+              const fee = (await this.feeAt(T, s, p))?.model
+              const floor = fee ? priceForProfit(r.profitFloor, { ...pm, fee }) : null
+              if (floor !== null && floor > p) p = floor
+            }
             if (p === null) error = 'Não dá para chegar a essa margem (tarifa, imposto e taxas somam demais) ou a tarifa não pôde ser lida.'
           }
         }
