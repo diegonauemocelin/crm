@@ -59,6 +59,8 @@ interface Row {
   costSource: string | null
   profitTarget?: { value: number; source: 'produto' | 'produto_pct' | 'produto_venda' | 'erp'; pct?: number } | null
   erpPrice?: number | null
+  /** Modo depósito: o que o Mercado Livre deve depositar (valor líquido do ERP ou preço da loja). */
+  depositTarget?: { value: number; source: 'erp' | 'loja' } | null
   ipiPct?: number | null
   feeFixed?: number | null
   extraPct?: number
@@ -88,6 +90,7 @@ interface Config {
   fixedCostPerSale: number
   extraFeePct: number
   useNfeTaxes: boolean
+  suggestBase?: 'LUCRO' | 'DEPOSITO'
 }
 interface ListData {
   total: number
@@ -165,10 +168,12 @@ const STATUS: Record<string, string> = { AGENDADA: 'Agendada', PENDENTE: 'Na fil
 const COST_SOURCE: Record<string, string> = { manual: 'manual', planilha: 'planilha', percentual: '% do preço', tcar: 'Tcar' }
 const MISSING: Record<string, string> = { custo: 'sem custo', tarifa: 'sem tarifa', imposto: 'sem imposto', frete: 'sem o frete' }
 
-function MarginCell({ m, min, target }: { m: Margin; min: number; target?: number | null }) {
+function MarginCell({ m, min, target, deposit }: { m: Margin; min: number; target?: number | null; deposit?: number | null }) {
   if (m.margin === null) return <span className="text-xs text-muted-foreground">{m.missing.filter((x) => x !== 'frete').map((x) => MISSING[x]).join(', ')}</span>
-  // Abaixo da margem mínima % ou do lucro esperado do produto (R$, da planilha ou informado).
-  const low = (m.marginPct !== null && m.marginPct < min) || (target != null && m.margin < target - 0.01)
+  // Abaixo da margem mínima %, do lucro esperado do produto (R$, da planilha ou informado) ou, no modo depósito, o
+  // Mercado Livre depositando menos que o preço de venda do ERP/loja.
+  const depositLow = deposit != null && m.fee !== null && m.price - m.fee - (m.shipping ?? 0) < deposit - 0.01
+  const low = (m.marginPct !== null && m.marginPct < min) || (deposit == null && target != null && m.margin < target - 0.01) || depositLow
   return (
     <span className={cn('tabular-nums', low ? 'font-semibold text-destructive' : 'text-green-700 dark:text-green-500')}>
       {brl(m.margin)}
@@ -448,12 +453,17 @@ export function MarketplacePrecosPage() {
                         <span className="block text-xs text-muted-foreground">{pct(r.taxPct)}</span>
                       </TableCell>
                       <TableCell className="text-right">
-                        <MarginCell m={r.margin} min={d.config.minMarginPct} target={r.profitTarget?.value ?? null} />
+                        <MarginCell m={r.margin} min={d.config.minMarginPct} target={r.profitTarget?.value ?? null} deposit={r.depositTarget?.value ?? null} />
                       </TableCell>
                       <TableCell className="text-right text-xs whitespace-nowrap tabular-nums">
                         <span className="block text-muted-foreground">{brl(r.minPrice)}</span>
                         <span className="font-medium">{brl(r.suggestedPrice)}</span>
-                        {r.profitTarget && r.suggestedPrice !== null && <span className="block text-[11px] text-muted-foreground">lucro {brl(r.profitTarget.value)}</span>}
+                        {r.suggestedPrice !== null &&
+                          (r.depositTarget ? (
+                            <span className="block text-[11px] text-muted-foreground">deposita {brl(r.depositTarget.value)}</span>
+                          ) : (
+                            r.profitTarget && <span className="block text-[11px] text-muted-foreground">lucro {brl(r.profitTarget.value)}</span>
+                          ))}
                       </TableCell>
                       <TableCell className="text-right text-xs whitespace-nowrap tabular-nums">
                         {r.competitors?.length ? (
@@ -820,7 +830,7 @@ function ImportCostsDialog({ onClose }: { onClose: () => void }) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Importar custos</DialogTitle>
-          <DialogDescription>Planilha Excel (.xlsx) ou CSV com as colunas SKU, custo e, se quiser, lucro (o que deve sobrar em R$ por unidade). Também aceita o relatório "Análise de preço e margem" do Tcar em texto (.txt): pega o custo médio e o lucro líquido de cada SKU.</DialogDescription>
+          <DialogDescription>Planilha Excel (.xlsx) ou CSV com as colunas SKU, custo e, se quiser, lucro (o que deve sobrar em R$ por unidade). Também aceita o relatório "Análise de preço e margem" do Tcar em texto (.txt): pega o custo médio, o lucro líquido e o valor líquido (preço de venda) de cada SKU.</DialogDescription>
         </DialogHeader>
         <Input type="file" accept=".xlsx,.csv,.txt" onChange={(e) => setFile(e.target.files?.[0] ?? null)} aria-label="Planilha de custos" />
         {result && (
@@ -1002,6 +1012,7 @@ function SettingsDialog({ canEdit, onClose }: { canEdit: boolean; onClose: () =>
   const [form, setForm] = useState<Record<string, string>>({})
   const [useNfe, setUseNfe] = useState(true)
   const [mode, setMode] = useState<'CUSTO' | 'CUSTO_IMPOSTO' | 'PRECO'>('CUSTO')
+  const [suggestBase, setSuggestBase] = useState<'LUCRO' | 'DEPOSITO'>('LUCRO')
   useEffect(() => {
     if (!cfg.data) return
     const c = cfg.data
@@ -1009,6 +1020,7 @@ function SettingsDialog({ canEdit, onClose }: { canEdit: boolean; onClose: () =>
     setForm({ taxPct: s(c.taxPct), minMarginPct: s(c.minMarginPct), targetMarginPct: s(c.targetMarginPct), fixedCostPerSale: s(c.fixedCostPerSale), extraFeePct: s(c.extraFeePct) })
     setUseNfe(c.useNfeTaxes)
     setMode(c.marginMode ?? 'CUSTO')
+    setSuggestBase(c.suggestBase ?? 'LUCRO')
   }, [cfg.data])
   const save = useMutation({
     mutationFn: () =>
@@ -1020,6 +1032,7 @@ function SettingsDialog({ canEdit, onClose }: { canEdit: boolean; onClose: () =>
         extraFeePct: parseNum(form.extraFeePct ?? '') ?? 0,
         useNfeTaxes: useNfe,
         marginMode: mode,
+        suggestBase,
       }),
     onSuccess: () => {
       toast.success('Configurações salvas.')
@@ -1065,6 +1078,14 @@ function SettingsDialog({ canEdit, onClose }: { canEdit: boolean; onClose: () =>
                 <option value="PRECO">Margem ao final de todos os custos (sobre o preço de venda)</option>
               </select>
               <p className="text-xs text-muted-foreground">Vale para a margem % da lista, a margem mínima, a alvo e o preço sugerido.</p>
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <Label htmlFor="cfg-suggest-base">Base do preço sugerido</Label>
+              <select id="cfg-suggest-base" className="h-9 w-full rounded-md border bg-transparent px-2 text-sm" value={suggestBase} disabled={!canEdit} onChange={(e) => setSuggestBase(e.target.value as typeof suggestBase)}>
+                <option value="LUCRO">Lucro do produto (custo + lucro + impostos)</option>
+                <option value="DEPOSITO">Mercado Livre deposita o preço de venda (tabela do ERP/Magazord)</option>
+              </select>
+              <p className="text-xs text-muted-foreground">No modo depósito, o preço cobre a tarifa e o frete para o Mercado Livre depositar o mesmo valor da venda no site. O imposto da nota é sobre o preço do anúncio.</p>
             </div>
             {field('minMarginPct', 'Margem mínima (%)', 'Abaixo dela a tela alerta e o envio pede "estou ciente".')}
             {field('targetMarginPct', 'Margem alvo (%)', 'Usada no preço sugerido. Vazio = não calcula.')}
@@ -1209,7 +1230,7 @@ function ItemSheet({ id, config, onClose, onApply }: { id: string; config: Confi
               {line('Margem', r.margin.margin === null ? 'sem dado' : `${brl(r.margin.margin)} (${pct(r.margin.marginPct)})`)}
               {line('Preço mínimo (margem zero)', brl(r.minPrice))}
               {line(
-                r.profitTarget ? `Preço sugerido (lucro de ${brl(r.profitTarget.value)})` : `Preço sugerido${config.targetMarginPct !== null ? ` (${pct(config.targetMarginPct)})` : ''}`,
+                r.depositTarget ? `Preço sugerido (depósito de ${brl(r.depositTarget.value)})` : r.profitTarget ? `Preço sugerido (lucro de ${brl(r.profitTarget.value)})` : `Preço sugerido${config.targetMarginPct !== null ? ` (${pct(config.targetMarginPct)})` : ''}`,
                 brl(r.suggestedPrice),
               )}
               {line('Concorrente mais barato', brl(r.competitorMin))}

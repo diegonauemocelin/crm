@@ -3788,6 +3788,8 @@ model MarketplaceCost {
   profitPct     Decimal? @db.Decimal(6, 2)
   /// Lucro desejado em % do preço de venda (como o "% Lucro" do ERP: lucro ÷ valor da venda).
   profitSalePct Decimal? @db.Decimal(6, 2)
+  /// Valor de venda líquido no ERP, do relatório de preço e margem (VALOR LIQ.): o que o marketplace deve depositar.
+  erpNet        Decimal? @db.Decimal(14, 2)
   updatedById   String?  @db.Uuid
   updatedByName String?
   createdAt     DateTime @default(now())
