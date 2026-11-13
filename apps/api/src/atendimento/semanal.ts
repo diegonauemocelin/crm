@@ -25,6 +25,7 @@ export const WEEKLY_SECTIONS = [
   { key: 'pecas', label: 'Tipos de peça mais pedidos' },
   { key: 'origens', label: 'De onde vieram os leads (origem)' },
   { key: 'sugestoes', label: 'Sugestões de melhoria' },
+  { key: 'base', label: 'Leads que entraram na base: total, e-commerce e os que não chamaram (só gestores)' },
 ] as const
 export type WeeklySection = (typeof WEEKLY_SECTIONS)[number]['key']
 const SECTION_KEYS = new Set<string>(WEEKLY_SECTIONS.map((s) => s.key))
@@ -303,7 +304,22 @@ export interface ManagerLine {
  * Resumo da equipe para o gestor: os totais do ciclo e uma linha por vendedor (leads, vendas, conversão e, se
  * escolhidos, valor vendido e quem ainda está sem contato), com os destaques da semana.
  */
-export function managerMessage(label: string, lines: ManagerLine[], sections: WeeklySection[] = DEFAULT_SECTIONS, word = 'semanal') {
+/** Leads que entraram na base no ciclo (para os gestores): total, do e-commerce, sem atendimento e as origens. */
+export interface BaseLeads {
+  total: number
+  ecommerce: number
+  /** Com pré-venda repassada a um vendedor. */
+  forwarded: number
+  /** Atendidos só na pré-venda, sem repasse ao vendedor (ex.: perdidos na pré-venda): não aparecem nos números dos vendedores. */
+  preOnly: number
+  /** Os que ficaram só na pré-venda: situação, motivo da perda e observações (para o gestor ver por que não foram repassados). */
+  preOnlyDetails?: { name: string; status: 'SIM' | 'NAO' | 'NEGOCIACAO'; reason: string | null; notes: string | null }[]
+  /** Sem pré ou pós-venda registrada: entrou na base mas não chamou (ex.: cadastro ou carrinho na loja). */
+  noService: number
+  origins: { name: string; count: number }[]
+}
+
+export function managerMessage(label: string, lines: ManagerLine[], sections: WeeklySection[] = DEFAULT_SECTIONS, word = 'semanal', base: BaseLeads | null = null) {
   const has = (k: WeeklySection) => sections.includes(k)
   const sum = (f: (s: WeeklyStats) => number) => lines.reduce((a, l) => a + f(l.stats), 0)
   const forwarded = sum((s) => s.forwarded)
@@ -312,6 +328,10 @@ export function managerMessage(label: string, lines: ManagerLine[], sections: We
   const noContact = sum((s) => s.noContact.length)
   const out = [`*Resumo ${word} da equipe: ${label}*`, '', `📥 Leads repassados: *${forwarded}*`, `✅ Vendas realizadas: *${sales}*`, `📈 Conversão (vendas ÷ leads): *${fmtPct(pct(sales, forwarded))}*`]
   if (has('valor') && revenue) out.push(`💰 Valor vendido: ${brl(revenue)}`)
+  if (has('base') && base) {
+    out.push(`🗂️ Leads que entraram na base: *${base.total}*`, `   • E-commerce: ${base.ecommerce} · Não chamaram (sem atendimento): ${base.noService}`, `   • Repassados aos vendedores: ${base.forwarded} · Só na pré-venda (não repassados): ${base.preOnly}`)
+    if (base.origins.length) out.push(`   • Origens: ${base.origins.map((o) => `${o.name} (${o.count})`).join(', ')}`)
+  }
   if ((has('sem_contato') || has('sugestoes')) && noContact) out.push(`⚠️ Clientes ainda sem contato registrado: ${noContact}`)
   out.push('', '*Por vendedor*')
   for (const l of [...lines].sort((a, b) => b.stats.forwarded - a.stats.forwarded || a.seller.localeCompare(b.seller, 'pt-BR'))) {
@@ -330,6 +350,17 @@ export function managerMessage(label: string, lines: ManagerLine[], sections: We
       }
       if (lost.length > MAX_LOST) out.push(`… e mais ${lost.length - MAX_LOST} no CRM (Atendimento › Pré-vendas).`)
     }
+  }
+  // Leads atendidos só na pré-venda (não foram ao vendedor): motivo marcado e observações.
+  const pre = has('base') && base ? (base.preOnlyDetails ?? []) : []
+  if (pre.length) {
+    const label = { SIM: 'vendido', NAO: 'perdido', NEGOCIACAO: 'em aberto' } as const
+    out.push('', `*Só na pré-venda, não repassados (${pre.length})*`)
+    for (const d of pre.slice(0, MAX_LOST)) {
+      const obs = d.notes ? oneLine(d.notes, 300) : null
+      out.push(`• ${d.name}: ${label[d.status]}${d.reason ? ` · ${d.reason}` : d.status === 'NAO' ? ' · sem motivo' : ''}${obs ? `\n   Obs.: ${obs}` : ''}`)
+    }
+    if (pre.length > MAX_LOST) out.push(`… e mais ${pre.length - MAX_LOST} no CRM (Atendimento › Pré-vendas).`)
   }
   const ranked = lines.filter((l) => l.stats.forwarded >= 3 && l.stats.conversion !== null).sort((a, b) => b.stats.conversion! - a.stats.conversion!)
   if (ranked.length >= 2) {
@@ -392,4 +423,31 @@ export async function loadWeekly(prisma: PrismaService, tenantId: string, cycle:
       return { seller, stats, prev, message: weeklyMessage({ seller: seller.name, label: cycle.label, stats, prev, team: { conversion: team.conversion }, closedInWeek: closedBy.get(sellerId) ?? 0, suggestions, sections, word: cycle.word }) }
     })
     .sort((a, b) => a.seller.name.localeCompare(b.seller.name, 'pt-BR'))
+}
+
+/** Leads novos na base no ciclo (só para o resumo dos gestores). E-commerce: origem "Ecommerce" ou conversão da loja. */
+export async function loadBaseLeads(prisma: PrismaService, tenantId: string, cycle: { from: Date; to: Date }): Promise<BaseLeads> {
+  const [row] = await prisma.$queryRaw<{ total: number; ecommerce: number; no_service: number; forwarded: number; pre_only: number }[]>`
+    SELECT COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE lower(coalesce(o.name, '')) = 'ecommerce' OR l."firstConversion"->>'source' = 'ecommerce')::int AS ecommerce,
+           COUNT(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM service_records r WHERE r."leadId" = l.id AND r."deletedAt" IS NULL))::int AS no_service,
+           COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM service_records r WHERE r."leadId" = l.id AND r."deletedAt" IS NULL AND r.forwarded))::int AS forwarded,
+           COUNT(*) FILTER (WHERE EXISTS (SELECT 1 FROM service_records r WHERE r."leadId" = l.id AND r."deletedAt" IS NULL)
+                              AND NOT EXISTS (SELECT 1 FROM service_records r WHERE r."leadId" = l.id AND r."deletedAt" IS NULL AND r.forwarded))::int AS pre_only
+      FROM leads l LEFT JOIN lookup_items o ON o.id = l."originId"
+     WHERE l."tenantId" = ${tenantId}::uuid AND l."deletedAt" IS NULL AND l."createdAt" >= ${cycle.from} AND l."createdAt" < ${cycle.to}`
+  const origins = await prisma.$queryRaw<{ name: string; count: number }[]>`
+    SELECT coalesce(o.name, 'Sem origem') AS name, COUNT(*)::int AS count
+      FROM leads l LEFT JOIN lookup_items o ON o.id = l."originId"
+     WHERE l."tenantId" = ${tenantId}::uuid AND l."deletedAt" IS NULL AND l."createdAt" >= ${cycle.from} AND l."createdAt" < ${cycle.to}
+     GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 5`
+  // Última pré-venda de cada lead que não teve repasse.
+  const pre = await prisma.$queryRaw<{ name: string; status: 'SIM' | 'NAO' | 'NEGOCIACAO'; reason: string | null; notes: string | null }[]>`
+    SELECT DISTINCT ON (l.id) coalesce(nullif(r.name, ''), l.name) AS name, r."saleStatus"::text AS status, m.name AS reason, nullif(trim(r.notes), '') AS notes
+      FROM leads l JOIN service_records r ON r."leadId" = l.id AND r."deletedAt" IS NULL AND r.kind = 'PRE_VENDAS'
+      LEFT JOIN lookup_items m ON m.id = r."lostReasonId"
+     WHERE l."tenantId" = ${tenantId}::uuid AND l."deletedAt" IS NULL AND l."createdAt" >= ${cycle.from} AND l."createdAt" < ${cycle.to}
+       AND NOT EXISTS (SELECT 1 FROM service_records f WHERE f."leadId" = l.id AND f."deletedAt" IS NULL AND f.forwarded)
+     ORDER BY l.id, r."leadAt" DESC`
+  return { preOnlyDetails: pre, total: row?.total ?? 0, ecommerce: row?.ecommerce ?? 0, noService: row?.no_service ?? 0, forwarded: row?.forwarded ?? 0, preOnly: row?.pre_only ?? 0, origins }
 }

@@ -3,7 +3,7 @@ import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator'
 import { AuditService } from '../audit/audit.service'
 import { normalizePhone } from '../atendimento/br'
-import { cleanWeekly, FREQUENCIES, loadWeekly, managerMessage, reportCycle, type ReportFrequency, type SellerWeekly, weeklyGapMs, WEEKLY_SECTIONS, type WeeklySection, weeklyFor } from '../atendimento/semanal'
+import { cleanWeekly, FREQUENCIES, loadBaseLeads, loadWeekly, managerMessage, reportCycle, type ReportFrequency, type SellerWeekly, weeklyGapMs, WEEKLY_SECTIONS, type WeeklySection, weeklyFor } from '../atendimento/semanal'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import { type Action, can } from '../common/permissions'
 import type { AuthUser } from '../common/types'
@@ -82,7 +82,7 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
       lastRun: log.cycle ? { cycle: log.cycle, at: log.at ?? null, sellers: log.sellers ?? {} } : null,
       // Prévia do que o gestor recebe (os vendedores do envio, com ou sem telefone).
       manager: {
-        message: managerMessage(cycle.label, this.scope(config, reports).map((r) => ({ seller: r.seller.name, stats: r.stats })), config.sections, cycle.word),
+        message: managerMessage(cycle.label, this.scope(config, reports).map((r) => ({ seller: r.seller.name, stats: r.stats })), config.sections, cycle.word, config.sections.includes('base') ? await loadBaseLeads(this.prisma, user.tenantId, cycle) : null),
         status: log.cycle === cycle.key ? Object.fromEntries(config.managerPhones.map((ph) => [ph, log.sellers?.[`gestor:${ph}`] ?? null])) : {},
       },
       reports: reports.map((r) => ({
@@ -152,11 +152,12 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
       const value = { cycle: cycle.key, at: new Date().toISOString(), nextAt: log.nextAt, sellers: done } as unknown as Prisma.InputJsonValue
       return this.prisma.tenantSetting.upsert({ where: { tenantId_key: { tenantId, key: WEEKLY_LOG_KEY } }, create: { tenantId, key: WEEKLY_LOG_KEY, value }, update: { value } })
     }
+    const base = managers.length && config.sections.includes('base') ? await loadBaseLeads(this.prisma, tenantId, cycle) : null
     // Fila: os vendedores e depois os gestores. Uma mensagem por vez; quem não tem telefone é pulado sem esperar.
     const queue: { key: string; phone: string | null; message: string; name: string }[] = [
       ...reports.map((r) => ({ key: r.seller.id, phone: r.seller.phone ? normalizePhone(r.seller.phone) : null, message: r.message, name: r.seller.name })),
       ...(managers.length ? (() => {
-        const message = managerMessage(cycle.label, inScope.map((r) => ({ seller: r.seller.name, stats: r.stats })), config.sections, cycle.word)
+        const message = managerMessage(cycle.label, inScope.map((r) => ({ seller: r.seller.name, stats: r.stats })), config.sections, cycle.word, base)
         return managers.map((ph) => ({ key: `gestor:${ph}`, phone: ph, message, name: 'Gestor' }))
       })() : []),
     ]
