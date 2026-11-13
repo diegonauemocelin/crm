@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.22",
+      "date": "2026-11-13",
+      "title": "Correção da cotação de frete",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "A cotação de frete mostrava \"Erro inesperado no servidor\" ao calcular: a leitura das campanhas de frete falhava. Corrigido; a tela de Campanhas de frete também volta a abrir a lista salva."
+        }
+      ]
+    },
+    {
       "version": "3.0.21",
       "date": "2026-11-13",
       "title": "Lucro do Tcar direto do relatório",
