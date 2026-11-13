@@ -312,6 +312,8 @@ export interface BaseLeads {
   forwarded: number
   /** Atendidos só na pré-venda, sem repasse ao vendedor (ex.: perdidos na pré-venda): não aparecem nos números dos vendedores. */
   preOnly: number
+  /** Os que ficaram só na pré-venda: situação, motivo da perda e observações (para o gestor ver por que não foram repassados). */
+  preOnlyDetails?: { name: string; status: 'SIM' | 'NAO' | 'NEGOCIACAO'; reason: string | null; notes: string | null }[]
   /** Sem pré ou pós-venda registrada: entrou na base mas não chamou (ex.: cadastro ou carrinho na loja). */
   noService: number
   origins: { name: string; count: number }[]
@@ -348,6 +350,17 @@ export function managerMessage(label: string, lines: ManagerLine[], sections: We
       }
       if (lost.length > MAX_LOST) out.push(`… e mais ${lost.length - MAX_LOST} no CRM (Atendimento › Pré-vendas).`)
     }
+  }
+  // Leads atendidos só na pré-venda (não foram ao vendedor): motivo marcado e observações.
+  const pre = has('base') && base ? (base.preOnlyDetails ?? []) : []
+  if (pre.length) {
+    const label = { SIM: 'vendido', NAO: 'perdido', NEGOCIACAO: 'em aberto' } as const
+    out.push('', `*Só na pré-venda, não repassados (${pre.length})*`)
+    for (const d of pre.slice(0, MAX_LOST)) {
+      const obs = d.notes ? oneLine(d.notes, 300) : null
+      out.push(`• ${d.name}: ${label[d.status]}${d.reason ? ` · ${d.reason}` : d.status === 'NAO' ? ' · sem motivo' : ''}${obs ? `\n   Obs.: ${obs}` : ''}`)
+    }
+    if (pre.length > MAX_LOST) out.push(`… e mais ${pre.length - MAX_LOST} no CRM (Atendimento › Pré-vendas).`)
   }
   const ranked = lines.filter((l) => l.stats.forwarded >= 3 && l.stats.conversion !== null).sort((a, b) => b.stats.conversion! - a.stats.conversion!)
   if (ranked.length >= 2) {
@@ -428,5 +441,13 @@ export async function loadBaseLeads(prisma: PrismaService, tenantId: string, cyc
       FROM leads l LEFT JOIN lookup_items o ON o.id = l."originId"
      WHERE l."tenantId" = ${tenantId}::uuid AND l."deletedAt" IS NULL AND l."createdAt" >= ${cycle.from} AND l."createdAt" < ${cycle.to}
      GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 5`
-  return { total: row?.total ?? 0, ecommerce: row?.ecommerce ?? 0, noService: row?.no_service ?? 0, forwarded: row?.forwarded ?? 0, preOnly: row?.pre_only ?? 0, origins }
+  // Última pré-venda de cada lead que não teve repasse.
+  const pre = await prisma.$queryRaw<{ name: string; status: 'SIM' | 'NAO' | 'NEGOCIACAO'; reason: string | null; notes: string | null }[]>`
+    SELECT DISTINCT ON (l.id) coalesce(nullif(r.name, ''), l.name) AS name, r."saleStatus"::text AS status, m.name AS reason, nullif(trim(r.notes), '') AS notes
+      FROM leads l JOIN service_records r ON r."leadId" = l.id AND r."deletedAt" IS NULL AND r.kind = 'PRE_VENDAS'
+      LEFT JOIN lookup_items m ON m.id = r."lostReasonId"
+     WHERE l."tenantId" = ${tenantId}::uuid AND l."deletedAt" IS NULL AND l."createdAt" >= ${cycle.from} AND l."createdAt" < ${cycle.to}
+       AND NOT EXISTS (SELECT 1 FROM service_records f WHERE f."leadId" = l.id AND f."deletedAt" IS NULL AND f.forwarded)
+     ORDER BY l.id, r."leadAt" DESC`
+  return { preOnlyDetails: pre, total: row?.total ?? 0, ecommerce: row?.ecommerce ?? 0, noService: row?.no_service ?? 0, forwarded: row?.forwarded ?? 0, preOnly: row?.pre_only ?? 0, origins }
 }
