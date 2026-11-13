@@ -210,12 +210,19 @@ export class SeoService implements OnApplicationBootstrap, OnModuleDestroy {
 
   // ---------- Telas ----------
 
-  async list(user: AuthUser, q: { search?: string; issue?: string; maxScore?: number; page?: number; order?: string }) {
+  async list(user: AuthUser, q: { search?: string; issue?: string; maxScore?: number; page?: number; order?: string; stock?: string }) {
     this.assertCan(user, 'view')
     const T = user.tenantId
     const where: Prisma.SeoProductWhereInput = { tenantId: T }
+    const and: Prisma.SeoProductWhereInput[] = []
     const s = q.search?.trim()
-    if (s) where.OR = [{ name: { contains: s, mode: 'insensitive' } }, { productCode: { contains: s, mode: 'insensitive' } }, { derivations: { has: s } }, { brand: { contains: s, mode: 'insensitive' } }]
+    if (s) and.push({ OR: [{ name: { contains: s, mode: 'insensitive' } }, { productCode: { contains: s, mode: 'insensitive' } }, { derivations: { has: s } }, { brand: { contains: s, mode: 'insensitive' } }] })
+    // Padrão: só produtos com estoque na loja (o código do produto ou de alguma derivação com estoque).
+    if (q.stock !== 'todos') {
+      const codes = (await this.prisma.storeProduct.findMany({ where: { tenantId: T, active: true, stock: { gt: 0 } }, select: { code: true } })).map((r) => r.code).filter((c): c is string => !!c)
+      and.push({ OR: [{ productCode: { in: codes } }, { derivations: { hasSome: codes } }, { derivationCode: { in: codes } }] })
+    }
+    if (and.length) where.AND = and
     if (q.maxScore !== undefined && Number.isFinite(q.maxScore)) where.score = { lte: q.maxScore }
     if (q.issue && SENDABLE.has(q.issue)) where.issues = { array_contains: [{ field: q.issue }] }
     const page = Math.max(1, q.page ?? 1)

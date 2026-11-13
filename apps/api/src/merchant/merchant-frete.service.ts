@@ -383,7 +383,7 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
         if (!r.nextPageToken) break
         page = r.nextPageToken
       }
-      const store = await this.prisma.storeProduct.findMany({ where: { tenantId, active: true }, select: { externalId: true, code: true, path: true, url: true, price: true, weightKg: true, heightCm: true, widthCm: true, lengthCm: true } })
+      const store = await this.prisma.storeProduct.findMany({ where: { tenantId, active: true }, select: { externalId: true, code: true, path: true, url: true, price: true, stock: true, weightKg: true, heightCm: true, widthCm: true, lengthCm: true } })
       const bySku = new Map(store.map((s) => [s.externalId, s]))
       for (const p of products) {
         if (!p.offerId || !p.contentLanguage || !p.feedLabel) continue
@@ -433,6 +433,8 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
           const fp = fingerprint({ source: cfg.source, price, weight, dims, ceps: cfg.ceps, unitId: cfg.unitId, carrierIds: cfg.carrierIds, tables })
           return { it, price, weight, dims, weightError: pw && 'error' in pw ? pw.error : null, fp }
         })
+        // Só produtos com estoque (sem estoque a Magazord não simula o frete e o Google não vende).
+        .filter((x) => (bySku.get(x.it.sku!)?.stock ?? 1) > 0)
         .filter((x) => isDue(x.it, x.fp, cfg.refreshDays, now))
       const batch = crm ? due : due.slice(0, cfg.batchSize)
       const skipped = items.length - due.length
