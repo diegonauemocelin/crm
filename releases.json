@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.21",
+      "date": "2026-11-13",
+      "title": "Lucro do Tcar direto do relatório",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Marketplaces",
+          "text": "Preços e promoções › Importar custos: aceita o relatório \"Análise de preço e margem\" do Tcar em texto (.txt). Cada SKU recebe o custo médio e o lucro líquido do relatório, e o preço sugerido passa a deixar esse lucro em reais depois da tarifa, do frete e dos impostos do Mercado Livre."
+        }
+      ]
+    },
+    {
       "version": "3.0.20",
       "date": "2026-11-13",
       "title": "Rodonaves e DHL Express na cotação",
