@@ -43,7 +43,7 @@ export const UF_CEP_RANGES: Record<Uf, [string, string][]> = {
 
 /** CEP de referência de cada estado (centro da capital). Dá para trocar ou somar CEPs do interior na tela. */
 export const UF_REF_CEP: Record<Uf, string> = {
-  AC: '69900062', AL: '57020000', AM: '69005000', AP: '68900073', BA: '40010000', CE: '60010000', DF: '70040010', ES: '29010000',
+  AC: '69900062', AL: '57020000', AM: '69005000', AP: '68900073', BA: '40010000', CE: '60010000', DF: '70040010', ES: '29010001',
   GO: '74003010', MA: '65010000', MG: '30110000', MS: '79002000', MT: '78005000', PA: '66010000', PB: '58010000', PE: '50010000',
   PI: '64000020', PR: '80010000', RJ: '20010000', RN: '59010000', RO: '76801000', RR: '69301000', RS: '90010000', SC: '88010000',
   SE: '49010000', SP: '01001000', TO: '77001002',

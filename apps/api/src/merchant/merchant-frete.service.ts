@@ -501,6 +501,7 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
   /** Frete por estado simulado na Magazord, no ritmo do Pacer; 429 espera e tenta de novo (5, 15, 30 e 60 s). */
   private async magazordQuotes(tenantId: string, cfg: MerchantFreteConfig, sku: string, price: number, pacer: Pacer, cache: Map<string, Promise<{ price: number; days: number | null }[]>>) {
     const quotes: UfQuote[] = []
+    const errors: string[] = []
     for (const uf of UFS) {
       const perCep: { price: number; days: number | null }[][] = []
       for (const cep of cepsOf(cfg, uf)) {
@@ -512,10 +513,18 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
           cache.set(key, p)
           p.catch(() => cache.delete(key))
         }
-        perCep.push(await p)
+        try {
+          perCep.push(await p)
+        } catch (e) {
+          // Limite da Magazord (429) adia o produto; erro de um CEP (ex.: "CEP inválido") só tira esse CEP da conta.
+          if (e instanceof LimitedError) throw e
+          errors.push(`${uf} ${cep.replace(/^(\d{5})(\d{3})$/, '$1-$2')}: ${(e as Error).message}`)
+        }
       }
-      quotes.push(ufQuote(uf, perCep))
+      quotes.push(perCep.length ? ufQuote(uf, perCep) : { uf, price: null, days: null })
     }
+    if (errors.length) this.logger.warn(`Frete Google (SKU ${sku}): ${errors.length} CEP(s) sem cálculo na Magazord. ${errors.slice(0, 3).join(' | ')}`)
+    if (!quotes.some((q) => q.price !== null) && errors.length) throw new Error(errors[0]!.slice(0, 300))
     return quotes
   }
 
