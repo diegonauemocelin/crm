@@ -15,7 +15,7 @@ export const WEEKLY_SECTIONS = [
   { key: 'conversao', label: 'Conversão (vendas ÷ leads)' },
   { key: 'valor', label: 'Valor vendido e ticket médio' },
   { key: 'negociacao', label: 'Em negociação e perdidas' },
-  { key: 'motivos', label: 'Motivos de perda mais comuns' },
+  { key: 'motivos', label: 'Motivos de perda (gestores: cada venda perdida com as observações)' },
   { key: 'retorno', label: 'Retorno ao cliente (taxa e tempo médio)' },
   { key: 'sem_contato', label: 'Clientes ainda sem contato registrado (nomes)' },
   { key: 'anterior', label: 'Comparação com o ciclo anterior' },
@@ -174,6 +174,8 @@ export interface WeeklyRow {
   returnStatus: 'SIM' | 'NAO' | 'PENDENTE' | null
   calledAt: Date | null
   lostReason: string | null
+  /** Observações do atendimento (ex.: qual peça faltou). */
+  notes?: string | null
   forwardedAt?: Date | null
   returnedAt?: Date | null
   brands?: string[]
@@ -194,6 +196,8 @@ export interface WeeklyStats {
   noContact: string[]
   topLost: { reason: string; count: number } | null
   lostReasons: { name: string; count: number }[]
+  /** Cada venda perdida: cliente, motivo e observações (vai no resumo dos gestores). */
+  lostDetails: { name: string; reason: string | null; notes: string | null }[]
   /** Retornos ao cliente (Retorno do vendedor = Sim) ÷ repassados (%). */
   returnRate: number | null
   /** Horas, em média, do repasse até o retorno ao cliente. */
@@ -228,6 +232,7 @@ export function weeklyStats(rows: WeeklyRow[]): WeeklyStats {
     noContact: rows.filter((r) => r.saleStatus === 'NEGOCIACAO' && !r.calledAt && r.returnStatus !== 'SIM').map((r) => r.name),
     topLost: lostReasons[0] ? { reason: lostReasons[0].name, count: lostReasons[0].count } : null,
     lostReasons,
+    lostDetails: rows.filter((r) => r.saleStatus === 'NAO').map((r) => ({ name: r.name, reason: r.lostReason, notes: r.notes?.trim() || null })),
     returnRate: pct(returned.length, rows.length),
     returnHours: waits.length ? Math.round((waits.reduce((a, b) => a + b, 0) / waits.length) * 10) / 10 : null,
     brands: top(rows.flatMap((r) => r.brands ?? [])),
@@ -282,6 +287,12 @@ export function weeklyMessage(o: { seller: string; label: string; stats: WeeklyS
   return lines.join('\n')
 }
 
+const MAX_LOST = 40
+const oneLine = (t: string, max: number) => {
+  const x = t.replace(/\s+/g, ' ').trim()
+  return x.length > max ? `${x.slice(0, max - 1)}…` : x
+}
+
 /** Linha de um vendedor no resumo do gestor. */
 export interface ManagerLine {
   seller: string
@@ -308,6 +319,18 @@ export function managerMessage(label: string, lines: ManagerLine[], sections: We
     const extra = [has('valor') && s.revenue ? brl(s.revenue) : null, (has('sem_contato') || has('sugestoes')) && s.noContact.length ? `${s.noContact.length} sem contato` : null].filter(Boolean)
     out.push(`• ${l.seller}: ${s.forwarded} lead(s) · ${s.sales} venda(s) · ${fmtPct(s.conversion)}${extra.length ? ` · ${extra.join(' · ')}` : ''}`)
   }
+  // Vendas perdidas com o motivo e as observações (ex.: a peça que não tinha), para o gestor agir.
+  if (has('motivos')) {
+    const lost = lines.flatMap((l) => (l.stats.lostDetails ?? []).map((d) => ({ ...d, seller: l.seller })))
+    if (lost.length) {
+      out.push('', `*Vendas perdidas (${lost.length})*`)
+      for (const d of lost.slice(0, MAX_LOST)) {
+        const obs = d.notes ? oneLine(d.notes, 300) : null
+        out.push(`• ${d.name} (${d.seller}): ${d.reason ?? 'sem motivo'}${obs ? `\n   Obs.: ${obs}` : ''}`)
+      }
+      if (lost.length > MAX_LOST) out.push(`… e mais ${lost.length - MAX_LOST} no CRM (Atendimento › Pré-vendas).`)
+    }
+  }
   const ranked = lines.filter((l) => l.stats.forwarded >= 3 && l.stats.conversion !== null).sort((a, b) => b.stats.conversion! - a.stats.conversion!)
   if (ranked.length >= 2) {
     out.push('', `🏆 Maior conversão: ${ranked[0]!.seller} (${fmtPct(ranked[0]!.stats.conversion)})`)
@@ -319,7 +342,7 @@ export function managerMessage(label: string, lines: ManagerLine[], sections: We
 
 /** Leitura do ciclo: repasses por vendedor (ciclo e anterior), média da equipe e vendas fechadas na semana. */
 export async function loadWeekly(prisma: PrismaService, tenantId: string, cycle: ReturnType<typeof weeklyCycle> & { word?: string }, sections: WeeklySection[] = DEFAULT_SECTIONS) {
-  const select = { sellerId: true, name: true, saleStatus: true, saleValue: true, returnStatus: true, calledAt: true, forwardedAt: true, returnedAt: true, brandIds: true, partTypeIds: true, origin: { select: { name: true } }, lostReason: { select: { name: true } }, seller: { select: { id: true, name: true, phone: true, active: true } } } as const
+  const select = { sellerId: true, name: true, saleStatus: true, saleValue: true, returnStatus: true, calledAt: true, forwardedAt: true, returnedAt: true, brandIds: true, partTypeIds: true, origin: { select: { name: true } }, lostReason: { select: { name: true } }, notes: true, seller: { select: { id: true, name: true, phone: true, active: true } } } as const
   const base = { tenantId, kind: 'PRE_VENDAS' as const, deletedAt: null, forwarded: true, sellerId: { not: null } }
   const [now, before, closed] = await Promise.all([
     prisma.serviceRecord.findMany({ where: { ...base, forwardedAt: { gte: cycle.from, lt: cycle.to } }, orderBy: { forwardedAt: 'asc' }, select }),
@@ -342,6 +365,7 @@ export async function loadWeekly(prisma: PrismaService, tenantId: string, cycle:
     returnStatus: r.returnStatus,
     calledAt: r.calledAt,
     lostReason: r.lostReason?.name ?? null,
+    notes: r.notes,
     forwardedAt: r.forwardedAt,
     returnedAt: r.returnedAt,
     brands: r.brandIds.map((id) => names.get(id)).filter((x): x is string => !!x),

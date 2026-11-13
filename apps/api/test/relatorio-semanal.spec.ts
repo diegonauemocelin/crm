@@ -104,6 +104,15 @@ describe('relatório semanal do vendedor: números e sugestões', () => {
 })
 
 describe('resumo da equipe para o gestor', () => {
+  it('vendas perdidas com o motivo e as observações (com "Motivos de perda")', () => {
+    const s = weeklyStats([row({ name: 'Cliente JCB', saleStatus: 'NAO', lostReason: 'Sem produto disponível', notes: 'caixa superior do radiador\nda retro JCB 3C' }), row({ saleStatus: 'SIM' })])
+    const msg = managerMessage('06/11 a 12/11', [{ seller: 'Alana', stats: s }], ['repassados', 'motivos'])
+    expect(msg).toContain('*Vendas perdidas (1)*')
+    expect(msg).toContain('• Cliente JCB (Alana): Sem produto disponível')
+    expect(msg).toContain('Obs.: caixa superior do radiador da retro JCB 3C')
+    expect(managerMessage('x', [{ seller: 'Alana', stats: s }], ['repassados'])).not.toContain('Vendas perdidas')
+  })
+
   it('números do gestor: informados à mão, normalizados; vazio = só os vendedores', () => {
     expect(cleanWeekly(undefined).managerPhones).toEqual([])
     expect(cleanWeekly({ managerPhones: ['(47) 99999-8888', '+55 47 99999-8888', 'abc'] }).managerPhones).toEqual(['+5547999998888'])
