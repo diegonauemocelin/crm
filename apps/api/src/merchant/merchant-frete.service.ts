@@ -229,6 +229,15 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
       if (!unit) throw new BadRequestException('Filial de origem inválida.')
       if (!unit.zip) throw new BadRequestException(`Cadastre o CEP de expedição da filial ${unit.name} (Fretes › Filiais) para calcular o frete pelo CRM.`)
     }
+    // CEPs por estado conferidos na base dos Correios (pelo ViaCEP, com cache): CEP que não existe faz a loja recusar
+    // a simulação (ex.: 29010-000). Sem resposta da consulta, aceita (não dá para conferir agora).
+    const changed = UFS.flatMap((uf) => (input.ceps?.[uf] !== undefined ? cepsOf(next, uf).map((cep) => ({ uf, cep })) : []))
+    for (const { uf, cep } of changed) {
+      const info = await this.cotacao.cep(cep)
+      const fmt = `${cep.slice(0, 5)}-${cep.slice(5)}`
+      if (info.source !== 'faixa' && !info.found) throw new BadRequestException(`O CEP ${fmt} (${uf}) não existe na base dos Correios. Use um CEP de rua (confira em buscacepinter.correios.com.br).`)
+      if (info.uf && info.uf !== uf) throw new BadRequestException(`O CEP ${fmt} é de ${info.uf}, não de ${uf}.`)
+    }
     if (next.carrierIds.length) {
       const ok = await this.prisma.freightCarrier.count({ where: { tenantId: user.tenantId, id: { in: next.carrierIds } } })
       if (ok !== next.carrierIds.length) throw new BadRequestException('Transportadoras inválidas.')
