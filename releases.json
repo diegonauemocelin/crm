@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.37",
+      "date": "2026-11-13",
+      "title": "Resumo dos gestores com os leads novos na base",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Marketing",
+          "text": "Resumo do vendedor: nova opção \"Leads que entraram na base\", só para os números dos gestores, com o total de leads novos no período, quantos vieram do e-commerce, quantos não chamaram, quantos foram repassados aos vendedores e quantos ficaram só na pré-venda, além das principais origens."
+        },
+        {
+          "type": "novo",
+          "area": "Marketing",
+          "text": "Na mesma opção, os gestores recebem a lista dos leads que ficaram só na pré-venda (não foram ao vendedor), com a situação, o motivo marcado e as observações."
+        }
+      ]
+    },
+    {
       "version": "3.0.36",
       "date": "2026-11-13",
       "title": "Painel de coletas na TV",
