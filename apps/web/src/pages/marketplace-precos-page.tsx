@@ -818,7 +818,7 @@ function ImportCostsDialog({ onClose }: { onClose: () => void }) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Importar custos</DialogTitle>
-          <DialogDescription>Planilha Excel (.xlsx) ou CSV com as colunas SKU e custo (ex.: "sku;custo"). O cabeçalho é opcional.</DialogDescription>
+          <DialogDescription>Planilha Excel (.xlsx) ou CSV com as colunas SKU, custo e, se quiser, lucro (o que deve sobrar em R$ por unidade). Também aceita o relatório "Análise de preço e margem" do Tcar em texto (.txt): pega o custo médio e o lucro líquido de cada SKU.</DialogDescription>
         </DialogHeader>
         <Input type="file" accept=".xlsx,.csv,.txt" onChange={(e) => setFile(e.target.files?.[0] ?? null)} aria-label="Planilha de custos" />
         {result && (
