@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.35",
+      "date": "2026-11-13",
+      "title": "Frete no Google sem retirada na loja",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Integrações",
+          "text": "Frete no Google Shopping: a opção \"Retirar na loja\" (grátis) não entra mais no cálculo do frete por estado, que considera só as entregas."
+        },
+        {
+          "type": "correcao",
+          "area": "Marketing",
+          "text": "Resumo do vendedor para os gestores: volta a ser uma mensagem só (desfeita a divisão em várias mensagens da v3.0.34, a pedido)."
+        }
+      ]
+    },
+    {
       "version": "3.0.34",
       "date": "2026-11-13",
       "title": "Vendas perdidas completas no resumo dos gestores",
