@@ -412,3 +412,6 @@ export function crmOptions(results: { status: string; total: number | null; dead
 export function simulationSku(externalId: string, bySku: Map<string, { code: string }>): string {
   return bySku.get(externalId)?.code?.trim() || externalId
 }
+
+/** Opção de retirada (na loja, no balcão, no depósito): não é entrega e não vai como frete ao Google. */
+export const isPickup = (name: string) => /retir|retirada|balc[aã]o|na loja|pick ?up/i.test(name)
