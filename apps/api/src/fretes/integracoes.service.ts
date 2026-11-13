@@ -353,7 +353,9 @@ export class IntegracoesService {
     const fail = (error: string): OnlineQuote[] => [{ source: 'DHL', serviceId: '', carrier: 'DHL Express', service: '', price: null, deadlineDays: null, error }]
     if (res.status === 401 || res.status === 403) return fail('A DHL recusou a API Key ou a API Secret (confira também o ambiente de teste).')
     if (!res.ok) return fail(dhlError(body) ?? `HTTP ${res.status}`)
-    return parseDhlRates(body)
+    const list = parseDhlRates(body)
+    // Na cotação nacional os valores entram na comparação em reais: preço em outra moeda não entra.
+    return customs ? list : list.map((q) => (q.price !== null && /\([A-Z]{3}\)$/.test(q.service) ? { ...q, price: null, deadlineDays: null, error: 'A DHL respondeu em outra moeda; não entra na comparação em reais.' } : q))
   }
 
   /** Cotação internacional na DHL Express (fora da cotação normal, que é só para CEPs do Brasil). */
