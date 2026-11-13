@@ -294,3 +294,15 @@ describe('venda do Mercado Livre na NF-e', () => {
     expect(t.items[0]).toMatchObject({ sku: '030592', value: 231.86, tax: 47.3 })
   })
 })
+
+describe('preço com centavos ,90', () => {
+  it('arredonda sempre para cima até ,90', async () => {
+    const { roundTo90 } = await import('../src/marketplaces/precos/margem')
+    expect(roundTo90(102.35)).toBe(102.9)
+    expect(roundTo90(102.9)).toBe(102.9)
+    expect(roundTo90(102.95)).toBe(103.9)
+    expect(roundTo90(31.29)).toBe(31.9)
+    expect(roundTo90(100)).toBe(100.9)
+    expect(roundTo90(null)).toBeNull()
+  })
+})

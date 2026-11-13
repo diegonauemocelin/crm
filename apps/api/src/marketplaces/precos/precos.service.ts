@@ -40,6 +40,7 @@ import {
   pricingTips,
   promoDealPrice,
   refinePrice,
+  roundTo90,
   round2,
   sendRetryDelay,
   type Tip,
@@ -516,7 +517,8 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     const erpPrice = sku ? (erpPriceBy.get(normSku(sku)) ?? null) : null
     const profitTarget = profitTargetOf(c ? { profitValue: c.profitValue === null ? null : Number(c.profitValue), profitPct: c.profitPct === null ? null : Number(c.profitPct) } : null, cost, erpPrice, tax.pct, tax.ipiPct ?? 0)
     const salePct = c?.profitSalePct != null ? Number(c.profitSalePct) : null
-    const suggestedPrice = pm
+    // Preço de venda sempre com centavos ,90 (arredondado para cima).
+    const suggestedPrice = roundTo90(pm
       ? salePct !== null
         ? priceForMargin(salePct, { ...pm, marginMode: 'PRECO' })
         : profitTarget
@@ -524,7 +526,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
           : goal !== null
             ? priceForMargin(goal, pm)
             : null
-      : null
+      : null)
     const codes = ownCodes({ title: s.title ?? a?.title ?? null, sellerSku: sku, partNumber: a?.partNumber ?? null, attributes: a?.attributes })
     const offers = codes.flatMap((code) => rivalBy.get(code) ?? [])
     const all = cheapestRivals(offers, s.itemId, Number.MAX_SAFE_INTEGER)
@@ -910,6 +912,8 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
             if (p === null) error = 'Não dá para chegar a essa margem (tarifa, imposto e taxas somam demais) ou a tarifa não pôde ser lida.'
           }
         }
+        // O preço sugerido que sobe ao Mercado Livre sai com centavos ,90 (arredondado para cima).
+        if (p !== null && action.modo === 'sugerido') p = roundTo90(p)
         if (!error && p === null) error = 'Preço novo inválido.'
         if (!error && p !== null) {
           after = { price: p }
