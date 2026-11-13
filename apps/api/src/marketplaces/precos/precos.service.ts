@@ -878,13 +878,34 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
         let p: number | null = null
         if (action.modo === 'valor' || action.modo === 'percentual') p = applyPriceRule(regular, { mode: action.modo, value: Number(action.valor) })
         else {
-          const target = action.modo === 'margem' ? Number(action.valor) : cfg.targetMarginPct
-          if (target === null || !Number.isFinite(target)) error = 'Configure a margem alvo (botão Configurações) para usar o preço sugerido.'
+          // Preço sugerido com lucro do produto (R$ da planilha/ERP ou % do preço de venda): o mesmo cálculo da lista.
+          const own = action.modo === 'sugerido' ? r.profitTarget : null
+          const target = action.modo === 'margem' ? Number(action.valor) : own?.source === 'produto_venda' ? (own.pct ?? null) : cfg.targetMarginPct
+          if (own && own.source !== 'produto_venda') {
+            if (r.cost === null) error = 'Sem custo: informe o custo do SKU.'
+            else if (r.taxPct === null) error = 'Sem imposto: importe as notas do Mercado Envios ou informe a alíquota manual.'
+            else if (s.saleFeePct === null) error = 'Tarifa do Mercado Livre não lida. Clique em Ler do Mercado Livre.'
+            else {
+              const pm = { fee: { pct: Number(s.saleFeePct), fixed: Number(s.saleFeeFixed ?? 0) }, shipping: r.margin.shipping ?? 0, taxPct: r.taxPct, extraPct: cfg.extraFeePct, cost: r.cost, fixedCost: cfg.fixedCostPerSale, marginMode: cfg.marginMode }
+              // A tarifa muda com o preço (faixas e custo fixo): recalcula com a tarifa do preço achado.
+              let model = pm
+              p = priceForProfit(own.value, model)
+              for (let i = 0; i < 4 && p !== null; i++) {
+                const fee = (await this.feeAt(T, s, p))?.model
+                if (!fee) break
+                model = { ...model, fee }
+                const next = priceForProfit(own.value, model)
+                if (next === null || Math.abs(next - p) < 0.01) { p = next; break }
+                p = next
+              }
+              if (p === null) error = 'Não dá para chegar a esse lucro (tarifa, imposto e taxas somam demais).'
+            }
+          } else if (target === null || !Number.isFinite(target)) error = 'Informe o lucro do produto (planilha de custos) ou configure a margem alvo (botão Configurações) para usar o preço sugerido.'
           else if (r.cost === null) error = 'Sem custo: informe o custo do SKU.'
           else if (r.taxPct === null) error = 'Sem imposto: importe as notas do Mercado Envios ou informe a alíquota manual.'
           else if (s.saleFeePct === null) error = 'Tarifa do Mercado Livre não lida. Clique em Ler do Mercado Livre.'
           else {
-            const pm = { fee: { pct: Number(s.saleFeePct), fixed: Number(s.saleFeeFixed ?? 0) }, shipping: r.margin.shipping ?? 0, taxPct: r.taxPct, extraPct: cfg.extraFeePct, cost: r.cost, fixedCost: cfg.fixedCostPerSale, marginMode: cfg.marginMode }
+            const pm = { fee: { pct: Number(s.saleFeePct), fixed: Number(s.saleFeeFixed ?? 0) }, shipping: r.margin.shipping ?? 0, taxPct: r.taxPct, extraPct: cfg.extraFeePct, cost: r.cost, fixedCost: cfg.fixedCostPerSale, marginMode: own?.source === 'produto_venda' ? ('PRECO' as const) : cfg.marginMode }
             p = await refinePrice(target, pm, async (price) => (await this.feeAt(T, s, price))?.model ?? null)
             if (p === null) error = 'Não dá para chegar a essa margem (tarifa, imposto e taxas somam demais) ou a tarifa não pôde ser lida.'
           }
