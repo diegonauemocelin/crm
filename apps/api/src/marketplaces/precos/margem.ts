@@ -493,3 +493,13 @@ export function roundTo90(price: number | null): number | null {
   const p = Math.round(price * 100) / 100
   return p <= base + 0.9 ? Math.round((base + 0.9) * 100) / 100 : Math.round((base + 1.9) * 100) / 100
 }
+
+export type DepositStatus = 'menos' | 'igual' | 'mais'
+/**
+ * Depósito do Mercado Livre (preço − tarifa − frete) comparado ao preço de venda no e-commerce: menos (abaixo),
+ * igual (até R$ 1,00 acima, a folga do arredondamento para ,90) ou mais.
+ */
+export function depositStatus(received: number, target: number): DepositStatus {
+  if (received < target - 0.01) return 'menos'
+  return received <= target + 1 ? 'igual' : 'mais'
+}

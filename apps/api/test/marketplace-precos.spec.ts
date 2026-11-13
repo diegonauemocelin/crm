@@ -343,3 +343,13 @@ describe('preço sugerido pelo depósito do Mercado Livre', () => {
     expect(cleanPrecosConfig({ taxPct: 5 }, { ...cleanPrecosConfig({}), suggestBase: 'DEPOSITO' }).suggestBase).toBe('DEPOSITO')
   })
 })
+
+describe('depósito do Mercado Livre x preço do e-commerce', () => {
+  it('menos, igual (até R$ 1,00 acima) e mais', async () => {
+    const { depositStatus } = await import('../src/marketplaces/precos/margem')
+    expect(depositStatus(35.36, 39.98)).toBe('menos')
+    expect(depositStatus(9.31, 9.19)).toBe('igual')
+    expect(depositStatus(9.19, 9.19)).toBe('igual')
+    expect(depositStatus(14.22, 9.19)).toBe('mais')
+  })
+})
