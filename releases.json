@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.30",
+      "date": "2026-11-13",
+      "title": "Só produtos com estoque",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "E-commerce",
+          "text": "SEO do e-commerce: novo filtro de estoque, que já abre em \"Com estoque\" (só produtos com estoque na loja). Junto com a ordem \"Mais vendidos\" ou \"Mais vistos\", mostra primeiro os produtos com estoque que mais vendem ou mais são vistos, para selecionar e melhorar."
+        },
+        {
+          "type": "melhoria",
+          "area": "Integrações",
+          "text": "Frete no Google Shopping: só calcula e envia o frete de produtos com estoque na loja."
+        }
+      ]
+    },
+    {
       "version": "3.0.29",
       "date": "2026-11-13",
       "title": "Correções de integrações",
