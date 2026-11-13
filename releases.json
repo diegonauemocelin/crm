@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.27",
+      "date": "2026-11-13",
+      "title": "Preço sugerido com centavos ,90",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Marketplaces",
+          "text": "Preços e promoções: o preço sugerido (na lista e o que sobe ao Mercado Livre pelo \"Aplicar preço sugerido\") sempre termina em ,90, arredondado para cima (ex.: 102,35 vira 102,90; 102,95 vira 103,90)."
+        }
+      ]
+    },
+    {
       "version": "3.0.26",
       "date": "2026-11-13",
       "title": "Aplicar preço sugerido pelo lucro do produto",
