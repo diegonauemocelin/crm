@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.40",
+      "date": "2026-11-13",
+      "title": "Análise das perdas em Atendimento Comercial",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Atendimento",
+          "text": "A Análise das perdas (IA) agora fica em Atendimento Comercial › Análise das perdas (IA), junto da Pré-Vendas e da Pós-Vendas (só gestores)."
+        },
+        {
+          "type": "melhoria",
+          "area": "Atendimento",
+          "text": "A chave da Anthropic (Claude) é cadastrada na própria tela da análise. Ela serve só para isso; o Assistente ML e o resto do CRM continuam no Gemini gratuito."
+        }
+      ]
+    },
+    {
       "version": "3.0.39",
       "date": "2026-11-13",
       "title": "Análise das perdas com IA (Claude)",
