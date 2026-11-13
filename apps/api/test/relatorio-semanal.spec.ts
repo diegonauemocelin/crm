@@ -104,6 +104,16 @@ describe('relatório semanal do vendedor: números e sugestões', () => {
 })
 
 describe('resumo da equipe para o gestor', () => {
+  it('leads novos na base (só com a opção marcada)', () => {
+    const s = weeklyStats([row({ saleStatus: 'SIM' })])
+    const base = { total: 120, ecommerce: 45, noService: 70, origins: [{ name: 'Ecommerce', count: 45 }, { name: 'LP JCB', count: 30 }] }
+    const msg = managerMessage('06/11 a 12/11', [{ seller: 'Alana', stats: s }], ['repassados', 'base'], 'semanal', base)
+    expect(msg).toContain('Leads que entraram na base: *120*')
+    expect(msg).toContain('E-commerce: 45 · Não chamaram (sem atendimento): 70')
+    expect(msg).toContain('Origens: Ecommerce (45), LP JCB (30)')
+    expect(managerMessage('x', [{ seller: 'Alana', stats: s }], ['repassados'], 'semanal', base)).not.toContain('entraram na base')
+  })
+
   it('vendas perdidas com o motivo e as observações (com "Motivos de perda")', () => {
     const s = weeklyStats([row({ name: 'Cliente JCB', saleStatus: 'NAO', lostReason: 'Sem produto disponível', notes: 'caixa superior do radiador\nda retro JCB 3C' }), row({ saleStatus: 'SIM' })])
     const msg = managerMessage('06/11 a 12/11', [{ seller: 'Alana', stats: s }], ['repassados', 'motivos'])

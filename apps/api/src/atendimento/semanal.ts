@@ -25,6 +25,7 @@ export const WEEKLY_SECTIONS = [
   { key: 'pecas', label: 'Tipos de peça mais pedidos' },
   { key: 'origens', label: 'De onde vieram os leads (origem)' },
   { key: 'sugestoes', label: 'Sugestões de melhoria' },
+  { key: 'base', label: 'Leads que entraram na base: total, e-commerce e os que não chamaram (só gestores)' },
 ] as const
 export type WeeklySection = (typeof WEEKLY_SECTIONS)[number]['key']
 const SECTION_KEYS = new Set<string>(WEEKLY_SECTIONS.map((s) => s.key))
@@ -303,7 +304,16 @@ export interface ManagerLine {
  * Resumo da equipe para o gestor: os totais do ciclo e uma linha por vendedor (leads, vendas, conversão e, se
  * escolhidos, valor vendido e quem ainda está sem contato), com os destaques da semana.
  */
-export function managerMessage(label: string, lines: ManagerLine[], sections: WeeklySection[] = DEFAULT_SECTIONS, word = 'semanal') {
+/** Leads que entraram na base no ciclo (para os gestores): total, do e-commerce, sem atendimento e as origens. */
+export interface BaseLeads {
+  total: number
+  ecommerce: number
+  /** Sem pré ou pós-venda registrada: entrou na base mas não chamou (ex.: cadastro ou carrinho na loja). */
+  noService: number
+  origins: { name: string; count: number }[]
+}
+
+export function managerMessage(label: string, lines: ManagerLine[], sections: WeeklySection[] = DEFAULT_SECTIONS, word = 'semanal', base: BaseLeads | null = null) {
   const has = (k: WeeklySection) => sections.includes(k)
   const sum = (f: (s: WeeklyStats) => number) => lines.reduce((a, l) => a + f(l.stats), 0)
   const forwarded = sum((s) => s.forwarded)
@@ -312,6 +322,10 @@ export function managerMessage(label: string, lines: ManagerLine[], sections: We
   const noContact = sum((s) => s.noContact.length)
   const out = [`*Resumo ${word} da equipe: ${label}*`, '', `📥 Leads repassados: *${forwarded}*`, `✅ Vendas realizadas: *${sales}*`, `📈 Conversão (vendas ÷ leads): *${fmtPct(pct(sales, forwarded))}*`]
   if (has('valor') && revenue) out.push(`💰 Valor vendido: ${brl(revenue)}`)
+  if (has('base') && base) {
+    out.push(`🗂️ Leads que entraram na base: *${base.total}*`, `   • E-commerce: ${base.ecommerce} · Não chamaram (sem atendimento): ${base.noService}`)
+    if (base.origins.length) out.push(`   • Origens: ${base.origins.map((o) => `${o.name} (${o.count})`).join(', ')}`)
+  }
   if ((has('sem_contato') || has('sugestoes')) && noContact) out.push(`⚠️ Clientes ainda sem contato registrado: ${noContact}`)
   out.push('', '*Por vendedor*')
   for (const l of [...lines].sort((a, b) => b.stats.forwarded - a.stats.forwarded || a.seller.localeCompare(b.seller, 'pt-BR'))) {
@@ -392,4 +406,20 @@ export async function loadWeekly(prisma: PrismaService, tenantId: string, cycle:
       return { seller, stats, prev, message: weeklyMessage({ seller: seller.name, label: cycle.label, stats, prev, team: { conversion: team.conversion }, closedInWeek: closedBy.get(sellerId) ?? 0, suggestions, sections, word: cycle.word }) }
     })
     .sort((a, b) => a.seller.name.localeCompare(b.seller.name, 'pt-BR'))
+}
+
+/** Leads novos na base no ciclo (só para o resumo dos gestores). E-commerce: origem "Ecommerce" ou conversão da loja. */
+export async function loadBaseLeads(prisma: PrismaService, tenantId: string, cycle: { from: Date; to: Date }): Promise<BaseLeads> {
+  const [row] = await prisma.$queryRaw<{ total: number; ecommerce: number; no_service: number }[]>`
+    SELECT COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE lower(coalesce(o.name, '')) = 'ecommerce' OR l."firstConversion"->>'source' = 'ecommerce')::int AS ecommerce,
+           COUNT(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM service_records r WHERE r."leadId" = l.id AND r."deletedAt" IS NULL))::int AS no_service
+      FROM leads l LEFT JOIN lookup_items o ON o.id = l."originId"
+     WHERE l."tenantId" = ${tenantId}::uuid AND l."deletedAt" IS NULL AND l."createdAt" >= ${cycle.from} AND l."createdAt" < ${cycle.to}`
+  const origins = await prisma.$queryRaw<{ name: string; count: number }[]>`
+    SELECT coalesce(o.name, 'Sem origem') AS name, COUNT(*)::int AS count
+      FROM leads l LEFT JOIN lookup_items o ON o.id = l."originId"
+     WHERE l."tenantId" = ${tenantId}::uuid AND l."deletedAt" IS NULL AND l."createdAt" >= ${cycle.from} AND l."createdAt" < ${cycle.to}
+     GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 5`
+  return { total: row?.total ?? 0, ecommerce: row?.ecommerce ?? 0, noService: row?.no_service ?? 0, origins }
 }
