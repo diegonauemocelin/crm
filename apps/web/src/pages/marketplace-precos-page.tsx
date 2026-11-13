@@ -356,7 +356,7 @@ export function MarketplacePrecosPage() {
               <Button size="sm" onClick={() => setAction('preco')} disabled={selected.length > 200}>
                 <BadgeDollarSignIcon /> Alterar preço
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setReview({ ids: selected, action: { tipo: 'preco', modo: 'sugerido' } })} disabled={selected.length > 200 || d?.config.targetMarginPct === null}>
+              <Button size="sm" variant="outline" onClick={() => setReview({ ids: selected, action: { tipo: 'preco', modo: 'sugerido' } })} disabled={selected.length > 200}>
                 <SparklesIcon /> Aplicar preço sugerido
               </Button>
               <Button size="sm" variant="outline" onClick={() => setAction('promocao')} disabled={selected.length > 200}>
@@ -574,7 +574,7 @@ function ActionDialog({ kind, count, onClose, onNext }: { kind: 'preco' | 'promo
                     <SelectItem value="valor">Preço novo (R$)</SelectItem>
                     <SelectItem value="percentual">Subir ou baixar % (ex.: 5 ou -5)</SelectItem>
                     <SelectItem value="margem">Preço para a margem de X%</SelectItem>
-                    <SelectItem value="sugerido">Preço sugerido (margem alvo)</SelectItem>
+                    <SelectItem value="sugerido">Preço sugerido (lucro do produto ou margem alvo)</SelectItem>
                   </>
                 ) : (
                   <>
@@ -1221,7 +1221,7 @@ function ItemSheet({ id, config, onClose, onApply }: { id: string; config: Confi
             <CalcMemory row={r} />
             <div className="flex flex-wrap gap-2">
               {r.suggestedPrice !== null && (
-                <Button size="sm" onClick={() => onApply([r.id], config.targetMarginPct !== null && !r.profitTarget ? { tipo: 'preco', modo: 'sugerido' } : { tipo: 'preco', modo: 'valor', valor: r.suggestedPrice! })}>
+                <Button size="sm" onClick={() => onApply([r.id], { tipo: 'preco', modo: 'sugerido' })}>
                   <PercentIcon /> Aplicar preço sugerido ({brl(r.suggestedPrice)})
                 </Button>
               )}
