@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.23",
+      "date": "2026-11-13",
+      "title": "Vendas perdidas no resumo dos gestores",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Marketing",
+          "text": "Relatórios e alertas › Resumo do vendedor: os números dos gestores recebem a lista de cada venda perdida no período, com o cliente, o vendedor, o motivo da perda e as observações (ex.: a peça que não tinha). Vale quando \"Motivos de perda\" está marcado."
+        }
+      ]
+    },
+    {
       "version": "3.0.22",
       "date": "2026-11-13",
       "title": "Correção da cotação de frete",
