@@ -287,10 +287,38 @@ export function weeklyMessage(o: { seller: string; label: string; stats: WeeklyS
   return lines.join('\n')
 }
 
-const MAX_LOST = 40
+/** Tamanho de cada mensagem da lista de perdas (o WhatsApp aceita mais, mas mensagens menores ficam legíveis). */
+const PART_MAX = 3500
 const oneLine = (t: string, max: number) => {
   const x = t.replace(/\s+/g, ' ').trim()
   return x.length > max ? `${x.slice(0, max - 1)}…` : x
+}
+
+/**
+ * Vendas perdidas para o gestor, com o motivo e as observações completas (ex.: a peça que faltou), em quantas
+ * mensagens forem precisas (sem cortar a lista). Só com "Motivos de perda" marcado.
+ */
+export function managerLostMessages(lines: ManagerLine[], sections: WeeklySection[] = DEFAULT_SECTIONS): string[] {
+  if (!sections.includes('motivos')) return []
+  const lost = lines.flatMap((l) => (l.stats.lostDetails ?? []).map((d) => ({ ...d, seller: l.seller })))
+  if (!lost.length) return []
+  const items = lost.map((d) => `• ${d.name} (${d.seller}): ${d.reason ?? 'sem motivo'}${d.notes ? `\n   Obs.: ${oneLine(d.notes, 3000)}` : ''}`)
+  const parts: string[][] = [[]]
+  let size = 0
+  for (const it of items) {
+    if (size + it.length > PART_MAX && parts[parts.length - 1]!.length) {
+      parts.push([])
+      size = 0
+    }
+    parts[parts.length - 1]!.push(it)
+    size += it.length + 1
+  }
+  return parts.map((p, i) => [`*Vendas perdidas (${lost.length})${parts.length > 1 ? ` · parte ${i + 1} de ${parts.length}` : ''}*`, '', ...p].join('\n'))
+}
+
+/** Mensagens do gestor: o resumo da equipe e, depois, a lista das vendas perdidas (uma ou mais mensagens). */
+export function managerMessages(label: string, lines: ManagerLine[], sections: WeeklySection[] = DEFAULT_SECTIONS, word = 'semanal'): string[] {
+  return [managerMessage(label, lines, sections, word), ...managerLostMessages(lines, sections)]
 }
 
 /** Linha de um vendedor no resumo do gestor. */
@@ -318,18 +346,6 @@ export function managerMessage(label: string, lines: ManagerLine[], sections: We
     const s = l.stats
     const extra = [has('valor') && s.revenue ? brl(s.revenue) : null, (has('sem_contato') || has('sugestoes')) && s.noContact.length ? `${s.noContact.length} sem contato` : null].filter(Boolean)
     out.push(`• ${l.seller}: ${s.forwarded} lead(s) · ${s.sales} venda(s) · ${fmtPct(s.conversion)}${extra.length ? ` · ${extra.join(' · ')}` : ''}`)
-  }
-  // Vendas perdidas com o motivo e as observações (ex.: a peça que não tinha), para o gestor agir.
-  if (has('motivos')) {
-    const lost = lines.flatMap((l) => (l.stats.lostDetails ?? []).map((d) => ({ ...d, seller: l.seller })))
-    if (lost.length) {
-      out.push('', `*Vendas perdidas (${lost.length})*`)
-      for (const d of lost.slice(0, MAX_LOST)) {
-        const obs = d.notes ? oneLine(d.notes, 300) : null
-        out.push(`• ${d.name} (${d.seller}): ${d.reason ?? 'sem motivo'}${obs ? `\n   Obs.: ${obs}` : ''}`)
-      }
-      if (lost.length > MAX_LOST) out.push(`… e mais ${lost.length - MAX_LOST} no CRM (Atendimento › Pré-vendas).`)
-    }
   }
   const ranked = lines.filter((l) => l.stats.forwarded >= 3 && l.stats.conversion !== null).sort((a, b) => b.stats.conversion! - a.stats.conversion!)
   if (ranked.length >= 2) {

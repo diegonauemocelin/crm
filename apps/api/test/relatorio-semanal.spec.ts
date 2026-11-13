@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cleanWeekly, managerMessage, weeklyCycle, weeklyGapMs, weeklyFor, weeklyMessage, type WeeklyRow, weeklyStats, weeklySuggestions } from '../src/atendimento/semanal'
+import { cleanWeekly, managerLostMessages, managerMessage, weeklyCycle, weeklyGapMs, weeklyFor, weeklyMessage, type WeeklyRow, weeklyStats, weeklySuggestions } from '../src/atendimento/semanal'
 
 const row = (o: Partial<WeeklyRow> = {}): WeeklyRow => ({ sellerId: 's1', name: 'Cliente', saleStatus: 'NEGOCIACAO', saleValue: null, returnStatus: null, calledAt: null, lostReason: null, ...o })
 
@@ -104,13 +104,22 @@ describe('relatório semanal do vendedor: números e sugestões', () => {
 })
 
 describe('resumo da equipe para o gestor', () => {
-  it('vendas perdidas com o motivo e as observações (com "Motivos de perda")', () => {
+  it('vendas perdidas com o motivo e as observações completas, em mensagens separadas', () => {
     const s = weeklyStats([row({ name: 'Cliente JCB', saleStatus: 'NAO', lostReason: 'Sem produto disponível', notes: 'caixa superior do radiador\nda retro JCB 3C' }), row({ saleStatus: 'SIM' })])
-    const msg = managerMessage('06/11 a 12/11', [{ seller: 'Alana', stats: s }], ['repassados', 'motivos'])
-    expect(msg).toContain('*Vendas perdidas (1)*')
-    expect(msg).toContain('• Cliente JCB (Alana): Sem produto disponível')
-    expect(msg).toContain('Obs.: caixa superior do radiador da retro JCB 3C')
-    expect(managerMessage('x', [{ seller: 'Alana', stats: s }], ['repassados'])).not.toContain('Vendas perdidas')
+    const lost = managerLostMessages([{ seller: 'Alana', stats: s }], ['repassados', 'motivos'])
+    expect(lost).toHaveLength(1)
+    expect(lost[0]).toContain('*Vendas perdidas (1)*')
+    expect(lost[0]).toContain('• Cliente JCB (Alana): Sem produto disponível')
+    expect(lost[0]).toContain('Obs.: caixa superior do radiador da retro JCB 3C')
+    expect(managerMessage('x', [{ seller: 'Alana', stats: s }], ['repassados', 'motivos'])).not.toContain('Vendas perdidas')
+    expect(managerLostMessages([{ seller: 'Alana', stats: s }], ['repassados'])).toEqual([])
+    // Muitas perdas com observações longas: várias mensagens, sem cortar nada
+    const many = weeklyStats(Array.from({ length: 30 }, (_, i) => row({ name: `C${i}`, saleStatus: 'NAO', lostReason: 'Preço', notes: 'x'.repeat(400) })))
+    const parts = managerLostMessages([{ seller: 'Mariana', stats: many }], ['motivos'])
+    expect(parts.length).toBeGreaterThan(1)
+    expect(parts[0]).toContain('parte 1 de')
+    expect(parts.join('\n').match(/• C\d+/g)).toHaveLength(30)
+    expect(parts.every((p) => p.length <= 4000)).toBe(true)
   })
 
   it('números do gestor: informados à mão, normalizados; vazio = só os vendedores', () => {
