@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.31",
+      "date": "2026-11-13",
+      "title": "Alerta de lucro abaixo do esperado",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Marketplaces",
+          "text": "Preços e promoções: quando o lucro do anúncio fica abaixo do lucro esperado do produto (importado da planilha/Tcar ou informado à mão), a margem aparece em vermelho e a dica avisa, com o preço para chegar ao lucro esperado."
+        }
+      ]
+    },
+    {
       "version": "3.0.30",
       "date": "2026-11-13",
       "title": "Só produtos com estoque",
