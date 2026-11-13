@@ -452,6 +452,7 @@ export function MarketplacePrecosPage() {
                       <TableCell className="text-right text-xs whitespace-nowrap tabular-nums">
                         <span className="block text-muted-foreground">{brl(r.minPrice)}</span>
                         <span className="font-medium">{brl(r.suggestedPrice)}</span>
+                        {r.profitTarget && r.suggestedPrice !== null && <span className="block text-[11px] text-muted-foreground">lucro {brl(r.profitTarget.value)}</span>}
                       </TableCell>
                       <TableCell className="text-right text-xs whitespace-nowrap tabular-nums">
                         {r.competitors?.length ? (
