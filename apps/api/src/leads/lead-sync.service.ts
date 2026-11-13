@@ -67,12 +67,14 @@ export class LeadSyncService {
     const created = !lead
 
     if (!lead) {
+      // E-mail de um lead excluído ou anonimizado continua reservado (único por empresa): o lead novo entra sem ele.
+      const reserved = record.email ? await this.prisma.lead.findFirst({ where: { tenantId: record.tenantId, email: record.email, OR: [{ deletedAt: { not: null } }, { anonymizedAt: { not: null } }] }, select: { id: true } }) : null
       lead = await this.prisma.lead.create({
         data: {
           tenantId: record.tenantId,
           name: record.name,
           phone: record.phone,
-          email: record.email,
+          email: reserved ? null : record.email,
           state: record.state,
           city: record.city,
           country: record.country,

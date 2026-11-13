@@ -595,10 +595,15 @@ export class MarketingSyncService implements OnApplicationBootstrap, OnModuleDes
         all.push(...parseSearchAnalytics(body, date, kind))
       }
       // Troca o dia inteiro: consultas que saíram do topo não ficam com números antigos.
-      await this.prisma.$transaction([
-        this.prisma.mktSeoDay.deleteMany({ where: { tenantId, date: new Date(`${date}T00:00:00Z`) } }),
-        this.prisma.mktSeoDay.createMany({ data: all.map((r) => ({ tenantId, date: new Date(`${r.date}T00:00:00Z`), kind: r.kind, key: r.key, clicks: r.clicks, impressions: r.impressions, position: r.position })), skipDuplicates: true }),
-      ])
+      // Muitas linhas no dia: grava em partes, com prazo maior (o padrão de 5 s estourava).
+      const data = all.map((r) => ({ tenantId, date: new Date(`${r.date}T00:00:00Z`), kind: r.kind, key: r.key, clicks: r.clicks, impressions: r.impressions, position: r.position }))
+      await this.prisma.$transaction(
+        async (tx) => {
+          await tx.mktSeoDay.deleteMany({ where: { tenantId, date: new Date(`${date}T00:00:00Z`) } })
+          for (let i = 0; i < data.length; i += 2000) await tx.mktSeoDay.createMany({ data: data.slice(i, i + 2000), skipDuplicates: true })
+        },
+        { timeout: 120_000, maxWait: 30_000 },
+      )
       rows += all.length
     }
     return { rows, backfill: { backfillFrom: plan.nextBackfill, backfillDone: st.backfillDone || plan.done } }
