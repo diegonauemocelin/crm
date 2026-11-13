@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.36",
+      "date": "2026-11-13",
+      "title": "Painel de coletas na TV",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Painel de coletas (TV): as transportadoras que estão carregando aparecem em destaque, grandes, para ver de longe; logo abaixo, menores, as que estão chegando e as próximas. As coletas que já saíram não aparecem mais."
+        }
+      ]
+    },
+    {
       "version": "3.0.35",
       "date": "2026-11-13",
       "title": "Frete no Google sem retirada na loja",
