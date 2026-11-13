@@ -57,7 +57,9 @@ function Board({ q, children, linkHint }: { q: { data?: PanelData; error: Error 
     return () => clearInterval(t)
   }, [])
   const root = useRef<HTMLDivElement>(null)
-  const items = board(q.data?.rows ?? [], now)
+  const items = board(q.data?.rows ?? [], now).filter((i) => i.status !== 'COLETADO')
+  const loading = items.filter((i) => i.status === 'CARREGANDO')
+  const next = items.filter((i) => i.status !== 'CARREGANDO')
   return (
     <div ref={root} className="-m-4 min-h-[calc(100dvh-4rem)] space-y-6 bg-[#0d1117] p-6 text-white md:-m-6 md:p-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -78,7 +80,7 @@ function Board({ q, children, linkHint }: { q: { data?: PanelData; error: Error 
       {q.data && !items.length && (
         <div className="rounded-2xl border border-white/10 p-10 text-center text-white/70">
           <TruckIcon className="mx-auto mb-3 size-10" aria-hidden />
-          <p className="text-xl font-semibold text-white">Nenhuma coleta hoje</p>
+          <p className="text-xl font-semibold text-white">Nenhuma coleta pendente hoje</p>
           {linkHint && (
             <p className="mt-1">
               Cadastre os horários em <Link to="/fretes/transportadoras" className="underline">Fretes › Transportadoras</Link> › Coletas (ponto de corte e hora da coleta).
@@ -87,39 +89,55 @@ function Board({ q, children, linkHint }: { q: { data?: PanelData; error: Error 
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-        {items.map((i) => {
-          const s = STATUS[i.status]
-          const open = i.toCutoff > 0
-          const urgent = open && i.toCutoff <= 30
-          return (
-            <article key={`${i.carrierId}-${i.unitId}-${i.pickup}`} className={cn('space-y-4 rounded-2xl border-2 p-5', s.card)}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="truncate text-3xl font-extrabold">{i.carrier}</h2>
-                  <p className={cn('text-sm font-bold tracking-wide uppercase', i.mode === 'DESPACHO' ? 'text-amber-300' : 'text-sky-300')}>{i.mode === 'DESPACHO' ? 'Despacho · levar até a transportadora' : 'Coleta na empresa'}</p>
-                  {(i.unit || i.note) && <p className="truncate text-white/60">{[i.unit, i.note].filter(Boolean).join(' · ')}</p>}
-                </div>
-                <span className={cn('shrink-0 rounded-full px-3 py-1 text-sm font-bold', s.chip)}>{s.label}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className={cn('rounded-xl p-3', open ? (urgent ? 'bg-red-500/20' : 'bg-white/10') : 'bg-white/5')}>
-                  <p className="text-xs font-semibold tracking-widest text-white/60 uppercase">Pedido até</p>
-                  <p className="text-4xl font-extrabold tabular-nums">{i.cutoff}</p>
-                  <p className={cn('text-sm font-semibold', open ? (urgent ? 'text-red-300' : 'text-emerald-300') : 'text-white/50')}>{open ? `faltam ${span(i.toCutoff)}` : 'corte encerrado'}</p>
-                </div>
-                <div className="rounded-xl bg-white/10 p-3">
-                  <p className="text-xs font-semibold tracking-widest text-white/60 uppercase">{i.mode === 'DESPACHO' ? 'Despacho' : 'Coleta'}</p>
-                  <p className="text-4xl font-extrabold tabular-nums">{i.pickup}</p>
-                  <p className="text-sm font-semibold text-white/70">
-                    {i.status === 'CARREGANDO' ? `saída em ${span(i.toPickup + i.minutes)}` : i.status === 'COLETADO' ? 'já saiu' : `chega em ${span(i.toPickup)}`}
-                  </p>
-                </div>
-              </div>
-            </article>
-          )
-        })}
-      </div>
+      {/* Em destaque, grande: quem está carregando agora. Embaixo, menor: quem está chegando e as próximas. O que já foi coletado não aparece. */}
+      {loading.length > 0 && (
+        <section className={cn('grid gap-5', loading.length > 1 && 'xl:grid-cols-2')}>
+          {loading.map((i) => (
+            <Card key={`${i.carrierId}-${i.unitId}-${i.pickup}`} i={i} big />
+          ))}
+        </section>
+      )}
+      {next.length > 0 && (
+        <section className="space-y-3">
+          {loading.length > 0 && <p className="text-sm font-semibold tracking-widest text-white/60 uppercase">Próximas</p>}
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {next.map((i) => (
+              <Card key={`${i.carrierId}-${i.unitId}-${i.pickup}`} i={i} />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
+  )
+}
+
+/** Cartão de uma coleta: grande (carregando agora, para ver de longe) ou compacto (chegando e as próximas). */
+function Card({ i, big = false }: { i: BoardItem; big?: boolean }) {
+  const s = STATUS[i.status]
+  const open = i.toCutoff > 0
+  const urgent = open && i.toCutoff <= 30
+  return (
+    <article className={cn('rounded-2xl border-2', big ? 'space-y-5 p-7' : 'space-y-3 p-4', s.card)}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className={cn('truncate font-extrabold', big ? 'text-5xl md:text-6xl' : 'text-2xl')}>{i.carrier}</h2>
+          <p className={cn('font-bold tracking-wide uppercase', big ? 'text-lg' : 'text-xs', i.mode === 'DESPACHO' ? 'text-amber-300' : 'text-sky-300')}>{i.mode === 'DESPACHO' ? 'Despacho · levar até a transportadora' : 'Coleta na empresa'}</p>
+          {(i.unit || i.note) && <p className={cn('truncate text-white/60', big ? 'text-lg' : 'text-sm')}>{[i.unit, i.note].filter(Boolean).join(' · ')}</p>}
+        </div>
+        <span className={cn('shrink-0 rounded-full font-bold', big ? 'px-4 py-1.5 text-xl' : 'px-2.5 py-0.5 text-xs', s.chip)}>{s.label}</span>
+      </div>
+      <div className={cn('grid grid-cols-2', big ? 'gap-4' : 'gap-2')}>
+        <div className={cn('rounded-xl', big ? 'p-4' : 'p-2.5', open ? (urgent ? 'bg-red-500/20' : 'bg-white/10') : 'bg-white/5')}>
+          <p className={cn('font-semibold tracking-widest text-white/60 uppercase', big ? 'text-sm' : 'text-[10px]')}>Pedido até</p>
+          <p className={cn('font-extrabold tabular-nums', big ? 'text-7xl' : 'text-3xl')}>{i.cutoff}</p>
+          <p className={cn('font-semibold', big ? 'text-lg' : 'text-xs', open ? (urgent ? 'text-red-300' : 'text-emerald-300') : 'text-white/50')}>{open ? `faltam ${span(i.toCutoff)}` : 'corte encerrado'}</p>
+        </div>
+        <div className={cn('rounded-xl bg-white/10', big ? 'p-4' : 'p-2.5')}>
+          <p className={cn('font-semibold tracking-widest text-white/60 uppercase', big ? 'text-sm' : 'text-[10px]')}>{i.mode === 'DESPACHO' ? 'Despacho' : 'Coleta'}</p>
+          <p className={cn('font-extrabold tabular-nums', big ? 'text-7xl' : 'text-3xl')}>{i.pickup}</p>
+          <p className={cn('font-semibold text-white/70', big ? 'text-lg' : 'text-xs')}>{i.status === 'CARREGANDO' ? `saída em ${span(i.toPickup + i.minutes)}` : `chega em ${span(i.toPickup)}`}</p>
+        </div>
+      </div>
+    </article>
   )
 }
