@@ -110,6 +110,7 @@ export function SeoEcommercePage() {
   const [issue, setIssue] = useState('todos')
   const [maxScore, setMaxScore] = useState('todas')
   const [order, setOrder] = useState('nota')
+  const [stock, setStock] = useState('com')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<string[]>([])
   const [open, setOpen] = useState<string | null>(null)
@@ -117,7 +118,7 @@ export function SeoEcommercePage() {
     const t = setTimeout(() => (setQ(search), setPage(1)), 350)
     return () => clearTimeout(t)
   }, [search])
-  const params = new URLSearchParams({ pagina: String(page), ordem: order, ...(q ? { busca: q } : {}), ...(issue !== 'todos' ? { problema: issue } : {}), ...(maxScore !== 'todas' ? { notaAte: maxScore } : {}) })
+  const params = new URLSearchParams({ pagina: String(page), ordem: order, estoque: stock, ...(q ? { busca: q } : {}), ...(issue !== 'todos' ? { problema: issue } : {}), ...(maxScore !== 'todas' ? { notaAte: maxScore } : {}) })
   const list = useQuery({
     queryKey: ['seo-produtos', params.toString()],
     queryFn: () => api.get<ListData>(`/seo-ecommerce/produtos?${params}`),
@@ -221,6 +222,15 @@ export function SeoEcommercePage() {
                 <SelectItem value="todas">Qualquer nota</SelectItem>
                 <SelectItem value="59">Nota abaixo de 60</SelectItem>
                 <SelectItem value="79">Nota abaixo de 80</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={stock} onValueChange={(v) => (setStock(v), setPage(1))}>
+              <SelectTrigger className="w-40" aria-label="Estoque">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="com">Com estoque</SelectItem>
+                <SelectItem value="todos">Com e sem estoque</SelectItem>
               </SelectContent>
             </Select>
             <Select value={order} onValueChange={(v) => (setOrder(v), setPage(1))}>

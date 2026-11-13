@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
-import { ArrayMaxSize, IsArray, IsInt, IsObject, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator'
+import { ArrayMaxSize, IsArray, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { SeoService } from './seo.service'
@@ -13,6 +13,7 @@ class ListQuery {
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100) notaAte?: number
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) pagina?: number
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(20) ordem?: string
+  @ApiPropertyOptional() @IsOptional() @IsIn(['com', 'todos']) estoque?: string
 }
 
 class SuggestDto {
@@ -38,7 +39,7 @@ export class SeoController {
 
   @Get('produtos')
   list(@CurrentUser() user: AuthUser, @Query() q: ListQuery) {
-    return this.seo.list(user, { search: q.busca, issue: q.problema, maxScore: q.notaAte, page: q.pagina, order: q.ordem })
+    return this.seo.list(user, { search: q.busca, issue: q.problema, maxScore: q.notaAte, page: q.pagina, order: q.ordem, stock: q.estoque })
   }
 
   @Post('analisar')
