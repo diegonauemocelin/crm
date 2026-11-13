@@ -1,6 +1,7 @@
 // Relatório em texto do ERP (ex.: Tcar "Análise de preço e margem - itens integrados ao e-commerce"), com colunas
 // alinhadas por espaço: FILIAL SKU DESCRICAO CUSTO MEDIO PRECO VENDA IMPOSTOS VALOR LIQ. LUCRO LIQ. MARGEM % STATUS.
-// Vira a tabela da planilha de custos: sku, custo, lucro. Só regras (sem banco); testes em test/precos-relatorio-erp.spec.ts.
+// Vira a tabela da planilha de custos: sku, custo, lucro, liquido (VALOR LIQ.: o preço de venda que o marketplace deve
+// depositar). Só regras (sem banco); testes em test/precos-relatorio-erp.spec.ts.
 
 const COLS: { key: string; re: RegExp }[] = [
   { key: 'custo', re: /CUSTO/ },
@@ -19,7 +20,7 @@ export function isErpTextReport(text: string) {
   return !!head && !/[;\t]/.test(head)
 }
 
-/** Linhas [sku, custo, lucro] (com cabeçalho) a partir do relatório; linhas sem SKU ou sem números ficam de fora. */
+/** Linhas [sku, custo, lucro, liquido] (com cabeçalho) a partir do relatório; linhas sem SKU ou sem números ficam de fora. */
 export function erpTextReportRows(text: string): string[][] {
   const lines = text.split(/\r?\n/)
   const hi = lines.findIndex((l) => /\bSKU\b/i.test(l) && /CUSTO/i.test(l))
@@ -28,7 +29,7 @@ export function erpTextReportRows(text: string): string[][] {
   const numeric = COLS.map((c) => ({ key: c.key, pos: head.search(c.re) })).filter((c) => c.pos >= 0).sort((a, b) => a.pos - b.pos)
   const tokens = head.trim().split(/\s+/)
   const skuIdx = tokens.findIndex((t) => t === 'SKU')
-  const out: string[][] = [['sku', 'custo', 'lucro']]
+  const out: string[][] = [['sku', 'custo', 'lucro', 'liquido']]
   for (const l of lines.slice(hi + 1)) {
     if (!l.trim() || /^[\s-=]+$/.test(l)) continue
     const t = l.trim().split(/\s+/)
@@ -45,7 +46,8 @@ export function erpTextReportRows(text: string): string[][] {
     const sku = t[skuIdx]
     if (!sku || sku.length > 60) continue
     const val = (k: string) => nums[numeric.findIndex((c) => c.key === k)] ?? ''
-    out.push([sku, val('custo'), numeric.some((c) => c.key === 'lucro') ? val('lucro') : ''])
+    const full = run >= numeric.length
+    out.push([sku, val('custo'), numeric.some((c) => c.key === 'lucro') ? val('lucro') : '', full && numeric.some((c) => c.key === 'liquido') ? val('liquido') : ''])
   }
   return out
 }

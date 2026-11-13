@@ -12,15 +12,15 @@ FILIAL SKU         DESCRICAO                                    CUSTO MEDIO  PRE
 `
 
 describe('relatório de preço e margem do ERP (texto)', () => {
-  it('reconhece o relatório e tira SKU, custo médio e lucro líquido', () => {
+  it('reconhece o relatório e tira SKU, custo médio, lucro líquido e valor líquido', () => {
     expect(isErpTextReport(TXT)).toBe(true)
     expect(isErpTextReport('sku;custo\n1;2')).toBe(false)
     expect(erpTextReportRows(TXT)).toEqual([
-      ['sku', 'custo', 'lucro'],
-      ['009356', '607,36', '471,35'],
-      ['011819', '96,37', '94,59'],
-      ['009945', '4,00', '2,15'],
-      ['025226', '420,74', ''],
+      ['sku', 'custo', 'lucro', 'liquido'],
+      ['009356', '607,36', '471,35', '1.340,00'],
+      ['011819', '96,37', '94,59', '258,70'],
+      ['009945', '4,00', '2,15', '8,00'],
+      ['025226', '420,74', '', ''],
     ])
   })
 })

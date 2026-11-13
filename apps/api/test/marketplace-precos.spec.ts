@@ -311,3 +311,35 @@ describe('preço com centavos ,90', () => {
     expect(roundTo90(null)).toBeNull()
   })
 })
+
+describe('preço sugerido pelo depósito do Mercado Livre', () => {
+  it('o Mercado Livre deposita o preço de venda do ERP', async () => {
+    const { priceForDeposit, roundTo90 } = await import('../src/marketplaces/precos/margem')
+    // SKU 041073: valor líquido 9,19, tarifa 17%, frete 13,85 → 27,759... → 27,90
+    const p = priceForDeposit(9.19, { fee: { pct: 17, fixed: 0 }, shipping: 13.85, extraPct: 0, fixedCost: 0 })!
+    expect(p).toBeCloseTo(27.76, 2)
+    expect(roundTo90(p)).toBe(27.9)
+    expect(Math.abs(p - p * 0.17 - 13.85 - 9.19)).toBeLessThan(0.01)
+    // Custo fixo, parte fixa da tarifa e outras taxas entram; percentuais demais = impossível
+    expect(priceForDeposit(10, { fee: { pct: 10, fixed: 2 }, shipping: 0, extraPct: 10, fixedCost: 4 })).toBe(20)
+    expect(priceForDeposit(10, { fee: { pct: 60, fixed: 0 }, shipping: 0, extraPct: 40, fixedCost: 0 })).toBeNull()
+  })
+
+  it('dica quando o depósito fica abaixo do preço de venda', () => {
+    const margin = computeMargin({ price: 20, fee: 3.4, shipping: 13.85, taxPct: 10, cost: 5, fixedCost: 0, extraPct: 0 })
+    const t: TipInput = { status: 'active', availableQuantity: 1, margin, minMarginPct: -50, targetMarginPct: null, suggestedPrice: 27.9, minPrice: null, regularPrice: 20, promoPrice: null, regularMarginPct: null, competitorMin: null, competitorCount: 0, listingTypeId: 'gold_special', otherFee: null, freeShipping: true, mandatoryFreeShipping: false, sales30: 1, sales60: 1, taxSource: 'sku' }
+    const tip = pricingTips({ ...t, depositTarget: 9.19, profitTarget: 1000 })
+    const d = tip.find((i) => i.code === 'deposito_abaixo')
+    expect(d?.level).toBe('alerta')
+    expect(d!.text).toMatch(/deposita R\$\s?2,75, abaixo do preço de venda de R\$\s?9,19\. Suba o preço para R\$\s?27,90\./)
+    expect(tip.map((i) => i.code)).not.toContain('lucro_abaixo')
+    expect(pricingTips({ ...t, depositTarget: 2.75 }).map((i) => i.code)).not.toContain('deposito_abaixo')
+  })
+
+  it('configuração da base do preço sugerido', () => {
+    expect(cleanPrecosConfig({}).suggestBase).toBe('LUCRO')
+    expect(cleanPrecosConfig({ suggestBase: 'DEPOSITO' }).suggestBase).toBe('DEPOSITO')
+    expect(cleanPrecosConfig({ suggestBase: 'outro' }).suggestBase).toBe('LUCRO')
+    expect(cleanPrecosConfig({ taxPct: 5 }, { ...cleanPrecosConfig({}), suggestBase: 'DEPOSITO' }).suggestBase).toBe('DEPOSITO')
+  })
+})

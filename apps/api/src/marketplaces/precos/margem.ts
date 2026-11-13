@@ -19,6 +19,14 @@ export const PRECOS_TAX_KEY = 'marketplace_precos_impostos'
 export type MarginMode = 'CUSTO' | 'CUSTO_IMPOSTO' | 'PRECO'
 export const MARGIN_MODES: MarginMode[] = ['CUSTO', 'CUSTO_IMPOSTO', 'PRECO']
 
+/**
+ * Base do preço sugerido:
+ * - LUCRO: deixa o lucro do produto (custo + lucro + impostos + tarifa + frete).
+ * - DEPOSITO: o Mercado Livre deposita (preço − tarifa − frete) o preço de venda do ERP/loja.
+ */
+export type SuggestBase = 'LUCRO' | 'DEPOSITO'
+export const SUGGEST_BASES: SuggestBase[] = ['LUCRO', 'DEPOSITO']
+
 export interface PrecosConfig {
   /** Base da margem (CUSTO, CUSTO_IMPOSTO ou PRECO). */
   marginMode: MarginMode
@@ -34,9 +42,11 @@ export interface PrecosConfig {
   extraFeePct: number
   /** Usa os impostos aprendidos das NF-e do Mercado Envios antes da alíquota manual. */
   useNfeTaxes: boolean
+  /** Base do preço sugerido (LUCRO ou DEPOSITO). */
+  suggestBase: SuggestBase
 }
 
-export const DEFAULT_PRECOS_CONFIG: PrecosConfig = { marginMode: 'CUSTO', taxPct: null, minMarginPct: 0, targetMarginPct: null, fixedCostPerSale: 0, extraFeePct: 0, useNfeTaxes: true }
+export const DEFAULT_PRECOS_CONFIG: PrecosConfig = { marginMode: 'CUSTO', taxPct: null, minMarginPct: 0, targetMarginPct: null, fixedCostPerSale: 0, extraFeePct: 0, useNfeTaxes: true, suggestBase: 'LUCRO' }
 
 const finite = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v.replace(',', '.'))) ? Number(v.replace(',', '.')) : null)
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
@@ -53,6 +63,7 @@ export function cleanPrecosConfig(raw: Partial<Record<keyof PrecosConfig, unknow
     fixedCostPerSale: 'fixedCostPerSale' in raw ? round2(Math.max(0, finite(raw.fixedCostPerSale) ?? 0)) : base.fixedCostPerSale,
     extraFeePct: 'extraFeePct' in raw ? (pct(raw.extraFeePct, base.extraFeePct) ?? 0) : base.extraFeePct,
     useNfeTaxes: 'useNfeTaxes' in raw ? raw.useNfeTaxes !== false : base.useNfeTaxes,
+    suggestBase: 'suggestBase' in raw && SUGGEST_BASES.includes(raw.suggestBase as SuggestBase) ? (raw.suggestBase as SuggestBase) : (base.suggestBase ?? 'LUCRO'),
   }
 }
 
@@ -189,6 +200,19 @@ export function priceForProfit(profit: number, m: PriceModel): number | null {
   const denom = 1 - (m.fee.pct + m.taxPct + m.extraPct) / 100
   if (denom <= 0.01) return null
   const p = (m.cost + profit + m.fixedCost + m.fee.fixed + m.shipping) / denom
+  if (!Number.isFinite(p) || p <= 0) return null
+  return Math.ceil(p * 100 - 1e-6) / 100
+}
+
+/**
+ * Preço para o Mercado Livre depositar um valor (preço − tarifa − frete = depósito), cobrindo também o custo fixo e
+ * as outras taxas: preço = (depósito + frete + custo fixo + parte fixa da tarifa) ÷ (1 − tarifa% − outras%).
+ * Imposto e custo não entram. null = impossível (os percentuais somam demais).
+ */
+export function priceForDeposit(deposit: number, m: Pick<PriceModel, 'fee' | 'shipping' | 'extraPct' | 'fixedCost'>): number | null {
+  const denom = 1 - m.fee.pct / 100 - m.extraPct / 100
+  if (denom <= 0.01) return null
+  const p = (deposit + m.shipping + m.fixedCost + m.fee.fixed) / denom
   if (!Number.isFinite(p) || p <= 0) return null
   return Math.ceil(p * 100 - 1e-6) / 100
 }
@@ -377,6 +401,8 @@ export interface Tip {
 export interface TipInput {
   /** Lucro esperado do produto em R$ por unidade (planilha, ERP ou informado à mão). */
   profitTarget?: number | null
+  /** Valor que o Mercado Livre deve depositar (preço de venda do ERP/loja), no modo depósito. */
+  depositTarget?: number | null
   status: string | null
   availableQuantity: number | null
   /** Margem no preço de venda de hoje (com a promoção, se houver). */
@@ -423,7 +449,12 @@ export function pricingTips(t: TipInput): Tip[] {
     else out.push({ level: 'alerta', code: 'margem_baixa', text: `Margem de ${pctTxt(m.marginPct)}, abaixo do mínimo de ${pctTxt(t.minMarginPct)}.${t.suggestedPrice ? ` Suba o preço para ${brl(t.suggestedPrice)} para ter ${pctTxt(goal)}.` : ''}` })
   }
   // Lucro esperado do produto (planilha/ERP/manual): abaixo dele é alerta, mesmo com margem % boa.
-  if (t.profitTarget != null && m.margin !== null && m.margin >= 0 && m.margin < t.profitTarget - 0.01)
+  if (t.depositTarget != null && m.fee !== null) {
+    const received = round2(m.price - m.fee - (m.shipping ?? 0))
+    if (received < t.depositTarget - 0.01)
+      out.push({ level: 'alerta', code: 'deposito_abaixo', text: `O Mercado Livre deposita ${brl(received)}, abaixo do preço de venda de ${brl(t.depositTarget)}.${t.suggestedPrice ? ` Suba o preço para ${brl(t.suggestedPrice)}.` : ''}` })
+  }
+  if (t.depositTarget == null && t.profitTarget != null && m.margin !== null && m.margin >= 0 && m.margin < t.profitTarget - 0.01)
     out.push({ level: 'alerta', code: 'lucro_abaixo', text: `Lucro de ${brl(m.margin)} por unidade, abaixo do esperado de ${brl(t.profitTarget)}.${t.suggestedPrice ? ` Suba o preço para ${brl(t.suggestedPrice)}.` : ''}` })
   if (t.mandatoryFreeShipping && !t.freeShipping) out.push({ level: 'alerta', code: 'frete_obrigatorio', text: 'O Mercado Livre exige frete grátis neste preço e o anúncio está sem.' })
   if (t.competitorMin !== null) {

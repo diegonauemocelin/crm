@@ -34,6 +34,7 @@ import {
   PRECOS_CONFIG_KEY,
   type PrecosConfig,
   marginPctOf,
+  priceForDeposit,
   priceForProfit,
   profitTargetOf,
   priceForMargin,
@@ -127,6 +128,8 @@ export interface PriceRow {
   /** Lucro desejado do produto em R$ e de onde veio; null = margem alvo geral. */
   profitTarget: { value: number; source: 'produto' | 'produto_pct' | 'produto_venda' | 'erp'; pct?: number } | null
   erpPrice: number | null
+  /** Modo depósito: o que o Mercado Livre deve depositar (valor líquido do ERP ou preço da loja); null = fora do modo. */
+  depositTarget: { value: number; source: 'erp' | 'loja' } | null
   /** IPI (%) aprendido das notas, somado ao preço do ERP para chegar ao valor líquido. */
   ipiPct: number | null
   feeFixed: number | null
@@ -469,16 +472,23 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
   // ---------- Lista ----------
 
   private async context(tenantId: string) {
-    const [config, rates, costs, rivals, erp] = await Promise.all([
+    const [config, rates, costs, rivals, erp, store] = await Promise.all([
       this.config(tenantId),
       this.taxes.rates(tenantId),
       this.prisma.marketplaceCost.findMany({ where: { tenantId } }),
       this.prisma.mlCompetitorItem.findMany({ where: { tenantId, status: 'active', price: { not: null } }, select: { itemId: true, title: true, permalink: true, price: true, freeShipping: true, codes: true, competitor: { select: { nickname: true } } } }),
       // Preço de venda do ERP (Tcar) por código: base do lucro do produto quando não há lucro informado.
       this.prisma.tcarProduct.findMany({ where: { tenantId, price: { not: null } }, select: { code: true, price: true } }).catch(() => [] as { code: string; price: unknown }[]),
+      // Preço da loja (Magazord) por código: o depósito do modo depósito quando o relatório do ERP não trouxe o valor líquido.
+      this.prisma.storeProduct.findMany({ where: { tenantId, active: true }, select: { code: true, price: true } }).catch(() => [] as { code: string; price: unknown }[]),
     ])
     const costBy = new Map(costs.map((c) => [c.sku, c]))
     const erpPriceBy = new Map(erp.map((e) => [normSku(e.code), Number(e.price)]))
+    const storePriceBy = new Map<string, number>()
+    for (const p of store) {
+      const v = p.price === null || p.price === undefined ? NaN : Number(p.price)
+      if (Number.isFinite(v) && v > 0 && !storePriceBy.has(normSku(p.code))) storePriceBy.set(normSku(p.code), v)
+    }
     const rivalBy = new Map<string, RivalOffer[]>()
     for (const r of rivals) {
       const offer: RivalOffer = { itemId: r.itemId, title: r.title, price: Number(r.price), permalink: r.permalink ?? itemLink(r.itemId), seller: r.competitor?.nickname ?? null, freeShipping: r.freeShipping, source: 'CODIGO' }
@@ -488,11 +498,11 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
         else rivalBy.set(code, [offer])
       }
     }
-    return { config, rates, costBy, rivalBy, erpPriceBy }
+    return { config, rates, costBy, rivalBy, erpPriceBy, storePriceBy }
   }
 
   private buildRow(s: Snapshot, a: { title: string | null; permalink: string | null; partNumber: string | null; attributes: unknown } | undefined, ctx: Awaited<ReturnType<PrecosService['context']>>): PriceRow {
-    const { config, rates, costBy, rivalBy, erpPriceBy } = ctx
+    const { config, rates, costBy, rivalBy, erpPriceBy, storePriceBy } = ctx
     const sku = s.sellerSku?.trim() || null
     const costKey = sku ? normSku(sku) : s.itemId
     const c = costBy.get(costKey)
@@ -517,8 +527,20 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     const erpPrice = sku ? (erpPriceBy.get(normSku(sku)) ?? null) : null
     const profitTarget = profitTargetOf(c ? { profitValue: c.profitValue === null ? null : Number(c.profitValue), profitPct: c.profitPct === null ? null : Number(c.profitPct) } : null, cost, erpPrice, tax.pct, tax.ipiPct ?? 0)
     const salePct = c?.profitSalePct != null ? Number(c.profitSalePct) : null
+    // Modo depósito: o Mercado Livre deposita o valor líquido do ERP (ou o preço da loja); sem nenhum, segue o lucro.
+    let depositTarget: PriceRow['depositTarget'] = null
+    if (config.suggestBase === 'DEPOSITO') {
+      const net = c?.erpNet != null ? Number(c.erpNet) : null
+      const storePrice = sku ? (storePriceBy.get(normSku(sku)) ?? null) : null
+      if (net !== null && net > 0) depositTarget = { value: round2(net), source: 'erp' }
+      else if (storePrice !== null) depositTarget = { value: round2(storePrice), source: 'loja' }
+    }
     // Preço de venda sempre com centavos ,90 (arredondado para cima).
-    const suggestedPrice = roundTo90(pm
+    const suggestedPrice = roundTo90(depositTarget
+      ? model
+        ? priceForDeposit(depositTarget.value, { fee: model, shipping: shipping ?? 0, extraPct: config.extraFeePct, fixedCost: config.fixedCostPerSale })
+        : null
+      : pm
       ? salePct !== null
         ? priceForMargin(salePct, { ...pm, marginMode: 'PRECO' })
         : profitTarget
@@ -534,7 +556,8 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     const competitorCount = all.length
     const competitors = all.slice(0, 2)
     const tips = pricingTips({
-      profitTarget: salePct !== null ? (suggestedPrice === null ? null : round2((suggestedPrice * salePct) / 100)) : (profitTarget?.value ?? null),
+      profitTarget: depositTarget ? null : salePct !== null ? (suggestedPrice === null ? null : round2((suggestedPrice * salePct) / 100)) : (profitTarget?.value ?? null),
+      depositTarget: depositTarget?.value ?? null,
       status: s.status,
       availableQuantity: s.availableQuantity,
       margin,
@@ -575,6 +598,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
       costSource: c?.source ?? null,
       profitTarget: salePct !== null ? { value: suggestedPrice === null ? 0 : round2((suggestedPrice * salePct) / 100), source: 'produto_venda' as const, pct: salePct } : profitTarget,
       erpPrice,
+      depositTarget,
       ipiPct: tax.ipiPct ?? null,
       feeFixed: model?.fixed ?? null,
       extraPct: config.extraFeePct,
@@ -806,12 +830,15 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     let costCol = 1
     // Terceira coluna (opcional): lucro desejado em R$ ("lucro", ex.: o Lucro Líquido do produto no ERP).
     let profitCol = -1
+    // Valor líquido do ERP ("Valor líq.", "liquido"): o preço de venda que o marketplace deve depositar.
+    let netCol = -1
     const head = (rows[0] ?? []).map((c) => c.trim().toLowerCase())
     if (head.some((h) => /sku|c[oó]digo/.test(h))) {
       skuCol = Math.max(0, head.findIndex((h) => /sku|c[oó]digo/.test(h)))
       const ci = head.findIndex((h) => /custo|cost/.test(h))
       costCol = ci >= 0 ? ci : skuCol === 0 ? 1 : 0
       profitCol = head.findIndex((h) => /lucro|profit/.test(h))
+      netCol = head.findIndex((h) => /valor l[ií]q|^l[ií]quido$/.test(h))
       rows = rows.slice(1)
     }
     const parse = (s: string) => {
@@ -822,6 +849,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     const invalid: { line: number; reason: string }[] = []
     const ok = new Map<string, number>()
     const profits = new Map<string, number>()
+    const nets = new Map<string, number>()
     rows.slice(0, 50_000).forEach((r, i) => {
       const sku = normSku(r[skuCol])
       const cost = parse(r[costCol] ?? '')
@@ -831,12 +859,15 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
         ok.set(sku, cost)
         const p = profitCol >= 0 && (r[profitCol] ?? '').trim() ? parse(r[profitCol] ?? '') : null
         if (p !== null) profits.set(sku, p)
+        const n = netCol >= 0 && (r[netCol] ?? '').trim() ? parse(r[netCol] ?? '') : null
+        if (n !== null) nets.set(sku, n)
       }
     })
     const by = { updatedById: user.id, updatedByName: user.name.slice(0, 120) }
     for (const [sku, cost] of ok) {
       const profit = profits.get(sku)
-      const data = { cost, source: 'planilha', percent: null, ...(profit !== undefined ? { profitValue: profit, profitPct: null, profitSalePct: null } : {}), ...by }
+      const net = nets.get(sku)
+      const data = { cost, source: 'planilha', percent: null, ...(profit !== undefined ? { profitValue: profit, profitPct: null, profitSalePct: null } : {}), ...(net !== undefined ? { erpNet: net } : {}), ...by }
       await this.prisma.marketplaceCost.upsert({ where: { tenantId_sku: { tenantId: user.tenantId, sku } }, create: { tenantId: user.tenantId, sku, ...data }, update: data })
     }
     await this.audit.byUser(user, ctx, 'marketplace_precos.custo_planilha', 'marketplace_cost', undefined, { arquivo: file.originalname.slice(0, 200), skus: ok.size, invalidas: invalid.length })
@@ -882,9 +913,27 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
         if (action.modo === 'valor' || action.modo === 'percentual') p = applyPriceRule(regular, { mode: action.modo, value: Number(action.valor) })
         else {
           // Preço sugerido com lucro do produto (R$ da planilha/ERP ou % do preço de venda): o mesmo cálculo da lista.
-          const own = action.modo === 'sugerido' ? r.profitTarget : null
+          const deposit = action.modo === 'sugerido' ? r.depositTarget : null
+          const own = action.modo === 'sugerido' && !deposit ? r.profitTarget : null
           const target = action.modo === 'margem' ? Number(action.valor) : own?.source === 'produto_venda' ? (own.pct ?? null) : cfg.targetMarginPct
-          if (own && own.source !== 'produto_venda') {
+          if (deposit) {
+            // Modo depósito: o Mercado Livre deposita o preço de venda do ERP/loja (imposto e custo não entram).
+            if (s.saleFeePct === null) error = 'Tarifa do Mercado Livre não lida. Clique em Ler do Mercado Livre.'
+            else {
+              let model = { fee: { pct: Number(s.saleFeePct), fixed: Number(s.saleFeeFixed ?? 0) }, shipping: r.margin.shipping ?? 0, extraPct: cfg.extraFeePct, fixedCost: cfg.fixedCostPerSale }
+              // A tarifa muda com o preço (faixas e custo fixo): recalcula com a tarifa do preço achado.
+              p = priceForDeposit(deposit.value, model)
+              for (let i = 0; i < 4 && p !== null; i++) {
+                const fee = (await this.feeAt(T, s, p))?.model
+                if (!fee) break
+                model = { ...model, fee }
+                const next = priceForDeposit(deposit.value, model)
+                if (next === null || Math.abs(next - p) < 0.01) { p = next; break }
+                p = next
+              }
+              if (p === null) error = 'Não dá para chegar a esse depósito (tarifa e taxas somam demais).'
+            }
+          } else if (own && own.source !== 'produto_venda') {
             if (r.cost === null) error = 'Sem custo: informe o custo do SKU.'
             else if (r.taxPct === null) error = 'Sem imposto: importe as notas do Mercado Envios ou informe a alíquota manual.'
             else if (s.saleFeePct === null) error = 'Tarifa do Mercado Livre não lida. Clique em Ler do Mercado Livre.'
