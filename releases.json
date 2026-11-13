@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.24",
+      "date": "2026-11-13",
+      "title": "Relatório do Tcar completo",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Marketplaces",
+          "text": "Importar custos pelo relatório \"Análise de preço e margem\" do Tcar: os itens marcados \"REVISAR TRIBUTACAO\" (sem impostos e lucro no relatório) também recebem o custo médio."
+        }
+      ]
+    },
+    {
       "version": "3.0.23",
       "date": "2026-11-13",
       "title": "Vendas perdidas no resumo dos gestores",
