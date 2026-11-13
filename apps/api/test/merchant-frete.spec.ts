@@ -1,7 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import {
+  cepKeyError,
   cepsOf,
   cleanConfig,
+  CEP_KEYS,
+  MAX_SHIPPING_ENTRIES,
+  mergeIntervals,
+  prefixInterval,
+  REGION_BY_KEY,
+  regionIdOf,
+  regionOfCep,
+  REGIONS,
+  REGIONS_VERSION,
+  regionsReady,
+  stateIntervals,
+  subtractIntervals,
+  toPostalCodes,
+  UF_CAPITAL_RANGES,
+  UF_INT_REF_CEP,
   crmOptions,
   DEFAULT_MERCHANT_FRETE,
   estimateRun,
@@ -42,18 +58,36 @@ describe('frete no Google Shopping', () => {
   })
 
   it('frete do estado: a opção mais barata de cada CEP, e a maior entre os CEPs', () => {
-    expect(ufQuote('SC', [[{ price: 30, days: 5 }, { price: 25, days: 8 }], [{ price: 40, days: 9 }]])).toEqual({ uf: 'SC', price: 40, days: 9 })
-    expect(ufQuote('AC', [[{ price: 30, days: 5 }], []])).toEqual({ uf: 'AC', price: null, days: null })
+    expect(ufQuote('SC-INT', [[{ price: 30, days: 5 }, { price: 25, days: 8 }], [{ price: 40, days: 9 }]])).toEqual({ region: 'SC-INT', uf: 'SC', price: 40, days: 9 })
+    expect(ufQuote('AC-CAP', [[{ price: 30, days: 5 }], []])).toEqual({ region: 'AC-CAP', uf: 'AC', price: null, days: null })
+    expect(ufQuote('DF', [])).toEqual({ region: 'DF', uf: 'DF', price: null, days: null })
   })
 
   it('atributo shipping por região, em micros', () => {
-    const s = shippingAttribute([{ uf: 'SC', price: 39.9, days: 4 }, { uf: 'AC', price: null, days: null }], { service: 'Entrega', handlingMin: 1, handlingMax: 2 })
-    expect(s).toEqual([{ price: { amountMicros: '39900000', currencyCode: 'BRL' }, country: 'BR', region: regionId('SC'), service: 'Entrega', minHandlingTime: '1', maxHandlingTime: '2', minTransitTime: '4', maxTransitTime: '4' }])
+    const s = shippingAttribute([{ region: 'SC-CAP', uf: 'SC', price: 39.9, days: 4 }, { region: 'AC-INT', uf: 'AC', price: null, days: null }], { service: 'Entrega', handlingMin: 1, handlingMax: 2 })
+    expect(s).toEqual([{ price: { amountMicros: '39900000', currencyCode: 'BRL' }, country: 'BR', region: 'crm-uf-sc-cap', service: 'Entrega', minHandlingTime: '1', maxHandlingTime: '2', minTransitTime: '4', maxTransitTime: '4' }])
+    // Frete guardado antes das regiões novas (sem region): o estado inteiro.
+    expect(shippingAttribute([{ uf: 'SC', price: 10, days: null }], { service: 'Entrega', handlingMin: 1, handlingMax: 2 })[0]!.region).toBe(regionId('SC'))
+    // Todas as regiões cabem no limite do Google (até 100 atributos shipping por produto).
+    const all = shippingAttribute(REGIONS.map((r) => ({ region: r.key, uf: r.uf, price: 10, days: 3 })), { service: 'Entrega', handlingMin: 1, handlingMax: 2 })
+    expect(all).toHaveLength(53)
+    expect(all.length).toBeLessThanOrEqual(MAX_SHIPPING_ENTRIES)
+    expect(new Set(all.map((x) => x.region)).size).toBe(53)
+    expect(all.map((x) => x.region)).toContain('crm-uf-df')
+    expect(all.map((x) => x.region)).toContain('crm-uf-sp-int')
   })
 
   it('CEPs do estado e validação da configuração', () => {
-    expect(cepsOf({ ceps: {} }, 'SC')).toEqual(['88010000'])
-    expect(cepsOf({ ceps: { SC: ['89874-000', 'x'] } }, 'SC')).toEqual(['89874000'])
+    expect(cepsOf({ ceps: {} }, 'SC-CAP')).toEqual(['88010000'])
+    expect(cepsOf({ ceps: {} }, 'SC-INT')).toEqual([UF_INT_REF_CEP.SC])
+    expect(cepsOf({ ceps: {} }, 'DF')).toEqual([UF_REF_CEP.DF])
+    // "SC" (antigo) vale para capital e interior; "SC-CAP"/"SC-INT" têm preferência na sua região.
+    expect(cepsOf({ ceps: { SC: ['89874-000', 'x'] } }, 'SC-CAP')).toEqual(['89874000'])
+    expect(cepsOf({ ceps: { SC: ['89874-000', 'x'] } }, 'SC-INT')).toEqual(['89874000'])
+    expect(cepsOf({ ceps: { SC: ['89874000'], 'SC-CAP': ['88015-100'] } }, 'SC-CAP')).toEqual(['88015100'])
+    expect(cepsOf({ ceps: { SC: ['89874000'], 'SC-CAP': ['88015-100'] } }, 'SC-INT')).toEqual(['89874000'])
+    expect(cepsOf({ ceps: { 'SC-INT': ['89201090', '89874000'] } }, 'SC-CAP')).toEqual(['88010000'])
+    expect(cepsOf({ ceps: { 'SC-INT': ['89201090', '89874000'] } }, 'SC-INT')).toEqual(['89201090', '89874000'])
     expect(cleanConfig({ enabled: true }, DEFAULT_MERCHANT_FRETE)).toEqual({ error: 'Informe o número da conta do Merchant Center.' })
     expect(cleanConfig({ handlingMin: 3, handlingMax: 1 }, DEFAULT_MERCHANT_FRETE)).toMatchObject({ error: expect.stringMatching(/manuseio/) })
   })
@@ -120,8 +154,14 @@ describe('frete no Google Shopping', () => {
   })
 
   it('estimativa da rodada', () => {
-    expect(estimateRun({ ceps: {}, batchSize: 100, magazordPerMinute: 60, source: 'magazord' })).toEqual({ calls: 27, products: 100, minutes: Math.ceil((100 * 1_100 + 100 * 27 * 1_000) / 60_000) })
-    expect(estimateRun({ ceps: { SC: ['88010000', '89874000'] }, batchSize: 100, magazordPerMinute: 60, source: 'magazord' }, 10).calls).toBe(28)
+    // Capital e interior de 26 estados e o DF: 53 simulações por produto.
+    expect(estimateRun({ ceps: {}, batchSize: 100, magazordPerMinute: 60, source: 'magazord' })).toEqual({ calls: 53, products: 100, minutes: Math.ceil((100 * 1_100 + 100 * 53 * 1_000) / 60_000) })
+    // Magazord a ~20 por minuto: 53 simulações levam uns 3 minutos por produto.
+    expect(estimateRun({ ceps: {}, batchSize: 10, magazordPerMinute: 20, source: 'magazord' }).minutes).toBe(Math.ceil((10 * 1_100 + 10 * 53 * 3_000) / 60_000))
+    // SC antigo com 2 CEPs vale para as duas regiões, mas cada CEP é consultado uma vez: 53 - 2 + 2.
+    expect(estimateRun({ ceps: { SC: ['88010000', '89874000'] }, batchSize: 100, magazordPerMinute: 60, source: 'magazord' }, 10).calls).toBe(53)
+    expect(estimateRun({ ceps: { 'SC-INT': ['89201090', '89874000'] }, batchSize: 100, magazordPerMinute: 60, source: 'magazord' }, 10).calls).toBe(54)
+    expect(estimateRun({ ceps: {}, batchSize: 100, magazordPerMinute: 60, source: 'crm' }, 10).calls).toBe(53)
   })
 
   it('produto sem mudança só volta depois dos dias de refazer', () => {
@@ -166,8 +206,8 @@ describe('frete no Google Shopping', () => {
     expect(crmOptions(results)[0]).toEqual({ price: 30, days: 9 })
     expect(crmOptions(results, ['a', 'b'])).toEqual([{ price: 55.56, days: 6 }, { price: 80, days: 4 }])
     expect(crmOptions(results, ['z'])).toEqual([])
-    // Dois CEPs no estado: a mais barata de cada, e a maior entre os CEPs.
-    expect(ufQuote('SC', [crmOptions(results, ['a', 'b']), crmOptions(results)])).toEqual({ uf: 'SC', price: 55.56, days: 9 })
+    // Dois CEPs na região: a mais barata de cada, e a maior entre os CEPs.
+    expect(ufQuote('SC-INT', [crmOptions(results, ['a', 'b']), crmOptions(results)])).toEqual({ region: 'SC-INT', uf: 'SC', price: 55.56, days: 9 })
   })
 })
 
@@ -186,5 +226,102 @@ describe('retirada na loja fora do frete do Google', () => {
     expect(isPickup('Retirada no balcão')).toBe(true)
     expect(isPickup('Total Express')).toBe(false)
     expect(isPickup('Jadlog.Package')).toBe(false)
+  })
+})
+
+describe('regiões de capital e interior', () => {
+  const covered = (list: [number, number][]) => list.reduce((n, [a, b]) => n + b - a + 1, 0)
+
+  it('53 regiões com ids crm-uf-xx-cap / crm-uf-xx-int e o DF inteiro', () => {
+    expect(REGIONS).toHaveLength(53)
+    expect(REGION_BY_KEY.get('SC-CAP')!.id).toBe('crm-uf-sc-cap')
+    expect(REGION_BY_KEY.get('SC-INT')!.id).toBe('crm-uf-sc-int')
+    expect(REGION_BY_KEY.get('DF')!.id).toBe('crm-uf-df')
+    expect(regionIdOf('DF')).toBe(regionId('DF'))
+    expect(new Set(REGIONS.map((r) => r.id)).size).toBe(53)
+    expect(CEP_KEYS).toContain('SC')
+    expect(CEP_KEYS).toContain('SC-CAP')
+    expect(CEP_KEYS).not.toContain('DF-CAP')
+  })
+
+  it('capital + interior = o estado inteiro, sem sobrepor, e os estados não se sobrepõem', () => {
+    const all: [number, number][] = []
+    for (const uf of UFS) {
+      const state = stateIntervals(uf)
+      const parts = REGIONS.filter((r) => r.uf === uf)
+      const cap = parts.find((r) => r.zone === 'CAP')
+      const int = parts.find((r) => r.zone === 'INT')
+      if (uf === 'DF') {
+        expect(parts.map((r) => r.key)).toEqual(['DF'])
+        expect(parts[0]!.intervals).toEqual(state)
+      } else {
+        expect(cap && int, uf).toBeTruthy()
+        // A capital fica dentro do estado.
+        expect(subtractIntervals(cap!.intervals, state), uf).toEqual([])
+        // Sem sobrepor: a capital tirada do interior não muda nada.
+        expect(subtractIntervals(int!.intervals, cap!.intervals), uf).toEqual(int!.intervals)
+        // Juntas cobrem o estado inteiro.
+        expect(mergeIntervals([...cap!.intervals, ...int!.intervals]), uf).toEqual(state)
+        expect(covered(cap!.intervals) + covered(int!.intervals), uf).toBe(covered(state))
+      }
+      all.push(...state)
+    }
+    // Os estados não se sobrepõem e cobrem 01000–99999 (menos 789xx, sem estado).
+    expect(covered(all)).toBe(covered(mergeIntervals(all)))
+    expect(mergeIntervals(all)).toEqual([[1000, 78899], [79000, 99999]])
+  })
+
+  it('cada CEP de referência cai na sua região', () => {
+    for (const r of REGIONS) expect(regionOfCep(r.refCep)?.key, `${r.key} ${r.refCep}`).toBe(r.key)
+    for (const uf of Object.keys(UF_CAPITAL_RANGES) as (keyof typeof UF_CAPITAL_RANGES)[]) expect(UF_INT_REF_CEP[uf], uf).toMatch(/^\d{8}$/)
+  })
+
+  it('faixas em prefixos do Merchant Center (início e fim do mesmo tamanho)', () => {
+    expect(prefixInterval('01*', '19*')).toEqual([1000, 19999])
+    expect(prefixInterval('680*', '688*')).toEqual([68000, 68899])
+    expect(toPostalCodes([[6000, 7999], [8500, 19999], [68915, 68999]])).toEqual([
+      { begin: '06*', end: '07*' },
+      { begin: '085*', end: '199*' },
+      { begin: '68915*', end: '68999*' },
+    ])
+    expect(toPostalCodes(REGION_BY_KEY.get('SP-INT')!.intervals)).toEqual([
+      { begin: '06*', end: '07*' },
+      { begin: '085*', end: '199*' },
+    ])
+    expect(toPostalCodes(REGION_BY_KEY.get('SC-CAP')!.intervals)).toEqual([{ begin: '880*', end: '880*' }])
+    for (const r of REGIONS) for (const p of toPostalCodes(r.intervals)) expect(p.begin.length, r.key).toBe(p.end.length)
+  })
+
+  it('CEPs da capital só em -CAP e do interior só em -INT', () => {
+    expect(regionOfCep('88010-000')?.key).toBe('SC-CAP')
+    expect(regionOfCep('89874-000')?.key).toBe('SC-INT')
+    expect(regionOfCep('70040-010')?.key).toBe('DF')
+    // Natal vai até 59139 (zona norte); 59141 é Parnamirim. Distritos rurais de Porto Velho ficam no interior.
+    expect(regionOfCep('59139000')?.key).toBe('RN-CAP')
+    expect(regionOfCep('59141000')?.key).toBe('RN-INT')
+    expect(regionOfCep('76840000')?.key).toBe('RO-INT')
+    expect(cepKeyError('SC-CAP', '88010000')).toBeNull()
+    expect(cepKeyError('SC-INT', '89874000')).toBeNull()
+    expect(cepKeyError('SC-CAP', '89874000')).toMatch(/SC-INT/)
+    expect(cepKeyError('SC-INT', '88010000')).toMatch(/SC-CAP/)
+    expect(cepKeyError('SC-INT', '80010000')).toMatch(/faixas de CEP de SC/)
+    expect(cepKeyError('DF-CAP', '70040010')).toMatch(/inválida/)
+    const base = { ...DEFAULT_MERCHANT_FRETE, merchantId: '123' }
+    expect(cleanConfig({ ceps: { 'SC-CAP': ['89874-000'] } }, base)).toEqual({ error: expect.stringMatching(/não é da capital/) })
+    expect(cleanConfig({ ceps: { 'SC-INT': ['88010-000'] } }, base)).toEqual({ error: expect.stringMatching(/é da capital/) })
+    // Chave antiga (estado) continua aceita, com qualquer CEP; chave desconhecida é ignorada.
+    expect(cleanConfig({ ceps: { SC: ['88010-000'], 'SC-INT': ['89874-000'], XX: ['01001000'] } }, base)).toMatchObject({ ceps: { SC: ['88010000'], 'SC-INT': ['89874000'] } })
+    expect(cleanConfig({ ceps: { 'sc-cap': ['88010-000'] } as never }, base)).toMatchObject({ ceps: {} })
+  })
+
+  it('conta preparada com as regiões antigas pede o Preparar a conta de novo', () => {
+    expect(regionsReady({ dataSource: 'ds', regionsVersion: REGIONS_VERSION })).toBe(true)
+    expect(regionsReady({ dataSource: 'ds', regionsVersion: undefined })).toBe(false)
+    expect(regionsReady({ dataSource: null, regionsVersion: REGIONS_VERSION })).toBe(false)
+    const base = { ...DEFAULT_MERCHANT_FRETE, merchantId: '123', dataSource: 'ds', regionsVersion: REGIONS_VERSION }
+    expect(cleanConfig({}, base)).toMatchObject({ regionsVersion: REGIONS_VERSION })
+    expect(cleanConfig({ merchantId: '999' }, base)).toMatchObject({ regionsVersion: null, dataSource: null })
+    // Regiões novas refazem todos os produtos (impressão digital muda com a versão).
+    expect(fingerprint({ source: 'magazord', price: 10, weight: null, ceps: {} })).toContain(`r${REGIONS_VERSION}`)
   })
 })

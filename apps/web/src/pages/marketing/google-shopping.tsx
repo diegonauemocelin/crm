@@ -31,6 +31,7 @@ interface Config {
   refreshDays: number
   dataSource: string | null
   preparedAt: string | null
+  regionsVersion?: number | null
   lastRunAt: string | null
   lastError: string | null
   lastSummary: string | null
@@ -42,6 +43,9 @@ interface View {
   running: boolean
   progress: { done: number; total: number; source: string } | null
   preparing?: boolean
+  /** Conta preparada com as regiões antigas (estado inteiro): preparar de novo para criar capital e interior. */
+  regionsOutdated?: boolean
+  regionsMessage?: string | null
   estimate: { calls: number; products: number; minutes: number }
   units: { id: string; name: string; zip: string | null; city: string | null; state: string | null }[]
   carriers: { id: string; name: string }[]
@@ -52,23 +56,34 @@ interface View {
 const KEY = ['marketing', 'google-shopping-frete']
 const cepsText = (c: Record<string, string[]>) =>
   Object.entries(c)
+    .sort(([a], [b]) => a.localeCompare(b))
     .map(([uf, list]) => `${uf}=${list.map((x) => x.replace(/^(\d{5})(\d{3})$/, '$1-$2')).join(', ')}`)
     .join('\n')
 const parseCeps = (t: string) => {
   const out: Record<string, string[]> = {}
   for (const line of t.split('\n')) {
-    const m = /^\s*([A-Za-z]{2})\s*[=:]\s*(.+)$/.exec(line)
-    if (m) out[m[1]!.toUpperCase()] = m[2]!.split(/[,;\s]+/).map((c) => c.replace(/\D/g, '')).filter((c) => c.length === 8)
+    const m = /^\s*([A-Za-z]{2}(?:\s*-\s*(?:CAP|INT))?)\s*[=:]\s*(.+)$/i.exec(line)
+    if (m) out[m[1]!.toUpperCase().replace(/\s+/g, '')] = m[2]!.split(/[,;\s]+/).map((c) => c.replace(/\D/g, '')).filter((c) => c.length === 8)
   }
   return out
 }
 
 const duration = (min: number) => (min < 60 ? `${min} min` : `${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60} min` : ''}`)
 
-/** Mesma conta do servidor (estimateRun): uma consulta por CEP de cada estado e ~1,1 s por envio ao Google. */
+/**
+ * Mesma conta do servidor (estimateRun): uma consulta por CEP de cada região (capital e interior de cada estado e o
+ * DF: 53 sem CEPs configurados; CEP repetido conta uma vez) e ~1,1 s por envio ao Google.
+ */
 function estimate(f: { cepsText: string; batchSize: number; magazordPerMinute: number; source: string }, linked: number) {
   const ceps = parseCeps(f.cepsText)
-  const calls = UFS.reduce((n, uf) => n + Math.max(1, Math.min(5, ceps[uf]?.length ?? 0)), 0)
+  const used = new Set<string>()
+  for (const uf of UFS) {
+    for (const key of uf === 'DF' ? ['DF'] : [`${uf}-CAP`, `${uf}-INT`]) {
+      const own = ceps[key]?.length ? ceps[key]! : key !== uf && ceps[uf]?.length ? ceps[uf]! : [`ref:${key}`]
+      for (const c of [...new Set(own)].slice(0, 5)) used.add(c)
+    }
+  }
+  const calls = used.size
   const products = f.source === 'crm' ? linked : Math.min(Number(f.batchSize) || 0, linked || Number(f.batchSize) || 0)
   const gap = Math.ceil(60_000 / Math.max(1, Number(f.magazordPerMinute) || 1))
   const ms = products * 1_100 + products * calls * (f.source === 'crm' ? 20 : gap)
@@ -131,7 +146,7 @@ function GoogleShopping() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Frete no Google Shopping" description="O frete de cada produto é calculado para os estados (na Magazord, igual ao carrinho, ou pelas tabelas de Fretes do CRM) e enviado ao Google Merchant Center. A Magazord continua mandando os produtos; o CRM só acrescenta o frete." />
+      <PageHeader title="Frete no Google Shopping" description="O frete de cada produto é calculado para a capital e o interior de cada estado (na Magazord, igual ao carrinho, ou pelas tabelas de Fretes do CRM) e enviado ao Google Merchant Center. A Magazord continua mandando os produtos; o CRM só acrescenta o frete." />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -229,13 +244,17 @@ function GoogleShopping() {
               )}
               <p className="text-xs text-muted-foreground">
                 Estimativa da rodada: {est.products} produto(s) × {est.calls} {crm ? 'cálculos' : 'consultas'} ≈ <strong>{duration(est.minutes)}</strong>.
-                {!crm && est.minutes > 240 ? ' Passa de 4 horas: diminua os produtos por noite ou os CEPs por estado.' : ''}
+                {' '}
+                (uma por CEP da capital e do interior de cada estado e do DF.)
+                {!crm && est.minutes > 240 ? ' Passa de 4 horas: diminua os produtos por noite ou os CEPs por região.' : ''}
               </p>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="mc-ceps">CEPs por estado (opcional)</Label>
-              <Textarea id="mc-ceps" rows={4} value={form.cepsText} onChange={(e) => set('cepsText', e.target.value)} disabled={!edit} placeholder={'SC=88010-000, 89874-000\nPR=80010-000, 85801-000'} />
-              <p className="text-xs text-muted-foreground">Um estado por linha (até 5 CEPs). Vazio: o centro da capital. Com mais de um CEP, vale o frete mais alto (o anúncio nunca mostra menos que o carrinho), mas cada CEP a mais é uma consulta a mais por produto.</p>
+              <Label htmlFor="mc-ceps">CEPs por região (opcional)</Label>
+              <Textarea id="mc-ceps" rows={4} value={form.cepsText} onChange={(e) => set('cepsText', e.target.value)} disabled={!edit} placeholder={'SC-CAP=88010-000\nSC-INT=89874-000, 89201-090\nPR-INT=86010-030'} />
+              <p className="text-xs text-muted-foreground">
+                Cada estado tem duas regiões no Google, com um frete cada: a capital e o interior (o DF é uma só). Uma região por linha (até 5 CEPs): <strong>SC-CAP=</strong> para a capital e <strong>SC-INT=</strong> para o interior; <strong>SC=</strong> (sem -CAP/-INT) vale para as duas. CEP da capital só em -CAP e do interior só em -INT. Vazio: o centro da capital e uma cidade grande do interior. Com mais de um CEP, vale o frete mais alto (o anúncio nunca mostra menos que o carrinho), mas cada CEP a mais é uma consulta a mais por produto.
+              </p>
             </div>
           </CardContent>
           {edit && (
@@ -276,6 +295,11 @@ function GoogleShopping() {
             </ul>
             {v.config.lastRunAt && <p className="text-xs text-muted-foreground">Última rodada: {formatDateTime(v.config.lastRunAt)}</p>}
             {v.config.lastSummary && <p className="text-xs text-muted-foreground">{v.config.lastSummary}</p>}
+            {v.regionsMessage && !v.preparing && (
+              <p className="flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+                <TriangleAlertIcon className="size-3.5 shrink-0" aria-hidden /> {v.regionsMessage}
+              </p>
+            )}
             {v.config.lastError && !v.preparing && <p className="text-xs text-destructive">{v.config.lastError}</p>}
             {v.preparing && (
               <p className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -293,7 +317,7 @@ function GoogleShopping() {
               <Button variant="outline" onClick={() => prepare.mutate()} disabled={prepare.isPending || !!v.preparing || !v.config.merchantId}>
                 {prepare.isPending || v.preparing ? <Loader2Icon className="animate-spin" /> : <SettingsIcon />} Preparar a conta
               </Button>
-              <Button onClick={() => run.mutate()} disabled={run.isPending || v.running || !v.config.dataSource}>
+              <Button onClick={() => run.mutate()} disabled={run.isPending || v.running || !v.config.dataSource || !!v.regionsOutdated}>
                 {run.isPending ? <Loader2Icon className="animate-spin" /> : <PlayIcon />} Atualizar agora
               </Button>
             </CardFooter>
@@ -311,7 +335,7 @@ function GoogleShopping() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Produto</TableHead>
-                    <TableHead className="text-right">Estados</TableHead>
+                    <TableHead className="text-right">Regiões</TableHead>
                     <TableHead className="text-right">Frete (menor – maior)</TableHead>
                     <TableHead>Quando</TableHead>
                   </TableRow>
