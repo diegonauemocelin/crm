@@ -14,6 +14,7 @@ import { MercadoLivreService } from '../mercadolivre.service'
 import { aiRetryDelay, isMlItemId, mlEditBlocked } from '../seo-ml'
 import { cheapestRivals, itemLink, type RivalOffer } from './concorrentes-preco'
 import { normSku, taxRateFor, type TaxRates } from './impostos'
+import { erpTextReportRows, isErpTextReport } from './relatorio-erp'
 import { MarketplaceTaxService } from './impostos.service'
 import {
   applyPriceRule,
@@ -789,10 +790,12 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
 
   /** Planilha CSV ou Excel com SKU e custo (cabeçalho opcional: "sku;custo"). */
   async importCosts(user: AuthUser, file: Express.Multer.File | undefined, ctx: RequestCtx) {
-    if (!file?.buffer?.length) throw new BadRequestException('Envie a planilha (.xlsx ou .csv) com as colunas SKU e custo.')
+    if (!file?.buffer?.length) throw new BadRequestException('Envie a planilha (.xlsx ou .csv) com as colunas SKU e custo, ou o relatório de preço e margem do ERP (.txt).')
     let rows: string[][]
     try {
-      rows = await readTable(file.buffer)
+      // Relatório em texto do ERP (Análise de preço e margem do Tcar): SKU, custo médio e lucro líquido.
+      const text = file.buffer.subarray(0, 4).toString('hex') === '504b0304' ? '' : file.buffer.toString('latin1')
+      rows = text && isErpTextReport(text) ? erpTextReportRows(text) : await readTable(file.buffer)
     } catch (e) {
       throw new BadRequestException(`Não foi possível ler a planilha: ${(e as Error).message}`)
     }
