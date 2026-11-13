@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.25",
+      "date": "2026-11-13",
+      "title": "Lucro na coluna do preço sugerido",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Marketplaces",
+          "text": "Preços e promoções: embaixo do preço sugerido aparece o lucro em R$ usado no cálculo (o lucro líquido importado do Tcar), para conferir que o preço já soma a tarifa e o frete do Mercado Livre."
+        }
+      ]
+    },
+    {
       "version": "3.0.24",
       "date": "2026-11-13",
       "title": "Relatório do Tcar completo",
