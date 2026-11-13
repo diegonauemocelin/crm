@@ -15,6 +15,7 @@ import { SettingsService } from '../settings/settings.service'
 import {
   cepsOf,
   UF_REF_CEP,
+  isPickup,
   cleanConfig,
   CONTENT_SCOPE,
   crmOptions,
@@ -564,7 +565,10 @@ export class MerchantFreteService implements OnApplicationBootstrap, OnModuleDes
       if (wait > 0) await sleep(wait)
       try {
         const raw = await this.magazord.simulateFreight(tenantId, cep, [{ sku, quantity: 1, price }], { onRate: (h) => pacer.ok(parseRate(h), Date.now()) })
-        return parseFreightOptions(raw).map((o) => ({ price: o.price, days: o.days }))
+        // Retirada na loja não é entrega: não entra no frete do Google (senão o estado da loja sai com frete grátis).
+        return parseFreightOptions(raw)
+          .filter((o) => !isPickup(o.name))
+          .map((o) => ({ price: o.price, days: o.days }))
       } catch (e) {
         if (!(e instanceof MagazordRateLimitError)) throw e
         pacer.limited()

@@ -178,3 +178,13 @@ describe('simulação de frete da Magazord: código do produto', () => {
     expect(simulationSku('999', by)).toBe('999')
   })
 })
+
+describe('retirada na loja fora do frete do Google', () => {
+  it('reconhece as opções de retirada', async () => {
+    const { isPickup } = await import('../src/merchant/frete-google')
+    expect(isPickup('Retirar na Loja em Maravilha/SC')).toBe(true)
+    expect(isPickup('Retirada no balcão')).toBe(true)
+    expect(isPickup('Total Express')).toBe(false)
+    expect(isPickup('Jadlog.Package')).toBe(false)
+  })
+})
