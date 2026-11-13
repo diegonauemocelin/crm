@@ -466,7 +466,171 @@ function NewQuote() {
         </Card>
       </form>
       {quote && <QuoteView quote={quote} onChange={setQuote} />}
+      <InternationalQuote defaultUnit={unitId || active.unitId || ctx?.units[0]?.id || ''} units={(ctx?.units ?? []).filter((u) => u.active)} />
     </div>
+  )
+}
+
+const COUNTRIES: { code: string; name: string }[] = [
+  { code: 'AR', name: 'Argentina' },
+  { code: 'PY', name: 'Paraguai' },
+  { code: 'UY', name: 'Uruguai' },
+  { code: 'CL', name: 'Chile' },
+  { code: 'BO', name: 'Bolívia' },
+  { code: 'PE', name: 'Peru' },
+  { code: 'CO', name: 'Colômbia' },
+  { code: 'MX', name: 'México' },
+  { code: 'US', name: 'Estados Unidos' },
+  { code: 'CA', name: 'Canadá' },
+  { code: 'PT', name: 'Portugal' },
+  { code: 'ES', name: 'Espanha' },
+  { code: 'DE', name: 'Alemanha' },
+  { code: 'IT', name: 'Itália' },
+  { code: 'FR', name: 'França' },
+  { code: 'GB', name: 'Reino Unido' },
+  { code: 'CN', name: 'China' },
+  { code: 'JP', name: 'Japão' },
+]
+
+interface InternationalResult {
+  unit: { id: string; name: string }
+  quotes: { service: string; serviceId: string; price: number | null; deadlineDays: number | null; error: string | null }[]
+}
+
+/** Cotação internacional pela DHL Express (só aparece com a DHL ligada para envios internacionais). */
+function InternationalQuote({ defaultUnit, units }: { defaultUnit: string; units: { id: string; name: string }[] }) {
+  const status = useQuery({ queryKey: ['fretes', 'cotacao', 'internacional'], queryFn: () => api.get<{ dhl: boolean }>('/fretes/cotacao/internacional') })
+  const [unitId, setUnitId] = useState('')
+  const [country, setCountry] = useState('AR')
+  const [other, setOther] = useState('')
+  const [postalCode, setPostalCode] = useState('')
+  const [city, setCity] = useState('')
+  const [weight, setWeight] = useState('')
+  const [length, setLength] = useState('')
+  const [width, setWidth] = useState('')
+  const [height, setHeight] = useState('')
+  const [cargoValue, setCargoValue] = useState<number | null>(null)
+  const unit = unitId || defaultUnit
+  const run = useMutation({
+    mutationFn: () => {
+      const code = country === 'OUTRO' ? other.trim().toUpperCase() : country
+      if (!/^[A-Z]{2}$/.test(code)) throw new Error('Informe o código do país com 2 letras (ex.: AR).')
+      if (code === 'BR') throw new Error('Para destinos no Brasil, use a cotação acima.')
+      const w = parseBr(weight)
+      if (!w || !(w > 0)) throw new Error('Informe o peso em kg.')
+      const dim = (x: string) => {
+        const n = parseBr(x)
+        return n && n > 0 ? n : null
+      }
+      return api.post<InternationalResult>('/fretes/cotacao/internacional', { unitId: unit, countryCode: code, postalCode: postalCode.trim(), cityName: city.trim(), weight: w, length: dim(length), width: dim(width), height: dim(height), cargoValue })
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  if (!status.data?.dhl) return null
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    run.mutate()
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Cotação internacional (DHL Express)</CardTitle>
+        <CardDescription>Envio de mercadoria para fora do Brasil, saindo do CEP de expedição da filial.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={submit} className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="int-unit">Filial de origem</Label>
+              <select id="int-unit" className="h-9 w-full rounded-md border bg-transparent px-2" value={unit} onChange={(e) => setUnitId(e.target.value)}>
+                {units.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="int-pais">País de destino</Label>
+              <select id="int-pais" className="h-9 w-full rounded-md border bg-transparent px-2" value={country} onChange={(e) => setCountry(e.target.value)}>
+                {COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.name}
+                  </option>
+                ))}
+                <option value="OUTRO">Outro</option>
+              </select>
+            </div>
+            {country === 'OUTRO' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="int-codigo">Código do país (2 letras)</Label>
+                <Input id="int-codigo" maxLength={2} placeholder="Ex.: EC" value={other} onChange={(e) => setOther(e.target.value.replace(/[^a-z]/gi, '').toUpperCase())} />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="int-cidade">Cidade de destino</Label>
+              <Input id="int-cidade" value={city} onChange={(e) => setCity(e.target.value)} required />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="int-cep">Código postal</Label>
+              <Input id="int-cep" placeholder="Se o país usar" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="int-peso">Peso (kg)</Label>
+              <Input id="int-peso" inputMode="decimal" value={weight} onChange={(e) => setWeight(e.target.value)} required />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Medidas (cm): comprimento × largura × altura</Label>
+              <div className="flex gap-1">
+                <Input aria-label="Comprimento (cm)" inputMode="decimal" value={length} onChange={(e) => setLength(e.target.value)} />
+                <Input aria-label="Largura (cm)" inputMode="decimal" value={width} onChange={(e) => setWidth(e.target.value)} />
+                <Input aria-label="Altura (cm)" inputMode="decimal" value={height} onChange={(e) => setHeight(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="int-valor">Valor declarado (R$)</Label>
+              <MoneyInput id="int-valor" value={cargoValue} onChange={setCargoValue} />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button type="submit" disabled={run.isPending || !unit}>
+              {run.isPending ? <Loader2Icon className="animate-spin" aria-hidden /> : <CalculatorIcon aria-hidden />} Cotar na DHL
+            </Button>
+          </div>
+        </form>
+        {run.data && (
+          <div className="mt-4 space-y-2">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Serviço</TableHead>
+                  <TableHead className="text-right">Valor</TableHead>
+                  <TableHead className="text-right">Prazo</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {run.data.quotes.map((q, i) => (
+                  <TableRow key={`${q.serviceId}-${i}`}>
+                    <TableCell>{q.service || 'DHL Express'}</TableCell>
+                    {q.error ? (
+                      <TableCell colSpan={2} className="text-right text-destructive">
+                        {q.error}
+                      </TableCell>
+                    ) : (
+                      <>
+                        <TableCell className="text-right tabular-nums">{q.price !== null ? (/\([A-Z]{3}\)$/.test(q.service) ? fmtNum(q.price, 2) : money(q.price)) : '—'}</TableCell>
+                        <TableCell className="text-right tabular-nums">{q.deadlineDays !== null ? `${q.deadlineDays} ${q.deadlineDays === 1 ? 'dia' : 'dias'}` : '—'}</TableCell>
+                      </>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <p className="text-xs text-muted-foreground">Valores informados pela DHL na hora; podem não incluir impostos e taxas de importação do destino.</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

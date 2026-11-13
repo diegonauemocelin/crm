@@ -158,7 +158,11 @@ interface OnlineView {
   correios: { enabled: boolean; user: string; hasAccessCode: boolean; postCard: string; products: { code: string; name: string }[] }
   braspress: { enabled: boolean; user: string; hasPassword: boolean; modal: 'R' | 'A' }
   jadlog: { enabled: boolean; hasToken: boolean; cnpj: string; account: string; contract: string; modalities: { code: number; name: string }[]; delivery: 'D' | 'R'; cubageFactor: number }
+  rodonaves?: { enabled: boolean; hasPassword: boolean; user: string; cnpj: string; contactName: string; contactPhone: string }
+  dhl?: { enabled: boolean; hasSecret: boolean; apiKey: string; accountNumber: string; sandbox: boolean; scope: DhlScope }
 }
+
+type DhlScope = 'NACIONAL' | 'INTERNACIONAL' | 'AMBOS'
 
 /** Cotação online: Melhor Envio (token da conta, escolhendo quais transportadoras aparecem) e Correios (contrato). */
 function OnlineQuotes() {
@@ -176,7 +180,7 @@ function OnlineQuotes() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <PlugIcon className="size-4" aria-hidden /> Cotação online: Melhor Envio, Correios, Braspress e Jadlog
+          <PlugIcon className="size-4" aria-hidden /> Cotação online: Melhor Envio, Correios, Braspress, Jadlog, Rodonaves e DHL Express
         </CardTitle>
         <CardDescription>
           Ligadas, a cotação de frete também consulta essas APIs na hora e mostra os valores junto com as tabelas, para comparar. As chaves ficam criptografadas e nunca voltam para a tela.
@@ -189,6 +193,8 @@ function OnlineQuotes() {
             <CorreiosForm v={d.correios} editable={editable} saving={save.isPending} onSave={(c) => save.mutate({ correios: c })} />
             <BraspressForm v={d.braspress} editable={editable} saving={save.isPending} onSave={(b) => save.mutate({ braspress: b })} />
             {d.jadlog && <JadlogForm v={d.jadlog} editable={editable} saving={save.isPending} onSave={(j) => save.mutate({ jadlog: j })} />}
+            {d.rodonaves && <RodonavesForm v={d.rodonaves} editable={editable} saving={save.isPending} onSave={(r) => save.mutate({ rodonaves: r })} />}
+            {d.dhl && <DhlForm v={d.dhl} editable={editable} saving={save.isPending} onSave={(x) => save.mutate({ dhl: x })} />}
           </>
         )}
       </CardContent>
@@ -209,7 +215,7 @@ function MelhorEnvioForm({ v, editable, saving, onSave }: { v: OnlineView['melho
         <p className="font-medium">Melhor Envio</p>
         <Badge variant="outline" className={v.enabled ? 'border-[#0ca30c]/50 text-[#006300] dark:text-[#0ca30c]' : 'text-muted-foreground'}>{v.enabled ? 'Ligado' : v.hasToken ? 'Desligado' : 'Não conectado'}</Badge>
       </div>
-      <p className="text-xs text-muted-foreground">No painel do Melhor Envio: Integrações › Permissões de acesso › Gerar novo token (marque a permissão de cálculo de frete). Cole o token aqui; ele não aparece de novo.</p>
+      <p className="text-xs text-muted-foreground">No painel do Melhor Envio: Integrações › Permissões de acesso › Gerar novo token (marque a permissão de cálculo de frete). Cole o token aqui; ele não aparece de novo. LATAM Cargo e Azul Cargo entram por aqui: ative-as na sua conta do Melhor Envio e marque os serviços.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="me-token">Token {v.hasToken && <span className="text-xs text-muted-foreground">(cadastrado; em branco mantém)</span>}</Label>
@@ -447,6 +453,124 @@ function JadlogForm({ v, editable, saving, onSave }: { v: OnlineView['jadlog']; 
           </Button>
         </div>
       )}
+    </div>
+  )
+}
+
+function SaveButtons({ enabled, saving, onSave }: { enabled: boolean; saving: boolean; onSave: (enabled: boolean) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button disabled={saving} onClick={() => onSave(enabled)}>
+        {saving && <Loader2Icon className="animate-spin" aria-hidden />} Salvar
+      </Button>
+      <Button variant="outline" disabled={saving} onClick={() => onSave(!enabled)}>
+        {enabled ? 'Desligar' : 'Salvar e ligar'}
+      </Button>
+    </div>
+  )
+}
+
+function StatusBadge({ enabled, configured }: { enabled: boolean; configured: boolean }) {
+  return (
+    <Badge variant="outline" className={enabled ? 'border-[#0ca30c]/50 text-[#006300] dark:text-[#0ca30c]' : 'text-muted-foreground'}>
+      {enabled ? 'Ligado' : configured ? 'Desligado' : 'Não conectado'}
+    </Badge>
+  )
+}
+
+function RodonavesForm({ v, editable, saving, onSave }: { v: NonNullable<OnlineView['rodonaves']>; editable: boolean; saving: boolean; onSave: (b: Record<string, unknown>) => void }) {
+  const [user, setUser] = useState(v.user)
+  const [password, setPassword] = useState('')
+  const [cnpj, setCnpj] = useState(v.cnpj)
+  const [contactName, setContactName] = useState(v.contactName)
+  const [contactPhone, setContactPhone] = useState(v.contactPhone)
+  const body = (enabled: boolean) => ({ enabled, user, cnpj, contactName, contactPhone, ...(password.trim() ? { password: password.trim() } : {}) })
+  return (
+    <div className="space-y-3 rounded-md border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-medium">Rodonaves</p>
+        <StatusBadge enabled={v.enabled} configured={v.hasPassword} />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Acesso à API pedido na filial de vínculo da Rodonaves, com os recursos de cotação e de CEP (usuário e senha da API, não o login do portal). Cada cotação gera um protocolo no sistema da Rodonaves. Precisa do CPF/CNPJ do destinatário na cotação; a API não informa o prazo.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="rt-user">Usuário da API</Label>
+          <Input id="rt-user" autoComplete="off" value={user} onChange={(e) => setUser(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="rt-pass">Senha da API {v.hasPassword && <span className="text-xs text-muted-foreground">••• (mantido; em branco mantém)</span>}</Label>
+          <Input id="rt-pass" type="password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="rt-cnpj">CNPJ cadastrado na Rodonaves</Label>
+          <Input id="rt-cnpj" inputMode="numeric" placeholder="Vazio = CNPJ da filial" value={cnpj} onChange={(e) => setCnpj(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="rt-contato">Nome do contato</Label>
+          <Input id="rt-contato" value={contactName} onChange={(e) => setContactName(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="rt-fone">Telefone do contato (com DDD)</Label>
+          <Input id="rt-fone" inputMode="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} disabled={!editable} />
+        </div>
+      </div>
+      {editable && <SaveButtons enabled={v.enabled} saving={saving} onSave={(en) => onSave(body(en))} />}
+    </div>
+  )
+}
+
+const DHL_SCOPES: { value: DhlScope; label: string }[] = [
+  { value: 'NACIONAL', label: 'Só nacional' },
+  { value: 'INTERNACIONAL', label: 'Só internacional' },
+  { value: 'AMBOS', label: 'Nacional e internacional' },
+]
+
+function DhlForm({ v, editable, saving, onSave }: { v: NonNullable<OnlineView['dhl']>; editable: boolean; saving: boolean; onSave: (b: Record<string, unknown>) => void }) {
+  const [apiKey, setApiKey] = useState(v.apiKey)
+  const [secret, setSecret] = useState('')
+  const [account, setAccount] = useState(v.accountNumber)
+  const [sandbox, setSandbox] = useState(v.sandbox)
+  const [scope, setScope] = useState<DhlScope>(v.scope)
+  const body = (enabled: boolean) => ({ enabled, apiKey, accountNumber: account, sandbox, scope, ...(secret.trim() ? { apiSecret: secret.trim() } : {}) })
+  return (
+    <div className="space-y-3 rounded-md border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-medium">DHL Express</p>
+        <StatusBadge enabled={v.enabled} configured={v.hasSecret} />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        MyDHL API: a API Key e a API Secret são liberadas pela DHL no portal de desenvolvedores (developer.dhl.com), junto com o número da conta DHL Express. Nacional entra na cotação normal; internacional tem um quadro próprio na tela de cotação.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="dhl-key">API Key</Label>
+          <Input id="dhl-key" autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="dhl-secret">API Secret {v.hasSecret && <span className="text-xs text-muted-foreground">••• (mantido; em branco mantém)</span>}</Label>
+          <Input id="dhl-secret" type="password" autoComplete="off" value={secret} onChange={(e) => setSecret(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="dhl-conta">Número da conta DHL</Label>
+          <Input id="dhl-conta" inputMode="numeric" value={account} onChange={(e) => setAccount(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="dhl-escopo">Cotar envios</Label>
+          <select id="dhl-escopo" className="h-9 w-full rounded-md border bg-transparent px-2" value={scope} onChange={(e) => setScope(e.target.value as DhlScope)} disabled={!editable}>
+            {DHL_SCOPES.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={sandbox} onChange={(e) => setSandbox(e.target.checked)} disabled={!editable} /> Ambiente de teste
+      </label>
+      {editable && <SaveButtons enabled={v.enabled} saving={saving} onSave={(en) => onSave(body(en))} />}
     </div>
   )
 }

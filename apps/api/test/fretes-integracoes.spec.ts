@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { braspressBody, jadlogBody, jadlogWeight, parseJadlog, correiosDeclaredService, correiosPriceQuery, melhorEnvioBody, packageOf, parseBraspress, parseCorreiosDeadline, parseCorreiosPrice, parseMelhorEnvio } from '../src/fretes/integracoes'
+import { decimalText, dhlRatesQuery, nextBusinessDay, parseDhlRates, parseRodonaves, parseRodonavesCity, parseRodonavesToken, rodonavesBody, rodonavesTokenForm, braspressBody, jadlogBody, jadlogWeight, parseJadlog, correiosDeclaredService, correiosPriceQuery, melhorEnvioBody, packageOf, parseBraspress, parseCorreiosDeadline, parseCorreiosPrice, parseMelhorEnvio } from '../src/fretes/integracoes'
 
 describe('fretes: cotação online (Melhor Envio, Correios, Braspress)', () => {
   const pkg = packageOf({ realWeight: 3.5, volumes: [{ quantity: 2, height: 10, width: 20, length: 30 }] }, 1500)
@@ -63,5 +63,58 @@ describe('fretes: Jadlog (simulador de frete)', () => {
     const e = parseJadlog({ frete: [{ modalidade: 3 }], error: { id: -1, descricao: 'frete[0].contrato Numero de contrato invalido' } }, mods)
     expect(e[0]).toMatchObject({ price: null, error: 'frete[0].contrato Numero de contrato invalido' })
     expect(parseJadlog({}, mods)[0]).toMatchObject({ service: '.Package', price: null })
+  })
+})
+
+describe('fretes: cotação online (Rodonaves e DHL Express)', () => {
+  const pkg = packageOf({ realWeight: 12.5, volumes: [{ quantity: 1, height: 30, width: 40, length: 50 }] }, 2350.5)
+  it('Rodonaves: token (form), cidade pelo CEP e corpo da cotação', () => {
+    expect(rodonavesTokenForm('usr', 's&nha').toString()).toBe('grant_type=password&username=usr&password=s%26nha&auth_type=DEV')
+    expect(parseRodonavesToken({ access_token: 'abc', token_type: 'bearer', expires_in: 28799 })).toEqual({ token: 'abc', expiresInSec: 28799 })
+    expect(parseRodonavesToken({ access_token: 'abc' })).toEqual({ token: 'abc', expiresInSec: 28800 })
+    expect(parseRodonavesToken({ error: 'invalid_grant' })).toBeNull()
+    expect(parseRodonavesCity({ Id: 4521, Description: 'MARAVILHA', IbgeCityCode: 4210506 })).toBe(4521)
+    expect(parseRodonavesCity({})).toBeNull()
+    const b = rodonavesBody({ from: '89874-000', to: '01001-000', originCityId: 1, destCityId: 2, cnpj: '01.704.079/0001-00', recipientDoc: '123.456.789-09', contactName: 'Fulano', contactPhone: '(49) 3664-0888' }, pkg)
+    expect(b).toMatchObject({ OriginZipCode: '89874000', OriginCityId: 1, DestinationZipCode: '01001000', DestinationCityId: 2, TotalWeight: 12.5, EletronicInvoiceValue: 2350.5, CustomerTaxIdRegistration: '01704079000100', ReceiverCpfcnp: '12345678909', ContactPhoneNumber: '4936640888', TotalPackages: 1 })
+    expect(b.Packs[0]).toEqual({ AmountPackages: 1, Weight: 12.5, Length: 50, Height: 30, Width: 40 })
+  })
+  it('Rodonaves: FreightValue em texto (formato BR ou US) ou número', () => {
+    expect(decimalText('1.234,56')).toBe(1234.56)
+    expect(decimalText('1234.56')).toBe(1234.56)
+    expect(decimalText('1,234.56')).toBe(1234.56)
+    expect(decimalText('R$ 45,9')).toBe(45.9)
+    expect(decimalText(99.999)).toBe(100)
+    expect(decimalText('')).toBeNull()
+    expect(parseRodonaves({ FreightValue: '1.234,56', ProtocolId: 778899, Status: 'OK' })).toEqual({ price: 1234.56, protocol: '778899', error: null })
+    expect(parseRodonaves({ FreightValue: 210.4 })).toMatchObject({ price: 210.4, error: null })
+    expect(parseRodonaves({ Message: 'CEP de destino não atendido' })).toMatchObject({ price: null, error: 'CEP de destino não atendido' })
+  })
+  it('DHL: query nacional e internacional (métrico, próximo dia útil)', () => {
+    const date = nextBusinessDay(new Date('2026-11-13T15:00:00Z')) // sexta
+    expect(date).toBe('2026-11-16')
+    expect(nextBusinessDay(new Date('2026-11-17T02:00:00Z'))).toBe('2026-11-17') // ainda segunda (16) em Brasília
+    const origin = { country: 'BR', postalCode: '89874-000', city: 'Maravilha' }
+    const dom = dhlRatesQuery({ account: '123456789', origin, dest: { country: 'br', postalCode: '01001-000', city: 'São Paulo' }, customs: false, date }, pkg)
+    expect(Object.fromEntries(dom)).toMatchObject({ accountNumber: '123456789', originCountryCode: 'BR', originPostalCode: '89874000', destinationCountryCode: 'BR', destinationPostalCode: '01001000', weight: '12.5', length: '50', width: '40', height: '30', plannedShippingDate: '2026-11-16', isCustomsDeclarable: 'false', unitOfMeasurement: 'metric' })
+    const intl = dhlRatesQuery({ account: '1', origin, dest: { country: 'ar', postalCode: 'C1002', city: 'Buenos Aires' }, customs: true, date }, pkg)
+    expect(intl.get('destinationCountryCode')).toBe('AR')
+    expect(intl.get('destinationPostalCode')).toBe('C1002')
+    expect(intl.get('isCustomsDeclarable')).toBe('true')
+  })
+  it('DHL: preço na moeda de cobrança (BILLC), moeda no nome quando não é real, prazo e erros', () => {
+    const r = parseDhlRates({
+      products: [
+        { productName: 'EXPRESS WORLDWIDE', productCode: 'P', localProductCode: 'P', totalPrice: [{ currencyType: 'PULCL', priceCurrency: 'BRL', price: 900 }, { currencyType: 'BILLC', priceCurrency: 'USD', price: 150.25 }], deliveryCapabilities: { totalTransitDays: 3 } },
+        { productName: 'EXPRESS DOMESTIC', productCode: 'N', totalPrice: [{ currencyType: 'BILLC', priceCurrency: 'BRL', price: 210.4 }], deliveryCapabilities: { totalTransitDays: '1' } },
+        { productName: 'SEM PRECO', productCode: 'X', totalPrice: [] },
+      ],
+    })
+    expect(r[0]).toMatchObject({ source: 'DHL', serviceId: 'P', carrier: 'DHL Express', service: 'EXPRESS WORLDWIDE (USD)', price: 150.25, deadlineDays: 3, error: null })
+    expect(r[1]).toMatchObject({ service: 'EXPRESS DOMESTIC', price: 210.4, deadlineDays: 1 })
+    expect(r[2]).toMatchObject({ price: null, error: 'Sem preço para este envio.' })
+    const e = parseDhlRates({ status: 404, title: 'Product not found', detail: '996: Requested product(s) not available', additionalDetails: ['Destino sem serviço'] })
+    expect(e).toHaveLength(1)
+    expect(e[0]).toMatchObject({ source: 'DHL', price: null, error: '996: Requested product(s) not available · Destino sem serviço' })
   })
 })
