@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
+import { PerdasIa } from '@/components/marketing/perdas-ia'
 import { ResumoVendedorCard } from '@/components/marketing/resumo-vendedor'
 import { downloadReport, MktFilters } from '@/components/marketing/ui'
 import { useMktFilters, useMktOptions } from '@/lib/marketing'
@@ -66,6 +67,7 @@ export function RelatoriosMktPage() {
             <TabsTrigger value="agendados">Relatórios agendados</TabsTrigger>
             <TabsTrigger value="baixar">Baixar agora (PDF ou Excel)</TabsTrigger>
             <TabsTrigger value="alertas">Alertas</TabsTrigger>
+            <TabsTrigger value="perdas">Análise das perdas (IA)</TabsTrigger>
           </TabsList>
           <TabsContent value="agendados">
             <Relatorios />
@@ -75,6 +77,9 @@ export function RelatoriosMktPage() {
           </TabsContent>
           <TabsContent value="alertas">
             <Alertas />
+          </TabsContent>
+          <TabsContent value="perdas">
+            <PerdasIa />
           </TabsContent>
         </Tabs>
       </div>

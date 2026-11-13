@@ -25,6 +25,7 @@ export const WEEKLY_SECTIONS = [
   { key: 'pecas', label: 'Tipos de peça mais pedidos' },
   { key: 'origens', label: 'De onde vieram os leads (origem)' },
   { key: 'sugestoes', label: 'Sugestões de melhoria' },
+  { key: 'perdas_ia', label: 'Análise das perdas com IA (Claude): causas, códigos e peças pedidas e decisões sugeridas (só gestores, mensagem à parte)' },
   { key: 'base', label: 'Leads que entraram na base: total, e-commerce e os que não chamaram (só gestores)' },
 ] as const
 export type WeeklySection = (typeof WEEKLY_SECTIONS)[number]['key']

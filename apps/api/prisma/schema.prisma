@@ -4017,3 +4017,31 @@ model MlCompetitorPriceDay {
   @@index([tenantId, itemId])
   @@map("ml_competitor_price_days")
 }
+
+/// Análise das perdas com IA (Claude): um relatório por período (manual ou do resumo semanal dos gestores).
+model LossAiReport {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  label        String
+  from         DateTime
+  to           DateTime
+  /// Ciclo do resumo semanal que gerou o relatório (null = gerado à mão).
+  cycleKey     String?
+  /// GERANDO, PRONTO ou ERRO.
+  status       String    @default("GERANDO")
+  error        String?
+  model        String
+  total        Int       @default(0)
+  omitted      Int       @default(0)
+  inputTokens  Int       @default(0)
+  outputTokens Int       @default(0)
+  result       Json?
+  createdById  String?   @db.Uuid
+  createdBy    String?
+  createdAt    DateTime  @default(now())
+  finishedAt   DateTime?
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, cycleKey])
+  @@map("loss_ai_reports")
+}

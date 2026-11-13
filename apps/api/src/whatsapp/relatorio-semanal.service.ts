@@ -11,6 +11,7 @@ import type { Prisma } from '../generated/prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { ChatService } from './chat.service'
+import { PerdasIaService } from './perdas-ia.service'
 
 const TICK_MS = 60_000
 const LABEL = 'Resumo do vendedor (automático)'
@@ -42,6 +43,7 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
     private readonly chat: ChatService,
     private readonly settings: SettingsService,
     private readonly audit: AuditService,
+    private readonly perdasIa: PerdasIaService,
   ) {}
 
   onApplicationBootstrap() {
@@ -139,7 +141,10 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
     // Só os números informados: os vendedores não recebem o deles.
     const reports = config.toSellers ? inScope.filter((r) => !done[r.seller.id]) : []
     const managers = inScope.length ? config.managerPhones.filter((ph) => !done[`gestor:${ph}`]) : []
-    if (!reports.length && !managers.length) return
+    // Análise das perdas com IA: mensagem à parte para cada gestor, depois do resumo da equipe.
+    const aiOn = config.sections.includes('perdas_ia') && config.managerPhones.length > 0
+    const aiManagers = aiOn ? config.managerPhones.filter((ph) => !done[`gestor-ia:${ph}`]) : []
+    if (!reports.length && !managers.length && !aiManagers.length) return
     // Intervalo entre as mensagens (sorteado a cada envio): a próxima só depois do horário marcado.
     if (log.nextAt && now.getTime() < Date.parse(log.nextAt)) return
     const numbers = await this.prisma.whatsappNumber.findMany({ where: { tenantId, deletedAt: null, status: 'CONECTADO' }, orderBy: { createdAt: 'asc' } })
@@ -152,6 +157,9 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
       const value = { cycle: cycle.key, at: new Date().toISOString(), nextAt: log.nextAt, sellers: done } as unknown as Prisma.InputJsonValue
       return this.prisma.tenantSetting.upsert({ where: { tenantId_key: { tenantId, key: WEEKLY_LOG_KEY } }, create: { tenantId, key: WEEKLY_LOG_KEY, value }, update: { value } })
     }
+    // A análise começa junto com os envios (leva alguns minutos); a mensagem dela só sai quando ficar pronta.
+    const ai = aiManagers.length ? await this.perdasIa.forCycle(tenantId, cycle) : null
+    if (ai === 'wait' && !reports.length && !managers.length) return
     const base = managers.length && config.sections.includes('base') ? await loadBaseLeads(this.prisma, tenantId, cycle) : null
     // Fila: os vendedores e depois os gestores. Uma mensagem por vez; quem não tem telefone é pulado sem esperar.
     const queue: { key: string; phone: string | null; message: string; name: string }[] = [
@@ -160,6 +168,7 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
         const message = managerMessage(cycle.label, inScope.map((r) => ({ seller: r.seller.name, stats: r.stats })), config.sections, cycle.word, base)
         return managers.map((ph) => ({ key: `gestor:${ph}`, phone: ph, message, name: 'Gestor' }))
       })() : []),
+      ...(ai && ai !== 'wait' ? aiManagers.map((ph) => ({ key: `gestor-ia:${ph}`, phone: ph, message: ai, name: 'Gestor' })) : []),
     ]
     for (const item of queue) {
       if (!item.phone) {
