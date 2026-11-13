@@ -185,7 +185,7 @@ export interface QuoteResult {
   /** Campanha de frete que vale para esta opção: quanto cobrar do cliente. */
   campaign?: { id: string; name: string; label: string; customerPrice: number; discount: number } | null
   /** Cotação online (API do Melhor Envio ou dos Correios): não tem tabela no CRM e não vira opção escolhida. */
-  online?: 'MELHOR_ENVIO' | 'CORREIOS' | 'BRASPRESS' | 'JADLOG'
+  online?: 'MELHOR_ENVIO' | 'CORREIOS' | 'BRASPRESS' | 'JADLOG' | 'RODONAVES' | 'DHL'
   /** Coletas da transportadora no dia da cotação (até que horas tirar pedido e a hora da coleta). */
   pickups?: { cutoff: string; pickup: string; note: string | null }[]
   tableId: string | null

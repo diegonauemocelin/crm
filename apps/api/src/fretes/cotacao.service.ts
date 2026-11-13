@@ -19,10 +19,19 @@ import { ibgeByCity } from './regioes'
 import { internalRateFrom, parseCteXml, type RateLearning } from './cte'
 import { IntegracoesService } from './integracoes.service'
 import { bestCampaign, CAMPAIGNS_KEY, cleanCampaigns, type FreightCampaign } from './campanhas'
-import { packageOf } from './integracoes'
+import { type OnlineQuote, packageOf } from './integracoes'
 import { parseNumber } from './importacao'
 import { TcarService } from '../tcar/tcar.service'
 import { docNumber, type ErpDocType, weightOf } from '../tcar/erp'
+
+const ONLINE_LABEL: Record<OnlineQuote['source'], string> = {
+  CORREIOS: 'Correios (contrato) · cotação online',
+  BRASPRESS: 'Braspress · cotação online',
+  JADLOG: 'Jadlog · cotação online',
+  MELHOR_ENVIO: 'Melhor Envio · cotação online',
+  RODONAVES: 'Rodonaves · cotação online',
+  DHL: 'DHL Express · cotação online',
+}
 
 export interface QuoteInput {
   unitId: string
@@ -80,7 +89,7 @@ export interface QuoteResult {
   /** Coletas da transportadora no dia da cotação, na filial de origem: até que horas tirar pedido e a hora da coleta. */
   pickups?: { cutoff: string; pickup: string; note: string | null }[]
   /** Cotação online (API): de onde veio; não tem tabela no CRM. */
-  online?: 'MELHOR_ENVIO' | 'CORREIOS' | 'BRASPRESS' | 'JADLOG'
+  online?: 'MELHOR_ENVIO' | 'CORREIOS' | 'BRASPRESS' | 'JADLOG' | 'RODONAVES' | 'DHL'
   /** Como a carga chega à transportadora: ela coleta na empresa ou a empresa despacha (leva até ela). */
   pickupMode?: 'COLETA' | 'DESPACHO'
   /** Campanha de frete que vale para esta opção: o que cobrar do cliente em vez do total da tabela. */
@@ -512,10 +521,13 @@ export class CotacaoService {
    */
   private async onlineResults(tenantId: string, p: Awaited<ReturnType<CotacaoService['prepare']>>, d: QuoteInput): Promise<QuoteResult[]> {
     if (!p.originZip) return []
-    const quotes = await this.online.quote(tenantId, p.originZip, p.destZip, packageOf({ realWeight: p.measures.realWeight, volumes: d.volumes }, d.cargoValue), { senderDoc: p.unit.cnpj?.replace(/\D/g, '') || null, recipientDoc: p.doc }).catch(() => [])
+    const originCity = await this.originCity(p.unit, p.originZip, !!d.originZip)
+    const quotes = await this.online
+      .quote(tenantId, p.originZip, p.destZip, packageOf({ realWeight: p.measures.realWeight, volumes: d.volumes }, d.cargoValue), { senderDoc: p.unit.cnpj?.replace(/\D/g, '') || null, recipientDoc: p.doc }, { originCity, destCity: p.destCity })
+      .catch(() => [])
     return quotes.map((q) => {
       const ok = q.price !== null && !q.error
-      const label = q.source === 'CORREIOS' ? 'Correios (contrato) · cotação online' : q.source === 'BRASPRESS' ? 'Braspress · cotação online' : q.source === 'JADLOG' ? 'Jadlog · cotação online' : 'Melhor Envio · cotação online'
+      const label = ONLINE_LABEL[q.source]
       return {
         tableId: null,
         tableName: label,
@@ -540,6 +552,38 @@ export class CotacaoService {
         online: q.source,
       } satisfies QuoteResult
     })
+  }
+
+  /** Cidade de origem: a da filial, ou a do CEP quando a cotação usa outro CEP de origem (ou a filial não tem cidade). */
+  private async originCity(unit: { city: string | null; zip: string | null }, originZip: string, custom: boolean) {
+    if (!custom && unit.city) return unit.city
+    return (await this.cep(originZip)).city ?? unit.city
+  }
+
+  /** A tela de cotação mostra a cotação internacional (DHL Express)? */
+  async internationalStatus(user: AuthUser) {
+    assertCan(user, 'fretes_cotacao', 'view')
+    return { dhl: await this.online.internationalEnabled(user.tenantId) }
+  }
+
+  /** Cotação internacional na DHL Express (mercadoria com despacho aduaneiro). Não fica salva como cotação do CRM. */
+  async international(user: AuthUser, d: { unitId: string; countryCode: string; postalCode?: string; cityName: string; weight: number; length?: number | null; width?: number | null; height?: number | null; cargoValue?: number | null }) {
+    assertCan(user, 'fretes_cotacao', 'create')
+    assertUnit(user, 'fretes_cotacao', d.unitId)
+    const country = d.countryCode.trim().toUpperCase()
+    if (country === 'BR') throw new BadRequestException('Para destinos no Brasil, use a cotação normal (com o CEP).')
+    const city = cleanText(d.cityName, 80)
+    if (!city) throw new BadRequestException('Informe a cidade de destino.')
+    const unit = await this.prisma.unit.findFirst({ where: { id: d.unitId, tenantId: user.tenantId } })
+    if (!unit) throw new BadRequestException('Filial de origem inválida.')
+    const originZip = normalizeCep(unit.zip)
+    if (!originZip) throw new BadRequestException(`Cadastre o CEP de expedição da filial ${unit.name} para cotar envios internacionais.`)
+    const originCity = await this.originCity(unit, originZip, false)
+    if (!originCity) throw new BadRequestException(`Cadastre a cidade da filial ${unit.name} para cotar envios internacionais.`)
+    const vol = d.length && d.width && d.height ? [{ length: d.length, width: d.width, height: d.height, quantity: 1 }] : []
+    const pkg = packageOf({ realWeight: d.weight, volumes: vol }, d.cargoValue ?? 0)
+    const quotes = await this.online.dhlInternationalQuote(user.tenantId, { country: 'BR', postalCode: originZip, city: originCity }, { country, postalCode: (d.postalCode ?? '').trim().slice(0, 20), city }, pkg)
+    return { unit: { id: unit.id, name: unit.name }, quotes: quotes.map((q) => ({ service: q.service, serviceId: q.serviceId, price: q.price, deadlineDays: q.deadlineDays, error: q.error })) }
   }
 
   /**

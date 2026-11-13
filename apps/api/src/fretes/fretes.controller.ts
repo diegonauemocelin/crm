@@ -117,6 +117,24 @@ class JadlogDto {
   @IsOptional() @IsNumber() @Min(0) @Max(1000) cubageFactor?: number
 }
 
+class RodonavesDto {
+  @IsOptional() @IsBoolean() enabled?: boolean
+  @IsOptional() @IsString() @MaxLength(80) user?: string
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(200) password?: string | null
+  @IsOptional() @IsString() @MaxLength(20) cnpj?: string
+  @IsOptional() @IsString() @MaxLength(80) contactName?: string
+  @IsOptional() @IsString() @MaxLength(30) contactPhone?: string
+}
+
+class DhlDto {
+  @IsOptional() @IsBoolean() enabled?: boolean
+  @IsOptional() @IsString() @MaxLength(120) apiKey?: string
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(200) apiSecret?: string | null
+  @IsOptional() @IsString() @MaxLength(20) accountNumber?: string
+  @IsOptional() @IsBoolean() sandbox?: boolean
+  @IsOptional() @IsIn(['NACIONAL', 'INTERNACIONAL', 'AMBOS']) scope?: 'NACIONAL' | 'INTERNACIONAL' | 'AMBOS'
+}
+
 class CampaignsDto {
   /** Lista completa das campanhas (validada e limpa no serviço: cleanCampaigns). */
   @IsArray() @ArrayMaxSize(100) list!: unknown[]
@@ -125,6 +143,8 @@ class CampaignsDto {
 class IntegrationsDto {
   @IsOptional() @IsObject() @ValidateNested() @Type(() => BraspressDto) braspress?: BraspressDto
   @IsOptional() @IsObject() @ValidateNested() @Type(() => JadlogDto) jadlog?: JadlogDto
+  @IsOptional() @IsObject() @ValidateNested() @Type(() => RodonavesDto) rodonaves?: RodonavesDto
+  @IsOptional() @IsObject() @ValidateNested() @Type(() => DhlDto) dhl?: DhlDto
   @IsOptional() @IsObject() @ValidateNested() @Type(() => MelhorEnvioDto) melhorEnvio?: MelhorEnvioDto
   @IsOptional() @IsObject() @ValidateNested() @Type(() => CorreiosDto) correios?: CorreiosDto
 }
@@ -278,6 +298,18 @@ class QuoteDto {
   @IsOptional() @IsBoolean() allowExpired?: boolean
   @IsOptional() @nullable @IsString() @MaxLength(500) expiredReason?: string | null
   @IsOptional() @IsBoolean() noInvoice?: boolean
+}
+
+class InternationalQuoteDto {
+  @ApiProperty() @IsUUID() unitId!: string
+  @ApiProperty() @IsString() @Matches(/^[A-Za-z]{2}$/, { message: 'Código do país inválido (2 letras, ex.: AR).' }) countryCode!: string
+  @IsOptional() @IsString() @MaxLength(20) postalCode?: string
+  @ApiProperty() @IsString() @Length(1, 80) cityName!: string
+  @ApiProperty() @IsNumber() @Min(0.001) @Max(5000) weight!: number
+  @IsOptional() @nullable @IsNumber() @Min(0) @Max(1000) length?: number | null
+  @IsOptional() @nullable @IsNumber() @Min(0) @Max(1000) width?: number | null
+  @IsOptional() @nullable @IsNumber() @Min(0) @Max(1000) height?: number | null
+  @IsOptional() @nullable @IsNumber() @Min(0) cargoValue?: number | null
 }
 
 class SimulateDto extends QuoteDto {
@@ -676,6 +708,18 @@ export class FretesController {
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   quote(@CurrentUser() user: AuthUser, @Body() dto: QuoteDto, @ReqContext() ctx: RequestCtx) {
     return this.quotes.quote(user, dto, ctx)
+  }
+
+  @Get('cotacao/internacional')
+  internationalStatus(@CurrentUser() user: AuthUser) {
+    return this.quotes.internationalStatus(user)
+  }
+
+  @Post('cotacao/internacional')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  internationalQuote(@CurrentUser() user: AuthUser, @Body() dto: InternationalQuoteDto) {
+    return this.quotes.international(user, dto)
   }
 
   @Post('cotacoes/lote/:unitId')
