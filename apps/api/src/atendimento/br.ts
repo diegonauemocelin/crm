@@ -34,7 +34,7 @@ export type UF = keyof typeof UFS
 export const UF_LIST = Object.keys(UFS) as UF[]
 export const REGIONS = ['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul'] as const
 
-const DDD_UF: Record<string, UF> = {}
+export const DDD_UF: Record<string, UF> = {}
 const DDD_RANGES: [UF, number[]][] = [
   ['SP', [11, 12, 13, 14, 15, 16, 17, 18, 19]],
   ['RJ', [21, 22, 24]],

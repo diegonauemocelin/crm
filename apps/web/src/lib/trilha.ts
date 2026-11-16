@@ -180,6 +180,27 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'busca-de-leads',
+    title: 'Busca de leads',
+    module: 'prospeccao',
+    routes: ['/atendimento/busca-de-leads'],
+    purpose: 'Encontrar empresas do seu segmento na região (cidade ou raio em km), com telefone, WhatsApp e e-mail comerciais conferidos, para a pré-venda abordar.',
+    howItWorks: 'A busca junta o mapa aberto (OpenStreetMap), a pesquisa na web da IA escolhida na configuração (Claude ou Gemini no plano gratuito) e o cadastro público do CNPJ. Cada contato é conferido: e-mail com domínio que recebe e-mail, telefone com DDD válido e, quando você pedir, se o celular tem WhatsApp. Quem já é lead ou foi marcado como "não contatar" não aparece. Só dados públicos de empresas (LGPD).',
+    lessons: [
+      {
+        id: 'prospeccao.buscar',
+        title: 'Fazer uma busca',
+        steps: [
+          'Abra Atendimento Comercial → Busca de leads.',
+          'Informe a cidade/UF ou o CEP, o raio em km, o segmento e as palavras-chave (e o perfil ideal, se quiser). Clique em Buscar empresas.',
+          'Em 1 a 4 minutos aparece a lista com a nota de cada empresa e o motivo. Use Conferir WhatsApp para saber quais celulares têm WhatsApp.',
+          'Clique em Virar lead para mandar a empresa para a base (origem Prospecção), Descartar ou Não contatar.',
+        ],
+        tip: 'Na Configuração (gestor) escolha a IA: Claude (mais completo, usa o crédito da Anthropic) ou Gemini (plano gratuito do Google, com limite diário), e o limite de buscas por dia.',
+      },
+    ],
+  },
+  {
     key: 'perdas-ia',
     title: 'Análise das perdas (IA)',
     module: 'mi_relatorios',
