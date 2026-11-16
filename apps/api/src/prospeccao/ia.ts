@@ -115,3 +115,34 @@ export function searchCost(provider: AiProvider, model: string, r: Pick<AiSearch
   const [i, o] = price[model.replace(/-\d{8}$/, '')] ?? price['claude-opus-5-5']!
   return Math.round(((r.inputTokens * i + r.outputTokens * o) / 1_000_000 + r.webSearches * 0.01) * 100) / 100
 }
+
+/** Texto curto (ex.: a mensagem de abordagem), sem pesquisa na web. */
+export async function aiWrite(provider: AiProvider, apiKey: string, claudeModel: string, geminiModels: string[], prompt: string): Promise<string> {
+  if (provider === 'claude') {
+    const client = new Anthropic({ apiKey, timeout: 2 * 60_000 })
+    const msg = await client.messages.create({ model: claudeModel, max_tokens: 4000, messages: [{ role: 'user', content: prompt }] })
+    if (msg.stop_reason === 'refusal') throw new Error('A IA recusou escrever esta mensagem.')
+    return msg.content.map((b) => (b.type === 'text' ? b.text : '')).join('')
+  }
+  let last = ''
+  for (const model of geminiModels) {
+    const res = await fetch(`${GEMINI_API}/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 4096 } }),
+      signal: AbortSignal.timeout(2 * 60_000),
+    }).catch((e: unknown) => {
+      last = (e as Error).message
+      return null
+    })
+    if (!res) continue
+    const data = (await res.json().catch(() => ({}))) as { error?: { message?: string }; candidates?: { content?: { parts?: { text?: string }[] } }[] }
+    if (!res.ok) {
+      last = data.error?.message ?? `HTTP ${res.status}`
+      if (res.status === 400 || res.status === 401 || res.status === 403) break
+      continue
+    }
+    return (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('')
+  }
+  throw new Error(`O Gemini não respondeu (${last || 'sem modelos'}).`)
+}
