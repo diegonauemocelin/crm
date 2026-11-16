@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.44",
+      "date": "2026-11-16",
+      "title": "Aviso de novidades a cada atualização",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Sistema",
+          "text": "Depois de cada atualização, cada usuário vê uma vez, ao entrar no sistema, o que mudou. Ao clicar em Entendi, o aviso some e só volta na próxima versão. O histórico completo continua em Atualizações."
+        }
+      ]
+    },
+    {
       "version": "3.0.43",
       "date": "2026-11-16",
       "title": "Busca de leads chama no WhatsApp e envia em fila; respostas rápidas com vários arquivos",
