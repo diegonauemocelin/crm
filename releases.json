@@ -2,6 +2,33 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.42",
+      "date": "2026-11-16",
+      "title": "Busca de leads",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Atendimento",
+          "text": "Atendimento Comercial › Busca de leads: encontre empresas por cidade, CEP ou raio em km, segmento, palavras-chave e perfil ideal. Cada empresa vem com a nota de quanto combina, o motivo e os contatos comerciais conferidos (e-mail com domínio que recebe e-mail, telefone com DDD válido, CNPJ ativo na Receita) e, quando você pedir, se o celular tem WhatsApp."
+        },
+        {
+          "type": "novo",
+          "area": "Atendimento",
+          "text": "Com um clique a empresa vira lead (origem Prospecção), é descartada ou marcada como \"não contatar\" (não volta em buscas futuras). Quem já é lead não aparece de novo."
+        },
+        {
+          "type": "novo",
+          "area": "Atendimento",
+          "text": "Na configuração (gestor) escolhe-se a IA da busca: Claude (usa o crédito da Anthropic) ou Gemini (plano gratuito do Google), e o limite de buscas por dia. Liberada por perfil na permissão \"Busca de leads\"."
+        },
+        {
+          "type": "seguranca",
+          "area": "Atendimento",
+          "text": "Só dados públicos de empresas: dados de sócios e contatos pessoais não são lidos nem guardados (LGPD)."
+        }
+      ]
+    },
+    {
       "version": "3.0.41",
       "date": "2026-11-13",
       "title": "Preço do Mercado Livre com a mesma margem da tabela",
