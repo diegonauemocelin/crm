@@ -2,7 +2,7 @@ import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common'
 import { env } from '../config/env'
 import type { Prisma } from '../generated/prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
-import { compareSemver, loadReleases, type ReleaseEntry } from './releases'
+import { compareSemver, loadReleases, type ReleaseEntry, unseenReleases } from './releases'
 
 const UPDATE_CHECK_TTL_MS = 6 * 60 * 60 * 1000
 
@@ -46,6 +46,18 @@ export class SystemService implements OnApplicationBootstrap {
       updateAvailable,
       upToDate: !updateAvailable,
     }
+  }
+
+  /** Novidades das atualizações que o usuário ainda não viu (o aviso aparece uma vez e some). */
+  async whatsNew(userId: string) {
+    const u = await this.prisma.user.findUnique({ where: { id: userId }, select: { seenVersion: true } })
+    return { version: this.currentVersion, releases: unseenReleases(this.releases, u?.seenVersion ?? null) }
+  }
+
+  /** O usuário viu as novidades: não aparece de novo até a próxima versão. */
+  async markSeen(userId: string) {
+    await this.prisma.user.update({ where: { id: userId }, data: { seenVersion: this.currentVersion } })
+    return { ok: true }
   }
 
   async history() {

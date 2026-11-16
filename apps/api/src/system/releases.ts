@@ -36,3 +36,14 @@ export function loadReleases(file: string): ReleaseEntry[] {
   }
   return [...releases].sort((a, b) => compareSemver(b.version, a.version))
 }
+
+/**
+ * Novidades que o usuário ainda não viu: as versões depois da última vista (até 5), sem as mudanças técnicas (infra).
+ * Usuário que nunca viu nenhuma: só a versão atual.
+ */
+export function unseenReleases(releases: ReleaseEntry[], seen: string | null, max = 5): ReleaseEntry[] {
+  const visible = (r: ReleaseEntry) => ({ ...r, changes: r.changes.filter((c) => c.type !== 'infra') })
+  const sorted = [...releases].sort((a, b) => compareSemver(b.version, a.version))
+  const list = seen ? sorted.filter((r) => compareSemver(r.version, seen) > 0) : sorted.slice(0, 1)
+  return list.map(visible).filter((r) => r.changes.length).slice(0, max)
+}
