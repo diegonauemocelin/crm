@@ -1624,9 +1624,12 @@ model WhatsappQuickReply {
   userId    String?  @db.Uuid
   title     String
   text      String
-  /// Arquivo que vai junto (catálogo em PDF, tabela, foto...): o texto vira a legenda.
+  /// (Antigo: um arquivo só. Passou para "files"; fica vazio.)
   fileId    String?  @db.Uuid
   fileName  String?
+  /// Arquivos que vão junto, em ordem (até 3: catálogo em PDF, tabela, foto, vídeo): [{ fileId, fileName }]. O texto
+  /// vira a legenda do primeiro.
+  files     Json     @default("[]")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -4072,9 +4075,67 @@ model ProspectSearch {
   finishedAt   DateTime?
 
   prospects Prospect[]
+  campaigns ProspectCampaign[]
 
   @@index([tenantId, createdAt])
   @@map("prospect_searches")
+}
+
+/// Envio em fila da busca de leads: a primeira mensagem de WhatsApp para as empresas escolhidas, uma de cada vez,
+/// com intervalo aleatório, limite por dia e só no horário comercial.
+model ProspectCampaign {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  searchId    String    @db.Uuid
+  numberId    String    @db.Uuid
+  /// Variações da mensagem (uma ao acaso por empresa), com {empresa}, {cidade}, {segmento}, {vendedor}.
+  messages    String[]
+  gapMin      Int       @default(2)
+  gapMax      Int       @default(10)
+  dailyMax    Int       @default(30)
+  optOut      Boolean   @default(true)
+  /// RODANDO, PAUSADA, CONCLUIDA ou CANCELADA.
+  status      String    @default("RODANDO")
+  /// Motivo de ter parado sozinha (ex.: número desconectado).
+  error       String?
+  nextAt      DateTime  @default(now())
+  createdById String?   @db.Uuid
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+  finishedAt  DateTime?
+
+  search ProspectSearch @relation(fields: [searchId], references: [id], onDelete: Cascade)
+  sends  ProspectSend[]
+
+  @@index([tenantId, status])
+  @@index([searchId])
+  @@map("prospect_campaigns")
+}
+
+model ProspectSend {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  campaignId     String    @db.Uuid
+  prospectId     String    @db.Uuid
+  phone          String
+  /// FILA, ENVIANDO, ENVIADA, PULADA, ERRO ou CANCELADA.
+  status         String    @default("FILA")
+  text           String?
+  error          String?
+  sentAt         DateTime?
+  conversationId String?   @db.Uuid
+  /// A empresa respondeu depois do envio (e se pediu para sair).
+  repliedAt      DateTime?
+  optedOut       Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+
+  campaign ProspectCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  prospect Prospect         @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, prospectId])
+  @@index([campaignId, status])
+  @@index([tenantId, status, sentAt])
+  @@map("prospect_sends")
 }
 
 /// Empresa encontrada numa busca de leads, com os contatos conferidos.
@@ -4107,6 +4168,7 @@ model Prospect {
   updatedAt  DateTime @updatedAt
 
   search ProspectSearch @relation(fields: [searchId], references: [id], onDelete: Cascade)
+  sends  ProspectSend[]
 
   @@index([searchId])
   @@index([tenantId, status])

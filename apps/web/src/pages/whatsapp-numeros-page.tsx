@@ -326,9 +326,9 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
   })
   return (
     <Dialog open onOpenChange={(o) => !o && void guard()}>
-      <DialogContent>
+      <DialogContent className="flex max-h-[92vh] flex-col sm:max-w-4xl">
         <form
-          className="space-y-4"
+          className="flex min-h-0 flex-1 flex-col gap-4"
           onSubmit={(e: FormEvent) => {
             e.preventDefault()
             setError(null)
@@ -339,6 +339,8 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
             <DialogTitle>{number ? 'Editar número' : 'Cadastrar número'}</DialogTitle>
             <DialogDescription>O número do WhatsApp é preenchido sozinho quando o celular ler o QR Code.</DialogDescription>
           </DialogHeader>
+          <div className="-mx-4 grid min-h-0 flex-1 gap-4 overflow-y-auto px-4 py-1 md:grid-cols-2 md:gap-6">
+          <div className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="wa-n-name" required>Nome</Label>
             <Input id="wa-n-name" required minLength={2} maxLength={80} placeholder="Ex.: Vendas Paraná" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
@@ -391,6 +393,9 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
             <MultiSelect id="wa-n-users" items={users} value={userIds} onChange={setUserIds} placeholder="Selecione os usuários" />
             <p className="text-xs text-muted-foreground">Quem tem a permissão Chat WhatsApp como “Próprios” só vê os números ligados a ele (ou ao vendedor dele). Administrador e Gestor comercial veem todos.</p>
           </div>
+          </div>
+          <div className="space-y-3">
+          <p className="text-sm font-medium">Como o número funciona</p>
           {!monitor && (
           <div className="space-y-3 rounded-md border p-3 text-sm">
             <label className="flex items-start justify-between gap-3">
@@ -485,6 +490,8 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
               </div>
             )}
           </div>
+          </div>
+          </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => void guard()}>
@@ -572,6 +579,7 @@ interface QuickReply {
   title: string
   text: string
   fileName?: string | null
+  files?: { id: string; name: string }[]
 }
 
 /** Respostas rápidas do chat. {nome} vira o primeiro nome do cliente e {vendedor} o de quem envia. */
@@ -644,10 +652,10 @@ function QuickReplyDialog({ reply, onClose }: { reply: QuickReply | null; onClos
   const [title, setTitle] = useState(reply?.title ?? '')
   const [text, setText] = useState(reply?.text ?? '')
   const [error, setError] = useState<string | null>(null)
-  const [picked, setPicked] = useState<File | null>(null)
-  const [removed, setRemoved] = useState(false)
+  const [picked, setPicked] = useState<File[]>([])
+  const [removed, setRemoved] = useState<string[]>([])
   const [initial] = useState({ title, text })
-  const guard = useCloseGuard(isDirty(initial, { title, text }) || !!picked || removed, onClose, 'a resposta')
+  const guard = useCloseGuard(isDirty(initial, { title, text }) || picked.length > 0 || removed.length > 0, onClose, 'a resposta')
   const save = useMutation({
     mutationFn: async () => {
       const saved = await (reply ? api.put<{ id: string }>(`/chat/respostas/${reply.id}`, { title, text }) : api.post<{ id: string }>('/chat/respostas', { title, text, standard: true }))
@@ -685,9 +693,9 @@ function QuickReplyDialog({ reply, onClose }: { reply: QuickReply | null; onClos
             <Textarea id="qr-text" required rows={5} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>Arquivo (opcional)</Label>
-            <ReplyFileField current={reply?.fileName} picked={picked} removed={removed} onPick={setPicked} onRemove={setRemoved} />
-            <p className="text-xs text-muted-foreground">Catálogo em PDF, tabela, foto ou vídeo (até 64 MB). Vai junto, com o texto como legenda.</p>
+            <Label>Arquivos (opcional, até 3)</Label>
+            <ReplyFileField current={reply?.files} picked={picked} removed={removed} onPick={setPicked} onRemove={setRemoved} />
+            <p className="text-xs text-muted-foreground">Catálogo em PDF, tabela, foto ou vídeo (até 64 MB cada). Vão juntos, na ordem, com o texto como legenda do primeiro.</p>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>

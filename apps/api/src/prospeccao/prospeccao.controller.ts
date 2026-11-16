@@ -1,10 +1,11 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
-import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator'
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
+import { ProspeccaoEnvioService } from './envio.service'
 import { ProspeccaoService } from './prospeccao.service'
 
 class BuscaDto {
@@ -24,11 +25,70 @@ class ConfigDto {
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(2) @Max(20) maxWebSearches?: number
 }
 
+class ChatDto {
+  @ApiProperty() @IsUUID() numberId!: string
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(20) phone?: string
+}
+
+class MensagemDto {
+  @ApiProperty({ description: 'O que a empresa oferece (a IA escreve a abordagem a partir disto)' }) @IsString() @MaxLength(600) offer!: string
+}
+
+class EnvioDto {
+  @ApiProperty() @IsUUID() numberId!: string
+  @ApiProperty({ type: [String] }) @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) prospectIds!: string[]
+  @ApiProperty({ type: [String] }) @IsArray() @ArrayMaxSize(5) @IsString({ each: true }) @MaxLength(1500, { each: true }) messages!: string[]
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(120) gapMin?: number
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(120) gapMax?: number
+  @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) dailyMax?: number
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() optOut?: boolean
+}
+
 /** Busca de leads, em Atendimento Comercial. */
 @ApiTags('Busca de leads')
 @Controller('prospeccao')
 export class ProspeccaoController {
-  constructor(private readonly svc: ProspeccaoService) {}
+  constructor(
+    private readonly svc: ProspeccaoService,
+    private readonly envio: ProspeccaoEnvioService,
+  ) {}
+
+  @Get('numeros')
+  numbers(@CurrentUser() user: AuthUser) {
+    return this.envio.numbers(user)
+  }
+
+  @Post('empresas/:id/chat')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  openChat(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ChatDto, @ReqContext() ctx: RequestCtx) {
+    return this.envio.openChat(user, id, dto, ctx)
+  }
+
+  @Post('buscas/:id/mensagem')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  writeMessage(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: MensagemDto) {
+    return this.envio.writeMessage(user, id, dto.offer)
+  }
+
+  @Get('buscas/:id/envios')
+  campaigns(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.envio.list(user, id)
+  }
+
+  @Post('buscas/:id/envios')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  createCampaign(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: EnvioDto, @ReqContext() ctx: RequestCtx) {
+    return this.envio.createCampaign(user, id, { ...dto }, ctx)
+  }
+
+  @Post('envios/:id/:acao')
+  @HttpCode(200)
+  setStatus(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Param('acao') acao: string, @ReqContext() ctx: RequestCtx) {
+    if (acao !== 'pausar' && acao !== 'retomar' && acao !== 'cancelar') throw new BadRequestException('Ação inválida.')
+    return this.envio.setStatus(user, id, acao, ctx)
+  }
 
   @Get()
   view(@CurrentUser() user: AuthUser) {

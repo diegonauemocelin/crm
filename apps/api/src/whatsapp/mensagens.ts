@@ -791,3 +791,25 @@ export function protoMessageText(buf: Buffer, depth = 0): string | null {
   }
   return null
 }
+
+/** Até quantos arquivos uma resposta rápida leva (ex.: dois PDFs e um vídeo). */
+export const QUICK_REPLY_MAX_FILES = 3
+
+/** Arquivos da resposta rápida, em ordem (o formato antigo, de um arquivo só, entra como o primeiro). */
+export function replyFiles(r: { files: unknown; fileId: string | null; fileName: string | null }): { fileId: string; fileName: string }[] {
+  const list = (Array.isArray(r.files) ? r.files : []).filter((f): f is { fileId: string; fileName: string } => !!f && typeof (f as { fileId?: unknown }).fileId === 'string').map((f) => ({ fileId: f.fileId, fileName: typeof f.fileName === 'string' && f.fileName ? f.fileName : 'arquivo' }))
+  return r.fileId && !list.some((f) => f.fileId === r.fileId) ? [{ fileId: r.fileId, fileName: r.fileName ?? 'arquivo' }, ...list] : list
+}
+
+/**
+ * Marca de mensagem encaminhada pelo CRM (o WhatsApp mostra a etiqueta "Encaminhada" só quando o próprio aparelho
+ * encaminha; pelo serviço de envio, a marca vai no texto). Fica na primeira linha do texto ou da legenda.
+ */
+export const FORWARD_TAG = '↪️ _Encaminhada_'
+
+/** Texto ou legenda com a marca de encaminhada (sem duplicar quando a mensagem já veio encaminhada). */
+export function forwardedText(text: string | null | undefined) {
+  const t = (text ?? '').trim()
+  if (!t) return FORWARD_TAG
+  return t.startsWith(FORWARD_TAG) ? t : `${FORWARD_TAG}\n${t}`
+}

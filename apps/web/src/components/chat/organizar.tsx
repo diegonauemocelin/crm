@@ -25,6 +25,10 @@ export interface ChatLabel {
   standard?: boolean
   mine?: boolean
 }
+export interface ReplyFile {
+  id: string
+  name: string
+}
 export interface QuickReply {
   id: string
   title: string
@@ -32,58 +36,69 @@ export interface QuickReply {
   preview?: string
   standard: boolean
   mine: boolean
-  /** Arquivo que vai junto (o texto vira a legenda). */
+  /** Arquivos que vão junto (o texto vira a legenda do primeiro). */
+  files?: ReplyFile[]
+  /** Nomes dos arquivos juntos ("catalogo.pdf + video.mp4"). */
   fileName?: string | null
 }
 
 const REPLY_FILE_TYPES = 'application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,image/jpeg,image/png,image/webp,video/mp4'
+export const REPLY_MAX_FILES = 3
 
 /**
- * Arquivo da resposta rápida (catálogo em PDF, tabela, foto): escolhe um novo (vai junto ao salvar) ou tira o atual.
- * Quem chama envia o arquivo com saveReplyFile depois de salvar o texto.
+ * Arquivos da resposta rápida (catálogo em PDF, tabela, foto, vídeo; até 3): escolhe novos (vão ao salvar) ou tira os
+ * que tinha. Quem chama envia com saveReplyFile depois de salvar o texto.
  */
-export function ReplyFileField({ current, picked, removed, onPick, onRemove }: { current?: string | null; picked: File | null; removed: boolean; onPick: (f: File | null) => void; onRemove: (v: boolean) => void }) {
+export function ReplyFileField({ current = [], picked, removed, onPick, onRemove }: { current?: ReplyFile[]; picked: File[]; removed: string[]; onPick: (f: File[]) => void; onRemove: (ids: string[]) => void }) {
   const input = useRef<HTMLInputElement>(null)
-  const name = picked?.name ?? (removed ? null : current)
+  const kept = current.filter((f) => !removed.includes(f.id))
+  const total = kept.length + picked.length
   return (
-    <div className="flex flex-wrap items-center gap-2 text-sm">
+    <div className="space-y-1.5 text-sm">
       <input
         ref={input}
         type="file"
         className="hidden"
         accept={REPLY_FILE_TYPES}
+        multiple
         onChange={(e) => {
-          const f = e.target.files?.[0] ?? null
+          const list = [...(e.target.files ?? [])]
           e.target.value = ''
-          if (f && f.size > 64 * 1024 * 1024) return void toast.error('Arquivo maior que 64 MB.')
-          onPick(f)
-          onRemove(false)
+          if (list.some((f) => f.size > 64 * 1024 * 1024)) return void toast.error('Arquivo maior que 64 MB.')
+          const room = REPLY_MAX_FILES - total
+          if (list.length > room) toast.error(`No máximo ${REPLY_MAX_FILES} arquivos por resposta.`)
+          onPick([...picked, ...list.slice(0, Math.max(0, room))])
         }}
       />
-      <Button type="button" size="sm" variant="outline" onClick={() => input.current?.click()}>
-        <PaperclipIcon /> {name ? 'Trocar arquivo' : 'Anexar arquivo (PDF, catálogo...)'}
-      </Button>
-      {name && (
-        <>
-          <span className="min-w-0 max-w-56 truncate text-xs text-muted-foreground" title={name}>
-            {name}
+      {[...kept.map((f) => ({ key: f.id, name: f.name, drop: () => onRemove([...removed, f.id]) })), ...picked.map((f, i) => ({ key: `novo-${i}`, name: f.name, drop: () => onPick(picked.filter((_, j) => j !== i)) }))].map((f, i) => (
+        <div key={f.key} className="flex items-center gap-2">
+          <PaperclipIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          <span className="min-w-0 max-w-72 truncate text-xs" title={f.name}>
+            {i + 1}. {f.name}
           </span>
-          <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={() => (onPick(null), onRemove(true))} aria-label={`Remover o arquivo ${name}`}>
+          <Button type="button" size="sm" variant="ghost" className="h-7 px-2" onClick={f.drop} aria-label={`Remover o arquivo ${f.name}`}>
             Remover
           </Button>
-        </>
+        </div>
+      ))}
+      {total < REPLY_MAX_FILES && (
+        <Button type="button" size="sm" variant="outline" onClick={() => input.current?.click()}>
+          <PaperclipIcon /> {total ? 'Adicionar mais um arquivo (PDF, vídeo...)' : 'Anexar arquivo (PDF, catálogo, vídeo...)'}
+        </Button>
       )}
+      {total > 1 && <p className="text-xs text-muted-foreground">Vão um depois do outro, nesta ordem; o texto vai como legenda do primeiro.</p>}
     </div>
   )
 }
 
-/** Depois de salvar a resposta: manda o arquivo escolhido ou tira o que tinha. */
-export async function saveReplyFile(replyId: string, picked: File | null, removed: boolean) {
-  if (picked) {
+/** Depois de salvar a resposta: tira os arquivos removidos e manda os novos, na ordem. */
+export async function saveReplyFile(replyId: string, picked: File[], removed: string[]) {
+  for (const fileId of removed) await api.delete(`/chat/respostas/${replyId}/arquivo/${fileId}`)
+  for (const f of picked) {
     const fd = new FormData()
-    fd.append('file', picked)
+    fd.append('file', f)
     await api.post(`/chat/respostas/${replyId}/arquivo`, fd)
-  } else if (removed) await api.delete(`/chat/respostas/${replyId}/arquivo`)
+  }
 }
 
 export const LABEL_COLORS = ['cinza', 'vermelho', 'laranja', 'amarelo', 'verde', 'azul', 'roxo', 'rosa'] as const
@@ -320,9 +335,9 @@ export function ManageRepliesDialog({ onClose }: { onClose: () => void }) {
   const [title, setTitle] = useState('')
   const [text, setText] = useState('')
   const [standard, setStandard] = useState(false)
-  const [picked, setPicked] = useState<File | null>(null)
-  const [removed, setRemoved] = useState(false)
-  const reset = () => (setEditing(null), setTitle(''), setText(''), setStandard(false), setPicked(null), setRemoved(false))
+  const [picked, setPicked] = useState<File[]>([])
+  const [removed, setRemoved] = useState<string[]>([])
+  const reset = () => (setEditing(null), setTitle(''), setText(''), setStandard(false), setPicked([]), setRemoved([]))
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ['chat-respostas-gerenciar'] })
     void qc.invalidateQueries({ queryKey: ['chat-respostas'] })
@@ -351,7 +366,7 @@ export function ManageRepliesDialog({ onClose }: { onClose: () => void }) {
     if (await confirm({ title: `Excluir a resposta rápida “${r.title}”?`, description: 'Ela some da lista de respostas de todos que a usam. Não dá para desfazer.', confirmLabel: 'Excluir resposta rápida' })) del.mutate(r.id)
   }
   // Texto digitado e ainda não salvo: pergunta antes de fechar a janela.
-  const dirty = editing ? isDirty({ t: editing.title, x: editing.text }, { t: title, x: text }) || !!picked || removed : !!(title.trim() || text.trim() || picked)
+  const dirty = editing ? isDirty({ t: editing.title, x: editing.text }, { t: title, x: text }) || picked.length > 0 || removed.length > 0 : !!(title.trim() || text.trim() || picked.length)
   const guard = useCloseGuard(dirty, onClose, 'a resposta')
   return (
     <Dialog open onOpenChange={(o) => !o && void guard()}>
@@ -374,7 +389,7 @@ export function ManageRepliesDialog({ onClose }: { onClose: () => void }) {
             <Input id="qr-title" autoFocus maxLength={60} placeholder="Título (ex.: Saudação)" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
           <Textarea aria-label="Texto da resposta" rows={4} maxLength={2000} placeholder="Olá {nome}, aqui é {vendedor}. Como posso ajudar?" value={text} onChange={(e) => setText(e.target.value)} />
-          <ReplyFileField current={editing?.fileName} picked={picked} removed={removed} onPick={setPicked} onRemove={setRemoved} />
+          <ReplyFileField current={editing?.files} picked={picked} removed={removed} onPick={setPicked} onRemove={setRemoved} />
           <div className="flex flex-wrap items-center justify-between gap-2">
             {!editing && admin ? (
               <label className="flex items-center gap-2 text-sm">
@@ -422,7 +437,7 @@ export function ManageRepliesDialog({ onClose }: { onClose: () => void }) {
               </div>
               {canEdit(r) && (
                 <>
-                  <Button size="icon" variant="ghost" className="size-7" onClick={() => (setEditing(r), setTitle(r.title), setText(r.text), setPicked(null), setRemoved(false))} aria-label={`Editar resposta rápida ${r.title}`}>
+                  <Button size="icon" variant="ghost" className="size-7" onClick={() => (setEditing(r), setTitle(r.title), setText(r.text), setPicked([]), setRemoved([]))} aria-label={`Editar resposta rápida ${r.title}`}>
                     <PencilIcon />
                   </Button>
                   <Button size="icon" variant="ghost" className="size-7" onClick={() => void remove(r)} disabled={del.isPending} aria-label={`Excluir resposta rápida ${r.title}`}>

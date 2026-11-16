@@ -22,7 +22,7 @@ import { type AgendaCategory, answersClient, applyVariables, cleanRules, contact
 import { parseCsv } from '../atendimento/planilha'
 import { answersNote, type BotOutcome, botStateOf, chooseFlow, continueFlow, flowOf, startFlow } from './fluxo'
 import { chunks, HISTORY_BATCH, HISTORY_NAME, historyConvKey, historyConvWhere, historyFrom, historyHours, historyIsLast, historyKnownWhere, historyName, historyNote, historyPatch, type HistoryPick, historyStale, importDays, isOldHistory, matchHistoryConversation, pickHistory } from './historico'
-import { extOf, INLINE_MEDIA_MAX_BYTES, INLINE_MIME, MEDIA_MAX_BYTES, openSecretEdit, parseCalls, parseMessage, parseReaction, parseRevision, parseSecretEdit, type ParsedSecretEdit, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, UNREADABLE_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, whatsappOf, withReaction } from './mensagens'
+import { extOf, INLINE_MEDIA_MAX_BYTES, INLINE_MIME, MEDIA_MAX_BYTES, openSecretEdit, parseCalls, parseMessage, parseReaction, parseRevision, parseSecretEdit, type ParsedSecretEdit, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, UNREADABLE_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, forwardedText, phoneVariants, previewOf, QUICK_REPLY_MAX_FILES, replyFiles, whatsappOf, withReaction } from './mensagens'
 
 const PAGE = 60
 /** Nome que aparece nas mensagens e notas do chatbot. */
@@ -1815,7 +1815,15 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         const convId = t.conversationId ?? (await this.start(user, { numberId: src.numberId, phone: t.phone })).id
         if (sources.has(convId)) throw new BadRequestException('É a própria conversa das mensagens.')
         const c = await this.sendContext(user, convId)
+        // Quem recebe vê que foi encaminhada: a marca vai no texto ou na legenda; áudio, figurinha e contato não têm
+        // legenda, então vão depois de uma linha "Encaminhada".
+        const tagLine = async () => {
+          const text = forwardedText(null)
+          const r = await c.client.sendText(c.number.instanceName, c.target, text).catch((e: unknown) => this.fail(e))
+          await this.recordSent(user, c, r, { type: 'texto', text })
+        }
         for (const m of list) {
+          if (m.type === 'contato' || m.type === 'audio' || m.type === 'figurinha') await tagLine()
           if (m.type === 'contato') {
             for (const line of m.text!.split('\n').slice(0, 10)) {
               const [name = '', tel = ''] = line.split(' · ')
@@ -1825,8 +1833,9 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
               await this.recordSent(user, c, r, { type: 'contato', text: card.text })
             }
           } else if (!MEDIA.includes(m.type)) {
-            const r = await c.client.sendText(c.number.instanceName, c.target, m.text!).catch((e: unknown) => this.fail(e))
-            await this.recordSent(user, c, r, { type: 'texto', text: m.text })
+            const text = forwardedText(m.text)
+            const r = await c.client.sendText(c.number.instanceName, c.target, text).catch((e: unknown) => this.fail(e))
+            await this.recordSent(user, c, r, { type: 'texto', text })
           } else {
             const file = files.get(m.fileId!)!
             const base64 = file.content.toString('base64')
@@ -1836,9 +1845,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
               m.type === 'audio'
                 ? await c.client.sendAudio(c.number.instanceName, c.target, base64).catch((e: unknown) => this.fail(e))
                 : await c.client
-                    .sendMedia(c.number.instanceName, c.target, { mediatype: m.type === 'video' ? 'video' : m.type === 'documento' ? 'document' : 'image', mimetype: mime, base64, fileName, caption: m.text ?? undefined })
+                    .sendMedia(c.number.instanceName, c.target, { mediatype: m.type === 'video' ? 'video' : m.type === 'documento' ? 'document' : 'image', mimetype: mime, base64, fileName, caption: m.type === 'figurinha' ? (m.text ?? undefined) : forwardedText(m.text) })
                     .catch((e: unknown) => this.fail(e))
-            await this.recordSent(user, c, r, { type: m.type, text: m.type === 'audio' ? null : m.text, fileId: m.fileId!, fileName, mime })
+            const caption = m.type === 'audio' ? null : m.type === 'figurinha' ? m.text : forwardedText(m.text)
+            await this.recordSent(user, c, r, { type: m.type, text: caption, fileId: m.fileId!, fileName, mime })
           }
           sent++
         }
@@ -2293,7 +2303,19 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       const c = await this.load(user, convId)
       nome = (c.leadId ? (await this.prisma.lead.findUnique({ where: { id: c.leadId }, select: { name: true } }))?.name : null) ?? c.name
     }
-    return rows.map((r) => ({ id: r.id, title: r.title, text: r.text, fileName: r.fileId ? r.fileName : null, standard: r.userId === null, mine: r.userId === user.id, preview: applyVariables(r.text, { nome, vendedor: user.name }) }))
+    return rows.map((r) => {
+      const files = replyFiles(r)
+      return {
+        id: r.id,
+        title: r.title,
+        text: r.text,
+        files: files.map((f) => ({ id: f.fileId, name: f.fileName })),
+        fileName: files.length ? files.map((f) => f.fileName).join(' + ') : null,
+        standard: r.userId === null,
+        mine: r.userId === user.id,
+        preview: applyVariables(r.text, { nome, vendedor: user.name }),
+      }
+    })
   }
 
   async saveQuickReply(user: AuthUser, id: string | null, d: { title: string; text: string; standard?: boolean }) {
@@ -2319,11 +2341,11 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (!found) throw new NotFoundException('Resposta não encontrada.')
     this.assertOwn(user, found, 'resposta')
     await this.prisma.whatsappQuickReply.delete({ where: { id } })
-    if (found.fileId) await this.files.remove(found.fileId).catch(() => undefined)
+    for (const f of replyFiles(found)) await this.files.remove(f.fileId).catch(() => undefined)
     return { ok: true }
   }
 
-  /** Arquivo da resposta rápida (catálogo em PDF, tabela, foto...): troca o anterior, se houver. */
+  /** Mais um arquivo na resposta rápida (catálogo em PDF, tabela, foto, vídeo), até QUICK_REPLY_MAX_FILES. */
   async setQuickReplyFile(user: AuthUser, id: string, file: Express.Multer.File | undefined) {
     this.assertCan(user)
     const found = await this.prisma.whatsappQuickReply.findFirst({ where: { id, ...this.ownedWhere(user) } })
@@ -2331,34 +2353,54 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     this.assertOwn(user, found, 'resposta')
     if (!file?.buffer?.length) throw new BadRequestException('Escolha um arquivo.')
     if (file.size > MEDIA_MAX_BYTES) throw new BadRequestException('Arquivo maior que 64 MB.')
+    const current = replyFiles(found)
+    if (current.length >= QUICK_REPLY_MAX_FILES) throw new BadRequestException(`No máximo ${QUICK_REPLY_MAX_FILES} arquivos por resposta rápida.`)
     const kind = detectOutgoing(file.buffer, file.originalname ?? '')
     if (!kind) throw new BadRequestException('Tipo de arquivo não aceito. Use PDF, Word, Excel, CSV, TXT, foto (JPG, PNG, WEBP) ou vídeo MP4.')
     const fileName = safeFileName(uploadName(file.originalname), kind.ext)
     const asset = await this.files.saveBuffer(user.tenantId, 'whatsapp', file.buffer, kind.mime, kind.ext)
-    await this.prisma.whatsappQuickReply.update({ where: { id }, data: { fileId: asset.id, fileName } })
-    if (found.fileId) await this.files.remove(found.fileId).catch(() => undefined)
-    return { id, fileName }
+    const files = [...current, { fileId: asset.id, fileName }]
+    await this.prisma.whatsappQuickReply.update({ where: { id }, data: { files, fileId: null, fileName: null } })
+    return { id, files: files.map((f) => ({ id: f.fileId, name: f.fileName })) }
   }
 
-  async removeQuickReplyFile(user: AuthUser, id: string) {
+  /** Tira um arquivo da resposta rápida (sem o id do arquivo: tira todos). */
+  async removeQuickReplyFile(user: AuthUser, id: string, fileId?: string) {
     this.assertCan(user)
     const found = await this.prisma.whatsappQuickReply.findFirst({ where: { id, ...this.ownedWhere(user) } })
     if (!found) throw new NotFoundException('Resposta não encontrada.')
     this.assertOwn(user, found, 'resposta')
-    await this.prisma.whatsappQuickReply.update({ where: { id }, data: { fileId: null, fileName: null } })
-    if (found.fileId) await this.files.remove(found.fileId).catch(() => undefined)
-    return { id, fileName: null }
+    const current = replyFiles(found)
+    const gone = fileId ? current.filter((f) => f.fileId === fileId) : current
+    const files = current.filter((f) => !gone.includes(f))
+    await this.prisma.whatsappQuickReply.update({ where: { id }, data: { files, fileId: null, fileName: null } })
+    for (const f of gone) await this.files.remove(f.fileId).catch(() => undefined)
+    return { id, files: files.map((f) => ({ id: f.fileId, name: f.fileName })) }
   }
 
-  /** Manda o arquivo da resposta rápida na conversa, com a legenda (o texto da resposta, que dá para mudar antes). */
+  /**
+   * Manda os arquivos da resposta rápida na conversa, um depois do outro, na ordem: o primeiro com a legenda (o texto
+   * da resposta, que dá para mudar antes), os outros sem.
+   */
   async sendQuickReplyFile(user: AuthUser, id: string, replyId: string, caption?: string) {
     const reply = await this.prisma.whatsappQuickReply.findFirst({ where: { id: replyId, ...this.ownedWhere(user) } })
     if (!reply) throw new NotFoundException('Resposta não encontrada.')
-    if (!reply.fileId) throw new BadRequestException('Esta resposta não tem arquivo.')
-    const { content } = await this.files.read(reply.fileId).catch(() => {
-      throw new BadRequestException('O arquivo desta resposta não existe mais. Anexe de novo em Respostas rápidas.')
-    })
-    return this.sendBuffer(user, id, { buffer: content, size: content.length, originalname: reply.fileName ?? 'arquivo' }, caption)
+    const files = replyFiles(reply)
+    if (!files.length) throw new BadRequestException('Esta resposta não tem arquivo.')
+    // Lê todos antes de mandar o primeiro: arquivo que sumiu não deixa o envio pela metade.
+    const contents = await Promise.all(
+      files.map((f) =>
+        this.files.read(f.fileId).catch(() => {
+          throw new BadRequestException(`O arquivo ${f.fileName} desta resposta não existe mais. Anexe de novo em Respostas rápidas.`)
+        }),
+      ),
+    )
+    let last: Awaited<ReturnType<ChatService['sendBuffer']>> | null = null
+    for (const [i, f] of files.entries()) {
+      const content = contents[i]!.content
+      last = await this.sendBuffer(user, id, { buffer: content, size: content.length, originalname: f.fileName }, i === 0 ? caption : undefined)
+    }
+    return last!
   }
 
   // ---------- Etiquetas das conversas ----------

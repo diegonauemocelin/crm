@@ -75,7 +75,7 @@ export class ProspeccaoService {
     private readonly whatsapp: WhatsappService,
   ) {}
 
-  private assertCan(user: AuthUser, action: Action) {
+  assertCan(user: AuthUser, action: Action) {
     if (!can(user.permissions, user.role.isSystem, MODULE, action)) throw new ForbiddenException('Seu perfil não pode usar a busca de leads.')
   }
 
@@ -89,7 +89,7 @@ export class ProspeccaoService {
     }
   }
 
-  private async key(tenantId: string, provider: AiProvider): Promise<string | null> {
+  async key(tenantId: string, provider: AiProvider): Promise<string | null> {
     const r = await this.settings.get<{ enc?: string }>(tenantId, SECRET_KEY(provider), {})
     let enc = r.enc
     // Gemini: a chave do assistente ou, se não houver, a do e-mail marketing.
@@ -319,13 +319,23 @@ export class ProspeccaoService {
     this.assertCan(user, 'edit')
     const p = await this.prospect(user, id)
     if (p.leadId) return { leadId: p.leadId }
+    const r = await this.leadFor(user.tenantId, id)
+    await this.audit.byUser(user, ctx, 'prospeccao.virou_lead', 'prospect', id, { empresa: p.name, lead: r.leadId })
+    return r
+  }
+
+  /** Lead da empresa (cria na primeira vez), também usado pelo chat e pelo envio em fila. */
+  async leadFor(tenantId: string, id: string, phoneOverride?: string | null) {
+    const p = await this.prisma.prospect.findFirst({ where: { id, tenantId } })
+    if (!p) throw new NotFoundException('Empresa não encontrada.')
+    if (p.leadId) return { leadId: p.leadId }
     const phones = p.phones as unknown as PhoneContact[]
     const emails = p.emails as unknown as EmailContact[]
     const phone = phones.find((x) => x.whatsapp === true) ?? phones.find((x) => x.kind === 'celular' && x.whatsapp !== false) ?? phones[0]
     const email = emails.find((x) => x.mx === true)
     const r = await this.capture.capture(
-      user.tenantId,
-      { name: p.name, company: p.name, phone: phone?.value ?? null, email: email?.value ?? null, city: p.city, state: p.uf },
+      tenantId,
+      { name: p.name, company: p.name, phone: phoneOverride ?? phone?.value ?? null, email: email?.value ?? null, city: p.city, state: p.uf },
       {
         title: `Encontrado na busca de leads${p.segment ? ` (${p.segment})` : ''}`,
         originName: ORIGIN,
@@ -336,7 +346,6 @@ export class ProspeccaoService {
     )
     if (!r) throw new BadRequestException('Sem telefone nem e-mail válido para criar o lead.')
     await this.prisma.prospect.update({ where: { id }, data: { status: 'LEAD', leadId: r.leadId } })
-    await this.audit.byUser(user, ctx, 'prospeccao.virou_lead', 'prospect', id, { empresa: p.name, lead: r.leadId })
     return { leadId: r.leadId }
   }
 
@@ -351,10 +360,15 @@ export class ProspeccaoService {
   async doNotContact(user: AuthUser, id: string, ctx: RequestCtx) {
     this.assertCan(user, 'edit')
     const p = await this.prospect(user, id)
-    const keys = blockKeys({ cnpj: p.cnpj, name: p.name, site: p.site, phones: p.phones as unknown as PhoneContact[], emails: p.emails as unknown as EmailContact[] })
-    await this.prisma.prospectBlock.createMany({ data: keys.map((key) => ({ tenantId: user.tenantId, key, name: p.name, createdBy: user.name })), skipDuplicates: true })
-    await this.prisma.prospect.update({ where: { id }, data: { status: 'NAO_CONTATAR' } })
+    await this.block(user.tenantId, p, user.name)
     await this.audit.byUser(user, ctx, 'prospeccao.nao_contatar', 'prospect', id, { empresa: p.name })
     return { ok: true }
+  }
+
+  /** Bloqueia a empresa (nunca volta numa busca nem recebe envio). */
+  async block(tenantId: string, p: { id: string; cnpj: string | null; name: string; site: string | null; phones: unknown; emails: unknown }, by: string) {
+    const keys = blockKeys({ cnpj: p.cnpj, name: p.name, site: p.site, phones: p.phones as unknown as PhoneContact[], emails: p.emails as unknown as EmailContact[] })
+    await this.prisma.prospectBlock.createMany({ data: keys.map((key) => ({ tenantId, key, name: p.name, createdBy: by })), skipDuplicates: true })
+    await this.prisma.prospect.update({ where: { id: p.id }, data: { status: 'NAO_CONTATAR' } })
   }
 }

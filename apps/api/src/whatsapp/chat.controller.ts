@@ -615,7 +615,7 @@ export class ChatController {
     return this.chat.removeQuickReply(user, id)
   }
 
-  /** Arquivo da resposta rápida (catálogo em PDF, tabela, foto). */
+  /** Mais um arquivo na resposta rápida (catálogo em PDF, tabela, foto, vídeo; até 3). */
   @Post('respostas/:id/arquivo')
   @HttpCode(200)
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MEDIA_MAX_BYTES, files: 1 } }))
@@ -626,6 +626,11 @@ export class ChatController {
   @Delete('respostas/:id/arquivo')
   removeQuickReplyFile(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
     return this.chat.removeQuickReplyFile(user, id)
+  }
+
+  @Delete('respostas/:id/arquivo/:fileId')
+  removeOneQuickReplyFile(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Param('fileId', ParseUUIDPipe) fileId: string) {
+    return this.chat.removeQuickReplyFile(user, id, fileId)
   }
 
   /** Manda na conversa o arquivo de uma resposta rápida, com a legenda. */
