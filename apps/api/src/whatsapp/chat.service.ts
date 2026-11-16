@@ -22,7 +22,7 @@ import { type AgendaCategory, answersClient, applyVariables, cleanRules, contact
 import { parseCsv } from '../atendimento/planilha'
 import { answersNote, type BotOutcome, botStateOf, chooseFlow, continueFlow, flowOf, startFlow } from './fluxo'
 import { chunks, HISTORY_BATCH, HISTORY_NAME, historyConvKey, historyConvWhere, historyFrom, historyHours, historyIsLast, historyKnownWhere, historyName, historyNote, historyPatch, type HistoryPick, historyStale, importDays, isOldHistory, matchHistoryConversation, pickHistory } from './historico'
-import { extOf, INLINE_MEDIA_MAX_BYTES, INLINE_MIME, MEDIA_MAX_BYTES, openSecretEdit, parseCalls, parseMessage, parseReaction, parseRevision, parseSecretEdit, type ParsedSecretEdit, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, UNREADABLE_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, phoneVariants, previewOf, QUICK_REPLY_MAX_FILES, replyFiles, whatsappOf, withReaction } from './mensagens'
+import { extOf, INLINE_MEDIA_MAX_BYTES, INLINE_MIME, MEDIA_MAX_BYTES, openSecretEdit, parseCalls, parseMessage, parseReaction, parseRevision, parseSecretEdit, type ParsedSecretEdit, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, UNREADABLE_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, forwardedText, phoneVariants, previewOf, QUICK_REPLY_MAX_FILES, replyFiles, whatsappOf, withReaction } from './mensagens'
 
 const PAGE = 60
 /** Nome que aparece nas mensagens e notas do chatbot. */
@@ -1815,7 +1815,15 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
         const convId = t.conversationId ?? (await this.start(user, { numberId: src.numberId, phone: t.phone })).id
         if (sources.has(convId)) throw new BadRequestException('É a própria conversa das mensagens.')
         const c = await this.sendContext(user, convId)
+        // Quem recebe vê que foi encaminhada: a marca vai no texto ou na legenda; áudio, figurinha e contato não têm
+        // legenda, então vão depois de uma linha "Encaminhada".
+        const tagLine = async () => {
+          const text = forwardedText(null)
+          const r = await c.client.sendText(c.number.instanceName, c.target, text).catch((e: unknown) => this.fail(e))
+          await this.recordSent(user, c, r, { type: 'texto', text })
+        }
         for (const m of list) {
+          if (m.type === 'contato' || m.type === 'audio' || m.type === 'figurinha') await tagLine()
           if (m.type === 'contato') {
             for (const line of m.text!.split('\n').slice(0, 10)) {
               const [name = '', tel = ''] = line.split(' · ')
@@ -1825,8 +1833,9 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
               await this.recordSent(user, c, r, { type: 'contato', text: card.text })
             }
           } else if (!MEDIA.includes(m.type)) {
-            const r = await c.client.sendText(c.number.instanceName, c.target, m.text!).catch((e: unknown) => this.fail(e))
-            await this.recordSent(user, c, r, { type: 'texto', text: m.text })
+            const text = forwardedText(m.text)
+            const r = await c.client.sendText(c.number.instanceName, c.target, text).catch((e: unknown) => this.fail(e))
+            await this.recordSent(user, c, r, { type: 'texto', text })
           } else {
             const file = files.get(m.fileId!)!
             const base64 = file.content.toString('base64')
@@ -1836,9 +1845,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
               m.type === 'audio'
                 ? await c.client.sendAudio(c.number.instanceName, c.target, base64).catch((e: unknown) => this.fail(e))
                 : await c.client
-                    .sendMedia(c.number.instanceName, c.target, { mediatype: m.type === 'video' ? 'video' : m.type === 'documento' ? 'document' : 'image', mimetype: mime, base64, fileName, caption: m.text ?? undefined })
+                    .sendMedia(c.number.instanceName, c.target, { mediatype: m.type === 'video' ? 'video' : m.type === 'documento' ? 'document' : 'image', mimetype: mime, base64, fileName, caption: m.type === 'figurinha' ? (m.text ?? undefined) : forwardedText(m.text) })
                     .catch((e: unknown) => this.fail(e))
-            await this.recordSent(user, c, r, { type: m.type, text: m.type === 'audio' ? null : m.text, fileId: m.fileId!, fileName, mime })
+            const caption = m.type === 'audio' ? null : m.type === 'figurinha' ? m.text : forwardedText(m.text)
+            await this.recordSent(user, c, r, { type: m.type, text: caption, fileId: m.fileId!, fileName, mime })
           }
           sent++
         }

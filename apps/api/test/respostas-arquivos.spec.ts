@@ -13,3 +13,12 @@ describe('respostas rápidas com vários arquivos', () => {
     expect(replyFiles({ files: [{ fileId: 'a', fileName: 'x.pdf' }], fileId: 'a', fileName: 'x.pdf' })).toEqual([{ fileId: 'a', fileName: 'x.pdf' }])
   })
 })
+
+describe('mensagem encaminhada', () => {
+  it('marca o texto ou a legenda, sem repetir', async () => {
+    const { FORWARD_TAG, forwardedText } = await import('../src/whatsapp/mensagens')
+    expect(forwardedText('Segue o orçamento')).toBe(`${FORWARD_TAG}\nSegue o orçamento`)
+    expect(forwardedText(null)).toBe(FORWARD_TAG)
+    expect(forwardedText(`${FORWARD_TAG}\nSegue`)).toBe(`${FORWARD_TAG}\nSegue`)
+  })
+})
