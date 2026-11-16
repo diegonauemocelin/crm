@@ -572,6 +572,7 @@ interface QuickReply {
   title: string
   text: string
   fileName?: string | null
+  files?: { id: string; name: string }[]
 }
 
 /** Respostas rápidas do chat. {nome} vira o primeiro nome do cliente e {vendedor} o de quem envia. */
@@ -644,10 +645,10 @@ function QuickReplyDialog({ reply, onClose }: { reply: QuickReply | null; onClos
   const [title, setTitle] = useState(reply?.title ?? '')
   const [text, setText] = useState(reply?.text ?? '')
   const [error, setError] = useState<string | null>(null)
-  const [picked, setPicked] = useState<File | null>(null)
-  const [removed, setRemoved] = useState(false)
+  const [picked, setPicked] = useState<File[]>([])
+  const [removed, setRemoved] = useState<string[]>([])
   const [initial] = useState({ title, text })
-  const guard = useCloseGuard(isDirty(initial, { title, text }) || !!picked || removed, onClose, 'a resposta')
+  const guard = useCloseGuard(isDirty(initial, { title, text }) || picked.length > 0 || removed.length > 0, onClose, 'a resposta')
   const save = useMutation({
     mutationFn: async () => {
       const saved = await (reply ? api.put<{ id: string }>(`/chat/respostas/${reply.id}`, { title, text }) : api.post<{ id: string }>('/chat/respostas', { title, text, standard: true }))
@@ -685,9 +686,9 @@ function QuickReplyDialog({ reply, onClose }: { reply: QuickReply | null; onClos
             <Textarea id="qr-text" required rows={5} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>Arquivo (opcional)</Label>
-            <ReplyFileField current={reply?.fileName} picked={picked} removed={removed} onPick={setPicked} onRemove={setRemoved} />
-            <p className="text-xs text-muted-foreground">Catálogo em PDF, tabela, foto ou vídeo (até 64 MB). Vai junto, com o texto como legenda.</p>
+            <Label>Arquivos (opcional, até 3)</Label>
+            <ReplyFileField current={reply?.files} picked={picked} removed={removed} onPick={setPicked} onRemove={setRemoved} />
+            <p className="text-xs text-muted-foreground">Catálogo em PDF, tabela, foto ou vídeo (até 64 MB cada). Vão juntos, na ordem, com o texto como legenda do primeiro.</p>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>

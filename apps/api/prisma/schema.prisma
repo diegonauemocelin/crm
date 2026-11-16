@@ -1624,9 +1624,12 @@ model WhatsappQuickReply {
   userId    String?  @db.Uuid
   title     String
   text      String
-  /// Arquivo que vai junto (catálogo em PDF, tabela, foto...): o texto vira a legenda.
+  /// (Antigo: um arquivo só. Passou para "files"; fica vazio.)
   fileId    String?  @db.Uuid
   fileName  String?
+  /// Arquivos que vão junto, em ordem (até 3: catálogo em PDF, tabela, foto, vídeo): [{ fileId, fileName }]. O texto
+  /// vira a legenda do primeiro.
+  files     Json     @default("[]")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
