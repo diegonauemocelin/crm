@@ -36,6 +36,7 @@ describe('Notificações do app', () => {
     const sent: string[] = []
     const store = new Map<string, unknown>()
     const prisma = {
+      user: { findMany: async ({ where }: { where: { id: { in: string[] } } }) => where.id.in.map((id) => ({ id })) },
       pushSubscription: {
         findMany: async () => subs.map((s) => ({ ...s, p256dh: 'p', auth: 'a' })),
         update: async () => ({}),

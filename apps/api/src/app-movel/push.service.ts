@@ -77,7 +77,9 @@ export class PushService {
     if (!ids.length) return result
     try {
       // Só usuários ativos e não excluídos (bloqueado ou excluído não recebe nada no celular).
-      const subs = await this.prisma.pushSubscription.findMany({ where: { tenantId, userId: { in: ids }, user: { active: true, deletedAt: null } } })
+      // (A inscrição não tem relação com o usuário no banco: filtra os usuários antes.)
+      const active = await this.prisma.user.findMany({ where: { tenantId, id: { in: ids }, active: true, deletedAt: null }, select: { id: true } })
+      const subs = active.length ? await this.prisma.pushSubscription.findMany({ where: { tenantId, userId: { in: active.map((u) => u.id) } } }) : []
       result.devices = subs.length
       if (!subs.length) return result
       const k = await this.keys(tenantId)
