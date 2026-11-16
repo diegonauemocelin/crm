@@ -1,7 +1,8 @@
-import { Controller, Get } from '@nestjs/common'
+import { Controller, Get, HttpCode, Post } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger'
 import { SkipThrottle } from '@nestjs/throttler'
-import { Public } from '../common/decorators'
+import { CurrentUser, Public } from '../common/decorators'
+import type { AuthUser } from '../common/types'
 import { SystemService } from './system.service'
 
 @ApiTags('Sistema')
@@ -35,5 +36,17 @@ export class SystemController {
   @Get('system/releases')
   releases() {
     return this.system.history()
+  }
+
+  /** Novidades da última atualização que o usuário ainda não viu (aviso que aparece uma vez). */
+  @Get('system/novidades')
+  whatsNew(@CurrentUser() user: AuthUser) {
+    return this.system.whatsNew(user.id)
+  }
+
+  @Post('system/novidades/visto')
+  @HttpCode(200)
+  markSeen(@CurrentUser() user: AuthUser) {
+    return this.system.markSeen(user.id)
   }
 }

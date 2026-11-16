@@ -1,3 +1,4 @@
+import { WhatsNew } from '@/components/layout/whats-new'
 import { ChevronDownIcon, MenuIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router'
@@ -185,6 +186,7 @@ export function ClassicLayout() {
         <SellerLinkWarning />
           <ChatNotifier />
           <AttendanceNotifier />
+          <WhatsNew />
           <Outlet />
       </main>
       <AppFooter className="bg-background" />

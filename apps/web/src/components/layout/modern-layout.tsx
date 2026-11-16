@@ -1,3 +1,4 @@
+import { WhatsNew } from '@/components/layout/whats-new'
 import { Fragment, useEffect } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
 import { AppSidebar } from '@/components/app-sidebar'
@@ -92,6 +93,7 @@ export function ModernLayout({ porSistema = false }: { porSistema?: boolean }) {
           <SellerLinkWarning />
           <ChatNotifier />
           <AttendanceNotifier />
+          <WhatsNew />
           <Outlet />
         </main>
         <AppFooter />
