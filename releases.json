@@ -2,6 +2,53 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.43",
+      "date": "2026-11-16",
+      "title": "Busca de leads chama no WhatsApp e envia em fila; respostas rápidas com vários arquivos",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Busca de leads",
+          "text": "Chamar no WhatsApp: em cada empresa encontrada, um botão abre a conversa no chat pelo número escolhido, e a empresa vira lead (origem Prospecção)."
+        },
+        {
+          "type": "novo",
+          "area": "Busca de leads",
+          "text": "Envio em fila: marque as empresas e mande a primeira mensagem para todas, uma de cada vez, com intervalo aleatório (padrão de 2 a 10 minutos), limite por dia (padrão 30) e só no horário comercial, para o número não ser bloqueado. Antes de cada envio o sistema confere se o número tem WhatsApp."
+        },
+        {
+          "type": "novo",
+          "area": "Busca de leads",
+          "text": "A IA escreve a mensagem: conte em uma frase o que você oferece e ela cria 3 variações curtas, sem inventar preço, prazo ou promoção. Cada empresa recebe uma variação ao acaso. Dá para usar {empresa}, {vendedor}, {cidade} e {segmento}."
+        },
+        {
+          "type": "novo",
+          "area": "Busca de leads",
+          "text": "Painel dos envios com o andamento (enviadas, na fila, quem respondeu), pausar, retomar e cancelar. Quem responde SAIR ou \"não tenho interesse\" vira \"não contatar\" e não volta nas buscas."
+        },
+        {
+          "type": "melhoria",
+          "area": "Chat WhatsApp",
+          "text": "Respostas rápidas com até 3 arquivos (por exemplo, dois PDFs e um vídeo). Eles vão um depois do outro, na ordem, com o texto como legenda do primeiro."
+        },
+        {
+          "type": "melhoria",
+          "area": "Chat WhatsApp",
+          "text": "Mensagem encaminhada pelo chat chega para quem recebe com a marca \"Encaminhada\"."
+        },
+        {
+          "type": "melhoria",
+          "area": "Configurações",
+          "text": "A janela de cadastrar número de WhatsApp ficou mais larga, em duas colunas, com os botões Salvar e Cancelar sempre à vista."
+        },
+        {
+          "type": "correcao",
+          "area": "App no celular",
+          "text": "As notificações do celular voltaram a chegar (pararam com a versão de 09/11)."
+        }
+      ]
+    },
+    {
       "version": "3.0.42",
       "date": "2026-11-16",
       "title": "Busca de leads",
