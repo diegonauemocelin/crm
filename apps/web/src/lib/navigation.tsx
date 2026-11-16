@@ -111,6 +111,7 @@ export const NAVIGATION: NavGroup[] = [
     items: [
       { title: 'Pré-Vendas', to: '/pre-vendas', icon: HeadsetIcon, module: 'pre_vendas' },
       { title: 'Pós-Vendas', to: '/pos-vendas', icon: ClipboardListIcon, module: 'pos_vendas' },
+      { title: 'Busca de leads', to: '/atendimento/busca-de-leads', icon: SearchCheckIcon, module: 'prospeccao' },
       { title: 'Análise das perdas (IA)', to: '/atendimento/perdas-ia', icon: SparklesIcon, anyOf: ['mi_relatorios', 'cadastros'] },
       { title: 'Chat WhatsApp', to: '/chat', icon: MessageCircleIcon, module: 'chat' },
       { title: 'Agenda de contatos', to: '/agenda', icon: BookUserIcon, module: 'whatsapp' },

@@ -4045,3 +4045,84 @@ model LossAiReport {
   @@index([tenantId, cycleKey])
   @@map("loss_ai_reports")
 }
+
+/// Busca de leads (prospecção): os critérios, a IA usada, a situação e o custo.
+model ProspectSearch {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  criteria     Json
+  /// claude ou gemini.
+  provider     String
+  model        String?
+  /// GERANDO, PRONTO ou ERRO.
+  status       String    @default("GERANDO")
+  error        String?
+  /// Centro da busca (geocodificado) e o lugar por extenso.
+  centerLat    Float?
+  centerLon    Float?
+  centerLabel  String?
+  found        Int       @default(0)
+  inputTokens  Int       @default(0)
+  outputTokens Int       @default(0)
+  webSearches  Int       @default(0)
+  costUsd      Float     @default(0)
+  createdById  String?   @db.Uuid
+  createdBy    String?
+  createdAt    DateTime  @default(now())
+  finishedAt   DateTime?
+
+  prospects Prospect[]
+
+  @@index([tenantId, createdAt])
+  @@map("prospect_searches")
+}
+
+/// Empresa encontrada numa busca de leads, com os contatos conferidos.
+model Prospect {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @db.Uuid
+  searchId   String   @db.Uuid
+  name       String
+  cnpj       String?
+  segment    String?
+  city       String?
+  uf         String?
+  address    String?
+  site       String?
+  instagram  String?
+  /// [{ value, kind, source, whatsapp }]
+  phones     Json     @default("[]")
+  /// [{ value, source, mx }]
+  emails     Json     @default("[]")
+  score      Int      @default(0)
+  reason     String?
+  sources    String[] @default([])
+  distanceKm Float?
+  /// Situação na Receita (ATIVA etc.), quando o CNPJ foi conferido.
+  cnpjStatus String?
+  /// NOVO, LEAD, DESCARTADO ou NAO_CONTATAR.
+  status     String   @default("NOVO")
+  leadId     String?  @db.Uuid
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  search ProspectSearch @relation(fields: [searchId], references: [id], onDelete: Cascade)
+
+  @@index([searchId])
+  @@index([tenantId, status])
+  @@map("prospects")
+}
+
+/// Empresas que pediram para não ser contatadas (ou marcadas pela equipe): nunca voltam numa busca.
+model ProspectBlock {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  /// cnpj:..., tel:+55..., email:..., site:dominio ou nome:chave
+  key       String
+  name      String?
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, key])
+  @@map("prospect_blocks")
+}
