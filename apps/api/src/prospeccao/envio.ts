@@ -134,3 +134,14 @@ export function variationsFromAi(text: string): string[] {
     return []
   }
 }
+
+/**
+ * Pode enviar agora? No horário comercial do CRM; sem horário comercial ligado, de segunda a sábado das 8h às 18h
+ * (horário de Brasília): mensagem de prospecção à noite ou no domingo irrita e chama denúncia.
+ */
+export function sendWindowOpen(hoursEnabled: boolean, openNow: boolean, now = new Date()) {
+  if (hoursEnabled) return openNow
+  const sp = new Date(now.getTime() - 3 * 3_600_000)
+  const h = sp.getUTCHours()
+  return sp.getUTCDay() !== 0 && h >= 8 && h < 18
+}

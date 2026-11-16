@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BanIcon, CheckCircle2Icon, ExternalLinkIcon, Loader2Icon, MailIcon, MapPinIcon, MessageCircleIcon, PhoneIcon, SearchIcon, SettingsIcon, UserPlusIcon, XIcon } from 'lucide-react'
+import { BanIcon, CheckCircle2Icon, SendIcon, ExternalLinkIcon, Loader2Icon, MailIcon, MapPinIcon, MessageCircleIcon, PhoneIcon, SearchIcon, SettingsIcon, UserPlusIcon, XIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -13,6 +13,8 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { ChamarDialog, EnvioDialog, EnviosPainel, SEND_LABEL, useCampaigns } from '@/components/prospeccao/envio'
+import { Checkbox } from '@/components/ui/checkbox'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 
@@ -289,6 +291,12 @@ function Resultado({ id, meta }: { id: string; meta: SearchMeta | null }) {
     onError: (e) => toast.error(errorMessage(e)),
   })
   const wa = useMutation({ mutationFn: () => api.post<{ started: boolean; message: string }>(`/prospeccao/buscas/${id}/whatsapp`), onSuccess: (r) => ((r.started ? toast.success : toast.info)(r.message), void refresh()), onError: (e) => toast.error(errorMessage(e)) })
+  const campaigns = useCampaigns(id)
+  const chat = can('chat', 'create')
+  const [marked, setMarked] = useState<Set<string>>(new Set())
+  const [calling, setCalling] = useState<{ id: string; name: string } | null>(null)
+  const [sending, setSending] = useState(false)
+  useEffect(() => setMarked(new Set()), [id])
   if (q.error) return <ErrorState error={q.error} onRetry={() => q.refetch()} />
   if (!q.data) return <TableSkeleton />
   const d = q.data
@@ -307,6 +315,13 @@ function Resultado({ id, meta }: { id: string; meta: SearchMeta | null }) {
       </Card>
     )
   const rows = d.prospects.filter((p) => filter === 'TODOS' || p.status === 'NOVO')
+  // Situação do envio de cada empresa (o mais recente).
+  const sendOf = new Map<string, NonNullable<typeof campaigns.data>[number]['sends'][number]>()
+  for (const c of [...(campaigns.data ?? [])].reverse()) for (const x of c.sends) if (x.status !== 'CANCELADA') sendOf.set(x.prospectId, x)
+  const hasMobile = (p: Prospect) => p.phones.some((x) => x.whatsapp === true || (x.kind === 'celular' && x.whatsapp !== false))
+  const sendable = (p: Prospect) => (p.status === 'NOVO' || p.status === 'LEAD') && hasMobile(p) && !sendOf.has(p.id)
+  const canSend = edit && chat
+  const toggle = (pid: string) => setMarked((m) => (m.has(pid) ? (m.delete(pid), new Set(m)) : new Set(m.add(pid))))
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -335,13 +350,46 @@ function Resultado({ id, meta }: { id: string; meta: SearchMeta | null }) {
           )}
         </div>
       </div>
+      {canSend && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 p-2 text-sm">
+          <Checkbox
+            id="pe-all"
+            checked={rows.some(sendable) && rows.filter(sendable).every((p) => marked.has(p.id))}
+            onCheckedChange={(v) => setMarked(v ? new Set(rows.filter(sendable).map((p) => p.id)) : new Set())}
+            aria-label="Marcar todas as empresas com celular"
+          />
+          <Label htmlFor="pe-all" className="font-normal">
+            Marcar todas com celular ({rows.filter(sendable).length})
+          </Label>
+          <span className="text-xs text-muted-foreground">Confira o WhatsApp antes: só vai para quem tem.</span>
+          <Button size="sm" className="ml-auto" disabled={!marked.size} onClick={() => setSending(true)}>
+            <SendIcon aria-hidden /> Enviar mensagem ({marked.size})
+          </Button>
+        </div>
+      )}
+      <EnviosPainel searchId={id} edit={edit} />
+      {calling && <ChamarDialog prospect={calling} onClose={() => setCalling(null)} />}
+      {sending && (
+        <EnvioDialog
+          searchId={id}
+          prospectIds={[...marked]}
+          onClose={() => setSending(false)}
+          onDone={() => {
+            setSending(false)
+            setMarked(new Set())
+            void qc.invalidateQueries({ queryKey: ['prospeccao-envios', id] })
+            void refresh()
+          }}
+        />
+      )}
       {!rows.length && <EmptyState icon={SearchIcon} title="Nenhuma empresa a abordar nesta busca" description="Mude para Todas ou faça outra busca (outro raio ou segmento)." />}
       <div className="grid gap-3 md:grid-cols-2">
         {rows.map((p) => (
           <Card key={p.id} className={p.status !== 'NOVO' ? 'opacity-60' : ''}>
             <CardContent className="space-y-2 py-4 text-sm">
               <div className="flex items-start justify-between gap-2">
-                <div>
+                {canSend && sendable(p) && <Checkbox className="mt-1" checked={marked.has(p.id)} onCheckedChange={() => toggle(p.id)} aria-label={`Marcar ${p.name} para o envio`} />}
+                <div className="mr-auto">
                   <p className="font-semibold">{p.name}</p>
                   <p className="text-xs text-muted-foreground">
                     {[p.segment, [p.city, p.uf].filter(Boolean).join('/'), p.distanceKm !== null ? `${p.distanceKm} km` : null, p.cnpj ? `CNPJ ${fmtCnpj(p.cnpj)}${p.cnpjStatus ? ` (${p.cnpjStatus.toLowerCase()})` : ''}` : null].filter(Boolean).join(' · ')}
@@ -352,6 +400,18 @@ function Resultado({ id, meta }: { id: string; meta: SearchMeta | null }) {
                 </Badge>
               </div>
               {p.reason && <p className="text-muted-foreground">{p.reason}</p>}
+              {sendOf.get(p.id) && (
+                <p className="flex flex-wrap items-center gap-1.5 text-xs">
+                  <Badge variant={sendOf.get(p.id)!.status === 'ENVIADA' ? 'default' : 'outline'}>{SEND_LABEL[sendOf.get(p.id)!.status]}</Badge>
+                  {sendOf.get(p.id)!.repliedAt && <Badge className="bg-emerald-600 text-white">{sendOf.get(p.id)!.optedOut ? 'pediu para sair' : 'respondeu'}</Badge>}
+                  {sendOf.get(p.id)!.error && <span className="text-muted-foreground">{sendOf.get(p.id)!.error}</span>}
+                  {sendOf.get(p.id)!.conversationId && (
+                    <Link to={`/chat?conversa=${sendOf.get(p.id)!.conversationId}`} className="underline">
+                      abrir a conversa
+                    </Link>
+                  )}
+                </p>
+              )}
               <div className="space-y-1">
                 {p.phones.map((x) => (
                   <p key={x.value} className="flex flex-wrap items-center gap-1.5">
@@ -390,6 +450,11 @@ function Resultado({ id, meta }: { id: string; meta: SearchMeta | null }) {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2 pt-1">
+                {canSend && (p.status === 'NOVO' || p.status === 'LEAD') && hasMobile(p) && (
+                  <Button size="sm" variant="outline" onClick={() => setCalling({ id: p.id, name: p.name })}>
+                    <MessageCircleIcon aria-hidden /> Chamar no WhatsApp
+                  </Button>
+                )}
                 {p.status === 'LEAD' && p.leadId ? (
                   <Button asChild size="sm" variant="secondary">
                     <Link to={`/leads/${p.leadId}`}>Abrir o lead</Link>
