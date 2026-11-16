@@ -326,9 +326,9 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
   })
   return (
     <Dialog open onOpenChange={(o) => !o && void guard()}>
-      <DialogContent>
+      <DialogContent className="flex max-h-[92vh] flex-col sm:max-w-4xl">
         <form
-          className="space-y-4"
+          className="flex min-h-0 flex-1 flex-col gap-4"
           onSubmit={(e: FormEvent) => {
             e.preventDefault()
             setError(null)
@@ -339,6 +339,8 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
             <DialogTitle>{number ? 'Editar número' : 'Cadastrar número'}</DialogTitle>
             <DialogDescription>O número do WhatsApp é preenchido sozinho quando o celular ler o QR Code.</DialogDescription>
           </DialogHeader>
+          <div className="-mx-4 grid min-h-0 flex-1 gap-4 overflow-y-auto px-4 py-1 md:grid-cols-2 md:gap-6">
+          <div className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="wa-n-name" required>Nome</Label>
             <Input id="wa-n-name" required minLength={2} maxLength={80} placeholder="Ex.: Vendas Paraná" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
@@ -391,6 +393,9 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
             <MultiSelect id="wa-n-users" items={users} value={userIds} onChange={setUserIds} placeholder="Selecione os usuários" />
             <p className="text-xs text-muted-foreground">Quem tem a permissão Chat WhatsApp como “Próprios” só vê os números ligados a ele (ou ao vendedor dele). Administrador e Gestor comercial veem todos.</p>
           </div>
+          </div>
+          <div className="space-y-3">
+          <p className="text-sm font-medium">Como o número funciona</p>
           {!monitor && (
           <div className="space-y-3 rounded-md border p-3 text-sm">
             <label className="flex items-start justify-between gap-3">
@@ -484,6 +489,8 @@ function NumberDialog({ number, users, onClose }: { number: WaNumber | null; use
                 </p>
               </div>
             )}
+          </div>
+          </div>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>
