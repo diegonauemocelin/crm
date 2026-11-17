@@ -959,7 +959,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     return convs.map((c) => c.id)
   }
 
-  async conversations(user: AuthUser, q: { numberId?: string; unread?: boolean; archived?: boolean; search?: string; page?: number; category?: string; leadId?: string; reminders?: boolean; monitor?: boolean; sellerId?: string; awaiting?: boolean; queue?: boolean; labelId?: string; waitingSeller?: boolean }) {
+  async conversations(user: AuthUser, q: { numberId?: string; unread?: boolean; archived?: boolean; search?: string; page?: number; category?: string; leadId?: string; reminders?: boolean; monitor?: boolean; sellerId?: string; awaiting?: boolean; queue?: boolean; labelId?: string; waitingSeller?: boolean; together?: boolean }) {
     if (!q.monitor) this.assertCan(user)
     // Monitorar: tudo (permissão de monitoramento) ou só a equipe do gestor.
     const scope: Prisma.WhatsappConversationWhereInput = q.monitor ? await this.assertMonitor(user) : await this.chatWhere(user)
@@ -968,9 +968,9 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (q.numberId) and.push({ numberId: q.numberId })
     if (q.unread) and.push({ unread: { gt: 0 } })
     if (q.category) and.push({ category: q.category })
-    else if (!q.leadId) and.push({ category: { not: 'GRUPO' } })
-    // Aba "Aguardando vendedor": separada das conversas (fora do monitoramento e da ficha do lead).
-    const separate = !q.monitor && !q.leadId
+    else if (!q.leadId && !q.together) and.push({ category: { not: 'GRUPO' } })
+    // Aba "Aguardando vendedor": separada das conversas (fora do monitoramento, da ficha do lead e do app de Chat).
+    const separate = !q.monitor && !q.leadId && !q.together
     const waitingIds = separate ? await this.waitingSellerIds(user.tenantId) : null
     if (waitingIds && q.waitingSeller) and.push({ id: { in: waitingIds } })
     else if (waitingIds?.length && !q.category) and.push({ id: { notIn: waitingIds } })
@@ -999,7 +999,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const [total, rows, unread, unreadGroups] = await Promise.all([
       this.prisma.whatsappConversation.count({ where }),
       this.prisma.whatsappConversation.findMany({ where, orderBy: { lastMessageAt: 'desc' }, skip: (page - 1) * 50, take: 50 }),
-      this.prisma.whatsappConversation.aggregate({ where: { AND: [scope, { unread: { gt: 0 } }, groupsTab ? { category: 'GRUPO' } : { category: { not: 'GRUPO' } }, ...visible] }, _count: { _all: true } }),
+      this.prisma.whatsappConversation.aggregate({ where: { AND: [scope, { unread: { gt: 0 } }, groupsTab ? { category: 'GRUPO' } : q.together ? {} : { category: { not: 'GRUPO' } }, ...visible] }, _count: { _all: true } }),
       // Selos de não lidas: só do número escolhido (todos os números = soma dos que a pessoa vê).
       this.prisma.whatsappConversation.count({ where: { AND: [scope, { unread: { gt: 0 }, status: 'ABERTA', category: 'GRUPO' }, ...visible] } }),
     ])
@@ -1008,7 +1008,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       (
         await this.prisma.whatsappConversation.groupBy({
           by: ['numberId'],
-          where: { AND: [scope, { unread: { gt: 0 }, status: 'ABERTA' }, groupsTab ? { category: 'GRUPO' } : { category: { not: 'GRUPO' } }] },
+          where: { AND: [scope, { unread: { gt: 0 }, status: 'ABERTA' }, groupsTab ? { category: 'GRUPO' } : q.together ? {} : { category: { not: 'GRUPO' } }] },
           _count: { _all: true },
         })
       ).map((g) => [g.numberId, g._count._all]),

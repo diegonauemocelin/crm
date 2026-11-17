@@ -1657,6 +1657,36 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'chat-app',
+    title: 'App de Chat no computador',
+    routes: ['/chat-app'],
+    purpose: 'Atender o WhatsApp numa janela própria do computador, com a cara do WhatsApp Web, em paralelo ao CRM.',
+    howItWorks: 'Instalado pelo Chrome ou pelo Edge, vira um ícone na área de trabalho e na barra de tarefas. Abre só as conversas (grupos junto), sem o menu do CRM; ao lado da conversa fica o pré e o pós-venda do contato. Permissões e números são os mesmos do CRM.',
+    lessons: [
+      {
+        id: 'chat-app.instalar',
+        title: 'Instalar o app de Chat',
+        steps: [
+          'No computador, abra o endereço do sistema com /chat-app no fim (ex.: crm.empresa.com.br/chat-app) no Chrome ou no Edge.',
+          'Clique no ícone de instalar, na barra de endereço (ou no menu ⋮ › Transmitir, salvar e compartilhar › Instalar página como app; no Edge: ⋯ › Aplicativos › Instalar este site como aplicativo).',
+          'O ícone fica na área de trabalho e no menu Iniciar; dá para fixar na barra de tarefas.',
+          'No menu ⋮ do app, ligue as notificações para receber as mensagens novas do Windows.',
+        ],
+      },
+      {
+        id: 'chat-app.usar',
+        title: 'Atender pelo app',
+        steps: [
+          'À esquerda, as conversas e os grupos, do mais recente para o mais antigo. Os botões Tudo, Não lidas, Grupos e Fila filtram.',
+          'Com mais de um número, escolha o número logo acima da lista (ou Todos os números).',
+          'Clique na conversa para abrir; os botões da conversa são os mesmos do CRM.',
+          'O botão no canto direito de cima mostra ou esconde o pré e o pós-venda do contato.',
+        ],
+        tip: 'O menu ⋮ do app tem Abrir o CRM completo, para as outras telas.',
+      },
+    ],
+  },
+  {
     key: 'whatsapp-config',
     title: 'WhatsApp: números, setores e robô',
     module: 'whatsapp',
