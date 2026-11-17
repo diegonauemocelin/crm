@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { api, errorMessage } from '@/lib/api'
+import { formatPhone } from '@/lib/atendimento'
 import { disablePush, enablePush, type PushState, pushState } from '@/lib/app-movel'
 import { useAuth } from '@/lib/auth'
 import { useBranding } from '@/lib/branding'
@@ -66,7 +67,7 @@ export function ChatAppPage() {
   const [filter, setFilter] = useState<Filter>('tudo')
   const [search, setSearch] = useState('')
   const [q, setQ] = useState('')
-  const [starting, setStarting] = useState(false)
+  const [starting, setStarting] = useState<false | { phone?: string; name?: string }>(false)
   const [numberId, setNumberId] = useState<string>(() => store(NUMBER_KEY) ?? ALL)
   const [panel, setPanel] = useState(() => store(PANEL_KEY) !== '0')
 
@@ -99,6 +100,13 @@ export function ChatAppPage() {
   }).toString()
   const list = useQuery({ queryKey: ['chat-app', qs], queryFn: () => api.get<ListData>(`/chat/conversas?${qs}`), refetchInterval: 5000, placeholderData: keepPreviousData })
   const numbers = list.data?.numbers ?? []
+  // Pesquisa: também os contatos da agenda, vendedores e leads, para começar uma conversa nova (como no WhatsApp).
+  const contacts = useQuery({
+    queryKey: ['chat-app-contatos', q, numberId],
+    queryFn: () => api.get<{ key: string; name: string; phone: string; source: string }[]>(`/chat/contatos-para-compartilhar?busca=${encodeURIComponent(q)}${numberId !== ALL ? `&numero=${numberId}` : ''}`),
+    enabled: q.length >= 2 && can('chat', 'create'),
+    staleTime: 30_000,
+  })
   // Número salvo que não aparece mais para a pessoa: volta para Todos.
   useEffect(() => {
     if (numberId !== ALL && list.data && !list.isPlaceholderData && !list.data.numbers.some((n) => n.id === numberId)) setNumberId(ALL)
@@ -147,7 +155,7 @@ export function ChatAppPage() {
           <Avatar name={me?.name ?? null} className="size-9" />
           <span className="min-w-0 flex-1 truncate text-sm font-medium">{me?.name}</span>
           {can('chat', 'create') && (
-            <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setStarting(true)} aria-label="Nova conversa" title="Nova conversa">
+            <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setStarting({})} aria-label="Nova conversa" title="Nova conversa">
               <MessageSquarePlusIcon />
             </Button>
           )}
@@ -227,6 +235,22 @@ export function ChatAppPage() {
               </li>
             )
           })}
+          {q.length >= 2 && !!contacts.data?.length && (
+            <>
+              <li className="px-4 pt-4 pb-2 text-sm font-medium text-[#008069] dark:text-[#25d366]">Contatos</li>
+              {contacts.data.map((ct) => (
+                <li key={ct.key}>
+                  <button type="button" onClick={() => setStarting({ phone: ct.phone, name: ct.name })} className="flex w-full items-center gap-3 px-3 text-left hover:bg-[#f5f6f6] dark:hover:bg-[#202c33]" title="Começar conversa">
+                    <Avatar name={ct.name} className="size-12 text-base" />
+                    <span className="min-w-0 flex-1 border-b py-3">
+                      <span className="block truncate text-[15px]">{ct.name}</span>
+                      <span className="block truncate text-sm text-muted-foreground">{formatPhone(ct.phone) || ct.phone} · {ct.source}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </>
+          )}
         </ul>
       </aside>
 
@@ -265,7 +289,7 @@ export function ChatAppPage() {
         </aside>
       )}
 
-      {starting && <StartDialog onClose={() => setStarting(false)} onStarted={(id) => (setStarting(false), open(id))} />}
+      {starting && <StartDialog phone={starting.phone} name={starting.name} numberId={numberId !== ALL ? numberId : null} onClose={() => setStarting(false)} onStarted={(id) => (setStarting(false), setSearch(''), open(id))} />}
     </div>
   )
 }
