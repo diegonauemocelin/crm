@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common'
 import { randomUUID } from 'node:crypto'
-import { ownCodes } from '../../assistente/concorrentes'
+import { erpCrossCodes, ownCodes } from '../../assistente/concorrentes'
 import { AuditService } from '../../audit/audit.service'
 import type { RequestCtx } from '../../common/decorators'
 import type { AuthUser } from '../../common/types'
@@ -102,6 +102,8 @@ export interface ListQuery {
   search?: string
   status?: string
   full?: string
+  /** Em promoção no Mercado Livre (preço de venda abaixo do preço do anúncio): sim, nao ou todos. */
+  promo?: string
   noCost?: boolean
   lowMargin?: boolean
   /** Depósito do Mercado Livre comparado ao preço de venda no e-commerce. */
@@ -486,14 +488,16 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
       this.config(tenantId),
       this.taxes.rates(tenantId),
       this.prisma.marketplaceCost.findMany({ where: { tenantId } }),
-      this.prisma.mlCompetitorItem.findMany({ where: { tenantId, status: 'active', price: { not: null } }, select: { itemId: true, title: true, permalink: true, price: true, freeShipping: true, codes: true, competitor: { select: { nickname: true } } } }),
+      this.prisma.mlCompetitorItem.findMany({ where: { tenantId, status: 'active', price: { not: null } }, select: { itemId: true, title: true, permalink: true, price: true, freeShipping: true, codes: true, linkedOwnId: true, competitor: { select: { nickname: true } } } }),
       // Preço de venda do ERP (Tcar) por código: base do lucro do produto quando não há lucro informado.
-      this.prisma.tcarProduct.findMany({ where: { tenantId, price: { not: null } }, select: { code: true, price: true } }).catch(() => [] as { code: string; price: unknown }[]),
+      this.prisma.tcarProduct.findMany({ where: { tenantId }, select: { code: true, price: true, factoryCode: true, refs: true } }).catch(() => [] as { code: string; price: unknown; factoryCode: string | null; refs: string[] }[]),
       // Preço da loja (Magazord) por código: o depósito do modo depósito quando o relatório do ERP não trouxe o valor líquido.
       this.prisma.storeProduct.findMany({ where: { tenantId, active: true }, select: { code: true, price: true } }).catch(() => [] as { code: string; price: unknown }[]),
     ])
     const costBy = new Map(costs.map((c) => [c.sku, c]))
-    const erpPriceBy = new Map(erp.map((e) => [normSku(e.code), Number(e.price)]))
+    const erpPriceBy = new Map(erp.filter((e) => e.price != null).map((e) => [normSku(e.code), Number(e.price)]))
+    // Códigos equivalentes do ERP (referências da Tcar): o concorrente pode vender a mesma peça com outro número.
+    const erpCodesBy = new Map(erp.map((e) => [normSku(e.code), erpCrossCodes(e)]))
     const storePriceBy = new Map<string, number>()
     for (const p of store) {
       const v = p.price === null || p.price === undefined ? NaN : Number(p.price)
@@ -502,17 +506,19 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     const rivalBy = new Map<string, RivalOffer[]>()
     for (const r of rivals) {
       const offer: RivalOffer = { itemId: r.itemId, title: r.title, price: Number(r.price), permalink: r.permalink ?? itemLink(r.itemId), seller: r.competitor?.nickname ?? null, freeShipping: r.freeShipping, source: 'CODIGO' }
-      for (const code of r.codes) {
+      // Ligado à mão a um anúncio da loja (mesma peça com outro código).
+      const keys = r.linkedOwnId ? [...r.codes, `item:${r.linkedOwnId}`] : r.codes
+      for (const code of keys) {
         const a = rivalBy.get(code)
         if (a) a.push(offer)
         else rivalBy.set(code, [offer])
       }
     }
-    return { config, rates, costBy, rivalBy, erpPriceBy, storePriceBy }
+    return { config, rates, costBy, rivalBy, erpPriceBy, storePriceBy, erpCodesBy }
   }
 
   private buildRow(s: Snapshot, a: { title: string | null; permalink: string | null; partNumber: string | null; attributes: unknown } | undefined, ctx: Awaited<ReturnType<PrecosService['context']>>): PriceRow {
-    const { config, rates, costBy, rivalBy, erpPriceBy, storePriceBy } = ctx
+    const { config, rates, costBy, rivalBy, erpPriceBy, storePriceBy, erpCodesBy } = ctx
     const sku = s.sellerSku?.trim() || null
     const costKey = sku ? normSku(sku) : s.itemId
     const c = costBy.get(costKey)
@@ -566,8 +572,8 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
             ? priceForMargin(goal, pm)
             : null
       : null)
-    const codes = ownCodes({ title: s.title ?? a?.title ?? null, sellerSku: sku, partNumber: a?.partNumber ?? null, attributes: a?.attributes })
-    const offers = codes.flatMap((code) => rivalBy.get(code) ?? [])
+    const codes = [...new Set([...ownCodes({ title: s.title ?? a?.title ?? null, sellerSku: sku, partNumber: a?.partNumber ?? null, attributes: a?.attributes }), ...(sku ? (erpCodesBy.get(normSku(sku)) ?? []) : [])])]
+    const offers = [...codes, `item:${s.itemId}`].flatMap((code) => rivalBy.get(code) ?? [])
     const all = cheapestRivals(offers, s.itemId, Number.MAX_SAFE_INTEGER)
     const competitorMin = all[0]?.price ?? null
     const competitorCount = all.length
@@ -664,6 +670,8 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     else if (st !== 'todos') list = list.filter((r) => r.status === st)
     if (q.full === 'sim') list = list.filter((r) => r.full)
     if (q.full === 'nao') list = list.filter((r) => !r.full)
+    if (q.promo === 'sim') list = list.filter((r) => r.promo !== null)
+    if (q.promo === 'nao') list = list.filter((r) => r.promo === null)
     if (q.noCost) list = list.filter((r) => r.cost === null)
     if (q.lowMargin) list = list.filter((r) => r.margin.marginPct !== null && r.margin.marginPct < ctx.config.minMarginPct)
     if (q.deposit) list = list.filter((r) => r.received !== null && r.depositTarget && depositStatus(r.received, r.depositTarget.value) === q.deposit)

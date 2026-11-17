@@ -4,7 +4,7 @@ import { MlError } from '../marketplaces/mercadolivre'
 import { MercadoLivreService } from '../marketplaces/mercadolivre.service'
 import { PrismaService } from '../prisma/prisma.service'
 import { AssistMlService, mapLimit } from './assist-ml.service'
-import { compareByCode, competitorCodes, ownCodes } from './concorrentes'
+import { compareByCode, competitorCodes, erpCrossCodes, itemIdOf, ownCodes } from './concorrentes'
 
 /** Uma loja por vez; cada loja é relida uma vez por dia (o Mercado Livre limita as chamadas). */
 const TICK_MS = 30 * 60_000
@@ -77,8 +77,14 @@ export class ConcorrentesService implements OnApplicationBootstrap, OnModuleDest
         permalink: true,
         freeShipping: true,
         codes: true,
+        linkedOwnId: true,
       },
     })
+    // Códigos equivalentes do ERP (referências da Tcar) pelo SKU do anúncio.
+    const erp = await this.prisma.tcarProduct.findMany({ where: { tenantId }, select: { code: true, factoryCode: true, refs: true } }).catch(() => [])
+    const erpBy = new Map(erp.map((p) => [p.code.trim().toUpperCase(), p]))
+    const ownById = new Map(own.map((o) => [o.id, o]))
+    const codesOf = (i: (typeof own)[number]) => [...new Set([...ownCodes(i), ...erpCrossCodes(i.sellerSku ? erpBy.get(i.sellerSku.trim().toUpperCase()) : null)])]
     const num = (v: unknown) => (v == null ? null : Number(v))
     const rows = compareByCode(
       own
@@ -87,11 +93,13 @@ export class ConcorrentesService implements OnApplicationBootstrap, OnModuleDest
           title: i.title,
           price: num(i.price),
           permalink: i.permalink,
-          codes: ownCodes(i),
+          codes: codesOf(i),
         }))
         .filter((i) => i.codes.length),
-      rivals.map((r) => ({
+      rivals.map(({ linkedOwnId, ...r }) => ({
         ...r,
+        // Ligado à mão a um anúncio da loja: entra com os códigos desse anúncio.
+        codes: linkedOwnId && ownById.get(linkedOwnId) ? [...new Set([...r.codes, ...codesOf(ownById.get(linkedOwnId)!)])] : r.codes,
         price: num(r.price),
         previousPrice: num(r.previousPrice),
       })),
@@ -151,6 +159,34 @@ export class ConcorrentesService implements OnApplicationBootstrap, OnModuleDest
     })
     void this.sync(c.id)
     return { competitor: c }
+  }
+
+  /**
+   * Liga à mão um anúncio do concorrente a um anúncio da loja (a mesma peça com outro código, que a comparação por
+   * código não acha). A loja do concorrente entra na lista, se ainda não estiver.
+   */
+  async link(user: AuthUser, rivalInput: string, ownInput: string) {
+    const rivalId = itemIdOf(rivalInput)
+    const ownId = itemIdOf(ownInput)
+    if (!rivalId) throw new BadRequestException('Cole o link do anúncio do concorrente (com o número MLB).')
+    if (!ownId) throw new BadRequestException('Cole o link ou o número MLB do seu anúncio.')
+    const own = await this.prisma.assistItem.findFirst({ where: { tenantId: user.tenantId, id: ownId }, select: { id: true } })
+    if (!own) throw new BadRequestException('Esse anúncio não é da sua loja (ou ainda não foi lido do Mercado Livre).')
+    const res = await this.ml.get<{ code: number; body?: MlItem & { seller_id?: number } }[]>(user.tenantId, '/items', { ids: rivalId, attributes: 'id,title,permalink,price,status,shipping,attributes,seller_id' }).catch(() => [])
+    const it = res?.[0]?.code === 200 ? res[0].body : undefined
+    if (!it?.seller_id) throw new BadRequestException('O Mercado Livre não liberou a leitura deste anúncio. Confira o link.')
+    let comp = await this.prisma.mlCompetitor.findUnique({ where: { tenantId_sellerId: { tenantId: user.tenantId, sellerId: String(it.seller_id) } } })
+    if (!comp) comp = (await this.add(user, rivalId)).competitor
+    const now = new Date()
+    const data = { title: it.title ?? null, permalink: it.permalink ?? null, price: it.price ?? null, status: it.status ?? 'active', freeShipping: !!it.shipping?.free_shipping, codes: competitorCodes(it.attributes, it.title), syncedAt: now, linkedOwnId: own.id }
+    await this.prisma.mlCompetitorItem.upsert({ where: { competitorId_itemId: { competitorId: comp.id, itemId: it.id } }, create: { tenantId: user.tenantId, competitorId: comp.id, itemId: it.id, ...data }, update: data })
+    return { ok: true, competitor: comp.nickname ?? comp.sellerId, title: it.title ?? null }
+  }
+
+  /** Desfaz a ligação feita à mão. */
+  async unlink(tenantId: string, itemId: string) {
+    await this.prisma.mlCompetitorItem.updateMany({ where: { tenantId, itemId }, data: { linkedOwnId: null } })
+    return { ok: true }
   }
 
   async remove(tenantId: string, id: string) {
@@ -292,8 +328,14 @@ export class ConcorrentesService implements OnApplicationBootstrap, OnModuleDest
         for (const it of await this.itemsByCatalog(c.tenantId, c.sellerId)) await store({ ...it, status: 'active' })
       }
       // Anúncio que saiu da busca (pausado ou encerrado): deixa de entrar na comparação.
+      // Anúncios ligados à mão que a leitura não trouxe: relê um a um (preço e situação).
+      const linked = await this.prisma.mlCompetitorItem.findMany({ where: { competitorId: c.id, linkedOwnId: { not: null }, itemId: { notIn: [...seen] } }, select: { itemId: true } })
+      for (let i = 0; i < linked.length; i += 20) {
+        const res = await this.ml.get<{ code: number; body?: MlItem }[]>(c.tenantId, '/items', { ids: linked.slice(i, i + 20).map((x) => x.itemId).join(','), attributes: 'id,title,permalink,price,status,shipping,attributes' }).catch(() => [])
+        for (const r of res ?? []) if (r.code === 200 && r.body) await store({ id: r.body.id, title: r.body.title ?? null, permalink: r.body.permalink ?? null, price: r.body.price ?? null, status: r.body.status ?? null, freeShipping: !!r.body.shipping?.free_shipping, codes: competitorCodes(r.body.attributes, r.body.title) })
+      }
       await this.prisma.mlCompetitorItem.updateMany({
-        where: { competitorId: c.id, itemId: { notIn: [...seen] } },
+        where: { competitorId: c.id, itemId: { notIn: [...seen] }, linkedOwnId: null },
         data: { status: 'inactive' },
       })
       await this.prisma.mlCompetitor.update({

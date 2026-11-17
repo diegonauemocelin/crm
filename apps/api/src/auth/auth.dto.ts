@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsEmail, IsOptional, IsString, Length, MaxLength } from 'class-validator'
+import { IsEmail, IsObject, IsOptional, IsString, Length, MaxLength } from 'class-validator'
 
 export class LoginDto {
   @ApiProperty() @IsEmail({}, { message: 'Informe um e-mail válido.' }) @MaxLength(200) email!: string
@@ -33,4 +33,10 @@ export class PasswordDto {
 export class ChangePasswordDto {
   @ApiProperty() @IsString() @Length(1, 128) currentPassword!: string
   @ApiProperty() @IsString() @Length(1, 128) newPassword!: string
+}
+
+/** Resposta do aparelho (WebAuthn) e o pedido a que ela responde. */
+export class PasskeyDto {
+  @IsString() @MaxLength(100) handle!: string
+  @IsObject() response!: Record<string, unknown>
 }

@@ -264,6 +264,7 @@ export function Numbers() {
             Use os números só para conversas com clientes (responder quem chamou). Envio em massa por aqui pode fazer o WhatsApp bloquear o número.
           </p>
           <AgendaLink />
+          <TranscricaoCard editable={can('whatsapp', 'edit')} />
         </div>
       )}
       {editing && <NumberDialog number={editing === 'novo' ? null : editing} users={d?.users ?? []} onClose={() => setEditing(null)} />}
@@ -963,6 +964,31 @@ function AgendaLink() {
         <Button size="sm" variant="outline" asChild>
           <Link to="/agenda">Abrir a agenda</Link>
         </Button>
+      </CardHeader>
+    </Card>
+  )
+}
+
+/** Transcrição automática dos áudios recebidos (Gemini, plano gratuito do Google). */
+function TranscricaoCard({ editable }: { editable: boolean }) {
+  const qc = useQueryClient()
+  const q = useQuery({ queryKey: ['chat-transcricao'], queryFn: () => api.get<{ enabled: boolean; hasKey: boolean }>('/chat/transcricao') })
+  const save = useMutation({
+    mutationFn: (ativa: boolean) => api.put('/chat/transcricao', { ativa }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['chat-transcricao'] }),
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <Card>
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <CardTitle className="text-base">Transcrever os áudios sozinho</CardTitle>
+          <CardDescription>
+            Os áudios que os clientes mandam viram texto embaixo do áudio, sem precisar clicar em Transcrever (que continua valendo para qualquer áudio). Usa o Gemini do Google, com a chave já cadastrada. No plano gratuito, o Google pode usar o conteúdo enviado para melhorar os produtos dele: ligue se a empresa concorda.
+          </CardDescription>
+          {q.data && !q.data.hasKey && <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">Falta a chave do Gemini (Marketplaces › Assistente ML › Configurações ou e-mail marketing).</p>}
+        </div>
+        <Switch checked={!!q.data?.enabled} disabled={!editable || !q.data || save.isPending} onCheckedChange={(v) => save.mutate(v)} aria-label="Transcrever os áudios sozinho" />
       </CardHeader>
     </Card>
   )

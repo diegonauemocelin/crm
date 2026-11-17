@@ -1106,6 +1106,16 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     return marked.filter((n) => ids.has(n.id) || n.attends)
   }
 
+  /** Quem cuida das configurações do WhatsApp (ex.: ligar a transcrição dos áudios). */
+  assertWhatsappAdmin(user: AuthUser) {
+    this.assertAction(user, 'whatsapp', 'edit')
+  }
+
+  /** Conversa que a pessoa vê (para a resposta sugerida). */
+  conversationFor(user: AuthUser, id: string) {
+    return this.load(user, id)
+  }
+
   private async load(user: AuthUser, id: string) {
     this.assertCan(user)
     const conv = await this.prisma.whatsappConversation.findFirst({ where: { AND: [{ id }, await this.chatWhere(user)] } })

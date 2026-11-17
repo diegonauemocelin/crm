@@ -1,13 +1,14 @@
-import { Body, Controller, Get, Headers, HttpCode, Post, Req, Res, UnauthorizedException } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Req, Res, UnauthorizedException } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import type { Request, Response } from 'express'
 import { AllowPending2fa, CurrentUser, Public, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { AccountService } from './account.service'
-import { ForgotPasswordDto, LoginDto, MfaCodeDto, OptionalPasswordDto, PasswordDto, ResetPasswordDto } from './auth.dto'
+import { ForgotPasswordDto, LoginDto, MfaCodeDto, OptionalPasswordDto, PasskeyDto, PasswordDto, ResetPasswordDto } from './auth.dto'
 import { AuthService } from './auth.service'
 import { clearSessionCookies, MFA_COOKIE, REFRESH_COOKIE, setMfaCookie, setSessionCookies } from './cookies'
+import { PasskeyService } from './passkey.service'
 import { TwoFactorService } from './two-factor.service'
 
 @ApiTags('Autenticação')
@@ -17,6 +18,7 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly twoFactor: TwoFactorService,
     private readonly account: AccountService,
+    private readonly passkeys: PasskeyService,
   ) {}
 
   @Public()
@@ -32,6 +34,50 @@ export class AuthController {
     }
     setSessionCookies(res, result.accessToken, result.refreshToken, app)
     return { status: result.status }
+  }
+
+  // ---------- Face ID / Touch ID / digital (chave de acesso do aparelho) ----------
+
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('passkey/login/options')
+  @HttpCode(200)
+  passkeyLoginOptions() {
+    return this.passkeys.loginOptions()
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('passkey/login')
+  @HttpCode(200)
+  async passkeyLogin(@Body() dto: PasskeyDto, @ReqContext() ctx: RequestCtx, @Headers('x-crm-app') appHeader: string | undefined, @Res({ passthrough: true }) res: Response) {
+    const app = appHeader === '1'
+    const result = await this.passkeys.loginVerify(dto.handle, dto.response as never, ctx, app)
+    setSessionCookies(res, result.accessToken, result.refreshToken, app)
+    return { status: result.status }
+  }
+
+  @Get('passkeys')
+  passkeyList(@CurrentUser() user: AuthUser) {
+    return this.passkeys.list(user)
+  }
+
+  @Post('passkeys/options')
+  @HttpCode(200)
+  passkeyRegisterOptions(@CurrentUser() user: AuthUser) {
+    return this.passkeys.registerOptions(user)
+  }
+
+  @Post('passkeys')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  passkeyRegister(@CurrentUser() user: AuthUser, @Body() dto: PasskeyDto, @ReqContext() ctx: RequestCtx) {
+    return this.passkeys.registerVerify(user, dto.handle, dto.response as never, ctx)
+  }
+
+  @Delete('passkeys/:id')
+  passkeyRemove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    return this.passkeys.remove(user, id, ctx)
   }
 
   @Public()

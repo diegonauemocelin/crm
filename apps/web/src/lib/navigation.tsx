@@ -77,6 +77,8 @@ export interface NavItem {
   phase?: number
   /** Submenu dentro do grupo (ex.: Marketplaces › Mercado Livre, Shopee...): itens seguidos com o mesmo nome ficam juntos. */
   section?: string
+  /** Só o perfil Administrador vê (ex.: Monitoramento). */
+  adminOnly?: boolean
 }
 
 export interface NavGroup {
@@ -226,6 +228,7 @@ export const NAVIGATION: NavGroup[] = [
       // Um lugar só para todos os ajustes: empresa, equipe e acesso, atendimento, WhatsApp, marketing e integrações.
       { title: 'Configurações', to: '/configuracoes', icon: SettingsIcon, anyOf: SETTINGS_MODULES },
       { title: 'Auditoria', to: '/auditoria', icon: FileClockIcon, module: 'auditoria' },
+      { title: 'Monitoramento', to: '/administracao/monitoramento', icon: ActivityIcon, adminOnly: true },
     ],
   },
   {
@@ -239,7 +242,7 @@ export const NAVIGATION: NavGroup[] = [
 
 /** Telas "Em breve" só aparecem para o administrador do sistema: para os outros, seriam um clique sem resultado. */
 export function visibleNavigation(can: (module: string, action?: Action) => boolean, isAdmin = false): NavGroup[] {
-  const allowed = (i: NavItem) => (!i.phase || isAdmin) && (i.anyOf ? i.anyOf.some((m) => can(m, 'view')) : !i.module || can(i.module, i.action ?? 'view'))
+  const allowed = (i: NavItem) => (!i.phase || isAdmin) && (!i.adminOnly || isAdmin) && (i.anyOf ? i.anyOf.some((m) => can(m, 'view')) : !i.module || can(i.module, i.action ?? 'view'))
   return NAVIGATION.map((g) => ({ ...g, items: g.items.filter(allowed) })).filter(
     (g) => g.items.length > 0,
   )

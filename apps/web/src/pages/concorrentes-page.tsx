@@ -213,10 +213,12 @@ function Concorrentes() {
               </Card>
             </div>
 
+            {edit && <LigarAnuncio />}
+
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Comparação por código de referência</CardTitle>
-                <CardDescription>Só os produtos com o mesmo código (número de peça, modelo, OEM ou código no título). Diferença negativa: o concorrente vende mais barato.</CardDescription>
+                <CardDescription>Produtos com o mesmo código (número de peça, modelo, OEM, código no título ou as referências do ERP) e os ligados à mão. Diferença negativa: o concorrente vende mais barato.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex flex-wrap items-center gap-3">
@@ -293,5 +295,51 @@ function Concorrentes() {
         )}
       </div>
     </div>
+  )
+}
+
+/** Mesma peça com outro código (ex.: 87305713 e 196073A1): liga à mão o anúncio do concorrente ao seu. */
+function LigarAnuncio() {
+  const qc = useQueryClient()
+  const [rival, setRival] = useState('')
+  const [mine, setMine] = useState('')
+  const link = useMutation({
+    mutationFn: () => api.post<{ competitor: string; title: string | null }>('/marketplaces/concorrentes/vincular', { concorrente: rival, meu: mine }),
+    onSuccess: (r) => {
+      toast.success(`Ligado: ${r.title ?? 'anúncio'} (${r.competitor}). Aparece na comparação e na coluna Concorrentes de Preços.`)
+      setRival('')
+      setMine('')
+      void qc.invalidateQueries({ queryKey: ['concorrentes'] })
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Ligar um anúncio do concorrente ao seu</CardTitle>
+        <CardDescription>Para a mesma peça vendida com outro código, que a comparação não acha sozinha. A loja do concorrente entra na lista, se ainda não estiver. O preço dele é relido todo dia.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end"
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault()
+            link.mutate()
+          }}
+        >
+          <div className="space-y-1.5">
+            <Label htmlFor="lig-rival">Anúncio do concorrente (link)</Label>
+            <Input id="lig-rival" placeholder="https://produto.mercadolivre.com.br/MLB-..." value={rival} onChange={(e) => setRival(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="lig-mine">Seu anúncio (link ou MLB)</Label>
+            <Input id="lig-mine" placeholder="MLB5810727168" value={mine} onChange={(e) => setMine(e.target.value)} />
+          </div>
+          <Button type="submit" disabled={link.isPending || rival.trim().length < 5 || mine.trim().length < 5}>
+            {link.isPending ? <Loader2Icon className="animate-spin" /> : <PlusIcon />} Ligar
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   )
 }

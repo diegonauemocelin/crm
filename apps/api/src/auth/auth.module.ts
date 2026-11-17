@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common'
+import { PasskeyService } from './passkey.service'
 import { JwtModule } from '@nestjs/jwt'
 import { env } from '../config/env'
 import { AccountController } from './account.controller'
@@ -12,7 +13,7 @@ import { TwoFactorService } from './two-factor.service'
 @Module({
   imports: [JwtModule.register({ secret: env.jwtAccessSecret, signOptions: { algorithm: 'HS256' } })],
   controllers: [AuthController, AccountController],
-  providers: [AuthService, TwoFactorService, AccountService, AuthGuard, SecurityService],
+  providers: [AuthService, TwoFactorService, AccountService, AuthGuard, SecurityService, PasskeyService],
   exports: [AuthService, TwoFactorService, AuthGuard, JwtModule, SecurityService],
 })
 export class AuthModule {}

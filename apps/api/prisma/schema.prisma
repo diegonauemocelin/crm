@@ -1585,6 +1585,8 @@ model WhatsappMessage {
   fileName       String?
   mime           String?
   mediaStatus    String?
+  /// Transcrição automática do áudio: OK, VAZIO (sem fala), GRANDE ou ERRO (não tenta de novo sozinha).
+  transcriptStatus String?
   /// Enviada pelo CRM: quem enviou e a situação (ENVIADA ou ERRO, com o motivo).
   sentById       String?  @db.Uuid
   sentByName     String?
@@ -3424,6 +3426,8 @@ model MlCompetitorItem {
   status         String?
   codes          String[]     @default([])
   syncedAt       DateTime
+  /// Ligado à mão a um anúncio da loja (mesma peça com outro código): entra na comparação desse anúncio.
+  linkedOwnId    String?
 
   @@unique([competitorId, itemId])
   @@index([tenantId])
@@ -4249,4 +4253,47 @@ model WhatsappWaContact {
   @@unique([numberId, jid])
   @@index([tenantId])
   @@map("whatsapp_wa_contacts")
+}
+
+/// Chave de acesso (passkey) de um aparelho: entrar com Face ID, Touch ID ou a digital, sem senha. A chave privada
+/// nunca sai do aparelho; aqui fica só a chave pública.
+model Passkey {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  userId       String    @db.Uuid
+  /// Identificador da credencial (base64url), único.
+  credentialId String    @unique
+  publicKey    Bytes
+  counter      BigInt    @default(0)
+  transports   String[]  @default([])
+  /// Nome do aparelho (ex.: iPhone), para a pessoa reconhecer na lista.
+  deviceName   String
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([userId])
+  @@map("passkeys")
+}
+
+/// Monitoramento (Administração › Monitoramento): uma amostra por minuto do servidor e da API, guardada por 7 dias.
+model MonitorSample {
+  id          String   @id @default(uuid()) @db.Uuid
+  at          DateTime @default(now())
+  /// CPU do servidor (%), carga de 1 min e memória usada (%) e em MB.
+  cpuPct      Float
+  load1       Float
+  memPct      Float
+  memUsedMb   Int
+  /// Memória do processo da API (MB) e disco dos arquivos (%).
+  apiMemMb    Int
+  diskPct     Float?
+  /// Tempo de resposta do banco (ms).
+  dbMs        Int
+  /// Pedidos à API e erros (respostas 5xx) no minuto, e o tempo médio de resposta (ms).
+  requests    Int
+  errors      Int
+  avgMs       Int
+
+  @@index([at])
+  @@map("monitor_samples")
 }

@@ -17,6 +17,7 @@ class PrecosListQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) busca?: string
   @ApiPropertyOptional() @IsOptional() @IsIn(['ativos', 'active', 'paused', 'closed', 'todos']) situacao?: string
   @ApiPropertyOptional() @IsOptional() @IsIn(['sim', 'nao', 'todos']) full?: string
+  @ApiPropertyOptional({ description: 'Em promoção no Mercado Livre: sim, nao ou todos' }) @IsOptional() @IsIn(['sim', 'nao', 'todos']) promocao?: string
   @ApiPropertyOptional() @IsOptional() @Transform(bool) @IsBoolean() semCusto?: boolean
   @ApiPropertyOptional() @IsOptional() @Transform(bool) @IsBoolean() margemBaixa?: boolean
   @ApiPropertyOptional({ enum: ['menos', 'igual', 'mais'] }) @IsOptional() @IsIn(['menos', 'igual', 'mais']) deposito?: 'menos' | 'igual' | 'mais'
@@ -51,6 +52,7 @@ class PrecosFilterDto {
   @IsOptional() @IsString() @MaxLength(120) busca?: string
   @IsOptional() @IsIn(['ativos', 'active', 'paused', 'closed', 'todos']) situacao?: string
   @IsOptional() @IsIn(['sim', 'nao', 'todos']) full?: string
+  @IsOptional() @IsIn(['sim', 'nao', 'todos']) promocao?: string
   @IsOptional() @IsBoolean() semCusto?: boolean
   @IsOptional() @IsBoolean() margemBaixa?: boolean
   @IsOptional() @IsIn(['menos', 'igual', 'mais']) deposito?: 'menos' | 'igual' | 'mais'
@@ -127,7 +129,7 @@ class PrecosCouponParam {
   @Matches(/^C-[A-Z]{3}\d{1,20}$/, { message: 'Cupom inválido.' }) id!: string
 }
 
-const toQuery = (q: { busca?: string; situacao?: string; full?: string; semCusto?: boolean; margemBaixa?: boolean; deposito?: 'menos' | 'igual' | 'mais'; ordem?: string; pagina?: number }): ListQuery => ({ search: q.busca, status: q.situacao, full: q.full, noCost: q.semCusto, lowMargin: q.margemBaixa, deposit: q.deposito, order: q.ordem, page: q.pagina })
+const toQuery = (q: { busca?: string; situacao?: string; full?: string; promocao?: string; semCusto?: boolean; margemBaixa?: boolean; deposito?: 'menos' | 'igual' | 'mais'; ordem?: string; pagina?: number }): ListQuery => ({ search: q.busca, status: q.situacao, full: q.full, promo: q.promocao, noCost: q.semCusto, lowMargin: q.margemBaixa, deposit: q.deposito, order: q.ordem, page: q.pagina })
 
 function toAction(a: PrecosActionDto): PriceAction {
   if (a.tipo === 'preco') {

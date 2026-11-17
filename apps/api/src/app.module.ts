@@ -1,5 +1,5 @@
 import { type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common'
-import { APP_GUARD } from '@nestjs/core'
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
 import { ThrottlerModule } from '@nestjs/throttler'
 import { LoggerModule } from 'nestjs-pino'
 import { maskUrl } from './common/mascara-url'
@@ -47,6 +47,9 @@ import { RolesService } from './roles/roles.service'
 import { SettingsModule } from './settings/settings.module'
 import { SystemController } from './system/system.controller'
 import { SystemService } from './system/system.service'
+import { MonitorController } from './monitor/monitor.controller'
+import { MonitorService } from './monitor/monitor.service'
+import { RequestCounterInterceptor } from './monitor/request-counter.interceptor'
 import { UsersController } from './users/users.controller'
 import { UsersService } from './users/users.service'
 
@@ -104,11 +107,13 @@ import { UsersService } from './users/users.service'
     BiModule,
     AnalisesModule,
   ],
-  controllers: [UsersController, RolesController, SystemController],
+  controllers: [UsersController, RolesController, SystemController, MonitorController],
   providers: [
     UsersService,
     RolesService,
     SystemService,
+    MonitorService,
+    { provide: APP_INTERCEPTOR, useClass: RequestCounterInterceptor },
     // Ordem importa: primeiro o limite de requisições (por usuário logado ou por IP), depois sessão + permissão.
     { provide: APP_GUARD, useClass: UserThrottlerGuard },
     { provide: APP_GUARD, useExisting: AuthGuard },

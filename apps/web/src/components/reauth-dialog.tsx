@@ -1,4 +1,5 @@
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
+import { PasskeyLoginButton } from '@/components/passkey'
 import { Loader2Icon, LockIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -99,6 +100,7 @@ export function ReauthDialog() {
         </DialogHeader>
         {step === 'senha' ? (
           <form onSubmit={submit} className="space-y-3">
+            <PasskeyLoginButton onDone={() => done(true)} onError={setError} />
             <div className="space-y-1.5">
               <Label htmlFor="reauth-email">E-mail</Label>
               <Input id="reauth-email" value={email} readOnly tabIndex={-1} className="bg-muted" />

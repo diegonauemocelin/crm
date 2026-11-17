@@ -57,6 +57,7 @@ services:
       - /tmp
     environment:
       NODE_ENV: production
+      BACKUP_DIR_API: /backups
       # Importações grandes (tabelas de frete com dezenas de milhares de linhas, ex.: J&T com 89 mil) precisam de folga;
       # uso normal fica em ~150 MB. Ajustável no .env (API_HEAP_MB e API_MEMORY) conforme a memória da VPS.
       NODE_OPTIONS: --max-old-space-size=${API_HEAP_MB:-1024}
@@ -79,6 +80,8 @@ services:
       WHATSAPP_MAX_CONNECTED: ${WHATSAPP_MAX_CONNECTED:-3}
     volumes:
       - uploads:/data/uploads
+      # Só leitura: o Monitoramento mostra o último backup diário.
+      - ${BACKUP_DIR:-./backups}:/backups:ro
     depends_on:
       db:
         condition: service_healthy

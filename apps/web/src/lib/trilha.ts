@@ -180,6 +180,25 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'monitoramento',
+    title: 'Monitoramento',
+    routes: ['/administracao/monitoramento'],
+    purpose: 'Ver se o servidor e os sistemas estão funcionando: CPU, memória, disco, banco de dados, serviço de WhatsApp, backup diário e cada número de WhatsApp. Só o Administrador vê.',
+    howItWorks: 'Uma leitura por minuto do servidor e do uso do sistema, guardada por 7 dias, em gráficos. Os pontos com problema aparecem em vermelho e os de atenção em amarelo. Número de WhatsApp que desconecta ou para de receber manda aviso no celular dos administradores.',
+    lessons: [
+      {
+        id: 'monitoramento.ler',
+        title: 'Ler o painel',
+        steps: [
+          'Abra Administração → Monitoramento.',
+          'O aviso do topo diz se está tudo normal; o quadro Sistemas mostra o que pede atenção e o motivo.',
+          'Escolha o período dos gráficos (de 1 hora a 7 dias) para ver o uso do servidor, os pedidos e a velocidade.',
+          'Na tabela de números, veja quando cada um recebeu a última mensagem; número sem receber pede um QR Code novo.',
+        ],
+      },
+    ],
+  },
+  {
     key: 'marketplaces-canais',
     title: 'Shopee, Amazon e TikTok Shop',
     module: 'mkt_shopee',

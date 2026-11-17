@@ -110,3 +110,28 @@ export function compareByCode(own: OwnItem[], rivals: RivalItem[], now = Date.no
   }
   return rows.sort((a, b) => (a.worst ?? 0) - (b.worst ?? 0))
 }
+
+/**
+ * Códigos equivalentes do produto no ERP (código de fábrica e as referências REF/IMP da Tcar): a mesma peça vendida
+ * pelo concorrente com outro número (ex.: 87305713 e 196073A1) entra na comparação quando o ERP liga os dois.
+ */
+export function erpCrossCodes(p: { factoryCode?: string | null; refs?: string[] | null } | null | undefined) {
+  if (!p) return []
+  const out = new Set<string>()
+  for (const c of [p.factoryCode, ...(p.refs ?? [])]) {
+    if (!c) continue
+    const k = codeKey(c)
+    if (usableCode(k)) out.add(k)
+  }
+  return [...out]
+}
+
+/** Número do anúncio (MLB...) num link ou texto: anúncio, página de produto com wid= ou o número solto. */
+export function itemIdOf(input: string) {
+  const s = input.trim()
+  const wid = /[?&#]wid=(ML[A-Z])-?(\d{6,})/i.exec(s)
+  if (wid) return `${wid[1]!.toUpperCase()}${wid[2]}`
+  if (/\/p\/ML[A-Z]\d+/i.test(s)) return null
+  const m = /\b(ML[A-Z])-?(\d{6,})\b/i.exec(s)
+  return m ? `${m[1]!.toUpperCase()}${m[2]}` : null
+}
