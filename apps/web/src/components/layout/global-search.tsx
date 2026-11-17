@@ -107,9 +107,9 @@ export function GlobalSearch({ className, iconOnly = false }: { className?: stri
           {visibleNavigation(can, !!me?.role.isSystem).map((group) => (
             <CommandGroup key={group.title} heading={group.title}>
               {group.items.map((item) => (
-                <CommandItem key={item.to} value={`${group.title} ${item.title}`} onSelect={() => go(item.to)}>
+                <CommandItem key={item.to} value={`${group.title} ${item.section ?? ''} ${item.title}`} onSelect={() => go(item.to)}>
                   <item.icon />
-                  {item.title}
+                  {item.section ? `${item.section} › ${item.title}` : item.title}
                   {item.phase && <CommandShortcut>Em breve</CommandShortcut>}
                 </CommandItem>
               ))}

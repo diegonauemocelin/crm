@@ -180,6 +180,35 @@ export const TRAIL: TrailModule[] = [
     ],
   },
   {
+    key: 'marketplaces-canais',
+    title: 'Shopee, Amazon e TikTok Shop',
+    module: 'mkt_shopee',
+    routes: ['/marketplaces/shopee', '/marketplaces/amazon', '/marketplaces/tiktok-shop'],
+    purpose: 'Ver os anúncios de cada marketplace com custo, comissão, frete, imposto e margem, saber o preço que deixa o mesmo lucro da venda por fora e alterar o preço direto na loja.',
+    howItWorks: 'Cada marketplace fica no seu submenu em Marketplaces. A empresa cria o aplicativo de desenvolvedor na plataforma (Shopee Open Platform, Amazon Seller Central, TikTok Shop Partner Center), cola as chaves no CRM e conecta a loja. Custo, imposto e lucro do produto vêm de Mercado Livre › Preços e promoções; a comissão, a taxa fixa e o frete são os do contrato de cada marketplace.',
+    lessons: [
+      {
+        id: 'canais.conectar',
+        title: 'Conectar a loja',
+        steps: [
+          'Abra Marketplaces → Shopee (ou Amazon, ou TikTok Shop) → Anúncios e preços.',
+          'Crie o aplicativo da empresa no portal de desenvolvedor da plataforma e cadastre lá o endereço de retorno que aparece na tela.',
+          'Cole as chaves do aplicativo e clique em Salvar chaves; depois em Conectar e autorize na plataforma.',
+          'Informe a comissão, a taxa fixa e o frete do seu contrato e clique em Ler anúncios.',
+        ],
+      },
+      {
+        id: 'canais.precos',
+        title: 'Ajustar os preços',
+        steps: [
+          'Na lista de anúncios, confira a margem de cada um e o preço sugerido (o que deixa o mesmo lucro da venda por fora).',
+          'Clique no preço sugerido para usá-lo, ou digite o novo preço.',
+          'Clique em Enviar preços e confirme: o preço muda na loja e fica no histórico.',
+        ],
+      },
+    ],
+  },
+  {
     key: 'busca-de-leads',
     title: 'Busca de leads',
     module: 'prospeccao',

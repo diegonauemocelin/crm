@@ -35,7 +35,7 @@ export function useBreadcrumb(): Crumb[] {
   const { pathname, search } = useLocation()
   const found = findNavItem(pathname, search)
   const record = useCurrentPageTitle(pathname)
-  const crumbs: Crumb[] = found ? (found.item.to === '/' ? [{ title: 'Início' }] : [{ title: found.group.title }, { title: found.item.title, to: found.item.to }]) : [{ title: EXTRA_TITLES[pathname] ?? 'Página' }]
+  const crumbs: Crumb[] = found ? (found.item.to === '/' ? [{ title: 'Início' }] : [{ title: found.group.title }, ...(found.item.section ? [{ title: found.item.section }] : []), { title: found.item.title, to: found.item.to }]) : [{ title: EXTRA_TITLES[pathname] ?? 'Página' }]
   if (record && found && pathname !== found.item.to.split('?')[0]) crumbs.push({ title: record })
   const last = crumbs[crumbs.length - 1]!
   const { appName } = useBranding()

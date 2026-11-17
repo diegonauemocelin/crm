@@ -75,6 +75,8 @@ export interface NavItem {
   anyOf?: string[]
   /** Fase do roadmap em que o módulo chega. Itens futuros aparecem com selo "Em breve". */
   phase?: number
+  /** Submenu dentro do grupo (ex.: Marketplaces › Mercado Livre, Shopee...): itens seguidos com o mesmo nome ficam juntos. */
+  section?: string
 }
 
 export interface NavGroup {
@@ -170,21 +172,24 @@ export const NAVIGATION: NavGroup[] = [
     ],
   },
   {
-    // Mercado Livre agora; a Shopee entra aqui depois.
+    // Um submenu por marketplace: Mercado Livre, Shopee, Amazon e TikTok Shop.
     title: 'Marketplaces',
     items: [
       { title: 'Visão geral', to: '/marketplaces', icon: StoreIcon, module: 'marketplaces' },
-      { title: 'Mercado Livre Ads', to: '/marketplaces/mercado-livre', icon: ShoppingBagIcon, module: 'marketplaces' },
-      { title: 'Concorrentes', to: '/marketplaces/concorrentes', icon: SwordsIcon, module: 'marketplaces' },
-      { title: 'SEO Marketplace', to: '/marketplaces/seo', icon: SearchCheckIcon, module: 'seo_marketplace' },
-      { title: 'Preços e promoções', to: '/marketplaces/precos', icon: BadgeDollarSignIcon, module: 'marketplace_precos' },
-      { title: 'Planejamento', to: '/marketplaces/planejamento', icon: ClipboardCheckIcon, module: 'marketplace_planejamento' },
-      { title: 'Assistente ML', to: '/marketplaces/assistente', icon: BotIcon, module: 'assist_atendimento' },
-      { title: 'Perguntas pendentes', to: '/marketplaces/assistente/pendentes', icon: MessageCircleQuestionIcon, module: 'assist_atendimento' },
-      { title: 'Perguntas e respostas', to: '/marketplaces/assistente/perguntas', icon: MessagesSquareIcon, module: 'assist_atendimento' },
-      { title: 'Respostas enviadas', to: '/marketplaces/assistente/respostas', icon: SendIcon, module: 'assist_atendimento' },
-      { title: 'Base de conhecimento', to: '/marketplaces/assistente/conhecimento', icon: BookOpenIcon, module: 'assist_conhecimento' },
-      { title: 'Produtos e aplicações', to: '/marketplaces/assistente/aplicacoes', icon: PackageSearchIcon, module: 'assist_aplicacoes' },
+      { title: 'Mercado Livre Ads', to: '/marketplaces/mercado-livre', icon: ShoppingBagIcon, module: 'marketplaces', section: 'Mercado Livre' },
+      { title: 'Concorrentes', to: '/marketplaces/concorrentes', icon: SwordsIcon, module: 'marketplaces', section: 'Mercado Livre' },
+      { title: 'SEO Marketplace', to: '/marketplaces/seo', icon: SearchCheckIcon, module: 'seo_marketplace', section: 'Mercado Livre' },
+      { title: 'Preços e promoções', to: '/marketplaces/precos', icon: BadgeDollarSignIcon, module: 'marketplace_precos', section: 'Mercado Livre' },
+      { title: 'Planejamento', to: '/marketplaces/planejamento', icon: ClipboardCheckIcon, module: 'marketplace_planejamento', section: 'Mercado Livre' },
+      { title: 'Assistente ML', to: '/marketplaces/assistente', icon: BotIcon, module: 'assist_atendimento', section: 'Mercado Livre' },
+      { title: 'Perguntas pendentes', to: '/marketplaces/assistente/pendentes', icon: MessageCircleQuestionIcon, module: 'assist_atendimento', section: 'Mercado Livre' },
+      { title: 'Perguntas e respostas', to: '/marketplaces/assistente/perguntas', icon: MessagesSquareIcon, module: 'assist_atendimento', section: 'Mercado Livre' },
+      { title: 'Respostas enviadas', to: '/marketplaces/assistente/respostas', icon: SendIcon, module: 'assist_atendimento', section: 'Mercado Livre' },
+      { title: 'Base de conhecimento', to: '/marketplaces/assistente/conhecimento', icon: BookOpenIcon, module: 'assist_conhecimento', section: 'Mercado Livre' },
+      { title: 'Produtos e aplicações', to: '/marketplaces/assistente/aplicacoes', icon: PackageSearchIcon, module: 'assist_aplicacoes', section: 'Mercado Livre' },
+      { title: 'Anúncios e preços', to: '/marketplaces/shopee', icon: BadgeDollarSignIcon, module: 'mkt_shopee', section: 'Shopee' },
+      { title: 'Anúncios e preços', to: '/marketplaces/amazon', icon: BadgeDollarSignIcon, module: 'mkt_amazon', section: 'Amazon' },
+      { title: 'Anúncios e preços', to: '/marketplaces/tiktok-shop', icon: BadgeDollarSignIcon, module: 'mkt_tiktok', section: 'TikTok Shop' },
     ],
   },
   {
