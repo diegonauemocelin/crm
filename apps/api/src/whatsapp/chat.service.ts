@@ -2120,8 +2120,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       if (taken) return reuse(taken)
     }
     try {
+      // Nome: o do lead ou, sem lead, o da agenda (do número ou a geral).
+      const agendaName = lead?.name ? null : ((await this.prisma.whatsappContact.findFirst({ where: { tenantId: user.tenantId, contactKey: phone, scope: { in: [number.id, ''] }, name: { not: null } }, orderBy: { scope: 'desc' }, select: { name: true } }))?.name ?? null)
       const conv = await this.prisma.whatsappConversation.create({
-        data: { tenantId: user.tenantId, numberId: number.id, jid: realJid, phone, name: lead?.name ?? null, leadId: lead?.id ?? null, lastMessageAt: new Date(), lastPreview: 'Conversa iniciada pelo CRM', lastFromMe: true, ...(split ? { assignedUserId: user.id } : {}) },
+        data: { tenantId: user.tenantId, numberId: number.id, jid: realJid, phone, name: lead?.name ?? agendaName, leadId: lead?.id ?? null, lastMessageAt: new Date(), lastPreview: 'Conversa iniciada pelo CRM', lastFromMe: true, ...(split ? { assignedUserId: user.id } : {}) },
       })
       return { id: conv.id }
     } catch (e) {
