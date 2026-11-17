@@ -232,17 +232,12 @@ function Protected() {
   // O app de Chat do computador (/chat-app) também é instalado, mas fica nele.
   // App instalado aberto no computador: o layout do WhatsApp Web (/chat-app), também pelo ícone do app do celular.
   // "Abrir o CRM completo" (menu do app de Chat) abre uma janela com o CRM inteiro.
-  if (fullCrmWindow(location.search)) return (
-    <>
-      <Outlet />
-      <ReauthDialog />
-    </>
-  )
-  if (isInstalledApp() && isDesktopApp() && location.pathname.startsWith('/app')) {
+  const fullCrm = fullCrmWindow(location.search)
+  if (!fullCrm && isInstalledApp() && isDesktopApp() && location.pathname.startsWith('/app')) {
     const conv = location.pathname.match(/^\/app\/(?:conversa|monitor)\/([0-9a-f-]{36})/)?.[1]
     return <Navigate to={conv ? `/chat-app?conversa=${conv}` : '/chat-app'} replace />
   }
-  if (isInstalledApp() && !location.pathname.startsWith('/app') && !location.pathname.startsWith('/chat-app') && !chatAppWindow()) return <Navigate to={isDesktopApp() ? '/chat-app' : '/app'} replace />
+  if (!fullCrm && isInstalledApp() && !location.pathname.startsWith('/app') && !location.pathname.startsWith('/chat-app') && !chatAppWindow()) return <Navigate to={isDesktopApp() ? '/chat-app' : '/app'} replace />
   return (
     <>
       <Outlet />
