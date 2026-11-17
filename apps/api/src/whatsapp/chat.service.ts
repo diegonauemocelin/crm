@@ -23,6 +23,7 @@ import { parseCsv } from '../atendimento/planilha'
 import { answersNote, type BotOutcome, botStateOf, chooseFlow, continueFlow, flowOf, startFlow } from './fluxo'
 import { chunks, HISTORY_BATCH, HISTORY_NAME, historyConvKey, historyConvWhere, historyFrom, historyHours, historyIsLast, historyKnownWhere, historyName, historyNote, historyPatch, type HistoryPick, historyStale, importDays, isOldHistory, matchHistoryConversation, pickHistory } from './historico'
 import { extOf, INLINE_MEDIA_MAX_BYTES, INLINE_MIME, MEDIA_MAX_BYTES, openSecretEdit, parseCalls, parseMessage, parseReaction, parseRevision, parseSecretEdit, type ParsedSecretEdit, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, UNREADABLE_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, forwardedText, phoneVariants, previewOf, QUICK_REPLY_MAX_FILES, replyFiles, whatsappOf, withReaction } from './mensagens'
+import { cleanFiliais, DEFAULT_FILIAIS, FILIAIS_KEY, FILIAL_COLORS } from './filiais'
 
 const PAGE = 60
 /** Nome que aparece nas mensagens e notas do chatbot. */
@@ -1109,6 +1110,18 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
   /** Quem cuida das configurações do WhatsApp (ex.: ligar a transcrição dos áudios). */
   assertWhatsappAdmin(user: AuthUser) {
     this.assertAction(user, 'whatsapp', 'edit')
+  }
+
+  /** Filial sugerida pelo DDD do contato: regras salvas ou as iniciais. Todos que usam o chat leem. */
+  async filiais(user: AuthUser) {
+    const saved = await this.settings.get<{ rules?: unknown }>(user.tenantId, FILIAIS_KEY, {})
+    return { rules: saved.rules === undefined ? DEFAULT_FILIAIS : cleanFiliais(saved.rules), colors: FILIAL_COLORS }
+  }
+
+  async setFiliais(user: AuthUser, rules: unknown) {
+    this.assertWhatsappAdmin(user)
+    await this.settings.set(user.tenantId, FILIAIS_KEY, { rules: cleanFiliais(rules) })
+    return this.filiais(user)
   }
 
   /** Conversa que a pessoa vê (para a resposta sugerida). */

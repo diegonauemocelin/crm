@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { formatPhone, namesOf, useOptions } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
+import { FILIAL_COLOR_CLASS, type FilialRule, useFiliais } from '@/lib/filiais'
 import { cn } from '@/lib/utils'
 import type { BusinessDay, BusinessHours } from '@/lib/horario'
 
@@ -265,6 +266,7 @@ export function Numbers() {
           </p>
           <AgendaLink />
           <TranscricaoCard editable={can('whatsapp', 'edit')} />
+          <FiliaisCard editable={can('whatsapp', 'edit')} />
         </div>
       )}
       {editing && <NumberDialog number={editing === 'novo' ? null : editing} users={d?.users ?? []} onClose={() => setEditing(null)} />}
@@ -990,6 +992,87 @@ function TranscricaoCard({ editable }: { editable: boolean }) {
         </div>
         <Switch checked={!!q.data?.enabled} disabled={!editable || !q.data || save.isPending} onCheckedChange={(v) => save.mutate(v)} aria-label="Transcrever os áudios sozinho" />
       </CardHeader>
+    </Card>
+  )
+}
+
+const COLOR_LABEL: Record<string, string> = { azul: 'Azul', verde: 'Verde', laranja: 'Laranja', roxo: 'Roxo', rosa: 'Rosa', ciano: 'Ciano' }
+
+/** Filial sugerida pelo DDD: o chat mostra um selo colorido ao lado do número do contato (só sinaliza, não transfere). */
+function FiliaisCard({ editable }: { editable: boolean }) {
+  const qc = useQueryClient()
+  const q = useFiliais()
+  const [rows, setRows] = useState<{ name: string; ddds: string; color: string }[] | null>(null)
+  const list = rows ?? (q.data?.rules ?? []).map((r) => ({ name: r.name, ddds: r.ddds.join(', '), color: r.color }))
+  const colors = q.data?.colors ?? Object.keys(COLOR_LABEL)
+  const save = useMutation({
+    mutationFn: () => api.put<{ rules: FilialRule[] }>('/chat/filiais', { regras: list.map((r) => ({ name: r.name, ddds: r.ddds, color: r.color })) }),
+    onSuccess: (data) => {
+      qc.setQueryData(['chat-filiais'], data)
+      setRows(null)
+      toast.success('Filiais salvas.')
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const edit = (i: number, patch: Partial<{ name: string; ddds: string; color: string }>) => setRows(list.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Filial sugerida pelo DDD</CardTitle>
+        <CardDescription>
+          No chat, ao lado do número do contato, aparece um selo colorido com a filial que atende aquela região (ex.: DDD 41 a 46, Filial Cascavel). Só sinaliza: a conversa continua com quem está atendendo. DDD sem filial não mostra nada.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {list.map((r, i) => (
+          <div key={i} className="grid gap-2 sm:grid-cols-[1fr_1.4fr_9rem_auto] sm:items-end">
+            <div className="space-y-1">
+              <Label htmlFor={`fil-nome-${i}`} className="text-xs">Filial</Label>
+              <Input id={`fil-nome-${i}`} value={r.name} disabled={!editable} maxLength={60} onChange={(e) => edit(i, { name: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor={`fil-ddd-${i}`} className="text-xs">DDDs (separados por vírgula)</Label>
+              <Input id={`fil-ddd-${i}`} value={r.ddds} disabled={!editable} inputMode="numeric" onChange={(e) => edit(i, { ddds: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Cor</Label>
+              <Select value={r.color} disabled={!editable} onValueChange={(v) => edit(i, { color: v })}>
+                <SelectTrigger aria-label="Cor do selo">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {colors.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      <span className={cn('rounded-full border px-2 text-xs', FILIAL_COLOR_CLASS[c])}>{COLOR_LABEL[c] ?? c}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {editable && (
+              <Button type="button" variant="ghost" size="icon" aria-label={`Remover ${r.name || 'filial'}`} onClick={() => setRows(list.filter((_, j) => j !== i))}>
+                <Trash2Icon />
+              </Button>
+            )}
+          </div>
+        ))}
+        {!list.length && <p className="text-sm text-muted-foreground">Nenhuma filial: o chat não mostra o selo.</p>}
+        {editable && (
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" disabled={list.length >= 20} onClick={() => setRows([...list, { name: '', ddds: '', color: colors[list.length % colors.length] ?? 'azul' }])}>
+              <PlusIcon /> Adicionar filial
+            </Button>
+            <Button type="button" size="sm" disabled={!rows || save.isPending} onClick={() => save.mutate()}>
+              {save.isPending && <Loader2Icon className="animate-spin" />} Salvar
+            </Button>
+            {rows && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => setRows(null)}>
+                Desfazer
+              </Button>
+            )}
+          </div>
+        )}
+      </CardContent>
     </Card>
   )
 }

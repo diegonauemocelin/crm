@@ -28,6 +28,7 @@ import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { api, errorMessage } from '@/lib/api'
 import { formatPhone, maskPhone, useOptions } from '@/lib/atendimento'
+import { FILIAL_COLOR_CLASS, filialOf, useFiliais } from '@/lib/filiais'
 import { dateShort, dateTime, time } from '@/lib/format'
 import { useAuth } from '@/lib/auth'
 import { setSoundOn, soundOn, useChatAlerts } from '@/lib/chat-alerts'
@@ -811,6 +812,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
             <p className="truncate font-medium">{title}</p>
             <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
               {d.conversation.phone && <span className="whitespace-nowrap">{formatPhone(d.conversation.phone)}</span>}
+              <FilialBadge phone={d.conversation.category === 'GRUPO' ? null : d.conversation.phone} />
               {d.number && (
                 <span className="inline-flex items-center gap-1 whitespace-nowrap">
                   <SmartphoneIcon className="size-3" /> {d.number.name}
@@ -2867,5 +2869,17 @@ function AlertSettings() {
         </span>
       )}
     </>
+  )
+}
+
+/** Filial sugerida pelo DDD do contato (Configurações › Números de WhatsApp). Só sinaliza: não transfere. */
+function FilialBadge({ phone }: { phone: string | null | undefined }) {
+  const q = useFiliais()
+  const f = filialOf(phone, q.data?.rules)
+  if (!f) return null
+  return (
+    <span className={cn('inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium', FILIAL_COLOR_CLASS[f.color] ?? FILIAL_COLOR_CLASS.azul)} title={`Sugestão pelo DDD ${f.ddd}: atendimento da ${f.name}`}>
+      {f.name} · DDD {f.ddd}
+    </span>
   )
 }
