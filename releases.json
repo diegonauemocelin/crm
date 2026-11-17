@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.55",
+      "date": "2026-11-17",
+      "title": "App de Chat: contatos da agenda na pesquisa",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Chat WhatsApp",
+          "text": "No app de Chat, a pesquisa mostra também os contatos da agenda, os vendedores e os leads: clique no contato para começar a conversa, como no WhatsApp."
+        },
+        {
+          "type": "melhoria",
+          "area": "Chat WhatsApp",
+          "text": "Conversa nova começada pelo CRM já aparece com o nome do contato da agenda (antes, só o número)."
+        }
+      ]
+    },
+    {
       "version": "3.0.54",
       "date": "2026-11-17",
       "title": "App instalado no computador abre o Chat no estilo WhatsApp Web",
