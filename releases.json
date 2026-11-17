@@ -2,6 +2,33 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.45",
+      "date": "2026-11-17",
+      "title": "Shopee, Amazon e TikTok Shop prontos para conectar; menu de Marketplaces com submenus",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Marketplaces",
+          "text": "O menu de Marketplaces agora tem um submenu para cada marketplace: Mercado Livre (com tudo o que já existia), Shopee, Amazon e TikTok Shop."
+        },
+        {
+          "type": "novo",
+          "area": "Marketplaces",
+          "text": "Shopee, Amazon e TikTok Shop: tela de anúncios e preços pronta para conectar a loja pela API oficial de cada uma (as chaves do aplicativo de desenvolvedor ficam guardadas criptografadas)."
+        },
+        {
+          "type": "novo",
+          "area": "Marketplaces",
+          "text": "Depois de conectada, cada anúncio mostra preço, estoque, custo, comissão, imposto e margem, e o preço sugerido que deixa o mesmo lucro da venda por fora. Dá para alterar o preço direto na loja, com histórico."
+        },
+        {
+          "type": "novo",
+          "area": "Marketplaces",
+          "text": "Comissão, taxa fixa e frete de cada marketplace são informados na tela (os do contrato da loja). Custo, imposto e lucro do produto vêm de Mercado Livre › Preços e promoções."
+        }
+      ]
+    },
+    {
       "version": "3.0.44",
       "date": "2026-11-16",
       "title": "Aviso de novidades a cada atualização",
