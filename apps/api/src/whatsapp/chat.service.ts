@@ -15,7 +15,7 @@ import { SettingsService } from '../settings/settings.service'
 import { normalizePhone } from '../atendimento/br'
 import { callHoursOf, DEFAULT_ATENDIMENTO } from '../atendimento/service-records.service'
 import { type EvolutionClient, EvolutionError } from './evolution'
-import { cleanJid, downloadPhoto, HIDDEN_NUMBER_MESSAGE, jidKind, mentionView, phoneOfJid, photoDue, PhotoQueue } from './contato-wa'
+import { cleanJid, contactNamesOf, downloadPhoto, HIDDEN_NUMBER_MESSAGE, jidKind, mentionView, phoneOfJid, photoDue, PhotoQueue } from './contato-wa'
 import { type Sector, servesNumber, splitWhere, teamOf, teamWhere } from './atendentes'
 import { effectiveMonitorNumbers, monitorAccessOf, monitorWhere } from './monitoramento'
 import { type AgendaCategory, answersClient, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isClosingMessage, isOpen, LABEL_COLORS, subBusinessMs, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
@@ -330,7 +330,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const idle = !staysClosed && (!conv?.lastMessageAt || !!conv.closedAt || p.at.getTime() - conv.lastMessageAt.getTime() > rules.reopenDays * 86_400_000)
     // Contato da empresa (lista do administrador) ou marcado no chat: vale para todos os números.
     const contact = await this.agendaContact(n.tenantId, n.id, phone ?? p.jid)
-    conv ??= await this.prisma.whatsappConversation.create({ data: { tenantId: n.tenantId, numberId: n.id, jid: p.jid, phone, name: p.pushName, category: contact?.category ?? 'CLIENTE' } })
+    conv ??= await this.prisma.whatsappConversation.create({ data: { tenantId: n.tenantId, numberId: n.id, jid: p.jid, phone, name: p.pushName ?? (await this.waName(n.id, p.jid)), category: contact?.category ?? 'CLIENTE' } })
 
     // O WhatsApp reenviou a mensagem que tinha chegado trancada: a de verdade substitui o aviso.
     if (p.text !== UNREADABLE_TEXT) await this.prisma.whatsappMessage.deleteMany({ where: { conversationId: conv.id, waId: p.waId, text: UNREADABLE_TEXT } })
@@ -615,7 +615,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const candidates = await this.prisma.whatsappConversation.findMany({ where: historyConvWhere(n.id, p), take: 20 })
     let conv = matchHistoryConversation(candidates, n.id, p)
     const created = !conv
-    const name = historyName(p.pushName)
+    const name = historyName(p.pushName) ?? (await this.waName(n.id, p.jid))
     if (!conv) {
       // Conversa só com o histórico: fica na fila (sem atendente), ligada ao lead que já existe, sem criar lead nem pré-venda.
       // Sem o telefone (@lid), fica como contato escondido e junta com a do telefone quando o cliente escrever de novo.
@@ -2637,6 +2637,46 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     return { ...r, skipped: parsed.skipped, scope }
   }
 
+  /** Nome do contato na agenda do WhatsApp deste número (guardada no CRM), quando a mensagem veio sem nome. */
+  private async waName(numberId: string, jid: string) {
+    return (await this.prisma.whatsappWaContact.findUnique({ where: { numberId_jid: { numberId, jid } }, select: { name: true } }).catch(() => null))?.name ?? null
+  }
+
+  /**
+   * Nomes dos contatos do WhatsApp (eventos de contatos): a conversa deste número que está sem nome (ex.: veio do
+   * histórico ou pelo número escondido @lid) passa a mostrar o nome. Nome já dado no CRM não muda.
+   */
+  async applyContactNames(n: WhatsappNumber, data: unknown) {
+    const names = contactNamesOf(data)
+    if (!names.length) return 0
+    // Agenda do WhatsApp deste número, no CRM (para a importação de contatos): grava os novos e os nomes que mudaram.
+    for (let i = 0; i < names.length; i += 500) {
+      const part = names.slice(i, i + 500)
+      const known = new Map((await this.prisma.whatsappWaContact.findMany({ where: { numberId: n.id, jid: { in: part.map((x) => x.jid) } }, select: { jid: true, name: true } })).map((x) => [x.jid, x.name]))
+      const fresh = part.filter((x) => !known.has(x.jid))
+      if (fresh.length) await this.prisma.whatsappWaContact.createMany({ data: fresh.map((x) => ({ tenantId: n.tenantId, numberId: n.id, jid: x.jid, name: x.name })), skipDuplicates: true })
+      for (const x of part.filter((y) => known.has(y.jid) && known.get(y.jid) !== y.name)) await this.prisma.whatsappWaContact.updateMany({ where: { numberId: n.id, jid: x.jid }, data: { name: x.name } })
+    }
+    const convs = await this.prisma.whatsappConversation.findMany({ where: { numberId: n.id, name: null }, select: { id: true, jid: true, lid: true, phone: true }, take: 20_000 })
+    if (!convs.length) return 0
+    const byJid = new Map<string, string>()
+    for (const c of convs) {
+      byJid.set(c.jid, c.id)
+      if (c.lid) byJid.set(c.lid, c.id)
+      if (c.phone) for (const v of phoneVariants(c.phone)) byJid.set(`${v.replace(/\D/g, '')}@s.whatsapp.net`, c.id)
+    }
+    let done = 0
+    const named = new Set<string>()
+    for (const { jid, name } of names) {
+      const id = byJid.get(jid)
+      if (!id || named.has(id)) continue
+      named.add(id)
+      done += (await this.prisma.whatsappConversation.updateMany({ where: { id, name: null }, data: { name } })).count
+    }
+    if (done) this.logger.log(`Número ${n.name}: ${done} conversa(s) ganharam o nome do contato do WhatsApp.`)
+    return done
+  }
+
   /** Prévia dos contatos do WhatsApp conectado (um clique, sem arquivo). */
   async previewContactsWhatsapp(user: AuthUser, numberId: string) {
     this.assertAdmin(user, 'edit')
@@ -2645,7 +2685,10 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const client = this.clientOf()
     if (!client) throw new BadRequestException('O WhatsApp não está ativo no servidor.')
     const list = await client.contacts(n.instanceName).catch((e: unknown) => this.fail(e))
-    const fromWa = contactsFromWhatsapp(list)
+    // A lista da Evolution e a agenda do WhatsApp guardada no CRM (nomes que o WhatsApp mandou ao conectar).
+    const saved = await this.prisma.whatsappWaContact.findMany({ where: { numberId: n.id, jid: { endsWith: '@s.whatsapp.net' } }, select: { jid: true, name: true }, take: 20_000 })
+    const raw = Array.isArray(list) ? list : ([(list as Record<string, unknown> | null)?.contacts, (list as Record<string, unknown> | null)?.data, (list as Record<string, unknown> | null)?.records].find(Array.isArray) ?? [])
+    const fromWa = contactsFromWhatsapp([...(raw as unknown[]), ...saved.map((c) => ({ remoteJid: c.jid, pushName: c.name }))])
     // Quem já conversou com este número no CRM: o telefone já foi resolvido na conversa (inclusive quando o WhatsApp esconde o número).
     const convs = await this.prisma.whatsappConversation.findMany({ where: { tenantId: user.tenantId, numberId: n.id, phone: { not: null } }, select: { phone: true, name: true, leadId: true }, take: 5000 })
     const leadNames = new Map((await this.prisma.lead.findMany({ where: { id: { in: convs.map((c) => c.leadId).filter((x): x is string => !!x) } }, select: { id: true, name: true } })).map((l) => [l.id, l.name]))

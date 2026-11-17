@@ -22,3 +22,22 @@ describe('mensagem encaminhada', () => {
     expect(forwardedText(`${FORWARD_TAG}\nSegue`)).toBe(`${FORWARD_TAG}\nSegue`)
   })
 })
+
+describe('nomes dos contatos do WhatsApp', () => {
+  it('lê os nomes dos eventos de contatos e ignora os sem nome', async () => {
+    const { contactNamesOf } = await import('../src/whatsapp/contato-wa')
+    expect(
+      contactNamesOf([
+        { remoteJid: '5549999990001@s.whatsapp.net', pushName: 'Emeli' },
+        { remoteJid: '126487189541116@lid', pushName: 'João Oficina' },
+        { remoteJid: '5549999990002@s.whatsapp.net', pushName: '5549999990002' },
+        { remoteJid: '1203630@g.us', pushName: 'Grupo' },
+        { remoteJid: 'status@broadcast', pushName: 'x' },
+      ]),
+    ).toEqual([
+      { jid: '5549999990001@s.whatsapp.net', name: 'Emeli' },
+      { jid: '126487189541116@lid', name: 'João Oficina' },
+    ])
+    expect(contactNamesOf({ remoteJid: '5549999990003@s.whatsapp.net', pushName: ' Ana ' })).toEqual([{ jid: '5549999990003@s.whatsapp.net', name: 'Ana' }])
+  })
+})

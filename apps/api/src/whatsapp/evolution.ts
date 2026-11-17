@@ -12,7 +12,7 @@ export type NumberStatus = 'CONECTADO' | 'CONECTANDO' | 'DESCONECTADO'
  * Eventos que a Evolution manda para o CRM em cada instância. MESSAGES_SET: histórico que o WhatsApp manda ao conectar
  * pelo QR Code (recupera as mensagens das últimas horas que não chegaram, ex.: com a sessão caída).
  */
-export const WEBHOOK_EVENTS = ['CONNECTION_UPDATE', 'QRCODE_UPDATED', 'MESSAGES_UPSERT', 'MESSAGES_SET', 'MESSAGES_UPDATE', 'MESSAGES_EDITED', 'MESSAGES_DELETE', 'SEND_MESSAGE', 'CALL']
+export const WEBHOOK_EVENTS = ['CONNECTION_UPDATE', 'QRCODE_UPDATED', 'MESSAGES_UPSERT', 'MESSAGES_SET', 'MESSAGES_UPDATE', 'MESSAGES_EDITED', 'MESSAGES_DELETE', 'SEND_MESSAGE', 'CALL', 'CONTACTS_UPSERT', 'CONTACTS_UPDATE']
 
 /**
  * Ajustes da instância na Evolution (a /settings/set exige todos). syncFullHistory: com "Importar mensagens do aparelho"
