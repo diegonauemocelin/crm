@@ -88,6 +88,8 @@ describe('web push: inscrição e links', () => {
   it('aceita só serviços de notificação conhecidos, em https', () => {
     expect(pushEndpointOk('https://fcm.googleapis.com/fcm/send/abc')).toBe(true)
     expect(pushEndpointOk('https://updates.push.services.mozilla.com/wpush/v2/abc')).toBe(true)
+    expect(pushEndpointOk('https://jmt17.google.com/fcm/send/abc')).toBe(true)
+    expect(pushEndpointOk('https://jmt17.google.com.evil.com/fcm/send/abc')).toBe(false)
     expect(pushEndpointOk('https://web.push.apple.com/QK')).toBe(true)
     expect(pushEndpointOk('https://wns2-par02p.notify.windows.com/w/?token=x')).toBe(true)
     expect(pushEndpointOk('http://fcm.googleapis.com/fcm/send/abc')).toBe(false)

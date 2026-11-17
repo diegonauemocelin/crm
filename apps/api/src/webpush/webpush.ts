@@ -153,8 +153,8 @@ export function statsOf(c: { sent: number; delivered: number; clicks: number }) 
 
 // ---------- Inscrição vinda do navegador ----------
 
-/** Serviços de notificação dos navegadores (Chrome/Edge/Opera, Firefox, Safari, Windows). */
-const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^android\.googleapis\.com$/, /(^|\.)push\.services\.mozilla\.com$/, /(^|\.)push\.apple\.com$/, /(^|\.)notify\.windows\.com$/]
+/** Serviços de notificação dos navegadores (Chrome/Edge/Opera, Firefox, Safari, Windows). O Chromium e alguns Chrome usam jmtNN.google.com (FCM). */
+const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^android\.googleapis\.com$/, /^jmt\d*\.google\.com$/, /(^|\.)push\.services\.mozilla\.com$/, /(^|\.)push\.apple\.com$/, /(^|\.)notify\.windows\.com$/]
 
 export function pushEndpointOk(endpoint: unknown): endpoint is string {
   if (typeof endpoint !== 'string' || endpoint.length > URL_MAX) return false
