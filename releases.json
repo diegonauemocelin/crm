@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.47",
+      "date": "2026-11-17",
+      "title": "Conversas com o nome do contato do WhatsApp; importação de contatos completa",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Chat WhatsApp",
+          "text": "Conversas que apareciam só como \"Contato\" (vindas do histórico do celular ou com o número escondido pelo WhatsApp) passam a mostrar o nome do contato, assim que o WhatsApp manda a agenda (ao conectar pelo QR Code ou quando o contato muda)."
+        },
+        {
+          "type": "correcao",
+          "area": "Agenda",
+          "text": "Importar os contatos do WhatsApp traz a agenda inteira que o WhatsApp mandou ao CRM, e não só alguns contatos."
+        }
+      ]
+    },
+    {
       "version": "3.0.46",
       "date": "2026-11-17",
       "title": "Busca de leads: uma mensagem diferente para cada empresa",
