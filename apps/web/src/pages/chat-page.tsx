@@ -1494,6 +1494,7 @@ const ROUND_SEND = 'size-11 shrink-0 rounded-full bg-[#00a884] text-white hover:
 const MAX_FILES = 10
 
 function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed, compact = false }: { thread: Thread; replyTo?: Message | null; onClearReply?: () => void; dropped?: File[] | null; onDroppedUsed?: () => void; compact?: boolean }) {
+  const [suggesting, setSuggesting] = useState(false)
   const { can } = useAuth()
   const qc = useQueryClient()
   const [text, setText] = useState('')
@@ -1727,7 +1728,6 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed, compa
     </Button>
   )
   // Resposta sugerida pela IA (Gemini): vai para a caixa de mensagem, o atendente revisa e envia.
-  const [suggesting, setSuggesting] = useState(false)
   const suggest = async () => {
     setSuggesting(true)
     try {
