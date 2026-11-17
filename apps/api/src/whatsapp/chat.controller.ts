@@ -332,6 +332,10 @@ class TranscricaoDto {
   @IsBoolean() ativa!: boolean
 }
 
+class FiliaisDto {
+  @IsArray() @ArrayMaxSize(20) regras!: unknown[]
+}
+
 /** Chat WhatsApp: conversas visíveis para o usuário (permissão "Chat WhatsApp", com escopo). */
 @ApiTags('WhatsApp')
 @Controller('chat')
@@ -359,6 +363,17 @@ export class ChatController {
   setTranscribe(@CurrentUser() user: AuthUser, @Body() dto: TranscricaoDto) {
     this.chat.assertWhatsappAdmin(user)
     return this.ia.setTranscribe(user.tenantId, dto.ativa)
+  }
+
+  /** Filial sugerida pelo DDD do contato (só sinaliza no chat). */
+  @Get('filiais')
+  filiais(@CurrentUser() user: AuthUser) {
+    return this.chat.filiais(user)
+  }
+
+  @Put('filiais')
+  setFiliais(@CurrentUser() user: AuthUser, @Body() dto: FiliaisDto) {
+    return this.chat.setFiliais(user, dto.regras)
   }
 
   /** Finalizar atendimento: mensagem de encerramento (opcional), sai do atendente e da fila, arquiva. */

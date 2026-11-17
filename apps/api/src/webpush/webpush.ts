@@ -153,8 +153,8 @@ export function statsOf(c: { sent: number; delivered: number; clicks: number }) 
 
 // ---------- Inscrição vinda do navegador ----------
 
-/** Serviços de notificação dos navegadores (Chrome/Edge/Opera, Firefox, Safari, Windows). */
-const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^android\.googleapis\.com$/, /(^|\.)push\.services\.mozilla\.com$/, /(^|\.)push\.apple\.com$/, /(^|\.)notify\.windows\.com$/]
+/** Serviços de notificação dos navegadores (Chrome/Edge/Opera, Firefox, Safari, Windows). O Chromium e alguns Chrome usam jmtNN.google.com (FCM). */
+const PUSH_HOSTS = [/^fcm\.googleapis\.com$/, /^android\.googleapis\.com$/, /^jmt\d*\.google\.com$/, /(^|\.)push\.services\.mozilla\.com$/, /(^|\.)push\.apple\.com$/, /(^|\.)notify\.windows\.com$/]
 
 export function pushEndpointOk(endpoint: unknown): endpoint is string {
   if (typeof endpoint !== 'string' || endpoint.length > URL_MAX) return false
@@ -415,9 +415,23 @@ export const PUSH_JS = `
     w.__crmPush = 1;
     var perm = w.Notification.permission, now = Date.now();
     var ask = wpShouldAsk(perm, wpStore('_crm_wp_until'), now);
-    // Já permitiu: confere a inscrição uma vez por dia (e liga ao lead, se o visitante foi identificado depois).
-    var sync = perm === 'granted' && now - (Number(wpStore('_crm_wp_sync')) || 0) > 864e5;
+    // Já permitiu: confere a inscrição uma vez por dia (e liga ao lead, se o visitante foi identificado depois) e, a
+    // cada visita, sem chamar o CRM, refaz na hora se ela sumiu (outro sistema de notificação da loja pode cancelá-la).
+    var sync = perm === 'granted';
     if (!ask && !sync) return;
+    if (sync && now - (Number(wpStore('_crm_wp_sync')) || 0) <= 864e5) {
+      nav.serviceWorker.getRegistrations().then(function (list) {
+        for (var i = 0; i < list.length; i++) {
+          var a = list[i].active || list[i].waiting || list[i].installing;
+          if (a && String(a.scriptURL).split('?')[0].indexOf('/crm-push-sw.js') !== -1) return list[i].pushManager.getSubscription().then(function (s) { if (!s) wpConfig(true); });
+        }
+        wpConfig(true);
+      }).catch(function () {});
+      return;
+    }
+    wpConfig(sync);
+  }
+  function wpConfig(sync) {
     fetch(WP_BASE + '/api/public/webpush/config?k=' + encodeURIComponent(C.k), { credentials: 'omit' })
       .then(function (r) { return r.json(); })
       .then(function (cfg) {
