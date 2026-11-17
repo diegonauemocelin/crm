@@ -10,7 +10,7 @@ import { ChatService } from '../whatsapp/chat.service'
 import { isOpen } from '../whatsapp/envio'
 import { whatsappOf } from '../whatsapp/mensagens'
 import { WhatsappService } from '../whatsapp/whatsapp.service'
-import { cleanCampaign, isOptOut, messagePrompt, nextGapMs, pickVariation, renderMessage, sendPhone, sendWindowOpen, variationsFromAi } from './envio'
+import { cleanCampaign, isOptOut, messagePrompt, nextGapMs, PERSONAL_CHUNK, personalFromAi, personalPrompt, pickVariation, renderMessage, sendPhone, sendWindowOpen, variationsFromAi } from './envio'
 import { aiWrite } from './ia'
 import type { PhoneContact, ProspectCriteria } from './prospeccao'
 import { ProspeccaoService } from './prospeccao.service'
@@ -102,6 +102,35 @@ export class ProspeccaoEnvioService implements OnApplicationBootstrap, OnModuleD
     return { variations }
   }
 
+  /**
+   * Uma mensagem diferente para cada empresa, escrita pelo Gemini (plano gratuito do Google) com o nome, o segmento, a
+   * cidade e o motivo de cada uma. Pede em grupos pequenos (limite por minuto do plano gratuito). A pessoa revisa antes.
+   */
+  async writePersonal(user: AuthUser, searchId: string, offer: string, prospectIds: string[]) {
+    this.prospeccao.assertCan(user, 'edit')
+    const what = offer.trim()
+    if (what.length < 10) throw new BadRequestException('Conte em uma frase o que você oferece (pelo menos 10 letras).')
+    const ids = [...new Set(prospectIds)].slice(0, 50)
+    const rows = await this.prisma.prospect.findMany({ where: { id: { in: ids }, searchId, tenantId: user.tenantId }, select: { id: true, name: true, segment: true, city: true, uf: true, reason: true } })
+    if (!rows.length) throw new BadRequestException('Escolha as empresas.')
+    const key = await this.prospeccao.key(user.tenantId, 'gemini')
+    if (!key) throw new BadRequestException('Falta a chave do Gemini: cadastre em Marketplaces › Assistente ML › Configurações ou no e-mail marketing.')
+    const company = (await this.settings.branding(user.tenantId).catch(() => null))?.shortName || 'nossa empresa'
+    const messages: Record<string, string> = {}
+    for (let i = 0; i < rows.length; i += PERSONAL_CHUNK) {
+      const chunk = rows.slice(i, i + PERSONAL_CHUNK)
+      const prompt = personalPrompt({ offer: what.slice(0, 600), company, sender: user.name, companies: chunk.map((r) => ({ id: r.id, nome: r.name, segmento: r.segment, cidade: [r.city, r.uf].filter(Boolean).join('/') || null, motivo: r.reason })) })
+      try {
+        Object.assign(messages, personalFromAi(await aiWrite('gemini', key, '', GEMINI_MODELS, prompt), chunk.map((r) => r.id)))
+      } catch (e) {
+        if (!Object.keys(messages).length) throw new BadRequestException(`O Gemini não escreveu as mensagens: ${(e as Error).message}`)
+        break
+      }
+    }
+    if (!Object.keys(messages).length) throw new BadRequestException('O Gemini não devolveu as mensagens. Tente de novo.')
+    return { messages, missing: rows.filter((r) => !messages[r.id]).map((r) => r.id) }
+  }
+
   /** Coloca as empresas escolhidas na fila de envio. */
   async createCampaign(user: AuthUser, searchId: string, raw: Record<string, unknown>, ctx: RequestCtx) {
     this.prospeccao.assertCan(user, 'edit')
@@ -125,6 +154,7 @@ export class ProspeccaoEnvioService implements OnApplicationBootstrap, OnModuleD
       .map((p) => ({ p, phone: sendPhone(p.phones as unknown as PhoneContact[]) }))
       .filter((x): x is { p: (typeof prospects)[number]; phone: PhoneContact } => !!x.phone)
     if (!rows.length) throw new BadRequestException('Nenhuma das empresas escolhidas tem celular com WhatsApp (ou já receberam).')
+    if (!d.messages.length && rows.some((x) => !d.perProspect[x.p.id])) throw new BadRequestException('Falta a mensagem de alguma empresa. Gere de novo ou escreva uma mensagem geral.')
     const c = await this.prisma.prospectCampaign.create({
       data: {
         tenantId: user.tenantId,
@@ -137,7 +167,7 @@ export class ProspeccaoEnvioService implements OnApplicationBootstrap, OnModuleD
         optOut: d.optOut,
         createdById: user.id,
         createdBy: user.name,
-        sends: { create: rows.map((x) => ({ tenantId: user.tenantId, prospectId: x.p.id, phone: x.phone.value })) },
+        sends: { create: rows.map((x) => ({ tenantId: user.tenantId, prospectId: x.p.id, phone: x.phone.value, text: d.perProspect[x.p.id] ?? null })) },
       },
     })
     await this.audit.byUser(user, ctx, 'prospeccao.envio_criado', 'prospect_campaign', c.id, { numero: number.name, empresas: rows.length, intervalo: `${d.gapMin}-${d.gapMax} min`, porDia: d.dailyMax })
@@ -235,7 +265,8 @@ export class ProspeccaoEnvioService implements OnApplicationBootstrap, OnModuleD
     }
     try {
       const { leadId } = await this.prospeccao.leadFor(c.tenantId, p.id, next.phone)
-      const text = renderMessage(pickVariation(c.messages, this.random), { empresa: p.name, cidade: p.city, segmento: p.segment, vendedor: c.createdBy }, c.optOut)
+      // Mensagem própria da empresa (escrita pela IA e revisada) ou uma das variações gerais.
+      const text = renderMessage(next.text ?? pickVariation(c.messages, this.random), { empresa: p.name, cidade: p.city, segmento: p.segment, vendedor: c.createdBy }, c.optOut)
       const sent = await this.chat.sendAutomatic(number, phone, text, LABEL, { leadId, recordId: null, name: p.name })
       if (!sent) {
         // Limite de envios do número no momento: tenta de novo daqui a pouco.

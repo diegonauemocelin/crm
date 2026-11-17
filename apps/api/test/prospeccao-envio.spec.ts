@@ -47,3 +47,15 @@ describe('busca de leads: envio em fila', () => {
     expect(variationsFromAi('sem json')).toEqual([])
   })
 })
+
+describe('mensagem única por empresa', () => {
+  it('lê as mensagens da IA por empresa e aceita envio só com elas', async () => {
+    const { personalFromAi, cleanCampaign: clean } = await import('../src/prospeccao/envio')
+    const txt = '```json\n{"mensagens":[{"id":"a","texto":"Olá, Terra Forte! Tudo bem?"},{"id":"x","texto":"Não pedida, deve sumir"},{"id":"b","texto":"curta"}]}\n```'
+    expect(personalFromAi(txt, ['a', 'b'])).toEqual({ a: 'Olá, Terra Forte! Tudo bem?' })
+    expect(personalFromAi('sem json', ['a'])).toEqual({})
+    const c = clean({ numberId: 'n', prospectIds: ['a'], messages: [], perProspect: { a: 'Olá, Terra Forte! Tudo bem?' } })
+    expect(c.perProspect).toEqual({ a: 'Olá, Terra Forte! Tudo bem?' })
+    expect(() => clean({ numberId: 'n', prospectIds: ['a'], messages: [], perProspect: {} })).toThrow(/mensagem/)
+  })
+})
