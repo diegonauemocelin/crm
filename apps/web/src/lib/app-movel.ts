@@ -13,6 +13,12 @@ export function isInstalledApp() {
 export const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 export const isAndroid = () => /Android/i.test(navigator.userAgent)
 
+/** App instalado aberto no computador (Windows, Mac, Linux): usa o layout do WhatsApp Web (/chat-app), não o do celular. */
+export function isDesktopApp() {
+  if (isIOS() || isAndroid() || /Mobi/i.test(navigator.userAgent)) return false
+  return window.matchMedia?.('(pointer: fine)').matches !== false
+}
+
 export function registerServiceWorker() {
   if (!('serviceWorker' in navigator) || !window.isSecureContext) return
   void navigator.serviceWorker.register('/sw.js').catch(() => undefined)
