@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.52",
+      "date": "2026-11-17",
+      "title": "Chat: filtro de número ao voltar do Monitoramento",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Chat WhatsApp",
+          "text": "Ao voltar do Monitoramento para Minhas conversas, a lista mostrava as conversas do número monitorado (com o campo de número em branco) até escolher outro número. Agora volta para Todos os números."
+        }
+      ]
+    },
+    {
       "version": "3.0.51",
       "date": "2026-11-17",
       "title": "Filial sugerida pelo DDD no chat; Web Push mais confiável",
