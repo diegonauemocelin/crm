@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.50",
+      "date": "2026-11-17",
+      "title": "Web Push: verificação do arquivo da loja",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Web Push",
+          "text": "O botão Verificar de Gerenciar coleta reconhece o arquivo crm-push-sw.js em lojas com firewall (como a Magazord), que antes respondiam \"403\" só para a conferência."
+        }
+      ]
+    },
+    {
       "version": "3.0.49",
       "date": "2026-11-17",
       "title": "Ajuste no botão Sugerir resposta do chat",
