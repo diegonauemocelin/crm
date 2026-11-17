@@ -106,6 +106,20 @@ export class AuthService {
     return { status: pending ? 'mfa_setup_required' : 'ok', ...session }
   }
 
+  /**
+   * Sessão aberta pela chave de acesso do aparelho (Face ID / Touch ID / digital): as mesmas regras do login com senha
+   * (ativo, bloqueio, horário do perfil). A biometria com a chave do aparelho já vale como segundo fator.
+   */
+  async passkeySession(userId: string, ctx: RequestCtx, app = false) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, include: { role: true } })
+    if (!user || user.deletedAt || !user.active || !user.role.active) throw new UnauthorizedException(GENERIC_LOGIN_ERROR)
+    this.assertNotLocked(user.lockedUntil)
+    if (!withinLoginHours(user.role.loginHours, user.role.isSystem)) throw new UnauthorizedException(outsideHoursMessage(user.role.loginHours))
+    const session = await this.startSession(user.id, user.tenantId, user.email, ctx, 'auth.login_passkey', app)
+    const pending = user.role.require2fa && !user.totpEnabled
+    return { status: pending ? ('mfa_setup_required' as const) : ('ok' as const), ...session }
+  }
+
   async verifyMfa(mfaToken: string | undefined, code: string, ctx: RequestCtx, app = false) {
     if (!mfaToken) throw new UnauthorizedException('Sessão de verificação expirada. Faça login novamente.')
     let payload: MfaPayload

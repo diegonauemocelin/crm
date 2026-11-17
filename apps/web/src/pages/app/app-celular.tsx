@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { PasskeySection } from '@/components/passkey'
 import { ActivityIcon, BarChart3Icon, EyeIcon, BellIcon, BellOffIcon, CheckCheckIcon, ChevronRightIcon, DownloadIcon, LayoutGridIcon, Loader2Icon, LogOutIcon, MailIcon, MessageCircleIcon, MessageSquarePlusIcon, PresentationIcon, SearchIcon, ShareIcon, SquarePlusIcon, UserIcon, XIcon } from 'lucide-react'
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router'
@@ -563,6 +564,8 @@ export function AppConta() {
             </Button>
           )}
         </section>
+
+        <PasskeySection />
 
         {!isInstalledApp() && <InstallHelp />}
 

@@ -102,6 +102,8 @@ export interface ListQuery {
   search?: string
   status?: string
   full?: string
+  /** Em promoção no Mercado Livre (preço de venda abaixo do preço do anúncio): sim, nao ou todos. */
+  promo?: string
   noCost?: boolean
   lowMargin?: boolean
   /** Depósito do Mercado Livre comparado ao preço de venda no e-commerce. */
@@ -664,6 +666,8 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     else if (st !== 'todos') list = list.filter((r) => r.status === st)
     if (q.full === 'sim') list = list.filter((r) => r.full)
     if (q.full === 'nao') list = list.filter((r) => !r.full)
+    if (q.promo === 'sim') list = list.filter((r) => r.promo !== null)
+    if (q.promo === 'nao') list = list.filter((r) => r.promo === null)
     if (q.noCost) list = list.filter((r) => r.cost === null)
     if (q.lowMargin) list = list.filter((r) => r.margin.marginPct !== null && r.margin.marginPct < ctx.config.minMarginPct)
     if (q.deposit) list = list.filter((r) => r.received !== null && r.depositTarget && depositStatus(r.received, r.depositTarget.value) === q.deposit)

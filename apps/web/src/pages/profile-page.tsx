@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { PasskeySection } from '@/components/passkey'
 import { CameraIcon, Loader2Icon, MonitorIcon, MoonIcon, ShieldCheckIcon, SunIcon } from 'lucide-react'
 import { type FormEvent, useRef, useState } from 'react'
 import { toast } from 'sonner'
@@ -35,6 +36,7 @@ export function ProfilePage() {
       {can('chat') && <AlertsCard me={me} />}
       <PasswordCard />
       <TwoFactorCard me={me} />
+      <PasskeySection />
       <SessionsCard />
     </div>
   )

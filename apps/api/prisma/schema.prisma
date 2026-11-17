@@ -4250,3 +4250,23 @@ model WhatsappWaContact {
   @@index([tenantId])
   @@map("whatsapp_wa_contacts")
 }
+
+/// Chave de acesso (passkey) de um aparelho: entrar com Face ID, Touch ID ou a digital, sem senha. A chave privada
+/// nunca sai do aparelho; aqui fica só a chave pública.
+model Passkey {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  userId       String    @db.Uuid
+  /// Identificador da credencial (base64url), único.
+  credentialId String    @unique
+  publicKey    Bytes
+  counter      BigInt    @default(0)
+  transports   String[]  @default([])
+  /// Nome do aparelho (ex.: iPhone), para a pessoa reconhecer na lista.
+  deviceName   String
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+
+  @@index([userId])
+  @@map("passkeys")
+}

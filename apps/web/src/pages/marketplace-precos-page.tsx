@@ -219,6 +219,7 @@ export function MarketplacePrecosPage() {
   const [q, setQ] = useState(() => new URLSearchParams(window.location.search).get('busca') ?? '')
   const [status, setStatus] = useState('ativos')
   const [full, setFull] = useState('todos')
+  const [promo, setPromo] = useState('todos')
   const [problem, setProblem] = useState('todos')
   const [order, setOrder] = useState('margem')
   const [page, setPage] = useState(1)
@@ -233,8 +234,8 @@ export function MarketplacePrecosPage() {
     const t = setTimeout(() => (setQ(search), setPage(1)), 350)
     return () => clearTimeout(t)
   }, [search])
-  const filter = { situacao: status, full, ...(q ? { busca: q } : {}), ...(problem === 'sem_custo' ? { semCusto: true } : {}), ...(problem === 'margem_baixa' ? { margemBaixa: true } : {}), ...(problem.startsWith('deposito_') ? { deposito: problem.slice(9) } : {}) }
-  const params = new URLSearchParams({ pagina: String(page), ordem: order, situacao: status, full, ...(q ? { busca: q } : {}), ...(problem === 'sem_custo' ? { semCusto: 'true' } : {}), ...(problem === 'margem_baixa' ? { margemBaixa: 'true' } : {}), ...(problem.startsWith('deposito_') ? { deposito: problem.slice(9) } : {}) })
+  const filter = { situacao: status, full, promocao: promo, ...(q ? { busca: q } : {}), ...(problem === 'sem_custo' ? { semCusto: true } : {}), ...(problem === 'margem_baixa' ? { margemBaixa: true } : {}), ...(problem.startsWith('deposito_') ? { deposito: problem.slice(9) } : {}) }
+  const params = new URLSearchParams({ pagina: String(page), ordem: order, situacao: status, full, promocao: promo, ...(q ? { busca: q } : {}), ...(problem === 'sem_custo' ? { semCusto: 'true' } : {}), ...(problem === 'margem_baixa' ? { margemBaixa: 'true' } : {}), ...(problem.startsWith('deposito_') ? { deposito: problem.slice(9) } : {}) })
   const list = useQuery({
     queryKey: ['precos-anuncios', params.toString()],
     queryFn: () => api.get<ListData>(`/marketplace-precos/anuncios?${params}`),
@@ -334,6 +335,16 @@ export function MarketplacePrecosPage() {
                 <SelectItem value="todos">Full e não Full</SelectItem>
                 <SelectItem value="sim">Só Full</SelectItem>
                 <SelectItem value="nao">Sem Full</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={promo} onValueChange={(v) => (setPromo(v), setPage(1))}>
+              <SelectTrigger className="w-44" aria-label="Promoção">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Com e sem promoção</SelectItem>
+                <SelectItem value="sim">Só em promoção</SelectItem>
+                <SelectItem value="nao">Sem promoção</SelectItem>
               </SelectContent>
             </Select>
             <Select value={problem} onValueChange={(v) => (setProblem(v), setPage(1))}>
