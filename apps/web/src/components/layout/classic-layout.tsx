@@ -1,56 +1,71 @@
-import { WhatsNew } from '@/components/layout/whats-new'
-import { ChevronDownIcon, MenuIcon } from 'lucide-react'
-import { useState } from 'react'
-import { Link, NavLink, Outlet, useLocation } from 'react-router'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { WhatsNew } from "@/components/layout/whats-new";
+import { ChevronDownIcon, MenuIcon } from "lucide-react";
+import { Fragment, useState } from "react";
+import { Link, NavLink, Outlet, useLocation } from "react-router";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
-import { useAuth } from '@/lib/auth'
-import { useBranding } from '@/lib/branding'
-import { useNavBadges } from '@/lib/nav-badges'
-import { findNavItem, visibleNavigation } from '@/lib/navigation'
-import { cn } from '@/lib/utils'
-import { AlertsBell, AttendanceNotifier } from './alerts-bell'
-import { SellerLinkWarning } from './seller-link-warning'
-import { AppFooter } from './app-footer'
-import { BrandMark } from './brand-logo'
-import { TrailHelp } from '@/components/trilha'
-import { GlobalSearch } from './global-search'
-import { useBreadcrumb } from './modern-layout'
-import { ThemeToggle } from './theme-toggle'
-import { ChatNotifier } from '@/lib/chat-alerts'
-import { UserAvatar, UserMenuContent } from './user-menu'
+} from "@/components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { useAuth } from "@/lib/auth";
+import { useBranding } from "@/lib/branding";
+import { useNavBadges } from "@/lib/nav-badges";
+import { findNavItem, visibleNavigation } from "@/lib/navigation";
+import { cn } from "@/lib/utils";
+import { AlertsBell, AttendanceNotifier } from "./alerts-bell";
+import { SellerLinkWarning } from "./seller-link-warning";
+import { AppFooter } from "./app-footer";
+import { BrandMark } from "./brand-logo";
+import { TrailHelp } from "@/components/trilha";
+import { GlobalSearch } from "./global-search";
+import { useBreadcrumb } from "./modern-layout";
+import { ThemeToggle } from "./theme-toggle";
+import { ChatNotifier } from "@/lib/chat-alerts";
+import { UserAvatar, UserMenuContent } from "./user-menu";
 
-const navText = 'text-[var(--brand-nav-foreground)]'
+const navText = "text-[var(--brand-nav-foreground)]";
 
 /**
  * Layout Clássico, inspirado no RD Station: barra superior na cor do menu (whitelabel) com menus suspensos
  * por área, faixa de título da página e conteúdo em largura limitada com espaçamentos mais compactos.
  */
 export function ClassicLayout() {
-  const badge = useNavBadges()
-  const { can, me } = useAuth()
-  const branding = useBranding()
-  const { pathname, search } = useLocation()
-  const groups = visibleNavigation(can, !!me?.role.isSystem)
-  const crumbs = useBreadcrumb()
-  const activeGroup = findNavItem(pathname, search)?.group.title
-  const activeItem = findNavItem(pathname, search)?.item.to
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const badge = useNavBadges();
+  const { can, me } = useAuth();
+  const branding = useBranding();
+  const { pathname, search } = useLocation();
+  const groups = visibleNavigation(can, !!me?.role.isSystem);
+  const crumbs = useBreadcrumb();
+  const activeGroup = findNavItem(pathname, search)?.group.title;
+  const activeItem = findNavItem(pathname, search)?.item.to;
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <div className="layout-classic flex min-h-svh flex-col bg-muted/40">
-      <header className="sticky top-0 z-20 shadow-sm" style={{ background: 'var(--brand-nav)' }}>
+      <header
+        className="sticky top-0 z-20 shadow-sm"
+        style={{ background: "var(--brand-nav)" }}
+      >
         <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-2 px-4">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className={cn('lg:hidden hover:bg-white/10', navText)} aria-label="Abrir menu">
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn("lg:hidden hover:bg-white/10", navText)}
+                aria-label="Abrir menu"
+              >
                 <MenuIcon />
               </Button>
             </SheetTrigger>
@@ -61,20 +76,32 @@ export function ClassicLayout() {
               <nav className="space-y-4 px-4 pb-6">
                 {groups.map((g) => (
                   <div key={g.title}>
-                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{g.title}</p>
-                    {g.items.map((item) => (
-                      <NavLink
-                        key={item.to}
-                        to={item.to}
-                        end={item.to === '/'}
-                        onClick={() => setMobileOpen(false)}
-                        className={() =>
-                          cn('flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted', item.to === activeItem && 'bg-muted font-medium')
-                        }
-                      >
-                        <item.icon className="size-4" />
-                        {item.title}
-                      </NavLink>
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {g.title}
+                    </p>
+                    {g.items.map((item, i) => (
+                      <Fragment key={item.to}>
+                        {item.section &&
+                          item.section !== g.items[i - 1]?.section && (
+                            <p className="mt-2 px-2 text-xs font-medium text-muted-foreground">
+                              {item.section}
+                            </p>
+                          )}
+                        <NavLink
+                          to={item.to}
+                          end={item.to === "/"}
+                          onClick={() => setMobileOpen(false)}
+                          className={() =>
+                            cn(
+                              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted",
+                              item.to === activeItem && "bg-muted font-medium",
+                            )
+                          }
+                        >
+                          <item.icon className="size-4" />
+                          {item.title}
+                        </NavLink>
+                      </Fragment>
                     ))}
                   </div>
                 ))}
@@ -82,55 +109,92 @@ export function ClassicLayout() {
             </SheetContent>
           </Sheet>
 
-          <Link to="/" className={cn('mr-4 flex items-center gap-2 font-semibold', navText)}>
+          <Link
+            to="/"
+            className={cn(
+              "mr-4 flex items-center gap-2 font-semibold",
+              navText,
+            )}
+          >
             <BrandMark onDark className="size-7" />
             <span className="hidden sm:inline">{branding.appName}</span>
           </Link>
 
-          <nav className="hidden flex-1 items-center gap-0.5 lg:flex" aria-label="Menu principal">
+          <nav
+            className="hidden flex-1 items-center gap-0.5 lg:flex"
+            aria-label="Menu principal"
+          >
             {groups.map((g) =>
-              g.items.length === 1 && g.title !== 'Administração' ? (
+              g.items.length === 1 && g.title !== "Administração" ? (
                 <NavLink
                   key={g.title}
                   to={g.items[0]!.to}
-                  end={g.items[0]!.to === '/'}
+                  end={g.items[0]!.to === "/"}
                   className={({ isActive }) =>
-                    cn('rounded px-2 py-2 text-sm font-medium opacity-85 hover:bg-white/10 hover:opacity-100 xl:px-3', navText, isActive && 'bg-white/15 opacity-100')
+                    cn(
+                      "rounded px-2 py-2 text-sm font-medium opacity-85 hover:bg-white/10 hover:opacity-100 xl:px-3",
+                      navText,
+                      isActive && "bg-white/15 opacity-100",
+                    )
                   }
                 >
-                  {g.items[0]!.title === 'Início' ? 'Início' : g.title}
+                  {g.items[0]!.title === "Início" ? "Início" : g.title}
                 </NavLink>
               ) : (
                 <DropdownMenu key={g.title}>
                   <DropdownMenuTrigger
                     className={cn(
-                      'flex items-center gap-1 rounded px-2 py-2 text-sm font-medium opacity-85 outline-none xl:px-3 hover:bg-white/10 hover:opacity-100 data-[state=open]:bg-white/15',
+                      "flex items-center gap-1 rounded px-2 py-2 text-sm font-medium opacity-85 outline-none xl:px-3 hover:bg-white/10 hover:opacity-100 data-[state=open]:bg-white/15",
                       navText,
-                      activeGroup === g.title && 'bg-white/15 opacity-100',
+                      activeGroup === g.title && "bg-white/15 opacity-100",
                     )}
                   >
                     {g.title}
                     {g.items.reduce((n, i) => n + badge(i.to).n, 0) > 0 && (
-                      <span className="rounded-full bg-white px-1.5 text-[11px] leading-4 font-semibold text-[#111] tabular-nums" aria-label={`${g.items.reduce((n, i) => n + badge(i.to).n, 0)} avisos`}>
+                      <span
+                        className="rounded-full bg-white px-1.5 text-[11px] leading-4 font-semibold text-[#111] tabular-nums"
+                        aria-label={`${g.items.reduce((n, i) => n + badge(i.to).n, 0)} avisos`}
+                      >
                         {g.items.reduce((n, i) => n + badge(i.to).n, 0)}
                       </span>
                     )}
                     <ChevronDownIcon className="size-3.5" />
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="min-w-56">
-                    {g.items.map((item) => (
-                      <DropdownMenuItem key={item.to} asChild>
-                        <Link to={item.to}>
-                          <item.icon />
-                          <span className="flex-1">{item.title}</span>
-                          {item.phase && (
-                            <Badge variant="outline" className="text-[10px] font-normal">
-                              Em breve
-                            </Badge>
+                  <DropdownMenuContent
+                    align="start"
+                    className="max-h-[80vh] min-w-56 overflow-y-auto"
+                  >
+                    {g.items.map((item, i) => (
+                      <Fragment key={item.to}>
+                        {item.section &&
+                          item.section !== g.items[i - 1]?.section && (
+                            <DropdownMenuLabel className="pt-2 text-xs text-muted-foreground">
+                              {item.section}
+                            </DropdownMenuLabel>
                           )}
-                          {badge(item.to).n > 0 && <Badge className="h-5 px-1.5 tabular-nums">{badge(item.to).n}</Badge>}
-                        </Link>
-                      </DropdownMenuItem>
+                        <DropdownMenuItem
+                          asChild
+                          className={item.section ? "pl-4" : undefined}
+                        >
+                          <Link to={item.to}>
+                            <item.icon />
+                            <span className="flex-1">{item.title}</span>
+                            {item.phase && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] font-normal"
+                              >
+                                Em breve
+                              </Badge>
+                            )}
+                            {badge(item.to).n > 0 && (
+                              <Badge className="h-5 px-1.5 tabular-nums">
+                                {badge(item.to).n}
+                              </Badge>
+                            )}
+                          </Link>
+                        </DropdownMenuItem>
+                      </Fragment>
                     ))}
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -139,15 +203,29 @@ export function ClassicLayout() {
           </nav>
 
           <div className="ml-auto flex items-center gap-1">
-            <GlobalSearch iconOnly className={cn('hover:bg-white/10', navText)} />
-            <TrailHelp className={cn('size-8 hover:bg-white/10', navText)} />
-            <AlertsBell className={cn('hover:bg-white/10', navText)} />
-            <ThemeToggle className={cn('hover:bg-white/10', navText)} />
+            <GlobalSearch
+              iconOnly
+              className={cn("hover:bg-white/10", navText)}
+            />
+            <TrailHelp className={cn("size-8 hover:bg-white/10", navText)} />
+            <AlertsBell className={cn("hover:bg-white/10", navText)} />
+            <ThemeToggle className={cn("hover:bg-white/10", navText)} />
             {me && (
               <DropdownMenu>
-                <DropdownMenuTrigger className={cn('ml-1 flex items-center gap-2 rounded px-1.5 py-1 outline-none hover:bg-white/10', navText)}>
-                  <UserAvatar name={me.name} url={me.avatarUrl} className="size-7 rounded-full" />
-                  <span className="hidden max-w-32 truncate text-sm xl:inline">{me.name.split(' ')[0]}</span>
+                <DropdownMenuTrigger
+                  className={cn(
+                    "ml-1 flex items-center gap-2 rounded px-1.5 py-1 outline-none hover:bg-white/10",
+                    navText,
+                  )}
+                >
+                  <UserAvatar
+                    name={me.name}
+                    url={me.avatarUrl}
+                    className="size-7 rounded-full"
+                  />
+                  <span className="hidden max-w-32 truncate text-sm xl:inline">
+                    {me.name.split(" ")[0]}
+                  </span>
                   <ChevronDownIcon className="size-3.5" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="min-w-56">
@@ -161,16 +239,28 @@ export function ClassicLayout() {
 
       <div className="border-b bg-background">
         <div className="mx-auto flex h-11 max-w-[1400px] items-center gap-1.5 px-4 text-sm text-muted-foreground">
-          <nav aria-label="Caminho da página" className="flex min-w-0 items-center gap-1.5">
+          <nav
+            aria-label="Caminho da página"
+            className="flex min-w-0 items-center gap-1.5"
+          >
             {crumbs.map((c, i) => (
-              <span key={`${i}-${c.title}`} className="flex min-w-0 items-center gap-1.5">
+              <span
+                key={`${i}-${c.title}`}
+                className="flex min-w-0 items-center gap-1.5"
+              >
                 {i > 0 && <span aria-hidden>/</span>}
                 {i === crumbs.length - 1 ? (
-                  <span aria-current="page" className="truncate font-medium text-foreground">
+                  <span
+                    aria-current="page"
+                    className="truncate font-medium text-foreground"
+                  >
                     {c.title}
                   </span>
                 ) : c.to ? (
-                  <Link to={c.to} className="hover:text-foreground hover:underline">
+                  <Link
+                    to={c.to}
+                    className="hover:text-foreground hover:underline"
+                  >
                     {c.title}
                   </Link>
                 ) : (
@@ -184,12 +274,12 @@ export function ClassicLayout() {
 
       <main className="mx-auto w-full max-w-[1400px] flex-1 px-4 py-5">
         <SellerLinkWarning />
-          <ChatNotifier />
-          <AttendanceNotifier />
-          <WhatsNew />
-          <Outlet />
+        <ChatNotifier />
+        <AttendanceNotifier />
+        <WhatsNew />
+        <Outlet />
       </main>
       <AppFooter className="bg-background" />
     </div>
-  )
+  );
 }
