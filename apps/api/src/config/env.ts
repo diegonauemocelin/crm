@@ -30,6 +30,8 @@ function loadEnv() {
     appUrl: appUrl.origin,
     cookieSecure: optional('COOKIE_SECURE', nodeEnv === 'production' ? 'true' : 'false') === 'true',
     uploadDir: optional('UPLOAD_DIR', './storage/uploads'),
+    /** Pasta dos backups diários (só leitura), para o Monitoramento mostrar o último. */
+    backupDir: optional('BACKUP_DIR_API', ''),
     releasesFile: optional('RELEASES_FILE', '../../releases.json'),
     gitCommit: optional('GIT_COMMIT', 'dev'),
     buildDate: optional('BUILD_DATE', new Date().toISOString()),

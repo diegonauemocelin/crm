@@ -4274,3 +4274,26 @@ model Passkey {
   @@index([userId])
   @@map("passkeys")
 }
+
+/// Monitoramento (Administração › Monitoramento): uma amostra por minuto do servidor e da API, guardada por 7 dias.
+model MonitorSample {
+  id          String   @id @default(uuid()) @db.Uuid
+  at          DateTime @default(now())
+  /// CPU do servidor (%), carga de 1 min e memória usada (%) e em MB.
+  cpuPct      Float
+  load1       Float
+  memPct      Float
+  memUsedMb   Int
+  /// Memória do processo da API (MB) e disco dos arquivos (%).
+  apiMemMb    Int
+  diskPct     Float?
+  /// Tempo de resposta do banco (ms).
+  dbMs        Int
+  /// Pedidos à API e erros (respostas 5xx) no minuto, e o tempo médio de resposta (ms).
+  requests    Int
+  errors      Int
+  avgMs       Int
+
+  @@index([at])
+  @@map("monitor_samples")
+}
