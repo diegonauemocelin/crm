@@ -4234,3 +4234,19 @@ model ChannelPriceChange {
   @@index([tenantId, channel, createdAt])
   @@map("channel_price_changes")
 }
+
+/// Contato da agenda do WhatsApp de um número (nome que o WhatsApp manda nos eventos de contatos). Fica no CRM, com as
+/// regras de LGPD: dá nome às conversas e alimenta a importação "Contatos do WhatsApp" da Agenda.
+model WhatsappWaContact {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  numberId  String   @db.Uuid
+  /// Identificador no WhatsApp (…@s.whatsapp.net ou o escondido …@lid).
+  jid       String
+  name      String
+  updatedAt DateTime @updatedAt
+
+  @@unique([numberId, jid])
+  @@index([tenantId])
+  @@map("whatsapp_wa_contacts")
+}

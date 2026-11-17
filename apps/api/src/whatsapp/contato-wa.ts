@@ -180,3 +180,21 @@ export class PhotoQueue {
     }
   }
 }
+
+/**
+ * Nomes que a Evolution manda nos eventos de contatos (CONTACTS_UPSERT / CONTACTS_UPDATE: lista ou um objeto com
+ * remoteJid e pushName). Sem nome de verdade, a Evolution põe os dígitos do identificador: esses ficam de fora, como os
+ * grupos, listas de transmissão e o status.
+ */
+export function contactNamesOf(data: unknown): { jid: string; name: string }[] {
+  const list = (Array.isArray(data) ? data : [data]) as { remoteJid?: unknown; pushName?: unknown }[]
+  const out = new Map<string, string>()
+  for (const c of list.slice(0, 20_000)) {
+    const jid = typeof c?.remoteJid === 'string' ? c.remoteJid.trim() : ''
+    const name = typeof c?.pushName === 'string' ? c.pushName.trim().slice(0, 120) : ''
+    if (!/^\d{5,20}@(s\.whatsapp\.net|lid)$/.test(jid)) continue
+    if (!name || /^\+?[\d\s().-]+$/.test(name)) continue
+    out.set(jid, name)
+  }
+  return [...out].map(([jid, name]) => ({ jid, name }))
+}

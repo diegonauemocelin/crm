@@ -415,6 +415,11 @@ export class WhatsappService implements OnApplicationBootstrap, OnModuleDestroy 
       void this.chat.ingestRevisions(n, event, b.data).catch((err: unknown) => this.logger.warn(`Edição ou exclusão de mensagem não gravada: ${(err as Error).message}`))
       return true
     }
+    // Nomes dos contatos (o WhatsApp manda ao conectar e quando mudam): dão nome às conversas que ficaram sem nome.
+    if (event === 'contacts.upsert' || event === 'contacts.update') {
+      void this.chat.applyContactNames(n, b.data).catch((err: unknown) => this.logger.warn(`Nomes dos contatos não gravados: ${(err as Error).message}`))
+      return true
+    }
     if (event === 'call') {
       void this.chat.ingestCalls(n, b.data).catch((err: unknown) => this.logger.warn(`Ligação não registrada: ${(err as Error).message}`))
       return true
