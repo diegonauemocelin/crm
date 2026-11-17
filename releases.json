@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.54",
+      "date": "2026-11-17",
+      "title": "App instalado no computador abre o Chat no estilo WhatsApp Web",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Chat WhatsApp",
+          "text": "O app do CRM instalado no computador (pelo Chrome ou pelo Edge) agora abre o Chat no estilo WhatsApp Web: lista à esquerda, conversa no meio e o pré e o pós-venda ao lado. No celular, continua o app do celular."
+        },
+        {
+          "type": "melhoria",
+          "area": "Chat WhatsApp",
+          "text": "No app de Chat, Abrir o CRM completo (menu ⋮) abre o CRM inteiro numa janela à parte."
+        }
+      ]
+    },
+    {
       "version": "3.0.53",
       "date": "2026-11-17",
       "title": "App de Chat para o computador",
