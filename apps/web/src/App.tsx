@@ -6,7 +6,7 @@ import { ClassicLayout } from '@/components/layout/classic-layout'
 import { ModernLayout } from '@/components/layout/modern-layout'
 import { useAuth } from '@/lib/auth'
 import { ReauthDialog } from '@/components/reauth-dialog'
-import { isInstalledApp } from '@/lib/app-movel'
+import { isDesktopApp, isInstalledApp } from '@/lib/app-movel'
 import { NAVIGATION } from '@/lib/navigation'
 import { prefsSistema, useSistemaAtual } from '@/lib/sistema-atual'
 import { destinoAoEntrar } from '@/lib/sistemas'
@@ -230,7 +230,19 @@ function Protected() {
   if (me.mustChangePassword || me.pending2faSetup) return <Navigate to="/configurar-conta" replace />
   // Aberto pelo ícone da tela inicial: fica só no app do celular (conversas, painéis e conta).
   // O app de Chat do computador (/chat-app) também é instalado, mas fica nele.
-  if (isInstalledApp() && !location.pathname.startsWith('/app') && !location.pathname.startsWith('/chat-app') && !chatAppWindow()) return <Navigate to="/app" replace />
+  // App instalado aberto no computador: o layout do WhatsApp Web (/chat-app), também pelo ícone do app do celular.
+  // "Abrir o CRM completo" (menu do app de Chat) abre uma janela com o CRM inteiro.
+  if (fullCrmWindow(location.search)) return (
+    <>
+      <Outlet />
+      <ReauthDialog />
+    </>
+  )
+  if (isInstalledApp() && isDesktopApp() && location.pathname.startsWith('/app')) {
+    const conv = location.pathname.match(/^\/app\/(?:conversa|monitor)\/([0-9a-f-]{36})/)?.[1]
+    return <Navigate to={conv ? `/chat-app?conversa=${conv}` : '/chat-app'} replace />
+  }
+  if (isInstalledApp() && !location.pathname.startsWith('/app') && !location.pathname.startsWith('/chat-app') && !chatAppWindow()) return <Navigate to={isDesktopApp() ? '/chat-app' : '/app'} replace />
   return (
     <>
       <Outlet />
@@ -455,6 +467,16 @@ export default function App() {
 function chatAppWindow() {
   try {
     return sessionStorage.getItem('crm-chat-app') === '1'
+  } catch {
+    return false
+  }
+}
+
+/** Janela aberta por "Abrir o CRM completo" no app de Chat (?completo=1): fica no CRM inteiro, sem voltar ao Chat. */
+function fullCrmWindow(search: string) {
+  try {
+    if (new URLSearchParams(search).get('completo') === '1') sessionStorage.setItem('crm-completo', '1')
+    return sessionStorage.getItem('crm-completo') === '1'
   } catch {
     return false
   }

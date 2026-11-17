@@ -302,7 +302,7 @@ function AppMenu({ onLogout }: { onLogout: () => void }) {
         <DropdownMenuItem onSelect={() => setTheme(resolved === 'dark' ? 'LIGHT' : 'DARK')}>
           {resolved === 'dark' ? <SunIcon /> : <MoonIcon />} {resolved === 'dark' ? 'Tema claro' : 'Tema escuro'}
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => window.open('/', '_blank', 'noopener')}>
+        <DropdownMenuItem onSelect={() => window.open('/?completo=1', '_blank')}>
           <ExternalLinkIcon /> Abrir o CRM completo
         </DropdownMenuItem>
         <DropdownMenuSeparator />
