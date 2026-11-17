@@ -9,11 +9,12 @@ describe('filial sugerida pelo DDD', () => {
     expect(dddOf(null)).toBeNull()
   })
 
-  it('regras iniciais: PR Cascavel, RS Cachoeirinha, 47 Itajaí, 48/49 Matriz', () => {
+  it('regras iniciais: PR Cascavel, RS Cachoeirinha, 47/48 Itajaí, 49 Matriz', () => {
     expect(filialOf('+5541988887777', DEFAULT_FILIAIS)?.name).toBe('Filial Cascavel')
     expect(filialOf('+5546988887777', DEFAULT_FILIAIS)?.name).toBe('Filial Cascavel')
     expect(filialOf('+5551988887777', DEFAULT_FILIAIS)?.name).toBe('Filial Cachoeirinha')
     expect(filialOf('+5547988887777', DEFAULT_FILIAIS)?.name).toBe('Filial Itajaí')
+    expect(filialOf('+5548988887777', DEFAULT_FILIAIS)?.name).toBe('Filial Itajaí')
     expect(filialOf('+5549988887777', DEFAULT_FILIAIS)?.name).toBe('Matriz Maravilha')
     expect(filialOf('+5511988887777', DEFAULT_FILIAIS)).toBeNull()
   })

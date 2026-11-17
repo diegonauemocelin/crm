@@ -14,10 +14,10 @@ export interface FilialRule {
   color: FilialColor
 }
 
-/** Regras iniciais (Usaparts): PR Cascavel, RS Cachoeirinha, SC 47 Itajaí, SC 48 e 49 Matriz. */
+/** Regras iniciais (Usaparts): PR Cascavel, RS Cachoeirinha, SC 47 e 48 Itajaí, SC 49 Matriz. */
 export const DEFAULT_FILIAIS: FilialRule[] = [
-  { name: 'Matriz Maravilha', ddds: ['48', '49'], color: 'laranja' },
-  { name: 'Filial Itajaí', ddds: ['47'], color: 'azul' },
+  { name: 'Matriz Maravilha', ddds: ['49'], color: 'laranja' },
+  { name: 'Filial Itajaí', ddds: ['47', '48'], color: 'azul' },
   { name: 'Filial Cascavel', ddds: ['41', '42', '43', '44', '45', '46'], color: 'verde' },
   { name: 'Filial Cachoeirinha', ddds: ['51', '53', '54', '55'], color: 'roxo' },
 ]
