@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.53",
+      "date": "2026-11-17",
+      "title": "App de Chat para o computador",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Chat WhatsApp",
+          "text": "App de Chat para o computador: abra o endereço do CRM com /chat-app no Chrome ou no Edge e clique em Instalar. Abre numa janela própria, com a cara do WhatsApp Web, sem o menu do CRM: conversas e grupos juntos, filtros (Tudo, Não lidas, Grupos, Fila), número, e o pré e o pós-venda do contato ao lado da conversa. Notificações e tema no menu ⋮."
+        }
+      ]
+    },
+    {
       "version": "3.0.52",
       "date": "2026-11-17",
       "title": "Chat: filtro de número ao voltar do Monitoramento",
