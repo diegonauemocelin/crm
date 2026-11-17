@@ -8,6 +8,7 @@ import type { Response } from 'express'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { ChatService } from './chat.service'
+import { IaChatService } from './ia-chat.service'
 import { WhatsappDashboardService } from './dashboard.service'
 import { LABEL_COLORS } from './envio'
 import { contentDisposition, INLINE_MIME, MEDIA_MAX_BYTES, mediaFileName } from './mensagens'
@@ -327,11 +328,38 @@ export class WhatsappRulesController {
   }
 }
 
+class TranscricaoDto {
+  @IsBoolean() ativa!: boolean
+}
+
 /** Chat WhatsApp: conversas visíveis para o usuário (permissão "Chat WhatsApp", com escopo). */
 @ApiTags('WhatsApp')
 @Controller('chat')
 export class ChatController {
-  constructor(private readonly chat: ChatService) {}
+  constructor(
+    private readonly chat: ChatService,
+    private readonly ia: IaChatService,
+  ) {}
+
+  /** Resposta sugerida pela IA para o atendente revisar (nada é enviado). */
+  @Post('conversas/:id/sugerir')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 15, ttl: 60_000 } })
+  suggest(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.ia.suggest(user, id)
+  }
+
+  /** Transcrição automática dos áudios (só quem cuida das configurações do WhatsApp liga ou desliga). */
+  @Get('transcricao')
+  transcribeConfig(@CurrentUser() user: AuthUser) {
+    return this.ia.transcribeConfig(user.tenantId)
+  }
+
+  @Put('transcricao')
+  setTranscribe(@CurrentUser() user: AuthUser, @Body() dto: TranscricaoDto) {
+    this.chat.assertWhatsappAdmin(user)
+    return this.ia.setTranscribe(user.tenantId, dto.ativa)
+  }
 
   /** Finalizar atendimento: mensagem de encerramento (opcional), sai do atendente e da fila, arquiva. */
   @Post('conversas/:id/finalizar')

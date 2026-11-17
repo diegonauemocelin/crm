@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlarmClockIcon, AlertCircleIcon, BanIcon, ChevronLeftIcon, CopyIcon, ChevronRightIcon, CircleCheckBigIcon, FileTextIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ListChecksIcon, ReplyIcon, SmilePlusIcon, SmileIcon, StickerIcon, Loader2Icon, LockIcon, MailIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon } from 'lucide-react'
+import { AlarmClockIcon, AlertCircleIcon, BanIcon, ChevronLeftIcon, CopyIcon, ChevronRightIcon, CircleCheckBigIcon, FileTextIcon, CheckCheckIcon, EllipsisVerticalIcon, PencilIcon, DownloadIcon, ForwardIcon, ArchiveIcon, ArchiveRestoreIcon, ArrowLeftIcon, BellIcon, BookUserIcon, BellOffIcon, CheckIcon, EyeIcon, FileIcon, HandIcon, HourglassIcon, InfoIcon, ListChecksIcon, ReplyIcon, SmilePlusIcon, SmileIcon, StickerIcon, Loader2Icon, LockIcon, MailIcon, MapPinIcon, MegaphoneIcon, MessageCircleIcon, MessageSquarePlusIcon, MicIcon, PaperclipIcon, PhoneOutgoingIcon, PhoneIcon, PhoneIncomingIcon, SearchIcon, SendIcon, SmartphoneIcon, StickyNoteIcon, Trash2Icon, UserIcon, UsersIcon, VideoIcon, Volume2Icon, VolumeXIcon, XIcon, ZapIcon, SparklesIcon } from 'lucide-react'
 import { createContext, Fragment, type FormEvent, type KeyboardEvent, type ReactNode, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -1726,6 +1726,25 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed, compa
       <PaperclipIcon />
     </Button>
   )
+  // Resposta sugerida pela IA (Gemini): vai para a caixa de mensagem, o atendente revisa e envia.
+  const [suggesting, setSuggesting] = useState(false)
+  const suggest = async () => {
+    setSuggesting(true)
+    try {
+      const r = await api.post<{ text: string }>(`/chat/conversas/${id}/sugerir`)
+      setText(r.text)
+      toast.success('Sugestão da IA na caixa de mensagem: revise antes de enviar.')
+    } catch (e) {
+      toast.error(errorMessage(e))
+    } finally {
+      setSuggesting(false)
+    }
+  }
+  const suggestButton = can('chat', 'create') ? (
+    <Button type="button" size="icon" variant="ghost" disabled={suggesting} onClick={() => void suggest()} aria-label="Sugerir resposta com a IA" title="Sugerir resposta com a IA">
+      {suggesting ? <Loader2Icon className="animate-spin" /> : <SparklesIcon />}
+    </Button>
+  ) : null
   const repliesMenu = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -1883,12 +1902,14 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed, compa
             {emojiPicker}
             {messageBox}
             {repliesMenu}
+            {suggestButton}
             {clipButton}
           </div>
         ) : (
           <>
             {clipButton}
             {repliesMenu}
+            {suggestButton}
             {emojiPicker}
           <ShareContactButton conversationId={id} disabled={!!file} />
             {messageBox}

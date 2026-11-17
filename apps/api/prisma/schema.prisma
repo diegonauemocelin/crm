@@ -1585,6 +1585,8 @@ model WhatsappMessage {
   fileName       String?
   mime           String?
   mediaStatus    String?
+  /// Transcrição automática do áudio: OK, VAZIO (sem fala), GRANDE ou ERRO (não tenta de novo sozinha).
+  transcriptStatus String?
   /// Enviada pelo CRM: quem enviou e a situação (ENVIADA ou ERRO, com o motivo).
   sentById       String?  @db.Uuid
   sentByName     String?

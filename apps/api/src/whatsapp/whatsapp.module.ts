@@ -14,13 +14,14 @@ import { ResumoVendedoresService } from './resumo-vendedores.service'
 import { FluxosController, SetoresController, WhatsappController, WhatsappWebhookController } from './whatsapp.controller'
 import { FluxosService } from './fluxos.service'
 import { SetoresService } from './setores.service'
+import { IaChatService } from './ia-chat.service'
 import { WhatsappService } from './whatsapp.service'
 
 /** Fase 9: números de WhatsApp da empresa pela Evolution API (conexão por QR Code, limites de números e de conexões). */
 @Module({
   imports: [LeadsModule, CapturaModule, EmailModule],
   controllers: [WhatsappController, WhatsappWebhookController, SetoresController, FluxosController, ChatController, WhatsappRulesController, RelatorioSemanalController, PerdasIaController],
-  providers: [WhatsappService, ChatService, WhatsappDashboardService, DiaSeguinteService, RepasseService, ReativacaoService, ResumoVendedoresService, RelatorioSemanalService, PerdasIaService, SetoresService, FluxosService],
+  providers: [WhatsappService, ChatService, WhatsappDashboardService, DiaSeguinteService, RepasseService, ReativacaoService, ResumoVendedoresService, RelatorioSemanalService, PerdasIaService, SetoresService, FluxosService, IaChatService],
   exports: [WhatsappService, ChatService],
 })
 export class WhatsappModule {}
