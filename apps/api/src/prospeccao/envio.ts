@@ -20,6 +20,8 @@ export interface CampaignInput {
   gapMax: number
   dailyMax: number
   optOut: boolean
+  /** Mensagem própria de cada empresa (escrita pela IA e revisada), por id da empresa. */
+  perProspect: Record<string, string>
 }
 
 const int = (v: unknown, min: number, max: number, fallback: number) => {
@@ -33,7 +35,11 @@ export function cleanCampaign(raw: Partial<Record<keyof CampaignInput, unknown>>
     .map((m) => (typeof m === 'string' ? m.trim().slice(0, 1500) : ''))
     .filter((m) => m.length >= 10)
     .slice(0, MAX_VARIATIONS)
-  if (!messages.length) throw new Error('Escreva a mensagem (pelo menos 10 letras).')
+  const perProspect: Record<string, string> = {}
+  if (raw.perProspect && typeof raw.perProspect === 'object') {
+    for (const [id, t] of Object.entries(raw.perProspect as Record<string, unknown>)) if (typeof t === 'string' && t.trim().length >= 10) perProspect[id] = t.trim().slice(0, 1500)
+  }
+  if (!messages.length && !Object.keys(perProspect).length) throw new Error('Escreva a mensagem (pelo menos 10 letras).')
   const prospectIds = [...new Set((Array.isArray(raw.prospectIds) ? raw.prospectIds : []).filter((x): x is string => typeof x === 'string'))]
   if (!prospectIds.length) throw new Error('Escolha as empresas que vão receber.')
   if (prospectIds.length > MAX_SENDS) throw new Error(`No máximo ${MAX_SENDS} empresas por envio.`)
@@ -48,6 +54,7 @@ export function cleanCampaign(raw: Partial<Record<keyof CampaignInput, unknown>>
     gapMax,
     dailyMax: int(raw.dailyMax, 1, DAILY_MAX, DAILY_DEFAULT),
     optOut: raw.optOut !== false,
+    perProspect,
   }
 }
 
@@ -144,4 +151,43 @@ export function sendWindowOpen(hoursEnabled: boolean, openNow: boolean, now = ne
   const sp = new Date(now.getTime() - 3 * 3_600_000)
   const h = sp.getUTCHours()
   return sp.getUTCDay() !== 0 && h >= 8 && h < 18
+}
+
+/** Até quantas empresas por pedido à IA na mensagem única (o plano gratuito do Gemini tem limite por minuto). */
+export const PERSONAL_CHUNK = 10
+
+/** Pedido à IA para escrever uma mensagem diferente para cada empresa (com o que se sabe de cada uma). */
+export function personalPrompt(d: { offer: string; company: string; sender: string | null; companies: { id: string; nome: string; segmento: string | null; cidade: string | null; motivo: string | null }[] }) {
+  return `Você escreve a PRIMEIRA mensagem de WhatsApp de uma empresa brasileira para outras empresas (B2B) que ainda não a conhecem. Escreva UMA mensagem DIFERENTE para cada empresa da lista, usando o nome, o segmento e a cidade dela.
+
+Quem envia: ${d.company}${d.sender ? ` (atendente: ${d.sender})` : ''}.
+O que oferece: ${d.offer}
+
+Regras:
+- Português do Brasil, cordial, curta (2 a 4 frases, no máximo 350 caracteres), sem parecer propaganda.
+- Cada mensagem com palavras e começo diferentes das outras.
+- Termine com uma pergunta simples que convide a responder.
+- Não invente preço, desconto, prazo, garantia, estoque nem nada que não esteja em "O que oferece"; não invente fatos sobre a empresa que recebe.
+- Sem links, no máximo 1 emoji, sem letras maiúsculas para gritar.
+
+Empresas (JSON): ${JSON.stringify(d.companies)}
+
+Responda SOMENTE com JSON: {"mensagens": [{"id": "<id da empresa>", "texto": "..."}]}`
+}
+
+/** Mensagens por empresa que a IA devolveu (só ids pedidos, texto com 10+ letras). */
+export function personalFromAi(text: string, ids: string[]): Record<string, string> {
+  const json = /```(?:json)?\s*([\s\S]*?)```/.exec(text)?.[1] ?? text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)
+  const out: Record<string, string> = {}
+  try {
+    const list = (JSON.parse(json) as { mensagens?: unknown }).mensagens
+    for (const m of Array.isArray(list) ? list : []) {
+      const id = (m as { id?: unknown }).id
+      const t = (m as { texto?: unknown }).texto
+      if (typeof id === 'string' && ids.includes(id) && typeof t === 'string' && t.trim().length >= 10) out[id] = t.trim().slice(0, 1500)
+    }
+  } catch {
+    // sem JSON: nenhuma
+  }
+  return out
 }

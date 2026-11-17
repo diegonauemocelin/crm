@@ -372,7 +372,7 @@ function Resultado({ id, meta }: { id: string; meta: SearchMeta | null }) {
       {sending && (
         <EnvioDialog
           searchId={id}
-          prospectIds={[...marked]}
+          prospects={d.prospects.filter((p) => marked.has(p.id)).map((p) => ({ id: p.id, name: p.name }))}
           onClose={() => setSending(false)}
           onDone={() => {
             setSending(false)

@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDP
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { Type } from 'class-transformer'
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator'
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator'
 import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { ProspeccaoEnvioService } from './envio.service'
@@ -34,6 +34,11 @@ class MensagemDto {
   @ApiProperty({ description: 'O que a empresa oferece (a IA escreve a abordagem a partir disto)' }) @IsString() @MaxLength(600) offer!: string
 }
 
+class MensagensDto {
+  @ApiProperty() @IsString() @MaxLength(600) offer!: string
+  @ApiProperty({ type: [String] }) @IsArray() @ArrayMaxSize(50) @IsUUID('all', { each: true }) prospectIds!: string[]
+}
+
 class EnvioDto {
   @ApiProperty() @IsUUID() numberId!: string
   @ApiProperty({ type: [String] }) @IsArray() @ArrayMaxSize(200) @IsUUID('all', { each: true }) prospectIds!: string[]
@@ -42,6 +47,7 @@ class EnvioDto {
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(120) gapMax?: number
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) dailyMax?: number
   @ApiPropertyOptional() @IsOptional() @IsBoolean() optOut?: boolean
+  @ApiPropertyOptional({ description: 'Mensagem própria de cada empresa (id → texto)' }) @IsOptional() @IsObject() perProspect?: Record<string, string>
 }
 
 /** Busca de leads, em Atendimento Comercial. */
@@ -70,6 +76,13 @@ export class ProspeccaoController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   writeMessage(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: MensagemDto) {
     return this.envio.writeMessage(user, id, dto.offer)
+  }
+
+  @Post('buscas/:id/mensagens-unicas')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  writePersonal(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: MensagensDto) {
+    return this.envio.writePersonal(user, id, dto.offer, dto.prospectIds)
   }
 
   @Get('buscas/:id/envios')
