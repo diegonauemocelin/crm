@@ -10,6 +10,11 @@ class AddCompetitorDto {
   @IsString() @MinLength(3) @MaxLength(1000) link!: string
 }
 
+class LinkDto {
+  @IsString() @MinLength(3) @MaxLength(1000) concorrente!: string
+  @IsString() @MinLength(3) @MaxLength(1000) meu!: string
+}
+
 /** Marketplaces › Concorrentes: lojas do Mercado Livre e a comparação de preço pelo código de referência. */
 @ApiTags('Marketplaces')
 @Controller('marketplaces/concorrentes')
@@ -28,6 +33,21 @@ export class ConcorrentesController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   add(@CurrentUser() user: AuthUser, @Body() dto: AddCompetitorDto) {
     return this.svc.add(user, dto.link)
+  }
+
+  /** Liga à mão um anúncio do concorrente a um anúncio da loja (mesma peça, outro código). */
+  @Post('vincular')
+  @HttpCode(200)
+  @RequirePermission('marketplaces', 'edit')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  link(@CurrentUser() user: AuthUser, @Body() dto: LinkDto) {
+    return this.svc.link(user, dto.concorrente, dto.meu)
+  }
+
+  @Delete('vinculo/:itemId')
+  @RequirePermission('marketplaces', 'edit')
+  unlink(@CurrentUser() user: AuthUser, @Param('itemId') itemId: string) {
+    return this.svc.unlink(user.tenantId, itemId.slice(0, 30))
   }
 
   @Post(':id/atualizar')

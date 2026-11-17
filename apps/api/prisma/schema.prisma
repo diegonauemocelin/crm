@@ -3424,6 +3424,8 @@ model MlCompetitorItem {
   status         String?
   codes          String[]     @default([])
   syncedAt       DateTime
+  /// Ligado à mão a um anúncio da loja (mesma peça com outro código): entra na comparação desse anúncio.
+  linkedOwnId    String?
 
   @@unique([competitorId, itemId])
   @@index([tenantId])
