@@ -109,6 +109,8 @@ describe('abrir conversa pelo telefone', () => {
         findFirst: async () => null,
         create: async (a: { data: Record<string, unknown> }) => (created.push(a.data), { id: 'nova' }),
       },
+      // Agenda: sem contato salvo (a conversa fica sem nome).
+      whatsappContact: { findFirst: async () => null },
     }
     const s = new ChatService(prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never)
     s.clientOf = () => ({ checkNumbers: async (_i: string, numbers: string[]) => (asked.push(numbers), answer instanceof Error ? Promise.reject(answer) : answer) }) as never
