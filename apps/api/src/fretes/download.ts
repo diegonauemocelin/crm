@@ -16,12 +16,12 @@ export function privateIp(ip: string) {
  * Baixa um arquivo público por https (lista de cidades no site da transportadora). Recusa endereço de rede interna,
  * redirecionamento e arquivo maior que o limite.
  */
-export async function downloadPublic(url: string, maxBytes: number): Promise<Buffer> {
+export async function downloadPublic(url: string, maxBytes: number, userAgent = 'CRM-fretes/1.0'): Promise<Buffer> {
   const u = new URL(url)
   if (u.protocol !== 'https:') throw new Error('o endereço precisa ser https://')
   const addrs = isIP(u.hostname) ? [{ address: u.hostname }] : await lookup(u.hostname, { all: true })
   if (!addrs.length || addrs.some((a) => privateIp(a.address))) throw new Error('endereço não permitido')
-  const res = await fetch(u, { redirect: 'error', signal: AbortSignal.timeout(60_000), headers: { 'User-Agent': 'CRM-fretes/1.0' } })
+  const res = await fetch(u, { redirect: 'error', signal: AbortSignal.timeout(60_000), headers: { 'User-Agent': userAgent } })
   if (!res.ok) throw new Error(`o site respondeu ${res.status}`)
   const len = Number(res.headers.get('content-length') ?? 0)
   if (len > maxBytes) throw new Error('arquivo grande demais')

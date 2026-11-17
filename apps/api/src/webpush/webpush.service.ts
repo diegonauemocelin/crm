@@ -37,6 +37,9 @@ import {
   withUtm,
 } from './webpush'
 
+/** Identificação de navegador na conferência do arquivo da loja. */
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36 CRM-verificacao'
+
 const TICK_MS = 60_000
 /** Inscritos lidos por vez e envios ao mesmo tempo. */
 const PAGE = 500
@@ -173,7 +176,8 @@ export class WebPushService implements OnApplicationBootstrap, OnModuleDestroy {
     if (!siteUrl) return { ok: false, url: null, message: 'Informe o endereço da loja.' }
     const url = `${siteUrl}/${SW_FILE}`
     try {
-      const body = (await downloadPublic(url, 64 * 1024)).toString('utf8')
+      // Lojas com firewall (ex.: Magazord) recusam (403) quem não se identifica como navegador; o visitante abre normal.
+      const body = (await downloadPublic(url, 64 * 1024, BROWSER_UA)).toString('utf8')
       if (!body.includes(SW_MARKER)) return { ok: false, url, message: 'O endereço responde, mas não é o arquivo do CRM (baixe de novo e publique sem alterar).' }
       return { ok: true, url, message: 'Arquivo encontrado na raiz da loja.' }
     } catch (err) {
