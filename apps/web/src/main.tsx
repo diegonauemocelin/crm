@@ -13,6 +13,9 @@ import { AuthProvider } from './lib/auth'
 import { BrandingProvider } from './lib/branding'
 import { ThemeProvider } from './lib/theme'
 
+// App de Chat do computador: o ícone instalável é o dele (antes de o navegador ler o manifesto).
+if (location.pathname.startsWith('/chat-app')) document.querySelector<HTMLLinkElement>('link[rel="manifest"]')?.setAttribute('href', '/api/app/manifest-chat.webmanifest')
+
 // Mensagem de erro fica mais tempo na tela que a de sucesso: dá tempo de ler o que corrigir.
 const showError = toast.error
 toast.error = ((message, opts) => showError(message, { duration: 9000, ...opts })) as typeof toast.error

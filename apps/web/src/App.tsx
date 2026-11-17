@@ -102,6 +102,7 @@ const pages = {
   vendasAoVivo: () => page(() => import('@/pages/vendas-ao-vivo-page'), 'VendasAoVivoPage'),
   analises: () => page(() => import('@/pages/analises-page'), 'AnalisesPage'),
   chat: () => page(() => import('@/pages/chat-page'), 'ChatPage'),
+  chatApp: () => page(() => import('@/pages/chat-app'), 'ChatAppPage'),
   whatsappDashboard: () => page(() => import('@/pages/whatsapp-dashboard-page'), 'WhatsappDashboardPage'),
   agenda: () => page(() => import('@/pages/agenda-page'), 'AgendaPage'),
   emailDashboard: () => page(() => import('@/pages/email-dashboard-page'), 'EmailDashboardPage'),
@@ -228,7 +229,8 @@ function Protected() {
   if (!me) return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
   if (me.mustChangePassword || me.pending2faSetup) return <Navigate to="/configurar-conta" replace />
   // Aberto pelo ícone da tela inicial: fica só no app do celular (conversas, painéis e conta).
-  if (isInstalledApp() && !location.pathname.startsWith('/app')) return <Navigate to="/app" replace />
+  // O app de Chat do computador (/chat-app) também é instalado, mas fica nele.
+  if (isInstalledApp() && !location.pathname.startsWith('/app') && !location.pathname.startsWith('/chat-app') && !chatAppWindow()) return <Navigate to="/app" replace />
   return (
     <>
       <Outlet />
@@ -290,6 +292,8 @@ const router = createBrowserRouter([
     children: [
       // Dashboard executivo na TV, em tela cheia (com login; o link de TV sem login foi retirado).
       { path: 'tv/executivo', element: <Lazy fullscreen>{pages.tvExecutivo()}</Lazy> },
+      // App de Chat do computador (instalado pelo Chrome/Edge): só as conversas, com a cara do WhatsApp Web.
+      { path: 'chat-app', element: <Lazy fullscreen>{pages.chatApp()}</Lazy> },
       {
         // Caminhos completos (/app/...) nas telas de dentro: a trilha de ajuda cobre todas pelo começo /app.
         path: 'app',
@@ -445,4 +449,13 @@ export default function App() {
   if (unavailable) return <Unavailable />
   if (loading) return <Loader fullscreen />
   return <RouterProvider router={router} />
+}
+
+/** Janela aberta pelo app de Chat do computador (abriu /chat-app nesta janela). */
+function chatAppWindow() {
+  try {
+    return sessionStorage.getItem('crm-chat-app') === '1'
+  } catch {
+    return false
+  }
 }

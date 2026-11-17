@@ -63,6 +63,37 @@ export class AppMovelController {
     )
   }
 
+  /** Manifesto do app de Chat do computador (instalado pelo Chrome/Edge): abre só as conversas, em janela própria. */
+  @Public()
+  @Get('manifest-chat.webmanifest')
+  async manifestChat(@Res() res: Response) {
+    const b = await this.settings.branding(await this.tenants.defaultId())
+    const iconId = b.appIconFileId ?? null
+    const icon = iconId ? `/api/files/public/${iconId}` : FALLBACK_ICON
+    const type = iconId ? undefined : 'image/png'
+    const name = `${b.shortName || b.appName} Chat`
+    res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.send(
+      JSON.stringify({
+        id: '/chat-app',
+        name,
+        short_name: 'Chat',
+        description: 'Conversas do WhatsApp no computador',
+        lang: 'pt-BR',
+        start_url: '/chat-app',
+        scope: '/chat-app',
+        display: 'standalone',
+        background_color: '#ffffff',
+        theme_color: '#008069',
+        icons: [
+          { src: icon, sizes: '192x192', ...(type ? { type } : {}), purpose: 'any' },
+          { src: icon, sizes: '512x512', ...(type ? { type } : {}), purpose: 'any' },
+        ],
+      }),
+    )
+  }
+
   /** Ícone da tela inicial do iPhone (o Safari não lê o manifesto). */
   @Public()
   @Get('icone.png')
