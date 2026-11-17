@@ -2,6 +2,43 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.48",
+      "date": "2026-11-17",
+      "title": "Entrar com Face ID, resposta sugerida pela IA, transcrição automática de áudios e Monitoramento",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Acesso",
+          "text": "Entrar com Face ID, Touch ID ou digital (chave de acesso do aparelho), no computador e no app do celular. Cadastre em Meu perfil › Chaves de acesso; a senha continua valendo."
+        },
+        {
+          "type": "novo",
+          "area": "Chat WhatsApp",
+          "text": "Botão Sugerir resposta: a IA lê a conversa e a base de conhecimento e escreve uma sugestão na caixa de mensagem. Nada é enviado sozinho; o atendente revisa antes."
+        },
+        {
+          "type": "novo",
+          "area": "Chat WhatsApp",
+          "text": "Transcrição automática dos áudios recebidos (ligue em Configurações › Números de WhatsApp). O botão Transcrever no áudio continua."
+        },
+        {
+          "type": "novo",
+          "area": "Administração",
+          "text": "Monitoramento (só o Administrador): uso do servidor em gráficos, situação dos sistemas e do backup, números de WhatsApp, acessos, erros e atividades do dia, com aviso no celular quando um número cai."
+        },
+        {
+          "type": "melhoria",
+          "area": "Marketplaces",
+          "text": "Preços e promoções: filtro para ver só os anúncios em promoção ou só os sem promoção no Mercado Livre."
+        },
+        {
+          "type": "melhoria",
+          "area": "Marketplaces",
+          "text": "Concorrentes também pelos códigos equivalentes do ERP, e dá para ligar à mão o anúncio do concorrente ao seu."
+        }
+      ]
+    },
+    {
       "version": "3.0.47",
       "date": "2026-11-17",
       "title": "Conversas com o nome do contato do WhatsApp; importação de contatos completa",
