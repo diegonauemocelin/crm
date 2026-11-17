@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.46",
+      "date": "2026-11-17",
+      "title": "Busca de leads: uma mensagem diferente para cada empresa",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Busca de leads",
+          "text": "No envio pelo WhatsApp, a IA (Gemini, no plano gratuito do Google) escreve uma mensagem diferente para cada empresa, com o nome, o segmento e a cidade dela. Você revisa e pode editar cada uma antes de colocar na fila. Até 50 empresas por vez."
+        }
+      ]
+    },
+    {
       "version": "3.0.45",
       "date": "2026-11-17",
       "title": "Shopee, Amazon e TikTok Shop prontos para conectar; menu de Marketplaces com submenus",
