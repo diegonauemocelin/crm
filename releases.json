@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.49",
+      "date": "2026-11-17",
+      "title": "Ajuste no botão Sugerir resposta do chat",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Chat WhatsApp",
+          "text": "Ajuste interno no botão Sugerir resposta, para a tela do chat seguir as regras do sistema em todos os perfis."
+        }
+      ]
+    },
+    {
       "version": "3.0.48",
       "date": "2026-11-17",
       "title": "Entrar com Face ID, resposta sugerida pela IA, transcrição automática de áudios e Monitoramento",
