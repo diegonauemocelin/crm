@@ -819,6 +819,7 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
                         {r.campaign && (
                           <span className="block text-[11px] font-normal text-amber-700 dark:text-amber-300" title={`Campanha: ${r.campaign.name} (${r.campaign.label})`}>
                             cobrar do cliente {r.campaign.customerPrice === 0 ? 'frete grátis' : money(r.campaign.customerPrice)} · {r.campaign.name}
+                            {r.campaign.discount > 0 && <span className="block">a empresa paga a diferença: {money(r.campaign.discount)}</span>}
                           </span>
                         )}
                       </TableCell>
