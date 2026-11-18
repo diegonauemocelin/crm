@@ -506,6 +506,14 @@ export class CteService {
     ])
     const carriers = await this.prisma.freightCarrier.findMany({ where: { id: { in: rows.map((r) => r.carrierId).filter((x): x is string => !!x) } }, select: { id: true, name: true } })
     const confront = await this.confrontFor(user.tenantId, rows)
+    // Vendedor (dados adicionais da nota) e frete destacado na nota, para conferir tabela × CT-e × nota na mesma linha.
+    const nfeKeys = [...new Set(rows.flatMap((r) => r.nfeKeys))]
+    const nfes = nfeKeys.length ? await this.prisma.freightNfe.findMany({ where: { tenantId: user.tenantId, key: { in: nfeKeys } }, select: { key: true, seller: true, freightValue: true } }) : []
+    const nfeOf = (r: (typeof rows)[number]) => {
+      const found = nfes.filter((x) => r.nfeKeys.includes(x.key))
+      const sellers = [...new Set(found.map((x) => x.seller).filter((x): x is string => !!x))]
+      return { seller: sellers.join(', ') || null, nfeFreight: found.length ? Math.round(found.reduce((s, x) => s + (n(x.freightValue) ?? 0), 0) * 100) / 100 : null }
+    }
     return {
       total,
       page,
@@ -514,7 +522,7 @@ export class CteService {
       sums: { charged: n(sums._sum.total) ?? 0, expected: n(sums._sum.expectedTotal) ?? 0, difference: n(sums._sum.difference) ?? 0, approved: n(sums._sum.approvedValue) ?? 0, credit: n(sums._sum.creditValue) ?? 0 },
       items: rows.map((r) => {
         const cf = confront.get(r.id)
-        return this.view(r, { carrierName: carriers.find((c) => c.id === r.carrierId)?.name ?? null, components: undefined, recDetail: undefined, nfeCheck: cf ? { status: cf.status, divergences: cf.divergences } : null })
+        return this.view(r, { carrierName: carriers.find((c) => c.id === r.carrierId)?.name ?? null, components: undefined, recDetail: undefined, nfeCheck: cf ? { status: cf.status, divergences: cf.divergences } : null, ...nfeOf(r) })
       }),
     }
   }

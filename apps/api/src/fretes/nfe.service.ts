@@ -158,6 +158,8 @@ export class NfeService {
         // Também para notas já importadas: reimportar o .zip antigo ensina os impostos das vendas passadas.
         if (await this.mlTaxes.record(T, d.text, nf, knownMe).catch((e: unknown) => (this.logger.warn(`Impostos da NF-e ${nf.key}: ${(e as Error).message}`), false))) mlTaxChanged = true
         if (await this.prisma.freightNfe.count({ where: { tenantId: T, key: nf.key } })) {
+          // Reimportar a nota antiga traz o vendedor (guardado a partir desta versão).
+          if (nf.seller) await this.prisma.freightNfe.updateMany({ where: { tenantId: T, key: nf.key, seller: null }, data: { seller: nf.seller } })
           counts.existentes++
           continue
         }
@@ -268,6 +270,7 @@ export class NfeService {
         unitId,
         value: nf.value,
         freightValue: nf.freightValue,
+        seller: nf.seller,
         freightMode: nf.freightMode?.slice(0, 2) ?? null,
         carrierCnpj: nf.carrierCnpj,
         carrierId,
