@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.57",
+      "date": "2026-11-18",
+      "title": "Cotação de frete volta a calcular rápido",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "A cotação de frete ficava pensando e não calculava: a busca das regras do destino lia a tabela de regras inteira. Agora usa os índices do banco e responde em segundos."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Se uma etapa da cotação demorar demais, aparece uma mensagem dizendo qual, em vez de a tela ficar pensando."
+        }
+      ]
+    },
+    {
       "version": "3.0.56",
       "date": "2026-11-18",
       "title": "App de Chat: Conversar no próprio app; vídeos do iPhone no chat",
