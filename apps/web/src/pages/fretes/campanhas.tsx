@@ -24,17 +24,18 @@ interface Campaign {
   ufs: string[]
   cities: string[]
   minCargoValue: number | null
+  minFreight?: number | null
   startsOn: string | null
   endsOn: string | null
 }
 
 const MODES: { value: Mode; label: string; hint: string }[] = [
-  { value: 'PERCENT_NF', label: '% sobre o valor da nota', hint: 'O cliente paga este % do valor da nota (ex.: 3%).' },
+  { value: 'PERCENT_NF', label: '% sobre o valor da nota', hint: 'O cliente paga este % do valor da nota (ex.: 3%), nunca menos que o frete mínimo, se informado.' },
   { value: 'DESCONTO', label: 'Desconto na tabela', hint: 'Desconto deste % sobre o valor calculado pela tabela.' },
   { value: 'GRATIS', label: 'Frete grátis', hint: 'O cliente não paga frete.' },
 ]
 
-const blank = (): Campaign => ({ name: '', active: true, mode: 'GRATIS', value: 0, carrierIds: [], ufs: [], cities: [], minCargoValue: null, startsOn: null, endsOn: null })
+const blank = (): Campaign => ({ name: '', active: true, mode: 'GRATIS', value: 0, carrierIds: [], ufs: [], cities: [], minCargoValue: null, minFreight: null, startsOn: null, endsOn: null })
 
 /** Fretes › Campanhas de frete: o que cobrar do cliente por transportadora e destino. Aparece na cotação. */
 export function FretesCampanhasPage() {
@@ -113,6 +114,13 @@ export function FretesCampanhasPage() {
                     <div className="space-y-1.5">
                       <Label htmlFor={`v-${i}`}>{c.mode === 'PERCENT_NF' ? '% da nota' : '% de desconto'}</Label>
                       <Input id={`v-${i}`} inputMode="decimal" value={String(c.value)} disabled={!editable} onChange={(e) => set(i, { value: Number(e.target.value.replace(',', '.')) || 0 })} />
+                    </div>
+                  )}
+                  {c.mode === 'PERCENT_NF' && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`mf-${i}`}>Frete mínimo (R$)</Label>
+                      <Input id={`mf-${i}`} inputMode="decimal" placeholder="Sem mínimo" value={c.minFreight ?? ''} disabled={!editable} onChange={(e) => set(i, { minFreight: Number(e.target.value.replace(/\./g, '').replace(',', '.')) || null })} />
+                      <p className="text-xs text-muted-foreground">O cliente paga o % da nota, mas nunca menos que este valor.</p>
                     </div>
                   )}
                   <div className="space-y-1.5">
