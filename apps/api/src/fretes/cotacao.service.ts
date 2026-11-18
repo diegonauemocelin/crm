@@ -165,6 +165,27 @@ const STATUS_ORDER: Record<ResultStatus, number> = { OK: 0, FORA_FAIXA: 1, RESTR
 export class CotacaoService {
   private readonly logger = new Logger(CotacaoService.name)
 
+  /**
+   * Etapa da cotação com tempo medido: passa de 3 s, fica no log (com a etapa); passa do limite, a cotação para com
+   * uma mensagem clara em vez de deixar a tela pensando até o servidor cortar (5 minutos).
+   */
+  private async step<T>(label: string, work: Promise<T>, limitMs = 60_000): Promise<T> {
+    const start = Date.now()
+    let timer: NodeJS.Timeout | undefined
+    try {
+      return await Promise.race([
+        work,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new BadRequestException(`A cotação demorou demais na etapa "${label}". Tente de novo em instantes; se continuar, avise o suporte.`)), limitMs)
+        }),
+      ])
+    } finally {
+      if (timer) clearTimeout(timer)
+      const ms = Date.now() - start
+      if (ms > 3_000) this.logger.warn(`Cotação: etapa "${label}" levou ${Math.round(ms / 100) / 10} s`)
+    }
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -385,18 +406,15 @@ export class CotacaoService {
 
     const zip = Number(p.destZip)
     const key = cityKey(p.destCity)
-    const rows = await this.prisma.freightRule.findMany({
-      where: {
-        versionId: v.id,
-        OR: [
-          { cepStart: { lte: zip }, cepEnd: { gte: zip } },
-          ...(p.destUf ? [{ cepStart: null, uf: p.destUf }] : []),
-          // A cidade também pelas regras com CEP: a cidade pode ter trocado de CEP (faixa nova por rua).
-          ...(key ? [{ cityKey: key }] : []),
-        ],
-      },
-      take: 2000,
-    })
+    // Três buscas, cada uma pelo seu índice (juntas num OR, o banco lia a tabela de regras inteira: minutos por cotação).
+    // A cidade também pelas regras com CEP: a cidade pode ter trocado de CEP (faixa nova por rua).
+    const found = await Promise.all([
+      this.prisma.freightRule.findMany({ where: { versionId: v.id, cepStart: { lte: zip }, cepEnd: { gte: zip } }, take: 2000 }),
+      p.destUf ? this.prisma.freightRule.findMany({ where: { versionId: v.id, cepStart: null, uf: p.destUf }, take: 2000 }) : Promise.resolve([]),
+      key ? this.prisma.freightRule.findMany({ where: { versionId: v.id, cityKey: key }, take: 2000 }) : Promise.resolve([]),
+    ])
+    const seen = new Set<string>()
+    const rows = found.flat().filter((r) => !seen.has(r.id) && !!seen.add(r.id))
     const settings = settingsOf(v.settings)
     const m = p.measures
     const match = matchRule(rows.map(ruleFromRow), { zip, uf: p.destUf, city: p.destCity }, weights(m, settings).taxed)
@@ -681,9 +699,9 @@ export class CotacaoService {
    * transportadoras; é o cálculo em massa do frete do Google Shopping.
    */
   private async compute(user: Pick<AuthUser, 'tenantId'>, d: QuoteInput, allowExpired: boolean, lean?: { carrierIds?: string[] }) {
-    const p = await this.prepare(user, d)
+    const p = await this.step('dados do envio e CEP', this.prepare(user, d))
     const sib = await this.siblingUnits(user.tenantId, p.unit.id)
-    const tables = await this.prisma.freightTable.findMany({
+    const tables = await this.step('tabelas da filial', this.prisma.freightTable.findMany({
       where: {
         tenantId: user.tenantId,
         ...(lean?.carrierIds?.length ? { carrierId: { in: lean.carrierIds } } : {}),
@@ -693,20 +711,20 @@ export class CotacaoService {
         carrier: { active: true, kind: 'TRANSPORTADORA', OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }] },
       },
       include: { carrier: true },
-    })
+    }))
     // Taxas por destinatário: só quando o CPF/CNPJ informado está na lista da transportadora.
     const carrierIds = [...new Set(tables.map((t) => t.carrierId))]
-    const [fees, withLists] = await Promise.all([
+    const [fees, withLists] = await this.step('taxas por destinatário', Promise.all([
       this.feesFor(carrierIds, p),
       p.doc ? Promise.resolve([]) : this.prisma.freightRecipientFee.groupBy({ by: ['carrierId'], where: { carrierId: { in: carrierIds }, doc: { not: null } }, _count: { _all: true } }),
-    ])
-    const results = await Promise.all(
+    ]))
+    const results = await this.step(`cálculo das ${tables.length} tabelas`, Promise.all(
       tables.map(async (t) => {
         const r = await this.evaluate(t, p, d, { allowExpired, fees: fees.filter((f) => f.carrierId === t.carrierId).map(feeComponent) })
         if (withLists.some((w) => w.carrierId === t.carrierId)) r.warnings.push('Esta transportadora cobra TDA/TDE/TDC/TVD de destinatários específicos: informe o CPF/CNPJ para conferir se este cliente está na lista.')
         return r
       }),
-    )
+    ))
     // Transportadoras ativas da filial sem nenhuma tabela ativa: aparecem para ninguém achar que foram esquecidas.
     const withTable = new Set(tables.map((t) => t.carrierId))
     const carriers = lean ? [] : await this.prisma.freightCarrier.findMany({
@@ -735,9 +753,9 @@ export class CotacaoService {
         r.total = Math.round((r.total + cost) * 100) / 100
       }
     }
-    if (!lean) results.push(...(await this.onlineResults(user.tenantId, p, d)))
+    if (!lean) results.push(...(await this.step('cotação online das transportadoras', this.onlineResults(user.tenantId, p, d), 45_000)))
     // Campanhas de frete (Fretes › Campanhas): quanto cobrar do cliente em cada opção.
-    const campaigns = (await this.campaigns(user.tenantId)).filter((c) => c.active)
+    const campaigns = (await this.step('campanhas de frete', this.campaigns(user.tenantId))).filter((c) => c.active)
     if (campaigns.length) {
       const date = p.quoteDate.toISOString().slice(0, 10)
       for (const r of results) {
@@ -807,7 +825,7 @@ export class CotacaoService {
     }
     const { p, results } = await this.compute(user, d, !!d.allowExpired)
     const ok = results.filter((r) => r.status === 'OK')
-    const erpData = await this.erpDataFor(user.tenantId, d)
+    const erpData = await this.step('documento da Tcar', this.erpDataFor(user.tenantId, d))
     const q = await this.prisma.freightQuote.create({
       data: {
         tenantId: user.tenantId,

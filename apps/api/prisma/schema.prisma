@@ -2900,6 +2900,8 @@ model FreightRule {
 
   @@index([versionId, cepStart, cepEnd])
   @@index([versionId, uf, cityKey])
+  @@index([versionId, cityKey])
+  @@index([cityKey, uf])
   @@map("freight_rules")
 }
 
