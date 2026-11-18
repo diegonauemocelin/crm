@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.58",
+      "date": "2026-11-18",
+      "title": "Campanhas de frete: novas opções",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Campanha \"% da nota quando o frete passar de um valor\": até o valor escolhido (ex.: R$ 150) o cliente paga o frete da tabela; acima, paga só o % da nota e a empresa paga a diferença."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Campanha \"% da nota (repasse da transportadora)\": o cliente paga o % que a transportadora cobra (ex.: para uma cidade), mesmo acima da tabela; a empresa não banca."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Na cotação, a campanha mostra também a diferença que a empresa paga."
+        }
+      ]
+    },
+    {
       "version": "3.0.57",
       "date": "2026-11-18",
       "title": "Cotação de frete volta a calcular rápido",
