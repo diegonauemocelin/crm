@@ -34,6 +34,8 @@ class FiltersDto implements LeadFilters {
   @IsOptional() @Matches(UUID_OR_NONE) unitId?: string
   @IsOptional() @Matches(UUID_OR_NONE) originId?: string
   @IsOptional() @IsIn(['true', 'false']) emailOptIn?: 'true' | 'false'
+  /** E-mail: valido, invalido (mal escrito/domínio sem e-mail), devolvido (recusado no envio) ou pendente (ainda não conferido). */
+  @IsOptional() @IsIn(['valido', 'invalido', 'devolvido', 'pendente']) emailStatus?: 'valido' | 'invalido' | 'devolvido' | 'pendente'
   @IsOptional() @IsIn(['true', 'false']) hasPhone?: 'true' | 'false'
   @IsOptional() @IsIn(['true', 'false']) hasCode?: 'true' | 'false'
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) from?: string

@@ -79,6 +79,11 @@ export interface Lead {
   tags: string[]
   customFields: Record<string, unknown>
   emailOptIn: boolean
+  /** E-mail recusado no envio (não existe). */
+  emailBouncedAt?: string | null
+  /** E-mail inválido na conferência (mal escrito ou domínio que não recebe) e o motivo. */
+  emailInvalidAt?: string | null
+  emailInvalidReason?: string | null
   emailOptOutAt: string | null
   firstConversionAt: string | null
   lastConversionAt: string | null

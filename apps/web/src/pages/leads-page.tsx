@@ -24,7 +24,7 @@ import { GRADE_CLASS, type Lead, type LeadStage, STAGE_LABEL, STAGES, useTags } 
 import { cn } from '@/lib/utils'
 
 const ALL = '__all__'
-const FILTERS = ['search', 'stage', 'grade', 'tag', 'state', 'ownerId', 'unitId', 'originId', 'emailOptIn', 'hasPhone', 'hasCode', 'serviceResult', 'lostReasonId', 'from', 'to'] as const
+const FILTERS = ['search', 'stage', 'grade', 'tag', 'state', 'ownerId', 'unitId', 'originId', 'emailOptIn', 'emailStatus', 'hasPhone', 'hasCode', 'serviceResult', 'lostReasonId', 'from', 'to'] as const
 
 interface Page {
   total: number
@@ -229,6 +229,7 @@ function LeadsContent() {
         <Filter label="Unidade" value={params.get('unitId')} onChange={(v) => setFilter('unitId', v)} items={o?.units ?? []} withNone />
         <Filter label="Origem" value={params.get('originId')} onChange={(v) => setFilter('originId', v)} items={o?.origins ?? []} withNone />
         <Filter label="E-mail marketing" value={params.get('emailOptIn')} onChange={(v) => setFilter('emailOptIn', v)} items={[{ id: 'true', name: 'Aceita receber' }, { id: 'false', name: 'Não aceita' }]} />
+        <Filter label="E-mail" value={params.get('emailStatus')} onChange={(v) => setFilter('emailStatus', v)} items={[{ id: 'valido', name: 'Válido' }, { id: 'invalido', name: 'Inválido' }, { id: 'devolvido', name: 'Devolvido no envio' }, { id: 'pendente', name: 'Ainda não conferido' }]} />
         <Filter label="Telefone" value={params.get('hasPhone')} onChange={(v) => setFilter('hasPhone', v)} items={[{ id: 'true', name: 'Com telefone' }, { id: 'false', name: 'Sem telefone' }]} />
         <Filter label="Código do cliente" value={params.get('hasCode')} onChange={(v) => setFilter('hasCode', v)} items={[{ id: 'true', name: 'Com código do cliente' }, { id: 'false', name: 'Sem código do cliente' }]} />
         <Filter label="Atendimento" value={params.get('serviceResult')} onChange={(v) => setFilter('serviceResult', v)} items={[{ id: 'SIM', name: 'Venda realizada' }, { id: 'NAO', name: 'Sem venda' }, { id: 'NEGOCIACAO', name: 'Em negociação' }]} />

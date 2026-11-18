@@ -50,7 +50,7 @@ interface Dash {
   campaigns: (Funnel & Money & { id: string; name: string; kind: string; subject: string; firstSent: string | null; open: number | null; click: number | null; unsubscribe: number | null })[]
   automations: (Funnel & Money & { id: string; name: string; active: boolean; entered: number; completed: number; purchased: number; open: number | null; click: number | null })[]
   links: { campaignId: string; campaign: string; url: string; clicks: number; people: number }[]
-  base: { withEmail: number; contactable: number; optOut: number; bounced: number }
+  base: { withEmail: number; contactable: number; optOut: number; bounced: number; invalid?: number }
   insights: { tone: 'bom' | 'atencao' | 'neutro'; text: string }[]
 }
 
@@ -362,7 +362,8 @@ function BaseCard({ base }: { base: Dash['base'] }) {
         <Mini label="Com e-mail" value={int.format(base.withEmail)} />
         <Mini label="Podem receber" value={int.format(base.contactable)} hint={base.withEmail ? `${pctFmt.format(base.contactable / base.withEmail)} da base` : undefined} />
         <Mini label="Sem consentimento" value={int.format(base.optOut)} hint="descadastrados ou nunca aceitaram" />
-        <Mini label="E-mail inexistente" value={int.format(base.bounced)} />
+        <Mini label="E-mail inexistente" value={int.format(base.bounced)} hint="devolvido no envio" />
+        <Mini label="E-mail inválido" value={int.format(base.invalid ?? 0)} hint="mal escrito ou domínio que não recebe" />
       </CardContent>
     </Card>
   )

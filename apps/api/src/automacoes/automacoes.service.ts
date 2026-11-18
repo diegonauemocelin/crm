@@ -750,7 +750,7 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
         return !!(await this.lastEvent(leadId, r.type === 'abriu_email' ? ['email_aberto', 'email_clique'] : ['email_clique'], since))
       }
     }
-    const lead = await this.prisma.lead.findUnique({ where: { id: leadId }, select: { tags: true, stage: true, scoreGrade: true, originId: true, ownerId: true, phone: true, email: true, emailOptIn: true, emailBouncedAt: true, country: true, state: true } })
+    const lead = await this.prisma.lead.findUnique({ where: { id: leadId }, select: { tags: true, stage: true, scoreGrade: true, originId: true, ownerId: true, phone: true, email: true, emailOptIn: true, emailBouncedAt: true, emailInvalidAt: true, country: true, state: true } })
     if (!lead) return false
     switch (r.type) {
       case 'tem_tag':
@@ -766,7 +766,7 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
       case 'tem_telefone':
         return !!lead.phone
       case 'aceita_email':
-        return !!lead.email && lead.emailOptIn && !lead.emailBouncedAt
+        return !!lead.email && lead.emailOptIn && !lead.emailBouncedAt && !lead.emailInvalidAt
       case 'regiao': {
         const region = leadRegion(lead.country, lead.state, lead.phone)
         return !!region && (r.regions ?? []).includes(region)

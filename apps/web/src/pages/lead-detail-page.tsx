@@ -850,6 +850,11 @@ function Privacy({ lead }: { lead: Lead }) {
             E-mail marketing: {lead.emailOptIn ? 'aceita receber' : 'não aceita'}
           </CardTitle>
           <CardDescription>Só leads com consentimento recebem campanhas. Todo e-mail terá o link de descadastro em 1 clique.</CardDescription>
+          {(lead.emailInvalidAt || lead.emailBouncedAt) && (
+            <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+              {lead.emailBouncedAt ? 'E-mail recusado no envio (não existe): não recebe e-mail marketing.' : `E-mail inválido: ${lead.emailInvalidReason ?? 'não recebe e-mail'} Não recebe e-mail marketing até corrigir o e-mail.`}
+            </p>
+          )}
         </CardHeader>
         <CardContent>
           <p className="mb-2 text-sm font-medium">Histórico de consentimento</p>
