@@ -71,3 +71,17 @@ describe('número escondido (@lid)', () => {
     expect(parseMessage({ key: { id: 'M3', remoteJid: '5549988887777@s.whatsapp.net', fromMe: false }, message: { conversation: 'oi' } })?.lid).toBeNull()
   })
 })
+
+describe('vídeos do iPhone (álbum) e vídeo redondo', () => {
+  const key = { id: 'V1', remoteJid: '5549988887777@s.whatsapp.net', fromMe: false }
+  it('cada vídeo de um álbum (associatedChildMessage) vira vídeo', () => {
+    const p = parseMessage({ key, message: { associatedChildMessage: { message: { videoMessage: { mimetype: 'video/quicktime', fileLength: '1234', caption: 'peça' } } }, messageContextInfo: {} } })
+    expect(p).toMatchObject({ type: 'video', text: 'peça', media: { mime: 'video/quicktime', size: 1234 } })
+  })
+  it('vídeo redondo (ptvMessage) é vídeo', () => {
+    expect(parseMessage({ key, message: { ptvMessage: { mimetype: 'video/mp4' } } })?.type).toBe('video')
+  })
+  it('documento dentro do álbum também abre', () => {
+    expect(parseMessage({ key, message: { associatedChildMessage: { message: { documentMessage: { mimetype: 'video/quicktime', fileName: 'IMG_0001.MOV' } } } } })).toMatchObject({ type: 'documento', media: { fileName: 'IMG_0001.MOV' } })
+  })
+})
