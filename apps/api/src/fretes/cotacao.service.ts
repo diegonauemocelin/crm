@@ -406,18 +406,15 @@ export class CotacaoService {
 
     const zip = Number(p.destZip)
     const key = cityKey(p.destCity)
-    const rows = await this.prisma.freightRule.findMany({
-      where: {
-        versionId: v.id,
-        OR: [
-          { cepStart: { lte: zip }, cepEnd: { gte: zip } },
-          ...(p.destUf ? [{ cepStart: null, uf: p.destUf }] : []),
-          // A cidade também pelas regras com CEP: a cidade pode ter trocado de CEP (faixa nova por rua).
-          ...(key ? [{ cityKey: key }] : []),
-        ],
-      },
-      take: 2000,
-    })
+    // Três buscas, cada uma pelo seu índice (juntas num OR, o banco lia a tabela de regras inteira: minutos por cotação).
+    // A cidade também pelas regras com CEP: a cidade pode ter trocado de CEP (faixa nova por rua).
+    const found = await Promise.all([
+      this.prisma.freightRule.findMany({ where: { versionId: v.id, cepStart: { lte: zip }, cepEnd: { gte: zip } }, take: 2000 }),
+      p.destUf ? this.prisma.freightRule.findMany({ where: { versionId: v.id, cepStart: null, uf: p.destUf }, take: 2000 }) : Promise.resolve([]),
+      key ? this.prisma.freightRule.findMany({ where: { versionId: v.id, cityKey: key }, take: 2000 }) : Promise.resolve([]),
+    ])
+    const seen = new Set<string>()
+    const rows = found.flat().filter((r) => !seen.has(r.id) && !!seen.add(r.id))
     const settings = settingsOf(v.settings)
     const m = p.measures
     const match = matchRule(rows.map(ruleFromRow), { zip, uf: p.destUf, city: p.destCity }, weights(m, settings).taxed)
