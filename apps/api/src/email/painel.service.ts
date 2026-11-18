@@ -90,11 +90,12 @@ export class EmailDashboardService {
         GROUP BY ec."campaignId", ec."linkIndex", c.name, c.links ORDER BY clicks DESC LIMIT 10`,
       this.sales(T, base, start, end, windowDays),
       this.sales(T, base, prevStart, start, windowDays),
-      this.prisma.$queryRaw<{ withEmail: bigint; contactable: bigint; optOut: bigint; bounced: bigint }[]>`
+      this.prisma.$queryRaw<{ withEmail: bigint; contactable: bigint; optOut: bigint; bounced: bigint; invalid: bigint }[]>`
         SELECT count(*) AS "withEmail",
-          count(*) FILTER (WHERE l."emailOptIn" AND l."emailBouncedAt" IS NULL) AS contactable,
+          count(*) FILTER (WHERE l."emailOptIn" AND l."emailBouncedAt" IS NULL AND l."emailInvalidAt" IS NULL) AS contactable,
           count(*) FILTER (WHERE NOT l."emailOptIn") AS "optOut",
-          count(*) FILTER (WHERE l."emailBouncedAt" IS NOT NULL) AS bounced
+          count(*) FILTER (WHERE l."emailBouncedAt" IS NOT NULL) AS bounced,
+          count(*) FILTER (WHERE l."emailInvalidAt" IS NOT NULL AND l."emailBouncedAt" IS NULL) AS invalid
         FROM leads l WHERE l."tenantId" = ${T}::uuid AND l."deletedAt" IS NULL AND l."anonymizedAt" IS NULL AND l.email IS NOT NULL`,
     ])
 
@@ -153,7 +154,7 @@ export class EmailDashboardService {
       campaigns,
       automations,
       links: links.map((l) => ({ campaignId: l.campaignId, campaign: l.name, url: l.links[l.linkIndex] ?? '(link removido)', clicks: Number(l.clicks), people: Number(l.people) })),
-      base: { withEmail: Number(hb?.withEmail ?? 0), contactable: Number(hb?.contactable ?? 0), optOut: Number(hb?.optOut ?? 0), bounced: Number(hb?.bounced ?? 0) },
+      base: { withEmail: Number(hb?.withEmail ?? 0), contactable: Number(hb?.contactable ?? 0), optOut: Number(hb?.optOut ?? 0), bounced: Number(hb?.bounced ?? 0), invalid: Number(hb?.invalid ?? 0) },
       insights: insights({ funnel: total, previousOpen: rates(prev).open, campaigns: campaigns.map((c) => ({ name: c.name, sent: c.sent, click: c.click })), slot, revenue: totalSales.revenue, sales: totalSales.count, windowDays }),
     }
   }

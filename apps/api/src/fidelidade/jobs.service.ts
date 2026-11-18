@@ -260,7 +260,7 @@ export class FidelidadeJobsService implements OnApplicationBootstrap, OnModuleDe
     if (!rows.length) return out
     const leadIds = [...new Set(rows.map((r) => r.leadId))]
     const [leads, reviewed] = await Promise.all([
-      this.prisma.lead.findMany({ where: { id: { in: leadIds } }, select: { id: true, name: true, email: true, phone: true, emailOptOutAt: true, emailBouncedAt: true, anonymizedAt: true, loyaltyMember: { select: { tokenEpoch: true, optOutAt: true } } } }),
+      this.prisma.lead.findMany({ where: { id: { in: leadIds } }, select: { id: true, name: true, email: true, phone: true, emailOptOutAt: true, emailBouncedAt: true, emailInvalidAt: true, anonymizedAt: true, loyaltyMember: { select: { tokenEpoch: true, optOutAt: true } } } }),
       this.prisma.loyaltyReview.findMany({ where: { orderId: { in: rows.map((r) => r.orderId) } }, select: { orderId: true } }),
     ])
     const byId = new Map(leads.map((l) => [l.id, l]))
@@ -269,7 +269,7 @@ export class FidelidadeJobsService implements OnApplicationBootstrap, OnModuleDe
     const brand = cfg.review.email ? publicBranding(await this.fid.settings.branding(tenantId)) : null
     for (const lo of rows) {
       const lead = byId.get(lo.leadId)
-      const emailOk = !!(cfg.review.email && lead?.email && !lead.emailOptOutAt && !lead.emailBouncedAt)
+      const emailOk = !!(cfg.review.email && lead?.email && !lead.emailOptOutAt && !lead.emailBouncedAt && !lead.emailInvalidAt)
       const waOk = !!(cfg.review.whatsapp && lead?.phone)
       const block = inviteBlock(
         { orderedAt: lo.order.orderedAt, deliveredAt: lo.deliveredAt, reversedAt: lo.reversedAt, reviewed: done.has(lo.orderId), optedOut: !lead || !!lead.anonymizedAt || !!lead.loyaltyMember?.optOutAt, hasEmail: emailOk, hasPhone: waOk },

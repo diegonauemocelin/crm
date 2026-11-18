@@ -130,7 +130,7 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
    * sem dados apagados. O escopo do perfil de quem envia também vale.
    */
   private audienceWhere(user: AuthUser, filters: LeadFilters): Prisma.LeadWhereInput {
-    return { AND: [this.leads.where(user, filters), { email: { not: null }, emailOptIn: true, emailBouncedAt: null, anonymizedAt: null }] }
+    return { AND: [this.leads.where(user, filters), { email: { not: null }, emailOptIn: true, emailBouncedAt: null, emailInvalidAt: null, anonymizedAt: null }] }
   }
 
   async audienceCount(user: AuthUser, filters: LeadFilters) {
@@ -594,10 +594,11 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
   async sendAutomationEmail(a: { tenantId: string; templateId: string; leadId: string; runId: string; automationId: string; automationName: string; cart?: CartContent | null; vars?: Partial<Record<CartVar, string>> }): Promise<{ status: 'enviado' | 'pulado' | 'erro' | 'tentar_depois'; message: string; recipientId?: string }> {
     const tpl = await this.prisma.emailCampaign.findFirst({ where: { id: a.templateId, tenantId: a.tenantId, kind: 'MODELO' } })
     if (!tpl) return { status: 'erro', message: 'O modelo de e-mail foi excluído.' }
-    const lead = await this.prisma.lead.findFirst({ where: { id: a.leadId, tenantId: a.tenantId }, select: { name: true, email: true, emailOptIn: true, emailBouncedAt: true, anonymizedAt: true, deletedAt: true } })
+    const lead = await this.prisma.lead.findFirst({ where: { id: a.leadId, tenantId: a.tenantId }, select: { name: true, email: true, emailOptIn: true, emailBouncedAt: true, emailInvalidAt: true, emailInvalidReason: true, anonymizedAt: true, deletedAt: true } })
     if (!lead?.email) return { status: 'pulado', message: 'Lead sem e-mail.' }
     if (!lead.emailOptIn) return { status: 'pulado', message: 'Lead sem consentimento para e-mail (LGPD) ou descadastrado.' }
     if (lead.emailBouncedAt) return { status: 'pulado', message: 'E-mail do lead já foi recusado antes.' }
+    if (lead.emailInvalidAt) return { status: 'pulado', message: `E-mail do lead inválido: ${lead.emailInvalidReason ?? 'não recebe e-mail'}` }
     if (lead.anonymizedAt || lead.deletedAt) return { status: 'pulado', message: 'Lead excluído.' }
     if (await this.prisma.emailRecipient.count({ where: { campaignId: tpl.id, runId: a.runId } })) return { status: 'pulado', message: 'Este e-mail já foi enviado nesta passagem pelo fluxo.' }
     const [smtp, cfg, brand] = await Promise.all([this.settings.smtp(a.tenantId), this.config(a.tenantId), this.brand(a.tenantId)])

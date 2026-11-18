@@ -566,6 +566,11 @@ model Lead {
   emailOptOutAt DateTime?
   /// E-mail recusado pelo servidor do destinatário (inexistente): fica fora das campanhas até ser corrigido.
   emailBouncedAt DateTime?
+  /// Validação do e-mail (formato e domínio): o e-mail que foi conferido (muda o e-mail, confere de novo).
+  emailCheckedFor    String?
+  /// E-mail inválido (fora do e-mail marketing e das automações de e-mail) e o motivo.
+  emailInvalidAt     DateTime?
+  emailInvalidReason String?
 
   firstConversionAt DateTime?
   lastConversionAt  DateTime?

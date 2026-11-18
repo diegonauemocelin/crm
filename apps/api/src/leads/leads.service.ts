@@ -30,6 +30,7 @@ export interface LeadFilters {
   unitId?: string
   originId?: string
   emailOptIn?: 'true' | 'false'
+  emailStatus?: 'valido' | 'invalido' | 'devolvido' | 'pendente'
   hasPhone?: 'true' | 'false'
   /** Com ou sem código do cliente. */
   hasCode?: 'true' | 'false'
@@ -134,6 +135,10 @@ export class LeadsService {
     if (f.unitId) and.push({ unitId: f.unitId === 'none' ? null : f.unitId })
     if (f.originId) and.push({ originId: f.originId === 'none' ? null : f.originId })
     if (f.emailOptIn) and.push({ emailOptIn: f.emailOptIn === 'true' })
+    if (f.emailStatus === 'invalido') and.push({ emailInvalidAt: { not: null } })
+    else if (f.emailStatus === 'devolvido') and.push({ emailBouncedAt: { not: null } })
+    else if (f.emailStatus === 'pendente') and.push({ email: { not: null }, emailCheckedFor: null })
+    else if (f.emailStatus === 'valido') and.push({ email: { not: null }, emailCheckedFor: { not: null }, emailInvalidAt: null, emailBouncedAt: null })
     if (f.hasPhone) and.push(f.hasPhone === 'true' ? { phone: { not: null } } : { phone: null })
     if (f.hasCode) and.push(f.hasCode === 'true' ? { customerCode: { not: null } } : { customerCode: null })
     const service = this.serviceWhere(f)
