@@ -225,3 +225,13 @@ describe('Pedidos: coluna "Frete na nota" e filtro', () => {
     expect([maior, menor, fob].every((c) => matchesFreightFilter(c, null))).toBe(true)
   })
 })
+
+describe('vendedor nos dados adicionais da NF-e', () => {
+  it('lê o vendedor até o próximo rótulo', async () => {
+    const { sellerOf } = await import('../src/fretes/nfe')
+    expect(sellerOf('C.Cons: 3 PECAS Vendedor: E-COMMERCE  Condicao de Pagamento: 64 - VENDAS')).toBe('E-COMMERCE')
+    expect(sellerOf('Ped/OS: 1 Vendedor: JOAO PEDRO SILVA Condicao de Pagamento: 30 dias')).toBe('JOAO PEDRO SILVA')
+    expect(sellerOf('Vendedora: Ana Paula; Pedido: 123')).toBe('Ana Paula')
+    expect(sellerOf('sem vendedor aqui')).toBeNull()
+  })
+})

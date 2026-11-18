@@ -54,6 +54,8 @@ export interface NfeData {
   destIbge: string | null
   /** cStat do protocolo (100/150 = autorizada); null quando o XML veio sem protocolo. */
   protocolStatus: string | null
+  /** Vendedor escrito nos dados adicionais da nota ("Vendedor: E-COMMERCE"). */
+  seller: string | null
 }
 
 /** Lê o XML da NF-e (ou do nfeProc). Lança erro se não parecer uma NF-e. */
@@ -108,7 +110,19 @@ export function parseNfeXml(raw: string): NfeData {
     destUf: uf && /^[A-Z]{2}$/.test(uf) ? uf : null,
     destIbge: ibge.length === 7 ? ibge : null,
     protocolStatus: prot ? tag(prot, 'cStat') : null,
+    seller: sellerOf(tag(block(inf, 'infAdic') ?? '', 'infCpl')),
   }
+}
+
+/**
+ * Vendedor nos dados adicionais (infCpl), como o ERP escreve: "... Vendedor: E-COMMERCE  Condicao de Pagamento: ...".
+ * Vai até o próximo rótulo ("Palavra:"), dois espaços seguidos ou o fim.
+ */
+export function sellerOf(text: string | null | undefined): string | null {
+  const t = String(text ?? '').replace(/&amp;/g, '&')
+  const m = /vendedora?\s*[:\-]\s*(.+?)(?=\s{2,}|\s+(?:cond(?:i[cç][aã]o)?\.?|pagamento|forma|prazo|local|endere[cç]o|ped(?:ido)?|cod(?:igo)?\.?|obs|transp|data|valor|base|tel(?:efone)?|fone|e-?mail|nf|pix|cliente|representante)\b[^:]{0,30}:|[;|*]|$)/i.exec(t)
+  const v = m?.[1]?.replace(/\*+/g, '').trim()
+  return v ? v.slice(0, 80) : null
 }
 
 /** Nota com transporte a conciliar: frete do emitente, do destinatário ou de terceiros (não próprio nem sem frete). */

@@ -34,6 +34,9 @@ const ROLE_LABEL: Record<string, string> = { TOMADOR: 'Tomador (paga o frete)', 
 
 interface Cte {
   id: string
+  /** Vendedor dos dados adicionais da NF-e e frete destacado na nota (lista). */
+  seller?: string | null
+  nfeFreight?: number | null
   key: string
   number: string | null
   series: string | null
@@ -132,6 +135,7 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
   const status = params.get('situacao') ?? ''
   const decision = params.get('decisao') ?? ''
   const carrier = params.get('transportadora') ?? ''
+  const kind = params.get('tipo') ?? ''
   const from = params.get('de') ?? ''
   const to = params.get('ate') ?? ''
   const setParam = (k: string, v: string) => {
@@ -147,6 +151,7 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
   if (status) qs.set('situacao', status)
   if (decision) qs.set('decisao', decision)
   if (carrier) qs.set('transportadora', carrier)
+  if (kind) qs.set('tipo', kind)
   if (from) qs.set('de', from)
   if (to) qs.set('ate', to)
   if (active.unitId) qs.set('filial', active.unitId)
@@ -230,6 +235,16 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
             ))}
           </SelectContent>
         </Select>
+        <Select value={kind || '__all__'} onValueChange={(v) => setParam('tipo', v === '__all__' ? '' : v)}>
+          <SelectTrigger className="w-56" aria-label="Compra e venda">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Compra e venda</SelectItem>
+            <SelectItem value="VENDA">Venda (saída da filial)</SelectItem>
+            <SelectItem value="COMPRA">Compra (entrada)</SelectItem>
+          </SelectContent>
+        </Select>
         {!pendingOnly && (
           <Select value={decision || '__all__'} onValueChange={(v) => setParam('decisao', v === '__all__' ? '' : v)}>
             <SelectTrigger className="w-56" aria-label="Decisão">
@@ -275,6 +290,7 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
                 <TableHead className="hidden md:table-cell">Rota</TableHead>
                 <TableHead className="text-right">Cobrado</TableHead>
                 <TableHead className="text-right">Esperado</TableHead>
+                <TableHead className="text-right">Na nota</TableHead>
                 <TableHead className="text-right">Diferença</TableHead>
                 <TableHead>Conciliação</TableHead>
               </TableRow>
@@ -288,13 +304,17 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
                     </Link>
                     <span className="block text-xs font-normal text-muted-foreground">{c.issuedAt ? dayBr(c.issuedAt) : '—'}</span>
                   </TableCell>
-                  <TableCell className="text-sm">{c.carrierName ?? c.emitName ?? '—'}</TableCell>
+                  <TableCell className="text-sm">
+                    {c.carrierName ?? c.emitName ?? '—'}
+                    {c.seller && <span className="block text-xs text-muted-foreground">Vendedor: {c.seller}</span>}
+                  </TableCell>
                   <TableCell className="hidden text-sm md:table-cell">
                     {c.cityIni}/{c.ufIni} → {c.cityFim}/{c.ufFim}
                     {c.weight !== null && <span className="block text-xs text-muted-foreground">{fmtNum(c.weight)} kg</span>}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{money(c.total)}</TableCell>
                   <TableCell className="text-right tabular-nums">{money(c.expectedTotal)}</TableCell>
+                  <TableCell className="text-right tabular-nums" title="Frete destacado na NF-e">{c.nfeFreight === null || c.nfeFreight === undefined ? '—' : money(c.nfeFreight)}</TableCell>
                   <TableCell className={cn('text-right tabular-nums', (c.difference ?? 0) > 0.009 && 'text-destructive')}>{c.difference === null ? '—' : money(c.difference)}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={REC_STATUS[c.recStatus]?.className}>
