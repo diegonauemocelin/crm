@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { bestCampaign, campaignApplies, campaignLabel, campaignPrice, cleanCampaigns, type FreightCampaign } from '../src/fretes/campanhas'
 
-const base: FreightCampaign = { id: '11111111-1111-1111-1111-111111111111', name: 'SC grátis', active: true, mode: 'GRATIS', value: 0, carrierIds: [], ufs: ['SC'], cities: [], minCargoValue: null, minFreight: null, startsOn: null, endsOn: null }
+const base: FreightCampaign = { id: '11111111-1111-1111-1111-111111111111', name: 'SC grátis', active: true, mode: 'GRATIS', value: 0, carrierIds: [], ufs: ['SC'], cities: [], minCargoValue: null, tableAbove: null, startsOn: null, endsOn: null }
 const t = { carrierId: 'c1', destUf: 'SC', destCity: 'Maravilha', cargoValue: 2000, date: '2026-11-11' }
 
 describe('campanhas de frete', () => {
@@ -34,25 +34,19 @@ describe('campanhas de frete', () => {
   })
 })
 
-describe('% da nota com frete mínimo', () => {
-  const c = { mode: 'PERCENT_NF' as const, value: 3, minFreight: 150 }
-  it('nota pequena: cobra o mínimo', () => {
-    expect(campaignPrice(c, 150, 790)).toBe(150)
+describe('campanha só quando o frete da tabela passa de um valor', () => {
+  const z: FreightCampaign = { ...base, name: 'Zanotelli SP', mode: 'PERCENT_NF', value: 3, ufs: ['SP'], tableAbove: 150 }
+  const sp = { ...t, destUf: 'SP', destCity: 'Guarulhos' }
+  it('tabela até R$ 150: vale a tabela (sem campanha)', () => {
+    expect(bestCampaign([z], { ...sp, cargoValue: 790 }, 150)).toBeNull()
   })
-  it('nota grande: cobra o % (acima do mínimo), abaixo da tabela', () => {
-    expect(campaignPrice(c, 500, 10_000)).toBe(300)
-    expect(campaignPrice(c, 200, 4_000)).toBe(150)
+  it('tabela acima de R$ 150: cobra só os 3% da nota', () => {
+    expect(bestCampaign([z], { ...sp, cargoValue: 4_000 }, 200)?.customerPrice).toBe(120)
+    expect(bestCampaign([z], { ...sp, cargoValue: 10_000 }, 500)?.customerPrice).toBe(300)
   })
-  it('nunca mais que o frete da tabela', () => {
-    expect(campaignPrice(c, 120, 790)).toBe(120)
-  })
-  it('sem mínimo: só o %', () => {
-    expect(campaignPrice({ mode: 'PERCENT_NF', value: 3, minFreight: null }, 150, 790)).toBe(23.7)
-  })
-  it('mínimo guardado só no % da nota e aparece no rótulo', () => {
-    const [x, y] = cleanCampaigns([{ name: 'Zanotelli SP', mode: 'PERCENT_NF', value: 3, minFreight: '150,00' }, { name: 'Grátis', mode: 'GRATIS', minFreight: 150 }], () => '00000000-0000-0000-0000-000000000000')
-    expect(x!.minFreight).toBe(150)
-    expect(y!.minFreight).toBeNull()
-    expect(campaignLabel(x!)).toBe('3% da nota (mínimo de R$ 150,00)')
+  it('guarda o limite e mostra no rótulo', () => {
+    const [x] = cleanCampaigns([{ name: 'Zanotelli SP', mode: 'PERCENT_NF', value: 3, tableAbove: '150,00' }], () => '00000000-0000-0000-0000-000000000000')
+    expect(x!.tableAbove).toBe(150)
+    expect(campaignLabel(x!)).toBe('3% da nota (frete acima de R$\u00a0150,00)')
   })
 })

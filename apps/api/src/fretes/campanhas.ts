@@ -25,8 +25,11 @@ export interface FreightCampaign {
   cities: string[]
   /** Só a partir deste valor de nota (ex.: frete grátis acima de R$ 1.000); null = qualquer valor. */
   minCargoValue: number | null
-  /** % da nota: frete mínimo cobrado do cliente (ex.: 3% da nota, mas nunca menos que R$ 150); null = sem mínimo. */
-  minFreight: number | null
+  /**
+   * Só quando o frete da tabela passa deste valor (ex.: R$ 150, o mínimo da transportadora): até ele, o cliente paga a
+   * tabela; acima, a campanha (ex.: 3% da nota). null = sempre.
+   */
+  tableAbove: number | null
   /** Vigência (AAAA-MM-DD); null = sem limite. */
   startsOn: string | null
   endsOn: string | null
@@ -53,7 +56,7 @@ export function cleanCampaigns(raw: unknown, newId: () => string): FreightCampai
     const value = mode === 'GRATIS' ? 0 : Math.min(100, Math.max(0, num(o.value) ?? 0))
     const strs = (v: unknown, max: number) => (Array.isArray(v) ? [...new Set(v.filter((s): s is string => typeof s === 'string' && !!s.trim()).map((s) => s.trim().slice(0, max)))].slice(0, 500) : [])
     const min = num(o.minCargoValue)
-    const minFreight = num(o.minFreight)
+    const tableAbove = num(o.tableAbove)
     return [
       {
         id: typeof o.id === 'string' && /^[0-9a-f-]{36}$/i.test(o.id) ? o.id : newId(),
@@ -65,7 +68,7 @@ export function cleanCampaigns(raw: unknown, newId: () => string): FreightCampai
         ufs: strs(o.ufs, 10).map((u) => u.toUpperCase()).filter((u) => /^[A-Z]{2}$/.test(u)),
         cities: strs(o.cities, 80),
         minCargoValue: min !== null && min > 0 ? Math.round(min * 100) / 100 : null,
-        minFreight: mode === 'PERCENT_NF' && minFreight !== null && minFreight > 0 ? Math.round(minFreight * 100) / 100 : null,
+        tableAbove: tableAbove !== null && tableAbove > 0 ? Math.round(tableAbove * 100) / 100 : null,
         startsOn: day(o.startsOn),
         endsOn: day(o.endsOn),
       },
@@ -102,21 +105,17 @@ export function campaignApplies(c: FreightCampaign, t: CampaignTarget): boolean 
   return true
 }
 
-/**
- * Quanto cobrar do cliente pela campanha (nunca mais que o valor da tabela). % da nota com frete mínimo: o maior entre
- * o % da nota e o mínimo (ex.: 3% de R$ 790 = R$ 23,70, cobra o mínimo de R$ 150).
- */
-export function campaignPrice(c: Pick<FreightCampaign, 'mode' | 'value'> & { minFreight?: number | null }, tableTotal: number, cargoValue: number): number {
-  const pct = (cargoValue * c.value) / 100
-  const v = c.mode === 'GRATIS' ? 0 : c.mode === 'PERCENT_NF' ? Math.max(pct, c.minFreight ?? 0) : tableTotal * (1 - c.value / 100)
+/** Quanto cobrar do cliente pela campanha (nunca mais que o valor da tabela). */
+export function campaignPrice(c: Pick<FreightCampaign, 'mode' | 'value'>, tableTotal: number, cargoValue: number): number {
+  const v = c.mode === 'GRATIS' ? 0 : c.mode === 'PERCENT_NF' ? (cargoValue * c.value) / 100 : tableTotal * (1 - c.value / 100)
   return Math.round(Math.min(tableTotal, Math.max(0, v)) * 100) / 100
 }
 
 /** Descrição curta para a tela: "3% da nota", "10% de desconto", "Frete grátis". */
-export function campaignLabel(c: Pick<FreightCampaign, 'mode' | 'value'> & { minFreight?: number | null }) {
+export function campaignLabel(c: Pick<FreightCampaign, 'mode' | 'value'> & { tableAbove?: number | null }) {
   const pct = `${c.value.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
-  const min = c.minFreight ? ` (mínimo de ${c.minFreight.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})` : ''
-  return c.mode === 'GRATIS' ? 'Frete grátis' : c.mode === 'PERCENT_NF' ? `${pct} da nota${min}` : `${pct} de desconto`
+  const above = c.tableAbove ? ` (frete acima de ${c.tableAbove.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})` : ''
+  return (c.mode === 'GRATIS' ? 'Frete grátis' : c.mode === 'PERCENT_NF' ? `${pct} da nota` : `${pct} de desconto`) + above
 }
 
 /** Melhor campanha para o cliente (menor valor cobrado) entre as que valem; null se nenhuma. */
@@ -124,6 +123,8 @@ export function bestCampaign(list: FreightCampaign[], t: CampaignTarget, tableTo
   let best: { campaign: FreightCampaign; price: number } | null = null
   for (const c of list) {
     if (!campaignApplies(c, t)) continue
+    // Até o valor escolhido, vale a tabela (ex.: até R$ 150 o cliente paga o frete mínimo da transportadora).
+    if (c.tableAbove && tableTotal <= c.tableAbove) continue
     const price = campaignPrice(c, tableTotal, t.cargoValue)
     if (!best || price < best.price) best = { campaign: c, price }
   }
