@@ -38,7 +38,9 @@ export const UNKNOWN_TEXT = 'Mensagem de um tipo que o CRM ainda não mostra (ve
 /** Mensagem que chegou trancada (chaves do WhatsApp dessincronizadas): o celular mostra, o CRM não conseguiu abrir. */
 export const UNREADABLE_TEXT = 'Mensagem que o CRM não conseguiu abrir: veja no celular do número. Se acontecer de novo, reconecte o número pelo QR Code.'
 
-const WRAPPERS = ['ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2', 'viewOnceMessageV2Extension', 'documentWithCaptionMessage', 'editedMessage']
+// associatedChildMessage: cada foto ou vídeo de um álbum (vários arquivos de uma vez, ex.: pelo Arquivos do iPhone);
+// groupMentionedMessage, botInvokeMessage e lottieStickerMessage também trazem a mensagem dentro.
+const WRAPPERS = ['ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2', 'viewOnceMessageV2Extension', 'documentWithCaptionMessage', 'editedMessage', 'associatedChildMessage', 'groupMentionedMessage', 'botInvokeMessage', 'lottieStickerMessage']
 
 const str = (v: unknown, n = 4096) => (typeof v === 'string' && v.trim() ? v.slice(0, n) : null)
 
@@ -125,7 +127,8 @@ export function parseMessage(data: unknown): ParsedMessage | null {
   if (ext) return { ...base, type: 'texto', text: str(ext.text), media: null }
   const img = o('imageMessage')
   if (img) return { ...base, type: 'imagem', text: str(img.caption), media: media(img) }
-  const vid = o('videoMessage')
+  // ptvMessage: vídeo redondo (gravado na hora), é um vídeo comum.
+  const vid = o('videoMessage') ?? o('ptvMessage')
   if (vid) return { ...base, type: 'video', text: str(vid.caption), media: media(vid) }
   const aud = o('audioMessage')
   if (aud) return { ...base, type: 'audio', text: null, media: media(aud) }
@@ -319,7 +322,7 @@ function quotedPreview(q: Obj | null): string {
   const t = str(inner.conversation, 300) ?? str(o('extendedTextMessage')?.text, 300)
   if (t) return t
   if (o('imageMessage')) return `Foto${str(o('imageMessage')!.caption, 200) ? `: ${str(o('imageMessage')!.caption, 200)}` : ''}`
-  if (o('videoMessage')) return 'Vídeo'
+  if (o('videoMessage') || o('ptvMessage')) return 'Vídeo'
   if (o('audioMessage')) return 'Áudio'
   if (o('documentMessage')) return `Documento${str(o('documentMessage')!.fileName, 120) ? `: ${str(o('documentMessage')!.fileName, 120)}` : ''}`
   if (o('stickerMessage')) return 'Figurinha'

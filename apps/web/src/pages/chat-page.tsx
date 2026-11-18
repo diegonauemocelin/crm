@@ -2612,7 +2612,23 @@ function Bubble({ m }: { m: Message }) {
       pending || missing || <p className="text-xs italic">Áudio</p>
     )
   }
-  if (m.type === 'video') return <div className="space-y-1">{m.hasFile ? <video controls preload="none" src={src} className="max-h-72 max-w-full rounded" /> : pending || missing}{text}</div>
+  // Vídeo do iPhone (.mov/HEVC) nem sempre toca no navegador: o link baixa o arquivo para abrir no computador.
+  if (m.type === 'video')
+    return (
+      <div className="space-y-1">
+        {m.hasFile ? (
+          <>
+            <video controls preload="metadata" src={src} className="max-h-72 max-w-full rounded" />
+            <a href={src} download={m.fileName ?? undefined} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:underline">
+              <DownloadIcon className="size-3" /> Baixar vídeo
+            </a>
+          </>
+        ) : (
+          pending || missing
+        )}
+        {text}
+      </div>
+    )
   if (m.type === 'contato') return <ContactBubble text={m.text} chat={(phone) => <PhoneLink phone={phone} button>{phone}</PhoneLink>} />
   if (imageDocument(m) && m.hasFile) {
     return (
