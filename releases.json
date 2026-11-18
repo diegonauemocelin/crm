@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.60",
+      "date": "2026-11-18",
+      "title": "Importação de NF-e com até 10.000 notas",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Importar XML de NF-e: o .zip agora aceita até 10.000 notas (um mês inteiro) e 300 MB de XML por vez; antes parava em 2.000."
+        }
+      ]
+    },
+    {
       "version": "3.0.59",
       "date": "2026-11-18",
       "title": "Validação de e-mails; conciliação com vendedor e frete da nota; CT-e por compra e venda",

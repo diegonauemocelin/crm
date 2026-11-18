@@ -157,11 +157,11 @@ export function isCancellation(e: NfeEvent) {
   return e.type === '110111' && (e.status === null || e.status === '135' || e.status === '136' || e.status === '155')
 }
 
-export const NFE_IMPORT_LIMITS = { files: 2000, entryBytes: 2 * 1024 * 1024, totalBytes: 100 * 1024 * 1024 }
+export const NFE_IMPORT_LIMITS = { files: 10_000, entryBytes: 2 * 1024 * 1024, totalBytes: 300 * 1024 * 1024 }
 
 /**
  * Arquivos enviados: XMLs soltos ou .zip com XMLs. Do .zip só entram arquivos .xml (o caminho é descartado: só o nome),
- * até 2 MB cada, 2.000 arquivos e 100 MB no total; zip com senha ou corrompido dá erro.
+ * até 2 MB cada, 10.000 arquivos (um mês inteiro de notas) e 300 MB no total; zip com senha ou corrompido dá erro.
  */
 export function expandUpload(files: { name: string; buffer: Buffer }[], limits = NFE_IMPORT_LIMITS): { docs: { name: string; text: string }[]; skipped: { name: string; reason: string }[] } {
   const docs: { name: string; text: string }[] = []
@@ -169,8 +169,8 @@ export function expandUpload(files: { name: string; buffer: Buffer }[], limits =
   let total = 0
   const add = (name: string, data: Uint8Array) => {
     total += data.length
-    if (total > limits.totalBytes) throw new Error('Arquivos grandes demais: envie até 100 MB de XML por vez.')
-    if (docs.length >= limits.files) throw new Error(`Envie até ${limits.files} XMLs por vez.`)
+    if (total > limits.totalBytes) throw new Error(`Arquivos grandes demais: envie até ${Math.round(limits.totalBytes / 1024 / 1024)} MB de XML por vez.`)
+    if (docs.length >= limits.files) throw new Error(`Envie até ${limits.files.toLocaleString('pt-BR')} XMLs por vez.`)
     docs.push({ name, text: Buffer.from(data).toString('utf8') })
   }
   for (const f of files) {
@@ -187,7 +187,7 @@ export function expandUpload(files: { name: string; buffer: Buffer }[], limits =
               skipped.push({ name: `${base} › ${name.slice(0, 120)}`, reason: 'XML maior que 2 MB.' })
               return false
             }
-            if (++count > limits.files) throw new Error(`O .zip tem mais de ${limits.files} XMLs.`)
+            if (++count > limits.files) throw new Error(`O .zip tem mais de ${limits.files.toLocaleString('pt-BR')} XMLs: divida em partes.`)
             return true
           },
         })
