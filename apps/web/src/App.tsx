@@ -233,6 +233,12 @@ function Protected() {
   // App instalado aberto no computador: o layout do WhatsApp Web (/chat-app), também pelo ícone do app do celular.
   // "Abrir o CRM completo" (menu do app de Chat) abre uma janela com o CRM inteiro.
   const fullCrm = fullCrmWindow(location.search)
+  // Dentro do app de Chat (janela instalada), abrir uma conversa (botão Conversar, aviso, link) fica no layout do
+  // WhatsApp Web, como no WhatsApp: /chat?conversa=... vira /chat-app?conversa=...
+  if (!fullCrm && isInstalledApp() && (isDesktopApp() || chatAppWindow()) && location.pathname === '/chat') {
+    const conv = new URLSearchParams(location.search).get('conversa')
+    return <Navigate to={conv ? `/chat-app?conversa=${conv}` : '/chat-app'} replace />
+  }
   if (!fullCrm && isInstalledApp() && isDesktopApp() && location.pathname.startsWith('/app')) {
     const conv = location.pathname.match(/^\/app\/(?:conversa|monitor)\/([0-9a-f-]{36})/)?.[1]
     return <Navigate to={conv ? `/chat-app?conversa=${conv}` : '/chat-app'} replace />
