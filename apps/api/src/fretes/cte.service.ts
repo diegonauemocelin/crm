@@ -17,6 +17,9 @@ import { confrontNfeCte, DEFAULT_NFE_TOLERANCE } from './confronto'
 import { companyRoles, type CteData, internalRateFrom, parseCteCancel, parseCteXml, type RateLearning } from './cte'
 import { money } from './formula'
 
+/** Papéis em que a carga sai da empresa (venda, saída da filial). */
+const SHIPPER_ROLES = ['REMETENTE', 'EXPEDIDOR']
+
 export const REC_KEY = 'fretes.conciliacao'
 export interface RecSettings {
   /** Tolerância em reais e em % do esperado (vale a maior). */
@@ -465,11 +468,14 @@ export class CteService {
     return this.get(user, id)
   }
 
-  async list(user: AuthUser, f: { unitId?: string; carrierId?: string; recStatus?: string; decision?: string; from?: string; to?: string; search?: string; page?: number; pending?: boolean }) {
+  async list(user: AuthUser, f: { unitId?: string; carrierId?: string; recStatus?: string; decision?: string; from?: string; to?: string; search?: string; page?: number; pending?: boolean; kind?: 'VENDA' | 'COMPRA' }) {
     assertCan(user, 'fretes_cte', 'view')
     const and: Prisma.FreightCteWhereInput[] = [this.scopeWhere(user)]
     if (f.unitId) and.push({ unitId: f.unitId })
     if (f.carrierId) and.push({ carrierId: f.carrierId })
+    // Venda: a empresa manda a carga (remetente ou expedidora, saída da filial). Compra: só recebe ou paga o frete.
+    if (f.kind === 'VENDA') and.push({ companyRoles: { hasSome: SHIPPER_ROLES } })
+    else if (f.kind === 'COMPRA') and.push({ NOT: { companyRoles: { hasSome: SHIPPER_ROLES } } })
     if (f.recStatus) and.push({ recStatus: f.recStatus })
     if (f.decision === 'SEM_DECISAO') and.push({ decision: null })
     else if (f.decision === 'CONTESTACAO_ABERTA') and.push({ contestStatus: 'ABERTA' })

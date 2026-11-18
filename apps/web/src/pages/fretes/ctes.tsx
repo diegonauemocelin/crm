@@ -132,6 +132,7 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
   const status = params.get('situacao') ?? ''
   const decision = params.get('decisao') ?? ''
   const carrier = params.get('transportadora') ?? ''
+  const kind = params.get('tipo') ?? ''
   const from = params.get('de') ?? ''
   const to = params.get('ate') ?? ''
   const setParam = (k: string, v: string) => {
@@ -147,6 +148,7 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
   if (status) qs.set('situacao', status)
   if (decision) qs.set('decisao', decision)
   if (carrier) qs.set('transportadora', carrier)
+  if (kind) qs.set('tipo', kind)
   if (from) qs.set('de', from)
   if (to) qs.set('ate', to)
   if (active.unitId) qs.set('filial', active.unitId)
@@ -228,6 +230,16 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
                 {c.name}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={kind || '__all__'} onValueChange={(v) => setParam('tipo', v === '__all__' ? '' : v)}>
+          <SelectTrigger className="w-56" aria-label="Compra e venda">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Compra e venda</SelectItem>
+            <SelectItem value="VENDA">Venda (saída da filial)</SelectItem>
+            <SelectItem value="COMPRA">Compra (entrada)</SelectItem>
           </SelectContent>
         </Select>
         {!pendingOnly && (
