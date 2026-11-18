@@ -13,7 +13,7 @@ import { api, errorMessage } from '@/lib/api'
 import { UF_LIST } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 
-type Mode = 'PERCENT_NF' | 'DESCONTO' | 'GRATIS'
+type Mode = 'PERCENT_NF' | 'PERCENT_NF_ACIMA' | 'REPASSE' | 'DESCONTO' | 'GRATIS'
 interface Campaign {
   id?: string
   name: string
@@ -24,17 +24,20 @@ interface Campaign {
   ufs: string[]
   cities: string[]
   minCargoValue: number | null
+  tableAbove?: number | null
   startsOn: string | null
   endsOn: string | null
 }
 
 const MODES: { value: Mode; label: string; hint: string }[] = [
   { value: 'PERCENT_NF', label: '% sobre o valor da nota', hint: 'O cliente paga este % do valor da nota (ex.: 3%).' },
+  { value: 'PERCENT_NF_ACIMA', label: '% da nota quando o frete passar de um valor', hint: 'Até o valor escolhido o cliente paga o frete da tabela; acima dele, paga só este % da nota (a empresa paga a diferença).' },
+  { value: 'REPASSE', label: '% da nota (repasse da transportadora)', hint: 'O cliente paga o % da nota que a transportadora cobra (ex.: para uma cidade). A empresa não banca: vale mesmo acima da tabela. Escolha a cidade em Cidades.' },
   { value: 'DESCONTO', label: 'Desconto na tabela', hint: 'Desconto deste % sobre o valor calculado pela tabela.' },
   { value: 'GRATIS', label: 'Frete grátis', hint: 'O cliente não paga frete.' },
 ]
 
-const blank = (): Campaign => ({ name: '', active: true, mode: 'GRATIS', value: 0, carrierIds: [], ufs: [], cities: [], minCargoValue: null, startsOn: null, endsOn: null })
+const blank = (): Campaign => ({ name: '', active: true, mode: 'GRATIS', value: 0, carrierIds: [], ufs: [], cities: [], minCargoValue: null, tableAbove: null, startsOn: null, endsOn: null })
 
 /** Fretes › Campanhas de frete: o que cobrar do cliente por transportadora e destino. Aparece na cotação. */
 export function FretesCampanhasPage() {
@@ -111,8 +114,15 @@ export function FretesCampanhasPage() {
                   </div>
                   {c.mode !== 'GRATIS' && (
                     <div className="space-y-1.5">
-                      <Label htmlFor={`v-${i}`}>{c.mode === 'PERCENT_NF' ? '% da nota' : '% de desconto'}</Label>
+                      <Label htmlFor={`v-${i}`}>{c.mode === 'DESCONTO' ? '% de desconto' : '% da nota'}</Label>
                       <Input id={`v-${i}`} inputMode="decimal" value={String(c.value)} disabled={!editable} onChange={(e) => set(i, { value: Number(e.target.value.replace(',', '.')) || 0 })} />
+                    </div>
+                  )}
+                  {c.mode === 'PERCENT_NF_ACIMA' && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`ta-${i}`}>Quando o frete da tabela passar de (R$)</Label>
+                      <Input id={`ta-${i}`} inputMode="decimal" placeholder="Ex.: 150,00" value={c.tableAbove ?? ''} disabled={!editable} onChange={(e) => set(i, { tableAbove: Number(e.target.value.replace(/\./g, '').replace(',', '.')) || null })} />
+                      <p className="text-xs text-muted-foreground">Até este valor o cliente paga o frete da tabela; acima, vale a campanha.</p>
                     </div>
                   )}
                   <div className="space-y-1.5">
