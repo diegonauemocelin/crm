@@ -68,6 +68,11 @@ diagnostico_quedas() {
   id="$(dc ps -q evolution 2>/dev/null || true)"
   [ -n "$id" ] || return 0
   info "Quedas da conexão"
+  if dc exec -T evolution grep -q "crm-patch" node_modules/baileys/lib/Socket/messages-recv.js 2>/dev/null; then
+    ok "Correção do recebimento (avisos de Status do WhatsApp) aplicada"
+  else
+    aviso "Correção do recebimento (avisos de Status) não aplicada: rode o deploy (sudo bash deploy/deploy.sh)"
+  fi
   docker inspect -f '  Contêiner no ar desde {{.State.StartedAt}} · reinícios: {{.RestartCount}} · parou por falta de memória: {{.State.OOMKilled}}' "$id" 2>/dev/null || true
   docker stats --no-stream --format '  Memória da Evolution agora: {{.MemUsage}} ({{.MemPerc}})' "$id" 2>/dev/null || true
   quedas="$(dc logs --no-log-prefix --since 24h evolution 2>/dev/null | grep -ciE 'connection closed|stream errored|connection lost|restart required|timed out' || true)"
