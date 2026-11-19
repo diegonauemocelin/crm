@@ -103,8 +103,19 @@ export function compareFreight(nf: { freightMode: string | null; freightValue: n
   return { kind: 'IGUAL', nfe, cte: cteTotal, diff, label: diff === 0 ? 'Frete da nota igual ao CT-e' : `Frete da nota igual ao CT-e (diferença de ${brl(diff)}, dentro da folga)` }
 }
 
-/** Filtro da lista de pedidos: a nota CIF maior ou menor que o CT-e (além da folga). */
-export type FreightFilter = 'NOTA_MAIOR' | 'NOTA_MENOR'
+/**
+ * Filtro da lista de pedidos: a nota CIF maior ou menor que o CT-e (além da folga); NOTA_MENOR_ESPERADO = o frete
+ * cobrado na nota CIF ficou abaixo do CT-e ou do cotado (o vendedor cobrou menos que o esperado).
+ */
+export type FreightFilter = 'NOTA_MAIOR' | 'NOTA_MENOR' | 'NOTA_MENOR_ESPERADO'
+export const FREIGHT_FILTERS: FreightFilter[] = ['NOTA_MAIOR', 'NOTA_MENOR', 'NOTA_MENOR_ESPERADO']
+
+/** Frete cobrado na nota CIF abaixo do CT-e (soma dos não cancelados) ou do cotado, além da folga. */
+export function chargedBelowExpected(nf: { freightMode: string | null; freightValue: number | null } | null, cteTotal: number | null, expected: number | null, tolerance = DEFAULT_NFE_TOLERANCE.valor) {
+  if (!nf || nf.freightMode !== '0') return false
+  const charged = nf.freightValue ?? 0
+  return [cteTotal, expected].some((v) => v !== null && v > 0 && charged - v < -tolerance)
+}
 export function matchesFreightFilter(c: FreightCompare, f: FreightFilter | null | undefined): boolean {
   if (!f) return true
   return f === 'NOTA_MAIOR' ? c.kind === 'MAIOR' : c.kind === 'MENOR'

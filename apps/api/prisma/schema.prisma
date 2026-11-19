@@ -3167,6 +3167,12 @@ model FreightShipment {
   deliveredAt   DateTime?
   trackingCode  String?
   notes         String?
+  /// Conferência de frete (nota × CT-e × tabela): OK | DIVERGENTE, causa (AUDIT_CAUSES), observação, quem e quando.
+  auditStatus   String?
+  auditCause    String?
+  auditNote     String?
+  auditedByName String?
+  auditedAt     DateTime?
   createdById   String    @db.Uuid
   createdByName String
   createdAt     DateTime  @default(now())

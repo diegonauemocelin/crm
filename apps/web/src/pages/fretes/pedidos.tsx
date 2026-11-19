@@ -45,6 +45,8 @@ interface Shipment {
   quoteId: string | null
   expected: { quoteCode?: number; carrierName?: string; tableName?: string; versionNumber?: number; total?: number; deadlineDays?: number | null } | null
   expectedTotal: number | null
+  /** Esperado pela tabela de frete do CRM (soma do esperado dos CT-es conferidos). */
+  tableExpected?: number | null
   status: string
   collectedAt: string | null
   shippedAt: string | null
@@ -63,7 +65,11 @@ interface Shipment {
   freightCheck?: FreightCheck
 }
 
-const FREIGHT_FILTER: Record<string, string> = { NOTA_MAIOR: 'Nota maior que o CT-e', NOTA_MENOR: 'Nota menor que o CT-e' }
+const FREIGHT_FILTER: Record<string, string> = {
+  NOTA_MAIOR: 'Nota maior que o CT-e',
+  NOTA_MENOR: 'Nota menor que o CT-e',
+  NOTA_MENOR_ESPERADO: 'Cobrado na nota abaixo do CT-e, da tabela ou do cotado',
+}
 
 /** Texto do tooltip da coluna "Frete na nota". */
 function freightTitle(f: FreightCheck) {
@@ -106,10 +112,12 @@ function ShipmentList() {
   const [importing, setImporting] = useState(false)
   const [importingNfe, setImportingNfe] = useState(false)
   const [freight, setFreight] = useState(params.get('freteNota') ?? '')
+  const [seller, setSeller] = useState(params.get('vendedor') ?? '')
   const status = params.get('situacao') ?? ''
   const late = params.get('atrasados') === '1'
   const qs = new URLSearchParams({ pagina: String(page) })
   if (freight) qs.set('freteNota', freight)
+  if (seller) qs.set('vendedor', seller)
   if (late) qs.set('atrasados', '1')
   if (q) qs.set('busca', q)
   if (status) qs.set('situacao', status)
@@ -120,6 +128,7 @@ function ShipmentList() {
     placeholderData: keepPreviousData,
     enabled: !!active.ctx.data,
   })
+  const sellers = useQuery({ queryKey: ['fretes', 'pedidos', 'vendedores'], queryFn: () => api.get<{ name: string; count: number }[]>('/fretes/pedidos/vendedores'), staleTime: 300_000 })
   const pages = list.data ? Math.max(1, Math.ceil(list.data.total / list.data.pageSize)) : 1
   const units = active.ctx.data?.units ?? []
   return (
@@ -178,7 +187,7 @@ function ShipmentList() {
             setPage(1)
           }}
         >
-          <SelectTrigger className="w-56" aria-label="Frete da nota × CT-e" title="Frete da nota × CT-e (só notas CIF com CT-e)">
+          <SelectTrigger className="w-64" aria-label="Frete da nota × CT-e" title="Frete da nota × CT-e, tabela ou cotado (só notas CIF)">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -186,6 +195,25 @@ function ShipmentList() {
             {Object.entries(FREIGHT_FILTER).map(([k, v]) => (
               <SelectItem key={k} value={k}>
                 {v}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={seller || '__todos__'}
+          onValueChange={(v) => {
+            setSeller(v === '__todos__' ? '' : v)
+            setPage(1)
+          }}
+        >
+          <SelectTrigger className="w-56" aria-label="Vendedor" title="Vendedor dos dados adicionais da NF-e">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__todos__">Todos os vendedores</SelectItem>
+            {(sellers.data ?? []).map((v) => (
+              <SelectItem key={v.name} value={v.name}>
+                {v.name} ({v.count})
               </SelectItem>
             ))}
           </SelectContent>
@@ -206,7 +234,9 @@ function ShipmentList() {
                 <TableHead>Pedido / NF</TableHead>
                 <TableHead className="hidden md:table-cell">Cliente / destino</TableHead>
                 <TableHead>Transportadora</TableHead>
-                <TableHead className="text-right">Cotado</TableHead>
+                <TableHead className="text-right" title="Cotado: cotação escolhida no pedido. Tabela: esperado pela tabela de frete do CRM na conferência do CT-e.">
+                  Cotado / tabela
+                </TableHead>
                 <TableHead className="hidden lg:table-cell">CT-e</TableHead>
                 <TableHead className="hidden text-right lg:table-cell" title="Frete destacado na NF-e (vFrete). Só CIF tem cor: verde quando cobre o CT-e, vermelho quando é menor.">
                   Frete na nota
@@ -231,7 +261,10 @@ function ShipmentList() {
                     </span>
                   </TableCell>
                   <TableCell className="text-sm">{s.carrierName ?? '—'}</TableCell>
-                  <TableCell className="text-right tabular-nums">{money(s.expectedTotal)}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {money(s.expectedTotal)}
+                    {s.tableExpected != null && <span className="block text-xs text-muted-foreground">tabela {money(s.tableExpected)}</span>}
+                  </TableCell>
                   <TableCell className="hidden text-sm lg:table-cell">
                     {s.cte ? (
                       <>
@@ -378,6 +411,7 @@ function ShipmentSheet({ id, defaultUnit, onClose }: { id: string | null; defaul
                     Cotação nº {s.expected.quoteCode} · {s.expected.carrierName} · {money(s.expected.total)} ({s.expected.tableName} v{s.expected.versionNumber})
                   </span>
                 )}
+                {s.tableExpected != null && <span className="text-sm">Esperado pela tabela de frete: {money(s.tableExpected)}</span>}
                 {s.quoteId && (
                   <Link className="text-xs underline underline-offset-2" to={`/fretes/cotacoes/${s.quoteId}`}>
                     abrir cotação

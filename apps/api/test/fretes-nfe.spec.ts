@@ -1,6 +1,6 @@
 import { zipSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
-import { compareFreight, confrontNfeCte, matchesFreightFilter, type CteSide, type NfeSide } from '../src/fretes/confronto'
+import { chargedBelowExpected, compareFreight, confrontNfeCte, matchesFreightFilter, type CteSide, type NfeSide } from '../src/fretes/confronto'
 import { parseCteXml } from '../src/fretes/cte'
 import { expandUpload, hasFreight, isCancellation, parseNfeEvent, parseNfeXml, unsafeXml } from '../src/fretes/nfe'
 
@@ -233,5 +233,17 @@ describe('vendedor nos dados adicionais da NF-e', () => {
     expect(sellerOf('Ped/OS: 1 Vendedor: JOAO PEDRO SILVA Condicao de Pagamento: 30 dias')).toBe('JOAO PEDRO SILVA')
     expect(sellerOf('Vendedora: Ana Paula; Pedido: 123')).toBe('Ana Paula')
     expect(sellerOf('sem vendedor aqui')).toBeNull()
+  })
+
+  it('frete cobrado na nota abaixo do CT-e ou do cotado (vendedor cobrou menos)', () => {
+    const cif = (v: number | null) => ({ freightMode: '0', freightValue: v })
+    expect(chargedBelowExpected(cif(100), 120, null, 1)).toBe(true)
+    expect(chargedBelowExpected(cif(100), null, 130, 1)).toBe(true)
+    expect(chargedBelowExpected(cif(100), 100.5, 100.5, 1)).toBe(false)
+    expect(chargedBelowExpected(cif(150), 120, 130, 1)).toBe(false)
+    expect(chargedBelowExpected(cif(null), 80, null, 1)).toBe(true)
+    expect(chargedBelowExpected({ freightMode: '1', freightValue: 0 }, 80, 90, 1)).toBe(false)
+    expect(chargedBelowExpected(cif(50), null, null, 1)).toBe(false)
+    expect(chargedBelowExpected(null, 80, 90, 1)).toBe(false)
   })
 })

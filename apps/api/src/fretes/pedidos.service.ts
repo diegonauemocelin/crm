@@ -14,6 +14,7 @@ import { addBusinessDays } from './motor'
 import { todayUtc } from './tabelas.service'
 import { CteService } from './cte.service'
 import { compareFreight, type FreightFilter } from './confronto'
+import { AUDIT_CAUSES, type AuditCause, type AuditStatus, auditHints, hasDifference, suggestedCause } from './conferencia'
 
 export interface ShipmentInput {
   unitId: string
@@ -140,7 +141,7 @@ export class PedidosService {
     }
   }
 
-  async list(user: AuthUser, f: { unitId?: string; status?: string; carrierId?: string; from?: string; to?: string; search?: string; page?: number; late?: boolean; freight?: FreightFilter }) {
+  async list(user: AuthUser, f: { unitId?: string; status?: string; carrierId?: string; from?: string; to?: string; search?: string; page?: number; late?: boolean; freight?: FreightFilter; seller?: string }) {
     assertCan(user, 'fretes_pedidos', 'view')
     const units = allowedUnits(user, 'fretes_pedidos')
     const and: Prisma.FreightShipmentWhereInput[] = [{ tenantId: user.tenantId }]
@@ -177,6 +178,26 @@ export class PedidosService {
         WHERE s."tenantId" = ${user.tenantId}::uuid AND n."freightMode" = '0' AND ${cond}`
       and.push({ id: { in: ids.map((r) => r.id) } })
     }
+    if (f.freight === 'NOTA_MENOR_ESPERADO') {
+      // Nota CIF com frete abaixo do CT-e (soma dos não cancelados) ou do cotado, além da folga: o vendedor cobrou menos.
+      const ids = await this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT s.id FROM freight_shipments s
+        JOIN freight_nfes n ON n."tenantId" = s."tenantId" AND n.key = s."invoiceKey"
+        LEFT JOIN (SELECT "shipmentId", sum(total) AS total, sum("expectedTotal") AS expected FROM freight_ctes WHERE "tenantId" = ${user.tenantId}::uuid AND "shipmentId" IS NOT NULL AND "fiscalStatus" <> 'CANCELADO' GROUP BY "shipmentId") c ON c."shipmentId" = s.id
+        WHERE s."tenantId" = ${user.tenantId}::uuid AND n."freightMode" = '0'
+          AND ((c.total > 0 AND COALESCE(n."freightValue", 0) - c.total < ${-rec.nfeValor}::numeric)
+            OR (c.expected > 0 AND COALESCE(n."freightValue", 0) - c.expected < ${-rec.nfeValor}::numeric)
+            OR (s."expectedTotal" > 0 AND COALESCE(n."freightValue", 0) - s."expectedTotal" < ${-rec.nfeValor}::numeric))`
+      and.push({ id: { in: ids.map((r) => r.id) } })
+    }
+    const seller = f.seller?.trim()
+    if (seller) {
+      const ids = await this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT s.id FROM freight_shipments s
+        JOIN freight_nfes n ON n."tenantId" = s."tenantId" AND n.key = s."invoiceKey"
+        WHERE s."tenantId" = ${user.tenantId}::uuid AND n.seller = ${seller}`
+      and.push({ id: { in: ids.map((r) => r.id) } })
+    }
     const page = Math.max(1, f.page ?? 1)
     const where = { AND: and }
     const [total, rows, byStatus] = await Promise.all([
@@ -187,7 +208,7 @@ export class PedidosService {
     const keys = rows.map((r) => r.invoiceKey).filter((x): x is string => !!x)
     const [carriers, ctes, nfes] = await Promise.all([
       this.prisma.freightCarrier.findMany({ where: { id: { in: rows.map((r) => r.carrierId).filter((x): x is string => !!x) } }, select: { id: true, name: true } }),
-      this.prisma.freightCte.findMany({ where: { shipmentId: { in: rows.map((r) => r.id) } }, select: { shipmentId: true, number: true, total: true, recStatus: true, fiscalStatus: true } }),
+      this.prisma.freightCte.findMany({ where: { shipmentId: { in: rows.map((r) => r.id) } }, select: { shipmentId: true, number: true, total: true, recStatus: true, fiscalStatus: true, expectedTotal: true } }),
       keys.length ? this.prisma.freightNfe.findMany({ where: { tenantId: user.tenantId, key: { in: keys } }, select: { key: true, freightValue: true, freightMode: true, seller: true } }) : [],
     ])
     return {
@@ -197,9 +218,123 @@ export class PedidosService {
       counts: Object.fromEntries(byStatus.map((b) => [b.status, b._count._all])),
       items: rows.map((r) => {
         const c = ctes.find((x) => x.shipmentId === r.id)
-        return this.view(r, { carrierName: carriers.find((x) => x.id === r.carrierId)?.name ?? null, cte: c ? { number: c.number, total: Number(c.total), recStatus: c.recStatus } : null, seller: (r.invoiceKey && nfes.find((x) => x.key === r.invoiceKey)?.seller) || null, freightCheck: this.freightCheck(r.invoiceKey, nfes, ctes.filter((x) => x.shipmentId === r.id), rec.nfeValor) })
+        return this.view(r, { carrierName: carriers.find((x) => x.id === r.carrierId)?.name ?? null, cte: c ? { number: c.number, total: Number(c.total), recStatus: c.recStatus } : null, seller: (r.invoiceKey && nfes.find((x) => x.key === r.invoiceKey)?.seller) || null, tableExpected: tableExpected(ctes.filter((x) => x.shipmentId === r.id)), freightCheck: this.freightCheck(r.invoiceKey, nfes, ctes.filter((x) => x.shipmentId === r.id), rec.nfeValor) })
       }),
     }
+  }
+
+  /**
+   * Conferência de frete: por pedido, frete cobrado na nota, cobrado no CT-e (soma dos não cancelados) e esperado pela
+   * tabela do CRM; "Só com diferença" traz só os que têm diferença além da folga da conciliação.
+   */
+  async freightAudit(user: AuthUser, f: { unitId?: string; carrierId?: string; seller?: string; from?: string; to?: string; status?: 'PENDENTE' | 'OK' | 'DIVERGENTE' | 'TODOS'; onlyDiff?: boolean; search?: string; page?: number }) {
+    assertCan(user, 'fretes_pedidos', 'view')
+    const rec = await this.cteService.recSettings(user.tenantId)
+    const tol = rec.nfeValor
+    const units = allowedUnits(user, 'fretes_pedidos')
+    const conds: Prisma.Sql[] = [Prisma.sql`s."tenantId" = ${user.tenantId}::uuid`, Prisma.sql`s.status <> 'CANCELADO'`]
+    if (units) conds.push(Prisma.sql`s."unitId" = ANY(${units}::uuid[])`)
+    if (f.unitId) conds.push(Prisma.sql`s."unitId" = ${f.unitId}::uuid`)
+    if (f.carrierId) conds.push(Prisma.sql`s."carrierId" = ${f.carrierId}::uuid`)
+    if (f.seller?.trim()) conds.push(Prisma.sql`n.seller = ${f.seller.trim()}`)
+    if (f.from) conds.push(Prisma.sql`COALESCE(n."issuedAt", s."createdAt") >= ${new Date(`${f.from}T00:00:00-03:00`)}`)
+    if (f.to) conds.push(Prisma.sql`COALESCE(n."issuedAt", s."createdAt") < ${new Date(new Date(`${f.to}T00:00:00-03:00`).getTime() + 86_400_000)}`)
+    const st = f.status ?? 'PENDENTE'
+    if (st === 'PENDENTE') conds.push(Prisma.sql`s."auditStatus" IS NULL`)
+    else if (st !== 'TODOS') conds.push(Prisma.sql`s."auditStatus" = ${st}`)
+    const term = f.search?.trim()
+    if (term) {
+      const like = `%${term}%`
+      conds.push(Prisma.sql`(s."invoiceNumber" ILIKE ${like} OR s."orderNumber" ILIKE ${like} OR s."customerName" ILIKE ${like} OR c.numbers ILIKE ${like}${/^\d{1,9}$/.test(term) ? Prisma.sql` OR s.code = ${Number(term)}` : Prisma.empty})`)
+    }
+    if (f.onlyDiff !== false) {
+      // Mesmas regras de auditHints (nota CIF abaixo do CT-e ou da tabela; CT-e acima da tabela).
+      conds.push(Prisma.sql`(
+        (n."freightMode" = '0' AND c.total > 0 AND COALESCE(n."freightValue", 0) - c.total < ${-tol}::numeric)
+        OR (n."freightMode" = '0' AND c.expected > 0 AND COALESCE(n."freightValue", 0) - c.expected < ${-tol}::numeric)
+        OR (c.expected IS NOT NULL AND c.total - c.expected > ${tol}::numeric))`)
+    }
+    const from = Prisma.sql`
+      FROM freight_shipments s
+      LEFT JOIN freight_nfes n ON n."tenantId" = s."tenantId" AND n.key = s."invoiceKey"
+      LEFT JOIN (
+        SELECT "shipmentId", sum(total) AS total, CASE WHEN count("expectedTotal") > 0 THEN sum("expectedTotal") END AS expected, string_agg(number, ', ') AS numbers
+        FROM freight_ctes WHERE "tenantId" = ${user.tenantId}::uuid AND "shipmentId" IS NOT NULL AND "fiscalStatus" <> 'CANCELADO' GROUP BY "shipmentId"
+      ) c ON c."shipmentId" = s.id
+      WHERE ${Prisma.join(conds, ' AND ')}`
+    const page = Math.max(1, f.page ?? 1)
+    const PAGE_SIZE = 50
+    type Row = {
+      id: string; code: number; unitId: string; orderNumber: string | null; invoiceNumber: string | null; customerName: string | null; destCity: string | null; destUf: string | null
+      carrierId: string | null; status: string; expectedTotal: Prisma.Decimal | null; createdAt: Date; auditStatus: string | null; auditCause: string | null; auditNote: string | null; auditedByName: string | null; auditedAt: Date | null
+      freightMode: string | null; freightValue: Prisma.Decimal | null; seller: string | null; issuedAt: Date | null; total: Prisma.Decimal | null; expected: Prisma.Decimal | null; numbers: string | null
+    }
+    const [rows, totals] = await Promise.all([
+      this.prisma.$queryRaw<Row[]>`
+        SELECT s.id, s.code, s."unitId", s."orderNumber", s."invoiceNumber", s."customerName", s."destCity", s."destUf", s."carrierId", s.status, s."expectedTotal", s."createdAt",
+          s."auditStatus", s."auditCause", s."auditNote", s."auditedByName", s."auditedAt",
+          n."freightMode", n."freightValue", n.seller, n."issuedAt", c.total, c.expected, c.numbers
+        ${from}
+        ORDER BY COALESCE(n."issuedAt", s."createdAt") DESC, s.code DESC
+        LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`,
+      this.prisma.$queryRaw<{ count: bigint; nota: Prisma.Decimal | null; cte: Prisma.Decimal | null; tabela: Prisma.Decimal | null }[]>`
+        SELECT count(*) AS count, sum(CASE WHEN n."freightMode" = '0' THEN COALESCE(n."freightValue", 0) END) AS nota, sum(c.total) AS cte, sum(c.expected) AS tabela
+        ${from}`,
+    ])
+    const carriers = await this.prisma.freightCarrier.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.carrierId).filter((x): x is string => !!x))] } }, select: { id: true, name: true } })
+    const t = totals[0]
+    return {
+      total: Number(t?.count ?? 0),
+      page,
+      pageSize: PAGE_SIZE,
+      tolerance: tol,
+      sums: { nota: n(t?.nota ?? null), cte: n(t?.cte ?? null), tabela: n(t?.tabela ?? null) },
+      causes: AUDIT_CAUSES,
+      items: rows.map((r) => {
+        const values = { freightMode: r.freightMode, nfeFreight: n(r.freightValue), cteTotal: n(r.total), tableExpected: n(r.expected), quoted: n(r.expectedTotal) }
+        const hints = auditHints(values, tol)
+        return {
+          id: r.id,
+          code: r.code,
+          unitId: r.unitId,
+          orderNumber: r.orderNumber,
+          invoiceNumber: r.invoiceNumber,
+          issuedAt: r.issuedAt,
+          customerName: r.customerName,
+          destCity: r.destCity,
+          destUf: r.destUf,
+          carrierName: carriers.find((c) => c.id === r.carrierId)?.name ?? null,
+          seller: r.seller,
+          status: r.status,
+          cteNumbers: r.numbers,
+          ...values,
+          hints,
+          hasDifference: hasDifference(hints),
+          suggestedCause: suggestedCause(values, hints),
+          audit: r.auditStatus ? { status: r.auditStatus, cause: r.auditCause, note: r.auditNote, byName: r.auditedByName, at: r.auditedAt } : null,
+        }
+      }),
+    }
+  }
+
+  /** Registra a conferência do pedido (null desfaz). */
+  async setFreightAudit(user: AuthUser, id: string, d: { status: AuditStatus | null; cause?: AuditCause | null; note?: string | null }, ctx: RequestCtx) {
+    assertCan(user, 'fretes_pedidos', 'edit')
+    const s = await this.find(user, id)
+    if (d.status === 'DIVERGENTE' && !d.cause) throw new BadRequestException('Escolha a causa da diferença.')
+    const data = d.status
+      ? { auditStatus: d.status, auditCause: d.cause ?? null, auditNote: cleanText(d.note, 1000) || null, auditedByName: user.name.slice(0, 120), auditedAt: new Date() }
+      : { auditStatus: null, auditCause: null, auditNote: null, auditedByName: null, auditedAt: null }
+    await this.prisma.freightShipment.update({ where: { id: s.id }, data })
+    await this.audit.byUser(user, ctx, 'frete.pedido.conferido', 'freight_shipment', id, { pedido: s.code, resultado: d.status, causa: d.cause ?? null })
+    return { ok: true }
+  }
+
+  /** Vendedores das NF-es importadas (filtro da lista de pedidos). */
+  async sellers(user: AuthUser) {
+    assertCan(user, 'fretes_pedidos', 'view')
+    const rows = await this.prisma.freightNfe.groupBy({ by: ['seller'], where: { tenantId: user.tenantId, seller: { not: null } }, _count: { _all: true }, orderBy: { seller: 'asc' }, take: 500 })
+    return rows.map((r) => ({ name: r.seller!, count: r._count._all }))
   }
 
   /** Frete na nota × soma dos CT-es não cancelados do pedido (coluna "Frete na nota"). */
@@ -231,6 +366,7 @@ export class PedidosService {
       events,
       nfe: nfe ? { number: nfe.number, series: nfe.series, status: nfe.status, freightMode: nfe.freightMode, freightValue: n(nfe.freightValue), seller: nfe.seller, createdAt: nfe.createdAt } : null,
       freightCheck: this.freightCheck(s.invoiceKey, nfe ? [nfe] : [], ctes, rec.nfeValor),
+      tableExpected: tableExpected(ctes),
       ctes: ctes.map((c) => ({ id: c.id, number: c.number, key: c.key, total: Number(c.total), recStatus: c.recStatus, issuedAt: c.issuedAt, nfeConfront: confront.get(c.id) ?? null })),
     })
   }
@@ -392,4 +528,10 @@ export class PedidosService {
     await this.audit.byUser(user, ctx, 'frete.pedidos.importados', 'freight_shipment', undefined, { filial: unitId, criados: created, pulados: skipped, erros: errors.length })
     return { created, skipped, errors: errors.slice(0, 200) }
   }
+}
+
+/** Valor esperado pela tabela de frete do CRM: soma do esperado dos CT-es não cancelados do pedido (null sem CT-e conferido). */
+function tableExpected(ctes: { expectedTotal: Prisma.Decimal | null; fiscalStatus: string }[]) {
+  const valid = ctes.filter((c) => c.fiscalStatus !== 'CANCELADO' && c.expectedTotal !== null)
+  return valid.length ? Math.round(valid.reduce((t, c) => t + Number(c.expectedTotal), 0) * 100) / 100 : null
 }
