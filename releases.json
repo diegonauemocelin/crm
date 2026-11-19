@@ -2,6 +2,48 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.63",
+      "date": "2026-11-19",
+      "title": "Poupança de frete dos vendedores; painel gerencial de fretes; cotação com SKU e caixas",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Poupança de frete dos vendedores (Fretes › Poupança de frete): campanha com acréscimo sobre a cotação (ex.: 20%) e período mensal, trimestral, semestral, anual ou personalizado. Em cada nota CIF com CT-e, o cobrado na nota menos o CT-e e o acréscimo vira saldo do vendedor; extrato por vendedor e registro do uso do saldo em outra negociação. Na cotação aparece quanto cobrar do cliente."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Painel gerencial de fretes (Relatórios de frete): cobrado nos CT-es e nas notas CIF, resultado nota − CT-e, acima da tabela, notas cobradas a mais e a menos, gráfico por mês e rankings de vendedores, transportadoras, estados, cidades e clientes, com filtros por transportadora e estado."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Resumo semanal de fretes por e-mail, no dia e hora escolhidos, com os CT-es da semana, divergências, notas cobradas a mais e a menos, vendedores e transportadoras."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Relatórios de frete com a coluna \"Cobrado na nota (CIF)\" e o novo relatório de frete cobrado na nota por vendedor."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Cotação de frete: produto pelo SKU traz peso e medidas do cadastro da Magazord; cadastro de caixas de embalagem e sugestão da caixa em que os produtos cabem, para cotar pelo volume real."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Conferência de frete com filtro CIF/FOB (abre em CIF, notas em que a empresa paga o frete)."
+        },
+        {
+          "type": "melhoria",
+          "area": "WhatsApp",
+          "text": "\"Monitorar conversas\" passou a se chamar \"Conversas da equipe\" no chat, no menu e no celular."
+        }
+      ]
+    },
+    {
       "version": "3.0.62",
       "date": "2026-11-19",
       "title": "Conferência de frete; filtros de vendedor e de frete cobrado a menos",
