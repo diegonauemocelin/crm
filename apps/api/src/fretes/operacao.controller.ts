@@ -10,6 +10,7 @@ import { CurrentUser, ReqContext, type RequestCtx } from '../common/decorators'
 import type { AuthUser } from '../common/types'
 import { SHIPMENT_STATUS } from './catalogo'
 import { FREIGHT_FILTERS, type FreightFilter } from './confronto'
+import { AUDIT_CAUSES, AUDIT_STATUSES, type AuditCause, type AuditStatus } from './conferencia'
 import { CteService } from './cte.service'
 import { FaturasService } from './faturas.service'
 import { IMPORT_MAX_BYTES, readSheets } from './importacao.service'
@@ -68,6 +69,26 @@ class PedidosListDto extends ShipmentListDto {
   @IsOptional() @IsIn(FREIGHT_FILTERS) freteNota?: FreightFilter
   /** Vendedor da NF-e (dos dados adicionais). */
   @IsOptional() @IsString() @MaxLength(120) vendedor?: string
+}
+
+class ConferenciaListDto {
+  @IsOptional() @IsUUID() filial?: string
+  @IsOptional() @IsUUID() transportadora?: string
+  @IsOptional() @IsString() @MaxLength(120) vendedor?: string
+  @IsOptional() @Matches(DATE) de?: string
+  @IsOptional() @Matches(DATE) ate?: string
+  @IsOptional() @IsString() @MaxLength(100) busca?: string
+  /** PENDENTE (padrão), OK, DIVERGENTE ou TODOS. */
+  @IsOptional() @IsIn(['PENDENTE', 'OK', 'DIVERGENTE', 'TODOS']) situacao?: 'PENDENTE' | 'OK' | 'DIVERGENTE' | 'TODOS'
+  /** Só os pedidos com diferença (padrão: sim). */
+  @IsOptional() @bool @IsBoolean() diferenca?: boolean
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100_000) pagina?: number
+}
+
+class ConferenciaDto {
+  @ValidateIf((_, v) => v !== null) @IsIn(AUDIT_STATUSES) status!: AuditStatus | null
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsIn(Object.keys(AUDIT_CAUSES)) causa?: AuditCause | null
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(1000) observacao?: string | null
 }
 
 class CteListDto extends ShipmentListDto {
@@ -176,6 +197,16 @@ export class FretesOperacaoController {
   @Get('pedidos')
   listShipments(@CurrentUser() user: AuthUser, @Query() q: PedidosListDto) {
     return this.shipments.list(user, { unitId: q.filial, status: q.situacao, carrierId: q.transportadora, from: q.de, to: q.ate, search: q.busca, page: q.pagina, late: q.atrasados, freight: q.freteNota, seller: q.vendedor })
+  }
+
+  @Get('conferencia')
+  listAudit(@CurrentUser() user: AuthUser, @Query() q: ConferenciaListDto) {
+    return this.shipments.freightAudit(user, { unitId: q.filial, carrierId: q.transportadora, seller: q.vendedor, from: q.de, to: q.ate, search: q.busca, status: q.situacao, onlyDiff: q.diferenca, page: q.pagina })
+  }
+
+  @Patch('conferencia/:id')
+  setAudit(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() d: ConferenciaDto, @ReqContext() ctx: RequestCtx) {
+    return this.shipments.setFreightAudit(user, id, { status: d.status, cause: d.causa ?? null, note: d.observacao ?? null }, ctx)
   }
 
   @Get('pedidos/vendedores')

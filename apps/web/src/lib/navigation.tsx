@@ -205,6 +205,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Pedidos e expedição', to: '/fretes/pedidos', icon: PackageIcon, module: 'fretes_pedidos' },
       { title: 'CT-e', to: '/fretes/ctes', icon: FileTextIcon, module: 'fretes_cte' },
       { title: 'Conciliação', to: '/fretes/conciliacao', icon: FileCheck2Icon, module: 'fretes_cte' },
+      { title: 'Conferência de frete', to: '/fretes/conferencia', icon: ClipboardCheckIcon, module: 'fretes_pedidos' },
       { title: 'Faturas de frete', to: '/fretes/faturas', icon: ReceiptIcon, module: 'fretes_financeiro' },
       { title: 'Relatórios de frete', to: '/fretes/relatorios', icon: FileBarChartIcon, module: 'fretes_cte' },
       { title: 'Alertas de frete', to: '/fretes/alertas', icon: BellIcon, module: 'fretes_painel' },
