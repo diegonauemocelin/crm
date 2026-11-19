@@ -30,7 +30,25 @@ interface VolumeRow {
   length: string
   width: string
   height: string
+  /** Produto de onde vieram o peso e as medidas (busca pelo SKU no cadastro da Magazord). */
+  product?: { sku: string; name: string; warning: string | null }
 }
+
+/** Produto pelo SKU: peso (kg) e medidas (cm) por unidade, do cadastro da Magazord. */
+interface SkuProduct {
+  sku: string
+  code: string
+  name: string
+  unitPrice: number | null
+  weight: number | null
+  length: number | null
+  width: number | null
+  height: number | null
+  missing: string[]
+  warning: string | null
+}
+
+const numText = (v: number | null) => (v === null ? '' : String(v).replace('.', ','))
 const emptyVolume = (): VolumeRow => ({ quantity: '1', weight: '', length: '', width: '', height: '' })
 
 interface ErpFill {
@@ -98,6 +116,262 @@ function ErpItems({ d }: { d: ErpFill }) {
         Peso somado: {d.weight === null ? '—' : `${fmtNum(d.weight)} kg`}
         {d.missingWeight.length ? ` · ${d.missingWeight.length} peça(s) sem peso no cadastro da Tcar: some à mão` : ''}
       </p>
+    </div>
+  )
+}
+
+interface FreightBox {
+  id: string
+  name: string
+  length: number
+  width: number
+  height: number
+  tare: number
+  maxWeight: number | null
+  active: boolean
+}
+
+type BoxResult =
+  | { status: 'OK' | 'VARIAS'; box: FreightBox; count: number; weight: number; occupancy: number }
+  | { status: 'SEM_MEDIDAS' | 'SEM_CAIXAS' | 'NAO_CABE'; reason: string }
+
+const volNumbers = (v: VolumeRow) => ({ quantity: Number(v.quantity) || 0, weight: parseBr(v.weight) ?? 0, length: parseBr(v.length) ?? 0, width: parseBr(v.width) ?? 0, height: parseBr(v.height) ?? 0 })
+
+/**
+ * Sugere a caixa cadastrada em que os produtos dos volumes cabem e troca os volumes por ela (a cotação passa a usar a
+ * medida e o peso da caixa fechada, como a transportadora cobra).
+ */
+function BoxSuggestion({ volumes, onUse }: { volumes: VolumeRow[]; onUse: (v: VolumeRow[]) => void }) {
+  const [result, setResult] = useState<BoxResult | null>(null)
+  const items = volumes.map(volNumbers).filter((v) => v.quantity > 0 && !Number.isNaN(v.weight + v.length + v.width + v.height) && (v.length || v.width || v.height))
+  const units = items.reduce((t, v) => t + v.quantity, 0)
+  const suggest = useMutation({
+    mutationFn: () => api.post<BoxResult>('/fretes/caixas/sugerir', { items }),
+    onSuccess: setResult,
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  if (units < 2 && !result) return null
+  const products = volumes.filter((v) => v.product).map((v) => `${v.quantity}× ${v.product!.sku}`)
+  return (
+    <div className="space-y-2 rounded-md border p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-muted-foreground">Vários itens? O sistema sugere a caixa cadastrada em que tudo cabe, para cotar pelo volume real.</p>
+        <Button type="button" size="sm" variant="outline" disabled={suggest.isPending || !items.length} onClick={() => suggest.mutate()}>
+          {suggest.isPending ? <Loader2Icon className="animate-spin" aria-hidden /> : <PackageIcon aria-hidden />} Sugerir caixa
+        </Button>
+      </div>
+      {result &&
+        ('box' in result ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/50 p-2">
+            <span>
+              {result.count > 1 ? `${result.count} caixas ` : 'Caixa '}
+              <span className="font-medium">{result.box.name}</span> ({fmtNum(result.box.length)} × {fmtNum(result.box.width)} × {fmtNum(result.box.height)} cm) · {fmtNum(result.weight)} kg
+              {result.count > 1 ? ' cada' : ''} com a caixa · ocupação de {result.occupancy}%
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                onUse([
+                  {
+                    quantity: String(result.count),
+                    weight: numText(result.weight),
+                    length: numText(result.box.length),
+                    width: numText(result.box.width),
+                    height: numText(result.box.height),
+                    product: { sku: result.box.name, name: products.length ? `caixa com ${products.join(', ')}`.slice(0, 200) : 'caixa', warning: null },
+                  },
+                ])
+                setResult(null)
+                toast.success('Volumes trocados pela caixa sugerida. Confira antes de cotar.')
+              }}
+            >
+              Usar esta caixa
+            </Button>
+          </div>
+        ) : (
+          <p className="text-amber-700 dark:text-amber-400">{result.reason}</p>
+        ))}
+    </div>
+  )
+}
+
+/** Cadastro das caixas de embalagem (medidas internas, peso da caixa vazia e peso máximo). */
+function BoxesButton() {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(true)}>
+        <PackageIcon aria-hidden /> Caixas
+      </Button>
+      {open && <BoxesDialog onClose={() => setOpen(false)} />}
+    </>
+  )
+}
+
+interface BoxRow {
+  id?: string
+  name: string
+  length: string
+  width: string
+  height: string
+  tare: string
+  maxWeight: string
+  active: boolean
+}
+
+function BoxesDialog({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient()
+  const list = useQuery({ queryKey: ['fretes', 'caixas'], queryFn: () => api.get<FreightBox[]>('/fretes/caixas') })
+  const [rows, setRows] = useState<BoxRow[] | null>(null)
+  const current: BoxRow[] =
+    rows ??
+    (list.data ?? []).map((b) => ({ id: b.id, name: b.name, length: numText(b.length), width: numText(b.width), height: numText(b.height), tare: numText(b.tare || null), maxWeight: numText(b.maxWeight), active: b.active }))
+  const set = (i: number, patch: Partial<BoxRow>) => setRows(current.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  const save = useMutation({
+    mutationFn: () =>
+      api.put<FreightBox[]>('/fretes/caixas', {
+        list: current.map((r) => ({ id: r.id, name: r.name, length: parseBr(r.length), width: parseBr(r.width), height: parseBr(r.height), tare: parseBr(r.tare), maxWeight: parseBr(r.maxWeight), active: r.active })),
+      }),
+    onSuccess: (saved) => {
+      toast.success(`${saved.length} caixa(s) salvas.`)
+      qc.invalidateQueries({ queryKey: ['fretes', 'caixas'] })
+      onClose()
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Caixas de embalagem</DialogTitle>
+          <DialogDescription>Medidas internas em cm, peso da caixa vazia e o peso máximo que ela aguenta (kg). A cotação sugere a menor em que os produtos cabem.</DialogDescription>
+        </DialogHeader>
+        {list.isLoading ? (
+          <Loader2Icon className="mx-auto animate-spin" aria-hidden />
+        ) : (
+          <div className="max-h-[60vh] overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Compr.</TableHead>
+                  <TableHead>Larg.</TableHead>
+                  <TableHead>Alt.</TableHead>
+                  <TableHead>Peso vazia</TableHead>
+                  <TableHead>Peso máx.</TableHead>
+                  <TableHead>Ativa</TableHead>
+                  <TableHead className="w-10" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {current.map((r, i) => (
+                  <TableRow key={r.id ?? `n${i}`}>
+                    <TableCell className="py-1">
+                      <Input className="h-8 min-w-32" aria-label="Nome da caixa" value={r.name} onChange={(e) => set(i, { name: e.target.value })} placeholder="Ex.: Caixa 2" />
+                    </TableCell>
+                    {(['length', 'width', 'height', 'tare', 'maxWeight'] as const).map((k) => (
+                      <TableCell key={k} className="py-1">
+                        <Input className="h-8 w-20" inputMode="decimal" aria-label={k} value={r[k]} onChange={(e) => set(i, { [k]: e.target.value })} />
+                      </TableCell>
+                    ))}
+                    <TableCell className="py-1">
+                      <Checkbox checked={r.active} onCheckedChange={(c) => set(i, { active: c === true })} aria-label="Caixa ativa" />
+                    </TableCell>
+                    <TableCell className="py-1">
+                      <Button type="button" size="icon" variant="ghost" aria-label="Remover caixa" onClick={() => setRows(current.filter((_, j) => j !== i))}>
+                        <Trash2Icon aria-hidden />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+        <DialogFooter className="gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="mr-auto"
+            disabled={current.length >= 50}
+            onClick={() => setRows([...current, { name: '', length: '', width: '', height: '', tare: '', maxWeight: '', active: true }])}
+          >
+            <PlusIcon aria-hidden /> Caixa
+          </Button>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="button" disabled={save.isPending || !rows} onClick={() => save.mutate()}>
+            {save.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Salvar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Busca o produto pelo SKU (cadastro da Magazord) e acrescenta um volume por unidade com o peso e as medidas dele. */
+function SkuAdder({ onAdd }: { onAdd: (p: SkuProduct, qty: number) => void }) {
+  const [sku, setSku] = useState('')
+  const [qty, setQty] = useState('1')
+  const [options, setOptions] = useState<SkuProduct[] | null>(null)
+  const find = useMutation({
+    mutationFn: (code: string) => api.get<{ product: SkuProduct | null; options: SkuProduct[] }>(`/fretes/produto-sku?sku=${encodeURIComponent(code)}`),
+    onSuccess: (r) => {
+      if (r.product) return add(r.product)
+      if (!r.options.length) return void toast.error('Produto não encontrado no catálogo da Magazord. Confira o SKU ou digite as medidas da caixa.')
+      setOptions(r.options)
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const add = (p: SkuProduct) => {
+    const n = Math.max(1, Math.min(10_000, Math.round(Number(qty.replace(',', '.')) || 1)))
+    onAdd(p, n)
+    if (p.warning) toast.warning(p.warning)
+    else toast.success(`${p.name}: ${n} un. com ${fmtNum(p.weight ?? 0)} kg e ${numText(p.length)} × ${numText(p.width)} × ${numText(p.height)} cm cada.`)
+    setSku('')
+    setQty('1')
+    setOptions(null)
+  }
+  return (
+    <div className="space-y-2 rounded-md border border-dashed p-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-48 flex-1 space-y-1.5">
+          <Label htmlFor="q-sku">Produto pelo SKU (peso e medidas da Magazord)</Label>
+          <Input
+            id="q-sku"
+            value={sku}
+            onChange={(e) => setSku(e.target.value)}
+            placeholder="SKU, código ou nome"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                if (sku.trim()) find.mutate(sku.trim())
+              }
+            }}
+          />
+        </div>
+        <div className="w-24 space-y-1.5">
+          <Label htmlFor="q-sku-qtd">Qtd.</Label>
+          <Input id="q-sku-qtd" inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value)} />
+        </div>
+        <Button type="button" variant="outline" disabled={!sku.trim() || find.isPending} onClick={() => find.mutate(sku.trim())}>
+          {find.isPending ? <Loader2Icon className="animate-spin" aria-hidden /> : <SearchIcon aria-hidden />} Adicionar
+        </Button>
+      </div>
+      {options && (
+        <div className="space-y-1 text-sm">
+          <p className="text-xs text-muted-foreground">Não achei o SKU exato. Escolha:</p>
+          {options.map((o) => (
+            <button key={o.sku} type="button" className="block w-full rounded px-2 py-1 text-left hover:bg-muted" onClick={() => add(o)}>
+              <span className="font-mono text-xs">{o.sku}</span> {o.name}
+              <span className="text-xs text-muted-foreground"> · {o.weight === null ? 'sem peso' : `${fmtNum(o.weight)} kg`}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">Cada unidade vira um volume com o peso e as medidas do cadastro. Para mandar numa caixa só, digite a medida total da caixa e o peso na tabela abaixo, sem produto.</p>
     </div>
   )
 }
@@ -402,14 +676,27 @@ function NewQuote() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Volumes (medidas em cm, peso em kg por unidade)</p>
-                <Button type="button" size="sm" variant="outline" onClick={() => setVolumes((v) => [...v, emptyVolume()])} disabled={volumes.length >= 50}>
-                  <PlusIcon aria-hidden /> Volume
-                </Button>
+                <div className="flex gap-2">
+                  {can('fretes_tabelas', 'edit') && <BoxesButton />}
+                  <Button type="button" size="sm" variant="outline" onClick={() => setVolumes((v) => [...v, emptyVolume()])} disabled={volumes.length >= 50}>
+                    <PlusIcon aria-hidden /> Volume
+                  </Button>
+                </div>
               </div>
+              <SkuAdder
+                onAdd={(p, qty) =>
+                  setVolumes((prev) => {
+                    const row: VolumeRow = { quantity: String(qty), weight: numText(p.weight), length: numText(p.length), width: numText(p.width), height: numText(p.height), product: { sku: p.sku, name: p.name, warning: p.warning } }
+                    const blank = (v: VolumeRow) => !v.product && !v.weight && !v.length && !v.width && !v.height
+                    return prev.length === 1 && blank(prev[0]!) ? [row] : [...prev, row].slice(0, 50)
+                  })
+                }
+              />
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>Produto</TableHead>
                       <TableHead className="w-20">Qtd.</TableHead>
                       <TableHead>Peso (kg/un)</TableHead>
                       <TableHead>Comprimento</TableHead>
@@ -421,6 +708,16 @@ function NewQuote() {
                   <TableBody>
                     {volumes.map((v, i) => (
                       <TableRow key={i}>
+                        <TableCell className="max-w-56 py-1 text-xs">
+                          {v.product ? (
+                            <>
+                              <span className="font-mono">{v.product.sku}</span> <span className="text-muted-foreground">{v.product.name}</span>
+                              {v.product.warning && <span className="block text-amber-700 dark:text-amber-400">{v.product.warning}</span>}
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">Caixa (medida total)</span>
+                          )}
+                        </TableCell>
                         {(['quantity', 'weight', 'length', 'width', 'height'] as const).map((k) => (
                           <TableCell key={k} className="py-1">
                             <Input aria-label={`${k} do volume ${i + 1}`} inputMode="decimal" className="h-8" value={v[k]} onChange={(e) => setVol(i, k, e.target.value)} />
@@ -436,6 +733,7 @@ function NewQuote() {
                   </TableBody>
                 </Table>
               </div>
+              <BoxSuggestion volumes={volumes} onUse={setVolumes} />
             </div>
 
             <div className="space-y-1.5">
