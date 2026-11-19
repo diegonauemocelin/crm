@@ -188,7 +188,7 @@ export class PedidosService {
     const [carriers, ctes, nfes] = await Promise.all([
       this.prisma.freightCarrier.findMany({ where: { id: { in: rows.map((r) => r.carrierId).filter((x): x is string => !!x) } }, select: { id: true, name: true } }),
       this.prisma.freightCte.findMany({ where: { shipmentId: { in: rows.map((r) => r.id) } }, select: { shipmentId: true, number: true, total: true, recStatus: true, fiscalStatus: true } }),
-      keys.length ? this.prisma.freightNfe.findMany({ where: { tenantId: user.tenantId, key: { in: keys } }, select: { key: true, freightValue: true, freightMode: true } }) : [],
+      keys.length ? this.prisma.freightNfe.findMany({ where: { tenantId: user.tenantId, key: { in: keys } }, select: { key: true, freightValue: true, freightMode: true, seller: true } }) : [],
     ])
     return {
       total,
@@ -197,7 +197,7 @@ export class PedidosService {
       counts: Object.fromEntries(byStatus.map((b) => [b.status, b._count._all])),
       items: rows.map((r) => {
         const c = ctes.find((x) => x.shipmentId === r.id)
-        return this.view(r, { carrierName: carriers.find((x) => x.id === r.carrierId)?.name ?? null, cte: c ? { number: c.number, total: Number(c.total), recStatus: c.recStatus } : null, freightCheck: this.freightCheck(r.invoiceKey, nfes, ctes.filter((x) => x.shipmentId === r.id), rec.nfeValor) })
+        return this.view(r, { carrierName: carriers.find((x) => x.id === r.carrierId)?.name ?? null, cte: c ? { number: c.number, total: Number(c.total), recStatus: c.recStatus } : null, seller: (r.invoiceKey && nfes.find((x) => x.key === r.invoiceKey)?.seller) || null, freightCheck: this.freightCheck(r.invoiceKey, nfes, ctes.filter((x) => x.shipmentId === r.id), rec.nfeValor) })
       }),
     }
   }
@@ -222,14 +222,14 @@ export class PedidosService {
     // Confronto de cada CT-e com os XMLs das notas importadas.
     const confront = await this.cteService.confrontFor(user.tenantId, ctes)
     const [nfe, rec] = await Promise.all([
-      s.invoiceKey ? this.prisma.freightNfe.findUnique({ where: { tenantId_key: { tenantId: user.tenantId, key: s.invoiceKey } }, select: { key: true, number: true, series: true, status: true, freightMode: true, freightValue: true, createdAt: true } }) : null,
+      s.invoiceKey ? this.prisma.freightNfe.findUnique({ where: { tenantId_key: { tenantId: user.tenantId, key: s.invoiceKey } }, select: { key: true, number: true, series: true, status: true, freightMode: true, freightValue: true, seller: true, createdAt: true } }) : null,
       this.cteService.recSettings(user.tenantId),
     ])
     return this.view(s, {
       carrierName: carrier?.name ?? null,
       unitName: unit?.name ?? null,
       events,
-      nfe: nfe ? { number: nfe.number, series: nfe.series, status: nfe.status, freightMode: nfe.freightMode, freightValue: n(nfe.freightValue), createdAt: nfe.createdAt } : null,
+      nfe: nfe ? { number: nfe.number, series: nfe.series, status: nfe.status, freightMode: nfe.freightMode, freightValue: n(nfe.freightValue), seller: nfe.seller, createdAt: nfe.createdAt } : null,
       freightCheck: this.freightCheck(s.invoiceKey, nfe ? [nfe] : [], ctes, rec.nfeValor),
       ctes: ctes.map((c) => ({ id: c.id, number: c.number, key: c.key, total: Number(c.total), recStatus: c.recStatus, issuedAt: c.issuedAt, nfeConfront: confront.get(c.id) ?? null })),
     })

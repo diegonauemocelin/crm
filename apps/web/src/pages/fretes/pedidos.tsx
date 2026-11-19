@@ -55,9 +55,11 @@ interface Shipment {
   createdByName: string
   createdAt: string
   cte?: { number: string | null; total: number; recStatus: string } | null
+  /** Vendedor dos dados adicionais da NF-e. */
+  seller?: string | null
   events?: { id: string; status: string; note: string | null; userName: string; createdAt: string }[]
   ctes?: { id: string; number: string | null; total: number; recStatus: string; issuedAt: string | null; nfeConfront: NfeConfront | null }[]
-  nfe?: { number: number; series: string | null; status: string; freightMode: string | null; freightValue: number | null; createdAt: string } | null
+  nfe?: { number: number; series: string | null; status: string; freightMode: string | null; freightValue: number | null; seller?: string | null; createdAt: string } | null
   freightCheck?: FreightCheck
 }
 
@@ -219,6 +221,7 @@ function ShipmentList() {
                   <TableCell className="text-sm">
                     {s.orderNumber ?? '—'}
                     <span className="block text-xs text-muted-foreground">NF {s.invoiceNumber ?? '—'}</span>
+                    {s.seller && <span className="block text-xs text-muted-foreground">Vendedor: {s.seller}</span>}
                   </TableCell>
                   <TableCell className="hidden text-sm md:table-cell">
                     {s.customerName ?? '—'}
@@ -386,6 +389,7 @@ function ShipmentSheet({ id, defaultUnit, onClose }: { id: string | null; defaul
                   NF-e {s.nfe.number}
                   {s.nfe.series ? `/${s.nfe.series}` : ''} importada em {dateTime(s.nfe.createdAt)}
                   {s.nfe.status === 'CANCELADA' ? ' · cancelada' : ''}
+                  {s.nfe.seller ? ` · Vendedor: ${s.nfe.seller}` : ''}
                 </p>
               )}
               {s.nfe && (

@@ -161,6 +161,9 @@ services:
     profiles: [whatsapp]
     image: evoapicloud/evolution-api:${EVOLUTION_VERSION:-v2.3.7}
     cap_add: [CHOWN, SETUID, SETGID, FOWNER, DAC_OVERRIDE]
+    # Antes de subir, corrige o Baileys (avisos de Status sem confirmação derrubam o recebimento; ver
+    # deploy/evolution/baileys-status.cjs). Depois, o mesmo comando de início da imagem.
+    entrypoint: ["/bin/bash", "-c", "node /crm-patch/baileys-status.cjs || true; . ./Docker/scripts/deploy_database.sh && npm run start:prod"]
     environment:
       SERVER_TYPE: http
       SERVER_PORT: "8080"
@@ -207,6 +210,7 @@ services:
       TZ: America/Sao_Paulo
     volumes:
       - evolution:/evolution/instances
+      - ./deploy/evolution:/crm-patch:ro
     depends_on:
       db:
         condition: service_healthy
