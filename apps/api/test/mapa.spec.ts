@@ -48,4 +48,19 @@ describe('mapa de vendas', () => {
     expect(aggregateMap(rows, 'ecommerce').totals).toEqual({ sales: 250.5, orders: 1, attendances: 0 })
     expect(aggregateMap(rows, 'marketplace').states).toEqual([{ uf: 'SP', sales: 99.5, orders: 1, attendances: 0, cities: [{ city: 'Campinas', sales: 99.5, orders: 1, attendances: 0 }] }])
   })
+
+  it('sem estado no cadastro, usa o DDD do telefone (sem cidade)', () => {
+    const r = aggregateMap(
+      [
+        { source: 'ecommerce', state: null, city: 'Joinville', phoneUf: 'SC', value: 100, sale: true },
+        { source: 'atendimento', state: 'pr', city: 'Cascavel', phoneUf: 'SC', value: 0, sale: false },
+        { source: 'ecommerce', state: null, city: null, phoneUf: null, value: 50, sale: true },
+      ],
+      'tudo',
+    )
+    expect(r.states.find((s) => s.uf === 'SC')).toMatchObject({ sales: 100, orders: 1, cities: [] })
+    expect(r.states.find((s) => s.uf === 'PR')).toMatchObject({ attendances: 1 })
+    expect(r.byPhone).toEqual({ sales: 100, orders: 1, attendances: 0 })
+    expect(r.noState).toEqual({ sales: 50, orders: 1, attendances: 0 })
+  })
 })

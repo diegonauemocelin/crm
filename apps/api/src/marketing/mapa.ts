@@ -40,6 +40,8 @@ export interface MapRow {
   /** Valor vendido (0 quando o atendimento não virou venda). */
   value: number
   sale: boolean
+  /** Estado pelo DDD do telefone do cliente, usado quando o cadastro não tem estado. */
+  phoneUf?: string | null
 }
 
 export interface MapCell {
@@ -53,6 +55,8 @@ export interface MapResult {
   totals: MapCell
   /** Vendas e atendimentos sem estado conhecido (não aparecem no mapa). */
   noState: MapCell
+  /** Vendas e atendimentos que entraram no mapa pelo DDD do telefone (o cadastro não tinha estado). */
+  byPhone: MapCell
 }
 
 const empty = (): MapCell => ({ sales: 0, orders: 0, attendances: 0 })
@@ -70,18 +74,22 @@ export function aggregateMap(rows: MapRow[], origin: MapOrigin): MapResult {
   const byUf = new Map<string, { cell: MapCell; cities: Map<string, MapCell> }>()
   const totals = empty()
   const noState = empty()
+  const byPhone = empty()
   for (const r of rows) {
     if (origin !== 'tudo' && r.source !== origin) continue
     add(totals, r)
-    const uf = ufOf(r.state)
+    const own = ufOf(r.state)
+    const uf = own ?? ufOf(r.phoneUf)
     if (!uf) {
       add(noState, r)
       continue
     }
+    if (!own) add(byPhone, r)
     let s = byUf.get(uf)
     if (!s) byUf.set(uf, (s = { cell: empty(), cities: new Map() }))
     add(s.cell, r)
-    const city = r.city ? cityKey(r.city) : ''
+    // Cidade só vale com o estado do próprio cadastro (a do DDD não diz a cidade).
+    const city = own && r.city ? cityKey(r.city) : ''
     if (city) {
       const k = city.toLowerCase()
       let c = s.cities.get(k)
@@ -99,5 +107,6 @@ export function aggregateMap(rows: MapRow[], origin: MapOrigin): MapResult {
       .sort((a, b) => b.sales - a.sales || b.attendances - a.attendances),
     totals,
     noState,
+    byPhone,
   }
 }

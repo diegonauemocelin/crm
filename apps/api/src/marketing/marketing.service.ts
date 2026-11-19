@@ -60,6 +60,7 @@ import {
 import { buildLive, type LiveSale } from './ao-vivo'
 import { buildComparison, comparisonRange, type SaleRow } from './comparativo'
 import { aggregateMap, MAP_ORIGINS, type MapOrigin, type MapRow, orderSource } from './mapa'
+import { normalizePhone, ufFromPhone } from '../atendimento/br'
 import { DEFAULT_ALERT_WORDS, negativeSuggestions } from '../googleads/detalhes'
 import { fatigue } from './plataformas'
 import { recommendations } from './recomendacoes'
@@ -601,17 +602,19 @@ export class MarketingService {
     const origin: MapOrigin = (MAP_ORIGINS as readonly string[]).includes(q.origin ?? '') ? (q.origin as MapOrigin) : 'tudo'
     const [records, orders] = await Promise.all([
       origin === 'tudo' || origin === 'atendimento'
-        ? this.prisma.serviceRecord.findMany({ where: { tenantId, deletedAt: null, kind: 'PRE_VENDAS', leadAt: { gte: p.start, lt: p.end } }, select: { state: true, city: true, saleStatus: true, saleValue: true } })
+        ? this.prisma.serviceRecord.findMany({ where: { tenantId, deletedAt: null, kind: 'PRE_VENDAS', leadAt: { gte: p.start, lt: p.end } }, select: { state: true, city: true, phone: true, saleStatus: true, saleValue: true } })
         : [],
       origin === 'atendimento'
         ? []
-        : this.prisma.ecommerceOrder.findMany({ where: { tenantId, statusGroup: 'pago', orderedAt: { gte: p.start, lt: p.end } }, select: { total: true, channel: true, lead: { select: { state: true, city: true } } } }),
+        : this.prisma.ecommerceOrder.findMany({ where: { tenantId, statusGroup: 'pago', orderedAt: { gte: p.start, lt: p.end } }, select: { total: true, channel: true, lead: { select: { state: true, city: true, phone: true } } } }),
     ])
     const rows: MapRow[] = [
-      ...records.map((r) => ({ source: 'atendimento' as const, state: r.state, city: r.city, sale: r.saleStatus === 'SIM', value: r.saleStatus === 'SIM' ? Number(r.saleValue ?? 0) : 0 })),
-      ...orders.map((o) => ({ source: orderSource(o.channel), state: o.lead?.state ?? null, city: o.lead?.city ?? null, sale: true, value: Number(o.total) })),
+      ...records.map((r) => ({ source: 'atendimento' as const, state: r.state, city: r.city, phoneUf: ufFromPhone(normalizePhone(r.phone)), sale: r.saleStatus === 'SIM', value: r.saleStatus === 'SIM' ? Number(r.saleValue ?? 0) : 0 })),
+      ...orders.map((o) => ({ source: orderSource(o.channel), state: o.lead?.state ?? null, city: o.lead?.city ?? null, phoneUf: ufFromPhone(normalizePhone(o.lead?.phone)), sale: true, value: Number(o.total) })),
     ]
-    return { period: { from: p.from, to: p.to }, origin, ...aggregateMap(rows, origin) }
+    // Pedidos sem cliente ligado no CRM não têm de onde tirar o estado (nem cadastro, nem telefone).
+    const ordersNoCustomer = orders.filter((o) => !o.lead && (origin === 'tudo' || orderSource(o.channel) === origin)).length
+    return { period: { from: p.from, to: p.to }, origin, ...aggregateMap(rows, origin), ordersNoCustomer }
   }
 
   async email(tenantId: string, q: { from?: string; to?: string }) {
