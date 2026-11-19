@@ -80,6 +80,8 @@ class ConferenciaListDto {
   @IsOptional() @IsString() @MaxLength(100) busca?: string
   /** PENDENTE (padrão), OK, DIVERGENTE ou TODOS. */
   @IsOptional() @IsIn(['PENDENTE', 'OK', 'DIVERGENTE', 'TODOS']) situacao?: 'PENDENTE' | 'OK' | 'DIVERGENTE' | 'TODOS'
+  /** Modalidade do frete na NF-e: CIF (padrão, a empresa paga), FOB (cliente ou terceiro) ou TODOS. */
+  @IsOptional() @IsIn(['CIF', 'FOB', 'TODOS']) frete?: 'CIF' | 'FOB' | 'TODOS'
   /** Só os pedidos com diferença (padrão: sim). */
   @IsOptional() @bool @IsBoolean() diferenca?: boolean
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100_000) pagina?: number
@@ -201,7 +203,7 @@ export class FretesOperacaoController {
 
   @Get('conferencia')
   listAudit(@CurrentUser() user: AuthUser, @Query() q: ConferenciaListDto) {
-    return this.shipments.freightAudit(user, { unitId: q.filial, carrierId: q.transportadora, seller: q.vendedor, from: q.de, to: q.ate, search: q.busca, status: q.situacao, onlyDiff: q.diferenca, page: q.pagina })
+    return this.shipments.freightAudit(user, { unitId: q.filial, carrierId: q.transportadora, seller: q.vendedor, from: q.de, to: q.ate, search: q.busca, status: q.situacao, mode: q.frete, onlyDiff: q.diferenca, page: q.pagina })
   }
 
   @Patch('conferencia/:id')

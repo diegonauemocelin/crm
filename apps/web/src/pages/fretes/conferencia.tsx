@@ -80,12 +80,13 @@ function AuditPage() {
   const [page, setPage] = useState(1)
   const [status, setStatus] = useState('PENDENTE')
   const [onlyDiff, setOnlyDiff] = useState(true)
+  const [mode, setMode] = useState('CIF')
   const [carrier, setCarrier] = useState('')
   const [seller, setSeller] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [open, setOpen] = useState<Row | null>(null)
-  const qs = new URLSearchParams({ pagina: String(page), situacao: status, diferenca: onlyDiff ? '1' : '0' })
+  const qs = new URLSearchParams({ pagina: String(page), situacao: status, frete: mode, diferenca: onlyDiff ? '1' : '0' })
   if (active.unitId) qs.set('filial', active.unitId)
   if (carrier) qs.set('transportadora', carrier)
   if (seller) qs.set('vendedor', seller)
@@ -132,6 +133,16 @@ function AuditPage() {
                 {v}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={mode} onValueChange={reset(setMode)}>
+          <SelectTrigger className="w-56" aria-label="Modalidade do frete" title="CIF: a empresa paga a transportadora (e cobra do cliente na nota). FOB: o cliente ou terceiro paga.">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="CIF">CIF (a empresa paga o frete)</SelectItem>
+            <SelectItem value="FOB">FOB (cliente paga)</SelectItem>
+            <SelectItem value="TODOS">CIF e FOB</SelectItem>
           </SelectContent>
         </Select>
         <Select value={onlyDiff ? '1' : '0'} onValueChange={(v) => (setOnlyDiff(v === '1'), setPage(1))}>
