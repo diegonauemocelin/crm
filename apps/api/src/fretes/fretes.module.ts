@@ -16,13 +16,14 @@ import { PedidosService } from './pedidos.service'
 import { FretesRelatoriosService } from './relatorios.service'
 import { TcarModule } from '../tcar/tcar.module'
 import { NfeService } from './nfe.service'
+import { FretesResumoSemanalService } from './resumo-semanal.service'
 import { MarketplaceTaxModule } from '../marketplaces/precos/impostos.module'
 
 /** Gestão de fretes: transportadoras, tabelas versionadas, motor de cálculo, importação de planilhas e cotações por filial. */
 @Module({
   imports: [FilesModule, TcarModule, MarketplaceTaxModule],
   controllers: [FretesController, FretesOperacaoController, FretesSefazController],
-  providers: [PainelService, TransportadorasService, TabelasService, ImportacaoService, CotacaoService, PedidosService, CteService, FaturasService, FretesRelatoriosService, SefazService, IntegracoesService, NfeService],
+  providers: [PainelService, TransportadorasService, TabelasService, ImportacaoService, CotacaoService, PedidosService, CteService, FaturasService, FretesRelatoriosService, SefazService, IntegracoesService, NfeService, FretesResumoSemanalService],
   exports: [IntegracoesService, CotacaoService],
 })
 export class FretesModule {}

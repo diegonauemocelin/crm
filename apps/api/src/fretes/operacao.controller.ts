@@ -17,6 +17,7 @@ import { IMPORT_MAX_BYTES, readSheets } from './importacao.service'
 import { PedidosService } from './pedidos.service'
 import { NfeService } from './nfe.service'
 import { FretesRelatoriosService, REPORTS } from './relatorios.service'
+import { FretesResumoSemanalService } from './resumo-semanal.service'
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const nullable = ValidateIf((_, v) => v !== null)
@@ -159,6 +160,19 @@ class ReportDto {
   @IsOptional() @IsUUID() filial?: string
 }
 
+class WeeklyFreightDto {
+  @IsBoolean() active!: boolean
+  @IsInt() @Min(0) @Max(6) weekday!: number
+  @IsInt() @Min(0) @Max(23) hour!: number
+  @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @MaxLength(320, { each: true }) emails!: string[]
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() unitId?: string | null
+}
+
+class GerencialDto extends ReportDto {
+  @IsOptional() @IsUUID() transportadora?: string
+  @IsOptional() @Matches(/^[A-Za-z]{2}$/) uf?: string
+}
+
 function send(res: Response, fileName: string, mime: string, content: Buffer | string) {
   res.setHeader('Content-Type', mime)
   res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -176,6 +190,7 @@ export class FretesOperacaoController {
     private readonly invoices: FaturasService,
     private readonly reports: FretesRelatoriosService,
     private readonly nfes: NfeService,
+    private readonly weekly: FretesResumoSemanalService,
   ) {}
 
   // ─────────── NF-e (XML) ───────────
@@ -353,6 +368,28 @@ export class FretesOperacaoController {
   }
 
   // ─────────── Relatórios e alertas ───────────
+
+  @Get('resumo-semanal')
+  weeklyConfig(@CurrentUser() user: AuthUser) {
+    return this.weekly.config(user)
+  }
+
+  @Put('resumo-semanal')
+  saveWeekly(@CurrentUser() user: AuthUser, @Body() dto: WeeklyFreightDto, @ReqContext() ctx: RequestCtx) {
+    return this.weekly.save(user, dto, ctx)
+  }
+
+  @Post('resumo-semanal/enviar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 3_600_000 } })
+  sendWeekly(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
+    return this.weekly.sendNow(user, ctx)
+  }
+
+  @Get('gerencial')
+  gerencial(@CurrentUser() user: AuthUser, @Query() q: GerencialDto) {
+    return this.reports.gerencial(user, { from: q.de, to: q.ate, unitId: q.filial, carrierId: q.transportadora, uf: q.uf })
+  }
 
   @Get('relatorios')
   reportList() {

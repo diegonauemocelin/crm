@@ -225,7 +225,9 @@ export class CotacaoService {
 
   /** Caixas de embalagem cadastradas (para sugerir a caixa na cotação). */
   async boxes(tenantId: string): Promise<FreightBox[]> {
-    return cleanBoxes(await this.settings.get<FreightBox[]>(tenantId, BOXES_KEY, []), () => randomUUID())
+    // O settings.get mistura com o padrão como objeto: a lista volta com as posições como chaves.
+    const raw = await this.settings.get<Record<string, unknown>>(tenantId, BOXES_KEY, {})
+    return cleanBoxes(Array.isArray(raw) ? raw : Object.values(raw), () => randomUUID())
   }
 
   async saveBoxes(user: AuthUser, raw: unknown, ctx: RequestCtx) {
