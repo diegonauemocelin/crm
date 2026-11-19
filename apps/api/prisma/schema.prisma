@@ -4312,3 +4312,23 @@ model MonitorSample {
   @@index([at])
   @@map("monitor_samples")
 }
+
+/// Poupança de frete dos vendedores: uso do saldo em outra negociação (valor negativo) ou ajuste (+/-). O saldo das notas
+/// é calculado na hora (nota CIF − CT-e − acréscimo da campanha), ver src/fretes/poupanca.ts.
+model FreightWalletMove {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @db.Uuid
+  /// Campanha (Fretes › Poupança de frete), guardada nas configurações da empresa.
+  campaignId    String
+  /// Vendedor como vem nos dados adicionais da NF-e.
+  seller        String
+  /// USO | AJUSTE
+  kind          String
+  value         Decimal  @db.Decimal(14, 2)
+  note          String?
+  createdByName String
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, campaignId, seller])
+  @@map("freight_wallet_moves")
+}

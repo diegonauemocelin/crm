@@ -33,7 +33,7 @@ export const APP_PANELS = [
 ] as const
 
 /** Monitoramento do WhatsApp: só para quem pode monitorar (permissão de monitoramento ou gestor de equipe). */
-const MONITOR_PANEL = { key: 'monitoramento', title: 'Monitoramento WhatsApp', description: 'Conversas por número e atendente, só para leitura', icon: EyeIcon, module: 'chat' } as const
+const MONITOR_PANEL = { key: 'monitoramento', title: 'Conversas da equipe', description: 'Conversas por número e atendente, só para leitura', icon: EyeIcon, module: 'chat' } as const
 
 function usePanels() {
   const { can } = useAuth()
@@ -335,7 +335,7 @@ export function AppMonitor() {
             <Link to="/app/paineis" aria-label="Voltar para os painéis" className="-ml-2 flex size-10 items-center justify-center rounded-full active:bg-muted">
               <ChevronRightIcon className="size-5 rotate-180" />
             </Link>
-            Monitoramento
+            Conversas da equipe
           </span>
         }
       >

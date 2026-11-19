@@ -390,7 +390,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
     <div>
       <PageHeader
         compact
-        title={monitor ? 'Monitorar conversas' : 'Chat WhatsApp'}
+        title={monitor ? 'Conversas da equipe' : 'Chat WhatsApp'}
         description={monitor ? `${monitorAccess.data?.scope === 'EQUIPE' ? 'Conversas da sua equipe e dos setores que você gerencia' : monitorAccess.data?.scope === 'NUMEROS' ? 'Conversas dos números liberados para você' : monitorAccess.data?.scope === 'PESSOAS' ? 'Conversas das pessoas que você monitora' : 'Conversas de todos os números e vendedores'}, só para leitura. Abrir aqui não marca como lida: quem atende continua vendo as mensagens novas.` : undefined}
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -400,7 +400,7 @@ function Chat({ onlyMonitor = false }: { onlyMonitor?: boolean }) {
                   Minhas conversas
                 </ToggleGroupItem>
                 <ToggleGroupItem value="equipe" className="px-3">
-                  <EyeIcon /> Monitorar equipe
+                  <UsersIcon /> Equipe
                 </ToggleGroupItem>
               </ToggleGroup>
             )}
@@ -924,7 +924,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
       {colors && !monitor && d.conversation.category === 'CLIENTE' && d.conversation.status !== 'ARQUIVADA' && !d.conversation.noReplyNeeded && <WaitingBar id={d.conversation.id} since={d.conversation.lastInboundAt ?? null} answered={!!messages.findLast((m) => !m.internal)?.fromMe} yellowMinutes={alerts?.waiting?.yellowMinutes} hours={alerts?.waiting?.hours} />}
       {monitor ? (
         <p className="flex items-center gap-2 border-t bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
-          <EyeIcon className="size-4 shrink-0" /> Monitoramento: só leitura. O vendedor e o cliente não são avisados, e a conversa continua como não lida para quem atende.
+          <EyeIcon className="size-4 shrink-0" /> Só leitura: abrir aqui não marca a conversa como lida para quem atende.
         </p>
       ) : selecting ? (
         <div className="flex flex-wrap items-center gap-2 border-t bg-muted/40 px-3 py-2" role="toolbar" aria-label="Encaminhar mensagens">

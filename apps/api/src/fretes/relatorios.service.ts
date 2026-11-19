@@ -7,6 +7,7 @@ import { allowedUnits, assertCan, assertUnit } from './acesso'
 import { REC_TYPE_LABEL, type RecType } from './conciliacao'
 import { CteService } from './cte.service'
 import { todayUtc } from './tabelas.service'
+import { type CteFact, summarize } from './gerencial'
 
 type ColType = 'text' | 'money' | 'int' | 'pct' | 'date' | 'num'
 interface Report {
@@ -21,6 +22,7 @@ export const REPORTS = {
   filiais: 'Gastos por filial',
   ufs: 'Gastos por UF de destino',
   mensal: 'Gastos por mês',
+  vendedores: 'Frete cobrado na nota por vendedor',
   divergencias: 'Divergências por tipo',
   contestacoes: 'Contestações',
   faturas: 'Faturas: a pagar e pagas',
@@ -29,6 +31,12 @@ export const REPORTS = {
 export type ReportKey = keyof typeof REPORTS
 
 const DAY = 86_400_000
+
+/** Frete das NF-es CIF que o CT-e transporta (null sem nota CIF importada) e o vendedor da nota. */
+const NOTA_JOIN = Prisma.sql`LEFT JOIN LATERAL (
+  SELECT sum(COALESCE(n."freightValue", 0)) AS nota, min(n.seller) AS seller FROM freight_nfes n
+  WHERE n."tenantId" = c."tenantId" AND n.key = ANY(c."nfeKeys") AND n."freightMode" = '0' HAVING count(*) > 0
+) nf ON true`
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v))
 
 /** Relatórios do módulo (sempre sobre os registros: CT-es, pedidos, faturas e tabelas) e a central de alertas. */
@@ -57,6 +65,38 @@ export class FretesRelatoriosService {
     return units ? Prisma.sql`AND ${Prisma.raw(col)} = ANY(${units}::uuid[])` : Prisma.empty
   }
 
+  /** Um registro por CT-e (não cancelado) para a visão gerencial. */
+  async facts(where: Prisma.Sql): Promise<CteFact[]> {
+    const rows = await this.prisma.$queryRaw<
+      { carrier: string; month: string; total: Prisma.Decimal; expected: Prisma.Decimal | null; recStatus: string; credit: Prisma.Decimal | null; weight: Prisma.Decimal | null; nota: Prisma.Decimal | null; seller: string | null; uf: string | null; city: string | null; customer: string | null }[]
+    >`
+      SELECT COALESCE(fc.name, c."emitName", 'Não cadastrada') AS carrier,
+        to_char((COALESCE(c."issuedAt", c."createdAt") AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM') AS month,
+        c.total, c."expectedTotal" AS expected, c."recStatus", c."creditValue" AS credit, c.weight, nf.nota, nf.seller,
+        c."ufFim" AS uf, c."cityFim" AS city, c."recipientName" AS customer
+      FROM freight_ctes c LEFT JOIN freight_carriers fc ON fc.id = c."carrierId" ${NOTA_JOIN}
+      WHERE ${where}
+      LIMIT 200000`
+    return rows.map((r) => ({ ...r, total: Number(r.total), expected: num(r.expected), credit: num(r.credit), weight: num(r.weight), nota: num(r.nota) }))
+  }
+
+  /**
+   * Painel gerencial dos fretes: CT-es do período (emissão) com o frete das notas CIF e o esperado pela tabela, em
+   * totais, meses e rankings (transportadora, UF, cidade, cliente, vendedor).
+   */
+  async gerencial(user: AuthUser, f: { from?: string; to?: string; unitId?: string; carrierId?: string; uf?: string }) {
+    assertCan(user, 'fretes_cte', 'view')
+    const { from, end } = this.period(f)
+    const t = user.tenantId
+    const extra = [
+      f.carrierId ? Prisma.sql`AND c."carrierId" = ${f.carrierId}::uuid` : Prisma.empty,
+      f.uf ? Prisma.sql`AND c."ufFim" = ${f.uf.toUpperCase().slice(0, 2)}` : Prisma.empty,
+    ]
+    const where = Prisma.sql`c."tenantId" = ${t}::uuid AND c."fiscalStatus" <> 'CANCELADO' AND COALESCE(c."issuedAt", c."createdAt") >= ${from} AND COALESCE(c."issuedAt", c."createdAt") < ${end} ${this.unitSql(user, f.unitId, 'c."unitId"')} ${Prisma.join(extra, ' ')}`
+    const [rows, rec] = await Promise.all([this.facts(where), this.ctes.recSettings(t)])
+    return { from: from.toISOString(), to: new Date(end.getTime() - DAY).toISOString(), tolerance: rec.nfeValor, ...summarize(rows, rec.nfeValor) }
+  }
+
   async run(user: AuthUser, key: string, f: { from?: string; to?: string; unitId?: string }): Promise<Report> {
     if (!(key in REPORTS)) throw new BadRequestException('Relatório desconhecido.')
     assertCan(user, key === 'faturas' ? 'fretes_financeiro' : key === 'tabelas' ? 'fretes_tabelas' : 'fretes_cte', 'view')
@@ -67,6 +107,7 @@ export class FretesRelatoriosService {
     const money = [
       { key: 'ctes', label: 'CT-es', type: 'int' as const },
       { key: 'cobrado', label: 'Cobrado', type: 'money' as const },
+      { key: 'nota', label: 'Cobrado na nota (CIF)', type: 'money' as const },
       { key: 'esperado', label: 'Cotado/tabela', type: 'money' as const },
       { key: 'aprovado', label: 'Aprovado', type: 'money' as const },
       { key: 'recuperado', label: 'Crédito recuperado', type: 'money' as const },
@@ -74,7 +115,7 @@ export class FretesRelatoriosService {
       { key: 'kg', label: 'Peso (kg)', type: 'num' as const },
       { key: 'porKg', label: 'R$/kg', type: 'money' as const },
     ]
-    const agg = Prisma.sql`count(*)::int AS ctes, sum(c.total) AS cobrado, sum(c."expectedTotal") AS esperado, sum(c."approvedValue") AS aprovado, sum(c."creditValue") AS recuperado,
+    const agg = Prisma.sql`count(*)::int AS ctes, sum(c.total) AS cobrado, sum(nf.nota) AS nota, sum(c."expectedTotal") AS esperado, sum(c."approvedValue") AS aprovado, sum(c."creditValue") AS recuperado,
       count(*) FILTER (WHERE c."recStatus" = 'DIVERGENTE')::int AS divergentes, sum(c.weight) AS kg, CASE WHEN sum(c.weight) > 0 THEN sum(c.total) / sum(c.weight) END AS "porKg"`
     const fix = (rows: Record<string, unknown>[]) => rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v instanceof Prisma.Decimal || typeof v === 'bigint' ? Number(v) : (v as string | number | null)])))
 
@@ -83,7 +124,7 @@ export class FretesRelatoriosService {
         SELECT COALESCE(fc.name, c."emitName", 'Não cadastrada') AS nome, ${agg},
           (SELECT count(*) FILTER (WHERE s."deliveredAt" IS NOT NULL AND s."expectedDeliveryAt" IS NOT NULL)::int FROM freight_shipments s WHERE s."tenantId" = ${t}::uuid AND s."carrierId" = c."carrierId" AND s."createdAt" >= ${from} AND s."createdAt" < ${end}) AS entregas,
           (SELECT count(*) FILTER (WHERE s."deliveredAt" IS NOT NULL AND s."expectedDeliveryAt" IS NOT NULL AND (s."deliveredAt" AT TIME ZONE 'America/Sao_Paulo')::date <= s."expectedDeliveryAt")::int FROM freight_shipments s WHERE s."tenantId" = ${t}::uuid AND s."carrierId" = c."carrierId" AND s."createdAt" >= ${from} AND s."createdAt" < ${end}) AS "noPrazo"
-        FROM freight_ctes c LEFT JOIN freight_carriers fc ON fc.id = c."carrierId"
+        FROM freight_ctes c LEFT JOIN freight_carriers fc ON fc.id = c."carrierId" ${NOTA_JOIN}
         WHERE ${base} GROUP BY 1, c."carrierId" ORDER BY sum(c.total) DESC`
       return {
         title: REPORTS.transportadoras,
@@ -100,9 +141,28 @@ export class FretesRelatoriosService {
             ? Prisma.sql`COALESCE(c."ufFim", '—')`
             : Prisma.sql`to_char((COALESCE(c."issuedAt", c."createdAt") AT TIME ZONE 'UTC') AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM')`
       const rows = await this.prisma.$queryRaw<Record<string, unknown>[]>`
-        SELECT ${group} AS nome, ${agg} FROM freight_ctes c LEFT JOIN units u ON u.id = c."unitId"
+        SELECT ${group} AS nome, ${agg} FROM freight_ctes c LEFT JOIN units u ON u.id = c."unitId" ${NOTA_JOIN}
         WHERE ${base} GROUP BY 1 ORDER BY ${key === 'mensal' ? Prisma.sql`1` : Prisma.sql`sum(c.total) DESC`}`
       return { title: REPORTS[key], description: 'Valores dos CT-es no período (data de emissão).', columns: [{ key: 'nome', label: key === 'filiais' ? 'Filial' : key === 'ufs' ? 'UF' : 'Mês', type: 'text' }, ...money], rows: fix(rows) }
+    }
+    if (key === 'vendedores') {
+      const sum = summarize(await this.facts(Prisma.sql`${base}`), (await this.ctes.recSettings(t)).nfeValor)
+      return {
+        title: REPORTS.vendedores,
+        description: 'CT-es do período com NF-e CIF importada (a empresa paga a transportadora e cobra o frete do cliente na nota). Vendedor dos dados adicionais da nota. "A menos": a nota cobrou menos que o CT-e (além da folga da conciliação).',
+        columns: [
+          { key: 'name', label: 'Vendedor', type: 'text' },
+          { key: 'ctes', label: 'CT-es', type: 'int' },
+          { key: 'nota', label: 'Cobrado na nota', type: 'money' },
+          { key: 'cte', label: 'Cobrado no CT-e', type: 'money' },
+          { key: 'resultado', label: 'Nota − CT-e', type: 'money' },
+          { key: 'menos', label: 'Notas a menos', type: 'int' },
+          { key: 'menosValor', label: 'Cobrado a menos', type: 'money' },
+          { key: 'mais', label: 'Notas a mais', type: 'int' },
+          { key: 'maisValor', label: 'Cobrado a mais', type: 'money' },
+        ],
+        rows: sum.sellers,
+      }
     }
     if (key === 'divergencias') {
       const rows = await this.prisma.$queryRaw<Record<string, unknown>[]>`

@@ -23,6 +23,8 @@ import { type OnlineQuote, packageOf } from './integracoes'
 import { parseNumber } from './importacao'
 import { TcarService } from '../tcar/tcar.service'
 import { docNumber, type ErpDocType, weightOf } from '../tcar/erp'
+import { cleanSku, skuVolume } from './produto-sku'
+import { BOXES_KEY, cleanBoxes, type FreightBox, type PackItem, suggestBox } from './caixas'
 
 const ONLINE_LABEL: Record<OnlineQuote['source'], string> = {
   CORREIOS: 'Correios (contrato) · cotação online',
@@ -195,6 +197,53 @@ export class CotacaoService {
   ) {}
 
   /** Campanhas de frete da empresa. A configuração devolve um objeto ({...padrão, ...valor}): a lista sai dos valores. */
+  /**
+   * Produto pelo SKU (catálogo da Magazord copiado no CRM): peso e medidas por unidade para a cotação. Sem o SKU exato,
+   * devolve até 8 parecidos (código, SKU ou nome) para escolher.
+   */
+  async productBySku(user: AuthUser, raw: string) {
+    assertCan(user, 'fretes_cotacao', 'create')
+    const sku = cleanSku(raw)
+    if (sku.length < 2) throw new BadRequestException('Digite o SKU do produto.')
+    const select = { externalId: true, code: true, name: true, price: true, weightKg: true, heightCm: true, widthCm: true, lengthCm: true, measuresAt: true } as const
+    const num = (d: Prisma.Decimal | null) => (d === null ? null : Number(d))
+    const view = (r: Prisma.StoreProductGetPayload<{ select: typeof select }>) => skuVolume({ ...r, price: num(r.price), weightKg: num(r.weightKg), heightCm: num(r.heightCm), widthCm: num(r.widthCm), lengthCm: num(r.lengthCm) })
+    const exact = await this.prisma.storeProduct.findFirst({
+      where: { tenantId: user.tenantId, active: true, OR: [{ externalId: { equals: sku, mode: 'insensitive' } }, { code: { equals: sku, mode: 'insensitive' } }] },
+      select,
+      orderBy: { updatedAt: 'desc' },
+    })
+    if (exact) return { product: view(exact), options: [] }
+    const like = await this.prisma.storeProduct.findMany({
+      where: { tenantId: user.tenantId, active: true, OR: [{ externalId: { contains: sku, mode: 'insensitive' } }, { code: { contains: sku, mode: 'insensitive' } }, { name: { contains: sku, mode: 'insensitive' } }] },
+      select,
+      orderBy: { name: 'asc' },
+      take: 8,
+    })
+    return { product: null, options: like.map(view) }
+  }
+
+  /** Caixas de embalagem cadastradas (para sugerir a caixa na cotação). */
+  async boxes(tenantId: string): Promise<FreightBox[]> {
+    // O settings.get mistura com o padrão como objeto: a lista volta com as posições como chaves.
+    const raw = await this.settings.get<Record<string, unknown>>(tenantId, BOXES_KEY, {})
+    return cleanBoxes(Array.isArray(raw) ? raw : Object.values(raw), () => randomUUID())
+  }
+
+  async saveBoxes(user: AuthUser, raw: unknown, ctx: RequestCtx) {
+    assertCan(user, 'fretes_tabelas', 'edit')
+    const list = cleanBoxes(raw, () => randomUUID())
+    await this.settings.set(user.tenantId, BOXES_KEY, list)
+    await this.audit.byUser(user, ctx, 'frete.caixas.alteradas', 'settings', BOXES_KEY, { caixas: list.map((b) => `${b.name} ${b.length}x${b.width}x${b.height}`) })
+    return list
+  }
+
+  /** Menor caixa cadastrada em que os itens da cotação cabem. */
+  async suggestBox(user: AuthUser, items: PackItem[]) {
+    assertCan(user, 'fretes_cotacao', 'create')
+    return suggestBox(items, await this.boxes(user.tenantId))
+  }
+
   async campaigns(tenantId: string): Promise<FreightCampaign[]> {
     const raw = await this.settings.get<Record<string, unknown>>(tenantId, CAMPAIGNS_KEY, {})
     return cleanCampaigns(Array.isArray(raw) ? raw : Object.values(raw), () => randomUUID())

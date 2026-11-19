@@ -135,6 +135,11 @@ class DhlDto {
   @IsOptional() @IsIn(['NACIONAL', 'INTERNACIONAL', 'AMBOS']) scope?: 'NACIONAL' | 'INTERNACIONAL' | 'AMBOS'
 }
 
+class BoxesDto {
+  /** Lista completa das caixas (validada e limpa no serviço: cleanBoxes). */
+  @IsArray() @ArrayMaxSize(50) list!: unknown[]
+}
+
 class CampaignsDto {
   /** Lista completa das campanhas (validada e limpa no serviço: cleanCampaigns). */
   @IsArray() @ArrayMaxSize(100) list!: unknown[]
@@ -268,6 +273,10 @@ class VolumeDto {
   @IsNumber() @Min(0) length!: number
   @IsNumber() @Min(0) width!: number
   @IsNumber() @Min(0) height!: number
+}
+
+class BoxSuggestDto {
+  @IsArray() @ArrayMaxSize(200) @ValidateNested({ each: true }) @Type(() => VolumeDto) items!: VolumeDto[]
 }
 
 class ErpDocumentDto {
@@ -404,6 +413,29 @@ export class FretesController {
   @HttpCode(200)
   seedUnits(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
     return this.painel.seedUsaparts(user, ctx)
+  }
+
+  /** Peso e medidas do produto pelo SKU (cadastro da Magazord), para a cotação. */
+  @Get('produto-sku')
+  productBySku(@CurrentUser() user: AuthUser, @Query('sku') sku: string) {
+    return this.quotes.productBySku(user, typeof sku === 'string' ? sku : '')
+  }
+
+  @Get('caixas')
+  boxes(@CurrentUser() user: AuthUser) {
+    if (!(['fretes_cotacao', 'fretes_tabelas'] as const).some((m) => can(user.permissions, user.role.isSystem, m, 'view'))) throw new ForbiddenException('Você não tem permissão para esta ação.')
+    return this.quotes.boxes(user.tenantId)
+  }
+
+  @Put('caixas')
+  saveBoxes(@CurrentUser() user: AuthUser, @Body() dto: BoxesDto, @ReqContext() ctx: RequestCtx) {
+    return this.quotes.saveBoxes(user, dto.list, ctx)
+  }
+
+  @Post('caixas/sugerir')
+  @HttpCode(200)
+  suggestBox(@CurrentUser() user: AuthUser, @Body() dto: BoxSuggestDto) {
+    return this.quotes.suggestBox(user, dto.items)
   }
 
   @Get('campanhas')

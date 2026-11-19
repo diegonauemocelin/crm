@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common'
 import { assertCan } from './acesso'
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express'
 import { ApiTags } from '@nestjs/swagger'
@@ -17,6 +17,8 @@ import { IMPORT_MAX_BYTES, readSheets } from './importacao.service'
 import { PedidosService } from './pedidos.service'
 import { NfeService } from './nfe.service'
 import { FretesRelatoriosService, REPORTS } from './relatorios.service'
+import { FretesResumoSemanalService } from './resumo-semanal.service'
+import { PoupancaService } from './poupanca.service'
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const nullable = ValidateIf((_, v) => v !== null)
@@ -80,6 +82,8 @@ class ConferenciaListDto {
   @IsOptional() @IsString() @MaxLength(100) busca?: string
   /** PENDENTE (padrão), OK, DIVERGENTE ou TODOS. */
   @IsOptional() @IsIn(['PENDENTE', 'OK', 'DIVERGENTE', 'TODOS']) situacao?: 'PENDENTE' | 'OK' | 'DIVERGENTE' | 'TODOS'
+  /** Modalidade do frete na NF-e: CIF (padrão, a empresa paga), FOB (cliente ou terceiro) ou TODOS. */
+  @IsOptional() @IsIn(['CIF', 'FOB', 'TODOS']) frete?: 'CIF' | 'FOB' | 'TODOS'
   /** Só os pedidos com diferença (padrão: sim). */
   @IsOptional() @bool @IsBoolean() diferenca?: boolean
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100_000) pagina?: number
@@ -157,6 +161,31 @@ class ReportDto {
   @IsOptional() @IsUUID() filial?: string
 }
 
+class WeeklyFreightDto {
+  @IsBoolean() active!: boolean
+  @IsInt() @Min(0) @Max(6) weekday!: number
+  @IsInt() @Min(0) @Max(23) hour!: number
+  @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @MaxLength(320, { each: true }) emails!: string[]
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() unitId?: string | null
+}
+
+class WalletCampaignsDto {
+  /** Lista completa das campanhas (validada e limpa no serviço: cleanWalletCampaigns). */
+  @IsArray() @ArrayMaxSize(50) list!: unknown[]
+}
+
+class WalletMoveDto {
+  @IsString() @MaxLength(120) seller!: string
+  @IsIn(['USO', 'AJUSTE']) kind!: 'USO' | 'AJUSTE'
+  @IsNumber() @Min(-1_000_000) @Max(1_000_000) value!: number
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(500) note?: string | null
+}
+
+class GerencialDto extends ReportDto {
+  @IsOptional() @IsUUID() transportadora?: string
+  @IsOptional() @Matches(/^[A-Za-z]{2}$/) uf?: string
+}
+
 function send(res: Response, fileName: string, mime: string, content: Buffer | string) {
   res.setHeader('Content-Type', mime)
   res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -174,6 +203,8 @@ export class FretesOperacaoController {
     private readonly invoices: FaturasService,
     private readonly reports: FretesRelatoriosService,
     private readonly nfes: NfeService,
+    private readonly weekly: FretesResumoSemanalService,
+    private readonly wallet: PoupancaService,
   ) {}
 
   // ─────────── NF-e (XML) ───────────
@@ -201,7 +232,7 @@ export class FretesOperacaoController {
 
   @Get('conferencia')
   listAudit(@CurrentUser() user: AuthUser, @Query() q: ConferenciaListDto) {
-    return this.shipments.freightAudit(user, { unitId: q.filial, carrierId: q.transportadora, seller: q.vendedor, from: q.de, to: q.ate, search: q.busca, status: q.situacao, onlyDiff: q.diferenca, page: q.pagina })
+    return this.shipments.freightAudit(user, { unitId: q.filial, carrierId: q.transportadora, seller: q.vendedor, from: q.de, to: q.ate, search: q.busca, status: q.situacao, mode: q.frete, onlyDiff: q.diferenca, page: q.pagina })
   }
 
   @Patch('conferencia/:id')
@@ -351,6 +382,67 @@ export class FretesOperacaoController {
   }
 
   // ─────────── Relatórios e alertas ───────────
+
+  // ─────────── Poupança de frete dos vendedores ───────────
+
+  @Get('poupanca/campanhas')
+  walletCampaigns(@CurrentUser() user: AuthUser) {
+    return this.wallet.list(user)
+  }
+
+  @Put('poupanca/campanhas')
+  saveWalletCampaigns(@CurrentUser() user: AuthUser, @Body() dto: WalletCampaignsDto, @ReqContext() ctx: RequestCtx) {
+    return this.wallet.saveCampaigns(user, dto.list, ctx)
+  }
+
+  /** Campanha da poupança que vale hoje: a cotação mostra quanto cobrar do cliente (cotação + acréscimo). */
+  @Get('poupanca/vigente')
+  walletCurrent(@CurrentUser() user: AuthUser) {
+    return this.wallet.currentFor(user)
+  }
+
+  @Get('poupanca/:campanha')
+  walletBalances(@CurrentUser() user: AuthUser, @Param('campanha') campaignId: string) {
+    return this.wallet.balances(user, campaignId)
+  }
+
+  @Get('poupanca/:campanha/extrato')
+  walletStatement(@CurrentUser() user: AuthUser, @Param('campanha') campaignId: string, @Query('vendedor') seller: string) {
+    if (typeof seller !== 'string' || !seller.trim()) throw new BadRequestException('Informe o vendedor.')
+    return this.wallet.statement(user, campaignId, seller.trim().slice(0, 120))
+  }
+
+  @Post('poupanca/:campanha/movimentos')
+  addWalletMove(@CurrentUser() user: AuthUser, @Param('campanha') campaignId: string, @Body() dto: WalletMoveDto, @ReqContext() ctx: RequestCtx) {
+    return this.wallet.addMove(user, campaignId, dto, ctx)
+  }
+
+  @Delete('poupanca/movimentos/:id')
+  deleteWalletMove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    return this.wallet.deleteMove(user, id, ctx)
+  }
+
+  @Get('resumo-semanal')
+  weeklyConfig(@CurrentUser() user: AuthUser) {
+    return this.weekly.config(user)
+  }
+
+  @Put('resumo-semanal')
+  saveWeekly(@CurrentUser() user: AuthUser, @Body() dto: WeeklyFreightDto, @ReqContext() ctx: RequestCtx) {
+    return this.weekly.save(user, dto, ctx)
+  }
+
+  @Post('resumo-semanal/enviar')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 3_600_000 } })
+  sendWeekly(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
+    return this.weekly.sendNow(user, ctx)
+  }
+
+  @Get('gerencial')
+  gerencial(@CurrentUser() user: AuthUser, @Query() q: GerencialDto) {
+    return this.reports.gerencial(user, { from: q.de, to: q.ate, unitId: q.filial, carrierId: q.transportadora, uf: q.uf })
+  }
 
   @Get('relatorios')
   reportList() {

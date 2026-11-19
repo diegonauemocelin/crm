@@ -227,7 +227,7 @@ export class PedidosService {
    * Conferência de frete: por pedido, frete cobrado na nota, cobrado no CT-e (soma dos não cancelados) e esperado pela
    * tabela do CRM; "Só com diferença" traz só os que têm diferença além da folga da conciliação.
    */
-  async freightAudit(user: AuthUser, f: { unitId?: string; carrierId?: string; seller?: string; from?: string; to?: string; status?: 'PENDENTE' | 'OK' | 'DIVERGENTE' | 'TODOS'; onlyDiff?: boolean; search?: string; page?: number }) {
+  async freightAudit(user: AuthUser, f: { unitId?: string; carrierId?: string; seller?: string; from?: string; to?: string; status?: 'PENDENTE' | 'OK' | 'DIVERGENTE' | 'TODOS'; mode?: 'CIF' | 'FOB' | 'TODOS'; onlyDiff?: boolean; search?: string; page?: number }) {
     assertCan(user, 'fretes_pedidos', 'view')
     const rec = await this.cteService.recSettings(user.tenantId)
     const tol = rec.nfeValor
@@ -239,6 +239,10 @@ export class PedidosService {
     if (f.seller?.trim()) conds.push(Prisma.sql`n.seller = ${f.seller.trim()}`)
     if (f.from) conds.push(Prisma.sql`COALESCE(n."issuedAt", s."createdAt") >= ${new Date(`${f.from}T00:00:00-03:00`)}`)
     if (f.to) conds.push(Prisma.sql`COALESCE(n."issuedAt", s."createdAt") < ${new Date(new Date(`${f.to}T00:00:00-03:00`).getTime() + 86_400_000)}`)
+    // Modalidade do frete na NF-e: CIF (0, a empresa paga a transportadora) é o padrão; FOB e demais, o cliente ou terceiro.
+    const mode = f.mode ?? 'CIF'
+    if (mode === 'CIF') conds.push(Prisma.sql`n."freightMode" = '0'`)
+    else if (mode === 'FOB') conds.push(Prisma.sql`n."freightMode" IS NOT NULL AND n."freightMode" <> '0'`)
     const st = f.status ?? 'PENDENTE'
     if (st === 'PENDENTE') conds.push(Prisma.sql`s."auditStatus" IS NULL`)
     else if (st !== 'TODOS') conds.push(Prisma.sql`s."auditStatus" = ${st}`)
