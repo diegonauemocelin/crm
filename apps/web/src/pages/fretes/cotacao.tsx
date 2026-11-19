@@ -959,6 +959,8 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
   /** Transportadoras com todas as tabelas abertas (normalmente aparece só a melhor de cada uma). */
   const [moreOf, setMoreOf] = useState<Set<string>>(() => new Set())
   const ok = quote.results.filter((r) => r.status === 'OK')
+  // Poupança de frete dos vendedores: o vendedor cobra do cliente a cotação + o acréscimo da campanha vigente.
+  const wallet = useQuery({ queryKey: ['fretes', 'poupanca', 'vigente'], queryFn: () => api.get<{ id: string; name: string; pct: number; end: string } | null>('/fretes/poupanca/vigente'), staleTime: 300_000, retry: false })
   /**
    * Equilíbrio preço × prazo: média do preço e do prazo, cada um de 0 (o melhor da cotação) a 1 (o pior). Sem prazo
    * informado conta como o pior prazo. Menor nota = melhor equilíbrio.
@@ -1114,6 +1116,11 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
                         {money(r.total)}
                         {r.total !== null && r.total === cheapest && <span className="block text-[11px] font-normal text-[#006300] dark:text-[#0ca30c]">menor preço</span>}
                         {bestBalance === r && ok.length > 1 && <span className="block text-[11px] font-normal text-violet-700 dark:text-violet-300">melhor equilíbrio</span>}
+                        {!r.campaign && r.total !== null && wallet.data && (
+                          <span className="block text-[11px] font-normal text-sky-700 dark:text-sky-300" title={`Poupança de frete: ${wallet.data.name}. O que a nota cobrar acima do CT-e + ${fmtNum(wallet.data.pct)}% vira saldo do vendedor.`}>
+                            cobrar do cliente {money(Math.round(r.total * (1 + wallet.data.pct / 100) * 100) / 100)} (+{fmtNum(wallet.data.pct)}%)
+                          </span>
+                        )}
                         {r.campaign && (
                           <span className="block text-[11px] font-normal text-amber-700 dark:text-amber-300" title={`Campanha: ${r.campaign.name} (${r.campaign.label})`}>
                             cobrar do cliente {r.campaign.customerPrice === 0 ? 'frete grátis' : money(r.campaign.customerPrice)} · {r.campaign.name}

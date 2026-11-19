@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common'
 import { assertCan } from './acesso'
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express'
 import { ApiTags } from '@nestjs/swagger'
@@ -18,6 +18,7 @@ import { PedidosService } from './pedidos.service'
 import { NfeService } from './nfe.service'
 import { FretesRelatoriosService, REPORTS } from './relatorios.service'
 import { FretesResumoSemanalService } from './resumo-semanal.service'
+import { PoupancaService } from './poupanca.service'
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const nullable = ValidateIf((_, v) => v !== null)
@@ -168,6 +169,18 @@ class WeeklyFreightDto {
   @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() unitId?: string | null
 }
 
+class WalletCampaignsDto {
+  /** Lista completa das campanhas (validada e limpa no serviço: cleanWalletCampaigns). */
+  @IsArray() @ArrayMaxSize(50) list!: unknown[]
+}
+
+class WalletMoveDto {
+  @IsString() @MaxLength(120) seller!: string
+  @IsIn(['USO', 'AJUSTE']) kind!: 'USO' | 'AJUSTE'
+  @IsNumber() @Min(-1_000_000) @Max(1_000_000) value!: number
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(500) note?: string | null
+}
+
 class GerencialDto extends ReportDto {
   @IsOptional() @IsUUID() transportadora?: string
   @IsOptional() @Matches(/^[A-Za-z]{2}$/) uf?: string
@@ -191,6 +204,7 @@ export class FretesOperacaoController {
     private readonly reports: FretesRelatoriosService,
     private readonly nfes: NfeService,
     private readonly weekly: FretesResumoSemanalService,
+    private readonly wallet: PoupancaService,
   ) {}
 
   // ─────────── NF-e (XML) ───────────
@@ -368,6 +382,45 @@ export class FretesOperacaoController {
   }
 
   // ─────────── Relatórios e alertas ───────────
+
+  // ─────────── Poupança de frete dos vendedores ───────────
+
+  @Get('poupanca/campanhas')
+  walletCampaigns(@CurrentUser() user: AuthUser) {
+    return this.wallet.list(user)
+  }
+
+  @Put('poupanca/campanhas')
+  saveWalletCampaigns(@CurrentUser() user: AuthUser, @Body() dto: WalletCampaignsDto, @ReqContext() ctx: RequestCtx) {
+    return this.wallet.saveCampaigns(user, dto.list, ctx)
+  }
+
+  /** Campanha da poupança que vale hoje: a cotação mostra quanto cobrar do cliente (cotação + acréscimo). */
+  @Get('poupanca/vigente')
+  walletCurrent(@CurrentUser() user: AuthUser) {
+    return this.wallet.currentFor(user)
+  }
+
+  @Get('poupanca/:campanha')
+  walletBalances(@CurrentUser() user: AuthUser, @Param('campanha') campaignId: string) {
+    return this.wallet.balances(user, campaignId)
+  }
+
+  @Get('poupanca/:campanha/extrato')
+  walletStatement(@CurrentUser() user: AuthUser, @Param('campanha') campaignId: string, @Query('vendedor') seller: string) {
+    if (typeof seller !== 'string' || !seller.trim()) throw new BadRequestException('Informe o vendedor.')
+    return this.wallet.statement(user, campaignId, seller.trim().slice(0, 120))
+  }
+
+  @Post('poupanca/:campanha/movimentos')
+  addWalletMove(@CurrentUser() user: AuthUser, @Param('campanha') campaignId: string, @Body() dto: WalletMoveDto, @ReqContext() ctx: RequestCtx) {
+    return this.wallet.addMove(user, campaignId, dto, ctx)
+  }
+
+  @Delete('poupanca/movimentos/:id')
+  deleteWalletMove(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
+    return this.wallet.deleteMove(user, id, ctx)
+  }
 
   @Get('resumo-semanal')
   weeklyConfig(@CurrentUser() user: AuthUser) {

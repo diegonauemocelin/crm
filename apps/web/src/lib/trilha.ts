@@ -404,18 +404,18 @@ export const TRAIL: TrailModule[] = [
   },
   {
     key: 'monitoramento',
-    title: 'Monitorar conversas',
+    title: 'Conversas da equipe',
     module: 'monitoramento',
     routes: ['/chat?monitorar=1'],
     purpose: 'Acompanhar a equipe lendo as conversas, sem marcar como lidas para o vendedor.',
     howItWorks: 'Quem tem a permissão de monitorar vê todas as conversas; o gestor de um setor (ou de vendedores) vê as da sua equipe. É só leitura: nada muda para quem atende, e cada leitura fica registrada na auditoria.',
-    media: { src: '/trilha/monitoramento.jpg', alt: 'Monitorar conversas da equipe' },
+    media: { src: '/trilha/monitoramento.jpg', alt: 'Conversas da equipe' },
     lessons: [
       {
         id: 'monitor.ler',
         title: 'Acompanhar a equipe',
         steps: [
-          'No chat, clique em Monitorar equipe (ou no menu Monitorar conversas).',
+          'No chat, clique em Equipe (ou no menu Conversas da equipe).',
           'Filtre por vendedor e ligue “Aguardando resposta” para ver quem está esperando.',
           'Abra a conversa: é só leitura e não muda nada para o vendedor (fica registrado na auditoria).',
         ],
