@@ -55,7 +55,7 @@ export class PoupancaService {
     return c
   }
 
-  /** Notas CIF com vendedor emitidas no período da campanha, com o CT-e (soma dos não cancelados) e a cotação do pedido. */
+  /** Notas CIF com vendedor emitidas no período da campanha, com a cotação do pedido e o CT-e (soma dos não cancelados). */
   private async notes(user: AuthUser, c: WalletCampaign, seller?: string) {
     const units = allowedUnits(user, 'fretes_pedidos')
     const start = new Date(`${c.start}T00:00:00-03:00`)
@@ -79,7 +79,7 @@ export class PoupancaService {
     return rows.map((r) => {
       const cte = num(r.cte)
       const base = { key: r.key, number: r.number, issuedAt: r.issuedAt, seller: r.seller, code: r.code, customerName: r.customerName, cteNumbers: r.numbers, nota: num(r.nota) ?? 0, cte, quote: num(r.quote), table: num(r.tabela) }
-      return cte !== null && cte > 0 ? { ...base, entry: walletEntry({ nota: base.nota, cte, quote: base.quote, table: base.table }, c.pct) } : { ...base, entry: null }
+      return { ...base, entry: walletEntry({ nota: base.nota, cte, quote: base.quote, table: base.table }, c.pct) }
     })
   }
 
@@ -92,7 +92,7 @@ export class PoupancaService {
     const pending = new Map<string, number>()
     for (const x of notes) if (!x.entry) pending.set(x.seller, (pending.get(x.seller) ?? 0) + 1)
     const sellers = walletBalances(
-      done.map((x) => ({ seller: x.seller, nota: x.nota, cte: x.cte!, markup: x.entry!.markup, saldo: x.entry!.saldo })),
+      done.map((x) => ({ seller: x.seller, nota: x.nota, cte: x.cte ?? 0, markup: x.entry!.markup, saldo: x.entry!.saldo })),
       moves.map((m) => ({ seller: m.seller, value: num(m._sum.value) ?? 0 })),
       [...pending].map(([seller, count]) => ({ seller, count })),
     )
