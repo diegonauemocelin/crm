@@ -1,6 +1,6 @@
 {
   "name": "usaparts-crm",
-  "version": "3.0.64",
+  "version": "3.0.65",
   "private": true,
   "description": "CRM, automação de marketing e atendimento. Desenvolvido e mantido por Diego Naue Mocelin.",
   "author": "Diego Naue Mocelin",
@@ -29,7 +29,8 @@
     "body-parser": "^2.4.0",
     "fast-uri": "^3.1.9",
     "multer": "^2.5.0",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "effect": "^3.22.5"
   },
   "allowScripts": {
     "argon2": true,

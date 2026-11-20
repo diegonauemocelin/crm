@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.65",
+      "date": "2026-11-20",
+      "title": "Atualização de segurança das dependências",
+      "changes": [
+        {
+          "type": "seguranca",
+          "area": "Sistema",
+          "text": "Atualizado o Prisma (7.10.1) e uma biblioteca usada por ele que tinha uma falha de segurança publicada."
+        }
+      ]
+    },
+    {
       "version": "3.0.64",
       "date": "2026-11-20",
       "title": "Poupança de frete pela cotação + acréscimo; mapa de vendas pelo DDD",
