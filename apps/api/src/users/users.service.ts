@@ -189,6 +189,8 @@ export class UsersService {
     const target = await this.get(actor.tenantId, id)
     const r = await this.prisma.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } })
     await this.prisma.pushSubscription.deleteMany({ where: { userId: id } })
+    // Aparelhos confiáveis (sem pedir o código de 2 fatores) também deixam de valer.
+    await this.prisma.trustedDevice.deleteMany({ where: { userId: id } })
     await this.audit.byUser(actor, ctx, 'user.sessions_revoked', 'user', id, { email: target.email, sessoes: r.count })
     return { ok: true, sessions: r.count }
   }

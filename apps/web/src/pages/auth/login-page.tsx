@@ -11,6 +11,8 @@ import { Label } from '@/components/ui/label'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { useBranding } from '@/lib/branding'
+import { isInstalledApp } from '@/lib/app-movel'
+import { Checkbox } from '@/components/ui/checkbox'
 import { AuthLayout, FormError } from './auth-layout'
 
 type Step = 'credentials' | 'mfa' | 'recovery'
@@ -28,6 +30,9 @@ export function LoginPage() {
   const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // App instalado (chat no computador ou celular): pode deixar de pedir o código por 30 dias. No site, sempre pede.
+  const installed = isInstalledApp()
+  const [trust, setTrust] = useState(true)
 
   if (me) return <Navigate to={target} replace />
 
@@ -60,7 +65,7 @@ export function LoginPage() {
     setBusy(true)
     setError(null)
     try {
-      await api.post('/auth/2fa/verify', { code: value })
+      await api.post('/auth/2fa/verify', { code: value, trust: installed && trust })
       await finish()
     } catch (err) {
       setError(errorMessage(err))
@@ -160,6 +165,11 @@ export function LoginPage() {
               Verificar
             </Button>
           </form>
+        )}
+        {installed && step === 'mfa' && (
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox checked={trust} onCheckedChange={(c) => setTrust(c === true)} /> Não pedir o código neste aparelho por 30 dias
+          </label>
         )}
         <FormError message={error} />
         <div className="flex flex-col gap-1 text-sm">
