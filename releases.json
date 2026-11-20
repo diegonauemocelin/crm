@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.66",
+      "date": "2026-11-20",
+      "title": "App instalado sem pedir o código de 2 fatores por 30 dias",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Acesso",
+          "text": "No app instalado (chat no computador e app do celular), a tela do código de 2 fatores tem \"Não pedir o código neste aparelho por 30 dias\": nesse prazo o login no app pede só a senha. Pelo site no navegador o código continua sendo pedido sempre. A confiança cai ao trocar a senha, desligar ou zerar o 2 fatores e ao encerrar as sessões."
+        }
+      ]
+    },
+    {
       "version": "3.0.65",
       "date": "2026-11-20",
       "title": "Atualização de segurança das dependências",
