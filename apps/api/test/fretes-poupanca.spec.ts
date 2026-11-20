@@ -31,12 +31,14 @@ describe('poupança de frete dos vendedores', () => {
     expect(campaignOn(c, '2027-01-02')).toBeNull()
   })
 
-  it('saldo da nota: nota − CT-e − acréscimo sobre a cotação', () => {
-    // Cotação 100, +20% = cobrar 120. Nota 120, CT-e 95: 120 − 95 − 20 = 5 para o vendedor.
-    expect(walletEntry({ nota: 120, cte: 95, quote: 100, table: 98 }, 20)).toEqual({ source: 'COTACAO', base: 100, markup: 20, charge: 120, saldo: 5 })
-    // Sem cotação: tabela; cobrou menos: saldo negativo.
-    expect(walletEntry({ nota: 100, cte: 100, quote: null, table: 90 }, 20)).toMatchObject({ source: 'TABELA', markup: 18, saldo: -18 })
-    expect(walletEntry({ nota: 130, cte: 100, quote: null, table: null }, 20)).toMatchObject({ source: 'CTE', base: 100, saldo: 10 })
+  it('saldo da nota: cobrado na nota − (cotação + acréscimo)', () => {
+    // Exemplo do usuário: cotação 298,53 + 20% = 358,24 a cobrar; nota 430,00: saldo 71,76 (o CT-e não entra).
+    expect(walletEntry({ nota: 430, cte: 354.19, quote: 298.53, table: null }, 20)).toEqual({ source: 'COTACAO', base: 298.53, markup: 59.71, charge: 358.24, saldo: 71.76 })
+    // Sem cotação: tabela; cobrou menos que tabela + 20%: saldo negativo.
+    expect(walletEntry({ nota: 100, cte: 100, quote: null, table: 90 }, 20)).toMatchObject({ source: 'TABELA', charge: 108, saldo: -8 })
+    expect(walletEntry({ nota: 130, cte: 100, quote: null, table: null }, 20)).toMatchObject({ source: 'CTE', charge: 120, saldo: 10 })
+    // Sem cotação, tabela nem CT-e: ainda sem base.
+    expect(walletEntry({ nota: 130, cte: null, quote: null, table: null }, 20)).toBeNull()
   })
 
   it('saldo por vendedor com usos e notas sem CT-e', () => {

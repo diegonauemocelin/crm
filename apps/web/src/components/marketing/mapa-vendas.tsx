@@ -20,6 +20,8 @@ interface MapData {
   states: (Cell & { uf: string; cities: (Cell & { city: string })[] })[]
   totals: Cell
   noState: Cell
+  byPhone?: Cell
+  ordersNoCustomer?: number
 }
 /** Desenho do mapa: um caminho SVG por estado (id = sigla em minúsculas). */
 const brazil = brazilMap as { viewBox: string; locations: { id: string; name: string; path: string }[] }
@@ -176,9 +178,15 @@ export function MapaVendas() {
               {(data.data.noState.orders > 0 || data.data.noState.attendances > 0) && (
                 <p className="text-xs text-muted-foreground">
                   Sem estado informado (fora do mapa): {money(data.data.noState.sales)} em {num(data.data.noState.orders)} venda(s) e {num(data.data.noState.attendances)} atendimento(s).
+                  {!!data.data.ordersNoCustomer && ` ${num(data.data.ordersNoCustomer)} pedido(s) da loja sem cliente ligado no CRM.`}
                 </p>
               )}
-              <p className="text-xs text-muted-foreground">Clique num estado para ver as cidades. E-commerce e marketplace usam o estado do cliente do pedido. Mapa: @svg-maps/brazil (CC BY 4.0).</p>
+              {!!data.data.byPhone && (data.data.byPhone.orders > 0 || data.data.byPhone.attendances > 0) && (
+                <p className="text-xs text-muted-foreground">
+                  Pelo DDD do telefone (cadastro sem estado): {money(data.data.byPhone.sales)} em {num(data.data.byPhone.orders)} venda(s) e {num(data.data.byPhone.attendances)} atendimento(s); essas não entram nas cidades.
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">Clique num estado para ver as cidades. E-commerce e marketplace usam o estado do cliente do pedido (ou o DDD do telefone dele). Mapa: @svg-maps/brazil (CC BY 4.0).</p>
             </div>
           </div>
         )}

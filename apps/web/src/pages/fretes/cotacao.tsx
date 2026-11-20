@@ -1117,7 +1117,7 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
                         {r.total !== null && r.total === cheapest && <span className="block text-[11px] font-normal text-[#006300] dark:text-[#0ca30c]">menor preço</span>}
                         {bestBalance === r && ok.length > 1 && <span className="block text-[11px] font-normal text-violet-700 dark:text-violet-300">melhor equilíbrio</span>}
                         {!r.campaign && r.total !== null && wallet.data && (
-                          <span className="block text-[11px] font-normal text-sky-700 dark:text-sky-300" title={`Poupança de frete: ${wallet.data.name}. O que a nota cobrar acima do CT-e + ${fmtNum(wallet.data.pct)}% vira saldo do vendedor.`}>
+                          <span className="block text-[11px] font-normal text-sky-700 dark:text-sky-300" title={`Poupança de frete: ${wallet.data.name}. O que a nota cobrar acima da cotação + ${fmtNum(wallet.data.pct)}% vira saldo do vendedor.`}>
                             cobrar do cliente {money(Math.round(r.total * (1 + wallet.data.pct / 100) * 100) / 100)} (+{fmtNum(wallet.data.pct)}%)
                           </span>
                         )}

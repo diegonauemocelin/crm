@@ -2,8 +2,8 @@
  * Poupança de frete dos vendedores (funções puras, testadas em test/fretes-poupanca.spec.ts).
  *
  * Como a empresa trabalha: o vendedor cota o frete e cobra do cliente a cotação + o acréscimo da campanha (ex.: 20%).
- * Em cada nota CIF com CT-e: saldo do vendedor = frete cobrado na nota − CT-e − acréscimo (o acréscimo fica com a
- * empresa). Saldo positivo entra na poupança do vendedor; negativo (cobrou menos que o CT-e + acréscimo) desconta.
+ * Em cada nota CIF: saldo do vendedor = frete cobrado na nota − (cotação + acréscimo). Ex.: cotação 298,53 + 20% =
+ * 358,24 a cobrar; a nota cobrou 430,00: 71,76 vão para a poupança. Cobrou menos que cotação + acréscimo: desconta.
  * O vendedor usa a poupança em outra negociação (registrado como "uso", que tira do saldo).
  *
  * Base do acréscimo: a cotação escolhida no pedido; sem cotação, o esperado pela tabela no CT-e; sem os dois, o CT-e.
@@ -60,12 +60,17 @@ export function campaignOn(list: WalletCampaign[], date: string) {
 
 const r2 = (v: number) => Math.round(v * 100) / 100
 
-/** Uma nota CIF com CT-e: base do acréscimo, quanto cobrar do cliente e o saldo do vendedor. */
-export function walletEntry(v: { nota: number; cte: number; quote: number | null; table: number | null }, pct: number) {
-  const source = v.quote !== null && v.quote > 0 ? ('COTACAO' as const) : v.table !== null && v.table > 0 ? ('TABELA' as const) : ('CTE' as const)
-  const base = source === 'COTACAO' ? v.quote! : source === 'TABELA' ? v.table! : v.cte
+/**
+ * Uma nota CIF: base (cotação; sem ela, a tabela; sem as duas, o CT-e), quanto cobrar do cliente (base + acréscimo) e
+ * o saldo do vendedor (cobrado na nota − cobrar). Null quando ainda não há base (sem cotação, tabela nem CT-e).
+ */
+export function walletEntry(v: { nota: number; cte: number | null; quote: number | null; table: number | null }, pct: number) {
+  const source = v.quote !== null && v.quote > 0 ? ('COTACAO' as const) : v.table !== null && v.table > 0 ? ('TABELA' as const) : v.cte !== null && v.cte > 0 ? ('CTE' as const) : null
+  if (!source) return null
+  const base = source === 'COTACAO' ? v.quote! : source === 'TABELA' ? v.table! : v.cte!
   const markup = r2((base * pct) / 100)
-  return { source, base: r2(base), markup, charge: r2(base + markup), saldo: r2(v.nota - v.cte - markup) }
+  const charge = r2(base + markup)
+  return { source, base: r2(base), markup, charge, saldo: r2(v.nota - charge) }
 }
 
 export interface WalletMove {

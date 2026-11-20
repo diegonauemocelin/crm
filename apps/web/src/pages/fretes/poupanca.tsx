@@ -97,7 +97,7 @@ function WalletPage() {
     <div className="space-y-4">
       <PageHeader
         title="Poupança de frete"
-        description="O vendedor cobra do cliente a cotação + o acréscimo da campanha. Em cada nota CIF com CT-e, o que a nota cobrou acima do CT-e e do acréscimo vira saldo do vendedor (abaixo, desconta). O saldo pode ser usado em outra negociação."
+        description="O vendedor cobra do cliente a cotação + o acréscimo da campanha. Em cada nota CIF, o que a nota cobrou acima disso (cotação + acréscimo) vira saldo do vendedor; abaixo, desconta. O saldo pode ser usado em outra negociação."
         actions={
           <>
             {list.length > 0 && (
@@ -164,7 +164,7 @@ function WalletPage() {
                   <TableRow key={s.seller} className="cursor-pointer" onClick={() => setSeller(s.seller)}>
                     <TableCell className="text-sm font-medium">
                       {s.seller}
-                      {s.pendentes > 0 && <span className="block text-xs font-normal text-muted-foreground">{s.pendentes} nota(s) esperando o CT-e</span>}
+                      {s.pendentes > 0 && <span className="block text-xs font-normal text-muted-foreground">{s.pendentes} nota(s) sem cotação nem CT-e ainda</span>}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{num(s.notas)}</TableCell>
                     <TableCell className="text-right tabular-nums">{money(s.nota)}</TableCell>
@@ -310,7 +310,7 @@ function StatementSheet({ campaignId, seller, onClose }: { campaignId: string; s
                         <TableCell className="text-right text-sm tabular-nums">{n.entry ? money(n.entry.charge) : '—'}</TableCell>
                         <TableCell className="text-right text-sm tabular-nums">{money(n.nota)}</TableCell>
                         <TableCell className="text-right text-sm tabular-nums">
-                          {n.cte === null ? 'aguardando' : money(n.cte)}
+                          {money(n.cte)}
                           {n.cteNumbers && <span className="block text-xs text-muted-foreground">{n.cteNumbers}</span>}
                         </TableCell>
                         <TableCell className="text-right text-sm font-medium">{n.entry ? signed(n.entry.saldo) : '—'}</TableCell>
