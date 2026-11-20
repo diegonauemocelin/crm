@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.64",
+      "date": "2026-11-20",
+      "title": "Poupança de frete pela cotação + acréscimo; mapa de vendas pelo DDD",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Poupança de frete: o saldo do vendedor passa a ser o frete cobrado na nota menos a cotação + o acréscimo da campanha (ex.: 430,00 − 358,24 = 71,76). O CT-e não entra mais na conta; sem cotação, a base é a tabela de frete e, sem ela, o CT-e."
+        },
+        {
+          "type": "correcao",
+          "area": "Marketing",
+          "text": "Mapa de vendas do Dashboard executivo: quando o cadastro do cliente não tem estado, usa o DDD do telefone, e mostra quantos pedidos da loja chegaram sem cliente ligado no CRM."
+        }
+      ]
+    },
+    {
       "version": "3.0.63",
       "date": "2026-11-19",
       "title": "Poupança de frete dos vendedores; painel gerencial de fretes; cotação com SKU e caixas",
