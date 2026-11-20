@@ -225,6 +225,7 @@ model User {
   role           Role                 @relation(fields: [roleId], references: [id])
   seller         Seller?
   refreshTokens  RefreshToken[]
+  trustedDevices TrustedDevice[]
   resetTokens    PasswordResetToken[]
   recoveryCodes  RecoveryCode[]
 
@@ -4331,4 +4332,23 @@ model FreightWalletMove {
 
   @@index([tenantId, campaignId, seller])
   @@map("freight_wallet_moves")
+}
+
+/// App instalado (chat no computador ou celular) marcado como confiável depois do código de 2 fatores: por 30 dias o
+/// login com senha nesse app não pede o código. Pelo site no navegador o código continua sempre. Apagado ao trocar a
+/// senha, desligar ou refazer o 2 fatores, encerrar as sessões ou desativar o usuário.
+model TrustedDevice {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  tokenHash  String    @unique
+  userAgent  String?
+  ip         String?
+  expiresAt  DateTime
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("trusted_devices")
 }

@@ -68,6 +68,7 @@ export class TwoFactorService {
     const codes = newRecoveryCodes()
     await this.prisma.$transaction([
       this.prisma.recoveryCode.deleteMany({ where: { userId: user.id } }),
+      this.prisma.trustedDevice.deleteMany({ where: { userId: user.id } }),
       this.prisma.recoveryCode.createMany({ data: codes.map((c) => ({ userId: user.id, codeHash: sha256(c) })) }),
       this.prisma.user.update({
         where: { id: user.id },
@@ -85,6 +86,7 @@ export class TwoFactorService {
     if (!(await verifyPassword(row.passwordHash, password))) throw new BadRequestException('Senha incorreta.')
     await this.prisma.$transaction([
       this.prisma.recoveryCode.deleteMany({ where: { userId: user.id } }),
+      this.prisma.trustedDevice.deleteMany({ where: { userId: user.id } }),
       this.prisma.user.update({
         where: { id: user.id },
         data: { totpEnabled: false, totpSecretEnc: null, totpPendingSecretEnc: null, totpLastStep: null },
@@ -100,6 +102,7 @@ export class TwoFactorService {
     if (!target) throw new BadRequestException('Usuário não encontrado.')
     await this.prisma.$transaction([
       this.prisma.recoveryCode.deleteMany({ where: { userId } }),
+      this.prisma.trustedDevice.deleteMany({ where: { userId } }),
       this.prisma.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } }),
       this.prisma.user.update({
         where: { id: userId },

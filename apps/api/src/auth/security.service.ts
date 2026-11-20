@@ -98,6 +98,8 @@ export class SecurityService implements OnApplicationBootstrap, OnModuleDestroy 
 
   async revokeOthers(user: AuthUser, ctx: RequestCtx) {
     const r = await this.prisma.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null, NOT: { familyId: user.familyId } }, data: { revokedAt: new Date() } })
+    // Sair dos outros aparelhos: nenhum app fica confiável (todos voltam a pedir o código de 2 fatores).
+    await this.prisma.trustedDevice.deleteMany({ where: { userId: user.id } })
     await this.audit.byUser(user, ctx, 'me.sessions_revoked_others', 'user', user.id, { sessoes: r.count })
     return { ok: true }
   }

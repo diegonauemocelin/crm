@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsEmail, IsObject, IsOptional, IsString, Length, MaxLength } from 'class-validator'
+import { IsBoolean, IsEmail, IsObject, IsOptional, IsString, Length, MaxLength } from 'class-validator'
 
 export class LoginDto {
   @ApiProperty() @IsEmail({}, { message: 'Informe um e-mail válido.' }) @MaxLength(200) email!: string
@@ -11,6 +11,11 @@ export class MfaCodeDto {
   @IsString()
   @Length(6, 12)
   code!: string
+
+  @ApiPropertyOptional({ description: 'No app instalado: não pedir o código neste aparelho por 30 dias' })
+  @IsOptional()
+  @IsBoolean()
+  trust?: boolean
 }
 
 export class ForgotPasswordDto {

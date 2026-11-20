@@ -5,6 +5,8 @@ export const ACCESS_COOKIE = 'crm_at'
 export const REFRESH_COOKIE = 'crm_rt'
 export const MFA_COOKIE = 'crm_mfa'
 export const CSRF_COOKIE = 'crm_csrf'
+/** App instalado confiável depois do código de 2 fatores (ver AuthService.login). */
+export const TRUSTED_COOKIE = 'crm_td'
 
 function base(path: string, maxAgeSec: number): CookieOptions {
   return { httpOnly: true, secure: env.cookieSecure, sameSite: 'strict', path, maxAge: maxAgeSec * 1000 }
@@ -28,4 +30,12 @@ export function clearSessionCookies(res: Response) {
   res.clearCookie(ACCESS_COOKIE, { path: '/api' })
   res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' })
   res.clearCookie(MFA_COOKIE, { path: '/api/auth' })
+}
+
+export function setTrustedCookie(res: Response, token: string, days: number) {
+  res.cookie(TRUSTED_COOKIE, token, base('/api/auth', days * 86_400))
+}
+
+export function clearTrustedCookie(res: Response) {
+  res.clearCookie(TRUSTED_COOKIE, { path: '/api/auth' })
 }

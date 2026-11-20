@@ -6,8 +6,8 @@ import { AllowPending2fa, CurrentUser, Public, ReqContext, type RequestCtx } fro
 import type { AuthUser } from '../common/types'
 import { AccountService } from './account.service'
 import { ForgotPasswordDto, LoginDto, MfaCodeDto, OptionalPasswordDto, PasskeyDto, PasswordDto, ResetPasswordDto } from './auth.dto'
-import { AuthService } from './auth.service'
-import { clearSessionCookies, MFA_COOKIE, REFRESH_COOKIE, setMfaCookie, setSessionCookies } from './cookies'
+import { AuthService, TRUSTED_DEVICE_DAYS } from './auth.service'
+import { clearSessionCookies, MFA_COOKIE, REFRESH_COOKIE, setMfaCookie, setSessionCookies, setTrustedCookie, TRUSTED_COOKIE } from './cookies'
 import { PasskeyService } from './passkey.service'
 import { TwoFactorService } from './two-factor.service'
 
@@ -25,9 +25,9 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
   @HttpCode(200)
-  async login(@Body() dto: LoginDto, @ReqContext() ctx: RequestCtx, @Headers('x-crm-app') appHeader: string | undefined, @Res({ passthrough: true }) res: Response) {
+  async login(@Body() dto: LoginDto, @Req() req: Request, @ReqContext() ctx: RequestCtx, @Headers('x-crm-app') appHeader: string | undefined, @Res({ passthrough: true }) res: Response) {
     const app = appHeader === '1'
-    const result = await this.auth.login(dto.email, dto.password, ctx, app)
+    const result = await this.auth.login(dto.email, dto.password, ctx, app, req.cookies?.[TRUSTED_COOKIE])
     if (result.status === 'mfa_required') {
       setMfaCookie(res, result.mfaToken)
       return { status: result.status }
@@ -86,8 +86,9 @@ export class AuthController {
   @HttpCode(200)
   async verify(@Body() dto: MfaCodeDto, @Req() req: Request, @ReqContext() ctx: RequestCtx, @Headers('x-crm-app') appHeader: string | undefined, @Res({ passthrough: true }) res: Response) {
     const app = appHeader === '1'
-    const result = await this.auth.verifyMfa(req.cookies?.[MFA_COOKIE], dto.code, ctx, app)
+    const result = await this.auth.verifyMfa(req.cookies?.[MFA_COOKIE], dto.code, ctx, app, dto.trust === true)
     setSessionCookies(res, result.accessToken, result.refreshToken, app)
+    if (result.trustedToken) setTrustedCookie(res, result.trustedToken, TRUSTED_DEVICE_DAYS)
     return { status: result.status }
   }
 

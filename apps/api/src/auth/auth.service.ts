@@ -31,6 +31,9 @@ interface MfaPayload {
   purpose: 'mfa'
 }
 
+/** Quanto tempo o app instalado fica confiável depois do código de 2 fatores. */
+export const TRUSTED_DEVICE_DAYS = 30
+
 export type LoginResult =
   | { status: 'ok' | 'mfa_setup_required'; accessToken: string; refreshToken: string }
   | { status: 'mfa_required'; mfaToken: string }
@@ -58,7 +61,7 @@ export class AuthService {
     private readonly security: SecurityService,
   ) {}
 
-  async login(emailRaw: string, password: string, ctx: RequestCtx, app = false): Promise<LoginResult> {
+  async login(emailRaw: string, password: string, ctx: RequestCtx, app = false, trustedToken?: string): Promise<LoginResult> {
     const email = emailRaw.trim().toLowerCase()
     const tenantId = await this.tenants.defaultId()
     const user = await this.prisma.user.findUnique({
@@ -95,6 +98,18 @@ export class AuthService {
       await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(password) } })
     }
 
+    // App instalado marcado como confiável (até 30 dias depois do código): entra só com a senha. No site, sempre pede.
+    if (user.totpEnabled && app && trustedToken) {
+      const device = await this.prisma.trustedDevice.findUnique({ where: { tokenHash: sha256(trustedToken) } })
+      // Senha trocada depois de confiar no aparelho: pede o código de novo.
+      const stale = !!device && !!user.passwordChangedAt && user.passwordChangedAt > device.createdAt
+      if (device && device.userId === user.id && device.expiresAt > new Date() && !stale) {
+        await this.prisma.trustedDevice.update({ where: { id: device.id }, data: { lastUsedAt: new Date() } })
+        const session = await this.startSession(user.id, user.tenantId, user.email, ctx, 'auth.login_trusted_device', app)
+        return { status: 'ok', ...session }
+      }
+    }
+
     if (user.totpEnabled) {
       await this.prisma.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null } })
       const mfaToken = await this.jwt.signAsync({ sub: user.id, purpose: 'mfa' } satisfies MfaPayload, { expiresIn: 300 })
@@ -120,7 +135,7 @@ export class AuthService {
     return { status: pending ? ('mfa_setup_required' as const) : ('ok' as const), ...session }
   }
 
-  async verifyMfa(mfaToken: string | undefined, code: string, ctx: RequestCtx, app = false) {
+  async verifyMfa(mfaToken: string | undefined, code: string, ctx: RequestCtx, app = false, trust = false) {
     if (!mfaToken) throw new UnauthorizedException('Sessão de verificação expirada. Faça login novamente.')
     let payload: MfaPayload
     try {
@@ -152,7 +167,15 @@ export class AuthService {
     }
     const session = await this.startSession(user.id, user.tenantId, user.email, ctx, usedRecovery ? 'auth.login_recovery_code' : 'auth.login', app)
     if (usedRecovery) this.security.alert(user.id, 'codigo_recuperacao', ctx)
-    return { status: 'ok' as const, ...session }
+    // Só no app instalado (chat no computador ou celular): no site o código continua sendo pedido sempre.
+    let trustedToken: string | null = null
+    if (app && trust && !usedRecovery) {
+      trustedToken = randomToken()
+      await this.prisma.trustedDevice.create({ data: { userId: user.id, tokenHash: sha256(trustedToken), userAgent: ctx.userAgent?.slice(0, 300) ?? null, ip: ctx.ip ?? null, expiresAt: new Date(Date.now() + TRUSTED_DEVICE_DAYS * 86_400_000) } })
+      await this.prisma.trustedDevice.deleteMany({ where: { userId: user.id, expiresAt: { lt: new Date() } } })
+      await this.audit.log({ tenantId: user.tenantId, userId: user.id, userEmail: user.email, action: 'auth.aparelho_confiavel', ...ctx, data: { dias: TRUSTED_DEVICE_DAYS } })
+    }
+    return { status: 'ok' as const, ...session, trustedToken }
   }
 
   async refresh(refreshToken: string | undefined, ctx: RequestCtx, app = false) {
@@ -233,6 +256,8 @@ export class AuthService {
     })
     // Encerrou tudo: o celular também para de receber notificações (com o nome e o texto dos clientes).
     if (!exceptFamilyId) await this.prisma.pushSubscription.deleteMany({ where: { userId } })
+    // Nenhum app fica confiável: volta a pedir o código de 2 fatores.
+    await this.prisma.trustedDevice.deleteMany({ where: { userId } })
   }
 
   /** Sempre responde igual, exista ou não o e-mail, para não permitir descobrir contas. */
