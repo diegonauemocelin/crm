@@ -124,7 +124,7 @@ function ShipmentList() {
   if (active.unitId) qs.set('filial', active.unitId)
   const list = useQuery({
     queryKey: ['fretes', 'pedidos', qs.toString()],
-    queryFn: () => api.get<{ total: number; pageSize: number; counts: Record<string, number>; items: Shipment[] }>(`/fretes/pedidos?${qs}`),
+    queryFn: () => api.get<{ total: number; pageSize: number; counts: Record<string, number>; items: Shipment[]; lastNfe?: { number: number; issuedAt: string; importedAt: string } | null; lastImport?: { at: string; byName: string; files: string } | null }>(`/fretes/pedidos?${qs}`),
     placeholderData: keepPreviousData,
     enabled: !!active.ctx.data,
   })
@@ -154,6 +154,21 @@ function ShipmentList() {
         }
       />
       {importingNfe && <ImportNfeDialog onClose={() => setImportingNfe(false)} />}
+      {(list.data?.lastNfe || list.data?.lastImport) && (
+        <p className="text-sm text-muted-foreground">
+          {list.data.lastNfe && (
+            <>
+              Última NF-e: <span className="font-medium text-foreground">NF {list.data.lastNfe.number}</span>, emitida em {dateTime(list.data.lastNfe.issuedAt)}, importada em {dateTime(list.data.lastNfe.importedAt)}
+            </>
+          )}
+          {list.data.lastNfe && list.data.lastImport && ' · '}
+          {list.data.lastImport && (
+            <span title={list.data.lastImport.files}>
+              Última importação de XML: {dateTime(list.data.lastImport.at)} por {list.data.lastImport.byName}
+            </span>
+          )}
+        </p>
+      )}
       <div className="flex flex-wrap gap-1.5">
         <Button size="sm" variant={!status && !late ? 'secondary' : 'ghost'} onClick={() => (setParams({}), setPage(1))}>
           Todos

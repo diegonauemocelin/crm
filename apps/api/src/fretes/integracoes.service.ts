@@ -10,6 +10,7 @@ import {
   braspressBody,
   DEFAULT_JADLOG,
   JADLOG_QUOTE_URL,
+  jadlogAuth,
   jadlogBody,
   parseJadlog,
   parseBraspress,
@@ -280,12 +281,12 @@ export class IntegracoesService {
     if (!cnpj) return fail('Informe o CNPJ do tomador na integração da Jadlog ou cadastre o CNPJ da filial de origem.')
     const res = await fetch(JADLOG_QUOTE_URL, {
       method: 'POST',
-      headers: { Authorization: decrypt(c.tokenEnc!), 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: { Authorization: jadlogAuth(decrypt(c.tokenEnc!)), 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(jadlogBody(c, { from: d.from, to: d.to, cnpj }, p, c.modalities.map((m) => m.code))),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     })
     const body = await res.json().catch(() => null)
-    if (res.status === 401 || res.status === 403) return fail('A Jadlog recusou o token da API.')
+    if (res.status === 401 || res.status === 403) return fail('A Jadlog recusou o token da API: confira se o token foi colado inteiro e se está liberado para a API de frete (simulador do embarcador).')
     if (!res.ok && !body) return fail(`HTTP ${res.status}`)
     return parseJadlog(body, c.modalities)
   }
