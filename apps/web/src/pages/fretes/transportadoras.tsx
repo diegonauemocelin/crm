@@ -47,6 +47,8 @@ interface Carrier {
   pickups?: PickupForm[]
   kind?: 'TRANSPORTADORA' | 'PRESTADOR'
   pickupMode?: 'COLETA' | 'DESPACHO'
+  /** Só vem coletar quando a expedição agenda. */
+  pickupBySchedule?: boolean
   /** false: os CT-es dela não são conciliados (ex.: Mercado Livre Envios). */
   reconcile?: boolean
   dropOffCost?: number | null
@@ -254,6 +256,7 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
     cnpj: carrier ? (carrier.cnpj.length === 11 ? carrier.cnpj : maskCnpj(carrier.cnpj)) : '',
     kind: carrier?.kind ?? 'TRANSPORTADORA',
     pickupMode: carrier?.pickupMode ?? 'COLETA',
+    pickupBySchedule: carrier?.pickupBySchedule ?? false,
     reconcile: carrier?.reconcile ?? true,
     dropOffCost: carrier?.dropOffCost ? String(carrier.dropOffCost).replace('.', ',') : '',
     dropOffProviderId: carrier?.dropOffProviderId ?? '',
@@ -423,6 +426,15 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
                     <input type="radio" name="c-mode" checked={f.pickupMode === 'DESPACHO'} onChange={() => set('pickupMode', 'DESPACHO')} /> Despacho (a empresa leva até ela)
                   </label>
                 </div>
+                {f.pickupMode === 'COLETA' && (
+                  <label className="flex items-start gap-2 text-sm">
+                    <input type="checkbox" className="mt-1" checked={f.pickupBySchedule} onChange={(e) => set('pickupBySchedule', e.target.checked)} />
+                    <span>
+                      <span className="font-medium">Coleta só com agendamento</span>
+                      <span className="block text-xs text-muted-foreground">A transportadora só vem quando a expedição agenda (Fretes › Agendar coletas, manhã ou tarde). Os horários fixos dela não aparecem no painel da TV.</span>
+                    </span>
+                  </label>
+                )}
                 {f.pickupMode === 'DESPACHO' && (
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-1.5">

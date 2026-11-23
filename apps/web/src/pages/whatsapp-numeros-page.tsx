@@ -9,6 +9,7 @@ import { MultiSelect } from '@/components/multi-select'
 import { EmptyState, ErrorState, formatDateTime, InlineError, PageHeader, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -722,7 +723,7 @@ interface WaRules {
   yellowMinutes?: number
   redMinutes?: number
   businessHours?: BusinessHours
-  away?: { enabled: boolean; text: string; cooldownHours: number }
+  away?: { enabled: boolean; text: string; cooldownHours: number; numberIds?: string[] }
   retention?: { enabled: boolean; clientMonths: number; otherMonths: number; mediaMonths: number }
   close?: { enabled: boolean; text: string }
 }
@@ -780,6 +781,9 @@ function RetentionSettings({ form, set, editable }: { form: WaRules; set: <K ext
 function HoursAndAway({ form, set, editable }: { form: WaRules; set: <K extends keyof WaRules>(k: K, v: WaRules[K]) => void; editable: boolean }) {
   const hours = form.businessHours ?? { enabled: false, days: [null, null, null, null, null, null, null] }
   const away = form.away ?? { enabled: false, text: '', cooldownHours: 12 }
+  const numbers = useQuery({ queryKey: ['whatsapp-numeros'], queryFn: () => api.get<ListData>('/whatsapp/numeros') })
+  const picked = away.numberIds ?? []
+  const toggleNumber = (id: string, on: boolean) => set('away', { ...away, numberIds: on ? [...picked, id] : picked.filter((x) => x !== id) })
   const setDay = (i: number, v: BusinessDay | null) => set('businessHours', { ...hours, days: hours.days.map((d, k) => (k === i ? v : d)) })
   return (
     <div className="space-y-3 rounded-md border p-3">
@@ -843,6 +847,21 @@ function HoursAndAway({ form, set, editable }: { form: WaRules; set: <K extends 
             <Input type="number" min={1} max={168} className="h-8 w-20" value={away.cooldownHours} onChange={(e) => set('away', { ...away, cooldownHours: Number(e.target.value) })} disabled={!editable} aria-label="Horas entre mensagens de ausência" />
             <span>horas</span>
           </div>
+          {(numbers.data?.numbers.length ?? 0) > 1 && (
+            <div className="space-y-1.5 rounded-md border p-2">
+              <p className="text-sm font-medium">Em quais números enviar</p>
+              <p className="text-xs text-muted-foreground">Nenhum marcado: envia em todos. Marque só os números que têm horário de atendimento; os outros não mandam a mensagem de ausência.</p>
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                {numbers.data!.numbers.map((n) => (
+                  <label key={n.id} className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={picked.includes(n.id)} onCheckedChange={(c) => toggleNumber(n.id, c === true)} disabled={!editable} />
+                    {n.name}
+                    {n.phone ? <span className="text-xs text-muted-foreground">{n.phone}</span> : null}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

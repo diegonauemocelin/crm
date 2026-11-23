@@ -2791,6 +2791,8 @@ model FreightCarrier {
   kind        String   @default("TRANSPORTADORA")
   /// Como a carga chega à transportadora: COLETA (ela busca na empresa) ou DESPACHO (a empresa leva até ela).
   pickupMode  String   @default("COLETA")
+  /// Só vem coletar quando a expedição agenda (Fretes › Agendar coletas): não usa os horários fixos no painel de TV.
+  pickupBySchedule Boolean @default(false)
   /// false: os CT-es dela não são conciliados com as tabelas (ex.: frete de marketplace, cobrado pela plataforma).
   reconcile   Boolean  @default(true)
   /// Despacho: valor pago ao prestador para levar até a transportadora (vazio = a empresa leva sem custo).
@@ -4351,4 +4353,25 @@ model TrustedDevice {
 
   @@index([userId])
   @@map("trusted_devices")
+}
+
+/// Coleta agendada pela expedição (manhã ou tarde): aparece no painel de TV, com aviso sonoro ao agendar e ao coletar.
+model FreightPickupSchedule {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  unitId        String?   @db.Uuid
+  carrierId     String    @db.Uuid
+  date          DateTime  @db.Date
+  /// MANHA | TARDE
+  period        String
+  /// AGENDADA | COLETANDO | COLETADA | CANCELADA
+  status        String    @default("AGENDADA")
+  note          String?
+  createdByName String
+  statusByName  String?
+  statusAt      DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([tenantId, date])
+  @@map("freight_pickup_schedules")
 }

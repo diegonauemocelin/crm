@@ -193,7 +193,7 @@ class RulesDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(2) @Max(2880) redMinutes?: number
   /** Horário comercial e mensagem de ausência: conferidos campo a campo em cleanRules. */
   @IsOptional() @IsObject() businessHours?: { enabled?: boolean; days?: ({ start: string; end: string } | null)[] }
-  @IsOptional() @IsObject() away?: { enabled?: boolean; text?: string; cooldownHours?: number }
+  @IsOptional() @IsObject() away?: { enabled?: boolean; text?: string; cooldownHours?: number; numberIds?: string[] }
   /** Prazo de guarda das conversas e mensagem ao finalizar: também conferidos em cleanRules. */
   @IsOptional() @IsObject() retention?: { enabled?: boolean; clientMonths?: number; otherMonths?: number; mediaMonths?: number }
   @IsOptional() @IsObject() close?: { enabled?: boolean; text?: string }

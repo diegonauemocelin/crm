@@ -21,6 +21,7 @@ export const FREIGHT_ROLES: FreightRoleTemplate[] = [
     grants: [
       { module: 'dashboard', actions: ['view'] },
       { module: 'fretes_painel', actions: ['view'] },
+      { module: 'fretes_coletas', actions: ['view', 'create', 'edit'] },
       { module: 'fretes_cotacao', actions: all },
       { module: 'fretes_pedidos', actions: all },
       { module: 'fretes_cte', actions: all },
@@ -37,6 +38,7 @@ export const FREIGHT_ROLES: FreightRoleTemplate[] = [
     grants: [
       { module: 'dashboard', actions: ['view'] },
       { module: 'fretes_painel', actions: ['view'] },
+      { module: 'fretes_coletas', actions: ['view', 'create', 'edit'] },
       { module: 'fretes_cotacao', actions: ['view', 'create', 'edit'] },
       { module: 'fretes_pedidos', actions: ['view', 'create', 'edit'] },
       { module: 'fretes_cte', actions: ['view', 'create'] },
@@ -44,6 +46,12 @@ export const FREIGHT_ROLES: FreightRoleTemplate[] = [
       { module: 'fretes_transportadoras', actions: ['view'] },
       { module: 'fretes_filiais', actions: ['view'] },
     ],
+  },
+  {
+    name: 'Expedição (coletas)',
+    description: 'Só agenda as coletas das transportadoras (manhã ou tarde) e vê o painel de coletas da TV, nas filiais da pessoa.',
+    scope: 'UNIT',
+    grants: [{ module: 'fretes_coletas', actions: ['view', 'create', 'edit'] }],
   },
   {
     name: 'Financeiro de fretes',

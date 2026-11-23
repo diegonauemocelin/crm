@@ -151,7 +151,7 @@ export function AppConversas() {
     const t = setTimeout(() => setQ(search.trim()), 300)
     return () => clearTimeout(t)
   }, [search])
-  const qs = new URLSearchParams({ ...(filter === 'naoLidas' ? { naoLidas: 'true' } : {}), ...(filter === 'fila' ? { fila: 'true' } : {}), ...(filter === 'grupos' ? { tipo: 'GRUPO' } : {}), ...(q ? { busca: q } : {}), ...(numberId ? { numero: numberId } : {}) }).toString()
+  const qs = new URLSearchParams({ juntos: 'true', ...(filter === 'naoLidas' ? { naoLidas: 'true' } : {}), ...(filter === 'fila' ? { fila: 'true' } : {}), ...(filter === 'grupos' ? { tipo: 'GRUPO' } : {}), ...(q ? { busca: q } : {}), ...(numberId ? { numero: numberId } : {}) }).toString()
   const list = useQuery({ queryKey: ['app-conversas', qs], queryFn: () => api.get<ListData>(`/chat/conversas?${qs}`), refetchInterval: 5000, placeholderData: keepPreviousData })
   // A lista de números vem junto com as conversas; até saber se há mais de um, não mostra conversas de todos misturadas.
   useEffect(() => {

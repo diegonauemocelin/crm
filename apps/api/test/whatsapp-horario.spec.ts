@@ -24,8 +24,11 @@ describe('WhatsApp: horário comercial', () => {
 
   it('mensagem de ausência: texto padrão, limite de tamanho e intervalo entre 1 e 168 horas', () => {
     const r = cleanRules({ away: { enabled: true, text: '  ', cooldownHours: 500 } })
-    expect(r.away).toEqual({ enabled: true, text: DEFAULT_AWAY_TEXT, cooldownHours: 12 })
-    expect(cleanRules({ away: { enabled: true, text: 'Volto já', cooldownHours: 24 } }).away).toEqual({ enabled: true, text: 'Volto já', cooldownHours: 24 })
+    expect(r.away).toEqual({ enabled: true, text: DEFAULT_AWAY_TEXT, cooldownHours: 12, numberIds: [] })
+    expect(cleanRules({ away: { enabled: true, text: 'Volto já', cooldownHours: 24 } }).away).toEqual({ enabled: true, text: 'Volto já', cooldownHours: 24, numberIds: [] })
+    // Só nos números escolhidos: IDs válidos, sem repetir.
+    const id = '0b9c6a2e-1d2f-4c3a-9e8b-7a6f5d4c3b2a'
+    expect(cleanRules({ away: { enabled: true, text: 'x', cooldownHours: 2, numberIds: [id, id, 'lixo'] } }).away.numberIds).toEqual([id])
   })
 })
 
