@@ -13,7 +13,7 @@ import { api, errorMessage } from '@/lib/api'
 import { UF_LIST } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 
-type Mode = 'PERCENT_NF' | 'PERCENT_NF_ACIMA' | 'REPASSE' | 'DESCONTO' | 'GRATIS'
+type Mode = 'PERCENT_NF' | 'PERCENT_NF_ACIMA' | 'REPASSE' | 'DESCONTO' | 'GRATIS' | 'ACRESCIMO'
 interface Campaign {
   id?: string
   name: string
@@ -35,6 +35,11 @@ const MODES: { value: Mode; label: string; hint: string }[] = [
   { value: 'REPASSE', label: '% da nota (repasse da transportadora)', hint: 'O cliente paga o % da nota que a transportadora cobra (ex.: para uma cidade). A empresa não banca: vale mesmo acima da tabela. Escolha a cidade em Cidades.' },
   { value: 'DESCONTO', label: 'Desconto na tabela', hint: 'Desconto deste % sobre o valor calculado pela tabela.' },
   { value: 'GRATIS', label: 'Frete grátis', hint: 'O cliente não paga frete.' },
+  {
+    value: 'ACRESCIMO',
+    label: 'Acréscimo na tabela (reajuste)',
+    hint: 'O cliente paga o frete da tabela + este % no período (todas ou só as transportadoras escolhidas). Só muda o valor a cobrar do cliente: a conferência do CT-e continua pela tabela. Se uma promoção valer para a mesma cotação, vale a promoção.',
+  },
 ]
 
 const blank = (): Campaign => ({ name: '', active: true, mode: 'GRATIS', value: 0, carrierIds: [], ufs: [], cities: [], minCargoValue: null, tableAbove: null, startsOn: null, endsOn: null })
@@ -114,7 +119,7 @@ export function FretesCampanhasPage() {
                   </div>
                   {c.mode !== 'GRATIS' && (
                     <div className="space-y-1.5">
-                      <Label htmlFor={`v-${i}`}>{c.mode === 'DESCONTO' ? '% de desconto' : '% da nota'}</Label>
+                      <Label htmlFor={`v-${i}`}>{c.mode === 'DESCONTO' ? '% de desconto' : c.mode === 'ACRESCIMO' ? '% de acréscimo' : '% da nota'}</Label>
                       <Input id={`v-${i}`} inputMode="decimal" value={String(c.value)} disabled={!editable} onChange={(e) => set(i, { value: Number(e.target.value.replace(',', '.')) || 0 })} />
                     </div>
                   )}
