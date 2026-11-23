@@ -213,6 +213,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Poupança de frete', to: '/fretes/poupanca', icon: PiggyBankIcon, module: 'fretes_pedidos' },
       { title: 'Faturas de frete', to: '/fretes/faturas', icon: ReceiptIcon, module: 'fretes_financeiro' },
       { title: 'Relatórios de frete', to: '/fretes/relatorios', icon: FileBarChartIcon, module: 'fretes_cte' },
+      { title: 'Análise de mercado', to: '/fretes/analise-de-mercado', icon: TelescopeIcon, module: 'mi_mercado' },
       { title: 'Alertas de frete', to: '/fretes/alertas', icon: BellIcon, module: 'fretes_painel' },
       { title: 'Tabelas de frete', to: '/fretes/tabelas', icon: TableIcon, module: 'fretes_tabelas' },
       { title: 'Campanhas de frete', to: '/fretes/campanhas', icon: TicketPercentIcon, module: 'fretes_cotacao' },
