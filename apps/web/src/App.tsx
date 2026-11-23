@@ -399,6 +399,7 @@ const router = createBrowserRouter([
           { path: 'marketing/google-shopping', element: <Lazy>{pages.googleShopping()}</Lazy> },
           { path: 'marketing/relatorios', element: <Lazy>{pages.mktRelatorios()}</Lazy> },
           { path: 'marketing/mercado', element: <Lazy>{pages.mktMercado()}</Lazy> },
+          { path: 'fretes/analise-de-mercado', element: <Lazy>{pages.mktMercado()}</Lazy> },
           { path: 'marketing/integracoes', element: <Lazy>{pages.mktIntegracoes()}</Lazy> },
           { path: 'marketplaces', element: <Lazy>{pages.mktpVisao()}</Lazy> },
           { path: 'marketplaces/mercado-livre', element: <Lazy>{pages.mktpMl()}</Lazy> },
