@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileArchiveIcon, Loader2Icon, PackageIcon, PlusIcon, SearchIcon, UploadIcon } from 'lucide-react'
+import { FileArchiveIcon, Loader2Icon, PackageIcon, PlusIcon, RefreshCwIcon, SearchIcon, UploadIcon } from 'lucide-react'
 import { type FormEvent, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -53,6 +53,10 @@ interface Shipment {
   expectedDeliveryAt: string | null
   deliveredAt: string | null
   trackingCode: string | null
+  /** Rastreamento pela chave da NF-e (SSW): última ocorrência e quando consultou. */
+  trackingAt?: string | null
+  trackingLast?: string | null
+  trackingCarrier?: string | null
   notes: string | null
   createdByName: string
   createdAt: string
@@ -300,6 +304,11 @@ function ShipmentList() {
                       {SHIPMENT_STATUS[s.status]?.label ?? s.status}
                     </Badge>
                     {s.expectedDeliveryAt && <span className="block text-xs text-muted-foreground">previsão {dayBr(s.expectedDeliveryAt)}</span>}
+                    {s.trackingLast && (
+                      <span className="block max-w-56 truncate text-xs text-sky-700 dark:text-sky-300" title={`Rastreamento${s.trackingAt ? ` de ${dateTime(s.trackingAt)}` : ''}: ${s.trackingLast}`}>
+                        {s.trackingLast}
+                      </span>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -465,6 +474,7 @@ function ShipmentSheet({ id, defaultUnit, onClose }: { id: string | null; defaul
                   ))}
                 </div>
               )}
+              {s.invoiceKey && <TrackingPanel id={s.id} onDelivered={refresh} />}
               {can('fretes_pedidos', 'edit') && s.status !== 'CANCELADO' && <StatusForm shipment={s} onDone={refresh} />}
             </>
           )}
@@ -485,6 +495,79 @@ function ShipmentSheet({ id, defaultUnit, onClose }: { id: string | null; defaul
         </div>
       </SheetContent>
     </Sheet>
+  )
+}
+
+interface Tracking {
+  available: boolean
+  message: string
+  found?: boolean
+  carrier?: string | null
+  deliveredAt?: string | null
+  markedDelivered?: boolean
+  events?: { at: string | null; city: string | null; unit: string | null; occurrence: string; description: string | null; kind: string | null; receiver: string | null }[]
+}
+
+/** Rastreamento pela chave da NF-e (transportadoras do sistema SSW, como a TW Transportes). */
+function TrackingPanel({ id, onDelivered }: { id: string; onDelivered: () => void }) {
+  const [all, setAll] = useState(false)
+  const q = useQuery({
+    queryKey: ['fretes', 'rastreio', id],
+    queryFn: async () => {
+      const r = await api.get<Tracking>(`/fretes/pedidos/${id}/rastreio`)
+      if (r.markedDelivered) {
+        toast.success('O rastreamento mostra a entrega: pedido marcado como entregue.')
+        onDelivered()
+      }
+      return r
+    },
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+  const r = q.data
+  const events = r?.events ?? []
+  return (
+    <div className="space-y-2 rounded-md border p-3 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-medium">
+          Rastreamento{r?.carrier ? <span className="font-normal text-muted-foreground"> · {r.carrier}</span> : null}
+        </p>
+        <Button size="sm" variant="ghost" disabled={q.isFetching} onClick={() => void q.refetch()}>
+          {q.isFetching ? <Loader2Icon className="animate-spin" aria-hidden /> : <RefreshCwIcon aria-hidden />} Atualizar
+        </Button>
+      </div>
+      {q.isLoading ? (
+        <p className="text-muted-foreground">Consultando a transportadora…</p>
+      ) : q.error ? (
+        <p className="text-destructive">{errorMessage(q.error)}</p>
+      ) : !r?.found ? (
+        <p className="text-muted-foreground">
+          {r?.message || 'Nada encontrado.'} O rastreamento automático funciona com a TW Transportes e as transportadoras que usam o sistema SSW; nas outras, use o código de rastreio.
+        </p>
+      ) : (
+        <>
+          {r.deliveredAt && <p className="font-medium text-[#006300] dark:text-[#0ca30c]">Entregue em {dateTime(r.deliveredAt)}</p>}
+          <ol className="space-y-2 border-l pl-4">
+            {(all ? events : events.slice(0, 4)).map((e, i) => (
+              <li key={i}>
+                <span className="font-medium">{e.occurrence.replace(/\s*\(\d+\)$/, '')}</span>
+                <span className="text-muted-foreground">
+                  {' '}
+                  · {e.at ? dateTime(e.at) : '—'}
+                  {e.city ? ` · ${e.city}` : ''}
+                </span>
+                {e.description && <span className="block text-xs text-muted-foreground">{e.description}</span>}
+              </li>
+            ))}
+          </ol>
+          {events.length > 4 && (
+            <button type="button" className="text-xs text-muted-foreground underline underline-offset-2" onClick={() => setAll((v) => !v)}>
+              {all ? 'Mostrar menos' : `Ver as ${events.length} ocorrências`}
+            </button>
+          )}
+        </>
+      )}
+    </div>
   )
 }
 

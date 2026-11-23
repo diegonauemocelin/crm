@@ -3169,6 +3169,10 @@ model FreightShipment {
   expectedDeliveryAt DateTime? @db.Date
   deliveredAt   DateTime?
   trackingCode  String?
+  /// Rastreamento pela chave da NF-e (SSW): quando consultou, a última ocorrência e o domínio da transportadora.
+  trackingAt      DateTime?
+  trackingLast    String?
+  trackingCarrier String?
   notes         String?
   /// Conferência de frete (nota × CT-e × tabela): OK | DIVERGENTE, causa (AUDIT_CAUSES), observação, quem e quando.
   auditStatus   String?
