@@ -2,6 +2,43 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.69",
+      "date": "2026-11-23",
+      "title": "Cotação da TW Transportes, cotação em cartões, aviso de SEFAZ fora e % por vendedor na poupança",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Cotação online da TW Transportes (sistema SSW): com o domínio, login, senha e CNPJ do pagador em Fretes › Filiais › Cotação online, o valor e o prazo da TW aparecem na cotação junto com as tabelas."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Resultado da cotação em cartões: mais barato, mais rápido e melhor equilíbrio em destaque, total, % sobre a mercadoria, prazo, entrega estimada e coleta, com \"Ver detalhes\" e \"Selecionar\". A tabela continua disponível no botão ao lado."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Formulário da cotação em três passos: origem e destino, destinatário, mercadoria e volumes."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Aviso quando a SEFAZ está fora do ar, instável ou a busca de CT-e está atrasada, nas telas de cotação, CT-e, conciliação e painel e nos alertas de fretes."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Campanha de frete do tipo Acréscimo na tabela (reajuste): o cliente paga a tabela + o % no período, para todas ou só algumas transportadoras. A conferência do CT-e continua pela tabela."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Poupança de frete com % de cada vendedor: além do acréscimo padrão da campanha, cada vendedor pode ter o seu. A cotação mostra o valor a cobrar com o % de quem cota, e a poupança é calculada com ele."
+        }
+      ]
+    },
+    {
       "version": "3.0.68",
       "date": "2026-11-23",
       "title": "Jadlog com o token no formato certo; última NF-e importada em Pedidos",
