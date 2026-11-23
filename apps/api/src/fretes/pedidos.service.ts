@@ -92,6 +92,9 @@ export class PedidosService {
       expectedDeliveryAt: iso(s.expectedDeliveryAt),
       deliveredAt: s.deliveredAt,
       trackingCode: s.trackingCode,
+      trackingAt: s.trackingAt,
+      trackingLast: s.trackingLast,
+      trackingCarrier: s.trackingCarrier,
       notes: s.notes,
       createdByName: s.createdByName,
       createdAt: s.createdAt,
@@ -100,7 +103,7 @@ export class PedidosService {
     }
   }
 
-  private async find(user: AuthUser, id: string) {
+  async find(user: AuthUser, id: string) {
     const units = allowedUnits(user, 'fretes_pedidos')
     const s = await this.prisma.freightShipment.findFirst({ where: { id, tenantId: user.tenantId, ...(units ? { unitId: { in: units } } : {}) } })
     if (!s) throw new NotFoundException('Pedido não encontrado.')

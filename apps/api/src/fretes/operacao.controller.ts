@@ -19,6 +19,7 @@ import { NfeService } from './nfe.service'
 import { FretesRelatoriosService, REPORTS } from './relatorios.service'
 import { FretesResumoSemanalService } from './resumo-semanal.service'
 import { PoupancaService } from './poupanca.service'
+import { RastreioService } from './rastreio.service'
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 const nullable = ValidateIf((_, v) => v !== null)
@@ -205,6 +206,7 @@ export class FretesOperacaoController {
     private readonly nfes: NfeService,
     private readonly weekly: FretesResumoSemanalService,
     private readonly wallet: PoupancaService,
+    private readonly tracking: RastreioService,
   ) {}
 
   // ─────────── NF-e (XML) ───────────
@@ -243,6 +245,11 @@ export class FretesOperacaoController {
   @Get('pedidos/vendedores')
   shipmentSellers(@CurrentUser() user: AuthUser) {
     return this.shipments.sellers(user)
+  }
+
+  @Get('pedidos/:id/rastreio')
+  trackShipment(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.tracking.track(user, id)
   }
 
   @Get('pedidos/:id')
