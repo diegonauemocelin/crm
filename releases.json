@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.68",
+      "date": "2026-11-23",
+      "title": "Jadlog com o token no formato certo; última NF-e importada em Pedidos",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Cotação da Jadlog: o token passa a ir no formato que a API da Jadlog pede (Bearer), mesmo colado com espaços ou quebras de linha."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Pedidos e expedição mostram a última NF-e importada (número, data de emissão e quando entrou no CRM) e a última importação de XML (quando e por quem)."
+        }
+      ]
+    },
+    {
       "version": "3.0.67",
       "date": "2026-11-23",
       "title": "Agendamento de coletas com aviso na TV; mensagem de ausência por número; vídeo recebido como arquivo",
