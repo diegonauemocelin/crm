@@ -36,6 +36,7 @@ import { WebPushModule } from './webpush/webpush.module'
 import { MerchantModule } from './merchant/merchant.module'
 import { WhatsappModule } from './whatsapp/whatsapp.module'
 import { ProspeccaoModule } from './prospeccao/prospeccao.module'
+import { MercadoModule } from './mercado/mercado.module'
 import { AppMovelModule } from './app-movel/app-movel.module'
 import { env } from './config/env'
 import { FilesModule } from './files/files.module'
@@ -92,7 +93,7 @@ import { UsersService } from './users/users.service'
     RelatoriosModule,
     CatalogoModule,
     GoogleAdsModule,
-    WhatsappModule, ProspeccaoModule,
+    WhatsappModule, ProspeccaoModule, MercadoModule,
     SugestoesModule,
     MarketingModule,
     MarketplacesModule,
