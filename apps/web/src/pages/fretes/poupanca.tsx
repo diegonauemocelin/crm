@@ -29,6 +29,8 @@ interface Campaign {
   name: string
   active: boolean
   pct: number
+  /** % próprio de alguns vendedores; os outros usam o pct da campanha. */
+  sellerPcts?: { seller: string; pct: number }[]
   period: string
   start: string
   end: string
@@ -67,6 +69,7 @@ interface Statement {
     cte: number | null
     quote: number | null
     table: number | null
+    pct?: number
     entry: { source: 'COTACAO' | 'TABELA' | 'CTE'; base: number; markup: number; charge: number; saldo: number } | null
   }[]
   moves: { id: string; kind: 'USO' | 'AJUSTE'; value: number; note: string | null; createdByName: string; createdAt: string }[]
@@ -123,7 +126,7 @@ function WalletPage() {
           </>
         }
       />
-      {editing && <CampaignsDialog list={list} onClose={() => setEditing(false)} />}
+      {editing && <CampaignsDialog list={list} sellerNames={d?.sellers.map((s) => s.seller) ?? []} onClose={() => setEditing(false)} />}
       {campaigns.isLoading ? (
         <TableSkeleton />
       ) : campaigns.error ? (
@@ -223,7 +226,7 @@ function StatementSheet({ campaignId, seller, onClose }: { campaignId: string; s
       <SheetContent className="w-full overflow-y-auto sm:max-w-3xl">
         <SheetHeader>
           <SheetTitle>{seller}</SheetTitle>
-          <SheetDescription>{d ? `${d.campaign.name}: ${dayBr(d.campaign.start)} a ${dayBr(d.campaign.end)}, acréscimo de ${fmtNum(d.campaign.pct)}% sobre a cotação.` : ''}</SheetDescription>
+          <SheetDescription>{d ? `${d.campaign.name}: ${dayBr(d.campaign.start)} a ${dayBr(d.campaign.end)}, acréscimo de ${fmtNum(d.notes[0]?.pct ?? d.campaign.sellerPcts?.find((x) => x.seller === seller)?.pct ?? d.campaign.pct)}% sobre a cotação para este vendedor.` : ''}</SheetDescription>
         </SheetHeader>
         <div className="space-y-5 px-4 pb-6">
           <Can module="fretes_pedidos" action="edit">
@@ -332,17 +335,18 @@ interface CampaignRow {
   name: string
   active: boolean
   pct: string
+  sellerPcts: { seller: string; pct: string }[]
   period: string
   start: string
   end: string
 }
 
-function CampaignsDialog({ list, onClose }: { list: Campaign[]; onClose: () => void }) {
+function CampaignsDialog({ list, sellerNames, onClose }: { list: Campaign[]; sellerNames: string[]; onClose: () => void }) {
   const qc = useQueryClient()
-  const [rows, setRows] = useState<CampaignRow[]>(() => list.map((c) => ({ id: c.id, name: c.name, active: c.active, pct: String(c.pct).replace('.', ','), period: c.period, start: c.start, end: c.end })))
+  const [rows, setRows] = useState<CampaignRow[]>(() => list.map((c) => ({ id: c.id, name: c.name, active: c.active, pct: String(c.pct).replace('.', ','), sellerPcts: (c.sellerPcts ?? []).map((x) => ({ seller: x.seller, pct: String(x.pct).replace('.', ',') })), period: c.period, start: c.start, end: c.end })))
   const set = (i: number, p: Partial<CampaignRow>) => setRows((r) => r.map((x, j) => (j === i ? { ...x, ...p } : x)))
   const save = useMutation({
-    mutationFn: () => api.put<Campaign[]>('/fretes/poupanca/campanhas', { list: rows.map((r) => ({ id: r.id, name: r.name, active: r.active, pct: parseBr(r.pct), period: r.period, start: r.start, end: r.end })) }),
+    mutationFn: () => api.put<Campaign[]>('/fretes/poupanca/campanhas', { list: rows.map((r) => ({ id: r.id, name: r.name, active: r.active, pct: parseBr(r.pct), sellerPcts: r.sellerPcts.filter((x) => x.seller.trim() && x.pct.trim()).map((x) => ({ seller: x.seller.trim(), pct: parseBr(x.pct) })), period: r.period, start: r.start, end: r.end })) }),
     onSuccess: (saved) => {
       toast.success(`${saved.length} campanha(s) salvas.`)
       qc.invalidateQueries({ queryKey: ['fretes', 'poupanca'] })
@@ -357,6 +361,11 @@ function CampaignsDialog({ list, onClose }: { list: Campaign[]; onClose: () => v
           <DialogTitle>Campanhas da poupança de frete</DialogTitle>
           <DialogDescription>Acréscimo sobre a cotação que o vendedor cobra do cliente e o período (pela data de emissão da nota). O fim é calculado pelo período; em Personalizado, escolha.</DialogDescription>
         </DialogHeader>
+        <datalist id="poupanca-vendedores">
+          {sellerNames.map((n) => (
+            <option key={n} value={n} />
+          ))}
+        </datalist>
         <div className="max-h-[60vh] space-y-3 overflow-y-auto">
           {rows.map((r, i) => (
             <div key={r.id ?? `n${i}`} className="grid gap-2 rounded-md border p-3 sm:grid-cols-6">
@@ -365,7 +374,7 @@ function CampaignsDialog({ list, onClose }: { list: Campaign[]; onClose: () => v
                 <Input value={r.name} onChange={(e) => set(i, { name: e.target.value })} placeholder="Ex.: Poupança 2027" />
               </div>
               <div className="space-y-1">
-                <Label>Acréscimo (%)</Label>
+                <Label>Acréscimo padrão (%)</Label>
                 <Input inputMode="decimal" value={r.pct} onChange={(e) => set(i, { pct: e.target.value })} />
               </div>
               <div className="space-y-1">
@@ -391,6 +400,29 @@ function CampaignsDialog({ list, onClose }: { list: Campaign[]; onClose: () => v
                 <Label>Fim</Label>
                 <Input type="date" value={r.end} disabled={r.period !== 'PERSONALIZADO'} onChange={(e) => set(i, { end: e.target.value })} title={r.period !== 'PERSONALIZADO' ? 'Calculado pelo período ao salvar' : undefined} />
               </div>
+              <div className="space-y-2 rounded-md bg-muted/40 p-2 sm:col-span-6">
+                <p className="text-sm font-medium">% de cada vendedor</p>
+                <p className="text-xs text-muted-foreground">Quem não estiver aqui cobra o acréscimo padrão. Use o nome do vendedor como aparece na nota (a lista sugere os nomes das notas da campanha).</p>
+                {r.sellerPcts.map((x, k) => (
+                  <div key={k} className="flex gap-2">
+                    <Input
+                      className="flex-1"
+                      list="poupanca-vendedores"
+                      aria-label="Vendedor"
+                      placeholder="Nome do vendedor"
+                      value={x.seller}
+                      onChange={(e) => set(i, { sellerPcts: r.sellerPcts.map((y, j) => (j === k ? { ...y, seller: e.target.value } : y)) })}
+                    />
+                    <Input className="w-24" inputMode="decimal" aria-label="% do vendedor" placeholder="%" value={x.pct} onChange={(e) => set(i, { sellerPcts: r.sellerPcts.map((y, j) => (j === k ? { ...y, pct: e.target.value } : y)) })} />
+                    <Button size="icon" variant="ghost" aria-label="Tirar vendedor" onClick={() => set(i, { sellerPcts: r.sellerPcts.filter((_, j) => j !== k) })}>
+                      <Trash2Icon aria-hidden />
+                    </Button>
+                  </div>
+                ))}
+                <Button size="sm" variant="outline" onClick={() => set(i, { sellerPcts: [...r.sellerPcts, { seller: '', pct: r.pct }] })}>
+                  <PlusIcon aria-hidden /> Vendedor com % próprio
+                </Button>
+              </div>
               <div className="flex items-center justify-between sm:col-span-6">
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox checked={r.active} onCheckedChange={(c) => set(i, { active: c === true })} /> Ativa
@@ -403,7 +435,7 @@ function CampaignsDialog({ list, onClose }: { list: Campaign[]; onClose: () => v
           ))}
         </div>
         <DialogFooter className="gap-2">
-          <Button variant="outline" className="mr-auto" onClick={() => setRows((x) => [...x, { name: '', active: true, pct: '20', period: 'MENSAL', start: todaySP().slice(0, 8) + '01', end: '' }])}>
+          <Button variant="outline" className="mr-auto" onClick={() => setRows((x) => [...x, { name: '', active: true, pct: '20', sellerPcts: [], period: 'MENSAL', start: todaySP().slice(0, 8) + '01', end: '' }])}>
             <PlusIcon aria-hidden /> Campanha
           </Button>
           <Button variant="ghost" onClick={onClose}>

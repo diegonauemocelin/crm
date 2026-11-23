@@ -156,3 +156,38 @@ export function readCertificate(pfx: Buffer, passphrase: string): CertInfo {
   const cn = /CN=([^\n]+)/.exec(x.subject)?.[1]?.trim() ?? x.subject.replace(/\n/g, ', ')
   return { subject: cn.slice(0, 200), cnpj, validFrom: new Date(x.validFrom), validTo: new Date(x.validTo) }
 }
+
+// ---------- Situação da SEFAZ (aviso na tela) ----------
+
+/** Falha de comunicação (fora do ar, lenta ou recusando conexão), e não erro de cadastro (certificado, CNPJ). */
+export function isOutage(message: string | null | undefined, cStat: string | null | undefined) {
+  if (cStat === '108' || cStat === '109') return true
+  const m = (message ?? '').toLowerCase()
+  return /http 5\d\d|não respondeu|timeout|timed out|econnreset|econnrefused|enotfound|eai_again|socket hang up|paralisad|indispon/.test(m)
+}
+
+export interface SefazHealthInput {
+  /** Últimas buscas, da mais nova para a mais antiga. */
+  runs: { status: string; cStat: string | null; message: string | null; startedAt: Date }[]
+  lastRunAt: Date | null
+  /** Intervalo da busca automática (0 = desligada). */
+  intervalHours: number
+}
+
+/**
+ * Situação da busca de CT-e na SEFAZ para o aviso:
+ * - FORA: as duas últimas buscas falharam por falha de comunicação (SEFAZ fora do ar ou paralisada);
+ * - INSTAVEL: só a última falhou assim (o CRM tenta de novo sozinho);
+ * - ATRASADA: a busca automática está ligada e não roda há mais que o dobro do intervalo (+1 h);
+ * - OK: nada a avisar.
+ */
+export function sefazHealth(d: SefazHealthInput, now: Date): { state: 'OK' | 'INSTAVEL' | 'FORA' | 'ATRASADA'; message: string; since: Date | null } {
+  const [a, b] = d.runs.filter((r) => r.status !== 'RODANDO')
+  const down = (r?: (typeof d.runs)[number]) => !!r && r.status === 'ERRO' && isOutage(r.message, r.cStat)
+  if (down(a) && down(b)) return { state: 'FORA', message: `A SEFAZ está fora do ar ou paralisada: os CT-es podem atrasar. O CRM tenta de novo sozinho. (${a!.message ?? 'sem resposta'})`, since: b!.startedAt }
+  if (down(a)) return { state: 'INSTAVEL', message: `A última busca de CT-e na SEFAZ falhou (${a!.message ?? 'sem resposta'}). O CRM tenta de novo sozinho.`, since: a!.startedAt }
+  if (d.intervalHours > 0 && d.lastRunAt && now.getTime() - d.lastRunAt.getTime() > (d.intervalHours * 2 + 1) * 3_600_000) {
+    return { state: 'ATRASADA', message: 'A busca de CT-e na SEFAZ está atrasada: os CT-es podem demorar a aparecer.', since: d.lastRunAt }
+  }
+  return { state: 'OK', message: '', since: null }
+}

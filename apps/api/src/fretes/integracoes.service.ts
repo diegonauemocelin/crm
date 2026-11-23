@@ -31,6 +31,12 @@ import {
   parseMelhorEnvioServices,
   DEFAULT_DHL,
   DEFAULT_RODONAVES,
+  DEFAULT_SSW,
+  parseSswQuote,
+  SSW_QUOTE_ACTION,
+  SSW_QUOTE_URL,
+  sswQuoteEnvelope,
+  type SswConfig,
   DHL_BASE,
   type DhlPlace,
   dhlDomestic,
@@ -59,6 +65,7 @@ export interface IntegrationsInput {
   jadlog?: { enabled?: boolean; token?: string | null; cnpj?: string; account?: string; contract?: string; modalities?: { code: number; name: string }[]; delivery?: 'D' | 'R'; cubageFactor?: number }
   rodonaves?: { enabled?: boolean; user?: string; password?: string | null; cnpj?: string; contactName?: string; contactPhone?: string }
   dhl?: { enabled?: boolean; apiKey?: string; apiSecret?: string | null; accountNumber?: string; sandbox?: boolean; scope?: DhlScope }
+  ssw?: { enabled?: boolean; name?: string; domain?: string; login?: string; password?: string | null; cnpj?: string; goods?: number }
 }
 
 /** Cidades de origem e destino (a DHL pede o nome da cidade). */
@@ -100,6 +107,7 @@ export class IntegracoesService {
       jadlog: (({ tokenEnc, ...rest }) => ({ ...rest, hasToken: !!tokenEnc }))({ ...DEFAULT_JADLOG, ...(c.jadlog ?? {}) }),
       rodonaves: (({ passwordEnc, ...rest }) => ({ ...rest, hasPassword: !!passwordEnc }))({ ...DEFAULT_RODONAVES, ...(c.rodonaves ?? {}) }),
       dhl: (({ apiSecretEnc, ...rest }) => ({ ...rest, hasSecret: !!apiSecretEnc }))({ ...DEFAULT_DHL, ...(c.dhl ?? {}) }),
+      ssw: (({ passwordEnc, ...rest }) => ({ ...rest, hasPassword: !!passwordEnc }))({ ...DEFAULT_SSW, ...(c.ssw ?? {}) }),
     }
   }
 
@@ -181,7 +189,20 @@ export class IntegracoesService {
       if (x.enabled !== undefined) dh.enabled = x.enabled
       if (dh.enabled && (!dh.apiKey || !dh.apiSecretEnc || !dh.accountNumber)) throw new BadRequestException('Para ligar a DHL Express, informe a API Key, a API Secret e o número da conta DHL.')
     }
-    await this.settings.set(user.tenantId, INTEGRATIONS_KEY, { melhorEnvio: me, correios: co, braspress: br, jadlog: jl, rodonaves: rt, dhl: dh })
+    const sw = { ...DEFAULT_SSW, ...(c.ssw ?? {}) }
+    if (d.ssw) {
+      const x = d.ssw
+      if (x.name !== undefined) sw.name = x.name.trim().slice(0, 60) || DEFAULT_SSW.name
+      if (x.domain !== undefined) sw.domain = x.domain.trim().toUpperCase().slice(0, 10)
+      if (x.login !== undefined) sw.login = x.login.trim().slice(0, 60)
+      if (x.password !== undefined) sw.passwordEnc = x.password && x.password.trim() ? encrypt(x.password.trim()) : null
+      if (x.cnpj !== undefined) sw.cnpj = x.cnpj.replace(/\D/g, '').slice(0, 14)
+      if (x.goods !== undefined) sw.goods = Number.isInteger(x.goods) && x.goods > 0 && x.goods < 100000 ? x.goods : 1
+      if (x.enabled !== undefined) sw.enabled = x.enabled
+      if (sw.cnpj && sw.cnpj.length !== 14) throw new BadRequestException('CNPJ do pagador inválido (14 dígitos).')
+      if (sw.enabled && (!sw.domain || !sw.login || !sw.passwordEnc)) throw new BadRequestException(`Para ligar a ${sw.name}, informe o domínio, o login e a senha da API (fornecidos pela transportadora).`)
+    }
+    await this.settings.set(user.tenantId, INTEGRATIONS_KEY, { melhorEnvio: me, correios: co, braspress: br, jadlog: jl, rodonaves: rt, dhl: dh, ssw: sw })
     if (rt.user !== prevRt.user || rt.passwordEnc !== prevRt.passwordEnc) for (const k of [...this.rodonavesTokens.keys()]) if (k.startsWith(`${user.tenantId}|`)) this.rodonavesTokens.delete(k)
     if (co.user !== c.correios.user || co.accessCodeEnc !== c.correios.accessCodeEnc || co.postCard !== c.correios.postCard) this.correiosTokens.delete(user.tenantId)
     await this.audit.byUser(user, ctx, 'frete.integracoes.alteradas', 'settings', INTEGRATIONS_KEY, {
@@ -191,6 +212,7 @@ export class IntegracoesService {
       jadlog: { ligado: jl.enabled, token: d.jadlog?.token !== undefined ? 'alterado' : undefined, cnpj: jl.cnpj, conta: jl.account, contrato: jl.contract, modalidades: jl.modalities.map((m) => m.code), entrega: jl.delivery, cubagem: jl.cubageFactor },
       rodonaves: { ligado: rt.enabled, usuario: rt.user, senha: d.rodonaves?.password !== undefined ? 'alterada' : undefined, cnpj: rt.cnpj, contato: rt.contactName },
       dhl: { ligado: dh.enabled, apiKey: dh.apiKey, apiSecret: d.dhl?.apiSecret !== undefined ? 'alterada' : undefined, conta: dh.accountNumber, teste: dh.sandbox, abrangencia: dh.scope },
+      ssw: { ligado: sw.enabled, nome: sw.name, dominio: sw.domain, login: sw.login, senha: d.ssw?.password !== undefined ? 'alterada' : undefined, cnpj: sw.cnpj, mercadoria: sw.goods },
     })
     return this.view(user)
   }
@@ -289,6 +311,23 @@ export class IntegracoesService {
     if (res.status === 401 || res.status === 403) return fail('A Jadlog recusou o token da API: confira se o token foi colado inteiro e se está liberado para a API de frete (simulador do embarcador).')
     if (!res.ok && !body) return fail(`HTTP ${res.status}`)
     return parseJadlog(body, c.modalities)
+  }
+
+  /** Cotação no SSW (TW Transportes e outras que usam o sistema SSW). */
+  private async ssw(c: SswConfig, d: { from: string; to: string; senderDoc: string | null; recipientDoc: string | null }, p: PackageInput): Promise<OnlineQuote[]> {
+    const base: OnlineQuote = { source: 'SSW', serviceId: c.domain, carrier: c.name, service: 'Rodoviário', price: null, deadlineDays: null, error: null }
+    const cnpj = c.cnpj || d.senderDoc
+    if (!cnpj) return [{ ...base, error: `Informe o CNPJ do pagador na integração da ${c.name} ou cadastre o CNPJ da filial de origem.` }]
+    const res = await fetch(SSW_QUOTE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: `"${SSW_QUOTE_ACTION}"` },
+      body: sswQuoteEnvelope({ domain: c.domain, login: c.login, password: decrypt(c.passwordEnc!), cnpj, goods: c.goods }, d, p),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    })
+    const text = await res.text().catch(() => '')
+    if (!res.ok && !text) return [{ ...base, error: `HTTP ${res.status}` }]
+    const r = parseSswQuote(text)
+    return [{ ...base, ...r }]
   }
 
   /** Token de uma API da Rodonaves (cada base tem o seu), guardado até perto de vencer. */
@@ -400,6 +439,10 @@ export class IntegracoesService {
           ? Promise.resolve(fail('A DHL precisa da cidade de origem e de destino (cadastre a cidade da filial).'))
           : this.dhlRates(dh, { country: 'BR', postalCode: from, city: places.originCity }, { country: 'BR', postalCode: to, city: places.destCity }, false, p).catch((e: unknown) => fail(`DHL Express: ${(e as Error).message}`.slice(0, 200))),
       )
+    }
+    if (c.ssw?.enabled && c.ssw.passwordEnc) {
+      const sw = { ...DEFAULT_SSW, ...c.ssw }
+      jobs.push(this.ssw(sw, { from, to, ...docs }, p).catch((e: unknown) => [{ source: 'SSW' as const, serviceId: '', carrier: sw.name, service: '', price: null, deadlineDays: null, error: `${sw.name}: ${(e as Error).message}`.slice(0, 200) }]))
     }
     if (c.braspress?.enabled && c.braspress.passwordEnc) {
       jobs.push(

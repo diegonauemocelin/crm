@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { campaignOn, cleanWalletCampaigns, periodEnd, walletBalances, walletEntry } from '../src/fretes/poupanca'
+import { campaignOn, cleanWalletCampaigns, pctFor, periodEnd, walletBalances, walletEntry } from '../src/fretes/poupanca'
 
 let n = 0
 const id = () => `camp-00${++n}`
@@ -55,5 +55,17 @@ describe('poupança de frete dos vendedores', () => {
       { seller: 'Bia', notas: 1, nota: 200, cte: 150, markup: 30, credito: 20, debito: 0, movimentos: -15, pendentes: 0, saldo: 5 },
       { seller: 'Ana', notas: 2, nota: 220, cte: 195, markup: 38, credito: 5, debito: 18, movimentos: 0, pendentes: 2, saldo: -13 },
     ])
+  })
+})
+
+describe('% próprio de cada vendedor', () => {
+  it('usa o % do vendedor (sem acento nem caixa) e, sem ele, o padrão da campanha', () => {
+    const [c] = cleanWalletCampaigns([{ name: 'Nov', pct: 20, period: 'MENSAL', start: '2026-11-01', sellerPcts: [{ seller: 'João Silva', pct: 15 }, { seller: 'joao silva', pct: 30 }, { seller: '', pct: 5 }] }], () => 'id-123456')
+    expect(c!.sellerPcts).toEqual([{ seller: 'João Silva', pct: 15 }])
+    expect(pctFor(c!, 'JOAO  SILVA')).toBe(15)
+    expect(pctFor(c!, 'Maria')).toBe(20)
+    expect(pctFor(c!, null)).toBe(20)
+    // cotação 100: João cobra 115; nota cobrou 120 → 5 de poupança
+    expect(walletEntry({ nota: 120, cte: 90, quote: 100, table: null }, pctFor(c!, 'João Silva'))).toMatchObject({ charge: 115, saldo: 5 })
   })
 })

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
 import { FilialSwitch } from '@/components/fretes/filial-switch'
+import { SefazNotice } from '@/components/fretes/aviso-sefaz'
 import { ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -93,6 +94,7 @@ function Painel() {
           </>
         }
       />
+      <SefazNotice />
       {d.isLoading || active.ctx.isLoading ? (
         <TableSkeleton />
       ) : d.error || !d.data ? (

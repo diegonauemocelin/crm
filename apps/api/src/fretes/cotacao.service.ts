@@ -33,6 +33,7 @@ const ONLINE_LABEL: Record<OnlineQuote['source'], string> = {
   MELHOR_ENVIO: 'Melhor Envio · cotação online',
   RODONAVES: 'Rodonaves · cotação online',
   DHL: 'DHL Express · cotação online',
+  SSW: 'Cotação online (SSW)',
 }
 
 export interface QuoteInput {
@@ -91,7 +92,7 @@ export interface QuoteResult {
   /** Coletas da transportadora no dia da cotação, na filial de origem: até que horas tirar pedido e a hora da coleta. */
   pickups?: { cutoff: string; pickup: string; note: string | null }[]
   /** Cotação online (API): de onde veio; não tem tabela no CRM. */
-  online?: 'MELHOR_ENVIO' | 'CORREIOS' | 'BRASPRESS' | 'JADLOG' | 'RODONAVES' | 'DHL'
+  online?: 'MELHOR_ENVIO' | 'CORREIOS' | 'BRASPRESS' | 'JADLOG' | 'RODONAVES' | 'DHL' | 'SSW'
   /** Como a carga chega à transportadora: ela coleta na empresa ou a empresa despacha (leva até ela). */
   pickupMode?: 'COLETA' | 'DESPACHO'
   /** Campanha de frete que vale para esta opção: o que cobrar do cliente em vez do total da tabela. */
@@ -591,7 +592,7 @@ export class CotacaoService {
     if (!p.originZip) return []
     const originCity = await this.originCity(p.unit, p.originZip, !!d.originZip)
     const quotes = await this.online
-      .quote(tenantId, p.originZip, p.destZip, packageOf({ realWeight: p.measures.realWeight, volumes: d.volumes }, d.cargoValue), { senderDoc: p.unit.cnpj?.replace(/\D/g, '') || null, recipientDoc: p.doc }, { originCity, destCity: p.destCity })
+      .quote(tenantId, p.originZip, p.destZip, { ...packageOf({ realWeight: p.measures.realWeight, volumes: d.volumes }, d.cargoValue), cubicM3: p.measures.cubicMeters, count: p.measures.quantity }, { senderDoc: p.unit.cnpj?.replace(/\D/g, '') || null, recipientDoc: p.doc }, { originCity, destCity: p.destCity })
       .catch(() => [])
     return quotes.map((q) => {
       const ok = q.price !== null && !q.error

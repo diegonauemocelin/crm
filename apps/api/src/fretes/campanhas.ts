@@ -11,8 +11,10 @@ export const CAMPAIGNS_KEY = 'fretes.campanhas'
  *   empresa não banca nada, então não fica limitado ao valor da tabela.
  * DESCONTO: desconto de um % sobre o valor da tabela.
  * GRATIS: frete grátis para o cliente.
+ * ACRESCIMO: reajuste, o cliente paga a tabela + este % (deixa o frete mais caro num período, para todas ou algumas
+ *   transportadoras). Só muda o que cobrar do cliente: a conferência do CT-e segue comparando com a tabela.
  */
-export type CampaignMode = 'PERCENT_NF' | 'PERCENT_NF_ACIMA' | 'REPASSE' | 'DESCONTO' | 'GRATIS'
+export type CampaignMode = 'PERCENT_NF' | 'PERCENT_NF_ACIMA' | 'REPASSE' | 'DESCONTO' | 'GRATIS' | 'ACRESCIMO'
 
 export interface FreightCampaign {
   id: string
@@ -52,7 +54,7 @@ export function cleanCampaigns(raw: unknown, newId: () => string): FreightCampai
   return list.slice(0, 100).flatMap((x): FreightCampaign[] => {
     const o = (x ?? {}) as Record<string, unknown>
     const name = String(o.name ?? '').trim().slice(0, 80)
-    const mode = o.mode === 'PERCENT_NF' || o.mode === 'PERCENT_NF_ACIMA' || o.mode === 'REPASSE' || o.mode === 'DESCONTO' || o.mode === 'GRATIS' ? o.mode : null
+    const mode = o.mode === 'PERCENT_NF' || o.mode === 'PERCENT_NF_ACIMA' || o.mode === 'REPASSE' || o.mode === 'DESCONTO' || o.mode === 'GRATIS' || o.mode === 'ACRESCIMO' ? o.mode : null
     if (!name || !mode) return []
     const value = mode === 'GRATIS' ? 0 : Math.min(100, Math.max(0, num(o.value) ?? 0))
     const strs = (v: unknown, max: number) => (Array.isArray(v) ? [...new Set(v.filter((s): s is string => typeof s === 'string' && !!s.trim()).map((s) => s.trim().slice(0, max)))].slice(0, 500) : [])
@@ -106,8 +108,9 @@ export function campaignApplies(c: FreightCampaign, t: CampaignTarget): boolean 
   return true
 }
 
-/** Quanto cobrar do cliente pela campanha (nunca mais que o valor da tabela). */
+/** Quanto cobrar do cliente pela campanha (nunca mais que o valor da tabela, menos no repasse e no acréscimo). */
 export function campaignPrice(c: Pick<FreightCampaign, 'mode' | 'value'>, tableTotal: number, cargoValue: number): number {
+  if (c.mode === 'ACRESCIMO') return Math.round(Math.max(0, tableTotal * (1 + c.value / 100)) * 100) / 100
   // Repasse: o % que a transportadora cobra, sem limite pela tabela (a empresa não banca a diferença).
   if (c.mode === 'REPASSE') return Math.round(Math.max(0, (cargoValue * c.value) / 100) * 100) / 100
   const v = c.mode === 'GRATIS' ? 0 : c.mode === 'PERCENT_NF' || c.mode === 'PERCENT_NF_ACIMA' ? (cargoValue * c.value) / 100 : tableTotal * (1 - c.value / 100)
@@ -118,19 +121,34 @@ export function campaignPrice(c: Pick<FreightCampaign, 'mode' | 'value'>, tableT
 export function campaignLabel(c: Pick<FreightCampaign, 'mode' | 'value'> & { tableAbove?: number | null }) {
   const pct = `${c.value.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
   const above = c.mode === 'PERCENT_NF_ACIMA' && c.tableAbove ? ` (frete acima de ${c.tableAbove.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})` : ''
-  return (c.mode === 'GRATIS' ? 'Frete grátis' : c.mode === 'REPASSE' ? `${pct} da nota (repasse da transportadora)` : c.mode === 'PERCENT_NF' || c.mode === 'PERCENT_NF_ACIMA' ? `${pct} da nota` : `${pct} de desconto`) + above
+  return (c.mode === 'GRATIS' ? 'Frete grátis' : c.mode === 'ACRESCIMO' ? `acréscimo de ${pct} na tabela` : c.mode === 'REPASSE' ? `${pct} da nota (repasse da transportadora)` : c.mode === 'PERCENT_NF' || c.mode === 'PERCENT_NF_ACIMA' ? `${pct} da nota` : `${pct} de desconto`) + above
 }
 
-/** Melhor campanha para o cliente (menor valor cobrado) entre as que valem; null se nenhuma. */
+/**
+ * Campanha que vale para a cotação; null se nenhuma. Promoções (desconto, % da nota, grátis, repasse) têm prioridade e
+ * vale a melhor para o cliente; sem promoção, vale o maior acréscimo (reajuste) em vigor.
+ */
 export function bestCampaign(list: FreightCampaign[], t: CampaignTarget, tableTotal: number) {
+  const promos = list.filter((c) => c.mode !== 'ACRESCIMO')
+  const promo = pickCampaign(promos, t, tableTotal, 'min')
+  if (promo) return promo
+  return pickCampaign(
+    list.filter((c) => c.mode === 'ACRESCIMO'),
+    t,
+    tableTotal,
+    'max',
+  )
+}
+
+function pickCampaign(list: FreightCampaign[], t: CampaignTarget, tableTotal: number, want: 'min' | 'max') {
   let best: { campaign: FreightCampaign; price: number } | null = null
   for (const c of list) {
     if (!campaignApplies(c, t)) continue
     // Até o valor escolhido, vale a tabela (ex.: até R$ 150 o cliente paga o frete mínimo da transportadora).
     if (c.mode === 'PERCENT_NF_ACIMA' && tableTotal <= (c.tableAbove ?? 0)) continue
     const price = campaignPrice(c, tableTotal, t.cargoValue)
-    if (!best || price < best.price) best = { campaign: c, price }
+    if (!best || (want === 'min' ? price < best.price : price > best.price)) best = { campaign: c, price }
   }
-  // Repasse: a empresa não paga diferença (desconto zero).
-  return best && { id: best.campaign.id, name: best.campaign.name, label: campaignLabel(best.campaign), customerPrice: best.price, discount: best.campaign.mode === 'REPASSE' ? 0 : Math.round((tableTotal - best.price) * 100) / 100 }
+  // Repasse e acréscimo: a empresa não paga diferença (desconto zero).
+  return best && { id: best.campaign.id, name: best.campaign.name, label: campaignLabel(best.campaign), customerPrice: best.price, discount: best.campaign.mode === 'REPASSE' || best.campaign.mode === 'ACRESCIMO' ? 0 : Math.max(0, Math.round((tableTotal - best.price) * 100) / 100) }
 }

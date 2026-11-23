@@ -32,6 +32,7 @@ export interface IntegrationsConfig {
   jadlog?: JadlogConfig
   rodonaves?: RodonavesConfig
   dhl?: DhlConfig
+  ssw?: SswConfig
   braspress: {
     enabled: boolean
     /** Usuário e senha da API, fornecidos pela Braspress (senha criptografada). */
@@ -58,6 +59,7 @@ export const DEFAULT_INTEGRATIONS: IntegrationsConfig = {
   jadlog: { enabled: false, tokenEnc: null, cnpj: '', account: '', contract: '', modalities: [], delivery: 'D', cubageFactor: 0 },
   rodonaves: { enabled: false, user: '', passwordEnc: null, cnpj: '', contactName: '', contactPhone: '' },
   dhl: { enabled: false, apiKey: '', apiSecretEnc: null, accountNumber: '', sandbox: false, scope: 'AMBOS' },
+  ssw: { enabled: false, name: 'TW Transportes', domain: 'TWT', login: '', passwordEnc: null, cnpj: '', goods: 1 },
 }
 
 /** Modalidade negociada com a Jadlog (código numérico do contrato e um nome para a cotação). */
@@ -180,6 +182,9 @@ export interface PackageInput {
   widthCm: number
   lengthCm: number
   value: number
+  /** Cubagem total (m³) e quantidade de volumes, quando a cotação tem (usados pelo SSW). */
+  cubicM3?: number
+  count?: number
 }
 
 /** Volume único a partir das medidas da cotação (sem medidas, caixa mínima aceita pelos Correios: 2 x 11 x 16 cm). */
@@ -192,7 +197,7 @@ export function packageOf(m: { realWeight: number; volumes?: { height?: number |
 }
 
 export interface OnlineQuote {
-  source: 'MELHOR_ENVIO' | 'CORREIOS' | 'BRASPRESS' | 'JADLOG' | 'RODONAVES' | 'DHL'
+  source: 'MELHOR_ENVIO' | 'CORREIOS' | 'BRASPRESS' | 'JADLOG' | 'RODONAVES' | 'DHL' | 'SSW'
   serviceId: string
   carrier: string
   service: string
@@ -482,4 +487,77 @@ export function parseDhlRates(body: unknown): OnlineQuote[] {
       error: ok ? null : 'Sem preço para este envio.',
     }
   })
+}
+
+/**
+ * SSW (sistema usado por várias transportadoras, ex.: TW Transportes): cotação pelo web service SOAP
+ * sswCotacao.cotar com domínio, login, senha e CNPJ do pagador fornecidos pela transportadora.
+ */
+export interface SswConfig {
+  enabled: boolean
+  /** Nome da transportadora na cotação (ex.: TW Transportes). */
+  name: string
+  /** Domínio da transportadora no SSW (ex.: TWT). */
+  domain: string
+  login: string
+  passwordEnc: string | null
+  /** CNPJ do pagador com a tabela negociada; vazio = CNPJ da filial de origem. */
+  cnpj: string
+  /** Código da mercadoria na transportadora (1 = diversos). */
+  goods: number
+}
+
+export const DEFAULT_SSW: SswConfig = { enabled: false, name: 'TW Transportes', domain: 'TWT', login: '', passwordEnc: null, cnpj: '', goods: 1 }
+export const SSW_QUOTE_URL = 'https://ssw.inf.br/ws/sswCotacao/index.php'
+export const SSW_QUOTE_ACTION = 'urn:sswinfbr.sswCotacao#cotacao'
+
+const xmlText = (v: string | number) =>
+  String(v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+
+/** Envelope SOAP do cotar(): peso com até 3 casas, volume em m³ com até 4. */
+export function sswQuoteEnvelope(c: { domain: string; login: string; password: string; cnpj: string; goods: number }, d: { from: string; to: string; recipientDoc: string | null }, p: PackageInput) {
+  const m3 = p.cubicM3 && p.cubicM3 > 0 ? p.cubicM3 : (p.heightCm * p.widthCm * p.lengthCm) / 1_000_000
+  const fields: [string, string | number][] = [
+    ['dominio', c.domain],
+    ['login', c.login],
+    ['senha', c.password],
+    ['cnpjPagador', c.cnpj],
+    ['cepOrigem', d.from.replace(/\D/g, '')],
+    ['cepDestino', d.to.replace(/\D/g, '')],
+    ['valorNF', (Math.round(p.value * 100) / 100).toFixed(2)],
+    ['quantidade', Math.max(1, Math.trunc(p.count ?? 1))],
+    ['peso', Math.max(0.001, p.weightKg).toFixed(3)],
+    ['volume', Math.max(0.0001, m3).toFixed(4)],
+    ['mercadoria', c.goods],
+    ['cnpjDestinatario', d.recipientDoc && d.recipientDoc.replace(/\D/g, '').length === 14 ? d.recipientDoc.replace(/\D/g, '') : ''],
+    ['coletar', ''],
+    ['entDificil', ''],
+    ['destContribuinte', ''],
+  ]
+  const body = fields.map(([k, v]) => `<${k}>${xmlText(v)}</${k}>`).join('')
+  return `<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:sswinfbr.sswCotacao"><soapenv:Body><urn:cotar>${body}</urn:cotar></soapenv:Body></soapenv:Envelope>`
+}
+
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', Aacute: 'Á', aacute: 'á', Agrave: 'À', agrave: 'à', Acirc: 'Â', acirc: 'â', Atilde: 'Ã', atilde: 'ã', Eacute: 'É', eacute: 'é', Ecirc: 'Ê', ecirc: 'ê', Iacute: 'Í', iacute: 'í', Oacute: 'Ó', oacute: 'ó', Ocirc: 'Ô', ocirc: 'ô', Otilde: 'Õ', otilde: 'õ', Uacute: 'Ú', uacute: 'ú', Uuml: 'Ü', uuml: 'ü', Ccedil: 'Ç', ccedil: 'ç' }
+const decodeXml = (s: string) => s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e: string) => (e[0] === '#' ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : (ENTITIES[e] ?? m)))
+const tag = (xml: string, name: string) => {
+  const m = new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`).exec(xml)
+  return m ? m[1]! : null
+}
+
+/** Resposta do cotar(): o XML da cotação vem como texto dentro de <return>. erro 0 = cotou. */
+export function parseSswQuote(soap: string): { price: number | null; deadlineDays: number | null; error: string | null } {
+  const inner = decodeXml(tag(soap, 'return') ?? soap)
+  const fault = tag(soap, 'faultstring')
+  const erro = tag(inner, 'erro')
+  if (erro === null) return { price: null, deadlineDays: null, error: fault ? decodeXml(fault).slice(0, 200) : 'Resposta da transportadora sem a cotação.' }
+  const msg = decodeXml(tag(inner, 'mensagem') ?? '').trim()
+  if (erro.trim() !== '0') return { price: null, deadlineDays: null, error: (/login|senha/i.test(msg) ? `A transportadora recusou o acesso (${msg}). Confira domínio, login, senha e CNPJ do pagador.` : msg || `Erro ${erro.trim()} na cotação.`).slice(0, 200) }
+  const price = money(tag(inner, 'totalFrete'))
+  const days = Number(tag(inner, 'prazo'))
+  return { price, deadlineDays: Number.isFinite(days) && days >= 0 ? days : null, error: price === null || price <= 0 ? msg || 'Sem preço para este envio.' : null }
 }

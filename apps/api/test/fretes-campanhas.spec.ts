@@ -65,3 +65,20 @@ describe('repasse da transportadora (a empresa não banca)', () => {
     expect(bestCampaign([r], { ...t, destCity: 'Maravilha', cargoValue: 5_000 }, 150)).toBeNull()
   })
 })
+
+describe('acréscimo na tabela (reajuste)', () => {
+  const up: FreightCampaign = { ...base, name: 'Reajuste dezembro', mode: 'ACRESCIMO', value: 10, ufs: [], carrierIds: ['c1'], startsOn: '2026-12-01', endsOn: '2026-12-31' }
+  const dez = { ...t, date: '2026-12-10' }
+  it('cobra a tabela + o % só no período e na transportadora escolhida', () => {
+    expect(bestCampaign([up], dez, 200)).toMatchObject({ customerPrice: 220, discount: 0, label: 'acréscimo de 10% na tabela' })
+    expect(bestCampaign([up], t, 200)).toBeNull()
+    expect(bestCampaign([up], { ...dez, carrierId: 'c2' }, 200)).toBeNull()
+  })
+  it('promoção vale antes do acréscimo; entre acréscimos, o maior', () => {
+    expect(bestCampaign([up, { ...base, mode: 'DESCONTO', value: 5, name: 'Promo' }], dez, 200)).toMatchObject({ name: 'Promo', customerPrice: 190 })
+    expect(bestCampaign([up, { ...up, name: 'Geral', value: 15, carrierIds: [] }], dez, 200)).toMatchObject({ name: 'Geral', customerPrice: 230 })
+  })
+  it('a tela aceita o novo tipo', () => {
+    expect(cleanCampaigns([{ name: 'Reajuste', mode: 'ACRESCIMO', value: '12,5' }], () => '00000000-0000-0000-0000-000000000001')[0]).toMatchObject({ mode: 'ACRESCIMO', value: 12.5 })
+  })
+})

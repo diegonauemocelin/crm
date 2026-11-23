@@ -20,6 +20,8 @@ export interface WalletCampaign {
   active: boolean
   /** Acréscimo sobre a cotação (%), que o vendedor cobra do cliente e fica com a empresa. */
   pct: number
+  /** % próprio de alguns vendedores (nome como vem na nota); quem não está aqui usa o pct da campanha. */
+  sellerPcts: { seller: string; pct: number }[]
   period: WalletPeriod
   /** Início e fim (AAAA-MM-DD, inclusive), pela data de emissão da nota. */
   start: string
@@ -48,9 +50,31 @@ export function cleanWalletCampaigns(input: unknown, newId: () => string): Walle
     if (!name || pct === null || !start) continue
     const end = period === 'PERSONALIZADO' ? (typeof r.end === 'string' && DATE.test(r.end) && r.end >= start ? r.end : null) : periodEnd(period, start)
     if (!end) continue
-    out.push({ id: typeof r.id === 'string' && /^[\w-]{6,60}$/.test(r.id) ? r.id : newId(), name, active: r.active !== false, pct, period, start, end })
+    const sellerPcts: WalletCampaign['sellerPcts'] = []
+    for (const x of Array.isArray(r.sellerPcts) ? r.sellerPcts.slice(0, 200) : []) {
+      const o = (x ?? {}) as Record<string, unknown>
+      const seller = typeof o.seller === 'string' ? o.seller.trim().slice(0, 120) : ''
+      const p = typeof o.pct === 'number' && Number.isFinite(o.pct) && o.pct >= 0 && o.pct <= 200 ? Math.round(o.pct * 100) / 100 : null
+      if (seller && p !== null && !sellerPcts.some((s) => foldName(s.seller) === foldName(seller))) sellerPcts.push({ seller, pct: p })
+    }
+    out.push({ id: typeof r.id === 'string' && /^[\w-]{6,60}$/.test(r.id) ? r.id : newId(), name, active: r.active !== false, pct, sellerPcts, period, start, end })
   }
   return out
+}
+
+const foldName = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase()
+
+/** % que o vendedor cobra do cliente nesta campanha: o dele, se tiver; senão o da campanha. */
+export function pctFor(c: Pick<WalletCampaign, 'pct'> & { sellerPcts?: WalletCampaign['sellerPcts'] }, seller: string | null | undefined) {
+  if (!seller) return c.pct
+  const k = foldName(seller)
+  return c.sellerPcts?.find((s) => foldName(s.seller) === k)?.pct ?? c.pct
 }
 
 /** Campanha ativa que vale na data (AAAA-MM-DD), para mostrar na cotação quanto cobrar do cliente. */

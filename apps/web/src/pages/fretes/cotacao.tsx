@@ -1,9 +1,10 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalculatorIcon, CheckCircle2Icon, ChevronDownIcon, ChevronRightIcon, DownloadIcon, HistoryIcon, Loader2Icon, PackageIcon, PlusIcon, PrinterIcon, RefreshCwIcon, SearchIcon, Trash2Icon, TruckIcon, UploadIcon } from 'lucide-react'
+import { CalculatorIcon, CheckCircle2Icon, ChevronDownIcon, ChevronRightIcon, DownloadIcon, HistoryIcon, LayoutGridIcon, ListIcon, Loader2Icon, MapPinIcon, PackageIcon, PlusIcon, PrinterIcon, RefreshCwIcon, SearchIcon, Trash2Icon, TruckIcon, UploadIcon, UserIcon } from 'lucide-react'
 import { type FormEvent, Fragment, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { FilialSwitch } from '@/components/fretes/filial-switch'
+import { SefazNotice } from '@/components/fretes/aviso-sefaz'
 import { ResultDetail } from '@/components/fretes/resultado'
 import { MoneyInput } from '@/components/money-input'
 import { Can, EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -20,7 +21,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
-import { dateTime, dayBr, money } from '@/lib/format'
+import { dateTime, dayBr, money, pctOf } from '@/lib/format'
 import { fmtNum, formatCep, maskCep, parseBr, type Quote, QUOTE_STATUS, type QuoteResult, RESULT_STATUS, useActiveUnit } from '@/lib/fretes'
 import { cn } from '@/lib/utils'
 
@@ -376,6 +377,17 @@ function SkuAdder({ onAdd }: { onAdd: (p: SkuProduct, qty: number) => void }) {
   )
 }
 
+/** Título de cada parte do formulário, numerado, para guiar quem cota. */
+function FormStep({ n, icon: Icon, title }: { n: number; icon: typeof MapPinIcon; title: string }) {
+  return (
+    <div className="flex items-center gap-2 border-t pt-4 first:border-t-0 first:pt-0">
+      <span className="flex size-6 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{n}</span>
+      <Icon className="size-4 text-muted-foreground" aria-hidden />
+      <p className="text-sm font-semibold">{title}</p>
+    </div>
+  )
+}
+
 export function FretesCotacaoPage() {
   return (
     <RequirePermission module="fretes_cotacao" action="create">
@@ -537,6 +549,7 @@ function NewQuote() {
           </>
         }
       />
+      <SefazNotice />
       {batch && <BatchQuote defaultUnit={unitId || active.unitId || ctx?.units[0]?.id || ''} onClose={() => setBatch(false)} />}
       <form onSubmit={submit}>
         <Card>
@@ -566,6 +579,7 @@ function NewQuote() {
               </p>
               {erpFill && <ErpItems d={erpFill} />}
             </div>
+            <FormStep n={1} icon={MapPinIcon} title="Origem e destino" />
             <div className="grid gap-4 md:grid-cols-4">
               <div className="space-y-1.5">
                 <Label htmlFor="q-unit">Filial de origem</Label>
@@ -617,6 +631,7 @@ function NewQuote() {
               </div>
             </div>
 
+            <FormStep n={2} icon={UserIcon} title="Destinatário" />
             <div className="grid gap-4 md:grid-cols-4">
               <div className="space-y-1.5">
                 <Label>Destinatário</Label>
@@ -643,6 +658,7 @@ function NewQuote() {
               </div>
             </div>
 
+            <FormStep n={3} icon={PackageIcon} title="Mercadoria e volumes" />
             <div className="grid gap-4 md:grid-cols-4">
               <div className="space-y-1.5">
                 <Label htmlFor="q-value">{noInvoice ? 'Valor declarado *' : 'Valor da NF (mercadoria) *'}</Label>
@@ -951,11 +967,29 @@ function exportCsv(q: Quote) {
 const HIDDEN_STATUS = new Set<string>(['SEM_COBERTURA', 'NAO_APLICAVEL', 'SEM_TABELA'])
 
 /** Resultado da cotação: comparativo, composição do preço e escolha da transportadora. Usado na tela nova e no histórico. */
+const VIEW_KEY = 'fretes.cotacao.visao'
+
 export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quote) => void }) {
   const [sort, setSort] = useState<'preco' | 'prazo' | 'equilibrio'>('preco')
   const [open, setOpen] = useState<string | null>(null)
   const [choosing, setChoosing] = useState<QuoteResult | null>(null)
   const [showAll, setShowAll] = useState(false)
+  /** Cartões (padrão) ou tabela; lembra a escolha neste navegador. */
+  const [view, setViewState] = useState<'cartoes' | 'tabela'>(() => {
+    try {
+      return localStorage.getItem(VIEW_KEY) === 'tabela' ? 'tabela' : 'cartoes'
+    } catch {
+      return 'cartoes'
+    }
+  })
+  const setView = (v: 'cartoes' | 'tabela') => {
+    setViewState(v)
+    try {
+      localStorage.setItem(VIEW_KEY, v)
+    } catch {
+      /* navegador sem armazenamento: vale só nesta tela */
+    }
+  }
   /** Transportadoras com todas as tabelas abertas (normalmente aparece só a melhor de cada uma). */
   const [moreOf, setMoreOf] = useState<Set<string>>(() => new Set())
   const ok = quote.results.filter((r) => r.status === 'OK')
@@ -1037,6 +1071,14 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
           <Badge variant="outline" className={QUOTE_STATUS[quote.status].className}>
             {QUOTE_STATUS[quote.status].label}
           </Badge>
+          <ToggleGroup type="single" variant="outline" size="sm" value={view} onValueChange={(v) => v && setView(v as 'cartoes' | 'tabela')} aria-label="Forma de mostrar">
+            <ToggleGroupItem value="cartoes" aria-label="Cartões" title="Cartões">
+              <LayoutGridIcon aria-hidden />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="tabela" aria-label="Tabela" title="Tabela">
+              <ListIcon aria-hidden />
+            </ToggleGroupItem>
+          </ToggleGroup>
           <ToggleGroup type="single" variant="outline" size="sm" value={sort} onValueChange={(v) => v && setSort(v as 'preco' | 'prazo' | 'equilibrio')}>
             <ToggleGroupItem value="preco">Menor preço</ToggleGroupItem>
             <ToggleGroupItem value="prazo">Menor prazo</ToggleGroupItem>
@@ -1058,6 +1100,137 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
       </CardHeader>
       <CardContent>
         {!ok.length && <p className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm">Nenhuma transportadora calculou para este destino. Veja os motivos abaixo (sem cobertura, restrição, tabela vencida ou sem tabela).</p>}
+        {view === 'cartoes' ? (
+          <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+            {rows.map((r) => {
+              const isOpen = open === key(r)
+              const selected = !!quote.selectedTableId && quote.selectedTableId === r.tableId
+              const first = !!r.tableId && !firstOf.has(r.carrierId)
+              if (r.tableId) firstOf.add(r.carrierId)
+              const others = extra.get(r.carrierId) ?? 0
+              const isOk = r.status === 'OK' && r.total !== null
+              const isCheapest = isOk && r.total === cheapest
+              const isFastest = isOk && r.deadlineDays !== null && r.deadlineDays === fastest
+              const isBalance = isOk && bestBalance === r && ok.length > 1
+              const pickup = r.pickups?.[0]
+              return (
+                <div
+                  key={key(r)}
+                  className={cn(
+                    'flex flex-col rounded-xl border bg-card p-4 shadow-xs transition-colors',
+                    selected ? 'border-[#006300] ring-1 ring-[#006300]/40' : isCheapest ? 'border-[#006300]/50' : '',
+                    !isOk && 'bg-muted/30',
+                  )}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-1.5 truncate font-semibold" title={r.quoteName}>
+                        <TruckIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                        {r.quoteName}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground" title={r.tableName ?? undefined}>
+                        {r.tableName ?? (r.online ? 'Consulta online' : '—')}
+                        {r.versionNumber ? ` · v${r.versionNumber}` : ''}
+                        {r.validUntil ? ` · vale até ${dayBr(r.validUntil)}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-1">
+                      {selected && (
+                        <Badge className="bg-[#006300] text-white hover:bg-[#006300]">
+                          <CheckCircle2Icon aria-hidden /> Escolhida
+                        </Badge>
+                      )}
+                      {isCheapest && <Badge className="bg-[#006300]/10 text-[#006300] hover:bg-[#006300]/10 dark:text-[#0ca30c]">Mais barato</Badge>}
+                      {isFastest && <Badge className="bg-sky-500/10 text-sky-700 hover:bg-sky-500/10 dark:text-sky-300">Mais rápido</Badge>}
+                      {isBalance && <Badge className="bg-violet-500/10 text-violet-700 hover:bg-violet-500/10 dark:text-violet-300">Melhor equilíbrio</Badge>}
+                      {!isOk && (
+                        <Badge variant="outline" className={RESULT_STATUS[r.status].className}>
+                          {r.online && r.status === 'ERRO' ? 'Erro na consulta' : RESULT_STATUS[r.status].label}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  {isOk ? (
+                    <>
+                      <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Total do frete</p>
+                          <p className="text-2xl font-bold tabular-nums">{money(r.total)}</p>
+                        </div>
+                        {quote.cargoValue > 0 && <p className="text-xs text-muted-foreground">{pctOf(r.total!, quote.cargoValue)} sobre a mercadoria</p>}
+                      </div>
+                      <div className="mt-3 grid grid-cols-3 gap-2 rounded-lg bg-muted/50 p-2 text-center">
+                        <div>
+                          <p className="text-[11px] text-muted-foreground">Prazo</p>
+                          <p className="text-sm font-semibold">{r.deadlineDays === null ? '—' : `${r.deadlineDays} ${r.deadlineDays === 1 ? 'dia útil' : 'dias úteis'}`}</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] text-muted-foreground">Entrega estimada</p>
+                          <p className="text-sm font-semibold">{r.deliveryDate ? dayBr(r.deliveryDate) : '—'}</p>
+                        </div>
+                        <div>
+                          <p className="text-[11px] text-muted-foreground">{r.pickupMode === 'DESPACHO' ? 'Despacho' : 'Coleta'}</p>
+                          <p className="text-sm font-semibold" title={pickup?.note ?? undefined}>
+                            {pickup ? pickup.pickup : r.pickupMode === 'DESPACHO' ? 'Levar à transp.' : r.pickupMode ? 'Na empresa' : '—'}
+                          </p>
+                        </div>
+                      </div>
+                      {pickup && <p className="mt-1.5 text-[11px] font-medium text-amber-800 dark:text-amber-300">Pedido até {pickup.cutoff} para sair na coleta de {pickup.pickup}</p>}
+                      {r.dropOff && (
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Inclui {money(r.dropOff.cost)} para levar até a transportadora{r.dropOff.provider ? ` (${r.dropOff.provider})` : ''}
+                        </p>
+                      )}
+                      {!r.campaign && wallet.data && (
+                        <p className="mt-2 rounded-md bg-sky-500/10 px-2 py-1 text-xs text-sky-800 dark:text-sky-200" title={`Poupança de frete: ${wallet.data.name}. O que a nota cobrar acima da cotação + ${fmtNum(wallet.data.pct)}% vira saldo do vendedor.`}>
+                          Cobrar do cliente <strong>{money(Math.round(r.total! * (1 + wallet.data.pct / 100) * 100) / 100)}</strong> (+{fmtNum(wallet.data.pct)}%)
+                        </p>
+                      )}
+                      {r.campaign && (
+                        <p className="mt-2 rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-800 dark:text-amber-200" title={`Campanha: ${r.campaign.name} (${r.campaign.label})`}>
+                          Cobrar do cliente <strong>{r.campaign.customerPrice === 0 ? 'frete grátis' : money(r.campaign.customerPrice)}</strong> · {r.campaign.name}
+                          {r.campaign.discount > 0 && <span className="block">A empresa paga a diferença: {money(r.campaign.discount)}</span>}
+                        </p>
+                      )}
+                      {r.warnings.length > 0 && <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">{r.warnings.length} aviso(s): veja os detalhes</p>}
+                    </>
+                  ) : (
+                    <p className="mt-3 text-sm text-muted-foreground">{r.reason ?? 'Não calculou para este destino.'}</p>
+                  )}
+
+                  <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-3 print:hidden">
+                    <div className="flex flex-col items-start">
+                      {(r.components.length > 0 || !!r.reason) && (
+                        <button type="button" className="inline-flex items-center gap-1 text-sm text-muted-foreground underline-offset-2 hover:underline" onClick={() => setOpen(isOpen ? null : key(r))}>
+                          {isOpen ? <ChevronDownIcon className="size-4" aria-hidden /> : <ChevronRightIcon className="size-4" aria-hidden />}
+                          {isOpen ? 'Esconder detalhes' : 'Ver detalhes'}
+                        </button>
+                      )}
+                      {first && !showAll && (others > 0 || moreOf.has(r.carrierId)) && (
+                        <button type="button" className="text-xs text-muted-foreground underline-offset-2 hover:underline" onClick={() => toggleMore(r.carrierId)}>
+                          {moreOf.has(r.carrierId) ? 'Mostrar só a melhor' : `+${others} ${others === 1 ? 'outra tabela' : 'outras tabelas'}`}
+                        </button>
+                      )}
+                    </div>
+                    {r.status === 'OK' && r.tableId && quote.status !== 'CANCELADA' && !selected && (
+                      <Can module="fretes_cotacao" action="edit">
+                        <Button size="sm" variant={isCheapest ? 'default' : 'outline'} onClick={() => setChoosing(r)}>
+                          Selecionar
+                        </Button>
+                      </Can>
+                    )}
+                  </div>
+                  {isOpen && (
+                    <div className="mt-3 border-t pt-3">
+                      <ResultDetail r={r} />
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -1172,9 +1345,10 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
             </TableBody>
           </Table>
         </div>
+        )}
         {hidden > 0 && (
-          <button type="button" className="mt-2 text-sm text-muted-foreground underline underline-offset-2 print:hidden" onClick={() => setShowAll((v) => !v)}>
-            {showAll ? 'Esconder' : 'Mostrar'} {hidden} sem cobertura, que não se aplicam ou sem tabela
+          <button type="button" className="mt-3 w-full rounded-lg border border-dashed p-2.5 text-sm text-muted-foreground hover:bg-muted/50 print:hidden" onClick={() => setShowAll((v) => !v)}>
+            {showAll ? `Esconder as ${hidden} cotações sem cobertura, que não se aplicam ou sem tabela` : `+ ${hidden} ${hidden === 1 ? 'cotação oculta' : 'cotações ocultas'} (sem cobertura, não se aplica ou sem tabela) · clique para ver`}
           </button>
         )}
         {quote.selectionNote && <p className="mt-3 text-sm">Motivo da escolha: {quote.selectionNote}</p>}
