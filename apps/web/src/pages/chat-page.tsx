@@ -2575,6 +2575,13 @@ function imageDocument(m: Pick<Message, 'type' | 'mime' | 'fileName'>) {
   return (!m.mime || m.mime === 'application/octet-stream') && /\.(jpe?g|png|webp|gif)$/i.test(m.fileName ?? '')
 }
 
+/** Vídeo que chegou como documento (vídeo grande ou gravação de tela enviados como arquivo): toca na conversa. */
+function videoDocument(m: Pick<Message, 'type' | 'mime' | 'fileName'>) {
+  if (m.type !== 'documento') return false
+  if (m.mime && /^video\/(mp4|quicktime|webm|3gpp|x-m4v)$/.test(m.mime)) return true
+  return (!m.mime || m.mime === 'application/octet-stream') && /\.(mp4|mov|m4v|webm|3gp)$/i.test(m.fileName ?? '')
+}
+
 function Bubble({ m }: { m: Message }) {
   const monitor = useContext(MonitorContext)
   if (m.deleted) {
@@ -2636,6 +2643,17 @@ function Bubble({ m }: { m: Message }) {
         <ImageViewer id={m.id} src={src} alt={m.fileName ?? 'Imagem'} />
         <a href={src} download={m.fileName ?? undefined} onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 rounded border bg-background/60 px-2 py-1 text-xs underline-offset-4 hover:underline" title="Baixar o arquivo original">
           <DownloadIcon className="size-3.5 shrink-0" /> <span className="truncate">{m.fileName ?? 'Imagem'}</span>
+        </a>
+        {text}
+      </div>
+    )
+  }
+  if (videoDocument(m) && m.hasFile) {
+    return (
+      <div className="space-y-1">
+        <video controls preload="metadata" src={src} className="max-h-72 max-w-full rounded" />
+        <a href={src} download={m.fileName ?? undefined} onClick={(e) => e.stopPropagation()} className="flex items-center gap-2 rounded border bg-background/60 px-2 py-1 text-xs underline-offset-4 hover:underline" title="Baixar o arquivo">
+          <DownloadIcon className="size-3.5 shrink-0" /> <span className="truncate">{m.fileName ?? 'Vídeo'}</span>
         </a>
         {text}
       </div>

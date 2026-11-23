@@ -149,8 +149,11 @@ export interface WaRules {
   redMinutes: number
   /** Horário comercial (horário de Brasília): um intervalo por dia da semana (0 = domingo); null = fechado. */
   businessHours: BusinessHours
-  /** Mensagem automática para quem chama fora do horário comercial (uma vez a cada cooldownHours por contato). */
-  away: { enabled: boolean; text: string; cooldownHours: number }
+  /**
+   * Mensagem automática para quem chama fora do horário comercial (uma vez a cada cooldownHours por contato).
+   * numberIds: só nestes números de WhatsApp (vazio = em todos).
+   */
+  away: { enabled: boolean; text: string; cooldownHours: number; numberIds: string[] }
   /** Prazo de guarda das conversas (LGPD): em meses, por tipo de contato; as mídias saem antes (só fica o texto). */
   retention: Retention
   /** Finalizar atendimento: mensagem de encerramento enviada ao cliente (quando ligada; dá para não enviar na hora). */
@@ -208,7 +211,7 @@ export const DEFAULT_RULES: WaRules = {
   yellowMinutes: 15,
   redMinutes: 60,
   businessHours: DEFAULT_HOURS,
-  away: { enabled: false, text: DEFAULT_AWAY_TEXT, cooldownHours: 12 },
+  away: { enabled: false, text: DEFAULT_AWAY_TEXT, cooldownHours: 12, numberIds: [] },
   retention: DEFAULT_RETENTION,
   close: { enabled: true, text: DEFAULT_CLOSE_TEXT },
 }
@@ -409,6 +412,7 @@ export function cleanRules(raw: Partial<WaRules> | null | undefined): WaRules {
       enabled: r.away?.enabled === true,
       text: typeof r.away?.text === 'string' && r.away.text.trim() ? r.away.text.trim().slice(0, 1000) : DEFAULT_AWAY_TEXT,
       cooldownHours: Number.isInteger(r.away?.cooldownHours) && r.away!.cooldownHours >= 1 && r.away!.cooldownHours <= 168 ? r.away!.cooldownHours : 12,
+      numberIds: [...new Set((Array.isArray(r.away?.numberIds) ? r.away!.numberIds : []).filter((x): x is string => typeof x === 'string' && /^[0-9a-f-]{36}$/i.test(x)))].slice(0, 50),
     },
     retention: cleanRetention(r.retention),
     close: {

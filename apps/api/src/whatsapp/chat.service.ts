@@ -723,6 +723,8 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
    */
   private async sendAway(n: WhatsappNumber, conv: { id: string; jid: string }, p: ParsedMessage, rules: WaRules, client: EvolutionClient) {
     if (!rules.away.enabled || !rules.businessHours.enabled || isOpen(rules.businessHours, p.at)) return
+    // Só nos números escolhidos (lista vazia = todos).
+    if (rules.away.numberIds.length && !rules.away.numberIds.includes(n.id)) return
     if (Date.now() - p.at.getTime() > 10 * 60_000 || n.status !== 'CONECTADO') return
     const since = new Date(Date.now() - rules.away.cooldownHours * 3_600_000)
     // Marca antes de enviar: duas mensagens seguidas do cliente não geram duas respostas.
