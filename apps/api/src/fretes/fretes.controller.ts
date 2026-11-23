@@ -138,6 +138,16 @@ class DhlDto {
   @IsOptional() @IsIn(['NACIONAL', 'INTERNACIONAL', 'AMBOS']) scope?: 'NACIONAL' | 'INTERNACIONAL' | 'AMBOS'
 }
 
+class SswDto {
+  @IsOptional() @IsBoolean() enabled?: boolean
+  @IsOptional() @IsString() @MaxLength(60) name?: string
+  @IsOptional() @IsString() @MaxLength(10) domain?: string
+  @IsOptional() @IsString() @MaxLength(60) login?: string
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(200) password?: string | null
+  @IsOptional() @IsString() @MaxLength(20) cnpj?: string
+  @IsOptional() @IsNumber() @Min(1) @Max(99999) goods?: number
+}
+
 class BoxesDto {
   /** Lista completa das caixas (validada e limpa no serviço: cleanBoxes). */
   @IsArray() @ArrayMaxSize(50) list!: unknown[]
@@ -153,6 +163,7 @@ class IntegrationsDto {
   @IsOptional() @IsObject() @ValidateNested() @Type(() => JadlogDto) jadlog?: JadlogDto
   @IsOptional() @IsObject() @ValidateNested() @Type(() => RodonavesDto) rodonaves?: RodonavesDto
   @IsOptional() @IsObject() @ValidateNested() @Type(() => DhlDto) dhl?: DhlDto
+  @IsOptional() @IsObject() @ValidateNested() @Type(() => SswDto) ssw?: SswDto
   @IsOptional() @IsObject() @ValidateNested() @Type(() => MelhorEnvioDto) melhorEnvio?: MelhorEnvioDto
   @IsOptional() @IsObject() @ValidateNested() @Type(() => CorreiosDto) correios?: CorreiosDto
 }

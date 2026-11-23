@@ -160,6 +160,7 @@ interface OnlineView {
   jadlog: { enabled: boolean; hasToken: boolean; cnpj: string; account: string; contract: string; modalities: { code: number; name: string }[]; delivery: 'D' | 'R'; cubageFactor: number }
   rodonaves?: { enabled: boolean; hasPassword: boolean; user: string; cnpj: string; contactName: string; contactPhone: string }
   dhl?: { enabled: boolean; hasSecret: boolean; apiKey: string; accountNumber: string; sandbox: boolean; scope: DhlScope }
+  ssw?: { enabled: boolean; hasPassword: boolean; name: string; domain: string; login: string; cnpj: string; goods: number }
 }
 
 type DhlScope = 'NACIONAL' | 'INTERNACIONAL' | 'AMBOS'
@@ -180,7 +181,7 @@ function OnlineQuotes() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <PlugIcon className="size-4" aria-hidden /> Cotação online: Melhor Envio, Correios, Braspress, Jadlog, Rodonaves e DHL Express
+          <PlugIcon className="size-4" aria-hidden /> Cotação online: Melhor Envio, Correios, Braspress, Jadlog, Rodonaves, TW (SSW) e DHL Express
         </CardTitle>
         <CardDescription>
           Ligadas, a cotação de frete também consulta essas APIs na hora e mostra os valores junto com as tabelas, para comparar. As chaves ficam criptografadas e nunca voltam para a tela.
@@ -194,6 +195,7 @@ function OnlineQuotes() {
             <BraspressForm v={d.braspress} editable={editable} saving={save.isPending} onSave={(b) => save.mutate({ braspress: b })} />
             {d.jadlog && <JadlogForm v={d.jadlog} editable={editable} saving={save.isPending} onSave={(j) => save.mutate({ jadlog: j })} />}
             {d.rodonaves && <RodonavesForm v={d.rodonaves} editable={editable} saving={save.isPending} onSave={(r) => save.mutate({ rodonaves: r })} />}
+            {d.ssw && <SswForm v={d.ssw} editable={editable} saving={save.isPending} onSave={(x) => save.mutate({ ssw: x })} />}
             {d.dhl && <DhlForm v={d.dhl} editable={editable} saving={save.isPending} onSave={(x) => save.mutate({ dhl: x })} />}
           </>
         )}
@@ -514,6 +516,55 @@ function RodonavesForm({ v, editable, saving, onSave }: { v: NonNullable<OnlineV
         <div className="space-y-1.5">
           <Label htmlFor="rt-fone">Telefone do contato (com DDD)</Label>
           <Input id="rt-fone" inputMode="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} disabled={!editable} />
+        </div>
+      </div>
+      {editable && <SaveButtons enabled={v.enabled} saving={saving} onSave={(en) => onSave(body(en))} />}
+    </div>
+  )
+}
+
+function SswForm({ v, editable, saving, onSave }: { v: NonNullable<OnlineView['ssw']>; editable: boolean; saving: boolean; onSave: (b: Record<string, unknown>) => void }) {
+  const [name, setName] = useState(v.name)
+  const [domain, setDomain] = useState(v.domain)
+  const [login, setLogin] = useState(v.login)
+  const [password, setPassword] = useState('')
+  const [cnpj, setCnpj] = useState(v.cnpj)
+  const [goods, setGoods] = useState(String(v.goods))
+  const body = (enabled: boolean) => ({ enabled, name, domain, login, cnpj, goods: Math.max(1, Math.trunc(Number(goods)) || 1), ...(password.trim() ? { password: password.trim() } : {}) })
+  return (
+    <div className="space-y-3 rounded-md border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-medium">{v.name || 'TW Transportes'} (sistema SSW)</p>
+        <StatusBadge enabled={v.enabled} configured={v.hasPassword} />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Domínio, login, senha e CNPJ do pagador vêm da TW Transportes depois da solicitação de acesso à API. Serve também para outras transportadoras que usam o sistema SSW (troque o nome e o domínio). Com o CNPJ do destinatário na cotação, a TW confere contribuinte e entrega difícil.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="sw-name">Nome na cotação</Label>
+          <Input id="sw-name" value={name} onChange={(e) => setName(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="sw-dom">Domínio</Label>
+          <Input id="sw-dom" className="uppercase" autoComplete="off" value={domain} onChange={(e) => setDomain(e.target.value.toUpperCase())} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="sw-login">Login da API</Label>
+          <Input id="sw-login" autoComplete="off" value={login} onChange={(e) => setLogin(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="sw-pass">Senha da API {v.hasPassword && <span className="text-xs text-muted-foreground">••• (mantido; em branco mantém)</span>}</Label>
+          <Input id="sw-pass" type="password" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="sw-cnpj">CNPJ do pagador</Label>
+          <Input id="sw-cnpj" inputMode="numeric" placeholder="Vazio = CNPJ da filial" value={cnpj} onChange={(e) => setCnpj(e.target.value)} disabled={!editable} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="sw-merc">Código da mercadoria</Label>
+          <Input id="sw-merc" inputMode="numeric" value={goods} onChange={(e) => setGoods(e.target.value.replace(/\D/g, ''))} disabled={!editable} />
+          <p className="text-xs text-muted-foreground">1 = diversos (padrão da TW)</p>
         </div>
       </div>
       {editable && <SaveButtons enabled={v.enabled} saving={saving} onSave={(en) => onSave(body(en))} />}
