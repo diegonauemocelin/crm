@@ -216,6 +216,7 @@ export class PedidosService {
       page,
       pageSize: PAGE,
       counts: Object.fromEntries(byStatus.map((b) => [b.status, b._count._all])),
+      ...(await this.lastNfeInfo(user.tenantId, units, f.unitId)),
       items: rows.map((r) => {
         const c = ctes.find((x) => x.shipmentId === r.id)
         return this.view(r, { carrierName: carriers.find((x) => x.id === r.carrierId)?.name ?? null, cte: c ? { number: c.number, total: Number(c.total), recStatus: c.recStatus } : null, seller: (r.invoiceKey && nfes.find((x) => x.key === r.invoiceKey)?.seller) || null, tableExpected: tableExpected(ctes.filter((x) => x.shipmentId === r.id)), freightCheck: this.freightCheck(r.invoiceKey, nfes, ctes.filter((x) => x.shipmentId === r.id), rec.nfeValor) })
@@ -332,6 +333,19 @@ export class PedidosService {
     await this.prisma.freightShipment.update({ where: { id: s.id }, data })
     await this.audit.byUser(user, ctx, 'frete.pedido.conferido', 'freight_shipment', id, { pedido: s.code, resultado: d.status, causa: d.cause ?? null })
     return { ok: true }
+  }
+
+  /** Última NF-e importada (a de emissão mais recente) e a última importação de XML: quem e quando. */
+  private async lastNfeInfo(tenantId: string, units: string[] | null, unitId?: string) {
+    const unitWhere = unitId ? { unitId } : units ? { unitId: { in: units } } : {}
+    const [nfe, imp] = await Promise.all([
+      this.prisma.freightNfe.findFirst({ where: { tenantId, ...unitWhere, issuedAt: { not: null } }, orderBy: { issuedAt: 'desc' }, select: { number: true, issuedAt: true, createdAt: true } }),
+      this.prisma.freightNfeImport.findFirst({ where: { tenantId }, orderBy: { createdAt: 'desc' }, select: { createdAt: true, createdByName: true, fileNames: true } }),
+    ])
+    return {
+      lastNfe: nfe ? { number: nfe.number, issuedAt: nfe.issuedAt, importedAt: nfe.createdAt } : null,
+      lastImport: imp ? { at: imp.createdAt, byName: imp.createdByName, files: imp.fileNames.slice(0, 120) } : null,
+    }
   }
 
   /** Vendedores das NF-es importadas (filtro da lista de pedidos). */
