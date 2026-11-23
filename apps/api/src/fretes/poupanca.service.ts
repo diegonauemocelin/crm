@@ -9,7 +9,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { cleanText } from '../sugestoes/sugestoes'
 import { allowedUnits, assertCan } from './acesso'
-import { campaignOn, cleanWalletCampaigns, WALLET_KEY, walletBalances, walletEntry, type WalletCampaign } from './poupanca'
+import { campaignOn, cleanWalletCampaigns, pctFor, WALLET_KEY, walletBalances, walletEntry, type WalletCampaign } from './poupanca'
 
 const num = (d: Prisma.Decimal | null) => (d === null ? null : Number(d))
 
@@ -37,7 +37,7 @@ export class PoupancaService {
     assertCan(user, 'fretes_tabelas', 'edit')
     const list = cleanWalletCampaigns(raw, () => randomUUID())
     await this.settings.set(user.tenantId, WALLET_KEY, list)
-    await this.audit.byUser(user, ctx, 'frete.poupanca.campanhas', 'settings', WALLET_KEY, { campanhas: list.map((c) => `${c.name} ${c.pct}% ${c.start}..${c.end}${c.active ? '' : ' (inativa)'}`) })
+    await this.audit.byUser(user, ctx, 'frete.poupanca.campanhas', 'settings', WALLET_KEY, { campanhas: list.map((c) => `${c.name} ${c.pct}%${c.sellerPcts.length ? ` (${c.sellerPcts.map((s) => `${s.seller} ${s.pct}%`).join(', ')})` : ''} ${c.start}..${c.end}${c.active ? '' : ' (inativa)'}`) })
     return list
   }
 
@@ -46,7 +46,11 @@ export class PoupancaService {
     if (!(['fretes_cotacao', 'fretes_pedidos'] as const).some((m) => can(user.permissions, user.role.isSystem, m, 'view'))) throw new ForbiddenException('Você não tem permissão para esta ação.')
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date())
     const c = campaignOn(await this.campaigns(user.tenantId), today)
-    return c ? { id: c.id, name: c.name, pct: c.pct, end: c.end } : null
+    if (!c) return null
+    // % de quem está cotando: o vendedor ligado ao login (ou o nome da pessoa), se tiver % próprio na campanha.
+    const seller = (await this.prisma.seller.findFirst({ where: { tenantId: user.tenantId, userId: user.id }, select: { name: true } }))?.name ?? user.name
+    const pct = pctFor(c, seller)
+    return { id: c.id, name: c.name, pct, end: c.end, seller: pct !== c.pct ? seller : null }
   }
 
   private async campaign(user: AuthUser, id: string) {
@@ -79,7 +83,7 @@ export class PoupancaService {
     return rows.map((r) => {
       const cte = num(r.cte)
       const base = { key: r.key, number: r.number, issuedAt: r.issuedAt, seller: r.seller, code: r.code, customerName: r.customerName, cteNumbers: r.numbers, nota: num(r.nota) ?? 0, cte, quote: num(r.quote), table: num(r.tabela) }
-      return { ...base, entry: walletEntry({ nota: base.nota, cte, quote: base.quote, table: base.table }, c.pct) }
+      return { ...base, pct: pctFor(c, r.seller), entry: walletEntry({ nota: base.nota, cte, quote: base.quote, table: base.table }, pctFor(c, r.seller)) }
     })
   }
 
