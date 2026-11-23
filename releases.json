@@ -2,6 +2,38 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.67",
+      "date": "2026-11-23",
+      "title": "Agendamento de coletas com aviso na TV; mensagem de ausência por número; vídeo recebido como arquivo",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Agendar coletas (Fretes › Agendar coletas): um clique em Manhã ou Tarde na transportadora agenda a coleta de hoje ou de amanhã; depois, um clique em Chegou, Coletou ou Cancelar. Transportadoras podem ser marcadas como \"coleta só com agendamento\". Perfil pronto \"Expedição (coletas)\", que vê só essa tela e o painel da TV."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Painel de coletas da TV mostra as coletas agendadas do dia e tem avisos falados (botão Ligar som): coleta agendada, transportadora chegando em 15 minutos, hora da coleta agendada e transportadora coletando."
+        },
+        {
+          "type": "melhoria",
+          "area": "WhatsApp",
+          "text": "Mensagem de ausência (fora do horário): escolha em quais números ela é enviada. Os outros não mandam a mensagem automática."
+        },
+        {
+          "type": "correcao",
+          "area": "WhatsApp",
+          "text": "Vídeo recebido como arquivo (ex.: gravação de tela grande) agora toca na conversa, com o botão de baixar."
+        },
+        {
+          "type": "correcao",
+          "area": "WhatsApp",
+          "text": "App do celular: em Tudo aparecem as conversas e os grupos juntos; em Grupos, só os grupos."
+        }
+      ]
+    },
+    {
       "version": "3.0.66",
       "date": "2026-11-20",
       "title": "App instalado sem pedir o código de 2 fatores por 30 dias",
