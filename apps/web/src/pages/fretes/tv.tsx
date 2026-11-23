@@ -1,12 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
-import { MaximizeIcon, TruckIcon } from 'lucide-react'
+import { MaximizeIcon, TruckIcon, Volume2Icon, VolumeXIcon } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { FilialSwitch } from '@/components/fretes/filial-switch'
-import { ErrorState, RequirePermission } from '@/components/page'
+import { EmptyState, ErrorState } from '@/components/page'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
-import { board, type BoardItem, type PickupRow, span } from '@/lib/coletas'
+import { board, type BoardItem, PERIOD_WINDOW, pickupAnnouncements, type PickupRow, type ScheduledPickup, span } from '@/lib/coletas'
+import { useAuth } from '@/lib/auth'
+import { ShieldOffIcon } from 'lucide-react'
 import { ALL_UNITS, useActiveUnit } from '@/lib/fretes'
 import { cn } from '@/lib/utils'
 
@@ -16,11 +18,10 @@ import { cn } from '@/lib/utils'
  * horários cadastrados são recarregados a cada 30 segundos.
  */
 export function FretesTvPage() {
-  return (
-    <RequirePermission module="fretes_painel">
-      <Tv />
-    </RequirePermission>
-  )
+  const { can } = useAuth()
+  // Quem vê o painel de fretes ou quem cuida das coletas (expedição).
+  if (!can('fretes_painel', 'view') && !can('fretes_coletas', 'view')) return <EmptyState icon={ShieldOffIcon} title="Acesso não liberado" description="Seu perfil de acesso não tem permissão para esta área. Fale com o administrador do sistema." />
+  return <Tv />
 }
 
 const STATUS: Record<BoardItem['status'], { label: string; chip: string; card: string }> = {
@@ -32,7 +33,7 @@ const STATUS: Record<BoardItem['status'], { label: string; chip: string; card: s
   COLETADO: { label: 'Coletado', chip: 'bg-white/10 text-white/60', card: 'border-white/5 bg-transparent opacity-60' },
 }
 
-type PanelData = { unit: string | null; rows: PickupRow[] }
+type PanelData = { unit: string | null; rows: PickupRow[]; scheduled?: ScheduledPickup[] }
 const REFRESH = 30_000
 
 function Tv() {
@@ -58,6 +59,8 @@ function Board({ q, children, linkHint }: { q: { data?: PanelData; error: Error 
   }, [])
   const root = useRef<HTMLDivElement>(null)
   const items = board(q.data?.rows ?? [], now).filter((i) => i.status !== 'COLETADO')
+  const scheduled = (q.data?.scheduled ?? []).filter((s) => s.status === 'AGENDADA' || s.status === 'COLETANDO')
+  const sound = useAnnouncements(q.data, items, now)
   const loading = items.filter((i) => i.status === 'CARREGANDO')
   const next = items.filter((i) => i.status !== 'CARREGANDO')
   return (
@@ -70,6 +73,9 @@ function Board({ q, children, linkHint }: { q: { data?: PanelData; error: Error 
         </div>
         <div className="flex flex-wrap items-center gap-2 [&_[data-slot=select-trigger]]:bg-white/10 [&_[data-slot=select-trigger]]:text-white">
           {children}
+          <Button variant="secondary" onClick={sound.toggle} title="Avisos falados: coleta agendada, hora da coleta chegando e transportadora coletando">
+            {sound.on ? <Volume2Icon aria-hidden /> : <VolumeXIcon aria-hidden />} {sound.on ? 'Som ligado' : 'Ligar som'}
+          </Button>
           <Button variant="secondary" onClick={() => void root.current?.requestFullscreen?.()}>
             <MaximizeIcon aria-hidden /> Tela cheia
           </Button>
@@ -77,7 +83,17 @@ function Board({ q, children, linkHint }: { q: { data?: PanelData; error: Error 
       </header>
 
       {q.error && <ErrorState error={q.error} onRetry={() => q.refetch()} />}
-      {q.data && !items.length && (
+      {scheduled.length > 0 && (
+        <section className="space-y-3">
+          <p className="text-sm font-semibold tracking-widest text-white/60 uppercase">Coletas agendadas hoje</p>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {scheduled.map((s) => (
+              <ScheduledCard key={s.id} s={s} big={s.status === 'COLETANDO'} />
+            ))}
+          </div>
+        </section>
+      )}
+      {q.data && !items.length && !scheduled.length && (
         <div className="rounded-2xl border border-white/10 p-10 text-center text-white/70">
           <TruckIcon className="mx-auto mb-3 size-10" aria-hidden />
           <p className="text-xl font-semibold text-white">Nenhuma coleta pendente hoje</p>
@@ -140,4 +156,95 @@ function Card({ i, big = false }: { i: BoardItem; big?: boolean }) {
       </div>
     </article>
   )
+}
+
+/** Coleta agendada pela expedição: período (manhã ou tarde) e se a transportadora já está coletando. */
+function ScheduledCard({ s, big }: { s: ScheduledPickup; big: boolean }) {
+  const w = PERIOD_WINDOW[s.period]
+  return (
+    <article className={cn('rounded-2xl border-2 p-5', big ? 'border-emerald-400/70 bg-emerald-500/10' : 'border-violet-400/50 bg-violet-500/10')}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className={cn('truncate font-extrabold', big ? 'text-5xl' : 'text-3xl')}>{s.carrier}</h2>
+          <p className="text-sm font-bold tracking-wide text-violet-300 uppercase">Coleta agendada{s.unit ? ` · ${s.unit}` : ''}</p>
+        </div>
+        <span className={cn('shrink-0 rounded-full px-3 py-1 text-sm font-bold', big ? 'bg-emerald-500 text-emerald-950' : 'bg-violet-400 text-violet-950')}>{big ? 'Coletando agora' : s.period === 'MANHA' ? 'Manhã' : 'Tarde'}</span>
+      </div>
+      <p className="mt-3 text-2xl font-extrabold tabular-nums">
+        {s.period === 'MANHA' ? 'Manhã' : 'Tarde'} · {w.start} às {w.end}
+      </p>
+    </article>
+  )
+}
+
+const SOUND_KEY = 'crm-tv-som'
+
+/**
+ * Avisos falados no painel (voz do navegador, em português): coleta agendada, hora da coleta chegando e transportadora
+ * coletando. O navegador só deixa tocar som depois de um clique na tela: por isso o botão "Ligar som".
+ */
+function useAnnouncements(data: PanelData | undefined, items: BoardItem[], now: Date) {
+  const [on, setOn] = useState(() => {
+    try {
+      return localStorage.getItem(SOUND_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const prev = useRef<{ scheduled: ScheduledPickup[] } | null>(null)
+  const said = useRef(new Set<string>())
+  const minute = Math.floor(now.getTime() / 60_000)
+  useEffect(() => {
+    if (!data) return
+    const out = pickupAnnouncements(prev.current, { scheduled: data.scheduled ?? [], items }, new Date(), said.current)
+    // Primeira leitura: só registra o que já está acontecendo (não fala tudo de uma vez ao abrir a tela).
+    const first = prev.current === null
+    prev.current = { scheduled: data.scheduled ?? [] }
+    if (first || !on || !out.length) return
+    speak(out.map((o) => o.text))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, minute, on])
+  const toggle = () => {
+    const next = !on
+    setOn(next)
+    try {
+      localStorage.setItem(SOUND_KEY, next ? '1' : '0')
+    } catch {
+      /* sem armazenamento: só vale nesta tela */
+    }
+    if (next) speak(['Som dos avisos ligado.'])
+    else window.speechSynthesis?.cancel()
+  }
+  return { on, toggle }
+}
+
+/** Um bipe curto e o texto falado em português. */
+function speak(texts: string[]) {
+  try {
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (Ctx) {
+      const ctx = new Ctx()
+      const o = ctx.createOscillator()
+      const g = ctx.createGain()
+      o.frequency.value = 880
+      g.gain.setValueAtTime(0.2, ctx.currentTime)
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5)
+      o.connect(g).connect(ctx.destination)
+      o.start()
+      o.stop(ctx.currentTime + 0.5)
+      setTimeout(() => void ctx.close(), 800)
+    }
+  } catch {
+    /* sem áudio: segue só com a voz */
+  }
+  const synth = window.speechSynthesis
+  if (!synth) return
+  const voice = synth.getVoices().find((v) => v.lang.toLowerCase().startsWith('pt'))
+  for (const text of texts) {
+    const u = new SpeechSynthesisUtterance(text)
+    u.lang = 'pt-BR'
+    u.rate = 0.95
+    if (voice) u.voice = voice
+    synth.speak(u)
+  }
 }

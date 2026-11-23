@@ -200,7 +200,8 @@ export const NAVIGATION: NavGroup[] = [
     title: 'Fretes',
     items: [
       { title: 'Painel de fretes', to: '/fretes', icon: GaugeIcon, module: 'fretes_painel' },
-      { title: 'Painel de coletas (TV)', to: '/fretes/painel-tv', icon: MonitorIcon, module: 'fretes_painel' },
+      { title: 'Painel de coletas (TV)', to: '/fretes/painel-tv', icon: MonitorIcon, anyOf: ['fretes_painel', 'fretes_coletas'] },
+      { title: 'Agendar coletas', to: '/fretes/coletas', icon: TruckIcon, module: 'fretes_coletas' },
       { title: 'Cotação de frete', to: '/fretes/cotacao', icon: CalculatorIcon, module: 'fretes_cotacao', action: 'create' },
       { title: 'Histórico de cotações', to: '/fretes/cotacoes', icon: HistoryIcon, module: 'fretes_cotacao' },
       { title: 'Pedidos e expedição', to: '/fretes/pedidos', icon: PackageIcon, module: 'fretes_pedidos' },

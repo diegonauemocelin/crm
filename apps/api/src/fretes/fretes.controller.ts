@@ -1,4 +1,5 @@
 import { BadRequestException, Body, ForbiddenException, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Res, UploadedFile, UploadedFiles, UseInterceptors } from '@nestjs/common'
+import { SCHEDULE_PERIODS, SCHEDULE_STATUSES, type SchedulePeriod, type ScheduleStatus } from './coletas'
 import { can } from '../common/permissions'
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express'
 import { ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger'
@@ -68,6 +69,8 @@ class CarrierDto {
   @IsOptional() @IsArray() @ArrayMaxSize(40) pickups?: unknown[]
   @IsOptional() @IsIn(['TRANSPORTADORA', 'PRESTADOR']) kind?: string
   @IsOptional() @IsIn(['COLETA', 'DESPACHO']) pickupMode?: string
+  /** Só vem coletar quando a expedição agenda. */
+  @IsOptional() @IsBoolean() pickupBySchedule?: boolean
   @IsOptional() @nullable @IsNumber() @Min(0) @Max(100000) dropOffCost?: number | null
   @IsOptional() @nullable @IsUUID() dropOffProviderId?: string | null
   @IsOptional() @IsBoolean() reconcile?: boolean
@@ -376,6 +379,19 @@ class CitiesSiteDto {
   @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsString() @MaxLength(500) url?: string | null
 }
 
+class ScheduleDto {
+  @IsUUID() transportadora!: string
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsUUID() filial?: string | null
+  /** HOJE, AMANHA ou AAAA-MM-DD. */
+  @IsString() @MaxLength(10) dia!: string
+  @IsIn(SCHEDULE_PERIODS) periodo!: SchedulePeriod
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsString() @MaxLength(200) observacao?: string | null
+}
+
+class ScheduleStatusDto {
+  @IsIn(SCHEDULE_STATUSES) situacao!: ScheduleStatus
+}
+
 @ApiTags('Fretes')
 @Controller('fretes')
 export class FretesController {
@@ -507,6 +523,24 @@ export class FretesController {
   @Put('transportadoras/:id')
   updateCarrier(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CarrierDto, @ReqContext() ctx: RequestCtx) {
     return this.carriers.update(user, id, dto, ctx)
+  }
+
+  // ─────────── Coletas agendadas (expedição) ───────────
+
+  @Get('coletas/agendadas')
+  schedules(@CurrentUser() user: AuthUser, @Query('filial') filial?: string) {
+    return this.carriers.schedules(user, filial && /^[0-9a-f-]{36}$/i.test(filial) ? filial : null)
+  }
+
+  @Post('coletas/agendadas')
+  @HttpCode(200)
+  addSchedule(@CurrentUser() user: AuthUser, @Body() dto: ScheduleDto, @ReqContext() ctx: RequestCtx) {
+    return this.carriers.addSchedule(user, { carrierId: dto.transportadora, unitId: dto.filial ?? null, when: dto.dia, period: dto.periodo, note: dto.observacao ?? null }, ctx)
+  }
+
+  @Patch('coletas/agendadas/:id')
+  setSchedule(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ScheduleStatusDto, @ReqContext() ctx: RequestCtx) {
+    return this.carriers.setScheduleStatus(user, id, dto.situacao, ctx)
   }
 
   @Get('painel-tv')

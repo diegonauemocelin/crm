@@ -9,7 +9,8 @@ import { allowedUnits, assertCan, assertUnitList, unitListWhere } from './acesso
 import { MODALS } from './catalogo'
 import { normalizeCep, normalizeUf, validCnpj, validCpf } from './cep'
 import { FEE_CODES, feeCodeFromName, parseFeeSheet, type ParsedFee } from './taxas'
-import { cleanPickups, type Pickup } from './coletas'
+import { canMoveSchedule, cleanPickups, type Pickup, scheduleDate, type SchedulePeriod, type ScheduleStatus, spDate } from './coletas'
+import { can } from '../common/permissions'
 import { htmlTableRows, parseIbgeSheet, parseRegionsSheet, type ParsedRegion } from './regioes'
 import { downloadPublic } from './download'
 import { FilesService } from '../files/files.service'
@@ -36,6 +37,7 @@ export interface CarrierInput {
   pickups?: unknown
   kind?: string
   pickupMode?: string
+  pickupBySchedule?: boolean
   dropOffCost?: number | null
   dropOffProviderId?: string | null
   reconcile?: boolean
@@ -61,6 +63,7 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
       cnpj: c.cnpj.trim(),
       kind: c.kind,
       pickupMode: c.pickupMode,
+      pickupBySchedule: c.pickupBySchedule,
       reconcile: c.reconcile,
       dropOffCost: c.dropOffCost === null ? null : Number(c.dropOffCost),
       dropOffProviderId: c.dropOffProviderId,
@@ -186,6 +189,7 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
       active: d.active ?? true,
       kind,
       pickupMode,
+      pickupBySchedule: pickupMode === 'COLETA' && d.pickupBySchedule === true,
       dropOffCost,
       dropOffProviderId,
       reconcile: kind === 'PRESTADOR' ? true : d.reconcile !== false,
@@ -197,14 +201,83 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
    * (carregando, chegando, ponto de corte) é calculada na tela, pelo relógio do computador.
    */
   async pickupBoard(user: AuthUser, unitId: string | null) {
-    assertCan(user, 'fretes_painel', 'view')
-    const allowed = allowedUnits(user, 'fretes_painel')
+    // Painel de TV: quem vê o painel de fretes ou quem cuida das coletas (expedição).
+    const mod = can(user.permissions, user.role.isSystem, 'fretes_painel', 'view') ? 'fretes_painel' : 'fretes_coletas'
+    assertCan(user, mod, 'view')
+    const allowed = allowedUnits(user, mod)
     if (unitId && allowed && !allowed.includes(unitId)) throw new NotFoundException('Filial não encontrada.')
-    return this.boardOf(user.tenantId, unitId, allowed)
+    const board = await this.boardOf(user.tenantId, unitId, allowed)
+    return { ...board, scheduled: await this.schedulesOf(user.tenantId, spDate(new Date()), spDate(new Date()), unitId, allowed) }
+  }
+
+  // ---------- Coletas agendadas (expedição) ----------
+
+  private async schedulesOf(tenantId: string, from: string, to: string, unitId: string | null, allowed: string[] | null) {
+    const rows = await this.prisma.freightPickupSchedule.findMany({
+      where: {
+        tenantId,
+        date: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) },
+        ...(unitId ? { OR: [{ unitId }, { unitId: null }] } : allowed ? { OR: [{ unitId: { in: allowed } }, { unitId: null }] } : {}),
+      },
+      orderBy: [{ date: 'asc' }, { period: 'asc' }, { createdAt: 'asc' }],
+    })
+    const [carriers, units] = await Promise.all([
+      this.prisma.freightCarrier.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.carrierId))] } }, select: { id: true, name: true, quoteName: true } }),
+      this.prisma.unit.findMany({ where: { tenantId }, select: { id: true, name: true } }),
+    ])
+    return rows.map((r) => {
+      const c = carriers.find((x) => x.id === r.carrierId)
+      return { id: r.id, date: r.date.toISOString().slice(0, 10), period: r.period, status: r.status, carrierId: r.carrierId, carrier: c ? c.quoteName || c.name : 'Transportadora', unitId: r.unitId, unit: r.unitId ? (units.find((u) => u.id === r.unitId)?.name ?? null) : null, note: r.note, createdByName: r.createdByName, createdAt: r.createdAt, statusByName: r.statusByName, statusAt: r.statusAt }
+    })
+  }
+
+  /** Tela da expedição: transportadoras para agendar (as "por agendamento" primeiro) e as coletas de hoje e amanhã. */
+  async schedules(user: AuthUser, unitId: string | null) {
+    assertCan(user, 'fretes_coletas', 'view')
+    const allowed = allowedUnits(user, 'fretes_coletas')
+    if (unitId && allowed && !allowed.includes(unitId)) throw new NotFoundException('Filial não encontrada.')
+    const now = new Date()
+    const carriers = await this.prisma.freightCarrier.findMany({ where: { tenantId: user.tenantId, active: true, kind: 'TRANSPORTADORA', pickupMode: 'COLETA' }, select: { id: true, name: true, quoteName: true, pickupBySchedule: true }, orderBy: { name: 'asc' } })
+    return {
+      today: spDate(now),
+      tomorrow: spDate(now, 1),
+      carriers: carriers.map((c) => ({ id: c.id, name: c.quoteName || c.name, bySchedule: c.pickupBySchedule })).sort((a, b) => Number(b.bySchedule) - Number(a.bySchedule) || a.name.localeCompare(b.name)),
+      schedules: await this.schedulesOf(user.tenantId, spDate(now), spDate(now, 7), unitId, allowed),
+    }
+  }
+
+  /** Um clique: transportadora, dia (hoje ou amanhã) e período (manhã ou tarde). */
+  async addSchedule(user: AuthUser, d: { carrierId: string; unitId?: string | null; when: string; period: SchedulePeriod; note?: string | null }, ctx: RequestCtx) {
+    assertCan(user, 'fretes_coletas', 'create')
+    const carrier = await this.prisma.freightCarrier.findFirst({ where: { id: d.carrierId, tenantId: user.tenantId, active: true }, select: { id: true, name: true } })
+    if (!carrier) throw new NotFoundException('Transportadora não encontrada.')
+    const date = scheduleDate(d.when, new Date())
+    if (!date) throw new BadRequestException('Escolha hoje, amanhã ou uma data dos próximos 30 dias.')
+    const allowed = allowedUnits(user, 'fretes_coletas')
+    const unitId = d.unitId || user.unitId || null
+    if (unitId && allowed && !allowed.includes(unitId)) throw new BadRequestException('Esta filial não está liberada para o seu usuário.')
+    const dup = await this.prisma.freightPickupSchedule.findFirst({ where: { tenantId: user.tenantId, carrierId: carrier.id, date: new Date(`${date}T00:00:00Z`), period: d.period, unitId, status: { in: ['AGENDADA', 'COLETANDO'] } } })
+    if (dup) return { id: dup.id, duplicate: true }
+    const r = await this.prisma.freightPickupSchedule.create({ data: { tenantId: user.tenantId, unitId, carrierId: carrier.id, date: new Date(`${date}T00:00:00Z`), period: d.period, note: cleanText(d.note, 200) || null, createdByName: user.name.slice(0, 120) } })
+    await this.audit.byUser(user, ctx, 'frete.coleta.agendada', 'freight_pickup_schedule', r.id, { transportadora: carrier.name, dia: date, periodo: d.period })
+    return { id: r.id, duplicate: false }
+  }
+
+  async setScheduleStatus(user: AuthUser, id: string, status: ScheduleStatus, ctx: RequestCtx) {
+    assertCan(user, 'fretes_coletas', 'edit')
+    const r = await this.prisma.freightPickupSchedule.findFirst({ where: { id, tenantId: user.tenantId } })
+    if (!r) throw new NotFoundException('Agendamento não encontrado.')
+    const allowed = allowedUnits(user, 'fretes_coletas')
+    if (r.unitId && allowed && !allowed.includes(r.unitId)) throw new NotFoundException('Agendamento não encontrado.')
+    if (!canMoveSchedule(r.status, status)) throw new BadRequestException('Esta coleta já foi encerrada.')
+    await this.prisma.freightPickupSchedule.update({ where: { id }, data: { status, statusByName: user.name.slice(0, 120), statusAt: new Date() } })
+    await this.audit.byUser(user, ctx, 'frete.coleta.situacao', 'freight_pickup_schedule', id, { de: r.status, para: status })
+    return { ok: true }
   }
 
   private async boardOf(tenantId: string, unitId: string | null, allowed: string[] | null) {
-    const carriers = await this.prisma.freightCarrier.findMany({ where: { tenantId, active: true }, select: { id: true, name: true, quoteName: true, pickups: true, pickupMode: true }, orderBy: { name: 'asc' } })
+    // Transportadora "por agendamento" só aparece quando agendada (lista scheduled), não pelos horários fixos.
+    const carriers = await this.prisma.freightCarrier.findMany({ where: { tenantId, active: true, pickupBySchedule: false }, select: { id: true, name: true, quoteName: true, pickups: true, pickupMode: true }, orderBy: { name: 'asc' } })
     const units = await this.prisma.unit.findMany({ where: { tenantId }, select: { id: true, name: true } })
     const unitName = new Map(units.map((u) => [u.id, u.name]))
     const rows = carriers.flatMap((c) =>
