@@ -118,3 +118,12 @@ describe('fretes: cotação online (Rodonaves e DHL Express)', () => {
     expect(e[0]).toMatchObject({ source: 'DHL', price: null, error: '996: Requested product(s) not available · Destino sem serviço' })
   })
 })
+
+describe('Jadlog: cabeçalho do token', () => {
+  it('manda "Bearer <token>" com ou sem o Bearer colado, sem espaços', async () => {
+    const { jadlogAuth } = await import('../src/fretes/integracoes')
+    expect(jadlogAuth('abc.def.ghi')).toBe('Bearer abc.def.ghi')
+    expect(jadlogAuth('  Bearer abc.def.ghi \n')).toBe('Bearer abc.def.ghi')
+    expect(jadlogAuth('abc.def\n.ghi')).toBe('Bearer abc.def.ghi')
+  })
+})

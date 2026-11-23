@@ -89,6 +89,12 @@ export const DEFAULT_JADLOG: JadlogConfig = { enabled: false, tokenEnc: null, cn
 
 export const JADLOG_QUOTE_URL = 'https://www.jadlog.com.br/embarcador/api/frete/valor'
 
+/** Cabeçalho Authorization da Jadlog: "Bearer <token>" (aceita o token colado com ou sem o "Bearer", e sem espaços sobrando). */
+export function jadlogAuth(token: string) {
+  const t = token.trim().replace(/^bearer\s+/i, '').replace(/\s+/g, '')
+  return `Bearer ${t}`
+}
+
 /** Peso para a Jadlog: o maior entre o real e o cubado (a API pede sempre o maior). */
 export function jadlogWeight(p: PackageInput, cubageFactor: number) {
   const cubed = cubageFactor > 0 ? ((p.heightCm * p.widthCm * p.lengthCm) / 1_000_000) * cubageFactor : 0
