@@ -26,6 +26,11 @@ class SefazCertDto extends SefazSettingsDto {
 export class FretesSefazController {
   constructor(private readonly sefaz: SefazService) {}
 
+  @Get('situacao')
+  situation(@CurrentUser() user: AuthUser) {
+    return this.sefaz.situation(user)
+  }
+
   @Get()
   view(@CurrentUser() user: AuthUser) {
     return this.sefaz.view(user)

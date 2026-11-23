@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { FilialSwitch } from '@/components/fretes/filial-switch'
+import { SefazNotice } from '@/components/fretes/aviso-sefaz'
 import { NfeConfrontView } from '@/components/fretes/confronto-nfe'
 import { MoneyInput } from '@/components/money-input'
 import { Can, EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
@@ -197,6 +198,7 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
           </>
         }
       />
+      <SefazNotice />
       {!pendingOnly && (
         <div className="flex flex-wrap gap-1.5">
           <Button size="sm" variant={!status ? 'secondary' : 'ghost'} onClick={() => setParam('situacao', '')}>

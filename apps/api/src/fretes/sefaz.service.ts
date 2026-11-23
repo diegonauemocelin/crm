@@ -8,6 +8,7 @@ import type { AuthUser } from '../common/types'
 import { PrismaService } from '../prisma/prisma.service'
 import { assertCan } from './acesso'
 import { CteService } from './cte.service'
+import { sefazSituation } from './sefaz-situacao'
 import { distEnvelope, docKind, emittedAt, LOOKBACK_OPTIONS, MAX_LOOKBACK_DAYS, nsuLess, parseDistResponse, pfxToPem, readCertificate, SEFAZ_ENDPOINT, SEFAZ_INTERVALS, SEFAZ_WAIT_MS, type SefazEnv, SOAP_ACTION, UF_CODE, withinDays } from './sefaz'
 
 const TICK_MS = 10 * 60_000
@@ -61,6 +62,12 @@ export class SefazService implements OnApplicationBootstrap, OnModuleDestroy {
   private async headquarters(tenantId: string) {
     const units = await this.prisma.unit.findMany({ where: { tenantId, active: true }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, cnpj: true, state: true, isHeadquarters: true } })
     return units.find((u) => u.isHeadquarters && u.cnpj) ?? units.find((u) => u.cnpj) ?? null
+  }
+
+  /** Aviso de SEFAZ fora do ar ou busca atrasada (quem vê CT-e, conciliação, pedidos ou o painel). */
+  async situation(user: AuthUser) {
+    if (!(['fretes_cte', 'fretes_painel', 'fretes_pedidos', 'fretes_cotacao'] as const).some((m) => can(user.permissions, user.role.isSystem, m, 'view'))) throw new ForbiddenException('Você não tem permissão para esta ação.')
+    return (await sefazSituation(this.prisma, user.tenantId)) ?? { state: 'OK' as const, message: '', since: null, lastRunAt: null }
   }
 
   async view(user: AuthUser) {

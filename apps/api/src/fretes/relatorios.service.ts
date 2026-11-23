@@ -8,6 +8,7 @@ import { REC_TYPE_LABEL, type RecType } from './conciliacao'
 import { CteService } from './cte.service'
 import { todayUtc } from './tabelas.service'
 import { type CteFact, summarize } from './gerencial'
+import { sefazSituation } from './sefaz-situacao'
 
 type ColType = 'text' | 'money' | 'int' | 'pct' | 'date' | 'num'
 interface Report {
@@ -279,6 +280,12 @@ export class FretesRelatoriosService {
     const settings = await this.ctes.recSettings(t)
     const out: { kind: string; severity: 'alta' | 'media' | 'baixa'; title: string; detail: string; link: string; count: number }[] = []
     const allow = (m: Parameters<typeof allowedUnits>[1]) => can(user.permissions, user.role.isSystem, m, 'view')
+
+    // SEFAZ fora do ar ou busca de CT-e atrasada.
+    if (allow('fretes_cte') || allow('fretes_painel')) {
+      const s = await sefazSituation(this.prisma, t)
+      if (s && s.state !== 'OK') out.push({ kind: 'sefaz', severity: s.state === 'INSTAVEL' ? 'media' : 'alta', title: s.state === 'FORA' ? 'SEFAZ fora do ar' : s.state === 'ATRASADA' ? 'Busca de CT-e na SEFAZ atrasada' : 'SEFAZ instável', detail: s.message, link: '/fretes/filiais', count: 1 })
+    }
 
     if (allow('fretes_tabelas')) {
       const units = allowedUnits(user, 'fretes_tabelas')
