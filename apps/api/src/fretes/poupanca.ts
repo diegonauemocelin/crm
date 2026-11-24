@@ -125,3 +125,21 @@ export function walletBalances(entries: { seller: string; nota: number; cte: num
     .map((x) => ({ ...x, nota: r2(x.nota), cte: r2(x.cte), markup: r2(x.markup), credito: r2(x.credito), debito: r2(x.debito), movimentos: r2(x.movimentos), saldo: r2(x.credito - x.debito + x.movimentos) }))
     .sort((a, b) => b.saldo - a.saldo || a.seller.localeCompare(b.seller))
 }
+
+/** A campanha da cotação é um reajuste (acréscimo na tabela)? Cotações antigas não guardam o tipo: vale o texto. */
+export const isSurcharge = (c: { mode?: string; label?: string } | null | undefined) => !!c && (c.mode === 'ACRESCIMO' || /^acr[eé]scimo/i.test(c.label ?? ''))
+
+/** Quanto o vendedor cobra do cliente: o frete (com o reajuste da tabela, quando há) + o % dele. */
+export function chargeOf(freight: number, pct: number) {
+  return r2(freight * (1 + pct / 100))
+}
+
+/**
+ * Base da poupança quando a transportadora escolhida na cotação estava com reajuste: frete + reajuste (o vendedor
+ * cobra o % dele em cima disso). Null: sem reajuste, a base continua a cotação.
+ */
+export function surchargeBase(results: unknown, selectedTableId: string | null) {
+  if (!selectedTableId || !Array.isArray(results)) return null
+  const r = (results as { tableId?: string | null; campaign?: { mode?: string; label?: string; customerPrice?: number } | null }[]).find((x) => x?.tableId === selectedTableId)
+  return r && isSurcharge(r.campaign) && typeof r.campaign?.customerPrice === 'number' && r.campaign.customerPrice > 0 ? r2(r.campaign.customerPrice) : null
+}

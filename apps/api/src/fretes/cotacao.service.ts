@@ -96,7 +96,7 @@ export interface QuoteResult {
   /** Como a carga chega à transportadora: ela coleta na empresa ou a empresa despacha (leva até ela). */
   pickupMode?: 'COLETA' | 'DESPACHO'
   /** Campanha de frete que vale para esta opção: o que cobrar do cliente em vez do total da tabela. */
-  campaign?: { id: string; name: string; label: string; customerPrice: number; discount: number } | null
+  campaign?: { id: string; name: string; mode?: string; label: string; customerPrice: number; discount: number } | null
   /** Despacho pago a um prestador (somado ao total da cotação, fora da conciliação do CT-e). */
   dropOff?: { cost: number; provider: string | null } | null
 }
