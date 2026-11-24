@@ -1,11 +1,12 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalculatorIcon, CheckCircle2Icon, ChevronDownIcon, ChevronRightIcon, DownloadIcon, HistoryIcon, LayoutGridIcon, ListIcon, Loader2Icon, MapPinIcon, PackageIcon, PlusIcon, PrinterIcon, RefreshCwIcon, SearchIcon, Trash2Icon, TruckIcon, UploadIcon, UserIcon } from 'lucide-react'
+import { CalculatorIcon, CheckCircle2Icon, ChevronDownIcon, ChevronRightIcon, DownloadIcon, HistoryIcon, LayoutGridIcon, ListIcon, Loader2Icon, MapPinIcon, PackageIcon, PlusIcon, PrinterIcon, RefreshCwIcon, SearchIcon, Trash2Icon, TruckIcon, UploadIcon, UserIcon, XIcon } from 'lucide-react'
 import { type FormEvent, Fragment, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { FilialSwitch } from '@/components/fretes/filial-switch'
 import { SefazNotice } from '@/components/fretes/aviso-sefaz'
 import { ResultDetail } from '@/components/fretes/resultado'
+import { useConfirm } from '@/components/confirm'
 import { MoneyInput } from '@/components/money-input'
 import { Can, EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
@@ -1468,6 +1469,31 @@ function QuoteList() {
     placeholderData: keepPreviousData,
     enabled: !!active.ctx.data,
   })
+  const { can } = useAuth()
+  const editable = can('fretes_cotacao', 'edit')
+  const qc = useQueryClient()
+  const confirm = useConfirm()
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const cancel = useMutation({
+    mutationFn: (ids: string[]) => api.post<{ cancelled: number }>('/fretes/cotacoes/cancelar', { ids }),
+    onSuccess: (r) => {
+      toast.success(`${r.cancelled} cotação(ões) cancelada(s).`)
+      setSelected(new Set())
+      void qc.invalidateQueries({ queryKey: ['fretes', 'cotacoes'] })
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const askCancel = async (ids: string[]) => {
+    if (await confirm({ title: `Cancelar ${ids.length} cotação(ões)?`, description: 'A cotação fica guardada no histórico como cancelada (não some). Pedidos já ligados a ela não mudam.', confirmLabel: 'Cancelar cotação', cancelLabel: 'Voltar' })) cancel.mutate(ids)
+  }
+  const openRows = (list.data?.items ?? []).filter((r) => r.status !== 'CANCELADA')
+  const toggle = (id: string) =>
+    setSelected((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
   const pages = list.data ? Math.max(1, Math.ceil(list.data.total / list.data.pageSize)) : 1
   return (
     <div className="space-y-4">
@@ -1529,6 +1555,18 @@ function QuoteList() {
           Buscar
         </Button>
       </form>
+      {editable && selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 p-2 text-sm">
+          <span className="px-1 font-medium">{selected.size} cotação(ões) marcada(s)</span>
+          <Button size="sm" variant="outline" className="text-destructive" disabled={cancel.isPending} onClick={() => void askCancel([...selected])}>
+            <XIcon aria-hidden /> Cancelar cotações
+          </Button>
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelected(new Set())}>
+            Desmarcar
+          </Button>
+          {cancel.isPending && <Loader2Icon className="size-4 animate-spin" aria-hidden />}
+        </div>
+      )}
       {list.isLoading ? (
         <TableSkeleton />
       ) : list.error ? (
@@ -1540,6 +1578,11 @@ function QuoteList() {
           <Table>
             <TableHeader>
               <TableRow>
+                {editable && (
+                  <TableHead className="w-8">
+                    <Checkbox aria-label="Marcar todas desta página" checked={openRows.length > 0 && openRows.every((r) => selected.has(r.id))} onCheckedChange={(v) => setSelected(v ? new Set(openRows.map((r) => r.id)) : new Set())} />
+                  </TableHead>
+                )}
                 <TableHead>Nº</TableHead>
                 <TableHead>Data</TableHead>
                 <TableHead className="hidden md:table-cell">Filial</TableHead>
@@ -1547,11 +1590,17 @@ function QuoteList() {
                 <TableHead className="hidden lg:table-cell">Referência / cliente</TableHead>
                 <TableHead className="text-right">Menor valor</TableHead>
                 <TableHead>Escolha</TableHead>
+                {editable && <TableHead className="w-10" />}
               </TableRow>
             </TableHeader>
             <TableBody>
               {list.data.items.map((r) => (
                 <TableRow key={r.id} className="cursor-pointer" onClick={() => navigate(`/fretes/cotacoes/${r.id}`)}>
+                  {editable && (
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      {r.status !== 'CANCELADA' && <Checkbox aria-label={`Marcar cotação ${r.code}`} checked={selected.has(r.id)} onCheckedChange={() => toggle(r.id)} />}
+                    </TableCell>
+                  )}
                   <TableCell className="font-medium">
                     <Link to={`/fretes/cotacoes/${r.id}`} onClick={(e) => e.stopPropagation()}>
                       {r.code}
@@ -1573,6 +1622,15 @@ function QuoteList() {
                       {r.status === 'SELECIONADA' ? `${r.selectedCarrierName ?? '—'} · ${money(r.selectedTotal)}` : QUOTE_STATUS[r.status].label}
                     </Badge>
                   </TableCell>
+                  {editable && (
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      {r.status !== 'CANCELADA' && (
+                        <Button size="icon" variant="ghost" className="size-8 text-muted-foreground hover:text-destructive" aria-label={`Cancelar cotação ${r.code}`} title="Cancelar cotação" disabled={cancel.isPending} onClick={() => void askCancel([r.id])}>
+                          <XIcon aria-hidden />
+                        </Button>
+                      )}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

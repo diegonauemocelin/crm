@@ -401,7 +401,7 @@ function ImportCtes({ onClose }: { onClose: () => void }) {
         {r && (
           <div className="space-y-2 text-sm">
             <p>
-              {r.imported} novo(s) · {r.duplicated} já existiam · {r.cancelled} cancelamento(s) · {r.linked} ligado(s) a pedidos
+              {r.imported} novo(s) · {r.duplicated} já importados antes (descartados) · {r.cancelled} cancelamento(s) · {r.linked} ligado(s) a pedidos
             </p>
             {r.icmsUpdated.length > 0 && <p>Alíquota interna de ICMS atualizada: {r.icmsUpdated.map((i) => `${i.uf} ${fmtNum(i.to, 2)}%`).join(', ')}.</p>}
             {r.ignored.length > 0 && (

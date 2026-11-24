@@ -1101,6 +1101,22 @@ export class CotacaoService {
     return this.view(updated)
   }
 
+  /** Cancelar várias cotações de uma vez (as já canceladas ficam como estão). */
+  async bulkCancel(user: AuthUser, ids: string[], ctx: RequestCtx) {
+    assertCan(user, 'fretes_cotacao', 'edit')
+    const list = [...new Set(ids)]
+    if (!list.length) throw new BadRequestException('Escolha ao menos uma cotação.')
+    let cancelled = 0
+    for (const id of list) {
+      const q = await this.find(user, id)
+      if (q.status === 'CANCELADA') continue
+      await this.prisma.freightQuote.update({ where: { id }, data: { status: 'CANCELADA' } })
+      await this.audit.byUser(user, ctx, 'frete.cotacao.cancelada', 'freight_quote', id, { cotacao: q.code, emLote: true })
+      cancelled++
+    }
+    return { cancelled }
+  }
+
   /**
    * Refaz o cálculo com as entradas e as mesmas versões de tabela gravadas na cotação, e compara com o resultado original.
    * Diferença aqui indica alteração indevida de dados (versões publicadas não mudam).

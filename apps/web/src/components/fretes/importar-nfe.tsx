@@ -36,7 +36,7 @@ const MAX_MB = 60
 function Summary({ c }: { c: Counts }) {
   const items: [string, number, string?][] = [
     ['notas novas', c.novas],
-    ['já existiam', c.existentes],
+    ['já importadas antes (descartadas)', c.existentes],
     ['canceladas', c.canceladas],
     ['ignoradas', c.ignoradas],
     ['com erro', c.erros, c.erros ? 'text-destructive' : undefined],
@@ -164,7 +164,7 @@ export function ImportNfeDialog({ onClose }: { onClose: () => void }) {
             {history.data?.map((h) => (
               <details key={h.id} className="rounded-md border px-2 py-1 text-xs">
                 <summary className="cursor-pointer">
-                  {dateTime(h.createdAt)} · {h.createdByName} · <span className="break-all">{h.fileNames}</span> — {h.counts.novas} novas, {h.counts.existentes} existentes, {h.counts.canceladas} canceladas, {h.counts.ignoradas} ignoradas, {h.counts.erros} com erro, {h.counts.ctesLigados} CT-e casados
+                  {dateTime(h.createdAt)} · {h.createdByName} · <span className="break-all">{h.fileNames}</span> — {h.counts.novas} novas, {h.counts.existentes} já importadas antes (descartadas), {h.counts.canceladas} canceladas, {h.counts.ignoradas} ignoradas, {h.counts.erros} com erro, {h.counts.ctesLigados} CT-e casados
                 </summary>
                 <div className="mt-1">
                   <Issues issues={h.issues} />

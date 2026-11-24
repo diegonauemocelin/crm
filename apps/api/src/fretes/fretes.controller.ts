@@ -870,6 +870,12 @@ export class FretesController {
     return this.quotes.select(user, id, dto, ctx)
   }
 
+  @Post('cotacoes/cancelar')
+  @HttpCode(200)
+  bulkCancelQuotes(@CurrentUser() user: AuthUser, @Body() dto: BulkIdsDto, @ReqContext() ctx: RequestCtx) {
+    return this.quotes.bulkCancel(user, dto.ids, ctx)
+  }
+
   @Post('cotacoes/:id/cancelar')
   @HttpCode(200)
   cancelQuote(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
