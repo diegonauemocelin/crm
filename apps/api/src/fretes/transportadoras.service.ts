@@ -304,6 +304,20 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
     return this.view(c)
   }
 
+  /** Ativar ou inativar várias transportadoras de uma vez (a chegada de CT-e nunca muda a situação). */
+  async bulkActive(user: AuthUser, d: { ids: string[]; active: boolean }, ctx: RequestCtx) {
+    assertCan(user, 'fretes_transportadoras', 'edit')
+    const ids = [...new Set(d.ids)]
+    if (!ids.length) throw new BadRequestException('Escolha ao menos uma transportadora.')
+    const rows = await this.prisma.freightCarrier.findMany({ where: { id: { in: ids }, tenantId: user.tenantId }, select: { id: true, name: true, active: true, unitIds: true } })
+    if (rows.length !== ids.length) throw new NotFoundException('Alguma transportadora não foi encontrada.')
+    for (const c of rows) assertUnitList(user, 'fretes_transportadoras', c.unitIds)
+    const change = rows.filter((c) => c.active !== d.active)
+    if (change.length) await this.prisma.freightCarrier.updateMany({ where: { id: { in: change.map((c) => c.id) } }, data: { active: d.active } })
+    for (const c of change) await this.audit.byUser(user, ctx, 'frete.transportadora.alterada', 'freight_carrier', c.id, { nome: c.name, ativa: { de: c.active, para: d.active }, emLote: true })
+    return { updated: change.length }
+  }
+
   async update(user: AuthUser, id: string, d: CarrierInput, ctx: RequestCtx) {
     assertCan(user, 'fretes_transportadoras', 'edit')
     const cur = await this.prisma.freightCarrier.findFirst({ where: { id, tenantId: user.tenantId } })

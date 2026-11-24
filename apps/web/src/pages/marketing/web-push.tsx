@@ -218,6 +218,7 @@ function WebPush() {
                           Erro: {c.error}
                         </Badge>
                       )}
+                      {c.status !== 'ERRO' && c.failed > 0 && c.error && <p className="mt-1 max-w-md text-xs text-red-700">{num(c.failed)} não saíram: {c.error}</p>}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">{formatDateTime(c.sentAt)}</TableCell>
                     <TableCell className="text-right tabular-nums">{num(c.sent)}</TableCell>
@@ -390,6 +391,10 @@ function ManageDialog({ view, onClose }: { view: View; onClose: () => void }) {
     onError: (err) => toast.error(errorMessage(err)),
   })
   const set = <K extends keyof Prompt>(k: K, val: Prompt[K]) => setPrompt((p) => ({ ...p, [k]: val }))
+  const test = useMutation({
+    mutationFn: () => api.post<{ browser: string; since: string; ok: boolean; message: string }[]>('/marketing/web-push/teste'),
+    onError: (err) => toast.error(errorMessage(err)),
+  })
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -423,7 +428,26 @@ function ManageDialog({ view, onClose }: { view: View; onClose: () => void }) {
             </div>
             {check.data && <p className={check.data.ok ? 'text-emerald-700' : 'text-red-700'}>{check.data.message}</p>}
             {check.isError && <p className="text-red-700">{errorMessage(check.error)}</p>}
+            {check.data && !check.data.ok && /403/.test(check.data.message) && <p className="text-xs">O 403 vem do firewall da loja barrando a conferência feita pelo servidor do CRM. Se o arquivo abre no seu navegador, está publicado: use o teste abaixo.</p>}
           </Step>
+          {view.enabled && editable && (
+            <div className="space-y-2 rounded-lg border p-3 text-sm">
+              <p className="font-medium">3. Teste de envio</p>
+              <p className="text-muted-foreground">Permita as notificações na loja (Chrome, Edge...) e envie um teste para as 5 inscrições mais recentes. Aparece a resposta de cada navegador.</p>
+              <Button type="button" size="sm" variant="outline" disabled={test.isPending} onClick={() => test.mutate()}>
+                {test.isPending ? <Loader2Icon className="animate-spin" /> : <SendIcon />} Enviar teste
+              </Button>
+              {test.data?.map((r, i) => (
+                <p key={i} className={r.ok ? 'text-emerald-700' : 'text-red-700'}>
+                  <span className="font-medium">
+                    {r.browser} (inscrito em {new Date(r.since).toLocaleString('pt-BR')}):
+                  </span>{' '}
+                  {r.ok ? 'enviado. ' : ''}
+                  {r.message}
+                </p>
+              ))}
+            </div>
+          )}
 
           <fieldset disabled={!editable} className="space-y-3 rounded-lg border p-3">
             <div className="space-y-1.5">

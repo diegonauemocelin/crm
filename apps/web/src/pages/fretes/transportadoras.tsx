@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2Icon, PlusIcon, SearchIcon, Trash2Icon, TruckIcon } from 'lucide-react'
+import { Loader2Icon, PlusIcon, PowerIcon, PowerOffIcon, SearchIcon, Trash2Icon, TruckIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -18,6 +18,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { dayBr, money, num } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import { formatCnpj, maskCep, maskCnpj, STATUS_LABEL, useFreightContext } from '@/lib/fretes'
 
 interface Contact {
@@ -81,6 +82,26 @@ function CarrierList() {
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('active')
   const [open, setOpen] = useState<Carrier | 'nova' | null>(null)
+  const { can } = useAuth()
+  const editable = can('fretes_transportadoras', 'edit')
+  const qc = useQueryClient()
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const setActive = useMutation({
+    mutationFn: (v: { ids: string[]; active: boolean }) => api.post<{ updated: number }>('/fretes/transportadoras/situacao', v),
+    onSuccess: (r, v) => {
+      toast.success(`${r.updated} transportadora(s) ${v.active ? 'ativada(s)' : 'inativada(s)'}.`)
+      setSelected(new Set())
+      void qc.invalidateQueries({ queryKey: ['fretes', 'transportadoras'] })
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const toggle = (id: string) =>
+    setSelected((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
   const list = useQuery({ queryKey: ['fretes', 'transportadoras', q, status], queryFn: () => api.get<Carrier[]>(`/fretes/transportadoras?${new URLSearchParams({ ...(q ? { busca: q } : {}), ...(status !== 'all' ? { situacao: status } : {}) })}`) })
   // ?abrir=<id> (link da tela da tabela): abre a transportadora direto.
   const [params, setParams] = useSearchParams()
@@ -129,6 +150,21 @@ function CarrierList() {
           Buscar
         </Button>
       </form>
+      {editable && selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 p-2 text-sm">
+          <span className="px-1 font-medium">{selected.size} transportadora(s) marcada(s)</span>
+          <Button size="sm" variant="outline" disabled={setActive.isPending} onClick={() => setActive.mutate({ ids: [...selected], active: true })}>
+            <PowerIcon aria-hidden /> Ativar
+          </Button>
+          <Button size="sm" variant="outline" disabled={setActive.isPending} onClick={() => setActive.mutate({ ids: [...selected], active: false })}>
+            <PowerOffIcon aria-hidden /> Inativar
+          </Button>
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelected(new Set())}>
+            Desmarcar
+          </Button>
+          {setActive.isPending && <Loader2Icon className="size-4 animate-spin" aria-hidden />}
+        </div>
+      )}
       {list.isLoading ? (
         <TableSkeleton />
       ) : list.error ? (
@@ -139,6 +175,11 @@ function CarrierList() {
         <Table>
           <TableHeader>
             <TableRow>
+              {editable && (
+                <TableHead className="w-8">
+                  <Checkbox aria-label="Marcar todas" checked={!!list.data?.length && list.data.every((c) => selected.has(c.id))} onCheckedChange={(v) => setSelected(v ? new Set(list.data?.map((c) => c.id)) : new Set())} />
+                </TableHead>
+              )}
               <TableHead>Transportadora</TableHead>
               <TableHead>CNPJ</TableHead>
               <TableHead className="hidden md:table-cell">Contato</TableHead>
@@ -149,6 +190,11 @@ function CarrierList() {
           <TableBody>
             {list.data.map((c) => (
               <TableRow key={c.id} className="cursor-pointer" onClick={() => setOpen(c)}>
+                {editable && (
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Checkbox aria-label={`Marcar ${c.name}`} checked={selected.has(c.id)} onCheckedChange={() => toggle(c.id)} />
+                  </TableCell>
+                )}
                 <TableCell>
                   <p className="font-medium">
                     {c.name}
@@ -170,10 +216,23 @@ function CarrierList() {
                     {c.activeTables ?? 0} vigente(s) de {c.tables ?? 0}
                   </Link>
                 </TableCell>
-                <TableCell>
-                  <Badge variant="outline" className={c.active ? '' : 'text-muted-foreground'}>
-                    {c.active ? 'Ativa' : 'Inativa'}
-                  </Badge>
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  {editable ? (
+                    <button
+                      type="button"
+                      disabled={setActive.isPending}
+                      title={c.active ? 'Clique para inativar' : 'Clique para ativar'}
+                      onClick={() => setActive.mutate({ ids: [c.id], active: !c.active })}
+                      className={cn('inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium hover:bg-muted', c.active ? 'border-[#006300]/40 text-[#006300] dark:text-[#0ca30c]' : 'text-muted-foreground')}
+                    >
+                      {c.active ? <PowerIcon className="size-3" aria-hidden /> : <PowerOffIcon className="size-3" aria-hidden />}
+                      {c.active ? 'Ativa' : 'Inativa'}
+                    </button>
+                  ) : (
+                    <Badge variant="outline" className={c.active ? '' : 'text-muted-foreground'}>
+                      {c.active ? 'Ativa' : 'Inativa'}
+                    </Badge>
+                  )}
                 </TableCell>
               </TableRow>
             ))}

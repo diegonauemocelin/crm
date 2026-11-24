@@ -9,7 +9,7 @@ import { PrismaService } from '../prisma/prisma.service'
 import { SettingsService } from '../settings/settings.service'
 import { cleanText } from '../sugestoes/sugestoes'
 import { allowedUnits, assertCan } from './acesso'
-import { campaignOn, cleanWalletCampaigns, pctFor, WALLET_KEY, walletBalances, walletEntry, type WalletCampaign } from './poupanca'
+import { campaignOn, cleanWalletCampaigns, pctFor, surchargeBase, WALLET_KEY, walletBalances, walletEntry, type WalletCampaign } from './poupanca'
 
 const num = (d: Prisma.Decimal | null) => (d === null ? null : Number(d))
 
@@ -65,9 +65,9 @@ export class PoupancaService {
     const start = new Date(`${c.start}T00:00:00-03:00`)
     const end = new Date(new Date(`${c.end}T00:00:00-03:00`).getTime() + 86_400_000)
     const rows = await this.prisma.$queryRaw<
-      { key: string; number: number; issuedAt: Date | null; seller: string; nota: Prisma.Decimal | null; code: number; customerName: string | null; quote: Prisma.Decimal | null; cte: Prisma.Decimal | null; tabela: Prisma.Decimal | null; numbers: string | null }[]
+      { key: string; number: number; issuedAt: Date | null; seller: string; nota: Prisma.Decimal | null; code: number; customerName: string | null; quote: Prisma.Decimal | null; cte: Prisma.Decimal | null; tabela: Prisma.Decimal | null; numbers: string | null; quoteId: string | null }[]
     >`
-      SELECT n.key, n.number, n."issuedAt", n.seller, n."freightValue" AS nota, s.code, s."customerName", s."expectedTotal" AS quote, c.total AS cte, c.expected AS tabela, c.numbers
+      SELECT n.key, n.number, n."issuedAt", n.seller, n."freightValue" AS nota, s.code, s."customerName", s."expectedTotal" AS quote, s."quoteId", c.total AS cte, c.expected AS tabela, c.numbers
       FROM freight_nfes n
       JOIN freight_shipments s ON s."tenantId" = n."tenantId" AND s."invoiceKey" = n.key AND s.status <> 'CANCELADO'
       LEFT JOIN (
@@ -80,9 +80,19 @@ export class PoupancaService {
         ${seller ? Prisma.sql`AND n.seller = ${seller}` : Prisma.empty}
       ORDER BY n."issuedAt" DESC
       LIMIT 50000`
+    // Transportadora escolhida com reajuste de tabela: a base é o frete + reajuste (o que vai para o cliente antes do %).
+    const quoteIds = [...new Set(rows.map((r) => r.quoteId).filter((x): x is string => !!x))]
+    const surcharged = new Map<string, number>()
+    for (let i = 0; i < quoteIds.length; i += 1000) {
+      for (const q of await this.prisma.freightQuote.findMany({ where: { id: { in: quoteIds.slice(i, i + 1000) }, tenantId: user.tenantId }, select: { id: true, results: true, selectedTableId: true } })) {
+        const b = surchargeBase(q.results, q.selectedTableId)
+        if (b !== null) surcharged.set(q.id, b)
+      }
+    }
     return rows.map((r) => {
       const cte = num(r.cte)
-      const base = { key: r.key, number: r.number, issuedAt: r.issuedAt, seller: r.seller, code: r.code, customerName: r.customerName, cteNumbers: r.numbers, nota: num(r.nota) ?? 0, cte, quote: num(r.quote), table: num(r.tabela) }
+      const quote = (r.quoteId ? surcharged.get(r.quoteId) : undefined) ?? num(r.quote)
+      const base = { key: r.key, number: r.number, issuedAt: r.issuedAt, seller: r.seller, code: r.code, customerName: r.customerName, cteNumbers: r.numbers, nota: num(r.nota) ?? 0, cte, quote, table: num(r.tabela) }
       return { ...base, pct: pctFor(c, r.seller), entry: walletEntry({ nota: base.nota, cte, quote: base.quote, table: base.table }, pctFor(c, r.seller)) }
     })
   }

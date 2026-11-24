@@ -96,7 +96,7 @@ export interface QuoteResult {
   /** Como a carga chega à transportadora: ela coleta na empresa ou a empresa despacha (leva até ela). */
   pickupMode?: 'COLETA' | 'DESPACHO'
   /** Campanha de frete que vale para esta opção: o que cobrar do cliente em vez do total da tabela. */
-  campaign?: { id: string; name: string; label: string; customerPrice: number; discount: number } | null
+  campaign?: { id: string; name: string; mode?: string; label: string; customerPrice: number; discount: number } | null
   /** Despacho pago a um prestador (somado ao total da cotação, fora da conciliação do CT-e). */
   dropOff?: { cost: number; provider: string | null } | null
 }
@@ -749,6 +749,9 @@ export class CotacaoService {
    * transportadoras; é o cálculo em massa do frete do Google Shopping.
    */
   private async compute(user: Pick<AuthUser, 'tenantId'>, d: QuoteInput, allowExpired: boolean, lean?: { carrierIds?: string[] }) {
+    // CPF informado é pessoa física; CNPJ, jurídica (vale o documento, não o botão). Sem documento, vale o escolhido.
+    const docDigits = (d.customerDoc ?? '').replace(/\D/g, '').length
+    if (docDigits === 11 || docDigits === 14) d = { ...d, personType: docDigits === 11 ? 'PF' : 'PJ' }
     const p = await this.step('dados do envio e CEP', this.prepare(user, d))
     const sib = await this.siblingUnits(user.tenantId, p.unit.id)
     const tables = await this.step('tabelas da filial', this.prisma.freightTable.findMany({
@@ -873,6 +876,9 @@ export class CotacaoService {
       reason = cleanText(d.expiredReason, 500)
       if (reason.length < 10) throw new BadRequestException('Explique por que a tabela vencida pode ser usada (mínimo 10 caracteres).')
     }
+    // CPF é pessoa física e CNPJ, jurídica: a cotação guarda o tipo do documento informado.
+    const docLen = (d.customerDoc ?? '').replace(/\D/g, '').length
+    if (docLen === 11 || docLen === 14) d = { ...d, personType: docLen === 11 ? 'PF' : 'PJ' }
     const { p, results } = await this.compute(user, d, !!d.allowExpired)
     const ok = results.filter((r) => r.status === 'OK')
     const erpData = await this.step('documento da Tcar', this.erpDataFor(user.tenantId, d))
@@ -1099,6 +1105,22 @@ export class CotacaoService {
     const updated = await this.prisma.freightQuote.update({ where: { id }, data: { status: 'CANCELADA' } })
     await this.audit.byUser(user, ctx, 'frete.cotacao.cancelada', 'freight_quote', id, { cotacao: q.code })
     return this.view(updated)
+  }
+
+  /** Cancelar várias cotações de uma vez (as já canceladas ficam como estão). */
+  async bulkCancel(user: AuthUser, ids: string[], ctx: RequestCtx) {
+    assertCan(user, 'fretes_cotacao', 'edit')
+    const list = [...new Set(ids)]
+    if (!list.length) throw new BadRequestException('Escolha ao menos uma cotação.')
+    let cancelled = 0
+    for (const id of list) {
+      const q = await this.find(user, id)
+      if (q.status === 'CANCELADA') continue
+      await this.prisma.freightQuote.update({ where: { id }, data: { status: 'CANCELADA' } })
+      await this.audit.byUser(user, ctx, 'frete.cotacao.cancelada', 'freight_quote', id, { cotacao: q.code, emLote: true })
+      cancelled++
+    }
+    return { cancelled }
   }
 
   /**

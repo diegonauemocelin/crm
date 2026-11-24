@@ -170,6 +170,20 @@ class IntegrationsDto {
   @IsOptional() @IsObject() @ValidateNested() @Type(() => CorreiosDto) correios?: CorreiosDto
 }
 
+class BulkCarrierActiveDto {
+  @IsArray() @ArrayMaxSize(1000) @IsUUID('all', { each: true }) ids!: string[]
+  @IsBoolean() active!: boolean
+}
+
+class BulkStatusDto {
+  @IsArray() @ArrayMaxSize(500) @IsUUID('all', { each: true }) ids!: string[]
+  @IsIn(['ATIVA', 'INATIVA']) status!: string
+}
+
+class BulkIdsDto {
+  @IsArray() @ArrayMaxSize(500) @IsUUID('all', { each: true }) ids!: string[]
+}
+
 class BulkValidityDto {
   @IsArray() @ArrayMaxSize(500) @IsUUID('all', { each: true }) ids!: string[]
   @Matches(/^\d{4}-\d{2}-\d{2}$/) validFrom!: string
@@ -533,6 +547,12 @@ export class FretesController {
     return this.carriers.create(user, dto, ctx)
   }
 
+  @Post('transportadoras/situacao')
+  @HttpCode(200)
+  bulkCarrierActive(@CurrentUser() user: AuthUser, @Body() dto: BulkCarrierActiveDto, @ReqContext() ctx: RequestCtx) {
+    return this.carriers.bulkActive(user, dto, ctx)
+  }
+
   @Put('transportadoras/:id')
   updateCarrier(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CarrierDto, @ReqContext() ctx: RequestCtx) {
     return this.carriers.update(user, id, dto, ctx)
@@ -665,6 +685,18 @@ export class FretesController {
   @HttpCode(200)
   bulkValidity(@CurrentUser() user: AuthUser, @Body() dto: BulkValidityDto, @ReqContext() ctx: RequestCtx) {
     return this.tables.bulkValidity(user, dto, ctx)
+  }
+
+  @Post('tabelas/situacao')
+  @HttpCode(200)
+  bulkTableStatus(@CurrentUser() user: AuthUser, @Body() dto: BulkStatusDto, @ReqContext() ctx: RequestCtx) {
+    return this.tables.bulkStatus(user, dto, ctx)
+  }
+
+  @Post('tabelas/excluir')
+  @HttpCode(200)
+  bulkTableRemove(@CurrentUser() user: AuthUser, @Body() dto: BulkIdsDto, @ReqContext() ctx: RequestCtx) {
+    return this.tables.bulkRemove(user, dto, ctx)
   }
 
   @Put('tabelas/:id')
@@ -836,6 +868,12 @@ export class FretesController {
   @HttpCode(200)
   select(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SelectDto, @ReqContext() ctx: RequestCtx) {
     return this.quotes.select(user, id, dto, ctx)
+  }
+
+  @Post('cotacoes/cancelar')
+  @HttpCode(200)
+  bulkCancelQuotes(@CurrentUser() user: AuthUser, @Body() dto: BulkIdsDto, @ReqContext() ctx: RequestCtx) {
+    return this.quotes.bulkCancel(user, dto.ids, ctx)
   }
 
   @Post('cotacoes/:id/cancelar')

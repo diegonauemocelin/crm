@@ -6,7 +6,7 @@
  * 358,24 a cobrar; a nota cobrou 430,00: 71,76 vão para a poupança. Cobrou menos que cotação + acréscimo: desconta.
  * O vendedor usa a poupança em outra negociação (registrado como "uso", que tira do saldo).
  *
- * Base do acréscimo: a cotação escolhida no pedido; sem cotação, o esperado pela tabela no CT-e; sem os dois, o CT-e.
+ * Base do acréscimo: a cotação escolhida no pedido; sem cotação, o esperado pela tabela no CT-e. Sem os dois (transportadora sem tabela), a nota fica de fora.
  */
 
 export const WALLET_KEY = 'fretes_poupanca_campanhas'
@@ -85,13 +85,14 @@ export function campaignOn(list: WalletCampaign[], date: string) {
 const r2 = (v: number) => Math.round(v * 100) / 100
 
 /**
- * Uma nota CIF: base (cotação; sem ela, a tabela; sem as duas, o CT-e), quanto cobrar do cliente (base + acréscimo) e
- * o saldo do vendedor (cobrado na nota − cobrar). Null quando ainda não há base (sem cotação, tabela nem CT-e).
+ * Uma nota CIF: base (a cotação do pedido; sem ela, o esperado pela tabela da transportadora no CT-e), quanto cobrar
+ * do cliente (base + acréscimo) e o saldo do vendedor (cobrado na nota − cobrar). Só entra com tabela ou cotação:
+ * transportadora sem tabela cadastrada (nem cotação online) não entra na conta. Null = fica de fora.
  */
 export function walletEntry(v: { nota: number; cte: number | null; quote: number | null; table: number | null }, pct: number) {
-  const source = v.quote !== null && v.quote > 0 ? ('COTACAO' as const) : v.table !== null && v.table > 0 ? ('TABELA' as const) : v.cte !== null && v.cte > 0 ? ('CTE' as const) : null
+  const source = v.quote !== null && v.quote > 0 ? ('COTACAO' as const) : v.table !== null && v.table > 0 ? ('TABELA' as const) : null
   if (!source) return null
-  const base = source === 'COTACAO' ? v.quote! : source === 'TABELA' ? v.table! : v.cte!
+  const base = source === 'COTACAO' ? v.quote! : v.table!
   const markup = r2((base * pct) / 100)
   const charge = r2(base + markup)
   return { source, base: r2(base), markup, charge, saldo: r2(v.nota - charge) }
@@ -124,4 +125,22 @@ export function walletBalances(entries: { seller: string; nota: number; cte: num
   return [...by.values()]
     .map((x) => ({ ...x, nota: r2(x.nota), cte: r2(x.cte), markup: r2(x.markup), credito: r2(x.credito), debito: r2(x.debito), movimentos: r2(x.movimentos), saldo: r2(x.credito - x.debito + x.movimentos) }))
     .sort((a, b) => b.saldo - a.saldo || a.seller.localeCompare(b.seller))
+}
+
+/** A campanha da cotação é um reajuste (acréscimo na tabela)? Cotações antigas não guardam o tipo: vale o texto. */
+export const isSurcharge = (c: { mode?: string; label?: string } | null | undefined) => !!c && (c.mode === 'ACRESCIMO' || /^acr[eé]scimo/i.test(c.label ?? ''))
+
+/** Quanto o vendedor cobra do cliente: o frete (com o reajuste da tabela, quando há) + o % dele. */
+export function chargeOf(freight: number, pct: number) {
+  return r2(freight * (1 + pct / 100))
+}
+
+/**
+ * Base da poupança quando a transportadora escolhida na cotação estava com reajuste: frete + reajuste (o vendedor
+ * cobra o % dele em cima disso). Null: sem reajuste, a base continua a cotação.
+ */
+export function surchargeBase(results: unknown, selectedTableId: string | null) {
+  if (!selectedTableId || !Array.isArray(results)) return null
+  const r = (results as { tableId?: string | null; campaign?: { mode?: string; label?: string; customerPrice?: number } | null }[]).find((x) => x?.tableId === selectedTableId)
+  return r && isSurcharge(r.campaign) && typeof r.campaign?.customerPrice === 'number' && r.campaign.customerPrice > 0 ? r2(r.campaign.customerPrice) : null
 }

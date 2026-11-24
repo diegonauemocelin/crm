@@ -1,11 +1,12 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalculatorIcon, CheckCircle2Icon, ChevronDownIcon, ChevronRightIcon, DownloadIcon, HistoryIcon, LayoutGridIcon, ListIcon, Loader2Icon, MapPinIcon, PackageIcon, PlusIcon, PrinterIcon, RefreshCwIcon, SearchIcon, Trash2Icon, TruckIcon, UploadIcon, UserIcon } from 'lucide-react'
-import { type FormEvent, Fragment, useEffect, useMemo, useState } from 'react'
+import { CalculatorIcon, CheckCircle2Icon, ChevronDownIcon, ChevronRightIcon, DownloadIcon, HistoryIcon, LayoutGridIcon, ListIcon, Loader2Icon, MapPinIcon, PackageIcon, PlusIcon, PrinterIcon, RefreshCwIcon, SearchIcon, Trash2Icon, TruckIcon, UploadIcon, UserIcon, XIcon } from 'lucide-react'
+import { type FormEvent, Fragment, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { FilialSwitch } from '@/components/fretes/filial-switch'
 import { SefazNotice } from '@/components/fretes/aviso-sefaz'
 import { ResultDetail } from '@/components/fretes/resultado'
+import { useConfirm } from '@/components/confirm'
 import { MoneyInput } from '@/components/money-input'
 import { Can, EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
@@ -650,7 +651,20 @@ function NewQuote() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="q-doc" title="Algumas transportadoras cobram TDA/TDE de clientes específicos: com o documento, o sistema confere a lista.">CPF/CNPJ (confere TDA/TDE)</Label>
-                <Input id="q-doc" inputMode="numeric" value={customerDoc} onChange={(e) => setCustomerDoc(e.target.value.replace(/[^\d./-]/g, '').slice(0, 18))} />
+                <Input
+                  id="q-doc"
+                  inputMode="numeric"
+                  placeholder="Opcional: sem ele, vale Jurídica/Física acima"
+                  value={customerDoc}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^\d./-]/g, '').slice(0, 18)
+                    setCustomerDoc(v)
+                    // CPF (11 dígitos) é pessoa física e CNPJ (14) é jurídica: o destinatário acompanha o documento.
+                    const digits = v.replace(/\D/g, '').length
+                    if (digits === 11) setPersonType('PF')
+                    else if (digits === 14) setPersonType('PJ')
+                  }}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="q-ref">Pedido ou NF de referência</Label>
@@ -969,6 +983,61 @@ const HIDDEN_STATUS = new Set<string>(['SEM_COBERTURA', 'NAO_APLICAVEL', 'SEM_TA
 /** Resultado da cotação: comparativo, composição do preço e escolha da transportadora. Usado na tela nova e no histórico. */
 const VIEW_KEY = 'fretes.cotacao.visao'
 
+const r2 = (v: number) => Math.round(v * 100) / 100
+/** Campanha de reajuste (acréscimo na tabela). Cotações antigas não guardam o tipo: vale o texto. */
+const isSurcharge = (c: QuoteResult['campaign']) => !!c && (c.mode === 'ACRESCIMO' || /^acr[eé]scimo/i.test(c.label))
+
+/**
+ * Quanto cobrar do cliente: o frete (com o reajuste da tabela, quando há) + o % do vendedor da poupança de frete.
+ * Promoções (desconto, % da nota, grátis) mostram o preço da campanha.
+ */
+function ChargeHint({ r, wallet, compact = false }: { r: QuoteResult; wallet: { name: string; pct: number } | null; compact?: boolean }) {
+  if (r.total === null) return null
+  const c = r.campaign
+  const box = (tone: 'sky' | 'amber', title: string, children: ReactNode) =>
+    compact ? (
+      <span className={cn('block text-[11px] font-normal', tone === 'sky' ? 'text-sky-700 dark:text-sky-300' : 'text-amber-700 dark:text-amber-300')} title={title}>
+        {children}
+      </span>
+    ) : (
+      <p className={cn('mt-2 rounded-md px-2 py-1 text-xs', tone === 'sky' ? 'bg-sky-500/10 text-sky-800 dark:text-sky-200' : 'bg-amber-500/10 text-amber-800 dark:text-amber-200')} title={title}>
+        {children}
+      </p>
+    )
+  if (c && !isSurcharge(c))
+    return box(
+      'amber',
+      `Campanha: ${c.name} (${c.label})`,
+      <>
+        Cobrar do cliente <strong>{c.customerPrice === 0 ? 'frete grátis' : money(c.customerPrice)}</strong> · {c.name}
+        {c.discount > 0 && <span className="block">A empresa paga a diferença: {money(c.discount)}</span>}
+      </>,
+    )
+  const base = c ? c.customerPrice : r.total
+  if (!wallet && !c) return null
+  const surcharge = c ? r2(c.customerPrice - r.total) : 0
+  const surchargePct = c && r.total > 0 ? r2((surcharge / r.total) * 100) : 0
+  const charge = wallet ? r2(base * (1 + wallet.pct / 100)) : base
+  const sellerValue = r2(charge - base)
+  const title = [c ? `Reajuste da tabela: ${c.name} (${c.label}).` : null, wallet ? `Poupança de frete: ${wallet.name}. O que a nota cobrar acima de ${money(charge)} vira saldo do vendedor; abaixo, desconta.` : null].filter(Boolean).join(' ')
+  const line = (label: string, value: string, strong = false) => (
+    <span className={cn('flex justify-between gap-3', strong && 'mt-0.5 border-t border-current/20 pt-0.5 font-semibold')}>
+      <span>{label}</span>
+      <span className="tabular-nums">{value}</span>
+    </span>
+  )
+  return box(
+    'sky',
+    title,
+    <>
+      {line('Frete', money(r.total))}
+      {c && line(`Reajuste tabela (${fmtNum(surchargePct)}%)`, `+ ${money(surcharge)}`)}
+      {wallet && line(`Repasse ao cliente – vendedor (${fmtNum(wallet.pct)}%)`, `+ ${money(sellerValue)}`)}
+      {line('Total a cobrar do cliente', money(charge), true)}
+    </>,
+  )
+}
+
 export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quote) => void }) {
   const [sort, setSort] = useState<'preco' | 'prazo' | 'equilibrio'>('preco')
   const [open, setOpen] = useState<string | null>(null)
@@ -1182,17 +1251,7 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
                           Inclui {money(r.dropOff.cost)} para levar até a transportadora{r.dropOff.provider ? ` (${r.dropOff.provider})` : ''}
                         </p>
                       )}
-                      {!r.campaign && wallet.data && (
-                        <p className="mt-2 rounded-md bg-sky-500/10 px-2 py-1 text-xs text-sky-800 dark:text-sky-200" title={`Poupança de frete: ${wallet.data.name}. O que a nota cobrar acima da cotação + ${fmtNum(wallet.data.pct)}% vira saldo do vendedor.`}>
-                          Cobrar do cliente <strong>{money(Math.round(r.total! * (1 + wallet.data.pct / 100) * 100) / 100)}</strong> (+{fmtNum(wallet.data.pct)}%)
-                        </p>
-                      )}
-                      {r.campaign && (
-                        <p className="mt-2 rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-800 dark:text-amber-200" title={`Campanha: ${r.campaign.name} (${r.campaign.label})`}>
-                          Cobrar do cliente <strong>{r.campaign.customerPrice === 0 ? 'frete grátis' : money(r.campaign.customerPrice)}</strong> · {r.campaign.name}
-                          {r.campaign.discount > 0 && <span className="block">A empresa paga a diferença: {money(r.campaign.discount)}</span>}
-                        </p>
-                      )}
+                      <ChargeHint r={r} wallet={wallet.data ?? null} />
                       {r.warnings.length > 0 && <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">{r.warnings.length} aviso(s): veja os detalhes</p>}
                     </>
                   ) : (
@@ -1289,17 +1348,7 @@ export function QuoteView({ quote, onChange }: { quote: Quote; onChange: (q: Quo
                         {money(r.total)}
                         {r.total !== null && r.total === cheapest && <span className="block text-[11px] font-normal text-[#006300] dark:text-[#0ca30c]">menor preço</span>}
                         {bestBalance === r && ok.length > 1 && <span className="block text-[11px] font-normal text-violet-700 dark:text-violet-300">melhor equilíbrio</span>}
-                        {!r.campaign && r.total !== null && wallet.data && (
-                          <span className="block text-[11px] font-normal text-sky-700 dark:text-sky-300" title={`Poupança de frete: ${wallet.data.name}. O que a nota cobrar acima da cotação + ${fmtNum(wallet.data.pct)}% vira saldo do vendedor.`}>
-                            cobrar do cliente {money(Math.round(r.total * (1 + wallet.data.pct / 100) * 100) / 100)} (+{fmtNum(wallet.data.pct)}%)
-                          </span>
-                        )}
-                        {r.campaign && (
-                          <span className="block text-[11px] font-normal text-amber-700 dark:text-amber-300" title={`Campanha: ${r.campaign.name} (${r.campaign.label})`}>
-                            cobrar do cliente {r.campaign.customerPrice === 0 ? 'frete grátis' : money(r.campaign.customerPrice)} · {r.campaign.name}
-                            {r.campaign.discount > 0 && <span className="block">a empresa paga a diferença: {money(r.campaign.discount)}</span>}
-                          </span>
-                        )}
+                        <ChargeHint r={r} wallet={wallet.data ?? null} compact />
                       </TableCell>
                       <TableCell className="hidden text-right tabular-nums md:table-cell">{money(fp)}</TableCell>
                       <TableCell className="hidden text-right tabular-nums md:table-cell">{r.total === null ? '—' : money(taxes)}</TableCell>
@@ -1433,6 +1482,31 @@ function QuoteList() {
     placeholderData: keepPreviousData,
     enabled: !!active.ctx.data,
   })
+  const { can } = useAuth()
+  const editable = can('fretes_cotacao', 'edit')
+  const qc = useQueryClient()
+  const confirm = useConfirm()
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const cancel = useMutation({
+    mutationFn: (ids: string[]) => api.post<{ cancelled: number }>('/fretes/cotacoes/cancelar', { ids }),
+    onSuccess: (r) => {
+      toast.success(`${r.cancelled} cotação(ões) cancelada(s).`)
+      setSelected(new Set())
+      void qc.invalidateQueries({ queryKey: ['fretes', 'cotacoes'] })
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const askCancel = async (ids: string[]) => {
+    if (await confirm({ title: `Cancelar ${ids.length} cotação(ões)?`, description: 'A cotação fica guardada no histórico como cancelada (não some). Pedidos já ligados a ela não mudam.', confirmLabel: 'Cancelar cotação', cancelLabel: 'Voltar' })) cancel.mutate(ids)
+  }
+  const openRows = (list.data?.items ?? []).filter((r) => r.status !== 'CANCELADA')
+  const toggle = (id: string) =>
+    setSelected((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
   const pages = list.data ? Math.max(1, Math.ceil(list.data.total / list.data.pageSize)) : 1
   return (
     <div className="space-y-4">
@@ -1494,6 +1568,18 @@ function QuoteList() {
           Buscar
         </Button>
       </form>
+      {editable && selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 p-2 text-sm">
+          <span className="px-1 font-medium">{selected.size} cotação(ões) marcada(s)</span>
+          <Button size="sm" variant="outline" className="text-destructive" disabled={cancel.isPending} onClick={() => void askCancel([...selected])}>
+            <XIcon aria-hidden /> Cancelar cotações
+          </Button>
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelected(new Set())}>
+            Desmarcar
+          </Button>
+          {cancel.isPending && <Loader2Icon className="size-4 animate-spin" aria-hidden />}
+        </div>
+      )}
       {list.isLoading ? (
         <TableSkeleton />
       ) : list.error ? (
@@ -1505,6 +1591,11 @@ function QuoteList() {
           <Table>
             <TableHeader>
               <TableRow>
+                {editable && (
+                  <TableHead className="w-8">
+                    <Checkbox aria-label="Marcar todas desta página" checked={openRows.length > 0 && openRows.every((r) => selected.has(r.id))} onCheckedChange={(v) => setSelected(v ? new Set(openRows.map((r) => r.id)) : new Set())} />
+                  </TableHead>
+                )}
                 <TableHead>Nº</TableHead>
                 <TableHead>Data</TableHead>
                 <TableHead className="hidden md:table-cell">Filial</TableHead>
@@ -1512,11 +1603,17 @@ function QuoteList() {
                 <TableHead className="hidden lg:table-cell">Referência / cliente</TableHead>
                 <TableHead className="text-right">Menor valor</TableHead>
                 <TableHead>Escolha</TableHead>
+                {editable && <TableHead className="w-10" />}
               </TableRow>
             </TableHeader>
             <TableBody>
               {list.data.items.map((r) => (
                 <TableRow key={r.id} className="cursor-pointer" onClick={() => navigate(`/fretes/cotacoes/${r.id}`)}>
+                  {editable && (
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      {r.status !== 'CANCELADA' && <Checkbox aria-label={`Marcar cotação ${r.code}`} checked={selected.has(r.id)} onCheckedChange={() => toggle(r.id)} />}
+                    </TableCell>
+                  )}
                   <TableCell className="font-medium">
                     <Link to={`/fretes/cotacoes/${r.id}`} onClick={(e) => e.stopPropagation()}>
                       {r.code}
@@ -1538,6 +1635,15 @@ function QuoteList() {
                       {r.status === 'SELECIONADA' ? `${r.selectedCarrierName ?? '—'} · ${money(r.selectedTotal)}` : QUOTE_STATUS[r.status].label}
                     </Badge>
                   </TableCell>
+                  {editable && (
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      {r.status !== 'CANCELADA' && (
+                        <Button size="icon" variant="ghost" className="size-8 text-muted-foreground hover:text-destructive" aria-label={`Cancelar cotação ${r.code}`} title="Cancelar cotação" disabled={cancel.isPending} onClick={() => void askCancel([r.id])}>
+                          <XIcon aria-hidden />
+                        </Button>
+                      )}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

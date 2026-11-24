@@ -33,6 +33,8 @@ import {
   statsOf,
   SW_FILE,
   SW_MARKER,
+  pushBrowser,
+  pushError,
   verifyDelivery,
   withUtm,
 } from './webpush'
@@ -168,6 +170,33 @@ export class WebPushService implements OnApplicationBootstrap, OnModuleDestroy {
     return buildServiceWorker({ apiBase: env.appUrl, siteKey: track.siteKey })
   }
 
+  /**
+   * Envio de teste para as inscrições mais recentes (as de quem acabou de permitir, ex.: você no Chrome e no Edge):
+   * devolve, para cada uma, se o serviço do navegador aceitou ou o motivo da recusa. Não conta como campanha.
+   */
+  async testSend(user: AuthUser) {
+    this.assertCan(user, 'edit')
+    const s = await this.config(user.tenantId)
+    if (!s.publicKey || !s.privateKeyEnc) throw new BadRequestException('Ative a coleta primeiro (as chaves do Web Push são criadas ao ativar).')
+    const subs = await this.prisma.webPushSubscriber.findMany({ where: { tenantId: user.tenantId, active: true }, orderBy: { createdAt: 'desc' }, take: 5 })
+    if (!subs.length) throw new BadRequestException('Nenhum inscrito ainda: abra a loja, permita as notificações e tente de novo.')
+    const { siteUrl } = await this.siteOf(user.tenantId, s)
+    const vapid = { subject: siteOrigin(s.siteUrl) ?? (env.appUrl.startsWith('https://') ? env.appUrl : 'mailto:crm@localhost.invalid'), publicKey: s.publicKey, privateKey: decrypt(s.privateKeyEnc) }
+    const payload = buildPayload({ title: 'Teste do CRM', body: 'Se esta notificação apareceu, o Web Push está funcionando neste navegador.', icon: await this.defaultIcon(user.tenantId), image: null, url: siteUrl ?? env.appUrl, button: null, shown: null, tag: 'crm-teste' })
+    const results: { browser: string; since: Date; ok: boolean; message: string }[] = []
+    for (const sub of subs) {
+      try {
+        await this.sender({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload, { vapidDetails: vapid, TTL: 600, urgency: 'high', timeout: 15_000 })
+        results.push({ browser: pushBrowser(sub.endpoint, sub.userAgent), since: sub.createdAt, ok: true, message: 'Aceito pelo serviço do navegador. Se não apareceu, confira se as notificações do site e do sistema (Windows) estão liberadas.' })
+      } catch (err) {
+        const code = (err as { statusCode?: number }).statusCode
+        if (code === 404 || code === 410) await this.prisma.webPushSubscriber.update({ where: { id: sub.id }, data: { active: false, failedAt: new Date() } })
+        results.push({ browser: pushBrowser(sub.endpoint, sub.userAgent), since: sub.createdAt, ok: false, message: pushError(err) })
+      }
+    }
+    return results
+  }
+
   /** Confere se https://loja/crm-push-sw.js responde com o arquivo certo. */
   async checkSw(user: AuthUser) {
     this.assertCan(user, 'view')
@@ -178,7 +207,8 @@ export class WebPushService implements OnApplicationBootstrap, OnModuleDestroy {
     try {
       // Lojas com firewall (ex.: Magazord) recusam (403) quem não se identifica como navegador; o visitante abre normal.
       const body = (await downloadPublic(url, 64 * 1024, BROWSER_UA)).toString('utf8')
-      if (!body.includes(SW_MARKER)) return { ok: false, url, message: 'O endereço responde, mas não é o arquivo do CRM (baixe de novo e publique sem alterar).' }
+      // A loja pode tirar o comentário do topo (ex.: Magazord): vale também o começo do código do CRM.
+      if (!body.includes(SW_MARKER) && !/var CRM = \{"api":/.test(body)) return { ok: false, url, message: 'O endereço responde, mas não é o arquivo do CRM (baixe de novo e publique sem alterar).' }
       return { ok: true, url, message: 'Arquivo encontrado na raiz da loja.' }
     } catch (err) {
       return { ok: false, url, message: `Arquivo não encontrado: ${(err as Error).message}.` }
@@ -481,6 +511,7 @@ export class WebPushService implements OnApplicationBootstrap, OnModuleDestroy {
         const ok: string[] = []
         const gone: string[] = []
         const failed: string[] = []
+        const reasons: string[] = []
         for (let i = 0; i < subs.length; i += CONCURRENCY) {
           await Promise.all(
             subs.slice(i, i + CONCURRENCY).map(async (sub) => {
@@ -502,6 +533,7 @@ export class WebPushService implements OnApplicationBootstrap, OnModuleDestroy {
                 const code = (err as { statusCode?: number }).statusCode
                 if (code === 404 || code === 410) gone.push(sub.id)
                 else failed.push(sub.id)
+                if (reasons.length < 3) reasons.push(`${pushBrowser(sub.endpoint, sub.userAgent)}: ${pushError(err)}`)
               }
             }),
           )
@@ -517,7 +549,8 @@ export class WebPushService implements OnApplicationBootstrap, OnModuleDestroy {
           await this.prisma.webPushSubscriber.updateMany({ where: { id: { in: failed } }, data: { failCount: { increment: 1 }, failedAt: now } })
           await this.prisma.webPushSubscriber.updateMany({ where: { id: { in: failed }, failCount: { gte: MAX_FAILS } }, data: { active: false } })
         }
-        await this.prisma.webPushCampaign.update({ where: { id }, data: { sent: { increment: ok.length }, failed: { increment: gone.length + failed.length } } })
+        await this.prisma.webPushCampaign.update({ where: { id }, data: { sent: { increment: ok.length }, failed: { increment: gone.length + failed.length }, ...(reasons.length ? { error: reasons.join(' | ').slice(0, 300) } : {}) } })
+        if (reasons.length) this.logger.warn(`Web push ${id}: ${reasons.join(' | ')}`)
         if (subs.length < PAGE) break
       }
       await this.prisma.webPushCampaign.update({ where: { id }, data: { status: 'ENVIADO', finishedAt: new Date() } })

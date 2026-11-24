@@ -150,5 +150,5 @@ function pickCampaign(list: FreightCampaign[], t: CampaignTarget, tableTotal: nu
     if (!best || (want === 'min' ? price < best.price : price > best.price)) best = { campaign: c, price }
   }
   // Repasse e acréscimo: a empresa não paga diferença (desconto zero).
-  return best && { id: best.campaign.id, name: best.campaign.name, label: campaignLabel(best.campaign), customerPrice: best.price, discount: best.campaign.mode === 'REPASSE' || best.campaign.mode === 'ACRESCIMO' ? 0 : Math.max(0, Math.round((tableTotal - best.price) * 100) / 100) }
+  return best && { id: best.campaign.id, name: best.campaign.name, mode: best.campaign.mode, label: campaignLabel(best.campaign), customerPrice: best.price, discount: best.campaign.mode === 'REPASSE' || best.campaign.mode === 'ACRESCIMO' ? 0 : Math.max(0, Math.round((tableTotal - best.price) * 100) / 100) }
 }
