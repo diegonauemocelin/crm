@@ -41,6 +41,8 @@ export interface CarrierInput {
   dropOffCost?: number | null
   dropOffProviderId?: string | null
   reconcile?: boolean
+  quote?: boolean
+  pickup?: boolean
 }
 
 const opt = (v: string | null | undefined, max: number) => (v === undefined ? undefined : cleanText(v, max) || null)
@@ -65,6 +67,9 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
       pickupMode: c.pickupMode,
       pickupBySchedule: c.pickupBySchedule,
       reconcile: c.reconcile,
+      quote: c.quote,
+      pickup: c.pickup,
+      autoCreated: c.autoCreated,
       dropOffCost: c.dropOffCost === null ? null : Number(c.dropOffCost),
       dropOffProviderId: c.dropOffProviderId,
       legalName: c.legalName,
@@ -193,6 +198,8 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
       dropOffCost,
       dropOffProviderId,
       reconcile: kind === 'PRESTADOR' ? true : d.reconcile !== false,
+      quote: kind === 'PRESTADOR' ? false : d.quote !== false,
+      pickup: d.pickup !== false,
     }
   }
 
@@ -237,7 +244,7 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
     const allowed = allowedUnits(user, 'fretes_coletas')
     if (unitId && allowed && !allowed.includes(unitId)) throw new NotFoundException('Filial não encontrada.')
     const now = new Date()
-    const carriers = await this.prisma.freightCarrier.findMany({ where: { tenantId: user.tenantId, active: true, kind: 'TRANSPORTADORA', pickupMode: 'COLETA' }, select: { id: true, name: true, quoteName: true, pickupBySchedule: true }, orderBy: { name: 'asc' } })
+    const carriers = await this.prisma.freightCarrier.findMany({ where: { tenantId: user.tenantId, active: true, kind: 'TRANSPORTADORA', pickupMode: 'COLETA', pickup: true }, select: { id: true, name: true, quoteName: true, pickupBySchedule: true }, orderBy: { name: 'asc' } })
     return {
       today: spDate(now),
       tomorrow: spDate(now, 1),
@@ -277,7 +284,7 @@ export class TransportadorasService implements OnApplicationBootstrap, OnModuleD
 
   private async boardOf(tenantId: string, unitId: string | null, allowed: string[] | null) {
     // Transportadora "por agendamento" só aparece quando agendada (lista scheduled), não pelos horários fixos.
-    const carriers = await this.prisma.freightCarrier.findMany({ where: { tenantId, active: true, pickupBySchedule: false }, select: { id: true, name: true, quoteName: true, pickups: true, pickupMode: true }, orderBy: { name: 'asc' } })
+    const carriers = await this.prisma.freightCarrier.findMany({ where: { tenantId, active: true, pickup: true, pickupBySchedule: false }, select: { id: true, name: true, quoteName: true, pickups: true, pickupMode: true }, orderBy: { name: 'asc' } })
     const units = await this.prisma.unit.findMany({ where: { tenantId }, select: { id: true, name: true } })
     const unitName = new Map(units.map((u) => [u.id, u.name]))
     const rows = carriers.flatMap((c) =>

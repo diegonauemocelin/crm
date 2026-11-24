@@ -365,6 +365,8 @@ function Sum({ label, value, danger }: { label: string; value: number; danger?: 
 
 interface ImportResult {
   imported: number
+  /** Transportadoras novas cadastradas pelos CT-es. */
+  carriersCreated?: number
   duplicated: number
   cancelled: number
   linked: number
@@ -383,7 +385,7 @@ function ImportCtes({ onClose }: { onClose: () => void }) {
     },
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['fretes'] })
-      toast.success(`${r.imported} CT-e(s) importado(s), ${r.linked} ligado(s) a pedidos.`)
+      toast.success(`${r.imported} CT-e(s) importado(s), ${r.linked} ligado(s) a pedidos.${r.carriersCreated ? ` ${r.carriersCreated} transportadora(s) nova(s) cadastrada(s): configure em Fretes › Transportadoras.` : ''}`)
     },
     onError: (e) => toast.error(errorMessage(e)),
   })

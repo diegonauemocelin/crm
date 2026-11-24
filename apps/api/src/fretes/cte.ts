@@ -14,6 +14,10 @@ export interface CteData {
   cityFim: string | null
   cfop: string | null
   emitName: string | null
+  /** Nome fantasia, cidade e UF de quem emitiu (a transportadora). */
+  emitFant?: string | null
+  emitCity?: string | null
+  emitUf?: string | null
   senderDoc: string | null
   recipientDoc: string | null
   recipientName: string | null
@@ -89,6 +93,9 @@ export function parseCteXml(raw: string): CteData {
     cityFim: tag(ide, 'xMunFim'),
     cfop: tag(ide, 'CFOP'),
     emitName: tag(emit, 'xNome'),
+    emitFant: tag(emit, 'xFant'),
+    emitCity: tag(block(emit, 'enderEmit') ?? '', 'xMun'),
+    emitUf: tag(block(emit, 'enderEmit') ?? '', 'UF'),
     senderDoc: parties['0'] ?? null,
     recipientDoc: parties['3'] ?? null,
     recipientName: dest ? tag(dest, 'xNome') : null,
@@ -160,4 +167,27 @@ export function companyRoles(cte: Pick<CteData, 'tomadorDoc' | 'senderDoc' | 're
   if (is(cte.expedDoc)) out.push('EXPEDIDOR')
   if (is(cte.recebDoc)) out.push('RECEBEDOR')
   return out
+}
+
+/**
+ * Transportadora que ainda não está cadastrada e emitiu CT-e para a empresa: cadastro automático com o nome (fantasia,
+ * senão a razão social), o CNPJ e a cidade de quem emitiu. Entra desligada da cotação, da coleta e da conciliação:
+ * a empresa liga o que quiser em Fretes › Transportadoras. Null quando o CT-e não traz um CNPJ válido.
+ */
+export function autoCarrierFromCte(c: Pick<CteData, 'emitCnpj' | 'emitName' | 'emitFant' | 'emitCity' | 'emitUf' | 'number' | 'issuedAt'>) {
+  const cnpj = (c.emitCnpj ?? '').replace(/\D/g, '')
+  if (cnpj.length !== 14 || /^0+$/.test(cnpj)) return null
+  const clean = (v: string | null | undefined, max: number) => (v ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
+  const legalName = clean(c.emitName, 160) || `CNPJ ${cnpj}`
+  const name = clean(c.emitFant, 120) || legalName.slice(0, 120)
+  const uf = clean(c.emitUf, 2).toUpperCase()
+  const day = c.issuedAt ? c.issuedAt.slice(0, 10).split('-').reverse().join('/') : null
+  return {
+    cnpj,
+    legalName,
+    name,
+    city: clean(c.emitCity, 120) || null,
+    state: /^[A-Z]{2}$/.test(uf) ? uf : null,
+    notes: `Cadastrada automaticamente pelo CT-e${c.number ? ` nº ${c.number}` : ''}${day ? ` de ${day}` : ''}. Configure se entra na cotação, se faz coleta e se os CT-es dela são conciliados.`,
+  }
 }

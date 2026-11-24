@@ -758,7 +758,7 @@ export class CotacaoService {
         status: 'ATIVA',
         usage: { in: ['COTACAO_CONCILIACAO', 'COTACAO'] },
         OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }],
-        carrier: { active: true, kind: 'TRANSPORTADORA', OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }] },
+        carrier: { active: true, quote: true, kind: 'TRANSPORTADORA', OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }] },
       },
       include: { carrier: true },
     }))
@@ -778,7 +778,7 @@ export class CotacaoService {
     // Transportadoras ativas da filial sem nenhuma tabela ativa: aparecem para ninguém achar que foram esquecidas.
     const withTable = new Set(tables.map((t) => t.carrierId))
     const carriers = lean ? [] : await this.prisma.freightCarrier.findMany({
-      where: { tenantId: user.tenantId, active: true, kind: 'TRANSPORTADORA', id: { notIn: [...withTable] }, OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }] },
+      where: { tenantId: user.tenantId, active: true, quote: true, kind: 'TRANSPORTADORA', id: { notIn: [...withTable] }, OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }] },
       select: { id: true, name: true, quoteName: true },
       take: 100,
     })
@@ -838,7 +838,7 @@ export class CotacaoService {
         status: 'ATIVA',
         usage: { in: ['COTACAO_CONCILIACAO', 'COTACAO'] },
         OR: [{ unitIds: { isEmpty: true } }, { unitIds: { hasSome: sib } }],
-        carrier: { active: true, kind: 'TRANSPORTADORA' },
+        carrier: { active: true, quote: true, kind: 'TRANSPORTADORA' },
       },
       select: { id: true, publishedVersionId: true, validTo: true },
     })

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger, NotFoundException, type OnApplicationBootstrap } from '@nestjs/common'
 import { gunzipSync } from 'node:zlib'
 import { unzipSync } from 'fflate'
 import { AuditService } from '../audit/audit.service'
@@ -14,7 +14,7 @@ import { normalizeCep } from './cep'
 import { type ExpectedRef, reconcile, type Tolerance } from './conciliacao'
 import { CotacaoService, DROP_OFF_CODE, dropOffOf, type QuoteResult } from './cotacao.service'
 import { confrontNfeCte, DEFAULT_NFE_TOLERANCE } from './confronto'
-import { companyRoles, type CteData, internalRateFrom, parseCteCancel, parseCteXml, type RateLearning } from './cte'
+import { autoCarrierFromCte, companyRoles, type CteData, internalRateFrom, parseCteCancel, parseCteXml, type RateLearning } from './cte'
 import { money } from './formula'
 
 /** Papéis em que a carga sai da empresa (venda, saída da filial). */
@@ -44,7 +44,9 @@ const n = (d: Prisma.Decimal | null | undefined) => (d === null || d === undefin
 
 /** CT-e: importação dos XMLs, vínculo com transportadora, filial e pedido, conciliação e decisão (aprovar ou contestar). */
 @Injectable()
-export class CteService {
+export class CteService implements OnApplicationBootstrap {
+  private readonly logger = new Logger(CteService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -52,6 +54,23 @@ export class CteService {
     private readonly settings: SettingsService,
     private readonly quotes: CotacaoService,
   ) {}
+
+  /** Ao subir: cadastra as transportadoras dos CT-es antigos que ainda estão sem cadastro (uma vez por CNPJ). */
+  onApplicationBootstrap() {
+    const t = setTimeout(() => {
+      void (async () => {
+        const tenants = await this.prisma.freightCte.findMany({ where: { carrierId: null, emitCnpj: { not: null } }, distinct: ['tenantId'], select: { tenantId: true } })
+        for (const { tenantId } of tenants) {
+          const made = await this.backfillCarriers(tenantId).catch((e: unknown) => {
+            this.logger.warn(`Transportadoras dos CT-es antigos não cadastradas: ${(e as Error).message}`)
+            return 0
+          })
+          if (made) this.logger.log(`${made} transportadora(s) cadastrada(s) pelos CT-es já importados.`)
+        }
+      })()
+    }, 60_000)
+    t.unref()
+  }
 
   async recSettings(tenantId: string): Promise<RecSettings> {
     return { ...DEFAULT_REC, ...(await this.settings.get<RecSettings>(tenantId, REC_KEY, DEFAULT_REC)) }
@@ -184,11 +203,11 @@ export class CteService {
    */
   async importDocs(user: AuthUser, docs: { name: string; text: string }[], ctx: RequestCtx, source: 'MANUAL' | 'SEFAZ') {
     const [carriers, units] = await Promise.all([
-      this.prisma.freightCarrier.findMany({ where: { tenantId: user.tenantId }, select: { id: true, cnpj: true } }),
+      this.prisma.freightCarrier.findMany({ where: { tenantId: user.tenantId }, select: { id: true, cnpj: true, autoCreated: true, unitIds: true } }),
       this.prisma.unit.findMany({ where: { tenantId: user.tenantId }, select: { id: true, cnpj: true, city: true, state: true, isHeadquarters: true, zip: true } }),
     ])
     const allowed = allowedUnits(user, 'fretes_cte')
-    const result = { imported: 0, duplicated: 0, cancelled: 0, linked: 0, ignored: [] as { file: string; reason: string }[], ids: [] as string[] }
+    const result = { imported: 0, duplicated: 0, cancelled: 0, linked: 0, carriersCreated: 0, ignored: [] as { file: string; reason: string }[], ids: [] as string[] }
     const learnings: Extract<RateLearning, { ok: true }>[] = []
     for (const d of docs) {
       const cancel = parseCteCancel(d.text)
@@ -220,7 +239,7 @@ export class CteService {
       }
       // Transportadora pela raiz do CNPJ (a filial que emitiu pode ter outro CNPJ da mesma empresa).
       const root = cte.emitCnpj?.slice(0, 8)
-      const carrier = carriers.find((c) => c.cnpj === cte.emitCnpj) ?? carriers.find((c) => root && c.cnpj.startsWith(root))
+      let carrier = carriers.find((c) => c.cnpj === cte.emitCnpj) ?? carriers.find((c) => root && c.cnpj.startsWith(root))
       // Filial da Usaparts: quem enviou, quem paga, ou a cidade de origem.
       // Várias filiais com o mesmo CNPJ ou na mesma cidade (ex.: Matriz e E-commerce em Maravilha): a carga sai da matriz
       // (ou da que tem CEP de expedição), não da filial que só fatura.
@@ -233,6 +252,19 @@ export class CteService {
       if (allowed && (!unit || !allowed.includes(unit.id))) {
         result.ignored.push({ file: d.name, reason: 'CT-e de filial que não está liberada para o seu usuário.' })
         continue
+      }
+      // Transportadora nova (nunca emitiu CT-e para a empresa): cadastra sozinha, desligada da cotação, coleta e conciliação.
+      if (!carrier) {
+        const made = await this.autoCarrier(user, cte, unit?.id ?? null, ctx)
+        if (made) {
+          carrier = made
+          carriers.push(made)
+          result.carriersCreated++
+        }
+      } else if (carrier.autoCreated && unit && carrier.unitIds.length && !carrier.unitIds.includes(unit.id)) {
+        // Cadastrada pelo CT-e e agora emitiu para outra filial: passa a valer para ela também.
+        carrier.unitIds = [...carrier.unitIds, unit.id]
+        await this.prisma.freightCarrier.update({ where: { id: carrier.id }, data: { unitIds: carrier.unitIds } })
       }
       const shipment = cte.nfeKeys.length ? await this.prisma.freightShipment.findFirst({ where: { tenantId: user.tenantId, invoiceKey: { in: cte.nfeKeys }, status: { not: 'CANCELADO' } } }) : null
       const asset = await this.files.saveBuffer(user.tenantId, 'frete-cte', Buffer.from(d.text, 'utf8'), 'application/xml', 'xml')
@@ -290,6 +322,73 @@ export class CteService {
     const icms = learnings.length ? await this.quotes.applyIcmsLearnings(user, learnings, ctx, true) : null
     await this.audit.byUser(user, ctx, 'frete.cte.importados', 'freight_cte', undefined, { origem: source, arquivos: docs.length, novos: result.imported, repetidos: result.duplicated, cancelados: result.cancelled, ignorados: result.ignored.length })
     return { ...result, ignored: result.ignored.slice(0, 100), icmsUpdated: icms?.updated ?? [] }
+  }
+
+  /** Cadastro automático da transportadora do CT-e (nome, CNPJ e filial), desligada da cotação, coleta e conciliação. */
+  private async autoCarrier(user: AuthUser, cte: Pick<CteData, 'emitCnpj' | 'emitName' | 'emitFant' | 'emitCity' | 'emitUf' | 'number' | 'issuedAt'>, unitId: string | null, ctx: RequestCtx | null) {
+    const d = autoCarrierFromCte(cte)
+    if (!d) return null
+    const c = await this.prisma.freightCarrier.upsert({
+      where: { tenantId_cnpj: { tenantId: user.tenantId, cnpj: d.cnpj } },
+      create: { tenantId: user.tenantId, ...d, unitIds: unitId ? [unitId] : [], quote: false, pickup: false, reconcile: false, autoCreated: true },
+      update: {},
+      select: { id: true, cnpj: true, autoCreated: true, unitIds: true, name: true },
+    })
+    const log = { tenantId: user.tenantId, action: 'frete.transportadora.cadastrada_pelo_cte', entity: 'freight_carrier', entityId: c.id, data: { nome: c.name, cnpj: d.cnpj, cte: cte.number ?? null } }
+    await (ctx ? this.audit.byUser(user, ctx, log.action, log.entity, log.entityId, log.data) : this.audit.log(log)).catch(() => undefined)
+    return c
+  }
+
+  /**
+   * CT-es antigos sem transportadora cadastrada: cadastra as transportadoras deles (uma vez por CNPJ) e liga os CT-es.
+   * Os que estavam pendentes só por falta da transportadora saem da fila (ela entra sem conciliar).
+   */
+  async backfillCarriers(tenantId: string) {
+    const rows = await this.prisma.freightCte.findMany({
+      where: { tenantId, carrierId: null, emitCnpj: { not: null } },
+      orderBy: { issuedAt: 'desc' },
+      select: { id: true, emitCnpj: true, emitName: true, number: true, issuedAt: true, unitId: true, fileId: true },
+      take: 5000,
+    })
+    if (!rows.length) return 0
+    const carriers = await this.prisma.freightCarrier.findMany({ where: { tenantId }, select: { id: true, cnpj: true, reconcile: true, name: true } })
+    const system = { id: '00000000-0000-0000-0000-000000000000', tenantId, name: 'Sistema' } as AuthUser
+    let created = 0
+    const byCnpj = new Map<string, typeof rows>()
+    for (const r of rows) byCnpj.set(r.emitCnpj!, [...(byCnpj.get(r.emitCnpj!) ?? []), r])
+    for (const [cnpj, list] of byCnpj) {
+      const root = cnpj.slice(0, 8)
+      let carrier: { id: string; reconcile: boolean; name: string } | null = carriers.find((c) => c.cnpj === cnpj) ?? carriers.find((c) => c.cnpj.startsWith(root)) ?? null
+      if (!carrier) {
+        const first = list[0]!
+        // Nome fantasia e cidade vêm do XML guardado, quando há.
+        let extra: Partial<Pick<CteData, 'emitFant' | 'emitCity' | 'emitUf'>> = {}
+        try {
+          const xml = first.fileId ? (await this.files.read(first.fileId)).content.toString('utf8') : null
+          if (xml) {
+            const p = parseCteXml(xml)
+            extra = { emitFant: p.emitFant, emitCity: p.emitCity, emitUf: p.emitUf }
+          }
+        } catch {
+          extra = {}
+        }
+        const units = [...new Set(list.map((r) => r.unitId).filter((x): x is string => !!x))]
+        const made = await this.autoCarrier(system, { emitCnpj: cnpj, emitName: first.emitName, number: first.number, issuedAt: first.issuedAt?.toISOString() ?? null, ...extra }, units[0] ?? null, null)
+        if (!made) continue
+        if (units.length > 1) await this.prisma.freightCarrier.update({ where: { id: made.id }, data: { unitIds: units } })
+        carrier = { id: made.id, reconcile: false, name: made.name }
+        carriers.push({ ...carrier, cnpj })
+        created++
+      }
+      const ids = list.map((r) => r.id)
+      await this.prisma.freightCte.updateMany({ where: { id: { in: ids } }, data: { carrierId: carrier.id } })
+      if (!carrier.reconcile)
+        await this.prisma.freightCte.updateMany({
+          where: { id: { in: ids }, recStatus: { in: ['PENDENTE', 'SEM_REFERENCIA'] }, decision: null },
+          data: { recStatus: 'FORA', recTypes: [], recSource: null, expectedTotal: null, difference: null, recDetail: { reason: `${carrier.name} está marcada para não conciliar CT-e (Fretes › Transportadoras).` } as Prisma.InputJsonValue, recAt: new Date() },
+        })
+    }
+    return created
   }
 
   /** Concilia (ou reconcilia) um CT-e: referência = cotação do pedido, senão a tabela vigente na data do CT-e. */

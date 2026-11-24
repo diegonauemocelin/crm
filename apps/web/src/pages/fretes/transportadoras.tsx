@@ -51,6 +51,12 @@ interface Carrier {
   pickupBySchedule?: boolean
   /** false: os CT-es dela não são conciliados (ex.: Mercado Livre Envios). */
   reconcile?: boolean
+  /** false: não entra na cotação de frete. */
+  quote?: boolean
+  /** false: não faz coleta na empresa (fora de Agendar coletas e do painel da TV). */
+  pickup?: boolean
+  /** Cadastrada sozinha pelo CT-e. */
+  autoCreated?: boolean
   dropOffCost?: number | null
   dropOffProviderId?: string | null
   active: boolean
@@ -144,8 +150,18 @@ function CarrierList() {
             {list.data.map((c) => (
               <TableRow key={c.id} className="cursor-pointer" onClick={() => setOpen(c)}>
                 <TableCell>
-                  <p className="font-medium">{c.name}</p>
+                  <p className="font-medium">
+                    {c.name}
+                    {c.autoCreated && (
+                      <Badge variant="outline" className="ml-2 border-sky-500/40 text-[11px] font-normal text-sky-700 dark:text-sky-300">
+                        Pelo CT-e
+                      </Badge>
+                    )}
+                  </p>
                   <p className="text-xs text-muted-foreground">{c.legalName}</p>
+                  {(c.kind ?? 'TRANSPORTADORA') === 'TRANSPORTADORA' && (c.quote === false || c.pickup === false || c.reconcile === false) && (
+                    <p className="text-[11px] text-muted-foreground">{[c.quote === false && 'fora da cotação', c.pickup === false && 'sem coleta', c.reconcile === false && 'não concilia'].filter(Boolean).join(' · ')}</p>
+                  )}
                 </TableCell>
                 <TableCell className="text-sm tabular-nums">{formatCnpj(c.cnpj)}</TableCell>
                 <TableCell className="hidden text-sm md:table-cell">{[c.phone, c.email].filter(Boolean).join(' · ') || '—'}</TableCell>
@@ -258,6 +274,8 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
     pickupMode: carrier?.pickupMode ?? 'COLETA',
     pickupBySchedule: carrier?.pickupBySchedule ?? false,
     reconcile: carrier?.reconcile ?? true,
+    quote: carrier?.quote ?? true,
+    pickup: carrier?.pickup ?? true,
     dropOffCost: carrier?.dropOffCost ? String(carrier.dropOffCost).replace('.', ',') : '',
     dropOffProviderId: carrier?.dropOffProviderId ?? '',
     legalName: carrier?.legalName ?? '',
@@ -407,13 +425,25 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
               ))}
             </div>
             {f.kind === 'TRANSPORTADORA' && (
-              <label className="flex items-start gap-2 rounded-md border p-3 text-sm sm:col-span-2">
-                <input type="checkbox" className="mt-0.5" checked={!f.reconcile} onChange={(e) => set('reconcile', !e.target.checked)} />
-                <span>
-                  <span className="font-medium">Não conciliar os CT-es desta transportadora</span>
-                  <span className="block text-xs text-muted-foreground">Para frete de marketplace (ex.: Mercado Livre Envios), cobrado pela plataforma: os CT-es ficam como &quot;Fora da conciliação&quot; e não entram nos totais.</span>
-                </span>
-              </label>
+              <div className="space-y-2 rounded-md border p-3 sm:col-span-2">
+                <p className="text-sm font-medium">O que esta transportadora faz no sistema</p>
+                {carrier?.autoCreated && <p className="rounded bg-sky-500/10 px-2 py-1 text-xs text-sky-800 dark:text-sky-200">Cadastrada automaticamente pelo CT-e (nome, CNPJ e filial). Entrou desligada: marque o que ela deve fazer.</p>}
+                {(
+                  [
+                    ['quote', 'Aparece na cotação de frete', 'Com tabela cadastrada (ou cotação online), entra nas cotações. Desmarcado: fica só no cadastro.'],
+                    ['pickup', 'Faz coleta na empresa', 'Aparece em Agendar coletas e no painel da TV (com os horários de coleta).'],
+                    ['reconcile', 'Concilia os CT-es', 'Os CT-es dela são conferidos com a tabela ou a cotação. Desmarcado (ex.: frete de marketplace, cobrado pela plataforma): ficam como "Fora da conciliação".'],
+                  ] as const
+                ).map(([k, label, help]) => (
+                  <label key={k} className="flex items-start gap-2 text-sm">
+                    <input type="checkbox" className="mt-1" checked={f[k]} onChange={(e) => set(k, e.target.checked)} />
+                    <span>
+                      <span className="font-medium">{label}</span>
+                      <span className="block text-xs text-muted-foreground">{help}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
             )}
             {f.kind === 'TRANSPORTADORA' && (
               <div className="space-y-2 rounded-md border p-3 sm:col-span-2">

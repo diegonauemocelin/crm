@@ -2795,6 +2795,12 @@ model FreightCarrier {
   pickupBySchedule Boolean @default(false)
   /// false: os CT-es dela não são conciliados com as tabelas (ex.: frete de marketplace, cobrado pela plataforma).
   reconcile   Boolean  @default(true)
+  /// false: não entra na cotação de frete (só fica cadastrada, ex.: transportadora que veio pelo CT-e).
+  quote       Boolean  @default(true)
+  /// false: não faz coleta na empresa (fora de Agendar coletas e do painel de TV).
+  pickup      Boolean  @default(true)
+  /// Cadastrada sozinha pelo CT-e (nome, CNPJ e filial); a empresa configura depois.
+  autoCreated Boolean  @default(false)
   /// Despacho: valor pago ao prestador para levar até a transportadora (vazio = a empresa leva sem custo).
   dropOffCost Decimal? @db.Decimal(12, 2)
   /// Despacho: prestador (cadastro com kind PRESTADOR) que leva até a transportadora.
