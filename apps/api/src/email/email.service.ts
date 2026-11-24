@@ -491,7 +491,7 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
     const slow = this.backoff.get(c.id)
     const size = batchSize(cfg.ratePerMinute, smtpCfg.maxPerMinute, slow?.level ?? 0, 60_000 / TICK_MS)
     let refused = false
-    const batch = await this.prisma.emailRecipient.findMany({ where: { campaignId: c.id, status: 'PENDENTE' }, take: size, include: { lead: { select: { name: true, emailOptIn: true, anonymizedAt: true, deletedAt: true } } } })
+    const batch = await this.prisma.emailRecipient.findMany({ where: { campaignId: c.id, status: 'PENDENTE' }, take: size, include: { lead: { select: { name: true, emailOptIn: true, emailOptOutAt: true, anonymizedAt: true, deletedAt: true } } } })
     if (!batch.length) {
       await this.prisma.emailCampaign.update({ where: { id: c.id }, data: { status: 'ENVIADA', finishedAt: new Date() } })
       this.logger.log(`Campanha ${c.id.slice(0, 8)} concluída.`)
@@ -505,7 +505,7 @@ export class EmailService implements OnApplicationBootstrap, OnModuleDestroy {
       for (const r of batch) {
         // Descadastrou ou teve os dados apagados depois que a campanha começou: não envia.
         if (!r.lead.emailOptIn || r.lead.anonymizedAt || r.lead.deletedAt) {
-          await this.prisma.emailRecipient.update({ where: { id: r.id }, data: { status: 'ERRO', failedAt: new Date(), error: 'Sem consentimento no momento do envio.' } })
+          await this.prisma.emailRecipient.update({ where: { id: r.id }, data: { status: 'ERRO', failedAt: new Date(), error: r.lead.emailOptOutAt ? 'Descadastrou: tirado do envio.' : 'Sem consentimento no momento do envio.' } })
           continue
         }
         const token = this.token(r.id)
