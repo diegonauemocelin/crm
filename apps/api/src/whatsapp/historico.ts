@@ -61,6 +61,22 @@ export function matchHistoryConversation<C extends ConvCandidate>(candidates: C[
   return own.find((c) => c.jid === p.jid) ?? (phone ? own.find((c) => c.phone === phone) : undefined) ?? (p.jid.endsWith('@lid') ? own.find((c) => c.lid === p.jid) : undefined) ?? null
 }
 
+/**
+ * De quem é cada @lid: a conversa do telefone (do mesmo número) onde já estão mensagens dele. Mais de uma conversa
+ * diferente para o mesmo @lid: não decide (fica como está).
+ */
+export function lidOwners(lidIds: Map<string, string[]>, found: { waId: string; conversationId: string }[]) {
+  const byWa = new Map<string, Set<string>>()
+  for (const f of found) byWa.set(f.waId, (byWa.get(f.waId) ?? new Set()).add(f.conversationId))
+  const out = new Map<string, string>()
+  for (const [lid, ids] of lidIds) {
+    const convs = new Set<string>()
+    for (const id of ids) for (const c of byWa.get(id) ?? []) convs.add(c)
+    if (convs.size === 1) out.set(lid, [...convs][0]!)
+  }
+  return out
+}
+
 /** Mensagens já gravadas: a busca é só nas conversas do número que recebeu (o mesmo id em outro número não conta). */
 export function historyKnownWhere(tenantId: string, numberId: string, waIds: string[]) {
   return { tenantId, waId: { in: waIds }, conversation: { numberId } }
@@ -115,12 +131,18 @@ export interface HistoryPick {
   grupos: number
   /** Reação, aviso do sistema, status, canal ou mensagem repetida no mesmo pedido. */
   ignoradas: number
+  /**
+   * Contatos que vieram só pelo identificador escondido (@lid, sem telefone): os ids das mensagens deles no pedido
+   * (todas, também as de fora da janela) e das que eles responderam. Se alguma já está na conversa do telefone, é a
+   * mesma pessoa: as mensagens do histórico vão para lá em vez de abrir uma conversa "Contato".
+   */
+  lidIds: Map<string, string[]>
 }
 
 /** Lê o pedido messages.set (lista de mensagens no formato do messages.upsert, sem o telefone das conversas @lid). */
 export function pickHistory(data: unknown, from: Date): HistoryPick {
   const list = Array.isArray(data) ? data : []
-  const out: HistoryPick = { items: [], recebidas: list.length, foraDaJanela: 0, grupos: 0, ignoradas: 0 }
+  const out: HistoryPick = { items: [], recebidas: list.length, foraDaJanela: 0, grupos: 0, ignoradas: 0, lidIds: new Map() }
   const seen = new Set<string>()
   // O WhatsApp manda cada conversa da mais nova para a mais antiga: lendo de trás para frente, empate fica na ordem de envio.
   for (let i = list.length - 1; i >= 0; i--) {
@@ -130,6 +152,11 @@ export function pickHistory(data: unknown, from: Date): HistoryPick {
       continue
     }
     seen.add(p.waId)
+    if (!p.group && !p.phoneDigits && p.jid.endsWith('@lid')) {
+      const ids = out.lidIds.get(p.jid) ?? []
+      if (ids.length < 300) ids.push(p.waId, ...(p.quoted?.waId ? [p.quoted.waId] : []))
+      out.lidIds.set(p.jid, ids)
+    }
     if (p.group) out.grupos++
     else if (p.at < from) out.foraDaJanela++
     else out.items.push(p)

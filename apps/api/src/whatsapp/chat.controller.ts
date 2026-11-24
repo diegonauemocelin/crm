@@ -401,6 +401,19 @@ export class ChatController {
     return this.chat.markUnread(user, id)
   }
 
+  /** Conversa "Contato" sem telefone (só @lid): conversas do mesmo número para juntar. */
+  @Get('conversas/:id/juntar')
+  mergeCandidates(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Query('busca') q?: string) {
+    return this.chat.mergeCandidates(user, id, typeof q === 'string' ? q : '')
+  }
+
+  /** Junta a conversa "Contato" (só @lid) com a do telefone certo. */
+  @Post('conversas/:id/juntar/:destino')
+  @HttpCode(200)
+  mergeHidden(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Param('destino', ParseUUIDPipe) target: string, @ReqContext() ctx: RequestCtx) {
+    return this.chat.mergeHidden(user, id, target, ctx)
+  }
+
   /** Não precisa responder: o cliente só se despediu; a conversa sai dos avisos de "cliente esperando". */
   @Post('conversas/:id/sem-resposta')
   @HttpCode(200)

@@ -21,7 +21,7 @@ import { effectiveMonitorNumbers, monitorAccessOf, monitorWhere } from './monito
 import { type AgendaCategory, answersClient, applyVariables, cleanRules, contactCard, type CompanyCategory, contactsFromWhatsapp, decide, DEFAULT_RULES, detectOutgoing, isClosingMessage, isOpen, LABEL_COLORS, subBusinessMs, type LabelColor, parseContactList, parseGoogleContacts, parseReceipts, receiptUpgrades, retentionCutoffs, toCallVia, parseVcf, safeFileName, SendRate, sentActions, signed, uploadName, type WaRules } from './envio'
 import { parseCsv } from '../atendimento/planilha'
 import { answersNote, type BotOutcome, botStateOf, chooseFlow, continueFlow, flowOf, startFlow } from './fluxo'
-import { chunks, HISTORY_BATCH, HISTORY_NAME, historyConvKey, historyConvWhere, historyFrom, historyHours, historyIsLast, historyKnownWhere, historyName, historyNote, historyPatch, type HistoryPick, historyStale, importDays, isOldHistory, matchHistoryConversation, pickHistory } from './historico'
+import { chunks, HISTORY_BATCH, HISTORY_NAME, historyConvKey, historyConvWhere, historyFrom, historyHours, historyIsLast, historyKnownWhere, historyName, historyNote, historyPatch, type HistoryPick, historyStale, importDays, isOldHistory, lidOwners, matchHistoryConversation, pickHistory } from './historico'
 import { extOf, INLINE_MEDIA_MAX_BYTES, INLINE_MIME, MEDIA_MAX_BYTES, openSecretEdit, parseCalls, parseMessage, parseReaction, parseRevision, parseSecretEdit, type ParsedSecretEdit, parseRevisionEvent, type ParsedMessage, UNKNOWN_TEXT, UNREADABLE_TEXT, unknownKeys, type ParsedRevision, phoneFromDigits, phoneLabel, forwardedText, phoneVariants, previewOf, QUICK_REPLY_MAX_FILES, replyFiles, whatsappOf, withReaction } from './mensagens'
 import { cleanFiliais, DEFAULT_FILIAIS, FILIAIS_KEY, FILIAL_COLORS } from './filiais'
 
@@ -546,6 +546,9 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     // Lead apagado a pedido do titular (LGPD) não volta pelo histórico: só entra o que veio depois da exclusão.
     const erased = await this.prisma.auditLog.findFirst({ where: { tenantId: n.tenantId, action: 'lead.anonymized', createdAt: { gt: items[0]!.at } }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } })
     const wanted = erased ? items.filter((p) => p.at > erased.createdAt) : items
+    // Contatos que vieram só pelo @lid (sem telefone): se mensagens deles já estão na conversa do telefone, é a mesma
+    // pessoa. As do histórico vão para lá, e a conversa "Contato" aberta antes por esse @lid se junta a ela.
+    await this.resolveHistoryLids(n, picked.lidIds, wanted)
     // Já gravadas neste número (ao vivo ou num pedaço anterior do histórico): ficam como estão.
     const known = new Set<string>()
     for (const part of chunks(wanted, 500)) {
@@ -605,6 +608,30 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
       })
     }
     return result
+  }
+
+  private async resolveHistoryLids(n: WhatsappNumber, lidIds: Map<string, string[]>, items: ParsedMessage[]) {
+    if (!lidIds.size) return
+    const lids = [...lidIds.keys()]
+    const owners = new Map<string, Prisma.WhatsappConversationGetPayload<object>>()
+    // @lid já conhecido de uma conversa com telefone.
+    for (const c of await this.prisma.whatsappConversation.findMany({ where: { numberId: n.id, lid: { in: lids }, jid: { endsWith: '@s.whatsapp.net' } } })) if (c.lid) owners.set(c.lid, c)
+    const rest = new Map([...lidIds].filter(([lid]) => !owners.has(lid)))
+    const ids = [...new Set([...rest.values()].flat())]
+    const found: { waId: string; conversationId: string }[] = []
+    for (const part of chunks(ids, 500)) found.push(...(await this.prisma.whatsappMessage.findMany({ where: { tenantId: n.tenantId, waId: { in: part }, conversation: { numberId: n.id, jid: { endsWith: '@s.whatsapp.net' } } }, select: { waId: true, conversationId: true } })))
+    const byLid = lidOwners(rest, found)
+    if (byLid.size) for (const c of await this.prisma.whatsappConversation.findMany({ where: { id: { in: [...new Set(byLid.values())] } } })) for (const [lid, id] of byLid) if (id === c.id) owners.set(lid, c)
+    for (const [lid, conv] of owners) {
+      // Junta a conversa "Contato" aberta antes por este @lid e guarda o @lid na conversa do telefone.
+      const merged = await this.adoptHidden(n, lid, conv.jid, conv.phone, conv).catch((err: unknown) => {
+        this.logger.warn(`Histórico do WhatsApp (${n.name}): conversa escondida não juntada: ${(err as Error).message}`)
+        return conv
+      })
+      const digits = (merged?.phone ?? conv.phone ?? conv.jid.split('@')[0] ?? '').replace(/\D/g, '') || null
+      for (const p of items) if (p.jid === lid) Object.assign(p, { jid: conv.jid, phoneDigits: digits, lid })
+    }
+    if (owners.size) this.logger.log(`Histórico do WhatsApp (${n.name}): ${owners.size} contato(s) sem telefone (@lid) ligado(s) à conversa certa.`)
   }
 
   /**
@@ -2218,6 +2245,44 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     if (conv.unread > 0) return { id, unread: conv.unread }
     await this.prisma.whatsappConversation.update({ where: { id }, data: { unread: 1 } })
     return { id, unread: 1 }
+  }
+
+  /** Conversa "Contato" sem telefone (o WhatsApp mandou só o @lid): conversas do mesmo número para juntar. */
+  async mergeCandidates(user: AuthUser, id: string, q: string) {
+    this.assertAction(user, 'chat', 'create')
+    const conv = await this.load(user, id)
+    if (!conv.jid.endsWith('@lid') || conv.phone) return []
+    const term = q.trim().slice(0, 60)
+    const digits = term.replace(/\D/g, '')
+    const rows = await this.prisma.whatsappConversation.findMany({
+      where: {
+        AND: [
+          await this.chatWhere(user),
+          { numberId: conv.numberId, id: { not: conv.id }, jid: { endsWith: '@s.whatsapp.net' }, category: { not: 'GRUPO' } },
+          ...(term ? [{ OR: [{ name: { contains: term, mode: 'insensitive' as const } }, ...(digits.length >= 4 ? [{ phone: { contains: digits } }] : [])] }] : []),
+        ],
+      },
+      orderBy: { lastMessageAt: { sort: 'desc', nulls: 'last' } },
+      take: 15,
+      select: { id: true, name: true, phone: true, lastMessageAt: true, lastPreview: true },
+    })
+    return rows
+  }
+
+  /** Junta a conversa "Contato" (só @lid) com a do telefone certo, no mesmo número: as mensagens passam para lá. */
+  async mergeHidden(user: AuthUser, id: string, targetId: string, ctx: RequestCtx) {
+    this.assertAction(user, 'chat', 'create')
+    const hidden = await this.load(user, id)
+    if (!hidden.jid.endsWith('@lid') || hidden.phone) throw new BadRequestException('Só a conversa sem telefone (aberta pelo código escondido do WhatsApp) pode ser juntada.')
+    const target = await this.load(user, targetId)
+    if (target.numberId !== hidden.numberId) throw new BadRequestException('As duas conversas precisam ser do mesmo número de WhatsApp.')
+    if (!target.jid.endsWith('@s.whatsapp.net')) throw new BadRequestException('Escolha a conversa com o telefone do cliente.')
+    const n = await this.prisma.whatsappNumber.findUnique({ where: { id: hidden.numberId } })
+    if (!n) throw new NotFoundException('Número não encontrado.')
+    const other = target.lid && target.lid !== hidden.jid
+    await this.adoptHidden(n, hidden.jid, target.jid, target.phone, other ? { ...target, lid: hidden.jid } : target)
+    await this.audit.byUser(user, ctx, 'chat.conversa_juntada', 'whatsapp_conversation', target.id, { de: hidden.id, contato: target.name ?? target.phone ?? null })
+    return { id: target.id }
   }
 
   async noReply(user: AuthUser, id: string, ctx: RequestCtx) {

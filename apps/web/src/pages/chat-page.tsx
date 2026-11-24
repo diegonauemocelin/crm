@@ -717,6 +717,7 @@ export function ThreadView({ id, onBack, monitor = false, compact = false }: { i
       {!monitor && <LabelPicker conversationId={d.conversation.id} value={d.conversation.labels ?? []} />}
       {!monitor && can('chat', 'edit') && d.conversation.category === 'CLIENTE' && <ClientButton conversationId={d.conversation.id} client={d.client} lastSeller={d.service?.lastSeller?.name} />}
       {can('monitoramento', 'create') && <NoteButton conversationId={d.conversation.id} monitor={monitor} />}
+      {!monitor && can('chat', 'create') && d.conversation.jid.endsWith('@lid') && !d.conversation.phone && <MergeButton conversationId={d.conversation.id} />}
       {d.conversation.phone && (
         <Button asChild size="sm" variant="outline" title="Ligar (pelo telefone; a ligação pelo WhatsApp é atendida no celular)" aria-label="Ligar">
           <a href={`tel:${d.conversation.phone}`}>
@@ -1459,6 +1460,68 @@ function SaveContactButton({ thread }: { thread: Thread }) {
 }
 
 /** Nota interna: orientação da gestão na conversa (liberação de desconto, advertência). Fica só no CRM. */
+/**
+ * Conversa "Contato" sem telefone: o WhatsApp mandou só o código escondido (@lid), sem o número. Junta com a conversa
+ * do telefone certo (do mesmo número de WhatsApp); as mensagens passam para lá e as próximas também caem lá.
+ */
+function MergeButton({ conversationId }: { conversationId: string }) {
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const list = useQuery({
+    queryKey: ['chat-juntar', conversationId, q],
+    queryFn: () => api.get<{ id: string; name: string | null; phone: string | null; lastMessageAt: string | null; lastPreview: string | null }[]>(`/chat/conversas/${conversationId}/juntar?busca=${encodeURIComponent(q)}`),
+    enabled: open,
+  })
+  const merge = useMutation({
+    mutationFn: (target: string) => api.post<{ id: string }>(`/chat/conversas/${conversationId}/juntar/${target}`),
+    onSuccess: (r) => {
+      toast.success('Conversas juntadas: as mensagens passaram para a conversa do telefone.')
+      setOpen(false)
+      void qc.invalidateQueries({ queryKey: ['chat-conversas'] })
+      void qc.invalidateQueries({ queryKey: ['chat-conversa'] })
+      navigate(`/chat?conversa=${r.id}`)
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button size="sm" variant="outline" className="border-amber-500/60" title="O WhatsApp não mandou o telefone deste contato: junte com a conversa certa" aria-label="Juntar com a conversa certa">
+          <UsersIcon /> <span className="hidden @4xl/head:inline">Juntar com a conversa certa</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-96 space-y-2">
+        <p className="text-sm font-medium">Juntar com a conversa do telefone</p>
+        <p className="text-xs text-muted-foreground">O WhatsApp mandou só um código escondido, sem o telefone. Escolha a conversa certa deste mesmo número: as mensagens passam para lá e as próximas também.</p>
+        <Input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nome ou telefone" aria-label="Buscar conversa" />
+        <div className="max-h-72 space-y-1 overflow-y-auto">
+          {list.isLoading ? (
+            <p className="p-2 text-sm text-muted-foreground">Buscando…</p>
+          ) : !list.data?.length ? (
+            <p className="p-2 text-sm text-muted-foreground">Nenhuma conversa com telefone encontrada.</p>
+          ) : (
+            list.data.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                disabled={merge.isPending}
+                className="w-full rounded-md border p-2 text-left text-sm hover:bg-muted disabled:opacity-50"
+                onClick={() => confirm(`Juntar esta conversa com ${c.name ?? c.phone}? As mensagens passam para lá.`) && merge.mutate(c.id)}
+              >
+                <span className="font-medium">{c.name ?? c.phone}</span>
+                {c.phone && <span className="text-muted-foreground"> · {c.phone}</span>}
+                {c.lastPreview && <span className="block truncate text-xs text-muted-foreground">{c.lastPreview}</span>}
+              </button>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 function NoteButton({ conversationId, monitor }: { conversationId: string; monitor: boolean }) {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)

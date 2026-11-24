@@ -74,6 +74,8 @@ class CarrierDto {
   @IsOptional() @nullable @IsNumber() @Min(0) @Max(100000) dropOffCost?: number | null
   @IsOptional() @nullable @IsUUID() dropOffProviderId?: string | null
   @IsOptional() @IsBoolean() reconcile?: boolean
+  @IsOptional() @IsBoolean() quote?: boolean
+  @IsOptional() @IsBoolean() pickup?: boolean
 }
 
 class MelhorEnvioDto {
