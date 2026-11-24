@@ -100,7 +100,7 @@ function WalletPage() {
     <div className="space-y-4">
       <PageHeader
         title="Poupança de frete"
-        description="O vendedor cobra do cliente a cotação + o acréscimo da campanha. Em cada nota CIF, o que a nota cobrou acima disso (cotação + acréscimo) vira saldo do vendedor; abaixo, desconta. O saldo pode ser usado em outra negociação."
+        description="O vendedor cobra do cliente a cotação (ou o esperado pela tabela da transportadora) + o acréscimo da campanha. Em cada nota CIF, o que a nota cobrou acima disso vira saldo do vendedor; abaixo, desconta. Notas de transportadora sem tabela nem cotação ficam fora da conta. O saldo pode ser usado em outra negociação."
         actions={
           <>
             {list.length > 0 && (
@@ -167,7 +167,7 @@ function WalletPage() {
                   <TableRow key={s.seller} className="cursor-pointer" onClick={() => setSeller(s.seller)}>
                     <TableCell className="text-sm font-medium">
                       {s.seller}
-                      {s.pendentes > 0 && <span className="block text-xs font-normal text-muted-foreground">{s.pendentes} nota(s) sem cotação nem CT-e ainda</span>}
+                      {s.pendentes > 0 && <span className="block text-xs font-normal text-muted-foreground">{s.pendentes} nota(s) fora da conta (transportadora sem tabela nem cotação)</span>}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{num(s.notas)}</TableCell>
                     <TableCell className="text-right tabular-nums">{money(s.nota)}</TableCell>

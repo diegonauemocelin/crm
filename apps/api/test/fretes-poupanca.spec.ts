@@ -36,7 +36,8 @@ describe('poupança de frete dos vendedores', () => {
     expect(walletEntry({ nota: 430, cte: 354.19, quote: 298.53, table: null }, 20)).toEqual({ source: 'COTACAO', base: 298.53, markup: 59.71, charge: 358.24, saldo: 71.76 })
     // Sem cotação: tabela; cobrou menos que tabela + 20%: saldo negativo.
     expect(walletEntry({ nota: 100, cte: 100, quote: null, table: 90 }, 20)).toMatchObject({ source: 'TABELA', charge: 108, saldo: -8 })
-    expect(walletEntry({ nota: 130, cte: 100, quote: null, table: null }, 20)).toMatchObject({ source: 'CTE', charge: 120, saldo: 10 })
+    // Sem cotação nem tabela (transportadora sem tabela cadastrada): fica de fora, mesmo com CT-e.
+    expect(walletEntry({ nota: 130, cte: 100, quote: null, table: null }, 20)).toBeNull()
     // Sem cotação, tabela nem CT-e: ainda sem base.
     expect(walletEntry({ nota: 130, cte: null, quote: null, table: null }, 20)).toBeNull()
   })
