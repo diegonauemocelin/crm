@@ -2,6 +2,33 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.71",
+      "date": "2026-11-24",
+      "title": "Transportadoras cadastradas pelo CT-e e conversas \"Contato\" do WhatsApp juntadas",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Toda transportadora que emitir CT-e para a empresa entra sozinha no cadastro (nome, CNPJ, cidade e filial), inclusive as dos CT-es já importados. Entra desligada: vocês escolhem se aparece na cotação, se faz coleta e se concilia."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Cadastro da transportadora com as opções \"Aparece na cotação de frete\", \"Faz coleta na empresa\" e \"Concilia os CT-es\"; na lista, a etiqueta \"Pelo CT-e\" e o que está desligado."
+        },
+        {
+          "type": "correcao",
+          "area": "WhatsApp",
+          "text": "Ao reconectar o WhatsApp, as mensagens que vinham só com o código escondido do contato (sem telefone) passam a cair na conversa certa, em vez de abrir uma conversa \"Contato\"."
+        },
+        {
+          "type": "novo",
+          "area": "WhatsApp",
+          "text": "Botão \"Juntar com a conversa certa\" nas conversas \"Contato\" sem telefone: escolha o cliente e as mensagens passam para a conversa dele."
+        }
+      ]
+    },
+    {
       "version": "3.0.70",
       "date": "2026-11-23",
       "title": "Rastreamento dos pedidos (TW Transportes) e Análise de mercado",
