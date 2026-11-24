@@ -145,6 +145,13 @@ export class WebPushController {
     return body
   }
 
+  @Post('teste')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  testSend(@CurrentUser() user: AuthUser) {
+    return this.push.testSend(user)
+  }
+
   @Get('verificar')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   check(@CurrentUser() user: AuthUser) {

@@ -260,7 +260,7 @@ export interface PushPayload {
   url: string
   button: string | null
   /** O service worker avisa aqui quando a notificação aparece (Entregas). */
-  shown: string
+  shown: string | null
   tag: string
 }
 
@@ -443,3 +443,36 @@ export const PUSH_JS = `
       .catch(function () {});
   }
 `
+
+/** Navegador pela inscrição (o endereço do serviço de notificações de cada um). */
+export function pushBrowser(endpoint: string, userAgent?: string | null) {
+  const host = (() => {
+    try {
+      return new URL(endpoint).hostname
+    } catch {
+      return ''
+    }
+  })()
+  if (/notify\.windows\.com$/.test(host)) return 'Edge'
+  if (/mozilla\.com$/.test(host)) return 'Firefox'
+  if (/push\.apple\.com$/.test(host)) return 'Safari'
+  if (/googleapis\.com$/.test(host)) return /Edg\//.test(userAgent ?? '') ? 'Edge' : /OPR\//.test(userAgent ?? '') ? 'Opera' : 'Chrome'
+  return host || 'Navegador'
+}
+
+/** Motivo da falha do envio em português (resposta do Google, Microsoft, Mozilla ou Apple). */
+export function pushError(err: unknown) {
+  const e = (err ?? {}) as { statusCode?: number; body?: unknown; message?: string; code?: string }
+  const code = e.statusCode
+  const body = typeof e.body === 'string' ? e.body.replace(/\s+/g, ' ').trim().slice(0, 200) : ''
+  const raw = `${code ? `HTTP ${code}` : (e.code ?? '')}${body ? `: ${body}` : e.message ? `: ${e.message}` : ''}`.trim()
+  if (code === 404 || code === 410) return `A inscrição não existe mais (o visitante bloqueou ou limpou o navegador). (${raw})`
+  if (code === 401 || code === 403) {
+    if (/vapid|credential|jwt|authoriz|key/i.test(body)) return `O serviço do navegador recusou a chave do CRM: a inscrição foi feita com outra chave (a coleta foi recriada). O visitante precisa permitir de novo. (${raw})`
+    return `O serviço do navegador recusou o envio. (${raw})`
+  }
+  if (code === 413) return `A notificação ficou grande demais (texto ou imagem). (${raw})`
+  if (code === 429) return `O serviço do navegador pediu para esperar (muitos envios). (${raw})`
+  if (!code && /ENOTFOUND|ETIMEDOUT|ECONNREFUSED|ECONNRESET|EAI_AGAIN|timeout|socket/i.test(`${e.code ?? ''} ${e.message ?? ''}`)) return `O servidor do CRM não conseguiu falar com o serviço de notificações do navegador (rede ou firewall da VPS). (${raw})`
+  return raw || 'Falha sem resposta do serviço do navegador.'
+}
