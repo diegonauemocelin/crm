@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangleIcon, CalendarRangeIcon, FilePlus2Icon, Loader2Icon, PlusIcon, SearchIcon, TableIcon, Trash2Icon, UploadIcon } from 'lucide-react'
+import { AlertTriangleIcon, CalendarRangeIcon, EllipsisVerticalIcon, FilePlus2Icon, Loader2Icon, PlusIcon, PowerIcon, PowerOffIcon, SearchIcon, TableIcon, Trash2Icon, UploadIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -102,10 +103,40 @@ function TableList() {
     setParams(p, { replace: true })
   }
   const units = active.ctx.data?.units ?? []
-  const { can } = useAuth()
+  const { can, me } = useAuth()
   const editable = can('fretes_tabelas', 'edit')
+  const admin = !!me?.role.isSystem
+  const qc = useQueryClient()
+  const confirm = useConfirm()
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [bulkOpen, setBulkOpen] = useState(false)
+  /** Tabelas da janela de vigência: as marcadas ou a de uma linha. */
+  const [validityIds, setValidityIds] = useState<string[] | null>(null)
+  const done = () => {
+    setSelected(new Set())
+    void qc.invalidateQueries({ queryKey: ['fretes', 'tabelas'] })
+  }
+  const setStatus = useMutation({
+    mutationFn: (v: { ids: string[]; status: 'ATIVA' | 'INATIVA' }) => api.post<{ updated: number; skipped: string[] }>('/fretes/tabelas/situacao', v),
+    onSuccess: (r, v) => {
+      toast.success(`${r.updated} tabela(s) ${v.status === 'ATIVA' ? 'ativada(s)' : 'inativada(s)'}.`)
+      if (r.skipped.length) toast.warning(`Sem versão publicada, não dá para ativar: ${r.skipped.join(', ')}. Publique uma versão com regras antes.`)
+      done()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const remove = useMutation({
+    mutationFn: (ids: string[]) => api.post<{ removed: number }>('/fretes/tabelas/excluir', { ids }),
+    onSuccess: (r) => {
+      toast.success(`${r.removed} tabela(s) excluída(s).`)
+      done()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const askRemove = async (ids: string[]) => {
+    const names = (list.data ?? []).filter((t) => ids.includes(t.id)).map((t) => t.name)
+    if (await confirm({ title: `Excluir ${ids.length} tabela(s)?`, description: `${names.slice(0, 5).join(', ')}${names.length > 5 ? '…' : ''}. Apaga as versões e as regras de frete. Cotações e CT-es já conferidos continuam guardados. Não dá para desfazer.`, confirmLabel: 'Excluir' })) remove.mutate(ids)
+  }
+  const busy = setStatus.isPending || remove.isPending
   const rows = list.data ?? []
   const allOn = rows.length > 0 && rows.every((t) => selected.has(t.id))
   const toggle = (id: string) =>
@@ -123,9 +154,9 @@ function TableList() {
         actions={
           <>
             <FilialSwitch active={active} />
-            {editable && (
-              <Button variant="outline" disabled={!selected.size} onClick={() => setBulkOpen(true)} title="Marque as tabelas na lista">
-                <CalendarRangeIcon aria-hidden /> Alterar vigência{selected.size ? ` (${selected.size})` : ''}
+            {editable && !selected.size && (
+              <Button variant="outline" disabled title="Marque as tabelas na lista">
+                <CalendarRangeIcon aria-hidden /> Alterar vigência
               </Button>
             )}
             <Can module="fretes_tabelas" action="create">
@@ -190,6 +221,29 @@ function TableList() {
           Buscar
         </Button>
       </form>
+      {editable && selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 p-2 text-sm">
+          <span className="px-1 font-medium">{selected.size} tabela(s) marcada(s)</span>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => setStatus.mutate({ ids: [...selected], status: 'ATIVA' })}>
+            <PowerIcon aria-hidden /> Ativar
+          </Button>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => setStatus.mutate({ ids: [...selected], status: 'INATIVA' })}>
+            <PowerOffIcon aria-hidden /> Inativar
+          </Button>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => setValidityIds([...selected])}>
+            <CalendarRangeIcon aria-hidden /> Alterar vigência
+          </Button>
+          {admin && (
+            <Button size="sm" variant="outline" className="text-destructive" disabled={busy} onClick={() => void askRemove([...selected])}>
+              <Trash2Icon aria-hidden /> Excluir
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelected(new Set())}>
+            Desmarcar
+          </Button>
+          {busy && <Loader2Icon className="size-4 animate-spin" aria-hidden />}
+        </div>
+      )}
       {list.isLoading || active.ctx.isLoading ? (
         <TableSkeleton />
       ) : list.error ? (
@@ -211,6 +265,7 @@ function TableList() {
               <TableHead className="hidden md:table-cell">Filiais</TableHead>
               <TableHead className="hidden lg:table-cell">Versão</TableHead>
               <TableHead>Situação</TableHead>
+              {editable && <TableHead className="w-10" />}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -245,12 +300,43 @@ function TableList() {
                 <TableCell>
                   <Badge variant="outline">{STATUS_LABEL[t.status]}</Badge>
                 </TableCell>
+                {editable && (
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="icon" variant="ghost" className="size-8" aria-label={`Ações de ${t.name}`} disabled={busy}>
+                          <EllipsisVerticalIcon aria-hidden />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {t.status !== 'ATIVA' && (
+                          <DropdownMenuItem disabled={!t.published} onSelect={() => setStatus.mutate({ ids: [t.id], status: 'ATIVA' })}>
+                            <PowerIcon aria-hidden /> Ativar{!t.published ? ' (publique uma versão)' : ''}
+                          </DropdownMenuItem>
+                        )}
+                        {t.status === 'ATIVA' && (
+                          <DropdownMenuItem onSelect={() => setStatus.mutate({ ids: [t.id], status: 'INATIVA' })}>
+                            <PowerOffIcon aria-hidden /> Inativar
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem onSelect={() => setValidityIds([t.id])}>
+                          <CalendarRangeIcon aria-hidden /> Alterar vigência
+                        </DropdownMenuItem>
+                        {admin && (
+                          <DropdownMenuItem className="text-destructive" onSelect={() => void askRemove([t.id])}>
+                            <Trash2Icon aria-hidden /> Excluir
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
-      {bulkOpen && <BulkValidityDialog ids={[...selected]} onClose={(done) => (setBulkOpen(false), done && setSelected(new Set()))} />}
+      {validityIds && <BulkValidityDialog ids={validityIds} onClose={(ok) => (setValidityIds(null), ok && done())} />}
     </div>
   )
 }

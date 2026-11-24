@@ -331,6 +331,35 @@ export class TabelasService {
     return { ok: true }
   }
 
+  /** Ativar ou inativar várias tabelas de uma vez. Ativar só as que têm versão publicada (as outras voltam na lista). */
+  async bulkStatus(user: AuthUser, d: { ids: string[]; status: string }, ctx: RequestCtx) {
+    assertCan(user, 'fretes_tabelas', 'edit')
+    const ids = [...new Set(d.ids)]
+    if (!ids.length) throw new BadRequestException('Escolha ao menos uma tabela.')
+    if (d.status !== 'ATIVA' && d.status !== 'INATIVA') throw new BadRequestException('Situação inválida.')
+    const tables = await this.prisma.freightTable.findMany({ where: { id: { in: ids }, tenantId: user.tenantId, ...unitListWhere(allowedUnits(user, 'fretes_tabelas')) } })
+    if (tables.length !== ids.length) throw new NotFoundException('Alguma tabela não foi encontrada ou não é da sua filial.')
+    for (const t of tables) assertUnitList(user, 'fretes_tabelas', t.unitIds)
+    const skipped = d.status === 'ATIVA' ? tables.filter((t) => !t.publishedVersionId).map((t) => t.name) : []
+    const change = tables.filter((t) => t.status !== d.status && (d.status === 'INATIVA' || t.publishedVersionId))
+    if (change.length) await this.prisma.freightTable.updateMany({ where: { id: { in: change.map((t) => t.id) } }, data: { status: d.status } })
+    for (const t of change) await this.audit.byUser(user, ctx, 'frete.tabela.alterada', 'freight_table', t.id, { alteracoes: { status: { de: t.status, para: d.status } }, emLote: true })
+    return { updated: change.length, skipped }
+  }
+
+  /** Excluir várias tabelas (só o Administrador), com as versões e regras de cada uma. */
+  async bulkRemove(user: AuthUser, d: { ids: string[] }, ctx: RequestCtx) {
+    if (!user.role.isSystem) throw new ForbiddenException('Só o Administrador exclui tabela de frete.')
+    const ids = [...new Set(d.ids)]
+    if (!ids.length) throw new BadRequestException('Escolha ao menos uma tabela.')
+    let removed = 0
+    for (const id of ids) {
+      await this.remove(user, id, ctx)
+      removed++
+    }
+    return { removed }
+  }
+
   /** Vigência de várias tabelas de uma vez (ex.: todas valem desde 01/01/2026). Cada tabela fica na auditoria. */
   async bulkValidity(user: AuthUser, d: { ids: string[]; validFrom: string; validTo?: string | null }, ctx: RequestCtx) {
     assertCan(user, 'fretes_tabelas', 'edit')

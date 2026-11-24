@@ -170,6 +170,15 @@ class IntegrationsDto {
   @IsOptional() @IsObject() @ValidateNested() @Type(() => CorreiosDto) correios?: CorreiosDto
 }
 
+class BulkStatusDto {
+  @IsArray() @ArrayMaxSize(500) @IsUUID('all', { each: true }) ids!: string[]
+  @IsIn(['ATIVA', 'INATIVA']) status!: string
+}
+
+class BulkIdsDto {
+  @IsArray() @ArrayMaxSize(500) @IsUUID('all', { each: true }) ids!: string[]
+}
+
 class BulkValidityDto {
   @IsArray() @ArrayMaxSize(500) @IsUUID('all', { each: true }) ids!: string[]
   @Matches(/^\d{4}-\d{2}-\d{2}$/) validFrom!: string
@@ -665,6 +674,18 @@ export class FretesController {
   @HttpCode(200)
   bulkValidity(@CurrentUser() user: AuthUser, @Body() dto: BulkValidityDto, @ReqContext() ctx: RequestCtx) {
     return this.tables.bulkValidity(user, dto, ctx)
+  }
+
+  @Post('tabelas/situacao')
+  @HttpCode(200)
+  bulkTableStatus(@CurrentUser() user: AuthUser, @Body() dto: BulkStatusDto, @ReqContext() ctx: RequestCtx) {
+    return this.tables.bulkStatus(user, dto, ctx)
+  }
+
+  @Post('tabelas/excluir')
+  @HttpCode(200)
+  bulkTableRemove(@CurrentUser() user: AuthUser, @Body() dto: BulkIdsDto, @ReqContext() ctx: RequestCtx) {
+    return this.tables.bulkRemove(user, dto, ctx)
   }
 
   @Put('tabelas/:id')
