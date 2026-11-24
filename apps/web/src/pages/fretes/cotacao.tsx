@@ -651,7 +651,20 @@ function NewQuote() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="q-doc" title="Algumas transportadoras cobram TDA/TDE de clientes específicos: com o documento, o sistema confere a lista.">CPF/CNPJ (confere TDA/TDE)</Label>
-                <Input id="q-doc" inputMode="numeric" value={customerDoc} onChange={(e) => setCustomerDoc(e.target.value.replace(/[^\d./-]/g, '').slice(0, 18))} />
+                <Input
+                  id="q-doc"
+                  inputMode="numeric"
+                  placeholder="Opcional: sem ele, vale Jurídica/Física acima"
+                  value={customerDoc}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^\d./-]/g, '').slice(0, 18)
+                    setCustomerDoc(v)
+                    // CPF (11 dígitos) é pessoa física e CNPJ (14) é jurídica: o destinatário acompanha o documento.
+                    const digits = v.replace(/\D/g, '').length
+                    if (digits === 11) setPersonType('PF')
+                    else if (digits === 14) setPersonType('PJ')
+                  }}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="q-ref">Pedido ou NF de referência</Label>

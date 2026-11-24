@@ -749,6 +749,9 @@ export class CotacaoService {
    * transportadoras; é o cálculo em massa do frete do Google Shopping.
    */
   private async compute(user: Pick<AuthUser, 'tenantId'>, d: QuoteInput, allowExpired: boolean, lean?: { carrierIds?: string[] }) {
+    // CPF informado é pessoa física; CNPJ, jurídica (vale o documento, não o botão). Sem documento, vale o escolhido.
+    const docDigits = (d.customerDoc ?? '').replace(/\D/g, '').length
+    if (docDigits === 11 || docDigits === 14) d = { ...d, personType: docDigits === 11 ? 'PF' : 'PJ' }
     const p = await this.step('dados do envio e CEP', this.prepare(user, d))
     const sib = await this.siblingUnits(user.tenantId, p.unit.id)
     const tables = await this.step('tabelas da filial', this.prisma.freightTable.findMany({
@@ -873,6 +876,9 @@ export class CotacaoService {
       reason = cleanText(d.expiredReason, 500)
       if (reason.length < 10) throw new BadRequestException('Explique por que a tabela vencida pode ser usada (mínimo 10 caracteres).')
     }
+    // CPF é pessoa física e CNPJ, jurídica: a cotação guarda o tipo do documento informado.
+    const docLen = (d.customerDoc ?? '').replace(/\D/g, '').length
+    if (docLen === 11 || docLen === 14) d = { ...d, personType: docLen === 11 ? 'PF' : 'PJ' }
     const { p, results } = await this.compute(user, d, !!d.allowExpired)
     const ok = results.filter((r) => r.status === 'OK')
     const erpData = await this.step('documento da Tcar', this.erpDataFor(user.tenantId, d))
