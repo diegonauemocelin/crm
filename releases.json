@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.73",
+      "date": "2026-11-24",
+      "title": "Descadastro tira o lead de todos os fluxos e envios de e-mail",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Marketing",
+          "text": "Quem se descadastra (link do e-mail, botão do Gmail/Outlook ou consentimento retirado na ficha) sai na hora de todos os fluxos de automação em andamento e das campanhas de e-mail que ainda não chegaram nele, e não entra mais em fluxos."
+        },
+        {
+          "type": "melhoria",
+          "area": "Marketing",
+          "text": "Relatório da campanha: descadastrado e sem consentimento aparecem como \"Fora do envio\" (não contam como falha de entrega)."
+        }
+      ]
+    },
+    {
       "version": "3.0.72",
       "date": "2026-11-24",
       "title": "Valor a cobrar com reajuste e vendedor, ações em lote em fretes e teste do Web Push",
