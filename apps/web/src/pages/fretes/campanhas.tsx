@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2Icon, PlusIcon, Trash2Icon } from 'lucide-react'
+import { ChevronDownIcon, ChevronRightIcon, Loader2Icon, PlusIcon, Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { MultiSelect } from '@/components/multi-select'
 import { EmptyState, ErrorState, PageHeader, RequirePermission, TableSkeleton } from '@/components/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,6 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { api, errorMessage } from '@/lib/api'
 import { UF_LIST } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
+import { cn } from '@/lib/utils'
 
 type Mode = 'PERCENT_NF' | 'PERCENT_NF_ACIMA' | 'REPASSE' | 'DESCONTO' | 'GRATIS' | 'ACRESCIMO'
 interface Campaign {
@@ -50,8 +52,12 @@ export function FretesCampanhasPage() {
   const editable = can('fretes_tabelas', 'edit')
   const qc = useQueryClient()
   const q = useQuery({ queryKey: ['fretes', 'campanhas'], queryFn: () => api.get<Campaign[]>('/fretes/campanhas') })
-  const carriers = useQuery({ queryKey: ['fretes', 'transportadoras', '', 'active'], queryFn: () => api.get<{ id: string; name: string; kind?: string }[]>('/fretes/transportadoras?situacao=active') })
+  // Todas (as já marcadas aparecem mesmo inativas); para escolher, só as ativas que entram na cotação.
+  const carriers = useQuery({ queryKey: ['fretes', 'transportadoras', '', 'all'], queryFn: () => api.get<{ id: string; name: string; kind?: string; active: boolean; quote?: boolean }[]>('/fretes/transportadoras') })
   const [draft, setDraft] = useState<Campaign[] | null>(null)
+  /** Campanhas abertas para editar (as outras ficam só no resumo). */
+  const [open, setOpen] = useState<Set<number>>(new Set())
+  const [filter, setFilter] = useState('')
   const list = draft ?? q.data ?? []
   const save = useMutation({
     mutationFn: (l: Campaign[]) => api.put<Campaign[]>('/fretes/campanhas', { list: l }),
@@ -64,6 +70,25 @@ export function FretesCampanhasPage() {
   })
   const set = (i: number, patch: Partial<Campaign>) => setDraft(list.map((c, j) => (j === i ? { ...c, ...patch } : c)))
   const carrierList = (carriers.data ?? []).filter((c) => !c.kind || c.kind === 'TRANSPORTADORA')
+  const carrierItems = carrierList.map((c) => ({ id: c.id, name: c.name, active: c.active && c.quote !== false })).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+  const nameOf = (id: string) => carrierList.find((c) => c.id === id)?.name ?? 'Transportadora removida'
+  const toggleOpen = (i: number) =>
+    setOpen((s) => {
+      const n = new Set(s)
+      if (n.has(i)) n.delete(i)
+      else n.add(i)
+      return n
+    })
+  const money = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  const rule = (c: Campaign) => {
+    const pct = `${c.value.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`
+    return c.mode === 'GRATIS' ? 'Frete grátis' : c.mode === 'DESCONTO' ? `${pct} de desconto na tabela` : c.mode === 'ACRESCIMO' ? `Reajuste: tabela + ${pct}` : c.mode === 'REPASSE' ? `${pct} da nota (repasse)` : c.mode === 'PERCENT_NF_ACIMA' ? `${pct} da nota quando o frete passar de ${c.tableAbove ? money(c.tableAbove) : '—'}` : `${pct} da nota`
+  }
+  const dayBr = (d: string | null) => (d ? d.split('-').reverse().join('/') : null)
+  const period = (c: Campaign) => (c.startsOn || c.endsOn ? `${dayBr(c.startsOn) ?? 'sempre'} a ${dayBr(c.endsOn) ?? 'sem fim'}` : 'Sem prazo')
+  const expired = (c: Campaign) => !!c.endsOn && c.endsOn < new Date().toISOString().slice(0, 10)
+  const term = filter.trim().toLowerCase()
+  const shown = list.map((c, i) => ({ c, i })).filter(({ c }) => !term || c.name.toLowerCase().includes(term) || c.carrierIds.some((id) => nameOf(id).toLowerCase().includes(term)) || c.ufs.some((u) => u.toLowerCase() === term))
   return (
     <RequirePermission module="fretes_cotacao">
       <div className="space-y-4">
@@ -73,7 +98,13 @@ export function FretesCampanhasPage() {
           actions={
             editable ? (
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setDraft([...list, blank()])}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDraft([blank(), ...list])
+                    setOpen(new Set([0, ...[...open].map((x) => x + 1)]))
+                  }}
+                >
                   <PlusIcon /> Nova campanha
                 </Button>
                 <Button disabled={!draft || save.isPending} onClick={() => draft && save.mutate(draft)}>
@@ -90,7 +121,28 @@ export function FretesCampanhasPage() {
         ) : !list.length ? (
           <EmptyState title="Nenhuma campanha" description="Crie uma campanha para definir frete grátis, desconto ou % da nota por transportadora e região." />
         ) : (
-          list.map((c, i) => (
+          <>
+            <Input className="max-w-md" placeholder="Filtrar por nome, transportadora ou UF" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Filtrar campanhas" />
+            {shown.map(({ c, i }) =>
+              !open.has(i) ? (
+                <button key={c.id ?? `novo-${i}`} type="button" onClick={() => toggleOpen(i)} className={cn('flex w-full flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border bg-card p-3 text-left text-sm hover:bg-muted/50', !c.active && 'opacity-70')}>
+                  <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="min-w-48 flex-1">
+                    <span className="font-semibold">{c.name || 'Campanha sem nome'}</span>
+                    <span className="block text-xs text-muted-foreground">{rule(c)}{c.minCargoValue ? ` · nota a partir de ${money(c.minCargoValue)}` : ''}</span>
+                  </span>
+                  <span className="min-w-40 text-xs">
+                    <span className="text-muted-foreground">Transportadoras: </span>
+                    {c.carrierIds.length ? `${c.carrierIds.slice(0, 2).map(nameOf).join(', ')}${c.carrierIds.length > 2 ? ` +${c.carrierIds.length - 2}` : ''}` : 'todas'}
+                  </span>
+                  <span className="text-xs">
+                    <span className="text-muted-foreground">Destino: </span>
+                    {c.cities.length ? c.cities.slice(0, 2).join(', ') + (c.cities.length > 2 ? ` +${c.cities.length - 2}` : '') : c.ufs.length ? c.ufs.join(', ') : 'todos'}
+                  </span>
+                  <span className="text-xs text-muted-foreground">{period(c)}</span>
+                  <Badge variant="outline" className={cn(!c.active || expired(c) ? 'text-muted-foreground' : 'border-[#006300]/40 text-[#006300] dark:text-[#0ca30c]')}>{!c.active ? 'Desligada' : expired(c) ? 'Encerrada' : 'Ativa'}</Badge>
+                </button>
+              ) : (
             <Card key={c.id ?? `novo-${i}`}>
               <CardContent className="space-y-3">
                 <div className="flex flex-wrap items-center gap-3">
@@ -99,8 +151,19 @@ export function FretesCampanhasPage() {
                     <Switch checked={c.active} disabled={!editable} onCheckedChange={(v) => set(i, { active: v })} /> Ativa
                   </label>
                   {!c.active && <Badge variant="outline">Desligada</Badge>}
+                  <Button variant="ghost" size="sm" className="ml-auto" onClick={() => toggleOpen(i)}>
+                    <ChevronDownIcon aria-hidden /> Fechar
+                  </Button>
                   {editable && (
-                    <Button variant="ghost" size="icon" className="ml-auto" aria-label="Excluir campanha" onClick={() => setDraft(list.filter((_, j) => j !== i))}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Excluir campanha"
+                      onClick={() => {
+                        setDraft(list.filter((_, j) => j !== i))
+                        setOpen(new Set([...open].filter((x) => x !== i).map((x) => (x > i ? x - 1 : x))))
+                      }}
+                    >
                       <Trash2Icon />
                     </Button>
                   )}
@@ -144,17 +207,9 @@ export function FretesCampanhasPage() {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Transportadoras {c.carrierIds.length ? `(${c.carrierIds.length})` : '(todas)'}</Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {carrierList.map((t) => {
-                      const on = c.carrierIds.includes(t.id)
-                      return (
-                        <button key={t.id} type="button" disabled={!editable} onClick={() => set(i, { carrierIds: on ? c.carrierIds.filter((x) => x !== t.id) : [...c.carrierIds, t.id] })} className={`rounded-full border px-2.5 py-0.5 text-xs ${on ? 'border-primary bg-primary/10 text-foreground' : 'text-muted-foreground'}`}>
-                          {t.name}
-                        </button>
-                      )
-                    })}
-                  </div>
+                  <Label htmlFor={`t-${i}`}>Transportadoras {c.carrierIds.length ? `(${c.carrierIds.length})` : '(vazio = todas)'}</Label>
+                  <MultiSelect id={`t-${i}`} items={carrierItems} value={c.carrierIds} disabled={!editable} onChange={(v) => set(i, { carrierIds: v })} placeholder="Todas as transportadoras (clique para escolher)" />
+                  <p className="text-xs text-muted-foreground">Na lista aparecem só as transportadoras ativas que entram na cotação.</p>
                 </div>
                 <div className="space-y-1.5">
                   <Label>Estados de destino {c.ufs.length ? `(${c.ufs.join(', ')})` : '(todos)'}</Label>
@@ -175,7 +230,10 @@ export function FretesCampanhasPage() {
                 </div>
               </CardContent>
             </Card>
-          ))
+              ),
+            )}
+            {!shown.length && <p className="text-sm text-muted-foreground">Nenhuma campanha com esse filtro.</p>}
+          </>
         )}
         {draft && <p className="text-sm text-amber-700 dark:text-amber-300">Há mudanças não salvas.</p>}
       </div>

@@ -671,6 +671,8 @@ const nb = (v: string) => Number(v.trim().replace(',', '.'))
 
 /** Tolerâncias da conciliação (geral e por transportadora) e prazos dos alertas. */
 function RecParams({ editable, carriers }: { editable: boolean; carriers: { id: string; name: string }[] }) {
+  // Transportadoras com tabela ativa e vigente hoje: as outras não têm o que conciliar pela tabela.
+  const vigentes = useQuery({ queryKey: ['fretes', 'tabelas', 'vigentes-ativas'], queryFn: () => api.get<{ carrier: { id: string } }[]>('/fretes/tabelas?situacao=ATIVA&vigencia=VIGENTE'), staleTime: 60_000 })
   const qc = useQueryClient()
   const q = useQuery({ queryKey: ['fretes', 'conciliacao', 'parametros'], queryFn: () => api.get<RecSettings>('/fretes/ctes/parametros') })
   const [draft, setDraft] = useState<Record<string, string> | null>(null)
@@ -690,6 +692,8 @@ function RecParams({ editable, carriers }: { editable: boolean; carriers: { id: 
         }
       : {})
   const set = (k: string, v: string) => setDraft({ ...values, [k]: v })
+  const vigIds = new Set((vigentes.data ?? []).map((t) => t.carrier.id))
+  const withTable = carriers.filter((c) => vigIds.has(c.id) || !!d?.porTransportadora[c.id] || !!values[`v:${c.id}`]?.trim() || !!values[`p:${c.id}`]?.trim()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
   const save = useMutation({
     mutationFn: () => {
       const porTransportadora: RecSettings['porTransportadora'] = {}
@@ -758,10 +762,11 @@ function RecParams({ editable, carriers }: { editable: boolean; carriers: { id: 
               </div>
               <p className="text-xs text-muted-foreground">Peso: vale a maior folga entre o percentual e os quilos. Fora da folga, o CT-e mostra “Peso cobrado maior que o da nota” (ou menor) e “Valor da carga maior/menor que o das notas”.</p>
             </div>
-            {carriers.length > 0 && (
+            {withTable.length > 0 && (
               <div className="space-y-2">
                 <p className="text-sm font-medium">Por transportadora (deixe em branco para usar a geral)</p>
-                {carriers.map((c) => (
+                <p className="text-xs text-muted-foreground">Só as transportadoras com tabela de frete ativa e vigente (e as que já têm tolerância própria).</p>
+                {withTable.map((c) => (
                   <div key={c.id} className="grid grid-cols-[1fr_7rem_7rem] items-center gap-2 text-sm">
                     <span>{c.name}</span>
                     <Input aria-label={`Tolerância em reais de ${c.name}`} inputMode="decimal" placeholder="R$" value={values[`v:${c.id}`] ?? ''} onChange={(e) => set(`v:${c.id}`, e.target.value)} />

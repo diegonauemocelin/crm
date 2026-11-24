@@ -179,7 +179,9 @@ export function autoCarrierFromCte(c: Pick<CteData, 'emitCnpj' | 'emitName' | 'e
   if (cnpj.length !== 14 || /^0+$/.test(cnpj)) return null
   const clean = (v: string | null | undefined, max: number) => (v ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
   const legalName = clean(c.emitName, 160) || `CNPJ ${cnpj}`
-  const name = clean(c.emitFant, 120) || legalName.slice(0, 120)
+  // Nome fantasia sem letras (ex.: "********", "-"): fica a razão social.
+  const fant = clean(c.emitFant, 120)
+  const name = (/[A-Za-zÀ-ÿ]{2}/.test(fant) ? fant : '') || legalName.slice(0, 120)
   const uf = clean(c.emitUf, 2).toUpperCase()
   const day = c.issuedAt ? c.issuedAt.slice(0, 10).split('-').reverse().join('/') : null
   return {

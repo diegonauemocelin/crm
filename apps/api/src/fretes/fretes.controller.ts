@@ -170,6 +170,11 @@ class IntegrationsDto {
   @IsOptional() @IsObject() @ValidateNested() @Type(() => CorreiosDto) correios?: CorreiosDto
 }
 
+class BulkCarrierActiveDto {
+  @IsArray() @ArrayMaxSize(1000) @IsUUID('all', { each: true }) ids!: string[]
+  @IsBoolean() active!: boolean
+}
+
 class BulkStatusDto {
   @IsArray() @ArrayMaxSize(500) @IsUUID('all', { each: true }) ids!: string[]
   @IsIn(['ATIVA', 'INATIVA']) status!: string
@@ -540,6 +545,12 @@ export class FretesController {
   @Post('transportadoras')
   createCarrier(@CurrentUser() user: AuthUser, @Body() dto: CarrierDto, @ReqContext() ctx: RequestCtx) {
     return this.carriers.create(user, dto, ctx)
+  }
+
+  @Post('transportadoras/situacao')
+  @HttpCode(200)
+  bulkCarrierActive(@CurrentUser() user: AuthUser, @Body() dto: BulkCarrierActiveDto, @ReqContext() ctx: RequestCtx) {
+    return this.carriers.bulkActive(user, dto, ctx)
   }
 
   @Put('transportadoras/:id')

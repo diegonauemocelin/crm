@@ -59,6 +59,9 @@ export class CteService implements OnApplicationBootstrap {
   onApplicationBootstrap() {
     const t = setTimeout(() => {
       void (async () => {
+        // Nome fantasia que veio sem letras no CT-e (ex.: "********"): passa a ser a razão social.
+        const bad = await this.prisma.freightCarrier.findMany({ where: { autoCreated: true }, select: { id: true, name: true, legalName: true } })
+        for (const c of bad) if (!/[A-Za-zÀ-ÿ]{2}/.test(c.name) && c.legalName) await this.prisma.freightCarrier.update({ where: { id: c.id }, data: { name: c.legalName.slice(0, 120) } })
         const tenants = await this.prisma.freightCte.findMany({ where: { carrierId: null, emitCnpj: { not: null } }, distinct: ['tenantId'], select: { tenantId: true } })
         for (const { tenantId } of tenants) {
           const made = await this.backfillCarriers(tenantId).catch((e: unknown) => {
