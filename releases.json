@@ -2,6 +2,63 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.72",
+      "date": "2026-11-24",
+      "title": "Valor a cobrar com reajuste e vendedor, ações em lote em fretes e teste do Web Push",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Cotação mostra o frete, o reajuste da tabela (% e valor), o repasse do vendedor (% e valor) e o total a cobrar do cliente. A poupança do vendedor usa frete + reajuste como base."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Poupança de frete só conta notas com cotação ou tabela da transportadora; transportadora sem tabela fica fora da conta."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Tabelas de frete: ativar, inativar, alterar vigência e excluir por linha ou em lote."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Transportadoras: ativar e inativar na lista, uma ou várias de uma vez. A chegada de CT-e nunca muda a situação da transportadora."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Histórico de cotações: cancelar uma cotação ou várias de uma vez."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Campanhas de frete em resumo (abre para editar), com filtro e escolha de transportadoras por busca, só as ativas que entram na cotação."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Cotação: CPF muda o destinatário para pessoa física e CNPJ para jurídica."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Tolerância por transportadora só para as que têm tabela vigente; importação de XML repetido aparece como descartada; nome fantasia sem letras vira a razão social."
+        },
+        {
+          "type": "melhoria",
+          "area": "Marketing",
+          "text": "Análise de mercado sai do menu de Fretes (fica em Marketing Inteligente)."
+        },
+        {
+          "type": "novo",
+          "area": "Marketing",
+          "text": "Web Push: botão \"Enviar teste\" com a resposta de cada navegador (Chrome, Edge...) e o motivo das falhas gravado em cada envio."
+        }
+      ]
+    },
+    {
       "version": "3.0.71",
       "date": "2026-11-24",
       "title": "Transportadoras cadastradas pelo CT-e e conversas \"Contato\" do WhatsApp juntadas",
