@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { WEBHOOK_EVENTS } from '../src/whatsapp/evolution'
-import { HISTORY_HOURS, historyFrom, historyName, historyNote, historyPatch, pickHistory } from '../src/whatsapp/historico'
+import { HISTORY_HOURS, historyFrom, historyName, historyNote, historyPatch, lidOwners, pickHistory } from '../src/whatsapp/historico'
 import { parseMessage } from '../src/whatsapp/mensagens'
 
 const H = 3_600_000
@@ -81,6 +81,31 @@ describe('Histórico do WhatsApp ao conectar pelo QR Code (messages.set)', () =>
   it('conversa pelo @lid (sem o telefone) entra sem telefone, para juntar depois com a do telefone', () => {
     const [p] = pickHistory([msg('L1', 3, { jid: '123456789012345@lid' })], ago(48)).items
     expect(p).toMatchObject({ jid: '123456789012345@lid', phoneDigits: null, lid: null })
+  })
+
+  it('@lid sem telefone: guarda os ids das mensagens dele (também as de fora da janela) e das que ele respondeu', () => {
+    const LID = '123456789012345@lid'
+    const quoting = msg('L2', 2, { jid: LID, message: { extendedTextMessage: { text: 'Claro, entendo.', contextInfo: { stanzaId: 'NOSSO-AUDIO', quotedMessage: { conversation: 'x' } } } } })
+    const r = pickHistory([msg('L1', 100, { jid: LID }), quoting, msg('P1', 1)], ago(48))
+    expect(r.lidIds.get(LID)?.sort()).toEqual(['L1', 'L2', 'NOSSO-AUDIO'])
+    expect(r.lidIds.size).toBe(1)
+  })
+
+  it('de quem é o @lid: a única conversa do telefone onde já estão mensagens dele; duas conversas diferentes, não decide', () => {
+    const ids = new Map([
+      ['A@lid', ['m1', 'm2']],
+      ['B@lid', ['m3', 'm4']],
+      ['C@lid', ['m9']],
+    ])
+    const owners = lidOwners(ids, [
+      { waId: 'm1', conversationId: 'juliano' },
+      { waId: 'm2', conversationId: 'juliano' },
+      { waId: 'm3', conversationId: 'x' },
+      { waId: 'm4', conversationId: 'y' },
+    ])
+    expect(owners.get('A@lid')).toBe('juliano')
+    expect(owners.has('B@lid')).toBe(false)
+    expect(owners.has('C@lid')).toBe(false)
   })
 
   it('nome: os dígitos que a Evolution manda quando não sabe o nome não viram nome da conversa', () => {
