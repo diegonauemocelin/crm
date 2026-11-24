@@ -255,7 +255,7 @@ function Report({ campaign: c }: { campaign: Campaign }) {
                       </Link>
                     </TableCell>
                     <TableCell className="pr-4 text-sm">
-                      {x.status === 'ERRO' ? <span className="text-destructive">Não entregue: {x.error}</span> : x.unsubscribedAt ? 'Descadastrou' : `Clicou ${x.clicks}x`}
+                      {x.status === 'ERRO' ? /^(Descadastrou|Sem consentimento)/.test(x.error ?? '') ? <span className="text-muted-foreground">Fora do envio: {x.error}</span> : <span className="text-destructive">Não entregue: {x.error}</span> : x.unsubscribedAt ? 'Descadastrou (saiu de todos os envios e fluxos)' : `Clicou ${x.clicks}x`}
                     </TableCell>
                   </TableRow>
                 ))}

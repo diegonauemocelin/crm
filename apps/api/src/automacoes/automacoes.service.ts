@@ -453,7 +453,8 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
   }
 
   async enroll(a: Automation, leadId: string, context: Record<string, unknown>) {
-    const lead = await this.prisma.lead.findFirst({ where: { id: leadId, tenantId: a.tenantId, deletedAt: null, anonymizedAt: null }, select: { id: true } })
+    // Quem se descadastrou dos e-mails não entra mais em fluxo nenhum.
+    const lead = await this.prisma.lead.findFirst({ where: { id: leadId, tenantId: a.tenantId, deletedAt: null, anonymizedAt: null, emailOptOutAt: null }, select: { id: true } })
     if (!lead) return false
     const last = await this.prisma.automationRun.findFirst({ where: { automationId: a.id, leadId }, orderBy: { startedAt: 'desc' }, select: { status: true, startedAt: true } })
     if (last?.status === 'ATIVO') return false
@@ -503,6 +504,9 @@ export class AutomacoesService implements OnApplicationBootstrap, OnModuleDestro
 
   /** Anda pelo fluxo até uma espera, o fim ou o limite de passos por ciclo. */
   private async advance(run: AutomationRun, a: Automation, map: Map<string, Node>) {
+    // Descadastrou dos e-mails (antes desta versão ou por outro caminho): sai do fluxo, sem mandar mais nada.
+    const out = await this.prisma.lead.findUnique({ where: { id: run.leadId }, select: { emailOptOutAt: true } })
+    if (out?.emailOptOutAt) return this.finish(run, 'SAIU', 'Descadastrou-se dos e-mails: saiu do fluxo.')
     const ctx = { ...((run.context ?? {}) as RunCtx) }
     let stepId = run.stepId
     for (let guard = 0; stepId && guard < 25; guard++) {

@@ -10,6 +10,8 @@ const DAY = 86_400_000
 const TZ = 'America/Sao_Paulo'
 /** Envio pulado porque o lead descadastrou depois que a campanha começou: não é falha de entrega. */
 const SKIPPED = 'Sem consentimento no momento do envio.'
+/** Descadastrou com a campanha em andamento: tirado do envio (não é falha de entrega). */
+const LEFT = 'Descadastrou: tirado do envio.'
 export type Source = 'todos' | 'campanhas' | 'automacoes'
 
 type FunnelRow = { sent: bigint; failed: bigint; bounced: bigint; opened: bigint; clicked: bigint; unsubscribed: bigint }
@@ -48,7 +50,7 @@ export class EmailDashboardService {
     const prevStart = new Date(start.getTime() - (end.getTime() - start.getTime()))
     const T = user.tenantId
     const base = Prisma.sql`c."tenantId" = ${T}::uuid${source === 'campanhas' ? Prisma.sql` AND c.kind = 'CAMPANHA'` : source === 'automacoes' ? Prisma.sql` AND c.kind = 'MODELO'` : Prisma.empty}`
-    const inRange = (s: Date, e: Date) => Prisma.sql`((er.status = 'ENVIADO' AND er."sentAt" >= ${s} AND er."sentAt" < ${e}) OR (er.status = 'ERRO' AND er."failedAt" >= ${s} AND er."failedAt" < ${e} AND er.error IS DISTINCT FROM ${SKIPPED}))`
+    const inRange = (s: Date, e: Date) => Prisma.sql`((er.status = 'ENVIADO' AND er."sentAt" >= ${s} AND er."sentAt" < ${e}) OR (er.status = 'ERRO' AND er."failedAt" >= ${s} AND er."failedAt" < ${e} AND er.error IS DISTINCT FROM ${SKIPPED} AND er.error IS DISTINCT FROM ${LEFT}))`
     const funnel = (s: Date, e: Date) => this.prisma.$queryRaw<FunnelRow[]>`
       SELECT ${FUNNEL} FROM email_recipients er JOIN email_campaigns c ON c.id = er."campaignId" WHERE ${base} AND ${inRange(s, e)}`
 

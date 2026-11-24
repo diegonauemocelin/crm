@@ -480,6 +480,21 @@ export class LeadsService {
         },
       },
     })
+    if (!granted) await this.leaveAllSends(tenantId, leadId, `Descadastrou-se dos e-mails (${source}).`)
+  }
+
+  /**
+   * Descadastrou (ou tirou o consentimento): sai na hora de tudo o que ainda iria mandar mensagem para ele: fluxos de
+   * automação em andamento e campanhas de e-mail que ainda não chegaram nele. Não entra de novo em fluxos.
+   */
+  async leaveAllSends(tenantId: string, leadId: string, reason: string) {
+    const now = new Date()
+    const runs = await this.prisma.automationRun.findMany({ where: { tenantId, leadId, status: 'ATIVO' }, select: { id: true, automationId: true, stepId: true } })
+    if (runs.length) {
+      await this.prisma.automationRun.updateMany({ where: { id: { in: runs.map((r) => r.id) } }, data: { status: 'SAIU', finishedAt: now, nextRunAt: null, exitReason: reason.slice(0, 300) } })
+      await this.prisma.automationLog.createMany({ data: runs.map((r) => ({ runId: r.id, automationId: r.automationId, leadId, stepId: r.stepId, kind: 'saiu', message: reason.slice(0, 500) })) }).catch(() => undefined)
+    }
+    await this.prisma.emailRecipient.updateMany({ where: { leadId, status: 'PENDENTE' }, data: { status: 'ERRO', failedAt: now, error: 'Descadastrou: tirado do envio.' } })
   }
 
   async consent(user: AuthUser, id: string, granted: boolean, text: string | undefined, ctx: RequestCtx) {
