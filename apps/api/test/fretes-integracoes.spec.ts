@@ -135,3 +135,12 @@ describe('Rodonaves: destinatário fora da base', () => {
     expect(rodonavesHint('Outro erro')).toBe('Outro erro')
   })
 })
+
+describe('Rodonaves: formatos da resposta', () => {
+  it('lê freightValue em minúsculas, dentro de Data ou numa lista', () => {
+    expect(parseRodonaves({ freightValue: '123,45', protocolId: 9 })).toEqual({ price: 123.45, protocol: '9', error: null })
+    expect(parseRodonaves({ Data: { FreightValue: 50.1, ProtocolId: 1 } }).price).toBe(50.1)
+    expect(parseRodonaves([{ freightvalue: '1.234,56' }]).price).toBe(1234.56)
+    expect(parseRodonaves({ status: 'x' }).error).toBe('Sem preço para este envio.')
+  })
+})
