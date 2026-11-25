@@ -2793,6 +2793,8 @@ model FreightCarrier {
   pickupMode  String   @default("COLETA")
   /// Só vem coletar quando a expedição agenda (Fretes › Agendar coletas): não usa os horários fixos no painel de TV.
   pickupBySchedule Boolean @default(false)
+  /// No "Coletou" da expedição, volumes e notas entregues são obrigatórios.
+  pickupCountsRequired Boolean @default(false)
   /// false: os CT-es dela não são conciliados com as tabelas (ex.: frete de marketplace, cobrado pela plataforma).
   reconcile   Boolean  @default(true)
   /// false: não entra na cotação de frete (só fica cadastrada, ex.: transportadora que veio pelo CT-e).
@@ -4374,10 +4376,18 @@ model FreightPickupSchedule {
   unitId        String?   @db.Uuid
   carrierId     String    @db.Uuid
   date          DateTime  @db.Date
-  /// MANHA | TARDE
+  /// MANHA | TARDE | FIXA (coleta de horário fixo marcada pela expedição, ex.: chegou antes)
   period        String
+  /// Horário fixo (HH:MM) da coleta marcada, quando period = FIXA.
+  slot          String?
   /// AGENDADA | COLETANDO | COLETADA | CANCELADA
   status        String    @default("AGENDADA")
+  /// Hora real em que a transportadora chegou (Chegou, coletando) e em que saiu (Coletou).
+  arrivedAt     DateTime?
+  collectedAt   DateTime?
+  /// Volumes e notas fiscais entregues na coleta (informados no Coletou).
+  volumes       Int?
+  invoices      Int?
   note          String?
   createdByName String
   statusByName  String?

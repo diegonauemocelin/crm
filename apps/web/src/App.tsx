@@ -66,7 +66,8 @@ function RouteError() {
 const pages = {
   // App no celular (PWA): só conversas, painéis liberados e conta.
   appShell: () => page(() => import('@/pages/app/app-celular'), 'AppShell'),
-  appConversas: () => page(() => import('@/pages/app/app-celular'), 'AppConversas'),
+  appConversas: () => page(() => import('@/pages/app/app-celular'), 'AppInicio'),
+  appColetas: () => page(() => import('@/pages/app/app-celular'), 'AppColetas'),
   appConversa: () => page(() => import('@/pages/app/app-celular'), 'AppConversa'),
   appPaineis: () => page(() => import('@/pages/app/app-celular'), 'AppPaineis'),
   appMonitor: () => page(() => import('@/pages/app/app-celular'), 'AppMonitor'),
@@ -336,6 +337,7 @@ const router = createBrowserRouter([
               },
             ],
           },
+          { path: '/app/coletas', element: <Lazy>{pages.appColetas()}</Lazy> },
           { path: '/app/conta', element: <Lazy>{pages.appConta()}</Lazy> },
           { path: '*', element: <Navigate to="/app" replace /> },
         ],

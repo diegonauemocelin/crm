@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckIcon, Loader2Icon, MonitorIcon, MoonIcon, SunIcon, TruckIcon, Undo2Icon, XIcon } from 'lucide-react'
+import { CheckIcon, MonitorIcon, MoonIcon, SunIcon, TruckIcon, XIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -13,6 +13,7 @@ import { useAuth } from '@/lib/auth'
 import { dayBr } from '@/lib/format'
 import { ALL_UNITS, useActiveUnit } from '@/lib/fretes'
 import { type ScheduledPickup, SCHEDULE_STATUS } from '@/lib/coletas'
+import { ColetasHoje } from '@/components/fretes/coletas-hoje'
 import { cn } from '@/lib/utils'
 
 interface Data {
@@ -61,7 +62,8 @@ function Schedules() {
   const d = q.data
   const canAdd = can('fretes_coletas', 'create')
   const open = (d?.schedules ?? []).filter((s) => s.status === 'AGENDADA' || s.status === 'COLETANDO')
-  const done = (d?.schedules ?? []).filter((s) => s.date === d?.today && (s.status === 'COLETADA' || s.status === 'CANCELADA'))
+  // Hoje fica na lista "Coletas de hoje" (com os horários fixos); aqui, só as dos próximos dias.
+  const next = open.filter((s) => s.date !== d?.today)
   return (
     <div className="space-y-5">
       <PageHeader
@@ -134,17 +136,21 @@ function Schedules() {
           )}
 
           <section className="space-y-2">
-            <h2 className="font-semibold">Coletas agendadas</h2>
-            {!open.length ? (
-              <p className="text-sm text-muted-foreground">Nenhuma coleta agendada em aberto.</p>
-            ) : (
+            <h2 className="font-semibold">Coletas de hoje</h2>
+            <p className="text-sm text-muted-foreground">Horários fixos e agendadas. Chegou antes da hora? Toque em Chegou, coletando: o painel da TV muda na hora. No Coletou, informe volumes e notas.</p>
+            <ColetasHoje unit={unit} />
+          </section>
+
+          {next.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="font-semibold">Próximas coletas agendadas</h2>
               <div className="divide-y rounded-lg border">
-                {open.map((s) => (
-                  <div key={s.id} className={cn('flex flex-wrap items-center gap-3 p-3', s.status === 'COLETANDO' && 'bg-emerald-500/10')}>
+                {next.map((s) => (
+                  <div key={s.id} className="flex flex-wrap items-center gap-3 p-3">
                     <div className="min-w-48 flex-1">
                       <p className="font-semibold">{s.carrier}</p>
                       <p className="text-sm text-muted-foreground">
-                        {s.date === d.today ? 'Hoje' : s.date === d.tomorrow ? 'Amanhã' : dayBr(s.date)} · {s.period === 'MANHA' ? 'Manhã' : 'Tarde'}
+                        {s.date === d.tomorrow ? 'Amanhã' : dayBr(s.date)} · {s.period === 'MANHA' ? 'Manhã' : 'Tarde'}
                         {s.unit ? ` · ${s.unit}` : ''} · agendada por {s.createdByName}
                       </p>
                     </div>
@@ -152,41 +158,13 @@ function Schedules() {
                       {SCHEDULE_STATUS[s.status].label}
                     </Badge>
                     <Can module="fretes_coletas" action="edit">
-                      <div className="flex flex-wrap gap-2">
-                        {s.status === 'AGENDADA' && (
-                          <Button size="sm" disabled={move.isPending} onClick={() => move.mutate({ id: s.id, status: 'COLETANDO' })}>
-                            <TruckIcon aria-hidden /> Chegou, coletando
-                          </Button>
-                        )}
-                        {s.status === 'COLETANDO' && (
-                          <Button size="sm" variant="ghost" disabled={move.isPending} onClick={() => move.mutate({ id: s.id, status: 'AGENDADA' })} title="Marquei sem querer">
-                            <Undo2Icon aria-hidden /> Desfazer
-                          </Button>
-                        )}
-                        <Button size="sm" variant="outline" disabled={move.isPending} onClick={() => move.mutate({ id: s.id, status: 'COLETADA' })}>
-                          <CheckIcon aria-hidden /> Coletou
-                        </Button>
-                        <Button size="sm" variant="ghost" disabled={move.isPending} onClick={() => move.mutate({ id: s.id, status: 'CANCELADA' })}>
-                          <XIcon aria-hidden /> Cancelar
-                        </Button>
-                      </div>
+                      <Button size="sm" variant="ghost" disabled={move.isPending} onClick={() => move.mutate({ id: s.id, status: 'CANCELADA' })}>
+                        <XIcon aria-hidden /> Cancelar
+                      </Button>
                     </Can>
                   </div>
                 ))}
               </div>
-            )}
-            {move.isPending && <Loader2Icon className="size-4 animate-spin" aria-hidden />}
-          </section>
-
-          {done.length > 0 && (
-            <section className="space-y-1">
-              <h2 className="text-sm font-semibold text-muted-foreground">Encerradas hoje</h2>
-              {done.map((s) => (
-                <p key={s.id} className="text-sm text-muted-foreground">
-                  {s.carrier} · {s.period === 'MANHA' ? 'manhã' : 'tarde'} · {SCHEDULE_STATUS[s.status].label.toLowerCase()}
-                  {s.statusByName ? ` por ${s.statusByName}` : ''}
-                </p>
-              ))}
             </section>
           )}
         </>

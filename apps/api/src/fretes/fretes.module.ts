@@ -20,12 +20,14 @@ import { FretesResumoSemanalService } from './resumo-semanal.service'
 import { PoupancaService } from './poupanca.service'
 import { RastreioService } from './rastreio.service'
 import { MarketplaceTaxModule } from '../marketplaces/precos/impostos.module'
+import { AppMovelModule } from '../app-movel/app-movel.module'
+import { ColetasAvisoService } from './coletas-aviso.service'
 
 /** Gestão de fretes: transportadoras, tabelas versionadas, motor de cálculo, importação de planilhas e cotações por filial. */
 @Module({
-  imports: [FilesModule, TcarModule, MarketplaceTaxModule],
+  imports: [FilesModule, TcarModule, MarketplaceTaxModule, AppMovelModule],
   controllers: [FretesController, FretesOperacaoController, FretesSefazController],
-  providers: [PainelService, TransportadorasService, TabelasService, ImportacaoService, CotacaoService, PedidosService, CteService, FaturasService, FretesRelatoriosService, SefazService, IntegracoesService, NfeService, FretesResumoSemanalService, PoupancaService, RastreioService],
+  providers: [PainelService, TransportadorasService, TabelasService, ImportacaoService, CotacaoService, PedidosService, CteService, FaturasService, FretesRelatoriosService, SefazService, IntegracoesService, NfeService, FretesResumoSemanalService, PoupancaService, RastreioService, ColetasAvisoService],
   exports: [IntegracoesService, CotacaoService],
 })
 export class FretesModule {}

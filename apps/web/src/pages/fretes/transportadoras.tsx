@@ -50,6 +50,7 @@ interface Carrier {
   pickupMode?: 'COLETA' | 'DESPACHO'
   /** Só vem coletar quando a expedição agenda. */
   pickupBySchedule?: boolean
+  pickupCountsRequired?: boolean
   /** false: os CT-es dela não são conciliados (ex.: Mercado Livre Envios). */
   reconcile?: boolean
   /** false: não entra na cotação de frete. */
@@ -334,6 +335,7 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
     kind: carrier?.kind ?? 'TRANSPORTADORA',
     pickupMode: carrier?.pickupMode ?? 'COLETA',
     pickupBySchedule: carrier?.pickupBySchedule ?? false,
+    pickupCountsRequired: carrier?.pickupCountsRequired ?? false,
     reconcile: carrier?.reconcile ?? true,
     quote: carrier?.quote ?? true,
     pickup: carrier?.pickup ?? true,
@@ -523,6 +525,15 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
                     <span>
                       <span className="font-medium">Coleta só com agendamento</span>
                       <span className="block text-xs text-muted-foreground">A transportadora só vem quando a expedição agenda (Fretes › Agendar coletas, manhã ou tarde). Os horários fixos dela não aparecem no painel da TV.</span>
+                    </span>
+                  </label>
+                )}
+                {f.pickupMode === 'COLETA' && (
+                  <label className="flex items-start gap-2 text-sm">
+                    <input type="checkbox" className="mt-1" checked={f.pickupCountsRequired} onChange={(e) => set('pickupCountsRequired', e.target.checked)} />
+                    <span>
+                      <span className="font-medium">Volumes e notas obrigatórios no Coletou</span>
+                      <span className="block text-xs text-muted-foreground">Ao encerrar a coleta (app do celular ou Agendar coletas), a expedição precisa informar quantos volumes e quantas notas a transportadora levou. Desmarcado, é opcional.</span>
                     </span>
                   </label>
                 )}

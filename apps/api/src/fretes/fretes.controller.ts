@@ -71,6 +71,7 @@ class CarrierDto {
   @IsOptional() @IsIn(['COLETA', 'DESPACHO']) pickupMode?: string
   /** Só vem coletar quando a expedição agenda. */
   @IsOptional() @IsBoolean() pickupBySchedule?: boolean
+  @IsOptional() @IsBoolean() pickupCountsRequired?: boolean
   @IsOptional() @nullable @IsNumber() @Min(0) @Max(100000) dropOffCost?: number | null
   @IsOptional() @nullable @IsUUID() dropOffProviderId?: string | null
   @IsOptional() @IsBoolean() reconcile?: boolean
@@ -417,6 +418,15 @@ class ScheduleDto {
 
 class ScheduleStatusDto {
   @IsIn(SCHEDULE_STATUSES) situacao!: ScheduleStatus
+  /** No "Coletou": volumes e notas entregues (obrigatórios quando a transportadora pede). */
+  @IsOptional() @nullable @IsInt() @Min(0) @Max(100_000) volumes?: number | null
+  @IsOptional() @nullable @IsInt() @Min(0) @Max(100_000) notas?: number | null
+}
+
+class FixedArrivalDto {
+  @IsUUID() transportadora!: string
+  @IsOptional() @nullable @IsUUID() filial?: string | null
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) horario!: string
 }
 
 @ApiTags('Fretes')
@@ -573,7 +583,13 @@ export class FretesController {
 
   @Patch('coletas/agendadas/:id')
   setSchedule(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ScheduleStatusDto, @ReqContext() ctx: RequestCtx) {
-    return this.carriers.setScheduleStatus(user, id, dto.situacao, ctx)
+    return this.carriers.setScheduleStatus(user, id, dto.situacao, ctx, { volumes: dto.volumes, invoices: dto.notas })
+  }
+
+  @Post('coletas/chegou')
+  @HttpCode(200)
+  fixedArrival(@CurrentUser() user: AuthUser, @Body() dto: FixedArrivalDto, @ReqContext() ctx: RequestCtx) {
+    return this.carriers.markFixedArrival(user, { carrierId: dto.transportadora, unitId: dto.filial ?? null, slot: dto.horario }, ctx)
   }
 
   @Get('painel-tv')
