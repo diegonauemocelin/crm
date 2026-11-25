@@ -105,6 +105,12 @@ class CteListDto extends ShipmentListDto {
   @IsOptional() @Matches(/^[A-Z]{2}$/) uf?: string
 }
 
+class DiagDto {
+  @IsOptional() @IsUUID() filial?: string
+  @IsOptional() @IsUUID() transportadora?: string
+  @IsOptional() @Type(() => Number) @IsInt() @Min(7) @Max(365) dias?: number
+}
+
 class DecideDto {
   @IsIn(['APROVADO', 'APROVADO_COTADO', 'CONTESTADO']) decision!: 'APROVADO' | 'APROVADO_COTADO' | 'CONTESTADO'
   @IsOptional() @nullable @IsString() @MaxLength(1000) note?: string | null
@@ -303,6 +309,11 @@ export class FretesOperacaoController {
   @Get('ctes')
   listCtes(@CurrentUser() user: AuthUser, @Query() q: CteListDto) {
     return this.ctes.list(user, { unitId: q.filial, carrierId: q.transportadora, recStatus: q.situacao, decision: q.decisao, from: q.de, to: q.ate, search: q.busca, page: q.pagina, pending: q.pendentes, kind: q.tipo, uf: q.uf })
+  }
+
+  @Get('ctes/diagnostico')
+  diagnostico(@CurrentUser() user: AuthUser, @Query() q: DiagDto) {
+    return this.ctes.diagnostico(user, { unitId: q.filial, carrierId: q.transportadora, days: q.dias })
   }
 
   @Get('ctes/parametros')
