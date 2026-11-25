@@ -110,6 +110,17 @@ function WebPush() {
     refetchInterval: (q) => (q.state.data?.some((c) => c.status === 'ENVIANDO' || c.status === 'AGENDADO') ? 15_000 : false),
   })
   const [tab, setTab] = useState('enviados')
+  const clean = useMutation({
+    mutationFn: () => api.post<{ checked: number; ok: number; removed: number; failed: number; skipped: number }>('/marketing/web-push/limpar-inscritos'),
+    onSuccess: (r) => {
+      toast.success(`${num(r.checked)} inscrições conferidas: ${num(r.ok)} funcionando, ${num(r.removed)} removidas${r.failed ? `, ${num(r.failed)} sem resposta agora (ficam na lista)` : ''}${r.skipped ? `. ${num(r.skipped)} do Safari não foram conferidas` : ''}.`)
+      void qc.invalidateQueries({ queryKey: ['web-push'] })
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  })
+  const askClean = async () => {
+    if (await confirm({ title: 'Limpar inscritos?', description: 'O CRM consulta cada inscrição no serviço do navegador (Chrome, Edge, Firefox) com uma mensagem vazia e tira da lista as que não existem mais. Use de vez em quando (ex.: uma vez por mês): se repetir muito, o Chrome pode mostrar ao cliente o aviso "site atualizado em segundo plano". As inscrições do Safari não são conferidas.', confirmLabel: 'Limpar' })) clean.mutate()
+  }
   const [manage, setManage] = useState(false)
   const [editing, setEditing] = useState<Campaign | 'novo' | null>(null)
 
@@ -160,6 +171,11 @@ function WebPush() {
           <div>
             <p className="text-xs text-muted-foreground">Inscritos</p>
             <p className="text-lg font-semibold">{v ? num(v.subscribers) : '…'}</p>
+            {can('web_push', 'edit') && !!v?.subscribers && (
+              <button type="button" className="text-xs text-primary underline-offset-2 hover:underline disabled:opacity-50" disabled={clean.isPending} onClick={() => void askClean()}>
+                {clean.isPending ? 'Conferindo…' : 'Limpar inscritos que não funcionam'}
+              </button>
+            )}
           </div>
           <div>
             <p className="text-xs text-muted-foreground">Coleta de inscritos</p>

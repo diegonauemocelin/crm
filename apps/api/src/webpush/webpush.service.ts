@@ -37,6 +37,7 @@ import {
   pushError,
   verifyDelivery,
   withUtm,
+  isApplePush,
 } from './webpush'
 
 /** Identificação de navegador na conferência do arquivo da loja. */
@@ -195,6 +196,42 @@ export class WebPushService implements OnApplicationBootstrap, OnModuleDestroy {
       }
     }
     return results
+  }
+
+  /**
+   * Limpa a lista de inscritos: consulta cada inscrição no serviço do navegador com uma mensagem vazia (o arquivo da
+   * loja não mostra nada sem título) e tira as que não existem mais (404/410). Fica só quem recebe de verdade.
+   * Inscrições do Safari (Apple) ficam de fora: lá cada mensagem sem notificação conta contra a inscrição.
+   */
+  async cleanSubscribers(user: AuthUser, ctx: RequestCtx) {
+    this.assertCan(user, 'edit')
+    const s = await this.config(user.tenantId)
+    if (!s.publicKey || !s.privateKeyEnc) throw new BadRequestException('Ative a coleta primeiro.')
+    const vapid = { subject: siteOrigin(s.siteUrl) ?? (env.appUrl.startsWith('https://') ? env.appUrl : 'mailto:crm@localhost.invalid'), publicKey: s.publicKey, privateKey: decrypt(s.privateKeyEnc) }
+    const payload = JSON.stringify({ check: 1 })
+    const all = await this.prisma.webPushSubscriber.findMany({ where: { tenantId: user.tenantId, active: true }, select: { id: true, endpoint: true, p256dh: true, auth: true } })
+    const subs = all.filter((s) => !isApplePush(s.endpoint))
+    const skipped = all.length - subs.length
+    const gone: string[] = []
+    let ok = 0
+    let failed = 0
+    for (let i = 0; i < subs.length; i += CONCURRENCY) {
+      await Promise.all(
+        subs.slice(i, i + CONCURRENCY).map(async (sub) => {
+          try {
+            await this.sender({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload, { vapidDetails: vapid, TTL: 60, urgency: 'low', timeout: 15_000 })
+            ok++
+          } catch (err) {
+            const code = (err as { statusCode?: number }).statusCode
+            if (code === 404 || code === 410 || code === 401 || code === 403) gone.push(sub.id)
+            else failed++
+          }
+        }),
+      )
+    }
+    if (gone.length) await this.prisma.webPushSubscriber.updateMany({ where: { id: { in: gone } }, data: { active: false, failedAt: new Date() } })
+    await this.audit.byUser(user, ctx, 'webpush.inscritos_limpos', 'settings', SETTINGS_KEY, { conferidos: subs.length, funcionando: ok, removidos: gone.length, semResposta: failed, safari: skipped })
+    return { checked: subs.length, ok, removed: gone.length, failed, skipped }
   }
 
   /** Confere se https://loja/crm-push-sw.js responde com o arquivo certo. */

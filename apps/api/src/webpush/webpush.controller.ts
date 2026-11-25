@@ -145,6 +145,13 @@ export class WebPushController {
     return body
   }
 
+  @Post('limpar-inscritos')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  cleanSubscribers(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
+    return this.push.cleanSubscribers(user, ctx)
+  }
+
   @Post('teste')
   @HttpCode(200)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
