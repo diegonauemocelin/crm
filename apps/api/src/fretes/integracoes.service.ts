@@ -52,6 +52,8 @@ import {
   RODONAVES_QUOTE_BASE,
   rodonavesBody,
   rodonavesError,
+  rodonavesHint,
+  rodonavesQuoteObject,
   rodonavesTokenForm,
   type DhlConfig,
   type DhlScope,
@@ -379,10 +381,21 @@ export class IntegracoesService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(rodonavesBody({ from, to, originCityId, destCityId, cnpj, recipientDoc: d.recipientDoc, contactName: c.contactName, contactPhone: c.contactPhone }, p)),
     })
-    const body = await res.json().catch(() => null)
+    const raw = await res.text().catch(() => '')
+    let body: unknown = raw
+    try {
+      body = JSON.parse(raw)
+    } catch {
+      // texto puro (ex.: só o valor ou uma mensagem)
+    }
     if (res.status === 401 || res.status === 403) return [{ ...base, error: 'A Rodonaves recusou o acesso à cotação (confira o usuário da API e o recurso "cotação" na filial de vínculo).' }]
     const r = parseRodonaves(body)
-    return [{ ...base, serviceId: r.protocol ?? base.serviceId, price: res.ok && !r.error ? r.price : null, error: res.ok ? r.error : (rodonavesError(body) ?? `HTTP ${res.status}`) }]
+    // Sem preço numa resposta aceita: registra só o formato (nomes dos campos e situação), sem os dados do cliente.
+    if (res.ok && r.price === null) {
+      const o = rodonavesQuoteObject(body)
+      this.logger.warn(`Rodonaves sem preço: HTTP ${res.status}, ${Array.isArray(body) ? 'lista' : typeof body}, campos: ${Object.keys(o).join(', ').slice(0, 300) || '(nenhum)'}; Status=${String(o.Status ?? o.status ?? '')}`)
+    }
+    return [{ ...base, serviceId: r.protocol ?? base.serviceId, price: res.ok && !r.error ? r.price : null, error: res.ok ? r.error : rodonavesHint(rodonavesError(body) ?? `HTTP ${res.status}`) }]
   }
 
   private async dhlRates(c: DhlConfig, origin: DhlPlace, dest: DhlPlace, customs: boolean, p: PackageInput): Promise<OnlineQuote[]> {

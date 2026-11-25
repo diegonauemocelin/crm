@@ -1,8 +1,8 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { PasskeySection } from '@/components/passkey'
-import { ActivityIcon, BarChart3Icon, EyeIcon, BellIcon, BellOffIcon, CheckCheckIcon, ChevronRightIcon, DownloadIcon, LayoutGridIcon, Loader2Icon, LogOutIcon, MailIcon, MessageCircleIcon, MessageSquarePlusIcon, PresentationIcon, SearchIcon, ShareIcon, SquarePlusIcon, UserIcon, XIcon } from 'lucide-react'
+import { ActivityIcon, BarChart3Icon, TruckIcon, SunIcon, MoonIcon, CheckIcon, EyeIcon, BellIcon, BellOffIcon, CheckCheckIcon, ChevronRightIcon, DownloadIcon, LayoutGridIcon, Loader2Icon, LogOutIcon, MailIcon, MessageCircleIcon, MessageSquarePlusIcon, PresentationIcon, SearchIcon, ShareIcon, SquarePlusIcon, UserIcon, XIcon } from 'lucide-react'
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react'
-import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router'
+import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { BrandMark } from '@/components/layout/brand-logo'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
@@ -17,6 +17,9 @@ import { useBranding } from '@/lib/branding'
 import { dateShort, time } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { Avatar, type ListData, type NumberRef, StartDialog, ThreadView } from '@/pages/chat-page'
+import { ColetasHoje } from '@/components/fretes/coletas-hoje'
+import { FilialSwitch } from '@/components/fretes/filial-switch'
+import { ALL_UNITS, useActiveUnit } from '@/lib/fretes'
 
 /**
  * App no celular: só o que a pessoa usa no dia a dia, com cara de WhatsApp. Conversas (lista e conversa em tela
@@ -46,6 +49,7 @@ export function AppShell() {
   const location = useLocation()
   const navigate = useNavigate()
   const panels = usePanels()
+  const { can } = useAuth()
   const inThread = location.pathname.startsWith('/app/conversa/') || location.pathname.startsWith('/app/monitor/')
   // Tocar na notificação com o app aberto: vai para a conversa.
   useEffect(() => {
@@ -67,7 +71,8 @@ export function AppShell() {
       </div>
       {!inThread && (
         <nav className="flex shrink-0 border-t bg-background pb-[env(safe-area-inset-bottom)]" aria-label="Menu do app">
-          <Tab to="/app" end icon={MessageCircleIcon} label="Conversas" />
+          {can('chat') && <Tab to="/app" end icon={MessageCircleIcon} label="Conversas" />}
+          {can('fretes_coletas') && <Tab to="/app/coletas" icon={TruckIcon} label="Coletas" />}
           {panels.length > 0 && <Tab to="/app/paineis" icon={LayoutGridIcon} label="Painéis" />}
           <Tab to="/app/conta" icon={UserIcon} label="Conta" />
         </nav>
@@ -118,6 +123,76 @@ function when(iso: string | null) {
   if (d === dateShort(new Date())) return time(iso)
   if (d === dateShort(new Date(Date.now() - 86_400_000))) return 'Ontem'
   return d.slice(0, 5)
+}
+
+/** Quem não usa o chat (ex.: perfil Expedição) cai direto nas coletas. */
+export function AppInicio() {
+  const { can } = useAuth()
+  if (!can('chat') && can('fretes_coletas')) return <Navigate to="/app/coletas" replace />
+  return <AppConversas />
+}
+
+/** Coletas de hoje para a expedição: um toque marca que a transportadora chegou (inclusive antes da hora) e que coletou. */
+export function AppColetas() {
+  const active = useActiveUnit()
+  const unit = active.value && active.value !== ALL_UNITS ? active.value : null
+  const [agendar, setAgendar] = useState(false)
+  const canAdd = useAuth().can('fretes_coletas', 'create')
+  return (
+    <div className="pb-6">
+      <TopBar title="Coletas">
+        <div className="mt-2 flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <FilialSwitch active={active} />
+          </div>
+          {canAdd && (
+            <Button variant={agendar ? 'secondary' : 'outline'} size="sm" onClick={() => setAgendar((v) => !v)}>
+              Agendar
+            </Button>
+          )}
+        </div>
+      </TopBar>
+      <div className="space-y-3 px-4">
+        {agendar && <AgendarHoje unit={unit} />}
+        <ColetasHoje unit={unit} big />
+      </div>
+    </div>
+  )
+}
+
+/** Agendar hoje, manhã ou tarde (para a transportadora que só vem quando chamada). */
+function AgendarHoje({ unit }: { unit: string | null }) {
+  const qc = useQueryClient()
+  const q = useQuery({ queryKey: ['fretes', 'coletas-agendadas', unit], queryFn: () => api.get<{ today: string; carriers: { id: string; name: string; bySchedule: boolean }[]; schedules: { carrierId: string; period: string; date: string; status: string }[] }>(`/fretes/coletas/agendadas${unit ? `?filial=${unit}` : ''}`) })
+  const add = useMutation({
+    mutationFn: (v: { carrierId: string; period: 'MANHA' | 'TARDE' }) => api.post<{ duplicate: boolean }>('/fretes/coletas/agendadas', { transportadora: v.carrierId, filial: unit, dia: 'HOJE', periodo: v.period }),
+    onSuccess: (r) => {
+      toast[r.duplicate ? 'info' : 'success'](r.duplicate ? 'Já estava agendada.' : 'Coleta agendada para hoje.')
+      void qc.invalidateQueries({ queryKey: ['fretes'] })
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const d = q.data
+  if (!d) return <Loader2Icon className="size-5 animate-spin" aria-hidden />
+  return (
+    <div className="space-y-2 rounded-xl border p-3">
+      <p className="text-sm font-semibold">Agendar para hoje</p>
+      {d.carriers.map((c) => {
+        const taken = (p: string) => d.schedules.some((s) => s.carrierId === c.id && s.period === p && s.date === d.today && (s.status === 'AGENDADA' || s.status === 'COLETANDO'))
+        return (
+          <div key={c.id} className="flex items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-sm">{c.name}</span>
+            {(['MANHA', 'TARDE'] as const).map((p) => (
+              <Button key={p} size="sm" variant={taken(p) ? 'secondary' : 'outline'} disabled={add.isPending || taken(p)} onClick={() => add.mutate({ carrierId: c.id, period: p })}>
+                {taken(p) ? <CheckIcon aria-hidden /> : p === 'MANHA' ? <SunIcon aria-hidden /> : <MoonIcon aria-hidden />}
+                {p === 'MANHA' ? 'Manhã' : 'Tarde'}
+              </Button>
+            ))}
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 /** Lista de conversas, como a do WhatsApp: foto, nome, última mensagem, hora e o número de não lidas. */

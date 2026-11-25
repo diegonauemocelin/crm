@@ -50,6 +50,7 @@ interface Carrier {
   pickupMode?: 'COLETA' | 'DESPACHO'
   /** Só vem coletar quando a expedição agenda. */
   pickupBySchedule?: boolean
+  pickupCountsRequired?: boolean
   /** false: os CT-es dela não são conciliados (ex.: Mercado Livre Envios). */
   reconcile?: boolean
   /** false: não entra na cotação de frete. */
@@ -263,7 +264,7 @@ function PickupsEditor({ value, onChange, units }: { value: PickupForm[]; onChan
       <div className="flex items-center justify-between gap-2">
         <div>
           <Label>Coletas (painel de TV)</Label>
-          <p className="text-xs text-muted-foreground">Até que horas o comercial pode tirar pedido para ir nesta coleta e a hora em que a transportadora chega. Aparece em Fretes › Painel de coletas (TV).</p>
+          <p className="text-xs text-muted-foreground">Até que horas o comercial pode tirar pedido para ir nesta coleta e a hora em que a transportadora chega. Aparece em Fretes › Painel de coletas (TV). Para tirar uma coleta, use Remover e salve a transportadora.</p>
         </div>
         <Button type="button" size="sm" variant="outline" onClick={() => onChange([...value, { unitId: null, days: [1, 2, 3, 4, 5], cutoff: '15:00', pickup: '16:00', minutes: 30, note: null }])}>
           <PlusIcon aria-hidden /> Coleta
@@ -271,9 +272,9 @@ function PickupsEditor({ value, onChange, units }: { value: PickupForm[]; onChan
       </div>
       {value.map((p, i) => (
         <div key={i} className="space-y-2 rounded-md border p-2">
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_7rem_6rem_auto]">
+          <div className="flex items-center gap-2">
             <Select value={p.unitId ?? '__todas'} onValueChange={(v) => patch(i, { unitId: v === '__todas' ? null : v })}>
-              <SelectTrigger aria-label="Filial da coleta" className="w-full">
+              <SelectTrigger aria-label="Filial da coleta" className="min-w-0 flex-1">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -285,21 +286,23 @@ function PickupsEditor({ value, onChange, units }: { value: PickupForm[]; onChan
                 ))}
               </SelectContent>
             </Select>
-            <label className="text-xs">
+            <Button type="button" size="sm" variant="ghost" className="shrink-0 text-destructive hover:text-destructive" title="Tira esta coleta (vale ao salvar a transportadora)" onClick={() => onChange(value.filter((_, j) => j !== i))}>
+              <Trash2Icon aria-hidden /> Remover
+            </Button>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <label className="min-w-0 text-xs">
               Pedido até
               <Input type="time" value={p.cutoff} onChange={(e) => patch(i, { cutoff: e.target.value })} />
             </label>
-            <label className="text-xs">
+            <label className="min-w-0 text-xs">
               Coleta às
               <Input type="time" value={p.pickup} onChange={(e) => patch(i, { pickup: e.target.value })} />
             </label>
-            <label className="text-xs">
+            <label className="min-w-0 text-xs">
               Carrega (min)
               <Input type="number" min={5} max={600} value={p.minutes} onChange={(e) => patch(i, { minutes: Number(e.target.value) || 30 })} />
             </label>
-            <Button type="button" size="icon" variant="ghost" className="self-end" aria-label="Remover coleta" onClick={() => onChange(value.filter((_, j) => j !== i))}>
-              <Trash2Icon aria-hidden />
-            </Button>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {DAY_LABELS.map((d, n) => (
@@ -332,6 +335,7 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
     kind: carrier?.kind ?? 'TRANSPORTADORA',
     pickupMode: carrier?.pickupMode ?? 'COLETA',
     pickupBySchedule: carrier?.pickupBySchedule ?? false,
+    pickupCountsRequired: carrier?.pickupCountsRequired ?? false,
     reconcile: carrier?.reconcile ?? true,
     quote: carrier?.quote ?? true,
     pickup: carrier?.pickup ?? true,
@@ -521,6 +525,15 @@ function CarrierSheet({ carrier, onClose }: { carrier: Carrier | null; onClose: 
                     <span>
                       <span className="font-medium">Coleta só com agendamento</span>
                       <span className="block text-xs text-muted-foreground">A transportadora só vem quando a expedição agenda (Fretes › Agendar coletas, manhã ou tarde). Os horários fixos dela não aparecem no painel da TV.</span>
+                    </span>
+                  </label>
+                )}
+                {f.pickupMode === 'COLETA' && (
+                  <label className="flex items-start gap-2 text-sm">
+                    <input type="checkbox" className="mt-1" checked={f.pickupCountsRequired} onChange={(e) => set('pickupCountsRequired', e.target.checked)} />
+                    <span>
+                      <span className="font-medium">Volumes e notas obrigatórios no Coletou</span>
+                      <span className="block text-xs text-muted-foreground">Ao encerrar a coleta (app do celular ou Agendar coletas), a expedição precisa informar quantos volumes e quantas notas a transportadora levou. Desmarcado, é opcional.</span>
                     </span>
                   </label>
                 )}

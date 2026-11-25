@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { DownloadIcon, FileCheck2Icon, Loader2Icon, RefreshCwIcon, SearchIcon, UploadIcon } from 'lucide-react'
+import { ChevronRightIcon, DownloadIcon, FileCheck2Icon, FileTextIcon, LayoutListIcon, Loader2Icon, RefreshCwIcon, SearchIcon, TableIcon, UploadIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
+import { UF_LIST } from '@/lib/atendimento'
 import { useAuth } from '@/lib/auth'
 import { dateTime, dayBr, money } from '@/lib/format'
 import { CONTEST, DECISION, fmtNum, formatCep, formatCnpj, formatKey, INVOICE_STATUS, NFE_CHECK_STATUS, type NfeConfront, REC_STATUS, REC_TYPE, SHIPMENT_STATUS, useActiveUnit } from '@/lib/fretes'
@@ -49,6 +50,10 @@ interface Cte {
   unitId: string | null
   unitName?: string | null
   recipientName: string | null
+  recipientDoc?: string | null
+  /** Remetente (no frete de compra, o fornecedor). */
+  senderName?: string | null
+  senderDoc?: string | null
   ufIni: string | null
   ufFim: string | null
   cityIni: string | null
@@ -137,8 +142,39 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
   const decision = params.get('decisao') ?? ''
   const carrier = params.get('transportadora') ?? ''
   const kind = params.get('tipo') ?? ''
-  const from = params.get('de') ?? ''
-  const to = params.get('ate') ?? ''
+  const uf = params.get('uf') ?? ''
+  // Período: atalhos (hoje, 7, 30 e 60 dias) ou datas informadas.
+  const period = params.get('periodo') ?? (params.get('de') || params.get('ate') ? 'data' : '')
+  const preset = PERIODS.find((x) => x.value === period)?.days
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+  const from = preset ? shiftDay(today, -(preset - 1)) : period === 'data' ? (params.get('de') ?? '') : ''
+  const to = preset ? today : period === 'data' ? (params.get('ate') ?? '') : ''
+  const [view, setView] = useState<'cartoes' | 'tabela'>(() => {
+    try {
+      return localStorage.getItem('ctes-visao') === 'tabela' ? 'tabela' : 'cartoes'
+    } catch {
+      return 'cartoes'
+    }
+  })
+  const changeView = (v: 'cartoes' | 'tabela') => {
+    setView(v)
+    try {
+      localStorage.setItem('ctes-visao', v)
+    } catch {
+      // navegador sem armazenamento: vale só nesta tela
+    }
+  }
+  const setPeriod = (v: string) => {
+    const next = new URLSearchParams(params)
+    if (v) next.set('periodo', v)
+    else next.delete('periodo')
+    if (v !== 'data') {
+      next.delete('de')
+      next.delete('ate')
+    }
+    setParams(next)
+    setPage(1)
+  }
   const setParam = (k: string, v: string) => {
     const next = new URLSearchParams(params)
     if (v) next.set(k, v)
@@ -155,6 +191,7 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
   if (kind) qs.set('tipo', kind)
   if (from) qs.set('de', from)
   if (to) qs.set('ate', to)
+  if (uf) qs.set('uf', uf)
   if (active.unitId) qs.set('filial', active.unitId)
   const list = useQuery({
     queryKey: ['fretes', 'ctes', qs.toString()],
@@ -222,7 +259,7 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
           }}
         >
           <SearchIcon className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-          <Input className="pl-8" placeholder="Nº do CT-e, destinatário, cidade, chave do CT-e ou da NF-e" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input className="pl-8" placeholder="Nº do CT-e, nome ou CNPJ do destinatário/remetente, cidade, chave do CT-e ou da NF-e" value={search} onChange={(e) => setSearch(e.target.value)} />
         </form>
         <Select value={carrier || '__all__'} onValueChange={(v) => setParam('transportadora', v === '__all__' ? '' : v)}>
           <SelectTrigger className="w-52" aria-label="Transportadora">
@@ -264,8 +301,47 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
             </SelectContent>
           </Select>
         )}
-        <Input type="date" className="w-40" aria-label="Emitidos desde" value={from} onChange={(e) => setParam('de', e.target.value)} />
-        <Input type="date" className="w-40" aria-label="Emitidos até" value={to} onChange={(e) => setParam('ate', e.target.value)} />
+        <Select value={uf || '__all__'} onValueChange={(v) => setParam('uf', v === '__all__' ? '' : v)}>
+          <SelectTrigger className="w-44" aria-label="Estado do cliente ou fornecedor" title="Venda: estado de destino (cliente). Compra: estado de origem (fornecedor).">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Todos os estados</SelectItem>
+            {UF_LIST.map((u) => (
+              <SelectItem key={u} value={u}>
+                {u}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={period || '__all__'} onValueChange={(v) => setPeriod(v === '__all__' ? '' : v)}>
+          <SelectTrigger className="w-40" aria-label="Período de emissão">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">Qualquer data</SelectItem>
+            {PERIODS.map((x) => (
+              <SelectItem key={x.value} value={x.value}>
+                {x.label}
+              </SelectItem>
+            ))}
+            <SelectItem value="data">Informar data</SelectItem>
+          </SelectContent>
+        </Select>
+        {period === 'data' && (
+          <>
+            <Input type="date" className="w-40" aria-label="Emitidos desde" value={from} onChange={(e) => setParam('de', e.target.value)} />
+            <Input type="date" className="w-40" aria-label="Emitidos até" value={to} onChange={(e) => setParam('ate', e.target.value)} />
+          </>
+        )}
+        <div className="ml-auto flex rounded-md border p-0.5" role="group" aria-label="Visualização">
+          <Button size="sm" variant={view === 'cartoes' ? 'secondary' : 'ghost'} onClick={() => changeView('cartoes')} aria-pressed={view === 'cartoes'} title="Cartões">
+            <LayoutListIcon aria-hidden />
+          </Button>
+          <Button size="sm" variant={view === 'tabela' ? 'secondary' : 'ghost'} onClick={() => changeView('tabela')} aria-pressed={view === 'tabela'} title="Tabela">
+            <TableIcon aria-hidden />
+          </Button>
+        </div>
       </div>
       {list.data && (
         <div className="grid gap-2 sm:grid-cols-5">
@@ -284,6 +360,13 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
         <EmptyState icon={FileCheck2Icon} title={pendingOnly ? 'Nada para conciliar' : 'Nenhum CT-e'} description={pendingOnly ? 'Todos os CT-es do filtro conferem ou já têm decisão.' : 'Importe os XMLs dos CT-es (um a um ou num .zip).'} />
       ) : (
         <>
+          {view === 'cartoes' ? (
+            <div className="space-y-3">
+              {list.data.items.map((c) => (
+                <CteCard key={c.id} c={c} />
+              ))}
+            </div>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -333,6 +416,7 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
               ))}
             </TableBody>
           </Table>
+          )}
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <span>{list.data.total} CT-e(s)</span>
             <div className="flex gap-2">
@@ -351,6 +435,86 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
       )}
       {importing && <ImportCtes onClose={() => setImporting(false)} />}
     </div>
+  )
+}
+
+const PERIODS = [
+  { value: 'hoje', label: 'Hoje', days: 1 },
+  { value: '7', label: '7 dias', days: 7 },
+  { value: '30', label: '30 dias', days: 30 },
+  { value: '60', label: '60 dias', days: 60 },
+]
+
+/** Data AAAA-MM-DD somando dias (meio-dia em UTC evita virar o dia no horário de verão). */
+function shiftDay(day: string, days: number) {
+  const d = new Date(`${day}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+const SHIPPER = ['REMETENTE', 'EXPEDIDOR']
+
+/** Cartão do CT-e, no estilo de leitura rápida: quem, de onde para onde, realizado × previsto e a divergência. */
+function CteCard({ c }: { c: Cte }) {
+  const sale = (c.companyRoles ?? []).some((r) => SHIPPER.includes(r)) || !c.companyRoles?.length
+  const other = sale ? { label: 'Cliente · destino', name: c.recipientName, doc: c.recipientDoc, city: c.cityFim, uf: c.ufFim } : { label: 'Fornecedor · origem', name: c.senderName, doc: c.senderDoc, city: c.cityIni, uf: c.ufIni }
+  const pct = c.cargoValue && c.cargoValue > 0 ? (c.total / c.cargoValue) * 100 : null
+  const diff = c.difference
+  const rec = REC_STATUS[c.recStatus]
+  const sub = c.contestStatus ? CONTEST[c.contestStatus] : c.decision ? DECISION[c.decision] : c.recTypes.map((t) => REC_TYPE[t] ?? t).join(', ')
+  return (
+    <Link to={`/fretes/ctes/${c.id}`} className="block rounded-xl border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-muted/30">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-lg font-semibold">CT-e {c.number ?? '—'}</span>
+          <Badge variant="outline" className={rec?.className}>
+            {rec?.label ?? c.recStatus}
+          </Badge>
+          {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
+        </div>
+        <span className="text-sm text-muted-foreground">
+          Emitido em {c.issuedAt ? dateTime(c.issuedAt) : '—'} · {sale ? 'Venda' : 'Compra'}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-start">
+        <div>
+          <p className="text-xs text-muted-foreground">Transportadora</p>
+          <p className="font-medium">{c.carrierName ?? c.emitName ?? '—'}</p>
+          {c.seller && <p className="text-xs text-muted-foreground">Vendedor: {c.seller}</p>}
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">{other.label}</p>
+          <p className="font-medium">{other.name || '—'}</p>
+          <p className="text-xs text-muted-foreground">
+            {[other.city && `${other.city}/${other.uf ?? ''}`, other.doc && formatCnpj(other.doc), c.weight !== null && `${fmtNum(c.weight)} kg`].filter(Boolean).join(' · ')}
+          </p>
+        </div>
+        <div className="grid min-w-72 grid-cols-3 gap-3 rounded-lg bg-muted/50 px-3 py-2">
+          <div>
+            <p className="text-xs text-muted-foreground">Realizado</p>
+            <p className="font-semibold tabular-nums">{money(c.total)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Previsto</p>
+            <p className="font-semibold tabular-nums">{c.expectedTotal === null ? '—' : money(c.expectedTotal)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Divergência</p>
+            <p className={cn('font-semibold tabular-nums', diff !== null && diff > 0.009 ? 'text-destructive' : diff !== null && diff < -0.009 ? 'text-[#006300] dark:text-[#0ca30c]' : '')}>{diff === null ? '—' : money(diff)}</p>
+          </div>
+          <p className="col-span-3 -mt-1 text-xs text-muted-foreground">
+            {pct === null ? 'Sem valor da carga' : `${pct.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}% da mercadoria`}
+            {c.nfeFreight !== null && c.nfeFreight !== undefined && ` · na nota ${money(c.nfeFreight)}`}
+          </p>
+        </div>
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className={cn('text-xs', c.nfeCheck?.status === 'DIVERGENTE' ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground')}>
+          {c.nfeCheck?.status === 'DIVERGENTE' ? `NF-e: ${c.nfeCheck.divergences.join(', ')}` : c.nfeCheck?.status === 'OK' ? NFE_CHECK_STATUS.OK.label : ''}
+        </span>
+        <ChevronRightIcon className="size-5 text-muted-foreground" aria-hidden />
+      </div>
+    </Link>
   )
 }
 
@@ -465,6 +629,11 @@ function CteDetail() {
               </Button>
             )}
             <Can module="fretes_cte" action="export">
+              <Button variant="outline" asChild>
+                <a href={`/fretes/ctes/${c.id}/dacte`} target="_blank" rel="noopener" title="DACTE para imprimir ou salvar em PDF">
+                  <FileTextIcon aria-hidden /> PDF (DACTE)
+                </a>
+              </Button>
               <Button variant="outline" onClick={() => api.download(`/fretes/ctes/${c.id}/xml`, `CTe${c.key}.xml`).catch((e) => toast.error(errorMessage(e)))}>
                 <DownloadIcon aria-hidden /> XML
               </Button>

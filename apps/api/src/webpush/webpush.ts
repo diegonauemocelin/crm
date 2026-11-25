@@ -39,6 +39,8 @@ export interface SitePushSettings {
   /** Par de chaves VAPID só do site (a privada criptografada). Criado na primeira vez. */
   publicKey?: string
   privateKeyEnc?: string
+  /** Arquivo conferido à mão (o firewall da loja barra a conferência do servidor): endereço, quem e quando. */
+  swConfirmed?: { url: string; by: string; at: string } | null
 }
 
 export const DEFAULT_PROMPT: PromptSettings = {

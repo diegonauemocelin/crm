@@ -12,6 +12,8 @@ export interface PickupRow {
   note: string | null
   /** COLETA (a transportadora busca) ou DESPACHO (a empresa leva até ela). */
   mode?: 'COLETA' | 'DESPACHO'
+  /** No "Coletou", volumes e notas são obrigatórios. */
+  countsRequired?: boolean
 }
 
 export type PickupStatus = 'CARREGANDO' | 'CHEGANDO' | 'EM_SEGUIDA' | 'ABERTA' | 'CORTE_ENCERRADO' | 'COLETADO'
@@ -33,7 +35,7 @@ const mins = (hhmm: string) => {
  * Coletas de hoje, na ordem do dia: carregando agora primeiro, depois as próximas pela hora da coleta (a primeira é
  * "chegando", a segunda "em seguida") e por fim as já coletadas.
  */
-export function board(rows: PickupRow[], now: Date): BoardItem[] {
+export function board(rows: PickupRow[], now: Date, marks: ScheduledPickup[] = []): BoardItem[] {
   const day = now.getDay()
   const t = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60
   const items = rows
@@ -41,7 +43,10 @@ export function board(rows: PickupRow[], now: Date): BoardItem[] {
     .map((r) => {
       const cut = mins(r.cutoff)
       const pick = mins(r.pickup)
-      const status: PickupStatus = t >= pick + r.minutes ? 'COLETADO' : t >= pick ? 'CARREGANDO' : t >= cut ? 'CORTE_ENCERRADO' : 'ABERTA'
+      // Marcada pela expedição (chegou antes, está carregando ou já coletou) vale mais que o relógio.
+      const mark = fixedMark(marks, r)
+      const status: PickupStatus =
+        mark?.status === 'COLETADA' ? 'COLETADO' : mark?.status === 'COLETANDO' ? 'CARREGANDO' : t >= pick + r.minutes ? 'COLETADO' : t >= pick ? 'CARREGANDO' : t >= cut ? 'CORTE_ENCERRADO' : 'ABERTA'
       return { ...r, status, toCutoff: cut - t, toPickup: pick - t }
     })
   const rank = (s: PickupStatus) => (s === 'CARREGANDO' ? 0 : s === 'COLETADO' ? 2 : 1)
@@ -67,7 +72,15 @@ export interface ScheduledPickup {
   id: string
   /** AAAA-MM-DD */
   date: string
-  period: 'MANHA' | 'TARDE'
+  /** FIXA: coleta de horário fixo marcada pela expedição (chegou antes ou na hora). */
+  period: 'MANHA' | 'TARDE' | 'FIXA'
+  /** Horário fixo (HH:MM) da coleta marcada. */
+  slot?: string | null
+  arrivedAt?: string | null
+  collectedAt?: string | null
+  volumes?: number | null
+  invoices?: number | null
+  countsRequired?: boolean
   status: 'AGENDADA' | 'COLETANDO' | 'COLETADA' | 'CANCELADA'
   carrierId: string
   carrier: string
@@ -88,7 +101,48 @@ export const SCHEDULE_STATUS: Record<ScheduledPickup['status'], { label: string;
 }
 
 /** Janela de cada período (para o aviso "está chegando a hora"): manhã 08:00–12:00, tarde 13:00–18:00. */
-export const PERIOD_WINDOW: Record<ScheduledPickup['period'], { start: string; end: string }> = { MANHA: { start: '08:00', end: '12:00' }, TARDE: { start: '13:00', end: '18:00' } }
+export const PERIOD_WINDOW: Record<'MANHA' | 'TARDE', { start: string; end: string }> = { MANHA: { start: '08:00', end: '12:00' }, TARDE: { start: '13:00', end: '18:00' } }
+
+/** Marcação de hoje de uma coleta de horário fixo (mesma transportadora, horário e filial), sem as canceladas. */
+export function fixedMark(marks: ScheduledPickup[], r: { carrierId: string; pickup: string; unitId: string | null }) {
+  return marks.find((m) => m.period === 'FIXA' && m.carrierId === r.carrierId && m.slot === r.pickup && (m.unitId ?? null) === (r.unitId ?? null) && m.status !== 'CANCELADA') ?? null
+}
+
+/** Item da lista da expedição: coleta de horário fixo de hoje ou coleta agendada para hoje. */
+export interface TodayPickup {
+  key: string
+  carrierId: string
+  carrier: string
+  unitId: string | null
+  unit: string | null
+  kind: 'FIXA' | 'AGENDADA'
+  /** FIXA: corte e hora da coleta. AGENDADA: o período. */
+  cutoff: string | null
+  pickup: string | null
+  period: 'MANHA' | 'TARDE' | null
+  /** Registro da coleta (agendada, ou fixa já marcada); null = fixa ainda não marcada. */
+  record: ScheduledPickup | null
+  countsRequired: boolean
+  /** Para ordenar: coletando primeiro, depois as pendentes pela hora, por fim as encerradas. */
+  stage: 0 | 1 | 2
+  sortTime: number
+}
+
+/** Coletas de hoje para a expedição marcar (horários fixos do dia + agendadas de hoje). */
+export function todayPickups(rows: PickupRow[], scheduled: ScheduledPickup[], now: Date, today: string): TodayPickup[] {
+  const day = now.getDay()
+  const out: TodayPickup[] = []
+  for (const r of rows.filter((x) => x.days.includes(day) && x.mode !== 'DESPACHO')) {
+    const rec = fixedMark(scheduled, r)
+    out.push({ key: `f:${r.carrierId}:${r.unitId ?? '-'}:${r.pickup}`, carrierId: r.carrierId, carrier: r.carrier, unitId: r.unitId, unit: r.unit, kind: 'FIXA', cutoff: r.cutoff, pickup: r.pickup, period: null, record: rec, countsRequired: !!r.countsRequired, stage: 1, sortTime: mins(r.pickup) })
+  }
+  for (const s of scheduled.filter((x) => x.period !== 'FIXA' && x.date === today && x.status !== 'CANCELADA')) {
+    const w = PERIOD_WINDOW[s.period as 'MANHA' | 'TARDE']
+    out.push({ key: `a:${s.id}`, carrierId: s.carrierId, carrier: s.carrier, unitId: s.unitId, unit: s.unit, kind: 'AGENDADA', cutoff: null, pickup: null, period: s.period as 'MANHA' | 'TARDE', record: s, countsRequired: !!s.countsRequired, stage: 1, sortTime: mins(w.start) })
+  }
+  for (const i of out) i.stage = i.record?.status === 'COLETANDO' ? 0 : i.record?.status === 'COLETADA' ? 2 : 1
+  return out.sort((a, b) => a.stage - b.stage || a.sortTime - b.sortTime || a.carrier.localeCompare(b.carrier))
+}
 
 /**
  * Avisos falados do painel (comparando a lista de antes com a de agora): coleta agendada, transportadora coletando, hora
@@ -109,6 +163,8 @@ export function pickupAnnouncements(
   const before = new Map((prev?.scheduled ?? []).map((s) => [s.id, s.status]))
   const t = now.getHours() * 60 + now.getMinutes()
   for (const s of cur.scheduled) {
+    // Coleta de horário fixo marcada: o aviso sai pelo cartão dela (carregando agora).
+    if (s.period === 'FIXA') continue
     const per = s.period === 'MANHA' ? 'manhã' : 'tarde'
     if (prev && !before.has(s.id) && s.status === 'AGENDADA') push(`novo:${s.id}`, `Coleta agendada: ${s.carrier}, hoje à ${per}.`)
     if (s.status === 'COLETANDO' && before.get(s.id) !== 'COLETANDO') push(`coletando:${s.id}`, `Atenção: ${s.carrier} está coletando agora.`)
@@ -121,3 +177,6 @@ export function pickupAnnouncements(
   }
   return out
 }
+
+/** Minutos para desfazer o "Coletou" (igual ao servidor). */
+export const UNDO_COLLECTED_MIN = 10

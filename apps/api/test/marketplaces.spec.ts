@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AuthUser } from '../src/common/types'
 import { isMarketplaceChannel } from '../src/marketplaces/marketplaces.service'
-import { DEFAULT_ML, delta, derive, mlView, parseAdGroupDay, parseCampaignDays, parseDisplayDays, previousPeriod, syncWindow, tokenError } from '../src/marketplaces/mercadolivre'
+import { DEFAULT_ML, delta, derive, itemAdWindows, mlView, parseAdGroupDay, parseCampaignDays, parseDisplayDays, parseItemAds, previousPeriod, syncWindow, tokenError } from '../src/marketplaces/mercadolivre'
 import { MercadoLivreService } from '../src/marketplaces/mercadolivre.service'
 
 describe('Mercado Livre Ads: cálculos (mesmos do Usaparts BI)', () => {
@@ -133,5 +133,16 @@ describe('Mercado Livre: autorização com PKCE', () => {
     expect(c.accessTokenEnc).not.toBe('AT')
     // o state é de uso único
     await expect(svc.completeAuthorization(user, 'CODE', u.searchParams.get('state')!)).rejects.toThrow()
+  })
+})
+
+describe('Mercado Livre Ads por anúncio', () => {
+  it('lê o gasto de cada anúncio (item_id ou id; métricas em metrics) e junta repetidos', () => {
+    const r = parseItemAds({ results: [{ item_id: 'MLB123456789', metrics: { cost: 10.5, units_quantity: 2, total_amount: 300, clicks: 40, prints: 900 } }, { id: 'mlb123456789', cost: 1, units_quantity: 1 }, { item_id: 'xpto', metrics: { cost: 9 } }] })
+    expect(r).toEqual([{ itemId: 'MLB123456789', cost: 11.5, units: 3, revenue: 300, clicks: 40, prints: 900 }])
+    expect(parseItemAds(null)).toEqual([])
+  })
+  it('janelas de 30 e 60 dias até ontem', () => {
+    expect(itemAdWindows('2026-11-25')).toEqual({ d30: { from: '2026-10-26', to: '2026-11-24' }, d60: { from: '2026-09-26', to: '2026-11-24' } })
   })
 })

@@ -1,3 +1,4 @@
+import { mapLimit } from './limite'
 import { randomUUID } from 'node:crypto'
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
@@ -117,6 +118,17 @@ function pickupsOn(raw: unknown, unitId: string, date: Date) {
 }
 
 const QUOTES_PAGE = 30
+/** Limite de cada tabela no cálculo da cotação: passou, a tabela sai como erro e as outras seguem. */
+const TABLE_LIMIT_MS = 20_000
+
+/** Tabela que passou do limite de tempo no cálculo. */
+function slowTable(t: { id: string; name: string; quoteName: string | null; carrierId: string; carrier: { name: string; quoteName: string | null } }): QuoteResult {
+  return {
+    tableId: t.id, tableName: t.name, quoteName: t.quoteName || t.carrier.quoteName || t.carrier.name, carrierId: t.carrierId, carrierName: t.carrier.name, versionId: null, versionNumber: null,
+    status: 'ERRO', reason: 'Esta tabela demorou demais para calcular e ficou de fora desta cotação. Tente de novo; se repetir, avise o suporte.', total: null, subtotal: null, icms: null, components: [], weights: null,
+    deadlineDays: null, deliveryDate: null, validUntil: null, rule: null, warnings: [], expiredUsed: false,
+  }
+}
 const ICMS_KEY = 'fretes.icms'
 interface IcmsTable {
   internas: Record<string, number>
@@ -242,7 +254,8 @@ export class CotacaoService {
   /** Menor caixa cadastrada em que os itens da cotação cabem. */
   async suggestBox(user: AuthUser, items: PackItem[]) {
     assertCan(user, 'fretes_cotacao', 'create')
-    return suggestBox(items, await this.boxes(user.tenantId))
+    // Só as medidas escolhem a caixa: o peso máximo não limita (saiu da tela; valores antigos ficam sem efeito).
+    return suggestBox(items, (await this.boxes(user.tenantId)).map((b) => ({ ...b, maxWeight: null })))
   }
 
   async campaigns(tenantId: string): Promise<FreightCampaign[]> {
@@ -771,13 +784,30 @@ export class CotacaoService {
       this.feesFor(carrierIds, p),
       p.doc ? Promise.resolve([]) : this.prisma.freightRecipientFee.groupBy({ by: ['carrierId'], where: { carrierId: { in: carrierIds }, doc: { not: null } }, _count: { _all: true } }),
     ]))
-    const results = await this.step(`cálculo das ${tables.length} tabelas`, Promise.all(
-      tables.map(async (t) => {
-        const r = await this.evaluate(t, p, d, { allowExpired, fees: fees.filter((f) => f.carrierId === t.carrierId).map(feeComponent) })
+    // Até 6 tabelas ao mesmo tempo (o banco atende poucas consultas por vez) e cada uma com limite próprio: a tabela que
+    // demorar sai como erro, sem derrubar a cotação das outras.
+    const results = await this.step(`cálculo das ${tables.length} tabelas`, mapLimit(tables, 6, async (t) => {
+      const start = Date.now()
+      let timer: NodeJS.Timeout | undefined
+      try {
+        const r = await Promise.race([
+          this.evaluate(t, p, d, { allowExpired, fees: fees.filter((f) => f.carrierId === t.carrierId).map(feeComponent) }),
+          new Promise<null>((resolve) => {
+            timer = setTimeout(() => resolve(null), TABLE_LIMIT_MS)
+          }),
+        ])
+        if (!r) {
+          this.logger.warn(`Cotação: a tabela "${t.name}" (${t.carrier.name}) passou de ${TABLE_LIMIT_MS / 1000} s e ficou de fora`)
+          return slowTable(t)
+        }
         if (withLists.some((w) => w.carrierId === t.carrierId)) r.warnings.push('Esta transportadora cobra TDA/TDE/TDC/TVD de destinatários específicos: informe o CPF/CNPJ para conferir se este cliente está na lista.')
         return r
-      }),
-    ))
+      } finally {
+        if (timer) clearTimeout(timer)
+        const ms = Date.now() - start
+        if (ms > 3_000) this.logger.warn(`Cotação: a tabela "${t.name}" (${t.carrier.name}) levou ${Math.round(ms / 100) / 10} s`)
+      }
+    }), 90_000)
     // Transportadoras ativas da filial sem nenhuma tabela ativa: aparecem para ninguém achar que foram esquecidas.
     const withTable = new Set(tables.map((t) => t.carrierId))
     const carriers = lean ? [] : await this.prisma.freightCarrier.findMany({

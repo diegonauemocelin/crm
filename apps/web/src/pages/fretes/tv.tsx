@@ -58,8 +58,8 @@ function Board({ q, children, linkHint }: { q: { data?: PanelData; error: Error 
     return () => clearInterval(t)
   }, [])
   const root = useRef<HTMLDivElement>(null)
-  const items = board(q.data?.rows ?? [], now).filter((i) => i.status !== 'COLETADO')
-  const scheduled = (q.data?.scheduled ?? []).filter((s) => s.status === 'AGENDADA' || s.status === 'COLETANDO')
+  const items = board(q.data?.rows ?? [], now, q.data?.scheduled ?? []).filter((i) => i.status !== 'COLETADO')
+  const scheduled = (q.data?.scheduled ?? []).filter((s) => s.period !== 'FIXA' && (s.status === 'AGENDADA' || s.status === 'COLETANDO'))
   const sound = useAnnouncements(q.data, items, now)
   const loading = items.filter((i) => i.status === 'CARREGANDO')
   const next = items.filter((i) => i.status !== 'CARREGANDO')
@@ -160,7 +160,7 @@ function Card({ i, big = false }: { i: BoardItem; big?: boolean }) {
 
 /** Coleta agendada pela expedição: período (manhã ou tarde) e se a transportadora já está coletando. */
 function ScheduledCard({ s, big }: { s: ScheduledPickup; big: boolean }) {
-  const w = PERIOD_WINDOW[s.period]
+  const w = PERIOD_WINDOW[s.period === 'TARDE' ? 'TARDE' : 'MANHA']
   return (
     <article className={cn('rounded-2xl border-2 p-5', big ? 'border-emerald-400/70 bg-emerald-500/10' : 'border-violet-400/50 bg-violet-500/10')}>
       <div className="flex items-start justify-between gap-3">

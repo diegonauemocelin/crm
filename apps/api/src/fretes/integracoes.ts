@@ -385,12 +385,40 @@ export function rodonavesError(body: unknown): string | null {
   return t ? t.slice(0, 200) : null
 }
 
+/** Campo pelo nome sem diferenciar maiúsculas (a documentação mostra FreightValue; a API pode responder freightValue). */
+function field(o: Record<string, unknown>, ...names: string[]): unknown {
+  const want = names.map((n) => n.toLowerCase())
+  for (const [k, v] of Object.entries(o)) if (want.includes(k.toLowerCase())) return v
+  return undefined
+}
+
+/** Resposta da cotação, às vezes dentro de Data/Result ou numa lista: o objeto que tem o valor do frete. */
+export function rodonavesQuoteObject(body: unknown): Record<string, unknown> {
+  let b: unknown = body
+  for (let i = 0; i < 3; i++) {
+    if (Array.isArray(b)) b = b[0]
+    else if (b && typeof b === 'object' && field(b as Record<string, unknown>, 'FreightValue') === undefined) {
+      const inner = field(b as Record<string, unknown>, 'Data', 'Result', 'Quotation', 'Value')
+      if (inner && typeof inner === 'object') b = inner
+      else break
+    } else break
+  }
+  return (b && typeof b === 'object' && !Array.isArray(b) ? b : {}) as Record<string, unknown>
+}
+
 /** Resposta da cotação: FreightValue (texto), ProtocolId. A resposta não traz prazo. */
 export function parseRodonaves(body: unknown): { price: number | null; protocol: string | null; error: string | null } {
-  const b = (body ?? {}) as Record<string, unknown>
-  const price = decimalText(b.FreightValue)
-  const protocol = b.ProtocolId !== undefined && b.ProtocolId !== null ? String(b.ProtocolId) : null
-  return { price, protocol, error: price === null || price <= 0 ? (rodonavesError(body) ?? 'Sem preço para este envio.') : null }
+  const b = rodonavesQuoteObject(body)
+  const price = decimalText(field(b, 'FreightValue'))
+  const pid = field(b, 'ProtocolId')
+  const protocol = pid !== undefined && pid !== null ? String(pid) : null
+  return { price, protocol, error: price === null || price <= 0 ? rodonavesHint(rodonavesError(b) ?? rodonavesError(body) ?? 'Sem preço para este envio.') : null }
+}
+
+/** Mensagens da Rodonaves com o que fazer: a cotação só sai para destinatário cadastrado na base deles. */
+export function rodonavesHint(msg: string): string {
+  if (/destinat[aá]rio n[aã]o encontrado/i.test(msg)) return 'A Rodonaves não tem este destinatário (CPF/CNPJ) cadastrado e só cota para clientes da base dela. Peça o cadastro à unidade de vínculo da Rodonaves ou confira o CPF/CNPJ.'
+  return msg
 }
 
 // ─────────── DHL Express (MyDHL API) ───────────

@@ -233,7 +233,7 @@ function BoxesDialog({ onClose }: { onClose: () => void }) {
   const save = useMutation({
     mutationFn: () =>
       api.put<FreightBox[]>('/fretes/caixas', {
-        list: current.map((r) => ({ id: r.id, name: r.name, length: parseBr(r.length), width: parseBr(r.width), height: parseBr(r.height), tare: parseBr(r.tare), maxWeight: parseBr(r.maxWeight), active: r.active })),
+        list: current.map((r) => ({ id: r.id, name: r.name, length: parseBr(r.length), width: parseBr(r.width), height: parseBr(r.height), tare: parseBr(r.tare), maxWeight: null, active: r.active })),
       }),
     onSuccess: (saved) => {
       toast.success(`${saved.length} caixa(s) salvas.`)
@@ -247,7 +247,7 @@ function BoxesDialog({ onClose }: { onClose: () => void }) {
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Caixas de embalagem</DialogTitle>
-          <DialogDescription>Medidas internas em cm, peso da caixa vazia e o peso máximo que ela aguenta (kg). A cotação sugere a menor em que os produtos cabem.</DialogDescription>
+          <DialogDescription>Medidas internas em cm e o peso da caixa vazia (kg). A cotação sugere a menor caixa em que os produtos cabem, só pelas medidas.</DialogDescription>
         </DialogHeader>
         {list.isLoading ? (
           <Loader2Icon className="mx-auto animate-spin" aria-hidden />
@@ -261,7 +261,6 @@ function BoxesDialog({ onClose }: { onClose: () => void }) {
                   <TableHead>Larg.</TableHead>
                   <TableHead>Alt.</TableHead>
                   <TableHead>Peso vazia</TableHead>
-                  <TableHead>Peso máx.</TableHead>
                   <TableHead>Ativa</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
@@ -272,7 +271,7 @@ function BoxesDialog({ onClose }: { onClose: () => void }) {
                     <TableCell className="py-1">
                       <Input className="h-8 min-w-32" aria-label="Nome da caixa" value={r.name} onChange={(e) => set(i, { name: e.target.value })} placeholder="Ex.: Caixa 2" />
                     </TableCell>
-                    {(['length', 'width', 'height', 'tare', 'maxWeight'] as const).map((k) => (
+                    {(['length', 'width', 'height', 'tare'] as const).map((k) => (
                       <TableCell key={k} className="py-1">
                         <Input className="h-8 w-20" inputMode="decimal" aria-label={k} value={r[k]} onChange={(e) => set(i, { [k]: e.target.value })} />
                       </TableCell>

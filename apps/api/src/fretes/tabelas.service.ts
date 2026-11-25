@@ -383,6 +383,22 @@ export class TabelasService {
     return { updated: tables.length }
   }
 
+  /** Tipo de mercadoria de várias tabelas de uma vez (vazio = qualquer mercadoria). */
+  async bulkGoods(user: AuthUser, d: { ids: string[]; goodsTypes: string[] }, ctx: RequestCtx) {
+    assertCan(user, 'fretes_tabelas', 'edit')
+    const ids = [...new Set(d.ids)]
+    if (!ids.length) throw new BadRequestException('Escolha ao menos uma tabela.')
+    const goodsTypes = [...new Set(d.goodsTypes.map((g) => cleanText(g, 60)).filter(Boolean))].slice(0, 20)
+    const tables = await this.prisma.freightTable.findMany({ where: { id: { in: ids }, tenantId: user.tenantId, ...unitListWhere(allowedUnits(user, 'fretes_tabelas')) } })
+    if (tables.length !== ids.length) throw new NotFoundException('Alguma tabela não foi encontrada ou não é da sua filial.')
+    for (const t of tables) assertUnitList(user, 'fretes_tabelas', t.unitIds)
+    await this.prisma.freightTable.updateMany({ where: { id: { in: tables.map((t) => t.id) } }, data: { goodsTypes } })
+    for (const t of tables) {
+      if (t.goodsTypes.join('|') !== goodsTypes.join('|')) await this.audit.byUser(user, ctx, 'frete.tabela.alterada', 'freight_table', t.id, { alteracoes: { goodsTypes: { de: t.goodsTypes.join(', ') || 'qualquer', para: goodsTypes.join(', ') || 'qualquer' } }, emLote: true })
+    }
+    return { updated: tables.length }
+  }
+
   async update(user: AuthUser, id: string, d: TableInput, ctx: RequestCtx) {
     assertCan(user, 'fretes_tabelas', 'edit')
     const cur = await this.findTable(user, id)

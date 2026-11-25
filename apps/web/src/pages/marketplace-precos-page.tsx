@@ -68,6 +68,8 @@ interface Row {
   feeFixed?: number | null
   extraPct?: number
   fixedCost?: number
+  /** Publicidade (Mercado Livre Ads) do anúncio no período. */
+  adCost?: { spent: number; sold: number; perSale: number | null; days: 30 | 60; passed: boolean } | null
   costPercent: number | null
   costUpdatedAt: string | null
   feePct: number | null
@@ -94,6 +96,8 @@ interface Config {
   extraFeePct: number
   useNfeTaxes: boolean
   suggestBase?: 'LUCRO' | 'DEPOSITO' | 'MARGEM'
+  adCostPass?: boolean
+  adCostDays?: 30 | 60
 }
 interface ListData {
   total: number
@@ -381,6 +385,8 @@ export function MarketplacePrecosPage() {
                 <SelectItem value="sem_venda_30">Sem vendas em 30 dias</SelectItem>
                 <SelectItem value="concorrente">Concorrente mais barato</SelectItem>
                 <SelectItem value="pausado">Pausado com estoque</SelectItem>
+                <SelectItem value="publicidade_sem_venda">Publicidade sem venda</SelectItem>
+                <SelectItem value="publicidade">Com publicidade (Ads)</SelectItem>
                 <SelectItem value="abaixo_alvo">Abaixo da margem alvo</SelectItem>
                 <SelectItem value="classico">Premium: tarifa no Clássico</SelectItem>
                 <SelectItem value="premium">Clássico: tarifa no Premium</SelectItem>
@@ -398,6 +404,7 @@ export function MarketplacePrecosPage() {
                 <SelectItem value="lucro_falta">Mais longe do lucro esperado</SelectItem>
                 <SelectItem value="preco">Maior preço primeiro</SelectItem>
                 <SelectItem value="preco_asc">Menor preço primeiro</SelectItem>
+                <SelectItem value="publicidade">Maior gasto em publicidade</SelectItem>
                 <SelectItem value="titulo">Título</SelectItem>
               </SelectContent>
             </Select>
@@ -482,6 +489,11 @@ export function MarketplacePrecosPage() {
                           {r.sku ? ` · SKU ${r.sku}` : ''} · {r.listingType}
                           {r.full ? ' · Full' : ''}
                           {r.status && r.status !== 'active' ? ` · ${ITEM_STATUS[r.status] ?? r.status}` : ''}
+                          {r.adCost && (
+                            <span className={cn('ml-1', r.adCost.perSale === null && 'text-destructive')} title={`Mercado Livre Ads: ${brl(r.adCost.spent)} em ${r.adCost.days} dias${r.adCost.passed ? ', descontado do lucro' : ', não repassado'}`}>
+                              · Ads {r.adCost.perSale === null ? `${brl(r.adCost.spent)} sem venda` : `${brl(r.adCost.perSale)}/venda`}
+                            </span>
+                          )}
                         </span>
                       </TableCell>
                       <TableCell className="text-right whitespace-nowrap tabular-nums">
@@ -1072,6 +1084,8 @@ function SettingsDialog({ canEdit, onClose }: { canEdit: boolean; onClose: () =>
   const [useNfe, setUseNfe] = useState(true)
   const [mode, setMode] = useState<'CUSTO' | 'CUSTO_IMPOSTO' | 'PRECO'>('CUSTO')
   const [suggestBase, setSuggestBase] = useState<'LUCRO' | 'DEPOSITO' | 'MARGEM'>('LUCRO')
+  const [adPass, setAdPass] = useState(false)
+  const [adDays, setAdDays] = useState<30 | 60>(30)
   useEffect(() => {
     if (!cfg.data) return
     const c = cfg.data
@@ -1080,6 +1094,8 @@ function SettingsDialog({ canEdit, onClose }: { canEdit: boolean; onClose: () =>
     setUseNfe(c.useNfeTaxes)
     setMode(c.marginMode ?? 'CUSTO')
     setSuggestBase(c.suggestBase ?? 'LUCRO')
+    setAdPass(!!c.adCostPass)
+    setAdDays(c.adCostDays === 60 ? 60 : 30)
   }, [cfg.data])
   const save = useMutation({
     mutationFn: () =>
@@ -1092,6 +1108,8 @@ function SettingsDialog({ canEdit, onClose }: { canEdit: boolean; onClose: () =>
         useNfeTaxes: useNfe,
         marginMode: mode,
         suggestBase,
+        adCostPass: adPass,
+        adCostDays: adDays,
       }),
     onSuccess: () => {
       toast.success('Configurações salvas.')
@@ -1157,6 +1175,23 @@ function SettingsDialog({ canEdit, onClose }: { canEdit: boolean; onClose: () =>
             <label className="flex items-center gap-2 self-start pt-6 text-sm">
               <Switch checked={useNfe} onCheckedChange={setUseNfe} disabled={!canEdit} /> Usar os impostos das notas do Mercado Envios
             </label>
+          <div className="space-y-2 rounded-lg border p-3 sm:col-span-2">
+            <p className="text-sm font-medium">Custo de publicidade (Mercado Livre Ads)</p>
+            <p className="text-xs text-muted-foreground">
+              Por anúncio: o que ele gastou em Ads no período ÷ as unidades vendidas dele no mesmo período (patrocinadas e orgânicas). O gasto vem da sincronização do Mercado Livre Ads (Marketplaces › Mercado Livre Ads), uma vez por dia.
+            </p>
+            <label className="flex items-center gap-2 text-sm">
+              <Switch checked={adPass} onCheckedChange={setAdPass} disabled={!canEdit} /> Repassar: descontar do lucro e da margem e incluir no preço sugerido
+            </label>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">Período</span>
+              <select aria-label="Período da publicidade" className="h-9 rounded-md border bg-transparent px-2 text-sm" value={adDays} disabled={!canEdit} onChange={(e) => setAdDays(e.target.value === '60' ? 60 : 30)}>
+                <option value={30}>Últimos 30 dias</option>
+                <option value={60}>Últimos 60 dias</option>
+              </select>
+            </div>
+            <p className="text-xs text-muted-foreground">Desligado, o custo aparece em cada anúncio só como informação.</p>
+          </div>
           </div>
         )}
         {canEdit && <TaxReference onUse={(v) => setForm((f) => ({ ...f, taxPct: String(v).replace('.', ',') }))} />}
@@ -1287,7 +1322,8 @@ function ItemSheet({ id, config, onClose, onApply }: { id: string; config: Confi
               {line('Frete', r.margin.shipping === null ? 'não calculado' : brl(r.margin.shipping), r.shippingNote ?? undefined)}
               {line('Imposto', `${brl(r.margin.tax)} (${pct(r.taxPct)}, ${r.taxLabel})`)}
               {line('Outras taxas', brl(r.margin.extra))}
-              {line('Custo fixo por venda', brl(r.margin.fixedCost))}
+              {r.adCost && line(`Publicidade (${r.adCost.days} dias)`, r.adCost.perSale === null ? `${brl(r.adCost.spent)} gastos, sem venda` : `${brl(r.adCost.perSale)} por venda · ${brl(r.adCost.spent)} em ${r.adCost.sold} venda(s)${r.adCost.passed ? '' : ' · não repassado'}`)}
+              {line(r.adCost?.passed && r.adCost.perSale !== null ? 'Custo fixo por venda (com a publicidade)' : 'Custo fixo por venda', brl(r.margin.fixedCost))}
               {line('Custo', `${brl(r.cost)}${r.costSource ? ` · ${COST_SOURCE[r.costSource] ?? r.costSource}` : ''}`)}
               {line('Margem', r.margin.margin === null ? 'sem dado' : `${brl(r.margin.margin)} (${pct(r.margin.marginPct)})`)}
               {line('Preço mínimo (margem zero)', brl(r.minPrice))}

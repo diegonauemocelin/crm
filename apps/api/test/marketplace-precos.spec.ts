@@ -7,6 +7,7 @@ import {
   computeMargin,
   couponBody,
   couponUnitPrice,
+  adCostOf,
   feeFromRow,
   matchTip,
   mlMessagePt,
@@ -363,5 +364,18 @@ describe('filtro pelos avisos', () => {
     expect(matchTip(tips, 'alertas')).toBe(true)
     expect(matchTip(tips, 'dicas')).toBe(true)
     expect(matchTip([{ level: 'dica', code: 'sem_venda_30' }], 'alertas')).toBe(false)
+  })
+})
+
+describe('custo de publicidade (Mercado Livre Ads)', () => {
+  it('gasto ÷ vendidas no período; sem venda fica sem valor por venda', () => {
+    expect(adCostOf(120, 40, 30, true)).toEqual({ spent: 120, sold: 40, perSale: 3, days: 30, passed: true })
+    expect(adCostOf(50, 0, 60, false)).toEqual({ spent: 50, sold: 0, perSale: null, days: 60, passed: false })
+    expect(adCostOf(0, 10, 30, true)).toBeNull()
+  })
+  it('aviso: gastou sem vender é alerta; com venda, informa o custo por venda', () => {
+    const base = { status: 'active', availableQuantity: 5, margin: computeMargin({ price: 100, fee: 10, shipping: 0, taxPct: 10, cost: 50, fixedCost: 3, extraPct: 0 }), minMarginPct: 0, targetMarginPct: null, suggestedPrice: null, minPrice: null, regularPrice: 100, promoPrice: null, regularMarginPct: null, competitorMin: null, competitorCount: 0, listingTypeId: null, otherFee: null, freeShipping: false, mandatoryFreeShipping: false, sales30: 1, sales60: 1, taxSource: 'nfe' } as unknown as TipInput
+    expect(pricingTips({ ...base, adCost: adCostOf(50, 0, 30, true) }).some((t) => t.code === 'publicidade_sem_venda' && t.level === 'alerta')).toBe(true)
+    expect(pricingTips({ ...base, adCost: adCostOf(30, 10, 30, true) }).find((t) => t.code === 'publicidade')?.text).toContain('R$ 3,00 por venda')
   })
 })

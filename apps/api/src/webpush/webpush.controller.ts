@@ -165,6 +165,12 @@ export class WebPushController {
     return this.push.checkSw(user)
   }
 
+  @Post('verificar/confirmar')
+  @HttpCode(200)
+  confirmCheck(@CurrentUser() user: AuthUser, @ReqContext() ctx: RequestCtx) {
+    return this.push.confirmSw(user, ctx)
+  }
+
   @Get('campanhas')
   list(@CurrentUser() user: AuthUser) {
     return this.push.list(user)
