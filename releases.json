@@ -2,6 +2,23 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.74",
+      "date": "2026-11-24",
+      "title": "Web Push: limpar inscritos que não funcionam",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Marketing",
+          "text": "Web Push: botão \"Limpar inscritos que não funcionam\" em Inscritos. O CRM consulta cada inscrição no serviço do navegador e tira da lista as que não existem mais (ex.: quem limpou os dados do navegador ou bloqueou as notificações). Ficam só as que recebem de verdade."
+        },
+        {
+          "type": "melhoria",
+          "area": "Marketing",
+          "text": "A limpeza não confere as inscrições do Safari e deve ser usada de vez em quando (ex.: uma vez por mês), para o navegador não mostrar aviso ao cliente."
+        }
+      ]
+    },
+    {
       "version": "3.0.73",
       "date": "2026-11-24",
       "title": "Descadastro tira o lead de todos os fluxos e envios de e-mail",
