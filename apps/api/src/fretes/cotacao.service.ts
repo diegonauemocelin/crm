@@ -254,7 +254,8 @@ export class CotacaoService {
   /** Menor caixa cadastrada em que os itens da cotação cabem. */
   async suggestBox(user: AuthUser, items: PackItem[]) {
     assertCan(user, 'fretes_cotacao', 'create')
-    return suggestBox(items, await this.boxes(user.tenantId))
+    // Só as medidas escolhem a caixa: o peso máximo não limita (saiu da tela; valores antigos ficam sem efeito).
+    return suggestBox(items, (await this.boxes(user.tenantId)).map((b) => ({ ...b, maxWeight: null })))
   }
 
   async campaigns(tenantId: string): Promise<FreightCampaign[]> {
