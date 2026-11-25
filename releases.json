@@ -2,6 +2,83 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.77",
+      "date": "2026-11-25",
+      "title": "App de coletas no celular, CT-e com DACTE e filtros, custo de publicidade do Mercado Livre e cotação mais estável",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "App no celular, aba Coletas (para quem tem a permissão de coletas; o perfil Expedição abre direto nela): as coletas de hoje, de horário fixo e agendadas, com \"Chegou, coletando\" e \"Coletou\" num toque. Vale também para a transportadora de horário fixo que chega antes da hora: o painel da TV mostra \"Carregando agora\" na hora. Dá para agendar pelo celular."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "No \"Coletou\", informe volumes e notas fiscais entregues. Em cada transportadora há a opção \"Volumes e notas obrigatórios no Coletou\". O horário real de chegada e de saída fica gravado e o \"Coletou\" pode ser desfeito por 10 minutos."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Aviso no celular 15 minutos antes do ponto de corte e da chegada de cada coleta de horário fixo, e do início do período das coletas agendadas (para quem tem a permissão de coletas, pela filial)."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Agendar coletas (computador) ganhou a lista \"Coletas de hoje\", a mesma do celular; embaixo, as agendadas dos próximos dias."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "CT-e: botão PDF (DACTE) no detalhe, montado do XML com o código de barras da chave, para imprimir ou salvar em PDF."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "CT-e: busca pelo nome ou CNPJ/CPF do destinatário e do remetente, filtro de estado (cliente na venda, fornecedor na compra), período rápido (hoje, 7, 30 e 60 dias ou informar data) e lista em cartões com realizado, previsto, divergência e % da mercadoria. Os contadores das situações seguem os filtros."
+        },
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Cotação de frete: calcula até 6 tabelas por vez e cada tabela tem até 20 segundos; a que demorar aparece como erro e as outras saem normalmente (antes a cotação inteira falhava com \"demorou demais\")."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Tabelas de frete: tipo de mercadoria em lote (marque as tabelas, escolha os tipos e aplique)."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Caixas de embalagem escolhidas só pelas medidas (o peso máximo saiu, não era usado)."
+        },
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Transportadoras: o botão Remover de cada horário de coleta ficava fora da tela no cadastro; agora aparece no topo de cada coleta."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Importação de tabelas: com linhas por região e por cidade na mesma planilha (ex.: Expresso São Miguel), o sistema sugere as colunas Região e Cidade juntas."
+        },
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Rodonaves: leitura do valor do frete em qualquer formato da resposta e mensagem clara quando o destinatário não está na base da Rodonaves."
+        },
+        {
+          "type": "novo",
+          "area": "Marketplaces",
+          "text": "Preços e promoções: custo de publicidade (Mercado Livre Ads) por anúncio, gasto no período ÷ unidades vendidas, com a opção de repassar (desconta do lucro e da margem e entra no preço sugerido) ou só mostrar. Aviso de anúncio que gastou sem vender e ordem por maior gasto."
+        },
+        {
+          "type": "melhoria",
+          "area": "Marketing",
+          "text": "Web Push: quando o firewall da loja barra a conferência do arquivo (403), a tela mostra um aviso com \"Abrir na loja\" e \"Abre no meu navegador\" para confirmar."
+        }
+      ]
+    },
+    {
       "version": "3.0.76",
       "date": "2026-11-25",
       "title": "Backup guarda só as 3 cópias mais recentes dos arquivos enviados",
