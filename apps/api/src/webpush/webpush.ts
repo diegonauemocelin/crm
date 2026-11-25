@@ -166,6 +166,15 @@ export function pushEndpointOk(endpoint: unknown): endpoint is string {
   }
 }
 
+/** Inscrição do Safari (Apple): lá cada mensagem que não vira notificação conta contra a inscrição. */
+export function isApplePush(endpoint: string) {
+  try {
+    return /(^|\.)push\.apple\.com$/.test(new URL(endpoint).hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
 function b64urlBytes(v: unknown): Buffer | null {
   if (typeof v !== 'string' || !/^[A-Za-z0-9_-]+={0,2}$/.test(v) || v.length > 200) return null
   return Buffer.from(v.replace(/=+$/, ''), 'base64url')
