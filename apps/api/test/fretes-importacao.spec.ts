@@ -199,3 +199,17 @@ describe('fretes: layouts reais das transportadoras', () => {
   })
 })
 
+describe('importação: regiões e cidades na mesma planilha', () => {
+  const headers = ['UF', 'Região', 'Cidade', 'Peso inicial (kg)', 'Taxa', 'Frete por kg R$', 'Frete valor %']
+  it('mantém a região quando há linhas só com região', () => {
+    const rows = [['SP', 'SP1', null, 0, 51.23, 1.15, 0.5], ['PR', null, 'Cascavel', 0, 46.22, 0.837, 0.5]]
+    const f = suggestMapping(headers, rows).map((m) => m.field)
+    expect(f).toContain('region')
+    expect(f).toContain('city')
+    expect(f).toContain('var:freight')
+  })
+  it('com cidade em todas as linhas, a região é só informativa', () => {
+    const rows = [['SC', 'Sul', 'Itajaí', 0, 10, 1, 0.5]]
+    expect(suggestMapping(headers, rows).map((m) => m.field)).not.toContain('region')
+  })
+})

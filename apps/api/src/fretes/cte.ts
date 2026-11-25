@@ -19,6 +19,8 @@ export interface CteData {
   emitCity?: string | null
   emitUf?: string | null
   senderDoc: string | null
+  /** Nome do remetente (no frete de compra, o fornecedor). */
+  senderName?: string | null
   recipientDoc: string | null
   recipientName: string | null
   /** Documento de quem paga o frete (tomador). */
@@ -97,6 +99,7 @@ export function parseCteXml(raw: string): CteData {
     emitCity: tag(block(emit, 'enderEmit') ?? '', 'xMun'),
     emitUf: tag(block(emit, 'enderEmit') ?? '', 'UF'),
     senderDoc: parties['0'] ?? null,
+    senderName: rem ? tag(rem, 'xNome') : null,
     recipientDoc: parties['3'] ?? null,
     recipientName: dest ? tag(dest, 'xNome') : null,
     tomadorDoc,

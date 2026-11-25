@@ -248,8 +248,28 @@ export class WebPushService implements OnApplicationBootstrap, OnModuleDestroy {
       if (!body.includes(SW_MARKER) && !/var CRM = \{"api":/.test(body)) return { ok: false, url, message: 'O endereço responde, mas não é o arquivo do CRM (baixe de novo e publique sem alterar).' }
       return { ok: true, url, message: 'Arquivo encontrado na raiz da loja.' }
     } catch (err) {
-      return { ok: false, url, message: `Arquivo não encontrado: ${(err as Error).message}.` }
+      const msg = (err as Error).message
+      // Firewall da loja (ex.: CloudFront da Magazord) barra o servidor do CRM pelo jeito da conexão, não pela identificação:
+      // quem abre no navegador vê o arquivo. Vale a confirmação feita à mão para este endereço.
+      if (/\b403\b/.test(msg)) {
+        const c = s.swConfirmed
+        if (c?.url === url) return { ok: true, blocked: true, url, message: `Confirmado no navegador por ${c.by} em ${new Date(c.at).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })} (o firewall da loja não deixa o servidor do CRM conferir sozinho).` }
+        return { ok: false, blocked: true, url, message: 'O firewall da loja não deixa o servidor do CRM conferir o arquivo (403).' }
+      }
+      return { ok: false, url, message: `Arquivo não encontrado: ${msg}.` }
     }
+  }
+
+  /** Confirma à mão que o arquivo abre na loja (quando o firewall barra a conferência do servidor). */
+  async confirmSw(user: AuthUser, ctx: RequestCtx) {
+    this.assertCan(user, 'edit')
+    const s = await this.config(user.tenantId)
+    const { siteUrl } = await this.siteOf(user.tenantId, s)
+    if (!siteUrl) throw new BadRequestException('Informe o endereço da loja.')
+    const url = `${siteUrl}/${SW_FILE}`
+    await this.settings.set<SitePushSettings>(user.tenantId, SETTINGS_KEY, { ...s, swConfirmed: { url, by: user.name.slice(0, 120), at: new Date().toISOString() } })
+    await this.audit.byUser(user, ctx, 'webpush.arquivo_confirmado', 'settings', SETTINGS_KEY, { arquivo: url })
+    return this.checkSw(user)
   }
 
   private async defaultIcon(tenantId: string) {

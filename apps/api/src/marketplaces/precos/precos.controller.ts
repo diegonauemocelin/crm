@@ -22,7 +22,7 @@ class PrecosListQueryDto {
   @ApiPropertyOptional() @IsOptional() @Transform(bool) @IsBoolean() margemBaixa?: boolean
   @ApiPropertyOptional({ enum: ['menos', 'igual', 'mais'] }) @IsOptional() @IsIn(['menos', 'igual', 'mais']) deposito?: 'menos' | 'igual' | 'mais'
   @ApiPropertyOptional({ enum: TIP_FILTERS, description: 'Aviso da linha (ex.: lucro_abaixo), alertas ou dicas' }) @IsOptional() @IsIn([...TIP_FILTERS]) alerta?: TipFilter
-  @ApiPropertyOptional() @IsOptional() @IsIn(['margem', 'margem_desc', 'titulo', 'preco', 'preco_asc', 'lucro', 'lucro_desc', 'lucro_falta']) ordem?: string
+  @ApiPropertyOptional() @IsOptional() @IsIn(['margem', 'margem_desc', 'titulo', 'preco', 'preco_asc', 'lucro', 'lucro_desc', 'lucro_falta', 'publicidade']) ordem?: string
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) pagina?: number
 }
 
@@ -35,6 +35,8 @@ class PrecosConfigDto {
   @ApiPropertyOptional() @IsOptional() @IsNumber() extraFeePct?: number
   @ApiPropertyOptional() @IsOptional() @IsBoolean() useNfeTaxes?: boolean
   @ApiPropertyOptional({ enum: ['LUCRO', 'DEPOSITO', 'MARGEM'] }) @IsOptional() @IsIn(['LUCRO', 'DEPOSITO', 'MARGEM']) suggestBase?: 'LUCRO' | 'DEPOSITO' | 'MARGEM'
+  @ApiPropertyOptional({ description: 'Repassa o custo de publicidade (Mercado Livre Ads) por venda' }) @IsOptional() @IsBoolean() adCostPass?: boolean
+  @ApiPropertyOptional({ enum: [30, 60] }) @IsOptional() @IsIn([30, 60]) adCostDays?: 30 | 60
 }
 
 class PrecosCostDto {

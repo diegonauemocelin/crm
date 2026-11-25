@@ -24,8 +24,11 @@ import {
   type MlConfig,
   MlError,
   type MlSyncState,
+  ITEM_METRICS,
+  itemAdWindows,
   parseAdGroupDay,
   parseCampaignDays,
+  parseItemAds,
   parseDisplayDays,
   syncWindow,
   tokenError,
@@ -397,6 +400,44 @@ export class MercadoLivreService implements OnApplicationBootstrap, OnModuleDest
     return { ok: true, message: 'Sincronização iniciada. Os dados aparecem em alguns minutos.' }
   }
 
+  /** Gasto de Product Ads de cada anúncio (MLB) nos últimos 30 e 60 dias. */
+  private async syncItemAds(tenantId: string, site: string, adv: string, counter: { calls: number }) {
+    const w = itemAdWindows()
+    const at = new Date().toISOString()
+    try {
+      const pull = async (win: { from: string; to: string }) => {
+        const by = new Map<string, ReturnType<typeof parseItemAds>[number]>()
+        for (let offset = 0; offset < 20_000; offset += 100) {
+          const page = await this.apiGet<{ paging?: { total?: number }; results?: unknown[] }>(tenantId, `/advertising/${site}/advertisers/${adv}/product_ads/ads/search`, { date_from: win.from, date_to: win.to, limit: 100, offset, metrics: ITEM_METRICS }, '2', counter)
+          for (const r of parseItemAds(page)) {
+            const p = by.get(r.itemId)
+            by.set(r.itemId, p ? { ...r, cost: p.cost + r.cost, units: p.units + r.units, revenue: p.revenue + r.revenue, clicks: p.clicks + r.clicks, prints: p.prints + r.prints } : r)
+          }
+          if (!page.results?.length || offset + 100 >= (page.paging?.total ?? 0)) break
+          await sleep(this.gapMs)
+        }
+        return by
+      }
+      const a30 = await pull(w.d30)
+      const a60 = await pull(w.d60)
+      const ids = [...new Set([...a30.keys(), ...a60.keys()])]
+      const r2 = (v: number) => Math.round(v * 100) / 100
+      for (const itemId of ids) {
+        const x = a30.get(itemId)
+        const y = a60.get(itemId)
+        const data = { cost30: r2(x?.cost ?? 0), units30: x?.units ?? 0, revenue30: r2(x?.revenue ?? 0), cost60: r2(y?.cost ?? 0), units60: y?.units ?? 0, revenue60: r2(y?.revenue ?? 0) }
+        await this.prisma.marketplaceAdItem.upsert({ where: { tenantId_marketplace_itemId: { tenantId, marketplace: MARKETPLACE, itemId } }, create: { tenantId, marketplace: MARKETPLACE, itemId, ...data }, update: data })
+      }
+      // Anúncio que saiu das campanhas: gasto zerado no período.
+      await this.prisma.marketplaceAdItem.updateMany({ where: { tenantId, marketplace: MARKETPLACE, itemId: { notIn: ids } }, data: { cost30: 0, units30: 0, revenue30: 0, cost60: 0, units60: 0, revenue60: 0 } })
+      const withCost = ids.filter((i) => (a60.get(i)?.cost ?? 0) > 0).length
+      await this.setSyncState(tenantId, { itemAds: { count: ids.length, withCost, error: null, at } })
+    } catch (err) {
+      await this.setSyncState(tenantId, { itemAds: { count: 0, withCost: 0, error: ((err as Error).message || 'falha').slice(0, 300), at } })
+      throw err
+    }
+  }
+
   async sync(tenantId: string) {
     const c = await this.config(tenantId)
     if (!c.advertiserId || !c.siteId) throw new MlError('Escolha o anunciante do Product Ads antes de sincronizar.')
@@ -451,6 +492,10 @@ export class MercadoLivreService implements OnApplicationBootstrap, OnModuleDest
           await sleep(this.gapMs)
         }
       }
+
+      // 4b) gasto por anúncio (MLB) nos últimos 30 e 60 dias: o custo de publicidade em Preços e promoções. Uma falha aqui
+      // não derruba a sincronização (fica registrada no estado).
+      await this.syncItemAds(tenantId, site, adv, counter).catch((err: unknown) => this.logger.warn(`Mercado Livre Ads por anúncio: ${(err as Error).message}`))
 
       // 5) Display Ads (produto opcional: sem habilitação, fica zerado e a tela explica)
       const display = await this.detectDisplay(tenantId, site, counter)

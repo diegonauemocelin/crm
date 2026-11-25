@@ -71,3 +71,76 @@ export function canMoveSchedule(from: string, to: ScheduleStatus) {
   if (from === 'COLETANDO') return to === 'COLETADA' || to === 'AGENDADA' || to === 'CANCELADA'
   return false
 }
+
+/** Desfazer o "Coletou" só logo depois do toque (tocou errado): 10 minutos. */
+export const UNDO_COLLECTED_MS = 10 * 60_000
+export function canUndoCollected(statusAt: Date | null, now: Date) {
+  return !!statusAt && now.getTime() - statusAt.getTime() <= UNDO_COLLECTED_MS
+}
+
+/** Volumes e notas do "Coletou": números inteiros de 0 a 100.000; obrigatórios quando a transportadora pede. */
+export function collectCounts(d: { volumes?: number | null; invoices?: number | null }, required: boolean): { volumes: number | null; invoices: number | null } {
+  const one = (v: number | null | undefined, label: string) => {
+    if (v === null || v === undefined) {
+      if (required) throw new Error(`Informe a quantidade de ${label} entregues na coleta.`)
+      return null
+    }
+    if (!Number.isInteger(v) || v < 0 || v > 100_000) throw new Error(`Quantidade de ${label} inválida.`)
+    return v
+  }
+  return { volumes: one(d.volumes, 'volumes'), invoices: one(d.invoices, 'notas') }
+}
+
+const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5))
+
+/** Hora e dia da semana em São Paulo (para os avisos rodarem no servidor). */
+export function spClock(now: Date) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour12: false, weekday: 'short', hour: '2-digit', minute: '2-digit' }).formatToParts(now).map((x) => [x.type, x.value]))
+  const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday ?? '')
+  return { day, minutes: (Number(p.hour) % 24) * 60 + Number(p.minute) }
+}
+
+export interface PickupAlert {
+  key: string
+  kind: 'CORTE' | 'COLETA' | 'AGENDADA'
+  carrierId: string
+  carrier: string
+  unitId: string | null
+  /** HH:MM do corte, da coleta ou do início do período. */
+  at: string
+  pickup: string | null
+}
+
+/**
+ * Avisos de 15 minutos antes: do ponto de corte e da chegada (coletas de horário fixo do dia) e do início do período
+ * das coletas agendadas. Janela de 2 minutos (13 a 15 min antes) para não perder o aviso entre uma rodada e outra;
+ * a chave evita repetir. Coleta já marcada (chegou ou coletou) não avisa a chegada.
+ */
+export function pickupAlerts(
+  fixed: { carrierId: string; carrier: string; pickups: Pickup[] }[],
+  scheduled: { id: string; carrierId: string; carrier: string; unitId: string | null; period: string; status: string; slot: string | null }[],
+  clock: { day: number; minutes: number },
+  date: string,
+): PickupAlert[] {
+  const out: PickupAlert[] = []
+  const soon = (hhmm: string) => {
+    const left = toMin(hhmm) - clock.minutes
+    return left > 13 && left <= 15
+  }
+  for (const c of fixed) {
+    for (const p of c.pickups) {
+      if (!p.days.includes(clock.day)) continue
+      const base = `${date}|${c.carrierId}|${p.unitId ?? '-'}|${p.pickup}`
+      if (soon(p.cutoff)) out.push({ key: `${base}|corte`, kind: 'CORTE', carrierId: c.carrierId, carrier: c.carrier, unitId: p.unitId, at: p.cutoff, pickup: p.pickup })
+      const marked = scheduled.some((s) => s.period === 'FIXA' && s.carrierId === c.carrierId && s.slot === p.pickup && (s.unitId ?? null) === (p.unitId ?? null) && (s.status === 'COLETANDO' || s.status === 'COLETADA'))
+      if (!marked && soon(p.pickup)) out.push({ key: `${base}|coleta`, kind: 'COLETA', carrierId: c.carrierId, carrier: c.carrier, unitId: p.unitId, at: p.pickup, pickup: p.pickup })
+    }
+  }
+  const START: Record<string, string> = { MANHA: '08:00', TARDE: '13:00' }
+  for (const s of scheduled) {
+    const start = START[s.period]
+    if (!start || s.status !== 'AGENDADA' || !soon(start)) continue
+    out.push({ key: `${date}|agendada|${s.id}`, kind: 'AGENDADA', carrierId: s.carrierId, carrier: s.carrier, unitId: s.unitId, at: start, pickup: null })
+  }
+  return out
+}

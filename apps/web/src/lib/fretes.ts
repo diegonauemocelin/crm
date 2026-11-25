@@ -162,7 +162,7 @@ export const RESULT_STATUS: Record<ResultStatus, { label: string; className: str
   NAO_APLICAVEL: { label: 'Não se aplica', className: 'text-muted-foreground' },
   VENCIDA: { label: 'Tabela vencida', className: 'border-destructive/50 text-destructive' },
   SEM_VERSAO: { label: 'Sem versão publicada', className: 'text-muted-foreground' },
-  ERRO: { label: 'Erro na fórmula', className: 'border-destructive/50 text-destructive' },
+  ERRO: { label: 'Erro no cálculo', className: 'border-destructive/50 text-destructive' },
   SEM_TABELA: { label: 'Sem tabela', className: 'text-muted-foreground' },
 }
 

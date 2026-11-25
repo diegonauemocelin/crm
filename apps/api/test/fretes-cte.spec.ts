@@ -31,11 +31,11 @@ describe('fretes: XML do CT-e', () => {
 
   it('lê remetente, destinatário, tomador, carga, peso, NF-e e protocolo (para achar filial e pedido)', () => {
     const full = `<cteProc xmlns="http://www.portalfiscal.inf.br/cte"><CTe><infCte Id="CTe43261000428307001836570010015918531015918537"><ide><nCT>1591853</nCT><serie>1</serie><xMunIni>CACHOEIRINHA</xMunIni><UFIni>RS</UFIni><xMunFim>MARAVILHA</xMunFim><UFFim>SC</UFFim><toma3><toma>3</toma></toma3></ide>
-<emit><CNPJ>00428307001836</CNPJ><xNome>EXPRESSO SAO MIGUEL</xNome></emit><rem><CNPJ>01704079000285</CNPJ></rem><dest><CNPJ>01704079000102</CNPJ><xNome>USAPARTS</xNome><enderDest><CEP>89874000</CEP></enderDest></dest>
+<emit><CNPJ>00428307001836</CNPJ><xNome>EXPRESSO SAO MIGUEL</xNome></emit><rem><CNPJ>01704079000285</CNPJ><xNome>USAPARTS CACHOEIRINHA</xNome></rem><dest><CNPJ>01704079000102</CNPJ><xNome>USAPARTS</xNome><enderDest><CEP>89874000</CEP></enderDest></dest>
 <vPrest><vTPrest>79.11</vTPrest></vPrest><infCTeNorm><infCarga><vCarga>45.93</vCarga><infQ><cUnid>01</cUnid><qCarga>0.9000</qCarga></infQ></infCarga><infDoc><infNFe><chave>43261001704079000285550020000082481351617510</chave></infNFe></infDoc></infCTeNorm></infCte></CTe>
 <protCTe><infProt><nProt>143260290139554</nProt><cStat>100</cStat></infProt></protCTe></cteProc>`
     const c = parseCteXml(full)
-    expect(c).toMatchObject({ senderDoc: '01704079000285', recipientDoc: '01704079000102', tomadorDoc: '01704079000102', destZip: '89874000', cargoValue: 45.93, weight: 0.9, protocol: '143260290139554' })
+    expect(c).toMatchObject({ senderDoc: '01704079000285', senderName: 'USAPARTS CACHOEIRINHA', recipientDoc: '01704079000102', tomadorDoc: '01704079000102', destZip: '89874000', cargoValue: 45.93, weight: 0.9, protocol: '143260290139554' })
     expect(c.nfeKeys).toEqual(['43261001704079000285550020000082481351617510'])
   })
 
