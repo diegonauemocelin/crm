@@ -35,6 +35,11 @@ if [ -n "$ATUAL_TAG" ] && dc ps --status running --services 2>/dev/null | grep -
   info "Backup de segurança antes de atualizar"
   dc run --rm --no-deps -e BACKUP_SO_BANCO=1 backup /usr/local/bin/backup.sh || fatal "Backup falhou. Atualização cancelada."
 fi
+# O Monitoramento (API, outro usuário) precisa listar a pasta para mostrar o último backup. Só os nomes: os arquivos
+# continuam só do backup (600) e criptografados.
+DIR_BKP="$(env_get BACKUP_DIR)"
+DIR_BKP="${DIR_BKP:-./backups}"
+[ -d "$DIR_BKP" ] && chmod 755 "$DIR_BKP" || true
 
 info "Preparando a versão $VERSAO"
 git -c advice.detachedHead=false checkout --quiet "$ALVO"

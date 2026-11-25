@@ -221,6 +221,7 @@ export function MarketplacePrecosPage() {
   const [full, setFull] = useState('todos')
   const [promo, setPromo] = useState('todos')
   const [problem, setProblem] = useState('todos')
+  const [alerta, setAlerta] = useState('todos')
   const [order, setOrder] = useState('margem')
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<string[]>([])
@@ -234,8 +235,8 @@ export function MarketplacePrecosPage() {
     const t = setTimeout(() => (setQ(search), setPage(1)), 350)
     return () => clearTimeout(t)
   }, [search])
-  const filter = { situacao: status, full, promocao: promo, ...(q ? { busca: q } : {}), ...(problem === 'sem_custo' ? { semCusto: true } : {}), ...(problem === 'margem_baixa' ? { margemBaixa: true } : {}), ...(problem.startsWith('deposito_') ? { deposito: problem.slice(9) } : {}) }
-  const params = new URLSearchParams({ pagina: String(page), ordem: order, situacao: status, full, promocao: promo, ...(q ? { busca: q } : {}), ...(problem === 'sem_custo' ? { semCusto: 'true' } : {}), ...(problem === 'margem_baixa' ? { margemBaixa: 'true' } : {}), ...(problem.startsWith('deposito_') ? { deposito: problem.slice(9) } : {}) })
+  const filter = { situacao: status, full, promocao: promo, ...(q ? { busca: q } : {}), ...(problem === 'sem_custo' ? { semCusto: true } : {}), ...(problem === 'margem_baixa' ? { margemBaixa: true } : {}), ...(problem.startsWith('deposito_') ? { deposito: problem.slice(9) } : {}), ...(alerta !== 'todos' ? { alerta } : {}) }
+  const params = new URLSearchParams({ pagina: String(page), ordem: order, situacao: status, full, promocao: promo, ...(q ? { busca: q } : {}), ...(problem === 'sem_custo' ? { semCusto: 'true' } : {}), ...(problem === 'margem_baixa' ? { margemBaixa: 'true' } : {}), ...(problem.startsWith('deposito_') ? { deposito: problem.slice(9) } : {}), ...(alerta !== 'todos' ? { alerta } : {}) })
   const list = useQuery({
     queryKey: ['precos-anuncios', params.toString()],
     queryFn: () => api.get<ListData>(`/marketplace-precos/anuncios?${params}`),
@@ -360,14 +361,43 @@ export function MarketplacePrecosPage() {
                 <SelectItem value="deposito_mais">Recebe mais que o preço do e-commerce</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={alerta} onValueChange={(v) => (setAlerta(v), setPage(1))}>
+              <SelectTrigger className="w-56" aria-label="Filtro de avisos">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os avisos</SelectItem>
+                <SelectItem value="alertas">Com alerta (vermelho)</SelectItem>
+                <SelectItem value="dicas">Com dica (amarelo)</SelectItem>
+                <SelectItem value="lucro_abaixo">Lucro abaixo do esperado</SelectItem>
+                <SelectItem value="prejuizo">Vendendo com prejuízo</SelectItem>
+                <SelectItem value="margem_baixa">Margem abaixo do mínimo</SelectItem>
+                <SelectItem value="promocao_margem">Promoção derruba a margem</SelectItem>
+                <SelectItem value="deposito_abaixo">Depósito abaixo do preço de venda</SelectItem>
+                <SelectItem value="frete_obrigatorio">Frete grátis obrigatório e sem frete grátis</SelectItem>
+                <SelectItem value="sem_custo">Sem custo</SelectItem>
+                <SelectItem value="sem_imposto">Sem imposto</SelectItem>
+                <SelectItem value="sem_venda_60">Sem vendas em 60 dias</SelectItem>
+                <SelectItem value="sem_venda_30">Sem vendas em 30 dias</SelectItem>
+                <SelectItem value="concorrente">Concorrente mais barato</SelectItem>
+                <SelectItem value="pausado">Pausado com estoque</SelectItem>
+                <SelectItem value="abaixo_alvo">Abaixo da margem alvo</SelectItem>
+                <SelectItem value="classico">Premium: tarifa no Clássico</SelectItem>
+                <SelectItem value="premium">Clássico: tarifa no Premium</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={order} onValueChange={(v) => (setOrder(v), setPage(1))}>
               <SelectTrigger className="w-44" aria-label="Ordem">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="margem">Menor margem primeiro</SelectItem>
-                <SelectItem value="margem_desc">Maior margem primeiro</SelectItem>
+                <SelectItem value="margem">Menor margem (%) primeiro</SelectItem>
+                <SelectItem value="margem_desc">Maior margem (%) primeiro</SelectItem>
+                <SelectItem value="lucro">Menor lucro (R$) primeiro</SelectItem>
+                <SelectItem value="lucro_desc">Maior lucro (R$) primeiro</SelectItem>
+                <SelectItem value="lucro_falta">Mais longe do lucro esperado</SelectItem>
                 <SelectItem value="preco">Maior preço primeiro</SelectItem>
+                <SelectItem value="preco_asc">Menor preço primeiro</SelectItem>
                 <SelectItem value="titulo">Título</SelectItem>
               </SelectContent>
             </Select>

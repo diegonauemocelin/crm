@@ -87,7 +87,7 @@ else
   ok ".env existente mantido"
 fi
 
-mkdir -p backups && chown 70:70 backups && chmod 700 backups
+mkdir -p backups && chown 70:70 backups && chmod 755 backups
 
 info "3/6 Subindo os containers"
 bash deploy/deploy.sh
