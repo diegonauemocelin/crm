@@ -6,7 +6,7 @@ import { Transform, Type } from 'class-transformer'
 import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator'
 import { CurrentUser, ReqContext, type RequestCtx, RequirePermission } from '../../common/decorators'
 import type { AuthUser } from '../../common/types'
-import type { CouponInput } from './margem'
+import { type CouponInput, TIP_FILTERS, type TipFilter } from './margem'
 import { type ListQuery, type PriceAction, PrecosService } from './precos.service'
 
 const ITEM_ID = /^ML[A-Z]\d{5,15}$/
@@ -21,7 +21,8 @@ class PrecosListQueryDto {
   @ApiPropertyOptional() @IsOptional() @Transform(bool) @IsBoolean() semCusto?: boolean
   @ApiPropertyOptional() @IsOptional() @Transform(bool) @IsBoolean() margemBaixa?: boolean
   @ApiPropertyOptional({ enum: ['menos', 'igual', 'mais'] }) @IsOptional() @IsIn(['menos', 'igual', 'mais']) deposito?: 'menos' | 'igual' | 'mais'
-  @ApiPropertyOptional() @IsOptional() @IsIn(['margem', 'margem_desc', 'titulo', 'preco']) ordem?: string
+  @ApiPropertyOptional({ enum: TIP_FILTERS, description: 'Aviso da linha (ex.: lucro_abaixo), alertas ou dicas' }) @IsOptional() @IsIn([...TIP_FILTERS]) alerta?: TipFilter
+  @ApiPropertyOptional() @IsOptional() @IsIn(['margem', 'margem_desc', 'titulo', 'preco', 'preco_asc', 'lucro', 'lucro_desc', 'lucro_falta']) ordem?: string
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(1) pagina?: number
 }
 
@@ -56,6 +57,7 @@ class PrecosFilterDto {
   @IsOptional() @IsBoolean() semCusto?: boolean
   @IsOptional() @IsBoolean() margemBaixa?: boolean
   @IsOptional() @IsIn(['menos', 'igual', 'mais']) deposito?: 'menos' | 'igual' | 'mais'
+  @IsOptional() @IsIn([...TIP_FILTERS]) alerta?: TipFilter
 }
 
 class PrecosSelectionDto {
@@ -129,7 +131,7 @@ class PrecosCouponParam {
   @Matches(/^C-[A-Z]{3}\d{1,20}$/, { message: 'Cupom inválido.' }) id!: string
 }
 
-const toQuery = (q: { busca?: string; situacao?: string; full?: string; promocao?: string; semCusto?: boolean; margemBaixa?: boolean; deposito?: 'menos' | 'igual' | 'mais'; ordem?: string; pagina?: number }): ListQuery => ({ search: q.busca, status: q.situacao, full: q.full, promo: q.promocao, noCost: q.semCusto, lowMargin: q.margemBaixa, deposit: q.deposito, order: q.ordem, page: q.pagina })
+const toQuery = (q: { busca?: string; situacao?: string; full?: string; promocao?: string; semCusto?: boolean; margemBaixa?: boolean; deposito?: 'menos' | 'igual' | 'mais'; alerta?: TipFilter; ordem?: string; pagina?: number }): ListQuery => ({ tip: q.alerta, search: q.busca, status: q.situacao, full: q.full, promo: q.promocao, noCost: q.semCusto, lowMargin: q.margemBaixa, deposit: q.deposito, order: q.ordem, page: q.pagina })
 
 function toAction(a: PrecosActionDto): PriceAction {
   if (a.tipo === 'preco') {

@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.75",
+      "date": "2026-11-25",
+      "title": "Preços e promoções: filtro pelos avisos e ordem por lucro; backup no Monitoramento",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Marketplaces",
+          "text": "Preços e promoções (Mercado Livre): novo filtro \"Avisos\" para ver só os anúncios com um aviso, como lucro abaixo do esperado, vendendo com prejuízo, margem abaixo do mínimo, promoção que derruba a margem, sem vendas em 60 ou 30 dias, pausado com estoque, concorrente mais barato ou frete grátis obrigatório. Também filtra por qualquer alerta (vermelho) ou qualquer dica (amarela)."
+        },
+        {
+          "type": "melhoria",
+          "area": "Marketplaces",
+          "text": "Preços e promoções: ordenar por menor ou maior lucro (R$), por quem está mais longe do lucro esperado e por menor preço."
+        },
+        {
+          "type": "correcao",
+          "area": "Administração",
+          "text": "Monitoramento: o backup diário aparecia como \"Nenhum backup encontrado\" quando a pasta dos backups não estava liberada para o sistema ler. A atualização libera a pasta (só os nomes; os arquivos continuam criptografados) e o painel avisa quando falta permissão."
+        }
+      ]
+    },
+    {
       "version": "3.0.74",
       "date": "2026-11-24",
       "title": "Web Push: limpar inscritos que não funcionam",

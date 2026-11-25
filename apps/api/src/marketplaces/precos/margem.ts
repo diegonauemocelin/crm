@@ -417,6 +417,16 @@ export interface Tip {
   text: string
 }
 
+/** Filtro da lista pelos avisos: um aviso específico, qualquer alerta (vermelho) ou qualquer dica (amarela). */
+export const TIP_FILTERS = ['alertas', 'dicas', 'lucro_abaixo', 'prejuizo', 'margem_baixa', 'promocao_margem', 'deposito_abaixo', 'abaixo_alvo', 'frete_obrigatorio', 'sem_custo', 'sem_imposto', 'sem_venda_60', 'sem_venda_30', 'concorrente', 'pausado', 'classico', 'premium'] as const
+export type TipFilter = (typeof TIP_FILTERS)[number]
+
+export function matchTip(tips: Pick<Tip, 'level' | 'code'>[], f: TipFilter): boolean {
+  if (f === 'alertas') return tips.some((t) => t.level === 'alerta')
+  if (f === 'dicas') return tips.some((t) => t.level === 'dica')
+  return tips.some((t) => t.code === f)
+}
+
 export interface TipInput {
   /** Lucro esperado do produto em R$ por unidade (planilha, ERP ou informado à mão). */
   profitTarget?: number | null

@@ -51,6 +51,8 @@ import {
   type Tip,
   validateCoupon,
   validatePromo,
+  matchTip,
+  type TipFilter,
 } from './margem'
 
 const PAGE = 50
@@ -108,6 +110,7 @@ export interface ListQuery {
   lowMargin?: boolean
   /** Depósito do Mercado Livre comparado ao preço de venda no e-commerce. */
   deposit?: DepositStatus
+  tip?: TipFilter
   order?: string
   page?: number
 }
@@ -675,18 +678,36 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     if (q.noCost) list = list.filter((r) => r.cost === null)
     if (q.lowMargin) list = list.filter((r) => r.margin.marginPct !== null && r.margin.marginPct < ctx.config.minMarginPct)
     if (q.deposit) list = list.filter((r) => r.received !== null && r.depositTarget && depositStatus(r.received, r.depositTarget.value) === q.deposit)
+    if (q.tip) { const f = q.tip; list = list.filter((r) => matchTip(r.tips, f)) }
     const s = q.search?.trim().toLowerCase()
     if (s) list = list.filter((r) => [r.id, r.title, r.sku, aBy.get(r.id)?.partNumber, aBy.get(r.id)?.brand].some((v) => (v ?? '').toLowerCase().includes(s)))
     const m = (r: PriceRow) => r.margin.marginPct ?? Number.POSITIVE_INFINITY
-    list.sort((a, b) =>
-      q.order === 'margem_desc'
-        ? (b.margin.marginPct ?? -Infinity) - (a.margin.marginPct ?? -Infinity)
-        : q.order === 'titulo'
-          ? a.title.localeCompare(b.title, 'pt-BR')
-          : q.order === 'preco'
-            ? (b.salePrice ?? 0) - (a.salePrice ?? 0)
-            : m(a) - m(b) || a.title.localeCompare(b.title, 'pt-BR'),
-    )
+    // Lucro em R$ por unidade e o quanto falta (ou sobra) para o lucro esperado; sem valor vai para o fim.
+    const lucro = (r: PriceRow) => r.margin.margin
+    const falta = (r: PriceRow) => (r.margin.margin !== null && r.profitTarget ? r.margin.margin - r.profitTarget.value : null)
+    const asc = (x: number | null, y: number | null) => (x ?? Infinity) - (y ?? Infinity) || 0
+    const desc = (x: number | null, y: number | null) => (y ?? -Infinity) - (x ?? -Infinity) || 0
+    const byTitle = (a: PriceRow, b: PriceRow) => a.title.localeCompare(b.title, 'pt-BR')
+    list.sort((a, b) => {
+      switch (q.order) {
+        case 'margem_desc':
+          return (b.margin.marginPct ?? -Infinity) - (a.margin.marginPct ?? -Infinity)
+        case 'titulo':
+          return byTitle(a, b)
+        case 'preco':
+          return (b.salePrice ?? 0) - (a.salePrice ?? 0)
+        case 'preco_asc':
+          return asc(a.salePrice, b.salePrice) || byTitle(a, b)
+        case 'lucro':
+          return asc(lucro(a), lucro(b)) || byTitle(a, b)
+        case 'lucro_desc':
+          return desc(lucro(a), lucro(b)) || byTitle(a, b)
+        case 'lucro_falta':
+          return asc(falta(a), falta(b)) || byTitle(a, b)
+        default:
+          return m(a) - m(b) || byTitle(a, b)
+      }
+    })
     return { list, ctx, all: snaps.length }
   }
 

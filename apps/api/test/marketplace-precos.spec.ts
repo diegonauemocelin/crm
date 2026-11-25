@@ -8,6 +8,7 @@ import {
   couponBody,
   couponUnitPrice,
   feeFromRow,
+  matchTip,
   mlMessagePt,
   pickListingPrice,
   priceForMargin,
@@ -351,5 +352,16 @@ describe('depósito do Mercado Livre x preço do e-commerce', () => {
     expect(depositStatus(9.31, 9.19)).toBe('igual')
     expect(depositStatus(9.19, 9.19)).toBe('igual')
     expect(depositStatus(14.22, 9.19)).toBe('mais')
+  })
+})
+
+describe('filtro pelos avisos', () => {
+  const tips = [{ level: 'alerta' as const, code: 'lucro_abaixo' }, { level: 'dica' as const, code: 'sem_venda_60' }]
+  it('aviso específico, qualquer alerta ou qualquer dica', () => {
+    expect(matchTip(tips, 'lucro_abaixo')).toBe(true)
+    expect(matchTip(tips, 'prejuizo')).toBe(false)
+    expect(matchTip(tips, 'alertas')).toBe(true)
+    expect(matchTip(tips, 'dicas')).toBe(true)
+    expect(matchTip([{ level: 'dica', code: 'sem_venda_30' }], 'alertas')).toBe(false)
   })
 })
