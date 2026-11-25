@@ -64,7 +64,7 @@ import {
   ReceiptIcon,
   BellIcon,
   PieChartIcon,
-  TicketPercentIcon, SparklesIcon } from 'lucide-react'
+  TicketPercentIcon, SparklesIcon, StethoscopeIcon } from 'lucide-react'
 import type { Action } from './types'
 
 export interface NavItem {
@@ -209,6 +209,7 @@ export const NAVIGATION: NavGroup[] = [
       { title: 'Pedidos e expedição', to: '/fretes/pedidos', icon: PackageIcon, module: 'fretes_pedidos' },
       { title: 'CT-e', to: '/fretes/ctes', icon: FileTextIcon, module: 'fretes_cte' },
       { title: 'Conciliação', to: '/fretes/conciliacao', icon: FileCheck2Icon, module: 'fretes_cte' },
+      { title: 'Diagnóstico das tabelas', to: '/fretes/diagnostico', icon: StethoscopeIcon, module: 'fretes_cte' },
       { title: 'Conferência de frete', to: '/fretes/conferencia', icon: ClipboardCheckIcon, module: 'fretes_pedidos' },
       { title: 'Poupança de frete', to: '/fretes/poupanca', icon: PiggyBankIcon, module: 'fretes_pedidos' },
       { title: 'Faturas de frete', to: '/fretes/faturas', icon: ReceiptIcon, module: 'fretes_financeiro' },

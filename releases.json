@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.78",
+      "date": "2026-11-25",
+      "title": "Diagnóstico das tabelas de frete pelos CT-es",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Fretes › Diagnóstico das tabelas (também pelo botão na Conciliação): lê os CT-es dos últimos 30, 60, 90 ou 180 dias e compara com as tabelas do sistema. O que se repete (3 CT-es ou mais) vira um achado por transportadora, separado entre \"Ajustar no CRM\" (ICMS cobrado por dentro e a tabela sem somar, alíquota diferente, taxa com outro nome, componente que ela não cobra) e \"Pedir à transportadora\" (componente cobrado sempre acima da tabela, taxa fora da tabela, cidades sem regra, tabela vencida, peso acima do máximo), com exemplos de CT-e para conferir."
+        }
+      ]
+    },
+    {
       "version": "3.0.77",
       "date": "2026-11-25",
       "title": "App de coletas no celular, CT-e com DACTE e filtros, custo de publicidade do Mercado Livre e cotação mais estável",
