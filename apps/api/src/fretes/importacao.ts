@@ -256,8 +256,13 @@ export function suggestMapping(headers: unknown[], samples: unknown[][] = []): C
     const scale = field === 'var:over_weight' && /\bton|tonelada/.test(h) ? 0.001 : isVarField(field) && PERCENT.has(varCode(field)) && /%/.test(String(raw)) && fractionPercent(column) ? 100 : null
     out.push({ column, field, ...(scale ? { scale } : {}) })
   })
-  // Região só é o destino quando a tabela não traz CEP nem cidade (com eles, a coluna Região é só informativa).
-  return out.some((m) => m.field === 'cep_start' || m.field === 'cep' || m.field === 'city' || m.field === 'ibge') ? out.filter((m) => m.field !== 'region') : out
+  // Região só é o destino quando a tabela não traz CEP nem cidade (com eles, a coluna Região é só informativa). Exceção:
+  // linhas por região e linhas por cidade na mesma planilha (região preenchida e cidade vazia): as duas são destino.
+  const col = (f: string) => out.find((m) => m.field === f)?.column
+  const filled = (c: number | undefined, r: unknown[]) => c !== undefined && String(r?.[c] ?? '').trim() !== ''
+  const reg = col('region')
+  const mixed = reg !== undefined && col('cep_start') === undefined && col('cep') === undefined && samples.some((r) => filled(reg, r) && !filled(col('city'), r) && !filled(col('ibge'), r))
+  return !mixed && out.some((m) => m.field === 'cep_start' || m.field === 'cep' || m.field === 'city' || m.field === 'ibge') ? out.filter((m) => m.field !== 'region') : out
 }
 
 const PERCENT = new Set(RULE_VARIABLES.filter((v) => v.unit === '%').map((v) => v.code))
