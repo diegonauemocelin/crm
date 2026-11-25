@@ -111,15 +111,15 @@ function WebPush() {
   })
   const [tab, setTab] = useState('enviados')
   const clean = useMutation({
-    mutationFn: () => api.post<{ checked: number; ok: number; removed: number; failed: number }>('/marketing/web-push/limpar-inscritos'),
+    mutationFn: () => api.post<{ checked: number; ok: number; removed: number; failed: number; skipped: number }>('/marketing/web-push/limpar-inscritos'),
     onSuccess: (r) => {
-      toast.success(`${num(r.checked)} inscrições conferidas: ${num(r.ok)} funcionando, ${num(r.removed)} removidas${r.failed ? `, ${num(r.failed)} sem resposta agora (ficam na lista)` : ''}.`)
+      toast.success(`${num(r.checked)} inscrições conferidas: ${num(r.ok)} funcionando, ${num(r.removed)} removidas${r.failed ? `, ${num(r.failed)} sem resposta agora (ficam na lista)` : ''}${r.skipped ? `. ${num(r.skipped)} do Safari não foram conferidas` : ''}.`)
       void qc.invalidateQueries({ queryKey: ['web-push'] })
     },
     onError: (err) => toast.error(errorMessage(err)),
   })
   const askClean = async () => {
-    if (await confirm({ title: 'Limpar inscritos?', description: 'O CRM consulta cada inscrição no serviço do navegador (Chrome, Edge, Firefox) com uma mensagem vazia, que não aparece para o cliente, e tira da lista as que não existem mais. Ficam só as que recebem de verdade.', confirmLabel: 'Limpar' })) clean.mutate()
+    if (await confirm({ title: 'Limpar inscritos?', description: 'O CRM consulta cada inscrição no serviço do navegador (Chrome, Edge, Firefox) com uma mensagem vazia e tira da lista as que não existem mais. Use de vez em quando (ex.: uma vez por mês): se repetir muito, o Chrome pode mostrar ao cliente o aviso "site atualizado em segundo plano". As inscrições do Safari não são conferidas.', confirmLabel: 'Limpar' })) clean.mutate()
   }
   const [manage, setManage] = useState(false)
   const [editing, setEditing] = useState<Campaign | 'novo' | null>(null)

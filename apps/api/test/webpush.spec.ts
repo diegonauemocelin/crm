@@ -7,6 +7,7 @@ import {
   campaignError,
   cleanPrompt,
   DEFAULT_PROMPT,
+  isApplePush,
   isDue,
   parseSubscribe,
   parseUnsubscribe,
@@ -131,6 +132,14 @@ describe('web push: inscrição e links', () => {
     expect(siteOrigin('http://www.usaparts.com.br')).toBeNull()
     expect(siteOrigin('https://127.0.0.1')).toBeNull()
     expect(siteOrigin('https://localhost')).toBeNull()
+  })
+})
+
+describe('web push: limpeza de inscritos', () => {
+  it('pula as inscrições do Safari', () => {
+    expect(isApplePush('https://web.push.apple.com/QK2x')).toBe(true)
+    expect(isApplePush('https://fcm.googleapis.com/fcm/send/abc')).toBe(false)
+    expect(isApplePush('não é endereço')).toBe(false)
   })
 })
 
