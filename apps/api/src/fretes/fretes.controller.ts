@@ -185,6 +185,11 @@ class BulkIdsDto {
   @IsArray() @ArrayMaxSize(500) @IsUUID('all', { each: true }) ids!: string[]
 }
 
+class BulkGoodsDto {
+  @IsArray() @ArrayMaxSize(500) @IsUUID('all', { each: true }) ids!: string[]
+  @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @MaxLength(60, { each: true }) goodsTypes!: string[]
+}
+
 class BulkValidityDto {
   @IsArray() @ArrayMaxSize(500) @IsUUID('all', { each: true }) ids!: string[]
   @Matches(/^\d{4}-\d{2}-\d{2}$/) validFrom!: string
@@ -695,6 +700,12 @@ export class FretesController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   melhorEnvioServices(@CurrentUser() user: AuthUser) {
     return this.online.melhorEnvioServices(user)
+  }
+
+  @Post('tabelas/mercadoria')
+  @HttpCode(200)
+  bulkGoods(@CurrentUser() user: AuthUser, @Body() dto: BulkGoodsDto, @ReqContext() ctx: RequestCtx) {
+    return this.tables.bulkGoods(user, dto, ctx)
   }
 
   @Post('tabelas/vigencia')

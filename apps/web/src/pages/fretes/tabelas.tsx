@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangleIcon, CalendarRangeIcon, EllipsisVerticalIcon, FilePlus2Icon, Loader2Icon, PlusIcon, PowerIcon, PowerOffIcon, SearchIcon, TableIcon, Trash2Icon, UploadIcon } from 'lucide-react'
+import { AlertTriangleIcon, CalendarRangeIcon, EllipsisVerticalIcon, FilePlus2Icon, Loader2Icon, PackageIcon, PlusIcon, PowerIcon, PowerOffIcon, SearchIcon, TableIcon, Trash2Icon, UploadIcon } from 'lucide-react'
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -111,6 +111,7 @@ function TableList() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   /** Tabelas da janela de vigência: as marcadas ou a de uma linha. */
   const [validityIds, setValidityIds] = useState<string[] | null>(null)
+  const [goodsIds, setGoodsIds] = useState<string[] | null>(null)
   const done = () => {
     setSelected(new Set())
     void qc.invalidateQueries({ queryKey: ['fretes', 'tabelas'] })
@@ -233,6 +234,9 @@ function TableList() {
           <Button size="sm" variant="outline" disabled={busy} onClick={() => setValidityIds([...selected])}>
             <CalendarRangeIcon aria-hidden /> Alterar vigência
           </Button>
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => setGoodsIds([...selected])}>
+            <PackageIcon aria-hidden /> Tipo de mercadoria
+          </Button>
           {admin && (
             <Button size="sm" variant="outline" className="text-destructive" disabled={busy} onClick={() => void askRemove([...selected])}>
               <Trash2Icon aria-hidden /> Excluir
@@ -322,6 +326,9 @@ function TableList() {
                         <DropdownMenuItem onSelect={() => setValidityIds([t.id])}>
                           <CalendarRangeIcon aria-hidden /> Alterar vigência
                         </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => setGoodsIds([t.id])}>
+                          <PackageIcon aria-hidden /> Tipo de mercadoria
+                        </DropdownMenuItem>
                         {admin && (
                           <DropdownMenuItem className="text-destructive" onSelect={() => void askRemove([t.id])}>
                             <Trash2Icon aria-hidden /> Excluir
@@ -337,7 +344,46 @@ function TableList() {
         </Table>
       )}
       {validityIds && <BulkValidityDialog ids={validityIds} onClose={(ok) => (setValidityIds(null), ok && done())} />}
+      {goodsIds && <BulkGoodsDialog ids={goodsIds} onClose={(ok) => (setGoodsIds(null), ok && done())} />}
     </div>
+  )
+}
+
+/** Tipo de mercadoria de várias tabelas de uma vez (substitui o de cada uma; vazio = qualquer mercadoria). */
+function BulkGoodsDialog({ ids, onClose }: { ids: string[]; onClose: (done: boolean) => void }) {
+  const qc = useQueryClient()
+  const ctx = useFreightContext()
+  const [goods, setGoods] = useState<string[]>([])
+  const save = useMutation({
+    mutationFn: () => api.post<{ updated: number }>('/fretes/tabelas/mercadoria', { ids, goodsTypes: goods }),
+    onSuccess: (r) => {
+      toast.success(`Tipo de mercadoria alterado em ${r.updated} tabela(s).`)
+      void qc.invalidateQueries({ queryKey: ['fretes'] })
+      onClose(true)
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose(false)}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Tipo de mercadoria de {ids.length} tabela(s)</DialogTitle>
+          <DialogDescription>Os tipos escolhidos substituem os de cada tabela marcada. Sem nenhum, a tabela vale para qualquer mercadoria. Cada alteração fica na auditoria.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-1.5">
+          <Label htmlFor="bg-goods">Tipo de mercadoria</Label>
+          <MultiSelect id="bg-goods" items={(ctx.data?.catalog?.goodsTypes ?? []).map((g) => ({ id: g, name: g }))} value={goods} onChange={setGoods} placeholder="Qualquer" />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onClose(false)}>
+            Cancelar
+          </Button>
+          <Button disabled={save.isPending} onClick={() => save.mutate()}>
+            {save.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Aplicar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
