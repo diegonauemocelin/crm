@@ -12,6 +12,7 @@ import { cleanText } from '../sugestoes/sugestoes'
 import { allowedUnits, assertCan } from './acesso'
 import { normalizeCep } from './cep'
 import { type ExpectedRef, reconcile, type Tolerance } from './conciliacao'
+import { type DiagCte, diagnose } from './diagnostico'
 import { CotacaoService, DROP_OFF_CODE, dropOffOf, type QuoteResult } from './cotacao.service'
 import { confrontNfeCte, DEFAULT_NFE_TOLERANCE } from './confronto'
 import { autoCarrierFromCte, companyRoles, type CteData, internalRateFrom, parseCteCancel, parseCteXml, type RateLearning } from './cte'
@@ -665,6 +666,42 @@ export class CteService implements OnApplicationBootstrap {
         return this.view(r, { carrierName: carriers.find((c) => c.id === r.carrierId)?.name ?? null, components: undefined, recDetail: undefined, nfeCheck: cf ? { status: cf.status, divergences: cf.divergences } : null, ...nfeOf(r) })
       }),
     }
+  }
+
+  /** Diagnóstico das tabelas: lê os CT-es conciliados do período e aponta o que ajustar no CRM e o que pedir à transportadora. */
+  async diagnostico(user: AuthUser, f: { unitId?: string; days?: number; carrierId?: string }) {
+    assertCan(user, 'fretes_cte', 'view')
+    const days = Math.min(365, Math.max(7, f.days ?? 90))
+    const since = new Date(Date.now() - days * 86_400_000)
+    const rows = await this.prisma.freightCte.findMany({
+      where: {
+        AND: [this.scopeWhere(user), { issuedAt: { gte: since } }, { fiscalStatus: { not: 'CANCELADO' } }, { recStatus: { in: ['CONCILIADO', 'DIVERGENTE', 'SEM_REFERENCIA'] } }, ...(f.unitId ? [{ unitId: f.unitId }] : []), ...(f.carrierId ? [{ carrierId: f.carrierId }] : [])],
+      },
+      select: { id: true, number: true, carrierId: true, emitName: true, recStatus: true, recTypes: true, total: true, expectedTotal: true, difference: true, icms: true, cityFim: true, ufFim: true, recDetail: true },
+      orderBy: { issuedAt: 'desc' },
+      take: 20_000,
+    })
+    const carriers = await this.prisma.freightCarrier.findMany({ where: { tenantId: user.tenantId, id: { in: [...new Set(rows.map((r) => r.carrierId).filter((x): x is string => !!x))] } }, select: { id: true, name: true, quoteName: true } })
+    const list: DiagCte[] = rows.map((r) => {
+      const c = carriers.find((x) => x.id === r.carrierId)
+      const icms = (r.icms ?? null) as { rate?: number | null; value?: number | null } | null
+      return {
+        id: r.id,
+        number: r.number,
+        carrierId: r.carrierId,
+        carrierName: c ? c.quoteName || c.name : r.emitName || 'Transportadora não identificada',
+        recStatus: r.recStatus,
+        recTypes: r.recTypes,
+        total: n(r.total) ?? 0,
+        expectedTotal: n(r.expectedTotal),
+        difference: n(r.difference),
+        icms: icms ? { rate: icms.rate ?? null, value: icms.value ?? null } : null,
+        cityFim: r.cityFim,
+        ufFim: r.ufFim,
+        recDetail: (r.recDetail ?? null) as DiagCte['recDetail'],
+      }
+    })
+    return { days, analyzed: list.length, carriers: diagnose(list) }
   }
 
   async get(user: AuthUser, id: string) {

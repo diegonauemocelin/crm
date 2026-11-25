@@ -556,7 +556,7 @@ export const TRAIL: TrailModule[] = [
     key: 'fretes-cte',
     title: 'CT-e e conciliação',
     module: 'fretes_cte',
-    routes: ['/fretes/ctes', '/fretes/conciliacao'],
+    routes: ['/fretes/ctes', '/fretes/conciliacao', '/fretes/diagnostico'],
     purpose: 'Importar os CT-es e conferir se o cobrado bate com o cotado ou com a tabela.',
     howItWorks: 'Ao importar o XML, o sistema acha a transportadora pelo CNPJ, a filial pelo CNPJ de quem enviou ou pagou e o pedido pela chave da NF-e. A referência é a cotação do pedido; sem ela, a tabela publicada na data do CT-e. Dentro da tolerância o CT-e é aprovado sozinho; fora dela vai para a Conciliação com a diferença por componente.',
     lessons: [

@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRightIcon, DownloadIcon, FileCheck2Icon, FileTextIcon, LayoutListIcon, Loader2Icon, RefreshCwIcon, SearchIcon, TableIcon, UploadIcon } from 'lucide-react'
+import { ChevronRightIcon, DownloadIcon, FileCheck2Icon, FileTextIcon, LayoutListIcon, Loader2Icon, RefreshCwIcon, SearchIcon, StethoscopeIcon, TableIcon, UploadIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -222,6 +222,11 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
         actions={
           <>
             <FilialSwitch active={active} />
+            <Button variant="outline" asChild title="Padrões que se repetem nos CT-es: o que ajustar nas tabelas e o que pedir à transportadora">
+              <Link to="/fretes/diagnostico">
+                <StethoscopeIcon aria-hidden /> Diagnóstico das tabelas
+              </Link>
+            </Button>
             <Can module="fretes_cte" action="edit">
               <Button variant="outline" disabled={redo.isPending} onClick={() => redo.mutate()} title="Depois de cadastrar ou corrigir tabelas: compara de novo os CT-es sem referência e divergentes sem decisão">
                 {redo.isPending ? <Loader2Icon className="animate-spin" aria-hidden /> : <RefreshCwIcon aria-hidden />} Conciliar pendentes de novo
