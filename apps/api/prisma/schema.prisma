@@ -3230,6 +3230,8 @@ model FreightCte {
   senderDoc     String?
   recipientDoc  String?
   recipientName String?
+  /// Nome do remetente (no CT-e de compra, o fornecedor). Vazio ("") = conferido no XML e sem nome.
+  senderName    String?
   ufIni         String?   @db.Char(2)
   ufFim         String?   @db.Char(2)
   cityIni       String?

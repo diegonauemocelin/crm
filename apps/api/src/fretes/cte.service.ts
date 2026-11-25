@@ -70,9 +70,36 @@ export class CteService implements OnApplicationBootstrap {
           })
           if (made) this.logger.log(`${made} transportadora(s) cadastrada(s) pelos CT-es já importados.`)
         }
+        const filled = await this.backfillSenders().catch((e: unknown) => {
+          this.logger.warn(`Remetente dos CT-es antigos: ${(e as Error).message}`)
+          return 0
+        })
+        if (filled) this.logger.log(`Remetente preenchido em ${filled} CT-e(s) já importados (pelo XML guardado).`)
       })()
     }, 60_000)
     t.unref()
+  }
+
+  /** CT-es importados antes do campo: lê o nome do remetente no XML guardado ("" quando o XML não tem). */
+  private async backfillSenders() {
+    let done = 0
+    for (;;) {
+      const rows = await this.prisma.freightCte.findMany({ where: { senderName: null }, select: { id: true, fileId: true }, take: 200 })
+      if (!rows.length) return done
+      for (const r of rows) {
+        let name = ''
+        if (r.fileId) {
+          try {
+            const { content } = await this.files.read(r.fileId)
+            name = cleanText(parseCteXml(content.toString('utf8'))?.senderName ?? '', 160)
+          } catch {
+            // arquivo sumido ou ilegível: fica sem nome
+          }
+        }
+        await this.prisma.freightCte.update({ where: { id: r.id }, data: { senderName: name } })
+        done++
+      }
+    }
   }
 
   async recSettings(tenantId: string): Promise<RecSettings> {
@@ -122,6 +149,8 @@ export class CteService implements OnApplicationBootstrap {
       tomadorDoc: c.tomadorDoc,
       recipientDoc: c.recipientDoc,
       recipientName: c.recipientName,
+      senderDoc: c.senderDoc,
+      senderName: c.senderName || null,
       ufIni: c.ufIni,
       ufFim: c.ufFim,
       cityIni: c.cityIni,
@@ -286,6 +315,7 @@ export class CteService implements OnApplicationBootstrap {
           senderDoc: cte.senderDoc,
           recipientDoc: cte.recipientDoc,
           recipientName: cleanText(cte.recipientName, 160) || null,
+          senderName: cleanText(cte.senderName ?? '', 160),
           ufIni: cte.ufIni,
           ufFim: cte.ufFim,
           cityIni: cte.cityIni,
@@ -570,7 +600,7 @@ export class CteService implements OnApplicationBootstrap {
     return this.get(user, id)
   }
 
-  async list(user: AuthUser, f: { unitId?: string; carrierId?: string; recStatus?: string; decision?: string; from?: string; to?: string; search?: string; page?: number; pending?: boolean; kind?: 'VENDA' | 'COMPRA' }) {
+  async list(user: AuthUser, f: { unitId?: string; carrierId?: string; recStatus?: string; decision?: string; from?: string; to?: string; search?: string; page?: number; pending?: boolean; kind?: 'VENDA' | 'COMPRA'; uf?: string }) {
     assertCan(user, 'fretes_cte', 'view')
     const and: Prisma.FreightCteWhereInput[] = [this.scopeWhere(user)]
     if (f.unitId) and.push({ unitId: f.unitId })
@@ -578,7 +608,11 @@ export class CteService implements OnApplicationBootstrap {
     // Venda: a empresa manda a carga (remetente ou expedidora, saída da filial). Compra: só recebe ou paga o frete.
     if (f.kind === 'VENDA') and.push({ companyRoles: { hasSome: SHIPPER_ROLES } })
     else if (f.kind === 'COMPRA') and.push({ NOT: { companyRoles: { hasSome: SHIPPER_ROLES } } })
-    if (f.recStatus) and.push({ recStatus: f.recStatus })
+    // Estado do cliente (venda: destino) ou do fornecedor (compra: origem).
+    if (f.uf) and.push({ OR: [{ companyRoles: { hasSome: SHIPPER_ROLES }, ufFim: f.uf }, { NOT: { companyRoles: { hasSome: SHIPPER_ROLES } }, ufIni: f.uf }] })
+    // Contadores das abas: os mesmos filtros, sem a situação.
+    const byRec: Prisma.FreightCteWhereInput | null = f.recStatus ? { recStatus: f.recStatus } : null
+    if (byRec) and.push(byRec)
     if (f.decision === 'SEM_DECISAO') and.push({ decision: null })
     else if (f.decision === 'CONTESTACAO_ABERTA') and.push({ contestStatus: 'ABERTA' })
     else if (f.decision) and.push({ decision: f.decision })
@@ -592,8 +626,12 @@ export class CteService implements OnApplicationBootstrap {
         OR: [
           { number: { contains: term } },
           { recipientName: { contains: term, mode: 'insensitive' } },
+          { senderName: { contains: term, mode: 'insensitive' } },
           { cityFim: { contains: term, mode: 'insensitive' } },
+          { cityIni: { contains: term, mode: 'insensitive' } },
           ...(digits.length === 44 ? [{ key: digits }, { nfeKeys: { has: digits } }] : []),
+          // CNPJ/CPF (inteiro ou parte, com ou sem pontuação) do destinatário, remetente ou tomador.
+          ...(digits.length >= 5 && digits.length < 44 ? [{ recipientDoc: { contains: digits } }, { senderDoc: { contains: digits } }, { tomadorDoc: { contains: digits } }] : []),
         ],
       })
     }
@@ -604,7 +642,7 @@ export class CteService implements OnApplicationBootstrap {
       this.prisma.freightCte.findMany({ where, orderBy: [{ issuedAt: 'desc' }, { createdAt: 'desc' }], skip: (page - 1) * PAGE, take: PAGE }),
       // Fora da conciliação (transportadora que não concilia) não entra nos totais, a não ser filtrando por ela.
       this.prisma.freightCte.aggregate({ where: { AND: [...and, { fiscalStatus: { not: 'CANCELADO' } }, ...(f.recStatus === 'FORA' ? [] : [{ recStatus: { not: 'FORA' } }])] }, _sum: { total: true, expectedTotal: true, difference: true, approvedValue: true, creditValue: true } }),
-      this.prisma.freightCte.groupBy({ by: ['recStatus'], where: this.scopeWhere(user), _count: { _all: true } }),
+      this.prisma.freightCte.groupBy({ by: ['recStatus'], where: { AND: and.filter((x) => x !== byRec) }, _count: { _all: true } }),
     ])
     const carriers = await this.prisma.freightCarrier.findMany({ where: { id: { in: rows.map((r) => r.carrierId).filter((x): x is string => !!x) } }, select: { id: true, name: true } })
     const confront = await this.confrontFor(user.tenantId, rows)

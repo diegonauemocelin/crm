@@ -101,6 +101,8 @@ class CteListDto extends ShipmentListDto {
   /** VENDA: a empresa é remetente ou expedidora (a carga sai da filial). COMPRA: só recebe ou paga (entrada). */
   @IsOptional() @IsIn(['VENDA', 'COMPRA']) tipo?: 'VENDA' | 'COMPRA'
   @IsOptional() @bool @IsBoolean() pendentes?: boolean
+  /** Estado do cliente (venda: destino) ou do fornecedor (compra: origem). */
+  @IsOptional() @Matches(/^[A-Z]{2}$/) uf?: string
 }
 
 class DecideDto {
@@ -300,7 +302,7 @@ export class FretesOperacaoController {
 
   @Get('ctes')
   listCtes(@CurrentUser() user: AuthUser, @Query() q: CteListDto) {
-    return this.ctes.list(user, { unitId: q.filial, carrierId: q.transportadora, recStatus: q.situacao, decision: q.decisao, from: q.de, to: q.ate, search: q.busca, page: q.pagina, pending: q.pendentes, kind: q.tipo })
+    return this.ctes.list(user, { unitId: q.filial, carrierId: q.transportadora, recStatus: q.situacao, decision: q.decisao, from: q.de, to: q.ate, search: q.busca, page: q.pagina, pending: q.pendentes, kind: q.tipo, uf: q.uf })
   }
 
   @Get('ctes/parametros')
