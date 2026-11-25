@@ -49,5 +49,13 @@ ls -1t "$DEST"/crm-*.sha256 2>/dev/null | tail -n +"$((KEEP + 1))" | while read 
     if [ -f "$u" ] && ! echo "$manter" | grep -qxF "$u"; then rm -f -- "$u"; fi
   done
 done
+# Cópias dos arquivos enviados (fotos, áudios, PDFs): cada uma é a pasta inteira (vários GB), então guarda só as
+# BACKUP_KEEP_UPLOADS mais recentes (mínimo 2). Sem isso, 30 cópias diárias enchem o disco.
+KEEP_UP="${BACKUP_KEEP_UPLOADS:-3}"
+[ "$KEEP_UP" -ge 2 ] 2>/dev/null || KEEP_UP=2
+ls -1t "$DEST"/crm-uploads-*.age 2>/dev/null | tail -n +"$((KEEP_UP + 1))" | while read -r u; do
+  echo "[backup] apagando cópia antiga dos arquivos enviados $(basename "$u")"
+  rm -f -- "$u"
+done
 # A limpeza não decide o resultado: o backup já foi gravado acima.
 exit 0
