@@ -396,7 +396,12 @@ function ManageDialog({ view, onClose }: { view: View; onClose: () => void }) {
   const [enabled, setEnabled] = useState(view.enabled)
   const [siteUrl, setSiteUrl] = useState(view.siteUrl ?? '')
   const [prompt, setPrompt] = useState<Prompt>(view.prompt)
-  const check = useQuery({ queryKey: ['web-push', 'verificar', view.siteUrl], queryFn: () => api.get<{ ok: boolean; url: string | null; message: string }>('/marketing/web-push/verificar'), retry: false })
+  const check = useQuery({ queryKey: ['web-push', 'verificar', view.siteUrl], queryFn: () => api.get<{ ok: boolean; blocked?: boolean; url: string | null; message: string }>('/marketing/web-push/verificar'), retry: false })
+  const confirmSw = useMutation({
+    mutationFn: () => api.post<{ ok: boolean; blocked?: boolean; url: string | null; message: string }>('/marketing/web-push/verificar/confirmar'),
+    onSuccess: (r) => qc.setQueryData(['web-push', 'verificar', view.siteUrl], r),
+    onError: (err) => toast.error(errorMessage(err)),
+  })
   const save = useMutation({
     mutationFn: () => api.put<View>('/marketing/web-push/config', { enabled, siteUrl, prompt }),
     onSuccess: (next) => {
@@ -442,9 +447,27 @@ function ManageDialog({ view, onClose }: { view: View; onClose: () => void }) {
                 <RefreshCwIcon className={cn(check.isFetching && 'animate-spin')} /> Verificar
               </Button>
             </div>
-            {check.data && <p className={check.data.ok ? 'text-emerald-700' : 'text-red-700'}>{check.data.message}</p>}
+            {check.data && <p className={check.data.ok ? 'text-emerald-700' : check.data.blocked ? 'text-amber-700 dark:text-amber-400' : 'text-red-700'}>{check.data.message}</p>}
             {check.isError && <p className="text-red-700">{errorMessage(check.error)}</p>}
-            {check.data && !check.data.ok && /403/.test(check.data.message) && <p className="text-xs">O 403 vem do firewall da loja barrando a conferência feita pelo servidor do CRM. Se o arquivo abre no seu navegador, está publicado: use o teste abaixo.</p>}
+            {check.data && !check.data.ok && check.data.blocked && (
+              <div className="space-y-2">
+                <p className="text-xs">Abra o arquivo na loja: se aparecer o código que começa com &quot;var CRM =&quot;, ele está publicado. Então confirme aqui.</p>
+                <div className="flex flex-wrap gap-2">
+                  {check.data.url && (
+                    <Button type="button" size="sm" variant="outline" asChild>
+                      <a href={check.data.url} target="_blank" rel="noopener noreferrer">
+                        Abrir na loja
+                      </a>
+                    </Button>
+                  )}
+                  {editable && (
+                    <Button type="button" size="sm" disabled={confirmSw.isPending} onClick={() => confirmSw.mutate()}>
+                      {confirmSw.isPending && <Loader2Icon className="animate-spin" />} Abre no meu navegador
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
           </Step>
           {view.enabled && editable && (
             <div className="space-y-2 rounded-lg border p-3 text-sm">
