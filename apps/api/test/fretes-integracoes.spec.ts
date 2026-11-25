@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { decimalText, dhlRatesQuery, nextBusinessDay, parseDhlRates, parseRodonaves, parseRodonavesCity, parseRodonavesToken, rodonavesBody, rodonavesTokenForm, braspressBody, jadlogBody, jadlogWeight, parseJadlog, correiosDeclaredService, correiosPriceQuery, melhorEnvioBody, packageOf, parseBraspress, parseCorreiosDeadline, parseCorreiosPrice, parseMelhorEnvio } from '../src/fretes/integracoes'
+import { decimalText, dhlRatesQuery, nextBusinessDay, parseDhlRates, parseRodonaves, parseRodonavesCity, parseRodonavesToken, rodonavesBody, rodonavesHint, rodonavesTokenForm, braspressBody, jadlogBody, jadlogWeight, parseJadlog, correiosDeclaredService, correiosPriceQuery, melhorEnvioBody, packageOf, parseBraspress, parseCorreiosDeadline, parseCorreiosPrice, parseMelhorEnvio } from '../src/fretes/integracoes'
 
 describe('fretes: cotação online (Melhor Envio, Correios, Braspress)', () => {
   const pkg = packageOf({ realWeight: 3.5, volumes: [{ quantity: 2, height: 10, width: 20, length: 30 }] }, 1500)
@@ -125,5 +125,13 @@ describe('Jadlog: cabeçalho do token', () => {
     expect(jadlogAuth('abc.def.ghi')).toBe('Bearer abc.def.ghi')
     expect(jadlogAuth('  Bearer abc.def.ghi \n')).toBe('Bearer abc.def.ghi')
     expect(jadlogAuth('abc.def\n.ghi')).toBe('Bearer abc.def.ghi')
+  })
+})
+
+describe('Rodonaves: destinatário fora da base', () => {
+  it('explica o que fazer', () => {
+    expect(rodonavesHint('Cliente destinatário não encontrado.')).toContain('só cota para clientes da base dela')
+    expect(parseRodonaves({ Message: 'Cliente destinatário não encontrado.' }).error).toContain('unidade de vínculo')
+    expect(rodonavesHint('Outro erro')).toBe('Outro erro')
   })
 })

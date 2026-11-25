@@ -52,6 +52,7 @@ import {
   RODONAVES_QUOTE_BASE,
   rodonavesBody,
   rodonavesError,
+  rodonavesHint,
   rodonavesTokenForm,
   type DhlConfig,
   type DhlScope,
@@ -382,7 +383,7 @@ export class IntegracoesService {
     const body = await res.json().catch(() => null)
     if (res.status === 401 || res.status === 403) return [{ ...base, error: 'A Rodonaves recusou o acesso à cotação (confira o usuário da API e o recurso "cotação" na filial de vínculo).' }]
     const r = parseRodonaves(body)
-    return [{ ...base, serviceId: r.protocol ?? base.serviceId, price: res.ok && !r.error ? r.price : null, error: res.ok ? r.error : (rodonavesError(body) ?? `HTTP ${res.status}`) }]
+    return [{ ...base, serviceId: r.protocol ?? base.serviceId, price: res.ok && !r.error ? r.price : null, error: res.ok ? r.error : rodonavesHint(rodonavesError(body) ?? `HTTP ${res.status}`) }]
   }
 
   private async dhlRates(c: DhlConfig, origin: DhlPlace, dest: DhlPlace, customs: boolean, p: PackageInput): Promise<OnlineQuote[]> {

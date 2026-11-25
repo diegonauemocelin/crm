@@ -390,7 +390,13 @@ export function parseRodonaves(body: unknown): { price: number | null; protocol:
   const b = (body ?? {}) as Record<string, unknown>
   const price = decimalText(b.FreightValue)
   const protocol = b.ProtocolId !== undefined && b.ProtocolId !== null ? String(b.ProtocolId) : null
-  return { price, protocol, error: price === null || price <= 0 ? (rodonavesError(body) ?? 'Sem preço para este envio.') : null }
+  return { price, protocol, error: price === null || price <= 0 ? rodonavesHint(rodonavesError(body) ?? 'Sem preço para este envio.') : null }
+}
+
+/** Mensagens da Rodonaves com o que fazer: a cotação só sai para destinatário cadastrado na base deles. */
+export function rodonavesHint(msg: string): string {
+  if (/destinat[aá]rio n[aã]o encontrado/i.test(msg)) return 'A Rodonaves não tem este destinatário (CPF/CNPJ) cadastrado e só cota para clientes da base dela. Peça o cadastro à unidade de vínculo da Rodonaves ou confira o CPF/CNPJ.'
+  return msg
 }
 
 // ─────────── DHL Express (MyDHL API) ───────────
