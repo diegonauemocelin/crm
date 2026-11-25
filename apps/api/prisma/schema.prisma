@@ -2148,6 +2148,24 @@ model MarketplaceCampaign {
   @@map("marketplace_campaigns")
 }
 
+/// Gasto de Product Ads por anúncio (MLB) nos últimos 30 e 60 dias: o custo de publicidade em Preços e promoções.
+model MarketplaceAdItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  marketplace String
+  itemId      String
+  cost30      Decimal  @default(0) @db.Decimal(14, 2)
+  units30     Int      @default(0)
+  revenue30   Decimal  @default(0) @db.Decimal(14, 2)
+  cost60      Decimal  @default(0) @db.Decimal(14, 2)
+  units60     Int      @default(0)
+  revenue60   Decimal  @default(0) @db.Decimal(14, 2)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, marketplace, itemId])
+  @@map("marketplace_ad_items")
+}
+
 /// Anúncio do marketplace (no Mercado Livre, o grupo de anúncios: item, família ou produto de catálogo).
 model MarketplaceAd {
   id          String   @id @default(uuid()) @db.Uuid

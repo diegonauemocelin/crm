@@ -53,6 +53,8 @@ import {
   validatePromo,
   matchTip,
   type TipFilter,
+  adCostOf,
+  type AdCost,
 } from './margem'
 
 const PAGE = 50
@@ -149,7 +151,10 @@ export interface PriceRow {
   ipiPct: number | null
   feeFixed: number | null
   extraPct: number
+  /** Custo por venda: o fixo das configurações mais a publicidade, quando repassada. */
   fixedCost: number
+  /** Publicidade (Mercado Livre Ads) do anúncio no período. */
+  adCost: AdCost | null
   costPercent: number | null
   costUpdatedAt: Date | null
   feePct: number | null
@@ -487,7 +492,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
   // ---------- Lista ----------
 
   private async context(tenantId: string) {
-    const [config, rates, costs, rivals, erp, store] = await Promise.all([
+    const [config, rates, costs, rivals, erp, store, ads] = await Promise.all([
       this.config(tenantId),
       this.taxes.rates(tenantId),
       this.prisma.marketplaceCost.findMany({ where: { tenantId } }),
@@ -496,7 +501,10 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
       this.prisma.tcarProduct.findMany({ where: { tenantId }, select: { code: true, price: true, factoryCode: true, refs: true } }).catch(() => [] as { code: string; price: unknown; factoryCode: string | null; refs: string[] }[]),
       // Preço da loja (Magazord) por código: o depósito do modo depósito quando o relatório do ERP não trouxe o valor líquido.
       this.prisma.storeProduct.findMany({ where: { tenantId, active: true }, select: { code: true, price: true } }).catch(() => [] as { code: string; price: unknown }[]),
+      // Gasto de Mercado Livre Ads por anúncio (sincronizado com o painel de Ads).
+      this.prisma.marketplaceAdItem.findMany({ where: { tenantId, marketplace: 'mercadolivre' }, select: { itemId: true, cost30: true, cost60: true } }),
     ])
+    const adBy = new Map(ads.map((a) => [a.itemId, { d30: Number(a.cost30), d60: Number(a.cost60) }]))
     const costBy = new Map(costs.map((c) => [c.sku, c]))
     const erpPriceBy = new Map(erp.filter((e) => e.price != null).map((e) => [normSku(e.code), Number(e.price)]))
     // Códigos equivalentes do ERP (referências da Tcar): o concorrente pode vender a mesma peça com outro número.
@@ -517,11 +525,11 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
         else rivalBy.set(code, [offer])
       }
     }
-    return { config, rates, costBy, rivalBy, erpPriceBy, storePriceBy, erpCodesBy }
+    return { config, rates, costBy, rivalBy, erpPriceBy, storePriceBy, erpCodesBy, adBy }
   }
 
   private buildRow(s: Snapshot, a: { title: string | null; permalink: string | null; partNumber: string | null; attributes: unknown } | undefined, ctx: Awaited<ReturnType<PrecosService['context']>>): PriceRow {
-    const { config, rates, costBy, rivalBy, erpPriceBy, storePriceBy, erpCodesBy } = ctx
+    const { config, rates, costBy, rivalBy, erpPriceBy, storePriceBy, erpCodesBy, adBy } = ctx
     const sku = s.sellerSku?.trim() || null
     const costKey = sku ? normSku(sku) : s.itemId
     const c = costBy.get(costKey)
@@ -533,13 +541,17 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     const cost = c ? Number(c.cost) : null
     const shipping = num(s.shippingCost)
     const fee = num(s.saleFee)
-    const base = { shipping, taxPct: tax.pct, cost, fixedCost: config.fixedCostPerSale, extraPct: config.extraFeePct, marginMode: config.marginMode }
+    // Publicidade (Mercado Livre Ads): gasto do anúncio no período ÷ unidades vendidas; repassada, soma ao custo por venda.
+    const ad = adBy.get(s.itemId)
+    const adCost = adCostOf(ad ? (config.adCostDays === 60 ? ad.d60 : ad.d30) : 0, config.adCostDays === 60 ? s.sales60 : s.sales30, config.adCostDays, config.adCostPass)
+    const fixedCost = round2(config.fixedCostPerSale + (adCost?.passed && adCost.perSale !== null ? adCost.perSale : 0))
+    const base = { shipping, taxPct: tax.pct, cost, fixedCost, extraPct: config.extraFeePct, marginMode: config.marginMode }
     const margin = computeMargin({ price: sale ?? 0, fee, ...base })
     const promo = price !== null && sale !== null && sale < price ? { type: s.promoType, price: sale } : null
     let regularMarginPct: number | null = null
     const model: FeeModel | null = s.saleFeePct === null ? null : { pct: Number(s.saleFeePct), fixed: Number(s.saleFeeFixed ?? 0) }
     if (promo && model && price !== null) regularMarginPct = computeMargin({ price, fee: round2((price * model.pct) / 100 + model.fixed), ...base }).marginPct
-    const pm = model && cost !== null && tax.pct !== null ? { fee: model, shipping: shipping ?? 0, taxPct: tax.pct, extraPct: config.extraFeePct, cost, fixedCost: config.fixedCostPerSale, marginMode: config.marginMode } : null
+    const pm = model && cost !== null && tax.pct !== null ? { fee: model, shipping: shipping ?? 0, taxPct: tax.pct, extraPct: config.extraFeePct, cost, fixedCost, marginMode: config.marginMode } : null
     const minPrice = pm ? priceForMargin(0, pm) : null
     const goal = config.targetMarginPct ?? (config.minMarginPct > 0 ? config.minMarginPct : null)
     // Lucro do produto (R$ ou % do custo informado, ou preço do ERP − custo): o preço sugerido deixa esse lucro em R$.
@@ -564,7 +576,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
         : null
       : depositTarget
       ? model
-        ? priceForDeposit(depositTarget.value, { fee: model, shipping: shipping ?? 0, extraPct: config.extraFeePct, fixedCost: config.fixedCostPerSale })
+        ? priceForDeposit(depositTarget.value, { fee: model, shipping: shipping ?? 0, extraPct: config.extraFeePct, fixedCost })
         : null
       : pm
       ? salePct !== null
@@ -582,6 +594,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
     const competitorCount = all.length
     const competitors = all.slice(0, 2)
     const tips = pricingTips({
+      adCost,
       profitTarget: tablePct !== null ? (suggestedPrice === null ? null : round2(Math.max((suggestedPrice * tablePct) / 100, tableProfit!))) : depositTarget ? null : salePct !== null ? (suggestedPrice === null ? null : round2((suggestedPrice * salePct) / 100)) : (profitTarget?.value ?? null),
       depositTarget: depositTarget?.value ?? null,
       status: s.status,
@@ -635,7 +648,8 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
       ipiPct: tax.ipiPct ?? null,
       feeFixed: model?.fixed ?? null,
       extraPct: config.extraFeePct,
-      fixedCost: config.fixedCostPerSale,
+      fixedCost,
+      adCost,
       costPercent: c?.percent === null || c?.percent === undefined ? null : Number(c.percent),
       costUpdatedAt: c?.updatedAt ?? null,
       feePct: model?.pct ?? null,
@@ -704,6 +718,8 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
           return desc(lucro(a), lucro(b)) || byTitle(a, b)
         case 'lucro_falta':
           return asc(falta(a), falta(b)) || byTitle(a, b)
+        case 'publicidade':
+          return desc(a.adCost?.spent ?? null, b.adCost?.spent ?? null) || byTitle(a, b)
         default:
           return m(a) - m(b) || byTitle(a, b)
       }
@@ -974,7 +990,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
             // Modo depósito: o Mercado Livre deposita o preço de venda do ERP/loja (imposto e custo não entram).
             if (s.saleFeePct === null) error = 'Tarifa do Mercado Livre não lida. Clique em Ler do Mercado Livre.'
             else {
-              let model = { fee: { pct: Number(s.saleFeePct), fixed: Number(s.saleFeeFixed ?? 0) }, shipping: r.margin.shipping ?? 0, extraPct: cfg.extraFeePct, fixedCost: cfg.fixedCostPerSale }
+              let model = { fee: { pct: Number(s.saleFeePct), fixed: Number(s.saleFeeFixed ?? 0) }, shipping: r.margin.shipping ?? 0, extraPct: cfg.extraFeePct, fixedCost: r.fixedCost }
               // A tarifa muda com o preço (faixas e custo fixo): recalcula com a tarifa do preço achado.
               p = priceForDeposit(deposit.value, model)
               for (let i = 0; i < 4 && p !== null; i++) {
@@ -992,7 +1008,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
             else if (r.taxPct === null) error = 'Sem imposto: importe as notas do Mercado Envios ou informe a alíquota manual.'
             else if (s.saleFeePct === null) error = 'Tarifa do Mercado Livre não lida. Clique em Ler do Mercado Livre.'
             else {
-              const pm = { fee: { pct: Number(s.saleFeePct), fixed: Number(s.saleFeeFixed ?? 0) }, shipping: r.margin.shipping ?? 0, taxPct: r.taxPct, extraPct: cfg.extraFeePct, cost: r.cost, fixedCost: cfg.fixedCostPerSale, marginMode: cfg.marginMode }
+              const pm = { fee: { pct: Number(s.saleFeePct), fixed: Number(s.saleFeeFixed ?? 0) }, shipping: r.margin.shipping ?? 0, taxPct: r.taxPct, extraPct: cfg.extraFeePct, cost: r.cost, fixedCost: r.fixedCost, marginMode: cfg.marginMode }
               // A tarifa muda com o preço (faixas e custo fixo): recalcula com a tarifa do preço achado.
               let model = pm
               p = priceForProfit(own.value, model)
@@ -1011,7 +1027,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
           else if (r.taxPct === null) error = 'Sem imposto: importe as notas do Mercado Envios ou informe a alíquota manual.'
           else if (s.saleFeePct === null) error = 'Tarifa do Mercado Livre não lida. Clique em Ler do Mercado Livre.'
           else {
-            const pm = { fee: { pct: Number(s.saleFeePct), fixed: Number(s.saleFeeFixed ?? 0) }, shipping: r.margin.shipping ?? 0, taxPct: r.taxPct, extraPct: cfg.extraFeePct, cost: r.cost, fixedCost: cfg.fixedCostPerSale, marginMode: own?.source === 'produto_venda' ? ('PRECO' as const) : cfg.marginMode }
+            const pm = { fee: { pct: Number(s.saleFeePct), fixed: Number(s.saleFeeFixed ?? 0) }, shipping: r.margin.shipping ?? 0, taxPct: r.taxPct, extraPct: cfg.extraFeePct, cost: r.cost, fixedCost: r.fixedCost, marginMode: own?.source === 'produto_venda' ? ('PRECO' as const) : cfg.marginMode }
             p = await refinePrice(target, pm, async (price) => (await this.feeAt(T, s, price))?.model ?? null)
             // Margem da tabela: nunca menos lucro em R$ que a tabela (com a tarifa do preço achado).
             if (p !== null && r.profitFloor !== null) {
@@ -1044,7 +1060,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
       let marginAfter: MarginResult | null = null
       if (after) {
         const fee = await this.feeAt(T, s, after.price)
-        marginAfter = computeMargin({ price: after.price, fee: fee?.amount ?? null, shipping: r.margin.shipping, taxPct: r.taxPct, cost: r.cost, fixedCost: cfg.fixedCostPerSale, extraPct: cfg.extraFeePct, marginMode: cfg.marginMode })
+        marginAfter = computeMargin({ price: after.price, fee: fee?.amount ?? null, shipping: r.margin.shipping, taxPct: r.taxPct, cost: r.cost, fixedCost: r.fixedCost, extraPct: cfg.extraFeePct, marginMode: cfg.marginMode })
         if (!fee) warnings.push('Tarifa no preço novo não lida: margem sem a tarifa.')
         if (r.freeShipping) warnings.push('Frete considerado: o custo atual (pode mudar com o preço).')
       }
@@ -1257,7 +1273,7 @@ export class PrecosService implements OnApplicationBootstrap, OnModuleDestroy {
       let m: MarginResult | null = null
       if (unit !== null) {
         // A tarifa do Mercado Livre é sobre o preço do anúncio; o cupom sai do bolso da loja.
-        m = computeMargin({ price: r.salePrice!, fee: r.margin.fee, shipping: r.margin.shipping, taxPct: r.taxPct, cost: r.cost, fixedCost: ctx.config.fixedCostPerSale, extraPct: ctx.config.extraFeePct, marginMode: ctx.config.marginMode })
+        m = computeMargin({ price: r.salePrice!, fee: r.margin.fee, shipping: r.margin.shipping, taxPct: r.taxPct, cost: r.cost, fixedCost: r.fixedCost, extraPct: ctx.config.extraFeePct, marginMode: ctx.config.marginMode })
         if (m.margin !== null) m = { ...m, margin: round2(m.margin - (r.salePrice! - unit)), marginPct: marginPctOf(round2(m.margin - (r.salePrice! - unit)), unit, r.cost, m.tax, ctx.config.marginMode) }
       }
       out.push({

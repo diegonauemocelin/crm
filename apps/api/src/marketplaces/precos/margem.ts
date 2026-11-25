@@ -46,9 +46,13 @@ export interface PrecosConfig {
   useNfeTaxes: boolean
   /** Base do preço sugerido (LUCRO ou DEPOSITO). */
   suggestBase: SuggestBase
+  /** Repassa o custo de publicidade (Mercado Livre Ads) por venda no lucro, na margem e no preço sugerido. */
+  adCostPass: boolean
+  /** Período do custo de publicidade: 30 ou 60 dias. */
+  adCostDays: 30 | 60
 }
 
-export const DEFAULT_PRECOS_CONFIG: PrecosConfig = { marginMode: 'CUSTO', taxPct: null, minMarginPct: 0, targetMarginPct: null, fixedCostPerSale: 0, extraFeePct: 0, useNfeTaxes: true, suggestBase: 'LUCRO' }
+export const DEFAULT_PRECOS_CONFIG: PrecosConfig = { marginMode: 'CUSTO', taxPct: null, minMarginPct: 0, targetMarginPct: null, fixedCostPerSale: 0, extraFeePct: 0, useNfeTaxes: true, suggestBase: 'LUCRO', adCostPass: false, adCostDays: 30 }
 
 const finite = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v.replace(',', '.'))) ? Number(v.replace(',', '.')) : null)
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
@@ -66,7 +70,30 @@ export function cleanPrecosConfig(raw: Partial<Record<keyof PrecosConfig, unknow
     extraFeePct: 'extraFeePct' in raw ? (pct(raw.extraFeePct, base.extraFeePct) ?? 0) : base.extraFeePct,
     useNfeTaxes: 'useNfeTaxes' in raw ? raw.useNfeTaxes !== false : base.useNfeTaxes,
     suggestBase: 'suggestBase' in raw && SUGGEST_BASES.includes(raw.suggestBase as SuggestBase) ? (raw.suggestBase as SuggestBase) : (base.suggestBase ?? 'LUCRO'),
+    adCostPass: 'adCostPass' in raw ? raw.adCostPass === true : (base.adCostPass ?? false),
+    adCostDays: 'adCostDays' in raw ? (Number(raw.adCostDays) === 60 ? 60 : 30) : (base.adCostDays ?? 30),
   }
+}
+
+// ---------- Publicidade (Mercado Livre Ads) ----------
+
+export interface AdCost {
+  /** Gasto em Ads do anúncio no período (R$). */
+  spent: number
+  /** Unidades vendidas do anúncio no período (todas: patrocinadas e orgânicas). */
+  sold: number
+  /** Custo de publicidade por venda (gasto ÷ vendidas); null quando gastou sem vender. */
+  perSale: number | null
+  days: 30 | 60
+  /** Entra no lucro, na margem e no preço sugerido. */
+  passed: boolean
+}
+
+/** Custo de publicidade por venda do anúncio: gasto no período ÷ unidades vendidas no mesmo período. */
+export function adCostOf(spent: number, sold: number | null, days: 30 | 60, pass: boolean): AdCost | null {
+  if (!(spent > 0)) return null
+  const units = sold ?? 0
+  return { spent: round2(spent), sold: units, perSale: units > 0 ? round2(spent / units) : null, days, passed: pass }
 }
 
 // ---------- Tarifa do Mercado Livre ----------
@@ -418,7 +445,7 @@ export interface Tip {
 }
 
 /** Filtro da lista pelos avisos: um aviso específico, qualquer alerta (vermelho) ou qualquer dica (amarela). */
-export const TIP_FILTERS = ['alertas', 'dicas', 'lucro_abaixo', 'prejuizo', 'margem_baixa', 'promocao_margem', 'deposito_abaixo', 'abaixo_alvo', 'frete_obrigatorio', 'sem_custo', 'sem_imposto', 'sem_venda_60', 'sem_venda_30', 'concorrente', 'pausado', 'classico', 'premium'] as const
+export const TIP_FILTERS = ['alertas', 'dicas', 'lucro_abaixo', 'prejuizo', 'margem_baixa', 'promocao_margem', 'deposito_abaixo', 'abaixo_alvo', 'frete_obrigatorio', 'sem_custo', 'sem_imposto', 'sem_venda_60', 'sem_venda_30', 'concorrente', 'pausado', 'publicidade', 'publicidade_sem_venda', 'classico', 'premium'] as const
 export type TipFilter = (typeof TIP_FILTERS)[number]
 
 export function matchTip(tips: Pick<Tip, 'level' | 'code'>[], f: TipFilter): boolean {
@@ -428,6 +455,8 @@ export function matchTip(tips: Pick<Tip, 'level' | 'code'>[], f: TipFilter): boo
 }
 
 export interface TipInput {
+  /** Custo de publicidade do anúncio (Mercado Livre Ads) no período. */
+  adCost?: AdCost | null
   /** Lucro esperado do produto em R$ por unidade (planilha, ERP ou informado à mão). */
   profitTarget?: number | null
   /** Valor que o Mercado Livre deve depositar (preço de venda do ERP/loja), no modo depósito. */
@@ -498,6 +527,8 @@ export function pricingTips(t: TipInput): Tip[] {
     }
   }
   if (t.status === 'paused' && (t.availableQuantity ?? 0) > 0) out.push({ level: 'dica', code: 'pausado', text: `Anúncio pausado com ${t.availableQuantity} em estoque: reative para vender.` })
+  if (t.adCost && t.adCost.perSale === null) out.push({ level: 'alerta', code: 'publicidade_sem_venda', text: `Gastou ${brl(t.adCost.spent)} em publicidade nos últimos ${t.adCost.days} dias sem nenhuma venda.` })
+  else if (t.adCost) out.push({ level: 'info', code: 'publicidade', text: `Publicidade: ${brl(t.adCost.spent)} em ${t.adCost.days} dias, ${brl(t.adCost.perSale!)} por venda${t.adCost.passed ? ' (já descontado do lucro)' : ' (não repassado: ligue nas configurações para descontar do lucro)'}.` })
   if (t.status === 'active' && t.sales60 === 0) out.push({ level: 'dica', code: 'sem_venda_60', text: 'Sem vendas nos últimos 60 dias: revise preço, título e fotos.' })
   else if (t.status === 'active' && t.sales30 === 0) out.push({ level: 'dica', code: 'sem_venda_30', text: 'Sem vendas nos últimos 30 dias.' })
   if (t.otherFee && m.fee !== null && t.listingTypeId) {

@@ -69,6 +69,8 @@ export interface MlSyncState {
   apiCalls?: number
   from?: string
   to?: string
+  /** Gasto por anúncio (MLB): quantos anúncios vieram com métricas e o erro, se a API recusou. */
+  itemAds?: { count: number; withCost: number; error: string | null; at: string }
 }
 
 /** O que vai para a tela: nunca os tokens nem o segredo. */
@@ -217,6 +219,32 @@ export function parseCampaignDays(raw: unknown): DayRow[] {
     if (d) out.push(productAdsRow(d, r))
   }
   return out
+}
+
+export const ITEM_METRICS = ['clicks', 'prints', 'cost', 'total_amount', 'units_quantity'].join(',')
+
+/** Janelas do gasto por anúncio: últimos 30 e 60 dias até ontem. */
+export function itemAdWindows(today = todayBr()) {
+  const to = addDays(today, -1)
+  return { d30: { from: addDays(to, -29), to }, d60: { from: addDays(to, -59), to } }
+}
+
+/**
+ * Gasto de Product Ads por anúncio no período ({ results: [{ item_id, metrics }] }, como os grupos de anúncios). Aceita o
+ * código em item_id ou id e as métricas em metrics ou no próprio objeto; ignora o que não for código de anúncio (MLB...).
+ */
+export function parseItemAds(raw: unknown): { itemId: string; cost: number; units: number; revenue: number; clicks: number; prints: number }[] {
+  const list = (Array.isArray(raw) ? raw : ((raw as { results?: unknown[] } | null)?.results ?? [])) as Metrics[]
+  const out = new Map<string, { itemId: string; cost: number; units: number; revenue: number; clicks: number; prints: number }>()
+  for (const r of list) {
+    const id = String(r?.item_id ?? r?.id ?? '').toUpperCase()
+    if (!/^[A-Z]{3}\d{6,}$/.test(id)) continue
+    const m = (r.metrics && typeof r.metrics === 'object' ? r.metrics : r) as Metrics
+    const row = productAdsRow('', m)
+    const prev = out.get(id)
+    out.set(id, { itemId: id, cost: (prev?.cost ?? 0) + row.cost, units: (prev?.units ?? 0) + row.units, revenue: (prev?.revenue ?? 0) + row.revenue, clicks: (prev?.clicks ?? 0) + row.clicks, prints: (prev?.prints ?? 0) + row.impressions })
+  }
+  return [...out.values()]
 }
 
 /** Métricas de um dia por grupo de anúncios ({ results: [{ ad_group_id, metrics }] }). */
