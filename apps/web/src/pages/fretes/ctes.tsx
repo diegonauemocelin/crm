@@ -635,7 +635,7 @@ function CteDetail() {
             )}
             <Can module="fretes_cte" action="export">
               <Button variant="outline" asChild>
-                <a href={`/fretes/ctes/${c.id}/dacte`} target="_blank" rel="noopener" title="DACTE para imprimir ou salvar em PDF">
+                <a href={`/fretes/ctes/${c.id}/dacte?completo=1`} target="_blank" rel="noopener" title="DACTE para imprimir ou salvar em PDF">
                   <FileTextIcon aria-hidden /> PDF (DACTE)
                 </a>
               </Button>

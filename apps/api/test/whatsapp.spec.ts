@@ -80,6 +80,9 @@ describe('Envio pelo CRM', () => {
     expect(detectOutgoing(Buffer.from('OggS....'), 'audio.ogg')).toMatchObject({ kind: 'audio' })
     expect(detectOutgoing(Buffer.concat([b(0, 0, 0, 0x20), Buffer.from('ftypisom')]), 'video.mp4')).toMatchObject({ kind: 'video', mime: 'video/mp4' })
     expect(detectOutgoing(b(0x50, 0x4b, 0x03, 0x04), 'planilha.xlsx')).toMatchObject({ kind: 'document', ext: 'xlsx' })
+    // XML de NF-e/CT-e (com ou sem BOM): documento. Texto que não é XML com extensão .xml: recusado.
+    expect(detectOutgoing(Buffer.from('\uFEFF<?xml version="1.0"?><cteProc/>'), 'CTe4226.xml')).toMatchObject({ kind: 'document', mime: 'application/xml', ext: 'xml' })
+    expect(detectOutgoing(Buffer.from('MZ\x90\x00'), 'falso.xml')).toBeNull()
     // Zip com outra extensão, HTML, SVG e executável: recusados.
     expect(detectOutgoing(b(0x50, 0x4b, 0x03, 0x04), 'pacote.zip')).toBeNull()
     expect(detectOutgoing(Buffer.from('<html><script>alert(1)</script>'), 'pagina.html')).toBeNull()
