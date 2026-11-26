@@ -1,3 +1,4 @@
+import { ScreenGuard } from '@/components/page'
 import { WhatsNew } from '@/components/layout/whats-new'
 import { Fragment, useEffect } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
@@ -94,7 +95,9 @@ export function ModernLayout({ porSistema = false }: { porSistema?: boolean }) {
           <ChatNotifier />
           <AttendanceNotifier />
           <WhatsNew />
+          <ScreenGuard>
           <Outlet />
+        </ScreenGuard>
         </main>
         <AppFooter />
       </SidebarInset>

@@ -1,3 +1,4 @@
+import { ScreenGuard } from '@/components/page'
 import { WhatsNew } from '@/components/layout/whats-new'
 import { ChevronDownIcon, MenuIcon } from 'lucide-react'
 import { Fragment, useState } from 'react'
@@ -33,7 +34,7 @@ export function ClassicLayout() {
   const { can, me } = useAuth()
   const branding = useBranding()
   const { pathname, search } = useLocation()
-  const groups = visibleNavigation(can, !!me?.role.isSystem)
+  const groups = visibleNavigation(can, !!me?.role.isSystem, me?.hiddenScreens)
   const crumbs = useBreadcrumb()
   const activeGroup = findNavItem(pathname, search)?.group.title
   const activeItem = findNavItem(pathname, search)?.item.to
@@ -190,7 +191,9 @@ export function ClassicLayout() {
         <ChatNotifier />
         <AttendanceNotifier />
         <WhatsNew />
-        <Outlet />
+        <ScreenGuard>
+          <Outlet />
+        </ScreenGuard>
       </main>
       <AppFooter className="bg-background" />
     </div>

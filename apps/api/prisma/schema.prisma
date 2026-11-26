@@ -134,6 +134,8 @@ model Role {
   loginHours  Json?
   /// Números de WhatsApp que o perfil pode monitorar (permissão "Monitorar conversas"). Vazio = todos.
   monitorNumberIds String[] @default([]) @db.Uuid
+  /// Telas do menu (endereço, ex.: /fretes/conciliacao) que o perfil NÃO vê, mesmo com o módulo liberado. Vazio = todas.
+  hiddenScreens String[] @default([])
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
