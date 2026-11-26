@@ -471,6 +471,8 @@ export class CotacaoService {
     const key = cityKey(p.destCity)
     // Três buscas, cada uma pelo seu índice (juntas num OR, o banco lia a tabela de regras inteira: minutos por cotação).
     // A cidade também pelas regras com CEP: a cidade pode ter trocado de CEP (faixa nova por rua).
+    // Tempo de cada etapa: tabela que passa de 3 s fica no log (para achar a causa quando uma tabela estoura o limite).
+    const t0 = Date.now()
     const found = await Promise.all([
       this.prisma.freightRule.findMany({ where: { versionId: v.id, cepStart: { lte: zip }, cepEnd: { gte: zip } }, take: 2000 }),
       p.destUf ? this.prisma.freightRule.findMany({ where: { versionId: v.id, cepStart: null, uf: p.destUf }, take: 2000 }) : Promise.resolve([]),
@@ -481,6 +483,8 @@ export class CotacaoService {
     const settings = settingsOf(v.settings)
     const m = p.measures
     const match = matchRule(rows.map(ruleFromRow), { zip, uf: p.destUf, city: p.destCity }, weights(m, settings).taxed)
+    const took = Date.now() - t0
+    if (took > 3000) this.logger.warn(`Cotação lenta: tabela "${t.name}" levou ${took} ms para achar a regra (${rows.length} regra(s) lidas, CEP ${formatCep(zip)}, cidade ${p.destCity ?? '?'}/${p.destUf ?? '?'}).`)
     if (!match.rule) return no('SEM_COBERTURA', `${match.reason} Destino: ${p.destCity ?? '?'}/${p.destUf ?? '?'}, CEP ${formatCep(zip)}.`)
     const r = match.rule
     const label = match.by === 'CEP' ? `CEP ${formatCep(r.cepStart)} a ${formatCep(r.cepEnd)}` : match.by === 'CIDADE' ? `${r.city}${r.uf ? `/${r.uf}` : ''}` : `UF ${r.uf}`
