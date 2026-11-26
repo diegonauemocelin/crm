@@ -230,7 +230,7 @@ export class TabelasService {
     const versions = await this.prisma.freightTableVersion.findMany({
       where: { tableId: id },
       orderBy: { number: 'desc' },
-      select: { id: true, number: true, status: true, source: true, note: true, rulesCount: true, createdByName: true, createdAt: true, publishedAt: true, publishedByName: true },
+      select: { id: true, number: true, status: true, source: true, note: true, rulesCount: true, createdByName: true, createdAt: true, publishedAt: true, publishedByName: true, ctesFrom: true },
     })
     return { ...this.tableView(t), versions }
   }
@@ -434,6 +434,7 @@ export class TabelasService {
       createdAt: v.createdAt,
       publishedAt: v.publishedAt,
       publishedByName: v.publishedByName,
+      ctesFrom: v.ctesFrom,
     }
   }
 
@@ -511,6 +512,23 @@ export class TabelasService {
       await tx.freightTable.update({ where: { id: tableId }, data: { publishedVersionId: versionId, ...(t.status === 'RASCUNHO' ? { status: 'ATIVA' } : {}) } })
     })
     await this.audit.byUser(user, ctx, 'frete.versao.publicada', 'freight_table', tableId, { versao: v.number, anterior: t.publishedVersionId, regras: v.rulesCount })
+    return this.get(user, tableId)
+  }
+
+  /**
+   * Versão publicada que corrige a anterior: vale também na conciliação dos CT-es emitidos desde a data (inclusive os de
+   * antes da publicação). Null volta ao normal (só os CT-es emitidos depois da publicação).
+   */
+  async setCtesFrom(user: AuthUser, tableId: string, versionId: string, from: string | null, ctx: RequestCtx) {
+    assertCan(user, 'fretes_tabelas', 'edit')
+    await this.findTable(user, tableId)
+    const v = await this.prisma.freightTableVersion.findFirst({ where: { id: versionId, tableId, tenantId: user.tenantId } })
+    if (!v) throw new NotFoundException('Versão não encontrada.')
+    if (!v.publishedAt) throw new BadRequestException('Publique a versão antes.')
+    const date = from ? new Date(`${from}T00:00:00-03:00`) : null
+    if (date && date > v.publishedAt) throw new BadRequestException('A data precisa ser anterior à publicação (depois dela a versão já vale).')
+    await this.prisma.freightTableVersion.update({ where: { id: versionId }, data: { ctesFrom: date } })
+    await this.audit.byUser(user, ctx, 'frete.versao.ctes_desde', 'freight_table', tableId, { versao: v.number, desde: from })
     return this.get(user, tableId)
   }
 

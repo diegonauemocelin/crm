@@ -247,6 +247,10 @@ class VersionDto {
   @IsOptional() @nullable @IsString() @MaxLength(300) note?: string | null
 }
 
+class CtesFromDto {
+  @IsOptional() @nullable @Matches(/^\d{4}-\d{2}-\d{2}$/) desde?: string | null
+}
+
 class NewVersionDto {
   @IsOptional() @IsUUID() fromVersionId?: string
   @IsOptional() @IsBoolean() withRules?: boolean
@@ -755,6 +759,12 @@ export class FretesController {
   @HttpCode(200)
   publish(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Param('vid', ParseUUIDPipe) vid: string, @ReqContext() ctx: RequestCtx) {
     return this.tables.publish(user, id, vid, ctx)
+  }
+
+  @Post('tabelas/:id/versoes/:vid/ctes-desde')
+  @HttpCode(200)
+  ctesFrom(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Param('vid', ParseUUIDPipe) vid: string, @Body() dto: CtesFromDto, @ReqContext() ctx: RequestCtx) {
+    return this.tables.setCtesFrom(user, id, vid, dto.desde ?? null, ctx)
   }
 
   @Post('tabelas/:id/versoes/:vid/descartar')

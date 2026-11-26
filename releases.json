@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.80",
+      "date": "2026-11-26",
+      "title": "Versão de tabela que corrige a anterior vale para CT-es já emitidos e cotação mais rápida em tabelas grandes",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Tabelas de frete › Versões: na versão publicada, \"Vale para CT-es desde…\". Quando a versão nova só corrige a tabela (valor errado, taxa que faltava), marque desde quando ela vale: os CT-es emitidos a partir dessa data passam a ser conferidos com ela ao conciliar de novo. Em reajuste de preço, não use."
+        },
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "Cotação: tabelas grandes (ex.: aérea com milhares de faixas de CEP) davam \"Esta tabela demorou demais para calcular\". A busca da faixa de CEP ficou muito mais rápida."
+        },
+        {
+          "type": "infra",
+          "area": "Fretes",
+          "text": "Tabela que demora mais de 3 segundos para achar a regra fica registrada no log do servidor, com o CEP e a cidade."
+        }
+      ]
+    },
+    {
       "version": "3.0.79",
       "date": "2026-11-26",
       "title": "Telas do menu por perfil, busca de CT-e pela nota fiscal e XML no chat",

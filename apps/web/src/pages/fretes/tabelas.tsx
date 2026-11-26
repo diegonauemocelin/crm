@@ -69,6 +69,8 @@ export interface VersionRow {
   createdAt: string
   publishedAt: string | null
   publishedByName: string | null
+  /** Correção: vale na conciliação dos CT-es desde esta data. */
+  ctesFrom?: string | null
 }
 type TableDetail = FreightTable & { versions: VersionRow[] }
 type TableListRow = FreightTable & { published: { id: string; number: number; rulesCount: number } | null; draft: { number: number } | null }
@@ -603,6 +605,7 @@ function VersionsTab({ table, onOpen }: { table: TableDetail; onOpen: (id: strin
   const { can } = useAuth()
   const refresh = () => qc.invalidateQueries({ queryKey: ['fretes'] })
   const draft = table.versions.find((v) => v.status === 'RASCUNHO')
+  const [fixing, setFixing] = useState<VersionRow | null>(null)
   const act = useMutation({
     mutationFn: (a: { kind: 'publicar' | 'descartar' | 'nova'; id?: string }) =>
       a.kind === 'nova' ? api.post<{ id: string }>(`/fretes/tabelas/${table.id}/versoes`, {}) : api.post<{ id: string }>(`/fretes/tabelas/${table.id}/versoes/${a.id}/${a.kind}`),
@@ -659,8 +662,16 @@ function VersionsTab({ table, onOpen }: { table: TableDetail; onOpen: (id: strin
                 <TableCell className="text-sm">
                   {v.publishedAt ? dateTime(v.publishedAt) : '—'}
                   {v.publishedByName && <span className="block text-xs text-muted-foreground">{v.publishedByName}</span>}
+                  {v.ctesFrom && <span className="block text-xs text-sky-700 dark:text-sky-300">Corrige: vale para CT-es desde {dayBr(v.ctesFrom.slice(0, 10))}</span>}
                 </TableCell>
                 <TableCell className="text-right">
+                  {v.status === 'PUBLICADA' && (
+                    <Can module="fretes_tabelas" action="edit">
+                      <Button size="sm" variant="outline" onClick={() => setFixing(v)} title="Esta versão corrige a anterior: usar também na conciliação dos CT-es já emitidos">
+                        <CalendarRangeIcon aria-hidden /> Vale para CT-es desde…
+                      </Button>
+                    </Can>
+                  )}
                   {v.status === 'RASCUNHO' && (
                     <div className="flex justify-end gap-2">
                       <Can module="fretes_tabelas" action="edit">
@@ -695,7 +706,52 @@ function VersionsTab({ table, onOpen }: { table: TableDetail; onOpen: (id: strin
           </TableBody>
         </Table>
       </CardContent>
+      {fixing && <CtesFromDialog tableId={table.id} version={fixing} onClose={() => setFixing(null)} onDone={refresh} />}
     </Card>
+  )
+}
+
+/** Versão que corrige a anterior (valores errados, taxa que faltava): vale também para os CT-es já emitidos desde a data. */
+function CtesFromDialog({ tableId, version, onClose, onDone }: { tableId: string; version: VersionRow; onClose: () => void; onDone: () => void }) {
+  const [from, setFrom] = useState(version.ctesFrom?.slice(0, 10) ?? '')
+  const max = version.publishedAt ? new Date(version.publishedAt).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }) : undefined
+  const save = useMutation({
+    mutationFn: (desde: string | null) => api.post(`/fretes/tabelas/${tableId}/versoes/${version.id}/ctes-desde`, { desde }),
+    onSuccess: (_r, desde) => {
+      onDone()
+      toast.success(desde ? 'Pronto. Na Conciliação, use "Conciliar pendentes de novo" (ou "Conciliar de novo" no CT-e) para comparar com esta versão.' : 'A versão volta a valer só para os CT-es emitidos depois da publicação.')
+      onClose()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>v{version.number} corrige a versão anterior</DialogTitle>
+          <DialogDescription>
+            Normalmente cada CT-e é conferido com a versão publicada na data dele. Se esta versão só corrige a tabela (valor errado, taxa que faltava), marque desde quando ela vale: os CT-es emitidos a partir dessa data passam a ser conferidos com ela ao conciliar de novo. Em reajuste de preço, não use.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-1">
+          <Label htmlFor="ctes-desde">Vale para os CT-es emitidos desde</Label>
+          <Input id="ctes-desde" type="date" value={from} max={max} onChange={(e) => setFrom(e.target.value)} />
+        </div>
+        <DialogFooter>
+          {version.ctesFrom && (
+            <Button variant="ghost" disabled={save.isPending} onClick={() => save.mutate(null)}>
+              Tirar a data
+            </Button>
+          )}
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button disabled={!from || save.isPending} onClick={() => save.mutate(from)}>
+            {save.isPending && <Loader2Icon className="animate-spin" aria-hidden />} Salvar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
