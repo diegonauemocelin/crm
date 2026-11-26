@@ -1,4 +1,5 @@
 import { mapLimit } from './limite'
+import { pickVersionsAt } from './versoes'
 import { randomUUID } from 'node:crypto'
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
@@ -1215,8 +1216,10 @@ export class CotacaoService {
     const siblings = new Set(await this.siblingUnits(user.tenantId, d.unitId, d.originCity, d.originUf))
     const tables = all.filter((t) => !t.unitIds.length || t.unitIds.some((id) => siblings.has(id)))
     const fees = await this.feesFor([d.carrierId], { doc: d.recipientDoc, destZip: p.destZip, destCity: p.destCity, destUf: p.destUf })
-    const versions = await this.prisma.freightTableVersion.findMany({ where: { tableId: { in: tables.map((t) => t.id) }, publishedAt: { not: null, lte: d.date } }, orderBy: { publishedAt: 'desc' }, select: { id: true, tableId: true } })
-    const results = await Promise.all(tables.map((t) => this.evaluate(t, p, input, { allowExpired: false, fees: fees.map(feeComponent), versionAt: versions.find((v) => v.tableId === t.id)?.id ?? null })))
+    // Versão de cada tabela na data do CT-e: a última publicada até lá, ou uma publicada depois que corrige a anterior
+    // e vale desde uma data (ctesFrom) até o CT-e.
+    const versions = pickVersionsAt(await this.prisma.freightTableVersion.findMany({ where: { tableId: { in: tables.map((t) => t.id) }, publishedAt: { not: null } }, select: { id: true, tableId: true, publishedAt: true, ctesFrom: true } }), d.date)
+    const results = await Promise.all(tables.map((t) => this.evaluate(t, p, input, { allowExpired: false, fees: fees.map(feeComponent), versionAt: versions.get(t.id) ?? null })))
     const best = results.filter((r) => r.status === 'OK' && r.total !== null).sort((a, b) => a.total! - b.total!)[0] ?? null
     // Sem resultado: o motivo de cada tabela, para quem confere saber o que ajustar (filial, vigência, destino, peso...).
     const reasons = [
