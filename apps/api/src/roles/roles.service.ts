@@ -23,6 +23,7 @@ export interface RoleInput {
   require2fa: boolean
   loginHours?: unknown
   monitorNumberIds?: string[]
+  hiddenScreens?: string[]
   active: boolean
   permissions: PermissionInput[]
 }
@@ -92,6 +93,7 @@ export class RolesService {
         require2fa: input.require2fa,
         loginHours: hoursData(input.loginHours),
         monitorNumberIds: await this.cleanNumbers(actor.tenantId, input.monitorNumberIds),
+        hiddenScreens: [...new Set(input.hiddenScreens ?? [])],
         active: input.active,
         permissions: { create: toRows(input.permissions) },
       },
@@ -118,6 +120,7 @@ export class RolesService {
           require2fa: input.require2fa,
           ...(input.loginHours !== undefined ? { loginHours: hoursData(input.loginHours) } : {}),
           ...(input.monitorNumberIds !== undefined ? { monitorNumberIds: await this.cleanNumbers(actor.tenantId, input.monitorNumberIds) } : {}),
+          ...(input.hiddenScreens !== undefined ? { hiddenScreens: [...new Set(input.hiddenScreens)] } : {}),
           active: input.active,
           permissions: { create: toRows(input.permissions) },
         },
@@ -173,6 +176,7 @@ function view(role: {
   require2fa: boolean
   loginHours: unknown
   monitorNumberIds: string[]
+  hiddenScreens: string[]
   active: boolean
   permissions: { module: string; canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean; canExport: boolean; scope: Scope }[]
   _count: { users: number }
@@ -185,6 +189,7 @@ function view(role: {
     require2fa: role.require2fa,
     loginHours: cleanLoginHours(role.loginHours),
     monitorNumberIds: role.monitorNumberIds,
+    hiddenScreens: role.hiddenScreens,
     active: role.active,
     userCount: role._count.users,
     permissions: role.permissions.map((p) => ({

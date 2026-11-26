@@ -927,13 +927,13 @@ function StepEditor({ step: s, ctx, disabled, onChange }: { step: Step; ctx: Ctx
           <div className="flex flex-wrap gap-2">
             {tpl && (
               <Button type="button" size="sm" variant="outline" asChild>
-                <a href={`/email-marketing/${tpl.id}`} target="_blank" rel="noreferrer">
+                <a href={`/email-marketing/${tpl.id}?completo=1`} target="_blank" rel="noreferrer">
                   <ExternalLinkIcon /> Editar modelo
                 </a>
               </Button>
             )}
             <Button type="button" size="sm" variant="ghost" asChild>
-              <a href="/email-marketing?aba=modelos" target="_blank" rel="noreferrer">
+              <a href="/email-marketing?aba=modelos&completo=1" target="_blank" rel="noreferrer">
                 <PlusIcon /> Criar modelo
               </a>
             </Button>

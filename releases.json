@@ -2,6 +2,33 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.79",
+      "date": "2026-11-26",
+      "title": "Telas do menu por perfil, busca de CT-e pela nota fiscal e XML no chat",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Administração",
+          "text": "Perfis de acesso: cada módulo mostra as telas do menu dele (ex.: em \"CT-e e conciliação\": CT-e, Conciliação, Diagnóstico das tabelas e Relatórios de frete) e dá para desmarcar as que o perfil não deve ver. A tela some do menu e da busca, e quem abrir pelo endereço vê \"Tela não liberada\". Perfis que já existem continuam vendo todas."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "A busca de CT-e acha também pelo número da nota fiscal (ex.: 151749 ou 151749/1)."
+        },
+        {
+          "type": "melhoria",
+          "area": "Atendimento",
+          "text": "O chat do WhatsApp envia XML (NF-e, CT-e), também nas respostas rápidas."
+        },
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "PDF (DACTE) e os links que abrem em nova janela abriam o app de Chat no computador com o CRM instalado; agora abrem no CRM completo."
+        }
+      ]
+    },
+    {
       "version": "3.0.78",
       "date": "2026-11-25",
       "title": "Diagnóstico das tabelas de frete pelos CT-es",

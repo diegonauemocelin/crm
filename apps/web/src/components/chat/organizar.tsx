@@ -42,7 +42,7 @@ export interface QuickReply {
   fileName?: string | null
 }
 
-const REPLY_FILE_TYPES = 'application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,image/jpeg,image/png,image/webp,video/mp4'
+const REPLY_FILE_TYPES = 'application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.xml,image/jpeg,image/png,image/webp,video/mp4'
 export const REPLY_MAX_FILES = 3
 
 /**

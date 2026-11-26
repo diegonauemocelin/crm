@@ -1,9 +1,11 @@
 import { AlertTriangleIcon, InboxIcon, type LucideIcon, ShieldOffIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useLocation } from 'react-router'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ApiError, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
+import { screenHidden } from '@/lib/navigation'
 import type { Action } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -101,6 +103,15 @@ export function RequirePermission({ module, action = 'view', children }: { modul
       />
     )
   }
+  return <>{children}</>
+}
+
+/** Tela do menu que o perfil escondeu (Perfis de acesso › telas do módulo): mostra o aviso no lugar dela. */
+export function ScreenGuard({ children }: { children: ReactNode }) {
+  const { me } = useAuth()
+  const { pathname, search } = useLocation()
+  if (!me?.role.isSystem && screenHidden(me?.hiddenScreens, pathname, search))
+    return <EmptyState icon={ShieldOffIcon} title="Tela não liberada" description="Seu perfil de acesso não tem esta tela liberada. Fale com o administrador do sistema." />
   return <>{children}</>
 }
 

@@ -2061,7 +2061,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const detected = detectOutgoing(file.buffer, file.originalname, voice)
     // Foto ou vídeo grande vai como documento (o cliente recebe o arquivo original, sem a compressão do WhatsApp).
     const kind = detected && (detected.kind === 'image' || detected.kind === 'video') && file.size > INLINE_MEDIA_MAX_BYTES ? { ...detected, kind: 'document' as const } : detected
-    if (!kind) throw new BadRequestException(voice ? 'Não foi possível ler o áudio gravado. Tente gravar de novo.' : 'Tipo de arquivo não aceito. Envie foto (JPG, PNG, WEBP), vídeo MP4, áudio (OGG, MP3, M4A), PDF, Word, Excel, CSV ou TXT.')
+    if (!kind) throw new BadRequestException(voice ? 'Não foi possível ler o áudio gravado. Tente gravar de novo.' : 'Tipo de arquivo não aceito. Envie foto (JPG, PNG, WEBP), vídeo MP4, áudio (OGG, MP3, M4A), PDF, Word, Excel, CSV, TXT ou XML.')
     const c = await this.sendContext(user, id)
     const fileName = safeFileName(uploadName(file.originalname), kind.ext)
     const cap = caption?.trim().slice(0, 1000) || null
@@ -2448,7 +2448,7 @@ export class ChatService implements OnApplicationBootstrap, OnModuleDestroy {
     const current = replyFiles(found)
     if (current.length >= QUICK_REPLY_MAX_FILES) throw new BadRequestException(`No máximo ${QUICK_REPLY_MAX_FILES} arquivos por resposta rápida.`)
     const kind = detectOutgoing(file.buffer, file.originalname ?? '')
-    if (!kind) throw new BadRequestException('Tipo de arquivo não aceito. Use PDF, Word, Excel, CSV, TXT, foto (JPG, PNG, WEBP) ou vídeo MP4.')
+    if (!kind) throw new BadRequestException('Tipo de arquivo não aceito. Use PDF, Word, Excel, CSV, TXT, XML, foto (JPG, PNG, WEBP) ou vídeo MP4.')
     const fileName = safeFileName(uploadName(file.originalname), kind.ext)
     const asset = await this.files.saveBuffer(user.tenantId, 'whatsapp', file.buffer, kind.mime, kind.ext)
     const files = [...current, { fileId: asset.id, fileName }]

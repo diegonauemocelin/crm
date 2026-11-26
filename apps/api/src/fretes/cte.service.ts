@@ -623,8 +623,20 @@ export class CteService implements OnApplicationBootstrap {
     const term = f.search?.trim()
     if (term) {
       const digits = term.replace(/\D/g, '')
+      // Número da NF-e (até 9 dígitos, com ou sem a série "151749/1"): está dentro da chave da nota (posições 26 a 34).
+      const nfNumber = /^\d{1,9}(\s*[/-]\s*\d{1,3})?$/.test(term) ? Number(term.split(/[/-]/)[0]) : null
+      const byNf = nfNumber
+        ? (
+            await this.prisma.$queryRaw<{ id: string }[]>`
+              SELECT c.id FROM freight_ctes c
+              WHERE c."tenantId" = ${user.tenantId}::uuid
+                AND EXISTS (SELECT 1 FROM unnest(c."nfeKeys") k WHERE k ~ '^[0-9]{44}$' AND substring(k, 26, 9)::bigint = ${nfNumber})
+              LIMIT 500`
+          ).map((r) => r.id)
+        : []
       and.push({
         OR: [
+          ...(byNf.length ? [{ id: { in: byNf } }] : []),
           { number: { contains: term } },
           { recipientName: { contains: term, mode: 'insensitive' } },
           { senderName: { contains: term, mode: 'insensitive' } },

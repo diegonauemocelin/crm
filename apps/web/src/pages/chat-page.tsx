@@ -1966,7 +1966,7 @@ function Composer({ thread, replyTo, onClearReply, dropped, onDroppedUsed, compa
           type="file"
           multiple
           className="hidden"
-          accept="image/jpeg,image/png,image/webp,video/mp4,audio/ogg,audio/mpeg,audio/mp4,.m4a,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
+          accept="image/jpeg,image/png,image/webp,video/mp4,audio/ogg,audio/mpeg,audio/mp4,.m4a,application/pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.xml"
           onChange={(e) => {
             const list = [...(e.target.files ?? [])]
             e.target.value = ''
