@@ -1,4 +1,5 @@
 import { mapLimit } from './limite'
+import { pickVersionsAt } from './versoes'
 import { randomUUID } from 'node:crypto'
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { AuditService } from '../audit/audit.service'
@@ -471,8 +472,14 @@ export class CotacaoService {
     const key = cityKey(p.destCity)
     // Três buscas, cada uma pelo seu índice (juntas num OR, o banco lia a tabela de regras inteira: minutos por cotação).
     // A cidade também pelas regras com CEP: a cidade pode ter trocado de CEP (faixa nova por rua).
+    // Tempo de cada etapa: tabela que passa de 3 s fica no log (para achar a causa quando uma tabela estoura o limite).
+    const t0 = Date.now()
     const found = await Promise.all([
-      this.prisma.freightRule.findMany({ where: { versionId: v.id, cepStart: { lte: zip }, cepEnd: { gte: zip } }, take: 2000 }),
+      // Faixa de CEP pelo índice (versão + CEP): sem isso o Postgres lia a tabela de regras inteira (todas as versões de
+      // todas as tabelas), e uma tabela grande como a da Azul passava do limite de tempo da cotação.
+      this.prisma
+        .$transaction([this.prisma.$executeRawUnsafe('SET LOCAL enable_seqscan = off'), this.prisma.freightRule.findMany({ where: { versionId: v.id, cepStart: { lte: zip }, cepEnd: { gte: zip } }, take: 2000 })])
+        .then(([, rows]) => rows),
       p.destUf ? this.prisma.freightRule.findMany({ where: { versionId: v.id, cepStart: null, uf: p.destUf }, take: 2000 }) : Promise.resolve([]),
       key ? this.prisma.freightRule.findMany({ where: { versionId: v.id, cityKey: key }, take: 2000 }) : Promise.resolve([]),
     ])
@@ -481,6 +488,8 @@ export class CotacaoService {
     const settings = settingsOf(v.settings)
     const m = p.measures
     const match = matchRule(rows.map(ruleFromRow), { zip, uf: p.destUf, city: p.destCity }, weights(m, settings).taxed)
+    const took = Date.now() - t0
+    if (took > 3000) this.logger.warn(`Cotação lenta: tabela "${t.name}" levou ${took} ms para achar a regra (${rows.length} regra(s) lidas, CEP ${formatCep(zip)}, cidade ${p.destCity ?? '?'}/${p.destUf ?? '?'}).`)
     if (!match.rule) return no('SEM_COBERTURA', `${match.reason} Destino: ${p.destCity ?? '?'}/${p.destUf ?? '?'}, CEP ${formatCep(zip)}.`)
     const r = match.rule
     const label = match.by === 'CEP' ? `CEP ${formatCep(r.cepStart)} a ${formatCep(r.cepEnd)}` : match.by === 'CIDADE' ? `${r.city}${r.uf ? `/${r.uf}` : ''}` : `UF ${r.uf}`
@@ -1211,8 +1220,10 @@ export class CotacaoService {
     const siblings = new Set(await this.siblingUnits(user.tenantId, d.unitId, d.originCity, d.originUf))
     const tables = all.filter((t) => !t.unitIds.length || t.unitIds.some((id) => siblings.has(id)))
     const fees = await this.feesFor([d.carrierId], { doc: d.recipientDoc, destZip: p.destZip, destCity: p.destCity, destUf: p.destUf })
-    const versions = await this.prisma.freightTableVersion.findMany({ where: { tableId: { in: tables.map((t) => t.id) }, publishedAt: { not: null, lte: d.date } }, orderBy: { publishedAt: 'desc' }, select: { id: true, tableId: true } })
-    const results = await Promise.all(tables.map((t) => this.evaluate(t, p, input, { allowExpired: false, fees: fees.map(feeComponent), versionAt: versions.find((v) => v.tableId === t.id)?.id ?? null })))
+    // Versão de cada tabela na data do CT-e: a última publicada até lá, ou uma publicada depois que corrige a anterior
+    // e vale desde uma data (ctesFrom) até o CT-e.
+    const versions = pickVersionsAt(await this.prisma.freightTableVersion.findMany({ where: { tableId: { in: tables.map((t) => t.id) }, publishedAt: { not: null } }, select: { id: true, tableId: true, publishedAt: true, ctesFrom: true } }), d.date)
+    const results = await Promise.all(tables.map((t) => this.evaluate(t, p, input, { allowExpired: false, fees: fees.map(feeComponent), versionAt: versions.get(t.id) ?? null })))
     const best = results.filter((r) => r.status === 'OK' && r.total !== null).sort((a, b) => a.total! - b.total!)[0] ?? null
     // Sem resultado: o motivo de cada tabela, para quem confere saber o que ajustar (filial, vigência, destino, peso...).
     const reasons = [
