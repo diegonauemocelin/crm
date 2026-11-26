@@ -475,7 +475,11 @@ export class CotacaoService {
     // Tempo de cada etapa: tabela que passa de 3 s fica no log (para achar a causa quando uma tabela estoura o limite).
     const t0 = Date.now()
     const found = await Promise.all([
-      this.prisma.freightRule.findMany({ where: { versionId: v.id, cepStart: { lte: zip }, cepEnd: { gte: zip } }, take: 2000 }),
+      // Faixa de CEP pelo índice (versão + CEP): sem isso o Postgres lia a tabela de regras inteira (todas as versões de
+      // todas as tabelas), e uma tabela grande como a da Azul passava do limite de tempo da cotação.
+      this.prisma
+        .$transaction([this.prisma.$executeRawUnsafe('SET LOCAL enable_seqscan = off'), this.prisma.freightRule.findMany({ where: { versionId: v.id, cepStart: { lte: zip }, cepEnd: { gte: zip } }, take: 2000 })])
+        .then(([, rows]) => rows),
       p.destUf ? this.prisma.freightRule.findMany({ where: { versionId: v.id, cepStart: null, uf: p.destUf }, take: 2000 }) : Promise.resolve([]),
       key ? this.prisma.freightRule.findMany({ where: { versionId: v.id, cityKey: key }, take: 2000 }) : Promise.resolve([]),
     ])
