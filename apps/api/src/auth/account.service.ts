@@ -48,6 +48,8 @@ export class AccountService {
       role: user.role,
       seller,
       permissions: user.role.isSystem ? fullPermissions() : user.permissions,
+      // Telas do menu escondidas pelo perfil (o Administrador vê todas).
+      hiddenScreens: user.role.isSystem ? [] : ((await this.prisma.role.findUnique({ where: { id: user.role.id }, select: { hiddenScreens: true } }))?.hiddenScreens ?? []),
       modules: MODULES,
     }
   }

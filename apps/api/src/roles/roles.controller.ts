@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common'
 import { ApiProperty, ApiTags } from '@nestjs/swagger'
 import { Type } from 'class-transformer'
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, Length, MaxLength, ValidateNested, IsObject, IsUUID } from 'class-validator'
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, IsString, Length, MaxLength, ValidateNested, IsObject, IsUUID, Matches } from 'class-validator'
 import { CurrentUser, ReqContext, type RequestCtx, RequirePermission } from '../common/decorators'
 import { MODULE_KEYS, MODULES, type ModuleKey, type Scope } from '../common/permissions'
 import type { AuthUser } from '../common/types'
@@ -23,6 +23,7 @@ class RoleDto {
   @ApiProperty() @IsBoolean() require2fa!: boolean
   @ApiProperty({ required: false, description: 'Horário de acesso: { enabled, days[0..6] = { from, to } | null }' }) @IsOptional() @IsObject() loginHours?: Record<string, unknown> | null
   @ApiProperty({ required: false, description: 'Números de WhatsApp que o perfil monitora (vazio = todos)' }) @IsOptional() @IsArray() @ArrayMaxSize(100) @IsUUID('all', { each: true }) monitorNumberIds?: string[]
+  @ApiProperty({ required: false, description: 'Telas do menu que o perfil não vê (endereços, ex.: /fretes/conciliacao)' }) @IsOptional() @IsArray() @ArrayMaxSize(300) @IsString({ each: true }) @Matches(/^\/[a-z0-9/?=_-]{0,80}$/, { each: true }) hiddenScreens?: string[]
   @ApiProperty() @IsBoolean() active!: boolean
   @ApiProperty({ type: [PermissionDto] })
   @IsArray()

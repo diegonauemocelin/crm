@@ -248,11 +248,32 @@ export const NAVIGATION: NavGroup[] = [
 ]
 
 /** Telas "Em breve" só aparecem para o administrador do sistema: para os outros, seriam um clique sem resultado. */
-export function visibleNavigation(can: (module: string, action?: Action) => boolean, isAdmin = false): NavGroup[] {
-  const allowed = (i: NavItem) => (!i.phase || isAdmin) && (!i.adminOnly || isAdmin) && (i.anyOf ? i.anyOf.some((m) => can(m, 'view')) : !i.module || can(i.module, i.action ?? 'view'))
+export function visibleNavigation(can: (module: string, action?: Action) => boolean, isAdmin = false, hidden: string[] = []): NavGroup[] {
+  const allowed = (i: NavItem) => !hidden.includes(i.to) && (!i.phase || isAdmin) && (!i.adminOnly || isAdmin) && (i.anyOf ? i.anyOf.some((m) => can(m, 'view')) : !i.module || can(i.module, i.action ?? 'view'))
   return NAVIGATION.map((g) => ({ ...g, items: g.items.filter(allowed) })).filter(
     (g) => g.items.length > 0,
   )
+}
+
+/**
+ * Telas do menu de um módulo, para o perfil escolher quais vê (Perfis de acesso). Fica de fora o que não depende de
+ * módulo (Início, Minhas sugestões) e Configurações (as seções já seguem cada módulo).
+ */
+export function screensOfModule(module: string): { to: string; title: string; group: string; section?: string }[] {
+  const out: { to: string; title: string; group: string; section?: string }[] = []
+  for (const g of NAVIGATION)
+    for (const i of g.items) {
+      if (i.adminOnly || i.to === '/configuracoes' || out.some((x) => x.to === i.to)) continue
+      if (i.module === module || i.anyOf?.includes(module)) out.push({ to: i.to, title: i.title, group: g.title, section: i.section })
+    }
+  return out
+}
+
+/** A tela do menu está escondida para o perfil? Só a própria tela: as de detalhe (ex.: /fretes/ctes/:id) seguem o módulo. */
+export function screenHidden(hidden: string[] | undefined, pathname: string, search = ''): boolean {
+  if (!hidden?.length) return false
+  const it = findNavItem(pathname, search)?.item
+  return !!it && hidden.includes(it.to) && pathname === (it.to.split('?')[0] ?? '')
 }
 
 /**

@@ -15,13 +15,14 @@ const DOCS: Record<string, string> = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   csv: 'text/csv',
   txt: 'text/plain',
+  xml: 'application/xml',
 }
 
 const startsWith = (b: Buffer, sig: number[], at = 0) => sig.every((v, i) => b[at + i] === v)
 
 /**
  * Tipo do arquivo pelos bytes (não pela extensão nem pelo tipo informado pelo navegador).
- * Aceita foto (JPG/PNG/WEBP), vídeo MP4, áudio (OGG/MP3/M4A) e documentos comuns. Nada de executável, HTML ou SVG.
+ * Aceita foto (JPG/PNG/WEBP), vídeo MP4, áudio (OGG/MP3/M4A) e documentos comuns (inclusive XML de NF-e/CT-e). Nada de executável, HTML ou SVG.
  */
 export function detectOutgoing(buf: Buffer, fileName: string, voice = false): OutgoingFile | null {
   const ext = (/\.([a-z0-9]{1,5})$/i.exec(fileName)?.[1] ?? '').toLowerCase()
@@ -47,6 +48,8 @@ export function detectOutgoing(buf: Buffer, fileName: string, voice = false): Ou
   if (startsWith(buf, [0x50, 0x4b, 0x03, 0x04]) && (ext === 'docx' || ext === 'xlsx')) return { kind: 'document', mime: DOCS[ext]!, ext }
   if (startsWith(buf, [0xd0, 0xcf, 0x11, 0xe0]) && (ext === 'doc' || ext === 'xls')) return { kind: 'document', mime: DOCS[ext]!, ext }
   if ((ext === 'csv' || ext === 'txt') && !buf.subarray(0, 4096).includes(0)) return { kind: 'document', mime: DOCS[ext]!, ext }
+  // XML (NF-e, CT-e): texto que começa com "<" (pode ter o BOM antes).
+  if (ext === 'xml' && !buf.subarray(0, 4096).includes(0) && /^\uFEFF?\s*</.test(buf.toString('utf8', 0, 200))) return { kind: 'document', mime: DOCS.xml!, ext }
   return null
 }
 

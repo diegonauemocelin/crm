@@ -43,7 +43,7 @@ export const prefsSistema = {
 export function useSistemaAtual() {
   const { can, me } = useAuth()
   const { pathname, search } = useLocation()
-  const grupos = visibleNavigation(can, !!me?.role.isSystem)
+  const grupos = visibleNavigation(can, !!me?.role.isSystem, me?.hiddenScreens)
   const sistemas = sistemasVisiveis(grupos)
   const daRota = sistemaDoGrupo(findNavItem(pathname, search)?.group.title)
   useEffect(() => {

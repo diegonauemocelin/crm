@@ -27,6 +27,8 @@ import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { api, errorMessage } from '@/lib/api'
+import { screensOfModule } from '@/lib/navigation'
+import { cn } from '@/lib/utils'
 import type { ModuleDef, PermissionEntry, RoleRow } from '@/lib/types'
 import { FormError } from './auth/auth-layout'
 
@@ -181,9 +183,11 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
   )
   const [monitorNumberIds, setMonitorNumberIds] = useState<string[]>(() => role?.monitorNumberIds ?? [])
   const numbers = useQuery({ queryKey: ['roles', 'numeros-whatsapp'], queryFn: () => api.get<{ id: string; name: string; phone: string | null }[]>('/roles/numeros-whatsapp') })
+  const [hiddenScreens, setHiddenScreens] = useState<string[]>(() => role?.hiddenScreens ?? [])
   const [error, setError] = useState<string | null>(null)
-  const [initial] = useState(() => ({ name, description, require2fa, active, perms, loginHours, monitorNumberIds }))
-  const guard = useCloseGuard(isDirty(initial, { name, description, require2fa, active, perms, loginHours, monitorNumberIds }), onClose, 'o perfil')
+  const [initial] = useState(() => ({ name, description, require2fa, active, perms, loginHours, monitorNumberIds, hiddenScreens }))
+  const guard = useCloseGuard(isDirty(initial, { name, description, require2fa, active, perms, loginHours, monitorNumberIds, hiddenScreens }), onClose, 'o perfil')
+  const showScreen = (to: string, on: boolean) => setHiddenScreens((h) => (on ? h.filter((x) => x !== to) : [...new Set([...h, to])]))
 
   const toggle = (module: string, action: ActionKey, value: boolean) =>
     setPerms((prev) => {
@@ -205,6 +209,7 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
         require2fa,
         loginHours,
         monitorNumberIds: perms.monitoramento?.view ? monitorNumberIds : [],
+        hiddenScreens,
         active,
         permissions: Object.entries(perms)
           .filter(([, p]) => p.view)
@@ -238,7 +243,7 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
         >
           <DialogHeader>
             <DialogTitle>{role ? `Editar perfil: ${role.name}` : 'Novo perfil de acesso'}</DialogTitle>
-            <DialogDescription>Marque, módulo por módulo, o que este perfil pode fazer.</DialogDescription>
+            <DialogDescription>Marque, módulo por módulo, o que este perfil pode fazer. Com o módulo liberado, desmarque as telas do menu que o perfil não deve ver.</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -307,11 +312,25 @@ function RoleDialog({ role, modules, onClose }: { role: RoleRow | null; modules:
                       .map((m) => {
                         const p = perms[m.key]!
                         const all = ACTIONS.every((a) => p[a.key])
+                        const screens = screensOfModule(m.key)
                         return (
                           <TableRow key={m.key}>
                             <TableCell className="max-w-80 whitespace-normal">
                               <p className="font-medium">{m.label}</p>
                               {m.help && <p className="text-xs text-muted-foreground">{m.help}</p>}
+                              {screens.length > 0 && (
+                                <div className={cn('mt-1.5 space-y-1 rounded-md border border-dashed p-2', !p.view && 'opacity-50')}>
+                                  <p className="text-xs font-medium text-muted-foreground">Telas no menu</p>
+                                  {screens.map((s) => (
+                                    <label key={s.to} className="flex items-center gap-2 text-xs">
+                                      <Checkbox checked={p.view && !hiddenScreens.includes(s.to)} disabled={!p.view || screens.length === 1} onCheckedChange={(c) => showScreen(s.to, c === true)} aria-label={`Tela ${s.title} em ${m.label}`} />
+                                      {s.section ? `${s.section} › ` : ''}
+                                      {s.title}
+                                      {s.group !== m.group && <span className="text-muted-foreground">({s.group})</span>}
+                                    </label>
+                                  ))}
+                                </div>
+                              )}
                             </TableCell>
                             {ACTIONS.map((a) => (
                               <TableCell key={a.key} className="text-center">

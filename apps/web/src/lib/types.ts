@@ -43,6 +43,8 @@ export interface Me {
   /** Vendedor ligado a este login (define a base do perfil "somente os próprios"). */
   seller: { id: string; name: string } | null
   permissions: Record<string, PermissionEntry>
+  /** Telas do menu que o perfil não vê (endereços). Servidor antigo não manda: vê todas. */
+  hiddenScreens?: string[]
   modules: ModuleDef[]
 }
 
@@ -117,6 +119,8 @@ export interface RoleRow {
   loginHours?: { enabled: boolean; days: ({ from: string; to: string } | null)[] } | null
   /** Números de WhatsApp que o perfil monitora (vazio = todos). */
   monitorNumberIds?: string[]
+  /** Telas do menu escondidas (endereços); vazio = todas as do módulo. */
+  hiddenScreens?: string[]
   active: boolean
   userCount: number
   permissions: (PermissionEntry & { module: string })[]
