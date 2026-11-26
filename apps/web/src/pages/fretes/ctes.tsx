@@ -264,7 +264,7 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
           }}
         >
           <SearchIcon className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-          <Input className="pl-8" placeholder="Nº do CT-e, nome ou CNPJ do destinatário/remetente, cidade, chave do CT-e ou da NF-e" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input className="pl-8" placeholder="Nº do CT-e ou da NF, nome ou CNPJ do destinatário/remetente, cidade, chave do CT-e ou da NF-e" value={search} onChange={(e) => setSearch(e.target.value)} />
         </form>
         <Select value={carrier || '__all__'} onValueChange={(v) => setParam('transportadora', v === '__all__' ? '' : v)}>
           <SelectTrigger className="w-52" aria-label="Transportadora">
