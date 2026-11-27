@@ -20,6 +20,7 @@ type Frequency = 'SEMANAL' | 'QUINZENAL' | 'MENSAL'
 interface WeeklyConfig {
   enabled: boolean
   frequency: Frequency
+  sendDay: number
   toSellers: boolean
   time: string
   numberId: string | null
@@ -49,11 +50,20 @@ const readable = (ph: string) => {
   return m ? `(${m[1]}) ${m[2]}-${m[3]}` : ph
 }
 const STATUS: Record<string, string> = { ENVIADA: 'enviado', SEM_TELEFONE: 'sem telefone no cadastro' }
-/** Quando sai e o que cobre, em cada frequência. */
-const FREQ: Record<Frequency, { label: string; when: string; badge: string; sends: string; cycle: string }> = {
-  SEMANAL: { label: 'Semanal', when: 'Sexta, a partir de (Brasília)', badge: 'sexta', sends: 'toda sexta', cycle: 'de sexta a quinta (ex.: 16/10 a 22/10, enviado em 23/10)' },
-  QUINZENAL: { label: 'Quinzenal', when: 'Dias 1º e 16, a partir de (Brasília)', badge: 'dias 1º e 16', sends: 'nos dias 1º e 16', cycle: 'de 1 a 15 (enviado no dia 16) e de 16 ao fim do mês (enviado no dia 1º)' },
-  MENSAL: { label: 'Mensal', when: 'Dia 1º, a partir de (Brasília)', badge: 'dia 1º', sends: 'todo dia 1º', cycle: 'do mês anterior (enviado no dia 1º)' },
+const WEEKDAYS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']
+const FREQ_LABEL: Record<Frequency, string> = { SEMANAL: 'Semanal', QUINZENAL: 'Quinzenal', MENSAL: 'Mensal' }
+/** Dia do envio padrão ao trocar a frequência. */
+const DEFAULT_DAY: Record<Frequency, number> = { SEMANAL: 5, QUINZENAL: 1, MENSAL: 1 }
+/** Quando sai e o que cobre, pela frequência e pelo dia escolhido. */
+const freqInfo = (f: Frequency, day: number) => {
+  if (f === 'SEMANAL') {
+    const w = WEEKDAYS[day] ?? 'sexta'
+    const before = WEEKDAYS[(day + 6) % 7]
+    return { label: 'Semanal', badge: w, sends: `toda ${w}`.replace('toda sábado', 'todo sábado').replace('toda domingo', 'todo domingo'), cycle: `os 7 dias antes do envio (de ${w} a ${before})` }
+  }
+  if (f === 'QUINZENAL') return { label: 'Quinzenal', badge: 'dias 1º e 16', sends: 'nos dias 1º e 16', cycle: 'de 1 a 15 (enviado no dia 16) e de 16 ao fim do mês (enviado no dia 1º)' }
+  const d = day === 1 ? '1º' : String(day)
+  return { label: 'Mensal', badge: `dia ${d}`, sends: `todo dia ${d}`, cycle: `do mês anterior inteiro (enviado no dia ${d})` }
 }
 const statusText = (s: string) => STATUS[s] ?? (s.startsWith('ERRO') ? s.replace(/^ERRO:\s*/, 'erro: ') : s.toLowerCase())
 
@@ -61,11 +71,13 @@ const statusText = (s: string) => STATUS[s] ?? (s.startsWith('ERRO') ? s.replace
  * Resumo do vendedor (semanal, quinzenal ou mensal): enviado para o WhatsApp do cadastro de cada vendedor que recebeu
  * clientes da pré-venda repassados e para os números informados. Fica em Marketing › Relatórios e alertas.
  */
-export function ResumoVendedorCard() {
+export function ResumoVendedorCard({ slot = 1 }: { slot?: 1 | 2 }) {
   const { can } = useAuth()
   const qc = useQueryClient()
   const canEdit = can('mi_relatorios', 'edit') || can('cadastros', 'edit')
-  const q = useQuery({ queryKey: ['resumo-vendedor'], queryFn: () => api.get<WeeklyView>('/relatorios/resumo-vendedor') })
+  const url = `/relatorios/resumo-vendedor${slot === 2 ? '?envio=2' : ''}`
+  const id = `rv${slot}`
+  const q = useQuery({ queryKey: ['resumo-vendedor', slot], queryFn: () => api.get<WeeklyView>(url) })
   const [d, setD] = useState<WeeklyConfig | null>(null)
   const [pick, setPick] = useState<string | null>(null)
   const [managers, setManagers] = useState<string | null>(null)
@@ -76,10 +88,10 @@ export function ResumoVendedorCard() {
     }
   }, [q.data, d])
   const save = useMutation({
-    mutationFn: (c: WeeklyConfig) => api.put<WeeklyConfig>('/relatorios/resumo-vendedor', { ...c }),
+    mutationFn: (c: WeeklyConfig) => api.put<WeeklyConfig>(url, { ...c }),
     onSuccess: (c) => {
-      toast.success(c.enabled ? `Resumo do vendedor ligado: sai ${FREQ[c.frequency].sends}.` : 'Resumo do vendedor salvo (desligado).')
-      void qc.invalidateQueries({ queryKey: ['resumo-vendedor'] })
+      toast.success(c.enabled ? `Resumo do vendedor ligado: sai ${freqInfo(c.frequency, c.sendDay).sends}, a partir das ${c.time}.` : 'Resumo do vendedor salvo (desligado).')
+      void qc.invalidateQueries({ queryKey: ['resumo-vendedor', slot] })
     },
     onError: (err) => toast.error(errorMessage(err)),
   })
@@ -90,7 +102,8 @@ export function ResumoVendedorCard() {
   const noPhone = sellers.filter((s) => !s.hasPhone && (d.allSellers || d.sellerIds.includes(s.id)))
   const managerList = (managers ?? '').split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean)
   const valid = /^([01]\d|2[0-3]):[0-5]\d$/.test(d.time) && (d.allSellers || d.sellerIds.length > 0) && d.sections.length > 0 && d.gapMin >= 1 && d.gapMax <= 60 && d.gapMin <= d.gapMax && (d.toSellers || managerList.length > 0)
-  const freq = FREQ[d.frequency]
+  const freq = freqInfo(d.frequency, d.sendDay)
+  const savedFreq = freqInfo(v.config.frequency, v.config.sendDay)
   const current = { ...d, managerPhones: managerList }
   const isManager = pick === GESTOR
   const shown = isManager ? undefined : (v.reports.find((x) => x.sellerId === pick) ?? v.reports[0])
@@ -101,10 +114,11 @@ export function ResumoVendedorCard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-          <MessageCircleIcon className="size-4" /> Resumo do vendedor (WhatsApp)
-          {v.config.enabled ? <Badge>Ligado · {FREQ[v.config.frequency].label.toLowerCase()}, {FREQ[v.config.frequency].badge}, {v.config.time}</Badge> : <Badge variant="outline">Desligado</Badge>}
+          <MessageCircleIcon className="size-4" /> {slot === 2 ? 'Resumo do vendedor: 2º envio (WhatsApp)' : 'Resumo do vendedor (WhatsApp)'}
+          {v.config.enabled ? <Badge>Ligado · {savedFreq.label.toLowerCase()}, {savedFreq.badge}, {v.config.time}</Badge> : <Badge variant="outline">Desligado</Badge>}
         </CardTitle>
         <CardDescription>
+          {slot === 2 && 'Outro envio do mesmo resumo, com frequência, dia, horário e informações próprias (ex.: o mensal, com menos informações). '}
           Cada vendedor que recebeu clientes da pré-venda repassados no período recebe no WhatsApp do cadastro dele o resultado, com as informações escolhidas abaixo, e os números informados recebem o resumo da equipe. Quem não teve repasse no período não recebe.
         </CardDescription>
       </CardHeader>
@@ -115,15 +129,15 @@ export function ResumoVendedorCard() {
             <Switch checked={d.enabled} onCheckedChange={(enabled) => setD({ ...d, enabled })} disabled={!canEdit} />
           </label>
           <div className="space-y-2">
-            <Label htmlFor="rv-freq">Frequência</Label>
-            <Select value={d.frequency} onValueChange={(x) => setD({ ...d, frequency: x as Frequency })} disabled={!canEdit}>
-              <SelectTrigger id="rv-freq" className="w-full">
+            <Label htmlFor={`${id}-freq`}>Frequência</Label>
+            <Select value={d.frequency} onValueChange={(x) => setD({ ...d, frequency: x as Frequency, sendDay: DEFAULT_DAY[x as Frequency] })} disabled={!canEdit}>
+              <SelectTrigger id={`${id}-freq`} className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {(Object.keys(FREQ) as Frequency[]).map((k) => (
+                {(Object.keys(FREQ_LABEL) as Frequency[]).map((k) => (
                   <SelectItem key={k} value={k}>
-                    {FREQ[k].label}
+                    {FREQ_LABEL[k]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -132,13 +146,38 @@ export function ResumoVendedorCard() {
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="rv-time">{freq.when}</Label>
-              <Input id="rv-time" type="time" className="w-32" value={d.time} onChange={(e) => setD({ ...d, time: e.target.value })} disabled={!canEdit} />
+              <Label htmlFor={`${id}-day`}>Dia do envio</Label>
+              {d.frequency === 'QUINZENAL' ? (
+                <p className="flex h-9 items-center text-sm text-muted-foreground">Dias 1º e 16</p>
+              ) : (
+                <Select value={String(d.sendDay)} onValueChange={(x) => setD({ ...d, sendDay: Number(x) })} disabled={!canEdit}>
+                  <SelectTrigger id={`${id}-day`} className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {d.frequency === 'SEMANAL'
+                      ? WEEKDAYS.map((w, i) => (
+                          <SelectItem key={w} value={String(i)}>
+                            {w[0]!.toUpperCase() + w.slice(1)}
+                          </SelectItem>
+                        ))
+                      : Array.from({ length: 28 }, (_, i) => i + 1).map((n) => (
+                          <SelectItem key={n} value={String(n)}>
+                            Dia {n === 1 ? '1º' : n}
+                          </SelectItem>
+                        ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="rv-number">Número que envia</Label>
+              <Label htmlFor={`${id}-time`}>A partir de (Brasília)</Label>
+              <Input id={`${id}-time`} type="time" className="w-32" value={d.time} onChange={(e) => setD({ ...d, time: e.target.value })} disabled={!canEdit} />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor={`${id}-number`}>Número que envia</Label>
               <Select value={d.numberId ?? FIRST} onValueChange={(x) => setD({ ...d, numberId: x === FIRST ? null : x })} disabled={!canEdit}>
-                <SelectTrigger id="rv-number" className="w-full">
+                <SelectTrigger id={`${id}-number`} className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -171,7 +210,7 @@ export function ResumoVendedorCard() {
                 <SelectItem value="escolhidos">Só os vendedores escolhidos</SelectItem>
               </SelectContent>
             </Select>
-            {!d.allSellers && <MultiSelect id="rv-sellers" items={sellers} value={d.sellerIds} onChange={(sellerIds) => setD({ ...d, sellerIds })} placeholder="Escolha os vendedores" disabled={!canEdit} />}
+            {!d.allSellers && <MultiSelect id={`${id}-sellers`} items={sellers} value={d.sellerIds} onChange={(sellerIds) => setD({ ...d, sellerIds })} placeholder="Escolha os vendedores" disabled={!canEdit} />}
             {d.toSellers && noPhone.length > 0 && <p className="text-xs text-amber-700 dark:text-amber-400">Sem WhatsApp no cadastro (não recebem): {noPhone.map((s) => s.name).join(', ')}. Preencha o telefone em Configurações › Vendedores.</p>}
           </div>
           <div className="space-y-2">
@@ -186,8 +225,8 @@ export function ResumoVendedorCard() {
             <p className="text-xs text-muted-foreground">Uma mensagem por vez, com uma espera sorteada nesse intervalo antes da próxima, para o WhatsApp não tratar como spam. Com 10 vendedores e o padrão (2 a 10 min), o envio leva cerca de 1 hora.</p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="rv-managers">{d.toSellers ? 'Também para estes números (opcional)' : 'Números que recebem'}</Label>
-            <Textarea id="rv-managers" rows={2} placeholder="WhatsApp, um por linha. Ex.: (47) 99999-8888" value={managers ?? ''} onChange={(e) => setManagers(e.target.value)} disabled={!canEdit} />
+            <Label htmlFor={`${id}-managers`}>{d.toSellers ? 'Também para estes números (opcional)' : 'Números que recebem'}</Label>
+            <Textarea id={`${id}-managers`} rows={2} placeholder="WhatsApp, um por linha. Ex.: (47) 99999-8888" value={managers ?? ''} onChange={(e) => setManagers(e.target.value)} disabled={!canEdit} />
             <p className="text-xs text-muted-foreground">Cada número recebe uma mensagem só, com o total da equipe e uma linha por vendedor (ex.: gestor, diretoria).{d.toSellers ? ' Em branco, vai só para os vendedores.' : ''}</p>
             {!d.toSellers && !managerList.length && <p className="text-xs text-destructive">Informe ao menos um número.</p>}
           </div>

@@ -40,6 +40,9 @@ export interface SellerWeekly {
   enabled: boolean
   /** Semanal (sexta), quinzenal (dias 1º e 16) ou mensal (dia 1º). */
   frequency: ReportFrequency
+  /** Dia do envio: no semanal, o dia da semana (0 domingo ... 6 sábado; padrão 5, sexta); no mensal, o dia do mês
+   * (1 a 28; padrão 1). O quinzenal sai sempre nos dias 1º e 16. */
+  sendDay: number
   /** Horário de São Paulo (HH:MM) a partir do qual o resumo sai, no dia do envio. */
   time: string
   /** Cada vendedor recebe o dele. Desligado: só os números informados (managerPhones) recebem o resumo da equipe. */
@@ -57,20 +60,32 @@ export interface SellerWeekly {
   gapMax: number
 }
 
-export const DEFAULT_WEEKLY: SellerWeekly = { enabled: false, frequency: 'SEMANAL', toSellers: true, time: '08:00', numberId: null, allSellers: true, sellerIds: [], sections: DEFAULT_SECTIONS, managerPhones: [], gapMin: 2, gapMax: 10 }
+export const DEFAULT_WEEKLY: SellerWeekly = { enabled: false, frequency: 'SEMANAL', sendDay: 5, toSellers: true, time: '08:00', numberId: null, allSellers: true, sellerIds: [], sections: DEFAULT_SECTIONS, managerPhones: [], gapMin: 2, gapMax: 10 }
 
-export function cleanWeekly(raw: Partial<SellerWeekly> | null | undefined): SellerWeekly {
+/** Dia do envio válido para a frequência (semanal: 0 a 6, padrão sexta; mensal: 1 a 28, padrão dia 1º). */
+export function sendDayOf(frequency: ReportFrequency, v: unknown) {
+  const n = Math.round(Number(v))
+  if (frequency === 'SEMANAL') return v !== null && v !== undefined && v !== '' && Number.isFinite(n) && n >= 0 && n <= 6 ? n : 5
+  if (frequency === 'MENSAL') return Number.isFinite(n) && n >= 1 && n <= 28 ? n : 1
+  return 1
+}
+
+/** Configuração limpa. `defaults` muda o padrão (o 2º envio começa mensal, com menos informações). */
+export function cleanWeekly(raw: Partial<SellerWeekly> | null | undefined, defaults: Partial<SellerWeekly> = {}): SellerWeekly {
   const r = raw ?? {}
-  const sections = Array.isArray(r.sections) ? WEEKLY_SECTIONS.map((s) => s.key).filter((k) => (r.sections as string[]).includes(k)) : DEFAULT_SECTIONS
+  const base = { ...DEFAULT_WEEKLY, ...defaults }
+  const sections = Array.isArray(r.sections) ? WEEKLY_SECTIONS.map((s) => s.key).filter((k) => (r.sections as string[]).includes(k)) : base.sections
+  const frequency = FREQUENCIES.includes(r.frequency as ReportFrequency) ? (r.frequency as ReportFrequency) : base.frequency
   return {
     enabled: r.enabled === true,
-    frequency: FREQUENCIES.includes(r.frequency as ReportFrequency) ? (r.frequency as ReportFrequency) : 'SEMANAL',
+    frequency,
+    sendDay: sendDayOf(frequency, r.sendDay),
     toSellers: r.toSellers !== false,
     time: typeof r.time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(r.time) ? r.time : DEFAULT_WEEKLY.time,
     numberId: typeof r.numberId === 'string' ? r.numberId : null,
     allSellers: r.allSellers !== false,
     sellerIds: Array.isArray(r.sellerIds) ? [...new Set(r.sellerIds.filter((x): x is string => typeof x === 'string'))].slice(0, 500) : [],
-    sections: sections.length ? sections : DEFAULT_SECTIONS,
+    sections: sections.length ? sections : base.sections,
     ...weeklyGap(r.gapMin, r.gapMax),
     managerPhones: Array.isArray(r.managerPhones) ? [...new Set(r.managerPhones.map((x) => normalizePhone(String(x))).filter((x): x is string => !!x))].slice(0, 10) : [],
   }
@@ -100,12 +115,12 @@ const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
  * Ciclo de sexta a quinta (horário de São Paulo). Na sexta, a partir do horário, o resumo do ciclo que terminou na
  * quinta (ontem) está pronto para sair. Fora da sexta, devolve o último ciclo completo (para a prévia), sem "due".
  */
-export function weeklyCycle(time: string, now = new Date()) {
+export function weeklyCycle(time: string, now = new Date(), sendWeekday = 5) {
   const local = new Date(now.getTime() - 3 * 3_600_000)
   const today = local.toISOString().slice(0, 10)
   const weekday = local.getUTCDay() // 0 domingo ... 5 sexta
   // Última sexta-feira até hoje (hoje, se for sexta): é o dia do envio; o ciclo é a semana anterior a ele.
-  const sendDay = new Date(Date.parse(`${today}T00:00:00Z`) - ((weekday - 5 + 7) % 7) * DAY).toISOString().slice(0, 10)
+  const sendDay = new Date(Date.parse(`${today}T00:00:00Z`) - ((weekday - sendWeekday + 7) % 7) * DAY).toISOString().slice(0, 10)
   const to = new Date(`${sendDay}T00:00:00-03:00`)
   const from = new Date(to.getTime() - 7 * DAY)
   const fromDay = new Date(Date.parse(`${sendDay}T00:00:00Z`) - 7 * DAY).toISOString().slice(0, 10)
@@ -117,7 +132,7 @@ export function weeklyCycle(time: string, now = new Date()) {
     to,
     prevFrom: new Date(from.getTime() - 7 * DAY),
     label: `${ddmm(fromDay)} a ${ddmm(toDay)}`,
-    due: weekday === 5 && today === sendDay && local.toISOString().slice(11, 16) >= time,
+    due: weekday === sendWeekday && today === sendDay && local.toISOString().slice(11, 16) >= time,
   }
 }
 
@@ -132,8 +147,8 @@ const shiftMonth = (iso: string, n: number) => {
  * Ciclo do resumo na frequência escolhida (horário de São Paulo). Quinzenal: 1 a 15 (sai no dia 16) e 16 ao fim do
  * mês (sai no dia 1º). Mensal: o mês anterior (sai no dia 1º). "due" só no dia do envio, a partir do horário.
  */
-export function reportCycle(frequency: ReportFrequency, time: string, now = new Date()): ReportCycle {
-  if (frequency === 'SEMANAL') return { ...weeklyCycle(time, now), word: 'semanal' }
+export function reportCycle(frequency: ReportFrequency, time: string, now = new Date(), sendDay?: number): ReportCycle {
+  if (frequency === 'SEMANAL') return { ...weeklyCycle(time, now, sendDayOf('SEMANAL', sendDay)), word: 'semanal' }
   const local = new Date(now.getTime() - 3 * 3_600_000).toISOString()
   const today = local.slice(0, 10)
   const day = Number(today.slice(8, 10))
@@ -141,29 +156,35 @@ export function reportCycle(frequency: ReportFrequency, time: string, now = new 
   const at = (iso: string) => new Date(`${iso}T00:00:00-03:00`)
   const dayOf = (monthIso: string, d: number) => `${monthIso.slice(0, 8)}${String(d).padStart(2, '0')}`
   let fromDay: string
-  let sendDay: string
+  let sendIso: string
   let prevFromDay: string
+  // Fim do período (exclusivo): no mensal é o dia 1º do mês do envio, mesmo que o envio seja depois.
+  let endDay: string
   if (frequency === 'MENSAL') {
-    sendDay = month
-    fromDay = shiftMonth(month, -1)
-    prevFromDay = shiftMonth(month, -2)
+    const n = sendDayOf('MENSAL', sendDay)
+    // Antes do dia do envio, o último envio foi no mês passado (o período é o mês anterior a ele).
+    const sendMonth = day >= n ? month : shiftMonth(month, -1)
+    sendIso = dayOf(sendMonth, n)
+    endDay = sendMonth
+    fromDay = shiftMonth(sendMonth, -1)
+    prevFromDay = shiftMonth(sendMonth, -2)
   } else if (day >= 16) {
-    sendDay = dayOf(month, 16)
+    sendIso = endDay = dayOf(month, 16)
     fromDay = month
     prevFromDay = dayOf(shiftMonth(month, -1), 16)
   } else {
-    sendDay = month
+    sendIso = endDay = month
     fromDay = dayOf(shiftMonth(month, -1), 16)
     prevFromDay = shiftMonth(month, -1)
   }
-  const toDay = new Date(Date.parse(`${sendDay}T00:00:00Z`) - DAY).toISOString().slice(0, 10)
+  const toDay = new Date(Date.parse(`${endDay}T00:00:00Z`) - DAY).toISOString().slice(0, 10)
   return {
-    key: sendDay,
+    key: sendIso,
     from: at(fromDay),
-    to: at(sendDay),
+    to: at(endDay),
     prevFrom: at(prevFromDay),
     label: `${ddmm(fromDay)} a ${ddmm(toDay)}`,
-    due: today === sendDay && local.slice(11, 16) >= time,
+    due: today === sendIso && local.slice(11, 16) >= time,
     word: FREQUENCY_WORD[frequency],
   }
 }
