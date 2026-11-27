@@ -34,6 +34,16 @@ interface VolumeRow {
   height: string
   /** Produto de onde vieram o peso e as medidas (busca pelo SKU no cadastro da Magazord). */
   product?: { sku: string; name: string; warning: string | null }
+  /** Caixa cadastrada escolhida (as medidas vêm dela e podem ser alteradas). */
+  box?: string
+}
+
+/** Caixa pelo número ou nome digitado: "12" acha "Caixa 12" ou "CX 12"; o nome inteiro também vale. */
+function findBox(boxes: FreightBox[], typed: string): FreightBox | null {
+  const t = typed.trim().toLowerCase()
+  if (!t) return null
+  const active = boxes.filter((b) => b.active)
+  return active.find((b) => b.name.trim().toLowerCase() === t) ?? (/^\d+$/.test(t) ? (active.find((b) => (b.name.match(/\d+/g) ?? ([] as string[])).includes(t)) ?? null) : null)
 }
 
 /** Produto pelo SKU: peso (kg) e medidas (cm) por unidade, do cadastro da Magazord. */
@@ -411,6 +421,12 @@ function NewQuote() {
   const [cargoValue, setCargoValue] = useState<number | null>(null)
   const [weight, setWeight] = useState('')
   const [volumes, setVolumes] = useState<VolumeRow[]>([emptyVolume()])
+  const boxList = useQuery({ queryKey: ['fretes', 'caixas'], queryFn: () => api.get<FreightBox[]>('/fretes/caixas'), staleTime: 5 * 60_000 })
+  const boxes = (boxList.data ?? []).filter((b) => b.active)
+  const pickBox = (i: number, typed: string) => {
+    const b = findBox(boxes, typed)
+    setVolumes((prev) => prev.map((v, j) => (j !== i ? v : b ? { ...v, box: b.name, length: String(b.length), width: String(b.width), height: String(b.height) } : { ...v, box: typed })))
+  }
   const [goodsType, setGoodsType] = useState('')
   const [reference, setReference] = useState('')
   const [erpType, setErpType] = useState<'ORCAMENTO' | 'PRE_NOTA'>('ORCAMENTO')
@@ -744,7 +760,18 @@ function NewQuote() {
                               {v.product.warning && <span className="block text-amber-700 dark:text-amber-400">{v.product.warning}</span>}
                             </>
                           ) : (
-                            <span className="text-muted-foreground">Caixa (medida total)</span>
+                            <div className="space-y-0.5">
+                              <Input
+                                aria-label={`Caixa do volume ${i + 1}`}
+                                list="cotacao-caixas"
+                                className="h-8 text-xs"
+                                placeholder="Caixa nº ou nome"
+                                title="Digite o número ou escolha a caixa cadastrada: as medidas são preenchidas e podem ser alteradas (ex.: altura menor quando a caixa é cortada)."
+                                value={v.box ?? ''}
+                                onChange={(e) => pickBox(i, e.target.value)}
+                              />
+                              <span className="text-muted-foreground">{v.box && findBox(boxes, v.box) ? 'Medidas da caixa (pode alterar)' : 'Caixa (medida total)'}</span>
+                            </div>
                           )}
                         </TableCell>
                         {(['quantity', 'weight', 'length', 'width', 'height'] as const).map((k) => (
@@ -762,6 +789,11 @@ function NewQuote() {
                   </TableBody>
                 </Table>
               </div>
+              <datalist id="cotacao-caixas">
+                {boxes.map((b) => (
+                  <option key={b.id} value={b.name}>{`${b.length} × ${b.width} × ${b.height} cm`}</option>
+                ))}
+              </datalist>
               <BoxSuggestion volumes={volumes} onUse={setVolumes} />
             </div>
 
