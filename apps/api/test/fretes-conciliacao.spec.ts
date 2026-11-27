@@ -63,3 +63,13 @@ describe('fretes: conciliação do CT-e', () => {
     expect(normName('T-CPF')).toBe(normName('TCPF'))
   })
 })
+
+describe('ICMS repetido como componente', () => {
+  it('"IMP REPASSADO" (Azurelog) com o valor do ICMS é o próprio ICMS, não taxa não prevista', async () => {
+    const { isIcmsName, normName } = await import('../src/fretes/conciliacao')
+    expect(isIcmsName(normName('IMP REPASSADO'))).toBe(true)
+    expect(isIcmsName(normName('ICMS ST'))).toBe(true)
+    expect(isIcmsName(normName('IMPRESSÃO DE DOCUMENTO'))).toBe(false)
+    expect(isIcmsName(normName('FRETE PESO'))).toBe(false)
+  })
+})
