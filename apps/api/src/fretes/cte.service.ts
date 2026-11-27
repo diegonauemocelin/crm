@@ -13,6 +13,9 @@ import { allowedUnits, assertCan } from './acesso'
 import { normalizeCep } from './cep'
 import { type ExpectedRef, reconcile, type Tolerance } from './conciliacao'
 import { type DiagCte, diagnose } from './diagnostico'
+import { CTE_AI_PROMPT, cteAiInput, cteXmlExtras, parseCteAi } from './cte-ia'
+import { GEMINI_MODELS, SECRET_KEY } from '../assistente/constantes'
+import { decrypt } from '../common/crypto'
 import { CotacaoService, DROP_OFF_CODE, dropOffOf, type QuoteResult } from './cotacao.service'
 import { confrontNfeCte, DEFAULT_NFE_TOLERANCE } from './confronto'
 import { autoCarrierFromCte, companyRoles, type CteData, internalRateFrom, parseCteCancel, parseCteXml, type RateLearning } from './cte'
@@ -177,6 +180,8 @@ export class CteService implements OnApplicationBootstrap {
       difference: n(c.difference),
       recDetail: c.recDetail,
       recAt: c.recAt,
+      aiAnalysis: c.aiAnalysis,
+      aiAnalysisAt: c.aiAnalysisAt,
       decision: c.decision,
       approvedValue: n(c.approvedValue),
       decisionNote: c.decisionNote,
@@ -727,6 +732,86 @@ export class CteService implements OnApplicationBootstrap {
     ])
     const confront = (await this.confrontFor(user.tenantId, [c])).get(c.id) ?? null
     return this.view(c, { carrierName: carrier?.name ?? null, unitName: unit?.name ?? null, shipment, invoice, nfeConfront: confront })
+  }
+
+  /**
+   * Análise inteligente (Gemini, a chave gratuita já cadastrada no CRM): manda o CT-e (com observações e pesos do XML), a
+   * conciliação e a tabela do destino (todas as faixas, componentes e parâmetros) e guarda a explicação no CT-e.
+   */
+  async aiAnalyze(user: AuthUser, id: string) {
+    assertCan(user, 'fretes_cte', 'view')
+    const c = await this.find(user, id)
+    const apiKey = await this.geminiKey(user.tenantId)
+    if (!apiKey) throw new BadRequestException('Cadastre a chave do Gemini (gratuita) em Marketplaces › Assistente ML › Configurações (ou no e-mail marketing) para usar a análise inteligente.')
+    const xml = c.fileId ? (await this.files.read(c.fileId).catch(() => null))?.content.toString('utf8') ?? null : null
+    // Referência: a cotação do pedido ou a tabela na data do CT-e (a mesma da conciliação), com as faixas do destino.
+    const shipment = c.shipmentId ? await this.prisma.freightShipment.findUnique({ where: { id: c.shipmentId }, select: { code: true, expected: true } }) : null
+    let ref: QuoteResult | null = null
+    if (!shipment?.expected && c.carrierId && c.unitId && c.destZip && c.weight) {
+      const r = await this.quotes.expectedByTable(user, { unitId: c.unitId, carrierId: c.carrierId, destZip: c.destZip, destCity: c.cityFim, destUf: c.ufFim, personType: c.recipientDoc?.length === 11 ? 'PF' : 'PJ', recipientDoc: c.recipientDoc, cargoValue: n(c.cargoValue) ?? 0, weight: Number(c.weight), date: c.issuedAt ?? c.createdAt, originCity: c.cityIni, originUf: c.ufIni }).catch(() => null)
+      if (r && 'total' in r) ref = r
+    }
+    const versionId = ref?.versionId ?? (shipment?.expected as { versionId?: string } | null)?.versionId ?? null
+    const version = versionId ? await this.prisma.freightTableVersion.findUnique({ where: { id: versionId }, select: { number: true, components: true, settings: true, table: { select: { name: true, validFrom: true, validTo: true } } } }) : null
+    const ruleId = ref?.rule?.id ?? (shipment?.expected as { rule?: { id?: string } } | null)?.rule?.id ?? null
+    const rule = ruleId ? await this.prisma.freightRule.findUnique({ where: { id: ruleId } }) : null
+    const sameDest = rule
+      ? await this.prisma.freightRule.findMany({
+          where: { versionId: rule.versionId, ...(rule.cepStart !== null ? { cepStart: rule.cepStart, cepEnd: rule.cepEnd } : rule.cityKey ? { cityKey: rule.cityKey, cepStart: null } : { uf: rule.uf, cityKey: null, cepStart: null }) },
+          orderBy: { weightMin: 'asc' },
+          take: 60,
+          select: { weightMin: true, weightMax: true, values: true, note: true, deadlineDays: true },
+        })
+      : []
+    const payload = {
+      cte: { numero: c.number, serie: c.series, emissao: c.issuedAt, transportadora: c.emitName, origem: `${c.cityIni}/${c.ufIni}`, destino: `${c.cityFim}/${c.ufFim}`, cepDestino: c.destZip, destinatario: c.recipientName, valorCarga: n(c.cargoValue), pesoConsiderado: n(c.weight), volumes: c.volumes, total: Number(c.total), componentes: c.components, icms: c.icms, papelDaEmpresa: c.companyRoles, situacaoFiscal: c.fiscalStatus, ...(xml ? cteXmlExtras(xml) : {}) },
+      conciliacao: { situacao: c.recStatus, tipos: c.recTypes, esperado: n(c.expectedTotal), diferenca: n(c.difference), detalhe: c.recDetail },
+      referencia: shipment?.expected ? { tipo: 'COTACAO_DO_PEDIDO', pedido: shipment.code, cotacao: shipment.expected } : ref ? { tipo: 'TABELA_NA_DATA_DO_CTE', tabela: ref.tableName, versao: ref.versionNumber, regraUsada: ref.rule?.label ?? null, pesos: ref.weights, componentesCalculados: ref.components, icms: ref.icms, total: ref.total, avisos: ref.warnings } : null,
+      tabela: version ? { nome: version.table.name, vigencia: [version.table.validFrom, version.table.validTo], versao: version.number, componentes: version.components, parametros: version.settings, faixasDoDestino: sameDest.map((r) => ({ pesoDe: n(r.weightMin), pesoAte: n(r.weightMax), valores: r.values, prazo: r.deadlineDays, observacao: r.note })) } : null,
+    }
+    const { text, model } = await this.gemini(apiKey, `${CTE_AI_PROMPT}\n\n${cteAiInput(payload)}`)
+    const result = { ...parseCteAi(text), model, by: user.name }
+    await this.prisma.freightCte.update({ where: { id }, data: { aiAnalysis: result as unknown as Prisma.InputJsonValue, aiAnalysisAt: new Date() } })
+    return { aiAnalysis: result, aiAnalysisAt: new Date() }
+  }
+
+  /** Chave do Gemini: a do Assistente ML ou, se não houver, a do e-mail marketing (como no chat). */
+  private async geminiKey(tenantId: string) {
+    let enc = (await this.settings.get<{ enc?: string }>(tenantId, SECRET_KEY('gemini'), {})).enc
+    if (!enc) enc = (await this.settings.get<{ apiKeyEnc?: string | null }>(tenantId, 'email_ia', {})).apiKeyEnc ?? undefined
+    if (!enc) return null
+    try {
+      return decrypt(enc)
+    } catch {
+      return null
+    }
+  }
+
+  /** Uma chamada ao Gemini (plano gratuito), tentando os modelos em ordem; resposta em JSON. */
+  private async gemini(apiKey: string, prompt: string) {
+    let last = ''
+    for (const model of GEMINI_MODELS) {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 8192, responseMimeType: 'application/json' } }),
+        signal: AbortSignal.timeout(2 * 60_000),
+      }).catch((e: unknown) => {
+        last = (e as Error).message
+        return null
+      })
+      if (!res) continue
+      const data = (await res.json().catch(() => ({}))) as { error?: { message?: string }; candidates?: { content?: { parts?: { text?: string }[] } }[] }
+      if (!res.ok) {
+        last = data.error?.message ?? `HTTP ${res.status}`
+        if (res.status === 400 || res.status === 401 || res.status === 403) break
+        continue
+      }
+      const text = (data.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('')
+      if (text) return { text, model }
+      last = 'resposta vazia'
+    }
+    throw new BadRequestException(`O Gemini não respondeu: ${last || 'tente de novo em instantes'}.`)
   }
 
   async xml(user: AuthUser, id: string) {

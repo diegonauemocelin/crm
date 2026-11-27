@@ -3307,6 +3307,10 @@ model FreightCte {
   @@unique([tenantId, key])
   @@index([tenantId, issuedAt])
   @@index([tenantId, recStatus])
+  /// Análise inteligente (IA) da conciliação: CteAiResult (fretes/cte-ia.ts) + modelo e data.
+  aiAnalysis    Json?
+  aiAnalysisAt  DateTime?
+
   @@index([tenantId, carrierId])
   @@map("freight_ctes")
 }
