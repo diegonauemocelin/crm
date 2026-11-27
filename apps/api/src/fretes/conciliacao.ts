@@ -65,7 +65,8 @@ export const normName = (s: string | null | undefined) =>
     .replace(/^PEDAGIOFRACAO.*/, 'PEDAGIO')
     .replace(/^ADVALOREM$/, 'ADVALOREM')
 
-const ICMS_NAMES = new Set(['ICMS', 'IMPOSTO', 'IMPOSTOS', 'OUTROS', 'TRIBUTOS'])
+/** Linha do CT-e que é o próprio ICMS somado ao frete ("OUTROS", "IMP REPASSADO" da Azurelog...), pelo nome já normalizado. */
+export const isIcmsName = (n: string) => /^(ICMS\w*|IMPOSTOS?|IMPREPASSADO|IMPOSTOREPASSADO|IMPOSTOSREPASSADOS|OUTROS|TRIBUTOS?)$/.test(n)
 const LINE_TOLERANCE = 0.02
 
 export function reconcile(expected: ExpectedRef, cte: ChargedCte, tol: Tolerance): RecResult {
@@ -82,7 +83,7 @@ export function reconcile(expected: ExpectedRef, cte: ChargedCte, tol: Tolerance
     const n = normName(c.name)
     if (!(Math.abs(c.value) > 0.004)) continue
     // ICMS somado ao frete costuma vir como "OUTROS" (ou "ICMS") com o mesmo valor do imposto do CT-e.
-    if (ICMS_NAMES.has(n) && icmsValue !== null && Math.abs(c.value - icmsValue) <= LINE_TOLERANCE && icmsCharged === null) {
+    if (isIcmsName(n) && icmsValue !== null && Math.abs(c.value - icmsValue) <= LINE_TOLERANCE && icmsCharged === null) {
       icmsCharged = c.value
       continue
     }
@@ -92,7 +93,8 @@ export function reconcile(expected: ExpectedRef, cte: ChargedCte, tol: Tolerance
       continue
     }
     seen.set(n, c.value)
-    const idx = exp.findIndex((e, i) => !used.has(i) && [e.cteName, e.name, e.code].some((x) => x && normName(x) === n))
+    // "Nomes no CT-e" aceita vários nomes separados por ; (ex.: "IN/AD-VALOREM C; IN/AD-VALOREM V" da Azul).
+    const idx = exp.findIndex((e, i) => !used.has(i) && [...(e.cteName ?? '').split(';'), e.name, e.code].some((x) => x && normName(x) === n))
     if (idx < 0) {
       types.add('TAXA_NAO_PREVISTA')
       lines.push({ name: c.name, expected: null, charged: c.value, difference: money(c.value), status: 'NAO_PREVISTA' })
