@@ -500,6 +500,15 @@ export class FretesController {
     return this.quotes.suggestBox(user, dto.items)
   }
 
+  /** Print do orçamento: a IA lê os itens e busca medida e peso de cada peça pela referência (nada é salvo). */
+  @Post('cotacao/pecas-ia')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseInterceptors(FileInterceptor('imagem', { limits: { fileSize: 8 * 1024 * 1024 } }))
+  partsFromImage(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File | undefined) {
+    return this.quotes.partsFromImage(user, file)
+  }
+
   @Get('campanhas')
   campaigns(@CurrentUser() user: AuthUser) {
     if (!(['fretes_cotacao', 'fretes_tabelas'] as const).some((m) => can(user.permissions, user.role.isSystem, m, 'view'))) throw new ForbiddenException('Você não tem permissão para esta ação.')

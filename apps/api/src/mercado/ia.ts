@@ -1,7 +1,7 @@
 /** Gemini (plano gratuito do Google) com a pesquisa do Google: o texto da resposta e os links que ele leu. */
 const GEMINI_API = 'https://generativelanguage.googleapis.com/v1beta/models'
 
-export async function geminiGrounded(apiKey: string, models: string[], prompt: string): Promise<{ text: string; sources: string[]; model: string }> {
+export async function geminiGrounded(apiKey: string, models: string[], prompt: string, images: { mime: string; data: string }[] = []): Promise<{ text: string; sources: string[]; model: string }> {
   let last = ''
   for (const model of models) {
     let res: Response
@@ -9,7 +9,7 @@ export async function geminiGrounded(apiKey: string, models: string[], prompt: s
       res = await fetch(`${GEMINI_API}/${encodeURIComponent(model)}:generateContent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.3, maxOutputTokens: 8192 } }),
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [...images.map((i) => ({ inline_data: { mime_type: i.mime, data: i.data } })), { text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.3, maxOutputTokens: 8192 } }),
         signal: AbortSignal.timeout(3 * 60_000),
       })
     } catch (e) {

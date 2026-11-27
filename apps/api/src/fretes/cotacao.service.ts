@@ -1,4 +1,8 @@
 import { mapLimit } from './limite'
+import { imageMime, PARTS_AI_PROMPT, parsePartsAi, parseQuoteHeader } from './pecas-ia'
+import { geminiGrounded } from '../mercado/ia'
+import { GEMINI_MODELS, SECRET_KEY } from '../assistente/constantes'
+import { decrypt } from '../common/crypto'
 import { pickVersionsAt } from './versoes'
 import { randomUUID } from 'node:crypto'
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common'
@@ -238,6 +242,37 @@ export class CotacaoService {
   }
 
   /** Caixas de embalagem cadastradas (para sugerir a caixa na cotação). */
+  /**
+   * Print do orçamento: o Gemini (gratuito, com a pesquisa do Google) lê os itens e busca a medida e o peso de cada peça
+   * pela referência. Volta a lista para a tela montar os volumes (editáveis); nada é salvo.
+   */
+  async partsFromImage(user: AuthUser, file: { buffer: Buffer; size: number } | undefined) {
+    assertCan(user, 'fretes_cotacao', 'create')
+    if (!file?.buffer?.length) throw new BadRequestException('Envie o print do orçamento (imagem).')
+    if (file.size > 8 * 1024 * 1024) throw new BadRequestException('Imagem maior que 8 MB.')
+    const mime = imageMime(file.buffer)
+    if (!mime) throw new BadRequestException('Envie uma imagem PNG, JPG ou WEBP (o print do orçamento).')
+    let enc = (await this.settings.get<{ enc?: string }>(user.tenantId, SECRET_KEY('gemini'), {})).enc
+    if (!enc) enc = (await this.settings.get<{ apiKeyEnc?: string | null }>(user.tenantId, 'email_ia', {})).apiKeyEnc ?? undefined
+    let apiKey: string | null = null
+    try {
+      apiKey = enc ? decrypt(enc) : null
+    } catch {
+      apiKey = null
+    }
+    if (!apiKey) throw new BadRequestException('Cadastre a chave do Gemini (gratuita) em Marketplaces › Assistente ML › Configurações para ler o orçamento.')
+    const r = await geminiGrounded(apiKey, [...GEMINI_MODELS], PARTS_AI_PROMPT, [{ mime, data: file.buffer.toString('base64') }]).catch((e: unknown) => {
+      throw new BadRequestException((e as Error).message)
+    })
+    let items: ReturnType<typeof parsePartsAi>
+    try {
+      items = parsePartsAi(r.text)
+    } catch (e) {
+      throw new BadRequestException((e as Error).message)
+    }
+    return { header: parseQuoteHeader(r.text), items, sources: r.sources, model: r.model }
+  }
+
   async boxes(tenantId: string): Promise<FreightBox[]> {
     // O settings.get mistura com o padrão como objeto: a lista volta com as posições como chaves.
     const raw = await this.settings.get<Record<string, unknown>>(tenantId, BOXES_KEY, {})
