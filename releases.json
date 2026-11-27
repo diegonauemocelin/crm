@@ -2,6 +2,33 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.84",
+      "date": "2026-11-27",
+      "title": "CT-e cotado pela API conciliado, filtro CIF/FOB, divergentes por valor e Diagnóstico mais enxuto",
+      "changes": [
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "CT-e de transportadora cotada pela API (Braspress, Jadlog, Rodonaves, Correios, DHL, SSW, com a integração ligada em Fretes › Integrações) e sem tabela no CRM, ou de pedido cotado pela API, fica conciliado e aprovado pelo valor cobrado, com o motivo registrado. Use \"Conciliar pendentes de novo\" para reclassificar os que estão sem referência."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "CT-e e Conciliação: filtro CIF (a empresa paga o frete) ou FOB (o cliente ou outro paga), pelo tomador do CT-e, e CIF/FOB em cada CT-e da lista."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Conciliação: clicar em \"Diferença\" mostra só os divergentes, da maior diferença para a menor (clique de novo para voltar)."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Diagnóstico das tabelas: as transportadoras aparecem fechadas, com o resumo dos achados; clique no nome para abrir. Botão para abrir ou fechar todas."
+        }
+      ]
+    },
+    {
       "version": "3.0.83",
       "date": "2026-11-27",
       "title": "Análise inteligente do CT-e com IA",
