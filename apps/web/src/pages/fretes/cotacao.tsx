@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalculatorIcon, CheckCircle2Icon, ChevronDownIcon, ChevronRightIcon, DownloadIcon, HistoryIcon, LayoutGridIcon, ListIcon, Loader2Icon, MapPinIcon, PackageIcon, PlusIcon, PrinterIcon, RefreshCwIcon, SearchIcon, SparklesIcon, Trash2Icon, TruckIcon, UploadIcon, UserIcon, XIcon } from 'lucide-react'
+import { CalculatorIcon, CheckCircle2Icon, ChevronDownIcon, ChevronRightIcon, DownloadIcon, HistoryIcon, LayoutGridIcon, ListIcon, Loader2Icon, MapPinIcon, PackageIcon, PlusIcon, PrinterIcon, RefreshCwIcon, MessageSquareTextIcon, SearchIcon, SparklesIcon, Trash2Icon, TruckIcon, UploadIcon, UserIcon, XIcon } from 'lucide-react'
 import { type FormEvent, Fragment, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
@@ -25,6 +25,7 @@ import { useAuth } from '@/lib/auth'
 import { dateTime, dayBr, money, pctOf } from '@/lib/format'
 import { fmtNum, formatCep, maskCep, parseBr, type Quote, QUOTE_STATUS, type QuoteResult, RESULT_STATUS, useActiveUnit } from '@/lib/fretes'
 import { cn } from '@/lib/utils'
+import { carrierQuoteText } from '@/lib/fretes-texto'
 
 interface VolumeRow {
   quantity: string
@@ -69,7 +70,9 @@ type PartAi = { referencia: string; descricao: string; quantidade: number; compr
  * Print do orçamento: a IA (Gemini com a pesquisa do Google) lê código, descrição e quantidade e busca a medida e o peso
  * de cada peça. Os itens viram volumes editáveis; "Sugerir caixa" escolhe a embalagem.
  */
-function QuoteImageButton({ onUse }: { onUse: (rows: VolumeRow[]) => void }) {
+type QuoteHeaderAi = { numero: string | null; vendedor: string | null; cliente: string | null; documento: string | null; cidade: string | null; uf: string | null; cep: string | null; valorTotal: number | null }
+
+function QuoteImageButton({ onUse }: { onUse: (rows: VolumeRow[], header: QuoteHeaderAi | null) => void }) {
   const [open, setOpen] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
@@ -77,7 +80,7 @@ function QuoteImageButton({ onUse }: { onUse: (rows: VolumeRow[]) => void }) {
     mutationFn: () => {
       const fd = new FormData()
       fd.append('imagem', file!)
-      return api.post<{ items: PartAi[]; sources: string[] }>('/fretes/cotacao/pecas-ia', fd)
+      return api.post<{ header: QuoteHeaderAi | null; items: PartAi[]; sources: string[] }>('/fretes/cotacao/pecas-ia', fd)
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -141,6 +144,11 @@ function QuoteImageButton({ onUse }: { onUse: (rows: VolumeRow[]) => void }) {
                       ))}
                     </TableBody>
                   </Table>
+                  {read.data?.header && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Do cabeçalho: {[read.data.header.numero && `orçamento ${read.data.header.numero}`, read.data.header.vendedor && `vendedor ${read.data.header.vendedor}`, read.data.header.cliente, read.data.header.documento, read.data.header.cep && `CEP ${read.data.header.cep}`, read.data.header.valorTotal !== null && money(read.data.header.valorTotal)].filter(Boolean).join(' · ')} (preenche a cotação)
+                    </p>
+                  )}
                   {items.some((i) => i.estimado) && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Itens ESTIMADOS: medir e pesar antes de despachar.</p>}
                 </div>
               )}
@@ -161,6 +169,7 @@ function QuoteImageButton({ onUse }: { onUse: (rows: VolumeRow[]) => void }) {
                         height: i.altura === null ? '' : String(i.altura).replace('.', ','),
                         product: { sku: i.referencia, name: i.descricao, warning: i.estimado ? 'ESTIMADO pela IA: medir antes de despachar' : i.fonte ? `Medida: ${i.fonte}` : null },
                       })),
+                      read.data?.header ?? null,
                     )
                     toast.success('Peças nos volumes. Clique em "Sugerir caixa" para escolher a embalagem.')
                     close()
@@ -178,6 +187,43 @@ function QuoteImageButton({ onUse }: { onUse: (rows: VolumeRow[]) => void }) {
         </Dialog>
       )}
     </>
+  )
+}
+
+/** Texto para pedir cotação às transportadoras sem tabela (copiar e mandar no WhatsApp), com os dados da cotação na tela. */
+function CarrierTextPanel({ build }: { build: () => string }) {
+  const [text, setText] = useState<string | null>(null)
+  if (text === null)
+    return (
+      <div className="flex justify-end">
+        <Button type="button" size="sm" variant="ghost" onClick={() => setText(build())} title="Monta o texto com remetente, destinatário, valor da NF, volumes, medidas, peso e CEP para mandar às transportadoras sem tabela">
+          <MessageSquareTextIcon aria-hidden /> Texto para transportadora (WhatsApp)
+        </Button>
+      </div>
+    )
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium">Texto para pedir cotação (confira e copie)</p>
+        <div className="flex gap-2">
+          <Button type="button" size="sm" variant="ghost" onClick={() => setText(build())} title="Refaz com os dados atuais (ex.: depois de usar a caixa sugerida)">
+            <RefreshCwIcon aria-hidden /> Atualizar
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(text).then(() => toast.success('Texto copiado.'))}>
+            Copiar
+          </Button>
+          <Button type="button" size="sm" variant="outline" asChild>
+            <a href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener noreferrer">
+              WhatsApp
+            </a>
+          </Button>
+          <Button type="button" size="icon" variant="ghost" aria-label="Fechar o texto" onClick={() => setText(null)}>
+            <XIcon aria-hidden />
+          </Button>
+        </div>
+      </div>
+      <Textarea rows={8} value={text} onChange={(e) => setText(e.target.value)} className="font-mono text-xs" />
+    </div>
   )
 }
 
@@ -591,6 +637,7 @@ function NewQuote() {
   }
   const [batch, setBatch] = useState(false)
   const [notes, setNotes] = useState('')
+  const [seller, setSeller] = useState('')
   const [allowExpired, setAllowExpired] = useState(false)
   const [noInvoice, setNoInvoice] = useState(false)
   const [expiredReason, setExpiredReason] = useState('')
@@ -840,7 +887,28 @@ function NewQuote() {
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Volumes (medidas em cm, peso em kg por unidade)</p>
                 <div className="flex gap-2">
-                  <QuoteImageButton onUse={(rows) => setVolumes((prev) => [...prev.filter((v) => v.product || v.weight || v.length || v.width || v.height), ...rows].slice(0, 50))} />
+                  <QuoteImageButton
+                    onUse={(rows, h) => {
+                      setVolumes((prev) => [...prev.filter((v) => v.product || v.weight || v.length || v.width || v.height), ...rows].slice(0, 50))
+                      if (!h) return
+                      if (h.cep) {
+                        setDestZip(maskCep(h.cep))
+                        if (h.cidade && h.uf) setDest({ city: h.cidade, uf: h.uf })
+                        else cep.mutate(h.cep)
+                      }
+                      if (h.cliente) setCustomerName(h.cliente)
+                      if (h.documento) {
+                        setCustomerDoc(h.documento)
+                        setPersonType(h.documento.length === 11 ? 'PF' : 'PJ')
+                      }
+                      if (h.valorTotal !== null) setCargoValue(h.valorTotal)
+                      if (h.numero) {
+                        setErpType('ORCAMENTO')
+                        setErpNumber(h.numero)
+                      }
+                      if (h.vendedor) setSeller(h.vendedor)
+                    }}
+                  />
                   {can('fretes_tabelas', 'edit') && <BoxesButton />}
                   <Button type="button" size="sm" variant="outline" onClick={() => setVolumes((v) => [...v, emptyVolume()])} disabled={volumes.length >= 50}>
                     <PlusIcon aria-hidden /> Volume
@@ -914,6 +982,25 @@ function NewQuote() {
                 ))}
               </datalist>
               <BoxSuggestion volumes={volumes} onUse={setVolumes} />
+              <CarrierTextPanel
+                build={() => {
+                  const u = ctx?.units.find((x) => x.id === unitId)
+                  return carrierQuoteText({
+                    senderDoc: u?.cnpj ?? null,
+                    senderName: u?.legalName || u?.name || null,
+                    seller: seller || null,
+                    quoteNumber: erpNumber || reference || null,
+                    recipientDoc: customerDoc || null,
+                    cargoValue,
+                    payer: 'CIF',
+                    volumes: volumes.map(volNumbers).map((v) => ({ quantity: v.quantity, weight: Number.isNaN(v.weight) ? 0 : v.weight, length: Number.isNaN(v.length) ? 0 : v.length, width: Number.isNaN(v.width) ? 0 : v.width, height: Number.isNaN(v.height) ? 0 : v.height })),
+                    totalWeight: parseBr(weight) ?? null,
+                    destZip,
+                    destCity: dest.city || null,
+                    destUf: dest.uf || null,
+                  })
+                }}
+              />
             </div>
 
             <div className="space-y-1.5">

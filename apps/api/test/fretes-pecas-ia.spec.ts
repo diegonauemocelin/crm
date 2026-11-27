@@ -22,3 +22,12 @@ describe('leitura do orçamento por imagem (IA)', () => {
     expect(imageMime(Buffer.from('%PDF-1.7'))).toBeNull()
   })
 })
+
+describe('cabeçalho do orçamento (IA)', () => {
+  it('lê número, vendedor, cliente, documento, CEP e total', async () => {
+    const { parseQuoteHeader } = await import('../src/fretes/pecas-ia')
+    const h = parseQuoteHeader('{"cabecalho":{"numero":"126593","vendedor":"101 - E-COMMERCE","cliente":"CLAUDIO","documento":"303.584.618-98","cidade":"Mogi das Cruzes","uf":"sp","cep":"08.717-630","valorTotal":"269,70"},"itens":[]}')
+    expect(h).toEqual({ numero: '126593', vendedor: '101 - E-COMMERCE', cliente: 'CLAUDIO', documento: '30358461898', cidade: 'Mogi das Cruzes', uf: 'SP', cep: '08717630', valorTotal: 269.7 })
+    expect(parseQuoteHeader('{"itens":[]}')).toBeNull()
+  })
+})

@@ -1,5 +1,5 @@
 import { mapLimit } from './limite'
-import { imageMime, PARTS_AI_PROMPT, parsePartsAi } from './pecas-ia'
+import { imageMime, PARTS_AI_PROMPT, parsePartsAi, parseQuoteHeader } from './pecas-ia'
 import { geminiGrounded } from '../mercado/ia'
 import { GEMINI_MODELS, SECRET_KEY } from '../assistente/constantes'
 import { decrypt } from '../common/crypto'
@@ -270,7 +270,7 @@ export class CotacaoService {
     } catch (e) {
       throw new BadRequestException((e as Error).message)
     }
-    return { items, sources: r.sources, model: r.model }
+    return { header: parseQuoteHeader(r.text), items, sources: r.sources, model: r.model }
   }
 
   async boxes(tenantId: string): Promise<FreightBox[]> {

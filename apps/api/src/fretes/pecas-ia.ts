@@ -16,21 +16,63 @@ export interface PartFromImage {
   estimado: boolean
 }
 
+/** Cabeçalho do orçamento (para preencher a cotação). */
+export interface QuoteHeaderFromImage {
+  numero: string | null
+  vendedor: string | null
+  cliente: string | null
+  documento: string | null
+  cidade: string | null
+  uf: string | null
+  cep: string | null
+  valorTotal: number | null
+}
+
 export const PARTS_AI_PROMPT = `Você é o assistente de embalagem de uma distribuidora de peças para máquinas pesadas (Brasil).
 
 A imagem é o print de um orçamento. Faça, nesta ordem:
+0. Leia também o cabeçalho, se aparecer: número do orçamento, vendedor, cliente (nome), CPF/CNPJ do cliente, cidade, UF, CEP e o valor total do orçamento (Total do Orçamento / total da nota).
 1. Leia de cada item: código de referência da peça (ex.: 172448-82950), descrição e quantidade (coluna Qtde). Ignore preço, impostos e totais.
 2. Para cada código, pesquise na internet a medida da peça (comprimento, largura e altura em cm) e o peso (kg por unidade). Busque pelo código entre aspas + descrição + marca (ex.: "172448-82950" tooth Yanmar). Converta para cm e kg (1 pol = 2,54 cm; 1 lb = 0,4536 kg). Se for kit, use a medida do kit inteiro.
 3. Se não achar medida confiável, NÃO invente com certeza: dê uma estimativa razoável pelo tipo de peça e marque "estimado": true. Nunca afirme compatibilidade, preço ou estoque.
 
 Responda SOMENTE com um JSON neste formato (números com ponto decimal, sem texto fora do JSON):
-{"itens":[{"referencia":"172448-82950","descricao":"UNHA MINI ESCAVADEIRA","quantidade":3,"comprimento":17,"largura":8,"altura":7,"peso":1.2,"fonte":"site.com.br ou null","estimado":true}]}`
+{"cabecalho":{"numero":"126593","vendedor":"101 - E-COMMERCE","cliente":"NOME DO CLIENTE","documento":"303.584.618-98","cidade":"Mogi das Cruzes","uf":"SP","cep":"08717-630","valorTotal":269.70},"itens":[{"referencia":"172448-82950","descricao":"UNHA MINI ESCAVADEIRA","quantidade":3,"comprimento":17,"largura":8,"altura":7,"peso":1.2,"fonte":"site.com.br ou null","estimado":true}]}
+Campos do cabeçalho que não aparecem no print: null.`
 
 const num = (v: unknown, max: number) => {
   const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v.replace(',', '.')) : NaN
   return Number.isFinite(n) && n > 0 && n <= max ? Math.round(n * 1000) / 1000 : null
 }
 const text = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : v === null || v === undefined ? '' : String(v).slice(0, max))
+
+/** Cabeçalho lido pela IA, normalizado (CEP e documento só com dígitos válidos). */
+export function parseQuoteHeader(raw: string): QuoteHeaderFromImage | null {
+  const m = /\{[\s\S]*\}/.exec(raw.replace(/```(?:json)?/g, ''))
+  if (!m) return null
+  let h: Record<string, unknown> | undefined
+  try {
+    h = (JSON.parse(m[0]) as { cabecalho?: Record<string, unknown> }).cabecalho
+  } catch {
+    return null
+  }
+  if (!h || typeof h !== 'object') return null
+  const digits = (v: unknown) => text(v, 40).replace(/\D/g, '')
+  const doc = digits(h.documento)
+  const cep = digits(h.cep)
+  const uf = text(h.uf, 2).toUpperCase()
+  const out = {
+    numero: text(h.numero, 30) || null,
+    vendedor: text(h.vendedor, 80) || null,
+    cliente: text(h.cliente, 120) || null,
+    documento: doc.length === 11 || doc.length === 14 ? doc : null,
+    cidade: text(h.cidade, 80) || null,
+    uf: /^[A-Z]{2}$/.test(uf) ? uf : null,
+    cep: cep.length === 8 ? cep : null,
+    valorTotal: num(h.valorTotal, 100_000_000),
+  }
+  return Object.values(out).some((v) => v !== null) ? out : null
+}
 
 /** Lê a resposta da IA (JSON, às vezes dentro de ```json ou com texto em volta). */
 export function parsePartsAi(raw: string): PartFromImage[] {
