@@ -205,6 +205,7 @@ function Relatorios() {
           </Card>
         )}
         <ResumoVendedorCard />
+        <ResumoVendedorCard slot={2} />
         {d && d.runs.length > 0 && (
           <Card>
             <CardHeader>

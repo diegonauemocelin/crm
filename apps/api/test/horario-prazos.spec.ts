@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { cleanContactCheck, cleanForwardMessage, deadline, isOverdue, nextCallDue, skipsPostSale } from '../src/atendimento/regras'
-import { reportCycle, weeklyMessage, weeklyStats } from '../src/atendimento/semanal'
+import { cleanWeekly, reportCycle, weeklyMessage, weeklyStats } from '../src/atendimento/semanal'
 import { addBusinessMs, businessMsBetween, cleanHours, describeHours, isOpen, subBusinessMs } from '../src/whatsapp/envio'
 
 // Seg. a sex. 08:00–18:00 com almoço 12:00–13:30; sábado e domingo fechados. 2026-10-26 é segunda-feira.
@@ -115,6 +115,26 @@ describe('Resumo dos vendedores: semanal, quinzenal e mensal', () => {
 
   it('semanal continua de sexta a quinta', () => {
     expect(reportCycle('SEMANAL', '08:00', at('2026-10-30T09:00:00-03:00'))).toMatchObject({ key: '2026-10-30', due: true, word: 'semanal' })
+  })
+
+  it('dia do envio escolhido: semanal na segunda e mensal no dia 5', () => {
+    const w = reportCycle('SEMANAL', '09:30', at('2026-11-30T10:00:00-03:00'), 1)
+    expect(w).toMatchObject({ key: '2026-11-30', label: '23/11 a 29/11', due: true })
+    expect(reportCycle('SEMANAL', '09:30', at('2026-11-30T09:00:00-03:00'), 1).due).toBe(false)
+    expect(reportCycle('SEMANAL', '09:30', at('2026-11-27T10:00:00-03:00'), 1)).toMatchObject({ key: '2026-11-23', due: false })
+    const m = reportCycle('MENSAL', '08:00', at('2026-12-05T08:30:00-03:00'), 5)
+    expect(m).toMatchObject({ key: '2026-12-05', label: '01/11 a 30/11', due: true })
+    expect(m.to.toISOString()).toBe(at('2026-12-01T00:00:00-03:00').toISOString())
+    // Antes do dia 5, a prévia mostra o último envio (dia 5 do mês passado, período de outubro).
+    expect(reportCycle('MENSAL', '08:00', at('2026-12-03T10:00:00-03:00'), 5)).toMatchObject({ key: '2026-11-05', label: '01/10 a 31/10', due: false })
+  })
+
+  it('dia do envio fora da faixa volta ao padrão', () => {
+    expect(cleanWeekly({ frequency: 'SEMANAL', sendDay: 9 }).sendDay).toBe(5)
+    expect(cleanWeekly({ frequency: 'SEMANAL', sendDay: 0 }).sendDay).toBe(0)
+    expect(cleanWeekly({ frequency: 'MENSAL', sendDay: 0 }).sendDay).toBe(1)
+    expect(cleanWeekly({ frequency: 'MENSAL', sendDay: 12 }).sendDay).toBe(12)
+    expect(cleanWeekly(undefined, { frequency: 'MENSAL', sendDay: 1, sections: ['vendas'] })).toMatchObject({ frequency: 'MENSAL', sendDay: 1, sections: ['vendas'] })
   })
 
   it('o título diz a frequência', () => {
