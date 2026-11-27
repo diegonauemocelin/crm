@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRightIcon, DownloadIcon, FileCheck2Icon, FileTextIcon, LayoutListIcon, Loader2Icon, RefreshCwIcon, SearchIcon, StethoscopeIcon, TableIcon, UploadIcon } from 'lucide-react'
+import { ChevronRightIcon, DownloadIcon, FileCheck2Icon, FileTextIcon, LayoutListIcon, Loader2Icon, RefreshCwIcon, SearchIcon, SparklesIcon, StethoscopeIcon, TableIcon, UploadIcon } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -79,6 +79,8 @@ interface Cte {
   difference: number | null
   recDetail?: { reference?: string; reason?: string; tables?: { table: string; reason: string }[]; allowed?: number; lines?: RecLine[]; notes?: string[] } | null
   recAt: string | null
+  aiAnalysis?: CteAi | null
+  aiAnalysisAt?: string | null
   decision: string | null
   approvedValue: number | null
   decisionNote: string | null
@@ -597,6 +599,125 @@ function ImportCtes({ onClose }: { onClose: () => void }) {
   )
 }
 
+type CteAiAction = 'OK' | 'AJUSTAR_CRM' | 'CONTESTAR' | 'PERGUNTAR' | 'CONFERIR'
+type CteAi = {
+  veredito: string
+  resumo: string
+  itens: { componente: string; tabela: string | null; cobrado: string | null; explicacao: string; acao: CteAiAction }[]
+  acoes: { tipo: CteAiAction; texto: string }[]
+  perguntasTransportadora: string[]
+  model?: string
+  by?: string
+}
+const AI_ACTION: Record<CteAiAction, { label: string; cls: string }> = {
+  OK: { label: 'Confere', cls: 'border-emerald-500/50 text-emerald-700 dark:text-emerald-300' },
+  AJUSTAR_CRM: { label: 'Ajustar no CRM', cls: 'border-sky-500/50 text-sky-700 dark:text-sky-300' },
+  CONTESTAR: { label: 'Contestar', cls: 'border-destructive/50 text-destructive' },
+  PERGUNTAR: { label: 'Perguntar à transportadora', cls: 'border-amber-500/50 text-amber-700 dark:text-amber-300' },
+  CONFERIR: { label: 'Conferir', cls: 'border-muted-foreground/40 text-muted-foreground' },
+}
+const AI_VERDICT: Record<string, string> = { CONFERE: 'Confere', COBRADO_A_MAIS: 'Cobrado a mais', COBRADO_A_MENOR: 'Cobrado a menos', TABELA_DESATUALIZADA: 'Tabela do CRM desatualizada', INCONCLUSIVO: 'Inconclusivo' }
+
+/** Análise inteligente (Gemini): o motivo de cada diferença, o que ajustar no CRM e o que contestar ou perguntar. */
+function CteAiPanel({ c, onDone }: { c: Cte; onDone: (d: Partial<Cte>) => void }) {
+  const run = useMutation({
+    mutationFn: () => api.post<{ aiAnalysis: CteAi; aiAnalysisAt: string }>(`/fretes/ctes/${c.id}/analise-ia`),
+    onSuccess: (d) => onDone(d),
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const a = c.aiAnalysis
+  return (
+    <div className="space-y-3 rounded-lg border border-dashed p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="flex items-center gap-1.5 font-medium">
+            <SparklesIcon className="size-4 text-primary" aria-hidden /> Análise inteligente
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {a ? `Gerada em ${dateTime(c.aiAnalysisAt ?? null)}${a.by ? ` por ${a.by}` : ''} · IA (Gemini). Confira as contas antes de contestar.` : 'A IA compara o CT-e (com pesos e observações do XML) com a tabela do destino e explica o motivo de cada diferença.'}
+          </p>
+        </div>
+        <Button size="sm" variant={a ? 'outline' : 'default'} disabled={run.isPending} onClick={() => run.mutate()}>
+          {run.isPending ? <Loader2Icon className="animate-spin" aria-hidden /> : <SparklesIcon aria-hidden />} {a ? 'Analisar de novo' : 'Analisar com IA'}
+        </Button>
+      </div>
+      {run.isPending && <p className="text-sm text-muted-foreground">Analisando o CT-e e a tabela… pode levar até um minuto.</p>}
+      {a && (
+        <>
+          <div className="rounded-md bg-muted/50 p-3 text-sm">
+            <Badge variant="outline" className="mb-1.5">
+              {AI_VERDICT[a.veredito] ?? a.veredito}
+            </Badge>
+            <p className="whitespace-pre-line">{a.resumo}</p>
+          </div>
+          {a.itens.length > 0 && (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Componente</TableHead>
+                    <TableHead>Pela tabela</TableHead>
+                    <TableHead>Cobrado</TableHead>
+                    <TableHead className="min-w-72">Motivo</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {a.itens.map((i, k) => (
+                    <TableRow key={k}>
+                      <TableCell className="font-medium">{i.componente}</TableCell>
+                      <TableCell className="text-sm">{i.tabela ?? '—'}</TableCell>
+                      <TableCell className="text-sm">{i.cobrado ?? '—'}</TableCell>
+                      <TableCell className="whitespace-normal text-sm">{i.explicacao}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={cn('whitespace-nowrap', AI_ACTION[i.acao]?.cls)}>
+                          {AI_ACTION[i.acao]?.label ?? i.acao}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          {a.acoes.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-sm font-medium">O que fazer</p>
+              {a.acoes.map((x, k) => (
+                <p key={k} className="flex items-start gap-2 text-sm">
+                  <Badge variant="outline" className={cn('shrink-0', AI_ACTION[x.tipo]?.cls)}>
+                    {AI_ACTION[x.tipo]?.label ?? x.tipo}
+                  </Badge>
+                  <span>{x.texto}</span>
+                </p>
+              ))}
+            </div>
+          )}
+          {a.perguntasTransportadora.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Perguntar à transportadora</p>
+              <ul className="list-disc space-y-0.5 pl-5 text-sm">
+                {a.perguntasTransportadora.map((p, k) => (
+                  <li key={k}>{p}</li>
+                ))}
+              </ul>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  void navigator.clipboard.writeText(a.perguntasTransportadora.map((p, k) => `${k + 1}. ${p}`).join('\n')).then(() => toast.success('Perguntas copiadas.'))
+                }}
+              >
+                Copiar perguntas
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 export function FretesCteDetalhePage() {
   return (
     <RequirePermission module="fretes_cte">
@@ -736,6 +857,7 @@ function CteDetail() {
                 {n}
               </p>
             ))}
+            {c.recStatus !== 'FORA' && c.recStatus !== 'COMPRA' && c.recStatus !== 'CONCILIADO' && <CteAiPanel c={c} onDone={(d) => qc.setQueryData(['fretes', 'cte', id], { ...c, ...d })} />}
           </CardContent>
         </Card>
         <Card>
