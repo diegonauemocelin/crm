@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalculatorIcon, CheckCircle2Icon, ChevronDownIcon, ChevronRightIcon, DownloadIcon, HistoryIcon, LayoutGridIcon, ListIcon, Loader2Icon, MapPinIcon, PackageIcon, PlusIcon, PrinterIcon, RefreshCwIcon, SearchIcon, Trash2Icon, TruckIcon, UploadIcon, UserIcon, XIcon } from 'lucide-react'
+import { CalculatorIcon, CheckCircle2Icon, ChevronDownIcon, ChevronRightIcon, DownloadIcon, HistoryIcon, LayoutGridIcon, ListIcon, Loader2Icon, MapPinIcon, PackageIcon, PlusIcon, PrinterIcon, RefreshCwIcon, MessageSquareTextIcon, SearchIcon, SparklesIcon, Trash2Icon, TruckIcon, UploadIcon, UserIcon, XIcon } from 'lucide-react'
 import { type FormEvent, Fragment, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
@@ -25,6 +25,7 @@ import { useAuth } from '@/lib/auth'
 import { dateTime, dayBr, money, pctOf } from '@/lib/format'
 import { fmtNum, formatCep, maskCep, parseBr, type Quote, QUOTE_STATUS, type QuoteResult, RESULT_STATUS, useActiveUnit } from '@/lib/fretes'
 import { cn } from '@/lib/utils'
+import { carrierQuoteText } from '@/lib/fretes-texto'
 
 interface VolumeRow {
   quantity: string
@@ -34,6 +35,16 @@ interface VolumeRow {
   height: string
   /** Produto de onde vieram o peso e as medidas (busca pelo SKU no cadastro da Magazord). */
   product?: { sku: string; name: string; warning: string | null }
+  /** Caixa cadastrada escolhida (as medidas vêm dela e podem ser alteradas). */
+  box?: string
+}
+
+/** Caixa pelo número ou nome digitado: "12" acha "Caixa 12" ou "CX 12"; o nome inteiro também vale. */
+function findBox(boxes: FreightBox[], typed: string): FreightBox | null {
+  const t = typed.trim().toLowerCase()
+  if (!t) return null
+  const active = boxes.filter((b) => b.active)
+  return active.find((b) => b.name.trim().toLowerCase() === t) ?? (/^\d+$/.test(t) ? (active.find((b) => (b.name.match(/\d+/g) ?? ([] as string[])).includes(t)) ?? null) : null)
 }
 
 /** Produto pelo SKU: peso (kg) e medidas (cm) por unidade, do cadastro da Magazord. */
@@ -52,6 +63,169 @@ interface SkuProduct {
 
 const numText = (v: number | null) => (v === null ? '' : String(v).replace('.', ','))
 const emptyVolume = (): VolumeRow => ({ quantity: '1', weight: '', length: '', width: '', height: '' })
+
+type PartAi = { referencia: string; descricao: string; quantidade: number; comprimento: number | null; largura: number | null; altura: number | null; peso: number | null; fonte: string | null; estimado: boolean }
+
+/**
+ * Print do orçamento: a IA (Gemini com a pesquisa do Google) lê código, descrição e quantidade e busca a medida e o peso
+ * de cada peça. Os itens viram volumes editáveis; "Sugerir caixa" escolhe a embalagem.
+ */
+type QuoteHeaderAi = { numero: string | null; vendedor: string | null; cliente: string | null; documento: string | null; cidade: string | null; uf: string | null; cep: string | null; valorTotal: number | null }
+
+function QuoteImageButton({ onUse }: { onUse: (rows: VolumeRow[], header: QuoteHeaderAi | null) => void }) {
+  const [open, setOpen] = useState(false)
+  const [file, setFile] = useState<File | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
+  const read = useMutation({
+    mutationFn: () => {
+      const fd = new FormData()
+      fd.append('imagem', file!)
+      return api.post<{ header: QuoteHeaderAi | null; items: PartAi[]; sources: string[] }>('/fretes/cotacao/pecas-ia', fd)
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const pick = (f: File | null | undefined) => {
+    if (!f || !f.type.startsWith('image/')) return
+    setFile(f)
+    read.reset()
+    setPreview((old) => {
+      if (old) URL.revokeObjectURL(old)
+      return URL.createObjectURL(f)
+    })
+  }
+  const close = () => {
+    setOpen(false)
+    setFile(null)
+    read.reset()
+    if (preview) URL.revokeObjectURL(preview)
+    setPreview(null)
+  }
+  const fmt = (n: number | null) => (n === null ? '?' : fmtNum(n))
+  const items = read.data?.items ?? []
+  return (
+    <>
+      <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)} title="Envie ou cole o print do orçamento: a IA busca na internet a medida e o peso de cada peça pela referência">
+        <SparklesIcon aria-hidden /> Ler orçamento (print)
+      </Button>
+      {open && (
+        <Dialog open onOpenChange={(o) => !o && close()}>
+          <DialogContent className="sm:max-w-3xl" onPaste={(e) => pick([...e.clipboardData.files].find((f) => f.type.startsWith('image/')))}>
+            <DialogHeader>
+              <DialogTitle>Ler orçamento pelo print</DialogTitle>
+              <DialogDescription>Cole o print (Ctrl+V) ou escolha a imagem. A IA lê código, descrição e quantidade e busca na internet a medida e o peso de cada peça. Confira antes de usar: o que ela não achar vem como ESTIMADO.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => pick(e.target.files?.[0])} />
+              {preview && <img src={preview} alt="Print do orçamento" className="max-h-48 rounded border object-contain" />}
+              {read.isPending && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2Icon className="size-4 animate-spin" aria-hidden /> Lendo o orçamento e pesquisando as peças… pode levar até 2 minutos.</p>}
+              {items.length > 0 && (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Código</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead className="text-right">Qtd</TableHead>
+                        <TableHead>Medida un. (cm)</TableHead>
+                        <TableHead className="text-right">Peso un. (kg)</TableHead>
+                        <TableHead>Fonte</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {items.map((i, k) => (
+                        <TableRow key={k}>
+                          <TableCell className="font-mono text-xs">{i.referencia}</TableCell>
+                          <TableCell className="text-xs">{i.descricao}</TableCell>
+                          <TableCell className="text-right">{i.quantidade}</TableCell>
+                          <TableCell className="text-xs">{`${fmt(i.comprimento)} × ${fmt(i.largura)} × ${fmt(i.altura)}`}</TableCell>
+                          <TableCell className="text-right">{fmt(i.peso)}</TableCell>
+                          <TableCell className="text-xs">{i.estimado ? <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-300">ESTIMADO</Badge> : i.fonte}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {read.data?.header && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Do cabeçalho: {[read.data.header.numero && `orçamento ${read.data.header.numero}`, read.data.header.vendedor && `vendedor ${read.data.header.vendedor}`, read.data.header.cliente, read.data.header.documento, read.data.header.cep && `CEP ${read.data.header.cep}`, read.data.header.valorTotal !== null && money(read.data.header.valorTotal)].filter(Boolean).join(' · ')} (preenche a cotação)
+                    </p>
+                  )}
+                  {items.some((i) => i.estimado) && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Itens ESTIMADOS: medir e pesar antes de despachar.</p>}
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={close}>
+                Cancelar
+              </Button>
+              {items.length > 0 ? (
+                <Button
+                  onClick={() => {
+                    onUse(
+                      items.map((i) => ({
+                        quantity: String(i.quantidade),
+                        weight: i.peso === null ? '' : String(i.peso).replace('.', ','),
+                        length: i.comprimento === null ? '' : String(i.comprimento).replace('.', ','),
+                        width: i.largura === null ? '' : String(i.largura).replace('.', ','),
+                        height: i.altura === null ? '' : String(i.altura).replace('.', ','),
+                        product: { sku: i.referencia, name: i.descricao, warning: i.estimado ? 'ESTIMADO pela IA: medir antes de despachar' : i.fonte ? `Medida: ${i.fonte}` : null },
+                      })),
+                      read.data?.header ?? null,
+                    )
+                    toast.success('Peças nos volumes. Clique em "Sugerir caixa" para escolher a embalagem.')
+                    close()
+                  }}
+                >
+                  Usar nos volumes
+                </Button>
+              ) : (
+                <Button disabled={!file || read.isPending} onClick={() => read.mutate()}>
+                  {read.isPending ? <Loader2Icon className="animate-spin" aria-hidden /> : <SparklesIcon aria-hidden />} Ler com IA
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  )
+}
+
+/** Texto para pedir cotação às transportadoras sem tabela (copiar e mandar no WhatsApp), com os dados da cotação na tela. */
+function CarrierTextPanel({ build }: { build: () => string }) {
+  const [text, setText] = useState<string | null>(null)
+  if (text === null)
+    return (
+      <div className="flex justify-end">
+        <Button type="button" size="sm" variant="ghost" onClick={() => setText(build())} title="Monta o texto com remetente, destinatário, valor da NF, volumes, medidas, peso e CEP para mandar às transportadoras sem tabela">
+          <MessageSquareTextIcon aria-hidden /> Texto para transportadora (WhatsApp)
+        </Button>
+      </div>
+    )
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-medium">Texto para pedir cotação (confira e copie)</p>
+        <div className="flex gap-2">
+          <Button type="button" size="sm" variant="ghost" onClick={() => setText(build())} title="Refaz com os dados atuais (ex.: depois de usar a caixa sugerida)">
+            <RefreshCwIcon aria-hidden /> Atualizar
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(text).then(() => toast.success('Texto copiado.'))}>
+            Copiar
+          </Button>
+          <Button type="button" size="sm" variant="outline" asChild>
+            <a href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener noreferrer">
+              WhatsApp
+            </a>
+          </Button>
+          <Button type="button" size="icon" variant="ghost" aria-label="Fechar o texto" onClick={() => setText(null)}>
+            <XIcon aria-hidden />
+          </Button>
+        </div>
+      </div>
+      <Textarea rows={8} value={text} onChange={(e) => setText(e.target.value)} className="font-mono text-xs" />
+    </div>
+  )
+}
 
 interface ErpFill {
   status: 'OK'
@@ -411,6 +585,12 @@ function NewQuote() {
   const [cargoValue, setCargoValue] = useState<number | null>(null)
   const [weight, setWeight] = useState('')
   const [volumes, setVolumes] = useState<VolumeRow[]>([emptyVolume()])
+  const boxList = useQuery({ queryKey: ['fretes', 'caixas'], queryFn: () => api.get<FreightBox[]>('/fretes/caixas'), staleTime: 5 * 60_000 })
+  const boxes = (boxList.data ?? []).filter((b) => b.active)
+  const pickBox = (i: number, typed: string) => {
+    const b = findBox(boxes, typed)
+    setVolumes((prev) => prev.map((v, j) => (j !== i ? v : b ? { ...v, box: b.name, length: String(b.length), width: String(b.width), height: String(b.height) } : { ...v, box: typed })))
+  }
   const [goodsType, setGoodsType] = useState('')
   const [reference, setReference] = useState('')
   const [erpType, setErpType] = useState<'ORCAMENTO' | 'PRE_NOTA'>('ORCAMENTO')
@@ -457,6 +637,7 @@ function NewQuote() {
   }
   const [batch, setBatch] = useState(false)
   const [notes, setNotes] = useState('')
+  const [seller, setSeller] = useState('')
   const [allowExpired, setAllowExpired] = useState(false)
   const [noInvoice, setNoInvoice] = useState(false)
   const [expiredReason, setExpiredReason] = useState('')
@@ -706,6 +887,28 @@ function NewQuote() {
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Volumes (medidas em cm, peso em kg por unidade)</p>
                 <div className="flex gap-2">
+                  <QuoteImageButton
+                    onUse={(rows, h) => {
+                      setVolumes((prev) => [...prev.filter((v) => v.product || v.weight || v.length || v.width || v.height), ...rows].slice(0, 50))
+                      if (!h) return
+                      if (h.cep) {
+                        setDestZip(maskCep(h.cep))
+                        if (h.cidade && h.uf) setDest({ city: h.cidade, uf: h.uf })
+                        else cep.mutate(h.cep)
+                      }
+                      if (h.cliente) setCustomerName(h.cliente)
+                      if (h.documento) {
+                        setCustomerDoc(h.documento)
+                        setPersonType(h.documento.length === 11 ? 'PF' : 'PJ')
+                      }
+                      if (h.valorTotal !== null) setCargoValue(h.valorTotal)
+                      if (h.numero) {
+                        setErpType('ORCAMENTO')
+                        setErpNumber(h.numero)
+                      }
+                      if (h.vendedor) setSeller(h.vendedor)
+                    }}
+                  />
                   {can('fretes_tabelas', 'edit') && <BoxesButton />}
                   <Button type="button" size="sm" variant="outline" onClick={() => setVolumes((v) => [...v, emptyVolume()])} disabled={volumes.length >= 50}>
                     <PlusIcon aria-hidden /> Volume
@@ -744,7 +947,18 @@ function NewQuote() {
                               {v.product.warning && <span className="block text-amber-700 dark:text-amber-400">{v.product.warning}</span>}
                             </>
                           ) : (
-                            <span className="text-muted-foreground">Caixa (medida total)</span>
+                            <div className="space-y-0.5">
+                              <Input
+                                aria-label={`Caixa do volume ${i + 1}`}
+                                list="cotacao-caixas"
+                                className="h-8 text-xs"
+                                placeholder="Caixa nº ou nome"
+                                title="Digite o número ou escolha a caixa cadastrada: as medidas são preenchidas e podem ser alteradas (ex.: altura menor quando a caixa é cortada)."
+                                value={v.box ?? ''}
+                                onChange={(e) => pickBox(i, e.target.value)}
+                              />
+                              <span className="text-muted-foreground">{v.box && findBox(boxes, v.box) ? 'Medidas da caixa (pode alterar)' : 'Caixa (medida total)'}</span>
+                            </div>
                           )}
                         </TableCell>
                         {(['quantity', 'weight', 'length', 'width', 'height'] as const).map((k) => (
@@ -762,7 +976,31 @@ function NewQuote() {
                   </TableBody>
                 </Table>
               </div>
+              <datalist id="cotacao-caixas">
+                {boxes.map((b) => (
+                  <option key={b.id} value={b.name}>{`${b.length} × ${b.width} × ${b.height} cm`}</option>
+                ))}
+              </datalist>
               <BoxSuggestion volumes={volumes} onUse={setVolumes} />
+              <CarrierTextPanel
+                build={() => {
+                  const u = ctx?.units.find((x) => x.id === unitId)
+                  return carrierQuoteText({
+                    senderDoc: u?.cnpj ?? null,
+                    senderName: u?.legalName || u?.name || null,
+                    seller: seller || null,
+                    quoteNumber: erpNumber || reference || null,
+                    recipientDoc: customerDoc || null,
+                    cargoValue,
+                    payer: 'CIF',
+                    volumes: volumes.map(volNumbers).map((v) => ({ quantity: v.quantity, weight: Number.isNaN(v.weight) ? 0 : v.weight, length: Number.isNaN(v.length) ? 0 : v.length, width: Number.isNaN(v.width) ? 0 : v.width, height: Number.isNaN(v.height) ? 0 : v.height })),
+                    totalWeight: parseBr(weight) ?? null,
+                    destZip,
+                    destCity: dest.city || null,
+                    destUf: dest.uf || null,
+                  })
+                }}
+              />
             </div>
 
             <div className="space-y-1.5">
