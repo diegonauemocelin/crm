@@ -475,11 +475,7 @@ export class CotacaoService {
     // Tempo de cada etapa: tabela que passa de 3 s fica no log (para achar a causa quando uma tabela estoura o limite).
     const t0 = Date.now()
     const found = await Promise.all([
-      // Faixa de CEP pelo índice (versão + CEP): sem isso o Postgres lia a tabela de regras inteira (todas as versões de
-      // todas as tabelas), e uma tabela grande como a da Azul passava do limite de tempo da cotação.
-      this.prisma
-        .$transaction([this.prisma.$executeRawUnsafe('SET LOCAL enable_seqscan = off'), this.prisma.freightRule.findMany({ where: { versionId: v.id, cepStart: { lte: zip }, cepEnd: { gte: zip } }, take: 2000 })])
-        .then(([, rows]) => rows),
+      this.rulesByCep(v.id, zip),
       p.destUf ? this.prisma.freightRule.findMany({ where: { versionId: v.id, cepStart: null, uf: p.destUf }, take: 2000 }) : Promise.resolve([]),
       key ? this.prisma.freightRule.findMany({ where: { versionId: v.id, cityKey: key }, take: 2000 }) : Promise.resolve([]),
     ])
@@ -1231,6 +1227,20 @@ export class CotacaoService {
       ...all.filter((t) => !tables.includes(t)).map((t) => ({ table: t.name, reason: 'Não vale para a filial deste CT-e (confira as filiais da tabela).' })),
     ]
     return best ?? { reasons, noTables: !all.length }
+  }
+
+  /**
+   * Regras da faixa de CEP que contém o CEP. Primeiro a faixa que começa mais perto (uma leitura no índice versão + CEP,
+   * sem transação); só se ela não cobrir o CEP (faixas sobrepostas ou CEP fora da tabela) faz a busca completa. Buscar
+   * direto "início ≤ CEP ≤ fim" fazia o Postgres ler a tabela de regras inteira, e tabelas grandes (Azul) passavam do
+   * tempo da cotação.
+   */
+  private async rulesByCep(versionId: string, zip: number) {
+    const near = await this.prisma.freightRule.findFirst({ where: { versionId, cepStart: { lte: zip } }, orderBy: { cepStart: 'desc' }, select: { cepStart: true } })
+    if (!near || near.cepStart === null) return []
+    const rows = await this.prisma.freightRule.findMany({ where: { versionId, cepStart: near.cepStart, cepEnd: { gte: zip } }, take: 2000 })
+    if (rows.length) return rows
+    return this.prisma.freightRule.findMany({ where: { versionId, cepStart: { lte: zip }, cepEnd: { gte: zip } }, take: 2000 })
   }
 
   /** Simulador do editor de componentes: calcula com uma versão específica (inclusive rascunho), sem salvar. */
