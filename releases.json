@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.81",
+      "date": "2026-11-27",
+      "title": "Correção: erro no servidor ao criar versão de tabela e ao conciliar",
+      "changes": [
+        {
+          "type": "correcao",
+          "area": "Fretes",
+          "text": "\"Nova versão (rascunho)\" e \"Conciliar pendentes de novo\" davam \"Erro inesperado no servidor\" desde a v3.0.80: a busca da faixa de CEP prendia conexões do banco. Agora ela é rápida sem prender conexões."
+        }
+      ]
+    },
+    {
       "version": "3.0.80",
       "date": "2026-11-26",
       "title": "Versão de tabela que corrige a anterior vale para CT-es já emitidos e cotação mais rápida em tabelas grandes",
