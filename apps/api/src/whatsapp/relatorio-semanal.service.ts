@@ -18,6 +18,17 @@ const LABEL = 'Resumo do vendedor (automático)'
 export const WEEKLY_KEY = 'seller_weekly'
 export const WEEKLY_LOG_KEY = 'seller_weekly_log'
 
+/**
+ * Envios do resumo: o 1º (o de sempre) e o 2º, uma cópia com frequência, dia, horário e informações próprias (ex.: o
+ * mensal, com menos informações). Cada um guarda o seu registro de envio.
+ */
+export const DIGEST_SLOTS = {
+  1: { key: WEEKLY_KEY, log: WEEKLY_LOG_KEY, defaults: {} as Partial<SellerWeekly>, ai: '' },
+  2: { key: 'seller_weekly_2', log: 'seller_weekly_2_log', defaults: { frequency: 'MENSAL', sendDay: 1, sections: ['repassados', 'vendas', 'conversao', 'valor'] } as Partial<SellerWeekly>, ai: '2:' },
+} as const
+export type DigestSlot = keyof typeof DIGEST_SLOTS
+const slotOf = (v: unknown): DigestSlot => (String(v) === '2' ? 2 : 1)
+
 /** O que já saiu no ciclo: vendedor -> ENVIADA, SEM_TELEFONE ou ERRO: motivo. */
 export interface WeeklyLog {
   cycle?: string
@@ -60,22 +71,25 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
     if (!can(user.permissions, user.role.isSystem, 'mi_relatorios', action) && !can(user.permissions, user.role.isSystem, 'cadastros', action)) throw new ForbiddenException('Seu perfil não pode ver nem alterar o resumo dos vendedores.')
   }
 
-  async config(tenantId: string) {
-    return cleanWeekly(await this.settings.get<Partial<SellerWeekly>>(tenantId, WEEKLY_KEY, {}))
+  async config(tenantId: string, slot: DigestSlot = 1) {
+    const S = DIGEST_SLOTS[slot]
+    return cleanWeekly(await this.settings.get<Partial<SellerWeekly>>(tenantId, S.key, {}), S.defaults)
   }
 
   /** Configuração, prévia do ciclo (a mensagem de cada vendedor) e o resultado do último envio. */
-  async view(user: AuthUser, ref?: string) {
+  async view(user: AuthUser, ref?: string, slotRaw?: unknown) {
     this.assertCan(user, 'view')
-    const config = await this.config(user.tenantId)
-    const cycle = reportCycle(config.frequency, config.time, ref ? new Date(`${ref}T12:00:00-03:00`) : new Date())
+    const slot = slotOf(slotRaw)
+    const config = await this.config(user.tenantId, slot)
+    const cycle = reportCycle(config.frequency, config.time, ref ? new Date(`${ref}T12:00:00-03:00`) : new Date(), config.sendDay)
     const [reports, log, numbers, sellers] = await Promise.all([
       loadWeekly(this.prisma, user.tenantId, cycle, config.sections),
-      this.settings.get<WeeklyLog>(user.tenantId, WEEKLY_LOG_KEY, {}),
+      this.settings.get<WeeklyLog>(user.tenantId, DIGEST_SLOTS[slot].log, {}),
       this.prisma.whatsappNumber.findMany({ where: { tenantId: user.tenantId, deletedAt: null }, orderBy: { createdAt: 'asc' }, select: { id: true, name: true, status: true } }),
       this.prisma.seller.findMany({ where: { tenantId: user.tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true, phone: true, active: true } }),
     ])
     return {
+      slot,
       config,
       sections: WEEKLY_SECTIONS,
       cycle: { key: cycle.key, label: cycle.label },
@@ -101,9 +115,10 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
     }
   }
 
-  async save(user: AuthUser, d: Partial<SellerWeekly>, ctx: RequestCtx) {
+  async save(user: AuthUser, d: Partial<SellerWeekly>, ctx: RequestCtx, slotRaw?: unknown) {
     this.assertCan(user, 'edit')
-    const next = cleanWeekly(d)
+    const S = DIGEST_SLOTS[slotOf(slotRaw)]
+    const next = cleanWeekly(d, S.defaults)
     if (next.numberId && !(await this.prisma.whatsappNumber.count({ where: { id: next.numberId, tenantId: user.tenantId, deletedAt: null } }))) throw new BadRequestException('Número de WhatsApp inválido.')
     if (next.sellerIds.length && (await this.prisma.seller.count({ where: { tenantId: user.tenantId, id: { in: next.sellerIds } } })) !== next.sellerIds.length) throw new BadRequestException('Vendedor inválido.')
     if (!next.allSellers && !next.sellerIds.length) throw new BadRequestException('Escolha ao menos um vendedor.')
@@ -111,8 +126,8 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
     const bad = (d.managerPhones ?? []).find((x) => String(x).trim() && !normalizePhone(String(x)))
     if (bad) throw new BadRequestException(`Número do gestor inválido: ${bad}. Use DDD + número (ex.: 47 99999-8888).`)
     if (!Array.isArray(d.sections) || !d.sections.length) throw new BadRequestException('Escolha ao menos uma informação para o resumo.')
-    await this.settings.set(user.tenantId, WEEKLY_KEY, next)
-    await this.audit.byUser(user, ctx, 'relatorios.resumo_vendedor', 'settings', WEEKLY_KEY, { ...next })
+    await this.settings.set(user.tenantId, S.key, next)
+    await this.audit.byUser(user, ctx, 'relatorios.resumo_vendedor', 'settings', S.key, { ...next })
     return next
   }
 
@@ -120,20 +135,24 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
     if (this.running) return
     this.running = true
     try {
-      const rows = await this.prisma.tenantSetting.findMany({ where: { key: WEEKLY_KEY }, select: { tenantId: true, value: true } })
+      const keys = Object.values(DIGEST_SLOTS).map((x) => x.key)
+      const rows = await this.prisma.tenantSetting.findMany({ where: { key: { in: keys } }, select: { tenantId: true, key: true, value: true } })
       for (const row of rows) {
-        const config = cleanWeekly(row.value as Partial<SellerWeekly> | null)
+        const slot: DigestSlot = row.key === DIGEST_SLOTS[2].key ? 2 : 1
+        const config = cleanWeekly(row.value as Partial<SellerWeekly> | null, DIGEST_SLOTS[slot].defaults)
         if (!config.enabled) continue
-        await this.runTenant(row.tenantId, config, now).catch((err: unknown) => this.logger.warn(`Resumo do vendedor não enviado: ${(err as Error).message}`))
+        await this.runTenant(row.tenantId, config, now, slot).catch((err: unknown) => this.logger.warn(`Resumo do vendedor não enviado: ${(err as Error).message}`))
       }
     } finally {
       this.running = false
     }
   }
 
-  private async runTenant(tenantId: string, config: SellerWeekly, now: Date) {
-    const cycle = reportCycle(config.frequency, config.time, now)
+  private async runTenant(tenantId: string, config: SellerWeekly, now: Date, slot: DigestSlot = 1) {
+    const cycle = reportCycle(config.frequency, config.time, now, config.sendDay)
     if (!cycle.due) return
+    const S = DIGEST_SLOTS[slot]
+    const WEEKLY_LOG_KEY = S.log
     const saved = await this.prisma.tenantSetting.findUnique({ where: { tenantId_key: { tenantId, key: WEEKLY_LOG_KEY } } })
     const log: WeeklyLog = (saved?.value as WeeklyLog | null)?.cycle === cycle.key ? (saved!.value as WeeklyLog) : { cycle: cycle.key, sellers: {} }
     const done = log.sellers ?? {}
@@ -158,7 +177,7 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
       return this.prisma.tenantSetting.upsert({ where: { tenantId_key: { tenantId, key: WEEKLY_LOG_KEY } }, create: { tenantId, key: WEEKLY_LOG_KEY, value }, update: { value } })
     }
     // A análise começa junto com os envios (leva alguns minutos); a mensagem dela só sai quando ficar pronta.
-    const ai = aiManagers.length ? await this.perdasIa.forCycle(tenantId, cycle) : null
+    const ai = aiManagers.length ? await this.perdasIa.forCycle(tenantId, { ...cycle, key: `${S.ai}${cycle.key}` }) : null
     if (ai === 'wait' && !reports.length && !managers.length) return
     const base = managers.length && config.sections.includes('base') ? await loadBaseLeads(this.prisma, tenantId, cycle) : null
     // Fila: os vendedores e depois os gestores. Uma mensagem por vez; quem não tem telefone é pulado sem esperar.
@@ -196,6 +215,7 @@ export class RelatorioSemanalService implements OnApplicationBootstrap, OnModule
 class WeeklyDto {
   @ApiProperty() @IsBoolean() enabled!: boolean
   @ApiPropertyOptional({ enum: FREQUENCIES }) @IsOptional() @IsIn(FREQUENCIES) frequency?: ReportFrequency
+  @ApiPropertyOptional({ description: 'Semanal: dia da semana (0 domingo ... 6 sábado). Mensal: dia do mês (1 a 28).' }) @IsOptional() @IsInt() @Min(0) @Max(28) sendDay?: number
   @ApiPropertyOptional({ description: 'false = só os números informados recebem (resumo da equipe)' }) @IsOptional() @IsBoolean() toSellers?: boolean
   @ApiProperty({ example: '08:00' }) @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'Horário inválido (use HH:MM).' }) time!: string
   @ApiPropertyOptional() @ValidateIf((_, v) => v !== null) @IsUUID() numberId!: string | null
@@ -209,6 +229,11 @@ class WeeklyDto {
 
 class WeeklyQueryDto {
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) ref?: string
+  @ApiPropertyOptional({ enum: ['1', '2'], description: '2 = o segundo envio (ex.: mensal)' }) @IsOptional() @IsIn(['1', '2']) envio?: string
+}
+
+class WeeklySlotDto {
+  @ApiPropertyOptional({ enum: ['1', '2'] }) @IsOptional() @IsIn(['1', '2']) envio?: string
 }
 
 /** Resumo do vendedor (semanal), em Marketing › Relatórios e alertas. */
@@ -219,11 +244,11 @@ export class RelatorioSemanalController {
 
   @Get()
   view(@CurrentUser() user: AuthUser, @Query() q: WeeklyQueryDto) {
-    return this.weekly.view(user, q.ref)
+    return this.weekly.view(user, q.ref, q.envio)
   }
 
   @Put()
-  save(@CurrentUser() user: AuthUser, @Body() dto: WeeklyDto, @ReqContext() ctx: RequestCtx) {
-    return this.weekly.save(user, dto, ctx)
+  save(@CurrentUser() user: AuthUser, @Body() dto: WeeklyDto, @Query() q: WeeklySlotDto, @ReqContext() ctx: RequestCtx) {
+    return this.weekly.save(user, dto, ctx, q.envio)
   }
 }
