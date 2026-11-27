@@ -2,7 +2,7 @@
 // ajustar no CRM (modo do ICMS, nome da taxa, cubagem) e o que pedir à transportadora (reajuste, cidades sem tabela,
 // taxa não combinada). Sem banco e sem rede (test/fretes-diagnostico.spec.ts).
 
-import { normName } from './conciliacao'
+import { isIcmsName, normName } from './conciliacao'
 
 export interface DiagCte {
   id: string
@@ -55,7 +55,6 @@ export interface DiagCarrier {
 const MIN = 3
 const brl = (n: number) => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const pct = (n: number) => `${n.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
-const ICMS_NAMES = new Set(['ICMS', 'OUTROS', 'IMPOSTO', 'IMPOSTOS'])
 const median = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b)
   const m = Math.floor(s.length / 2)
@@ -99,7 +98,7 @@ export function diagnoseCarrier(list: DiagCte[]): DiagFinding[] {
     const lines = c.recDetail?.lines ?? []
     for (const l of lines.filter((x) => x.status === 'NAO_PREVISTA' && (x.charged ?? 0) > 0)) {
       const key = normName(l.name)
-      if (ICMS_NAMES.has(key)) continue
+      if (isIcmsName(key)) continue
       const e = extra.get(key) ?? { name: l.name, ctes: [] as DiagCte[], values: [] as number[], renamed: new Map<string, number>() }
       e.ctes.push(c)
       e.values.push(l.charged!)
@@ -123,7 +122,7 @@ export function diagnoseCarrier(list: DiagCte[]): DiagFinding[] {
   for (const c of reconciled) for (const l of c.recDetail?.lines ?? []) {
     if (l.status !== 'DIFERENTE' || !(l.expected && l.expected > 0) || l.charged === null) continue
     const key = normName(l.name)
-    if (ICMS_NAMES.has(key)) continue
+    if (isIcmsName(key)) continue
     const e = diff.get(key) ?? { name: l.name, ctes: [] as DiagCte[], ratios: [] as number[] }
     e.ctes.push(c)
     e.ratios.push(l.charged / l.expected)
@@ -144,7 +143,7 @@ export function diagnoseCarrier(list: DiagCte[]): DiagFinding[] {
   for (const c of reconciled) for (const l of c.recDetail?.lines ?? []) {
     if (l.status !== 'NAO_COBRADA' || !(l.expected && l.expected > 0.009)) continue
     const key = normName(l.name)
-    if (ICMS_NAMES.has(key) || extra.has(key)) continue
+    if (isIcmsName(key) || extra.has(key)) continue
     const e = never.get(key) ?? { name: l.name, ctes: [] as DiagCte[] }
     e.ctes.push(c)
     never.set(key, e)

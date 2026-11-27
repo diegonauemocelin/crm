@@ -66,3 +66,19 @@ describe('fretes: regiões da transportadora', () => {
     expect(['201.76.41.87', '8.8.8.8', '2804:14c::1'].some(privateIp)).toBe(false)
   })
 })
+
+describe('lista de cidades com PRAÇA (Azurelog)', () => {
+  it('praça vira a região com a UF na frente e o prazo sai do texto', async () => {
+    const { parseBaseList } = await import('../src/fretes/regioes')
+    const r = parseBaseList([
+      ['CEP INICIAL', 'CEP FINAL', 'CODIGO IBGE', 'CIDADE', 'UF', 'PRAÇA', 'PRAZO'],
+      [69945000, 69949999, 1200013, 'ACRELANDIA', 'AC', 'Interior I', 'Até  15 d.ú'],
+      [69935000, 69939999, 1200054, 'JORDAO', 'AC', 'Interior Ill - Fluvial', 'Até 21 d.ú'],
+    ])!
+    expect(r.invalid).toBe(0)
+    expect(r.regions.map((x) => [x.code, x.ibge, x.deadlineDays])).toEqual([
+      ['AC - INTERIOR I', '1200013', 15],
+      ['AC - INTERIOR III - FLUVIAL', '1200054', 21],
+    ])
+  })
+})

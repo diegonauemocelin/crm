@@ -173,7 +173,7 @@ export function ComponentsTab({ table, version }: { table: FreightTable; version
                     {c.description && <p className="mt-1 text-xs text-muted-foreground">{c.description}</p>}
                   </TableCell>
                   <TableCell className="align-top">
-                    <Input aria-label="Nome no CT-e" className="h-8 text-xs" placeholder="Padrão" value={c.cteName ?? ''} disabled={!editable} onChange={(e) => update(i, { cteName: e.target.value || null })} />
+                    <Input aria-label="Nome no CT-e" className="h-8 text-xs" placeholder="Padrão" title="Como a transportadora chama este componente no CT-e. Vários nomes: separe com ; (ex.: IN/AD-VALOREM C; IN/AD-VALOREM V)" value={c.cteName ?? ''} disabled={!editable} onChange={(e) => update(i, { cteName: e.target.value || null })} />
                   </TableCell>
                   <TableCell className="text-center align-top">
                     <Switch checked={c.inTax} disabled={!editable} onCheckedChange={(x) => update(i, { inTax: x })} aria-label={`${c.name} soma no imposto`} />
