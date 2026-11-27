@@ -93,7 +93,8 @@ export function reconcile(expected: ExpectedRef, cte: ChargedCte, tol: Tolerance
       continue
     }
     seen.set(n, c.value)
-    const idx = exp.findIndex((e, i) => !used.has(i) && [e.cteName, e.name, e.code].some((x) => x && normName(x) === n))
+    // "Nomes no CT-e" aceita vários nomes separados por ; (ex.: "IN/AD-VALOREM C; IN/AD-VALOREM V" da Azul).
+    const idx = exp.findIndex((e, i) => !used.has(i) && [...(e.cteName ?? '').split(';'), e.name, e.code].some((x) => x && normName(x) === n))
     if (idx < 0) {
       types.add('TAXA_NAO_PREVISTA')
       lines.push({ name: c.name, expected: null, charged: c.value, difference: money(c.value), status: 'NAO_PREVISTA' })

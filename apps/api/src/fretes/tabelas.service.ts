@@ -114,7 +114,7 @@ export function validateComponents(list: ComponentDef[]): ComponentDef[] {
       if (!cf.ok) throw new BadRequestException(`Condição de ${name}: ${cf.error}`)
     }
     const order = Number.isFinite(c.order) ? Math.trunc(c.order) : (i + 1) * 10
-    return { code, name, formula: c.formula.trim(), condition, inTax: !!c.inTax, cteName: cleanText(c.cteName, 80) || null, order, active: c.active !== false, description: cleanText(c.description, 300) || null }
+    return { code, name, formula: c.formula.trim(), condition, inTax: !!c.inTax, cteName: cleanText(c.cteName, 200) || null, order, active: c.active !== false, description: cleanText(c.description, 300) || null }
   })
 }
 

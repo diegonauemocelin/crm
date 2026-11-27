@@ -73,3 +73,14 @@ describe('ICMS repetido como componente', () => {
     expect(isIcmsName(normName('FRETE PESO'))).toBe(false)
   })
 })
+
+describe('vários nomes no CT-e', () => {
+  it('"IN/AD-VALOREM C; IN/AD-VALOREM V" casa com qualquer um dos dois', () => {
+    const exp = { total: 30, components: [{ code: 'FRETE_PESO', name: 'Frete peso', cteName: 'FRETE', value: 25 }, { code: 'ADVALOREM', name: 'ADVALOREM', cteName: 'IN/AD-VALOREM C; IN/AD-VALOREM V', value: 5 }], icms: null, weight: 1 }
+    for (const nome of ['IN/AD-VALOREM C', 'IN/AD-VALOREM V']) {
+      const r = reconcile(exp, { total: 30, components: [{ name: 'FRETE', value: 25 }, { name: nome, value: 5 }], icms: null, weight: 1 }, { value: 1, percent: 0 })
+      expect(r.status).toBe('CONCILIADO')
+      expect(r.lines.every((l) => l.status === 'OK')).toBe(true)
+    }
+  })
+})

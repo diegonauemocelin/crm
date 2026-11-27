@@ -226,7 +226,7 @@ class ComponentDto {
   @IsString() @Length(1, 500) formula!: string
   @IsOptional() @nullable @IsString() @MaxLength(500) condition?: string | null
   @IsBoolean() inTax!: boolean
-  @IsOptional() @nullable @IsString() @MaxLength(80) cteName?: string | null
+  @IsOptional() @nullable @IsString() @MaxLength(200) cteName?: string | null
   @IsInt() @Min(0) @Max(100_000) order!: number
   @IsBoolean() active!: boolean
   @IsOptional() @nullable @IsString() @MaxLength(300) description?: string | null
