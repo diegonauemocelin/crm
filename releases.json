@@ -2,6 +2,28 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.85",
+      "date": "2026-11-27",
+      "title": "Cotação: leitura do orçamento pelo print com IA, caixa pelo número e texto para WhatsApp",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Cotação de frete › \"Ler orçamento (print)\": cole ou envie o print do orçamento. A IA (Gemini gratuito, com a pesquisa do Google) lê código, descrição e quantidade, busca na internet a medida e o peso de cada peça (o que não achar vem como ESTIMADO, para medir antes de despachar) e lê o cabeçalho: CEP, cliente, CPF/CNPJ, valor, número do orçamento e vendedor, que preenchem a cotação. As peças viram volumes editáveis; \"Sugerir caixa\" escolhe a embalagem."
+        },
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "Cotação de frete › \"Texto para transportadora (WhatsApp)\": monta o pedido de cotação (remetente, destinatário, valor da NF, tomador, volumes, medidas, peso e CEP) com os dados da tela, para copiar ou abrir no WhatsApp e mandar às transportadoras sem tabela."
+        },
+        {
+          "type": "melhoria",
+          "area": "Fretes",
+          "text": "Cotação de frete: na linha \"Caixa (medida total)\", digite o número ou escolha a caixa cadastrada e as medidas são preenchidas; dá para alterar (ex.: altura menor quando a caixa é cortada)."
+        }
+      ]
+    },
+    {
       "version": "3.0.84",
       "date": "2026-11-27",
       "title": "CT-e cotado pela API conciliado, filtro CIF/FOB, divergentes por valor e Diagnóstico mais enxuto",
