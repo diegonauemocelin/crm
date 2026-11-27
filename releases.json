@@ -2,6 +2,18 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.83",
+      "date": "2026-11-27",
+      "title": "Análise inteligente do CT-e com IA",
+      "changes": [
+        {
+          "type": "novo",
+          "area": "Fretes",
+          "text": "CT-e › Conciliação: botão \"Analisar com IA\" (Gemini, a chave gratuita já cadastrada no CRM). A IA compara o CT-e (com pesos real, cubado e taxado e as observações do XML) com a tabela de frete do destino e explica o motivo de cada diferença, componente por componente: o que ajustar no CRM, o que contestar e o que perguntar à transportadora (com botão para copiar as perguntas). A análise fica guardada no CT-e."
+        }
+      ]
+    },
+    {
       "version": "3.0.82",
       "date": "2026-11-27",
       "title": "Conciliação de CT-e: vários nomes por componente e ICMS repetido; lista de cidades com praça",
