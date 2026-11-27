@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalculatorIcon, CheckCircle2Icon, ChevronDownIcon, ChevronRightIcon, DownloadIcon, HistoryIcon, LayoutGridIcon, ListIcon, Loader2Icon, MapPinIcon, PackageIcon, PlusIcon, PrinterIcon, RefreshCwIcon, SearchIcon, Trash2Icon, TruckIcon, UploadIcon, UserIcon, XIcon } from 'lucide-react'
+import { CalculatorIcon, CheckCircle2Icon, ChevronDownIcon, ChevronRightIcon, DownloadIcon, HistoryIcon, LayoutGridIcon, ListIcon, Loader2Icon, MapPinIcon, PackageIcon, PlusIcon, PrinterIcon, RefreshCwIcon, SearchIcon, SparklesIcon, Trash2Icon, TruckIcon, UploadIcon, UserIcon, XIcon } from 'lucide-react'
 import { type FormEvent, Fragment, type ReactNode, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
@@ -62,6 +62,124 @@ interface SkuProduct {
 
 const numText = (v: number | null) => (v === null ? '' : String(v).replace('.', ','))
 const emptyVolume = (): VolumeRow => ({ quantity: '1', weight: '', length: '', width: '', height: '' })
+
+type PartAi = { referencia: string; descricao: string; quantidade: number; comprimento: number | null; largura: number | null; altura: number | null; peso: number | null; fonte: string | null; estimado: boolean }
+
+/**
+ * Print do orçamento: a IA (Gemini com a pesquisa do Google) lê código, descrição e quantidade e busca a medida e o peso
+ * de cada peça. Os itens viram volumes editáveis; "Sugerir caixa" escolhe a embalagem.
+ */
+function QuoteImageButton({ onUse }: { onUse: (rows: VolumeRow[]) => void }) {
+  const [open, setOpen] = useState(false)
+  const [file, setFile] = useState<File | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
+  const read = useMutation({
+    mutationFn: () => {
+      const fd = new FormData()
+      fd.append('imagem', file!)
+      return api.post<{ items: PartAi[]; sources: string[] }>('/fretes/cotacao/pecas-ia', fd)
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const pick = (f: File | null | undefined) => {
+    if (!f || !f.type.startsWith('image/')) return
+    setFile(f)
+    read.reset()
+    setPreview((old) => {
+      if (old) URL.revokeObjectURL(old)
+      return URL.createObjectURL(f)
+    })
+  }
+  const close = () => {
+    setOpen(false)
+    setFile(null)
+    read.reset()
+    if (preview) URL.revokeObjectURL(preview)
+    setPreview(null)
+  }
+  const fmt = (n: number | null) => (n === null ? '?' : fmtNum(n))
+  const items = read.data?.items ?? []
+  return (
+    <>
+      <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)} title="Envie ou cole o print do orçamento: a IA busca na internet a medida e o peso de cada peça pela referência">
+        <SparklesIcon aria-hidden /> Ler orçamento (print)
+      </Button>
+      {open && (
+        <Dialog open onOpenChange={(o) => !o && close()}>
+          <DialogContent className="sm:max-w-3xl" onPaste={(e) => pick([...e.clipboardData.files].find((f) => f.type.startsWith('image/')))}>
+            <DialogHeader>
+              <DialogTitle>Ler orçamento pelo print</DialogTitle>
+              <DialogDescription>Cole o print (Ctrl+V) ou escolha a imagem. A IA lê código, descrição e quantidade e busca na internet a medida e o peso de cada peça. Confira antes de usar: o que ela não achar vem como ESTIMADO.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => pick(e.target.files?.[0])} />
+              {preview && <img src={preview} alt="Print do orçamento" className="max-h-48 rounded border object-contain" />}
+              {read.isPending && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2Icon className="size-4 animate-spin" aria-hidden /> Lendo o orçamento e pesquisando as peças… pode levar até 2 minutos.</p>}
+              {items.length > 0 && (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Código</TableHead>
+                        <TableHead>Descrição</TableHead>
+                        <TableHead className="text-right">Qtd</TableHead>
+                        <TableHead>Medida un. (cm)</TableHead>
+                        <TableHead className="text-right">Peso un. (kg)</TableHead>
+                        <TableHead>Fonte</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {items.map((i, k) => (
+                        <TableRow key={k}>
+                          <TableCell className="font-mono text-xs">{i.referencia}</TableCell>
+                          <TableCell className="text-xs">{i.descricao}</TableCell>
+                          <TableCell className="text-right">{i.quantidade}</TableCell>
+                          <TableCell className="text-xs">{`${fmt(i.comprimento)} × ${fmt(i.largura)} × ${fmt(i.altura)}`}</TableCell>
+                          <TableCell className="text-right">{fmt(i.peso)}</TableCell>
+                          <TableCell className="text-xs">{i.estimado ? <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-300">ESTIMADO</Badge> : i.fonte}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {items.some((i) => i.estimado) && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Itens ESTIMADOS: medir e pesar antes de despachar.</p>}
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={close}>
+                Cancelar
+              </Button>
+              {items.length > 0 ? (
+                <Button
+                  onClick={() => {
+                    onUse(
+                      items.map((i) => ({
+                        quantity: String(i.quantidade),
+                        weight: i.peso === null ? '' : String(i.peso).replace('.', ','),
+                        length: i.comprimento === null ? '' : String(i.comprimento).replace('.', ','),
+                        width: i.largura === null ? '' : String(i.largura).replace('.', ','),
+                        height: i.altura === null ? '' : String(i.altura).replace('.', ','),
+                        product: { sku: i.referencia, name: i.descricao, warning: i.estimado ? 'ESTIMADO pela IA: medir antes de despachar' : i.fonte ? `Medida: ${i.fonte}` : null },
+                      })),
+                    )
+                    toast.success('Peças nos volumes. Clique em "Sugerir caixa" para escolher a embalagem.')
+                    close()
+                  }}
+                >
+                  Usar nos volumes
+                </Button>
+              ) : (
+                <Button disabled={!file || read.isPending} onClick={() => read.mutate()}>
+                  {read.isPending ? <Loader2Icon className="animate-spin" aria-hidden /> : <SparklesIcon aria-hidden />} Ler com IA
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  )
+}
 
 interface ErpFill {
   status: 'OK'
@@ -722,6 +840,7 @@ function NewQuote() {
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Volumes (medidas em cm, peso em kg por unidade)</p>
                 <div className="flex gap-2">
+                  <QuoteImageButton onUse={(rows) => setVolumes((prev) => [...prev.filter((v) => v.product || v.weight || v.length || v.width || v.height), ...rows].slice(0, 50))} />
                   {can('fretes_tabelas', 'edit') && <BoxesButton />}
                   <Button type="button" size="sm" variant="outline" onClick={() => setVolumes((v) => [...v, emptyVolume()])} disabled={volumes.length >= 50}>
                     <PlusIcon aria-hidden /> Volume
