@@ -113,7 +113,7 @@ export function regionHeaderIndex(rows: unknown[][]) {
 export function baseListHeaderIndex(rows: unknown[][]) {
   return rows.slice(0, 15).findIndex((r) => {
     const h = (r ?? []).map(normalizeHeader)
-    return h.some((x) => /^(cidade|municipio)$/.test(x)) && h.some((x) => /^(estado|uf)$/.test(x)) && h.some((x) => /^base|unidade (responsavel|de entrega)|filial responsavel/.test(x))
+    return h.some((x) => /^(cidade|municipio)$/.test(x)) && h.some((x) => /^(estado|uf)$/.test(x)) && h.some((x) => /^base|unidade (responsavel|de entrega)|filial responsavel|^praca$/.test(x))
   })
 }
 
@@ -130,7 +130,9 @@ export function parseBaseList(rows: unknown[][]) {
   const col = (re: RegExp) => h.findIndex((x) => re.test(x))
   const cCity = col(/^(cidade|municipio)$/)
   const cUf = col(/^(estado|uf)$/)
+  // "PRAÇA" (Azurelog: Capital, Interior I...) vira a região com a UF na frente ("AC - INTERIOR I"), porque o nome se repete em cada estado.
   const cBase = col(/^base|unidade (responsavel|de entrega)|filial responsavel/)
+  const cPraca = cBase < 0 ? col(/^praca$/) : -1
   const cIbge = col(/ibge/)
   const cAddr = col(/^endereco/)
   const cWho = col(/^responsavel|^contato/)
@@ -147,7 +149,8 @@ export function parseBaseList(rows: unknown[][]) {
     // "Paraíso - TO" e "ANAPOLIS  (GO)": o estado no nome sai.
     const city = str(r, cCity).replace(UF_SUFFIX, (m, x: string) => (x.toUpperCase() === uf ? '' : m)).replace(/\s+/g, ' ').trim()
     const key = cityKey(city)
-    const base = str(r, cBase).replace(/\s+/g, ' ').toUpperCase().slice(0, 40)
+    const praca = cPraca >= 0 ? str(r, cPraca).replace(/\bIll\b/g, 'III') : ''
+    const base = (cPraca >= 0 ? (praca ? `${uf} - ${praca}` : '') : str(r, cBase)).replace(/\s+/g, ' ').toUpperCase().slice(0, 40)
     if (!city || !key || !/^[A-Z]{2}$/.test(uf) || !base) {
       invalid++
       continue
@@ -155,7 +158,8 @@ export function parseBaseList(rows: unknown[][]) {
     const ibgeRaw = str(r, cIbge).replace(/\D/g, '')
     // Sem a coluna do IBGE (ou com o código interno da transportadora): o código vem do nome da cidade e da UF.
     const ibge = ibgeRaw.length === 7 && ufByIbge(ibgeRaw) === uf ? ibgeRaw : (ibgeByCity(uf, city) ?? '')
-    const days = Number(str(r, cDays).replace(',', '.'))
+    // "Até 15 d.ú" (texto com o número de dias) também vale.
+    const days = Number((/\d+(?:[.,]\d+)?/.exec(str(r, cDays))?.[0] ?? str(r, cDays)).replace(',', '.'))
     const pick = normalizeHeader(str(r, cPick))
     const contact = [str(r, cAddr), str(r, cWho), str(r, cPhone)].filter(Boolean).join(' · ').slice(0, 300)
     out.push({
