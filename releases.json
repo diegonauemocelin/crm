@@ -2,6 +2,21 @@
   "$comment": "Fonte única de versão do sistema. A entrada de maior versão é a versão instalada. Toda entrega adiciona uma nova entrada no topo (ver docs/RELEASES.md).",
   "releases": [
     {
+      "version": "3.0.86",
+      "date": "2026-11-27",
+      "title": "Resumo do vendedor com 2º envio (mensal) e dia do envio",
+      "changes": [
+        {
+          "type": "novo",
+          "text": "Resumo do vendedor (Marketing › Relatórios e alertas): um 2º envio do mesmo resumo, com frequência, dia, horário e informações próprias. Serve, por exemplo, para mandar o mensal com menos informações, além do semanal."
+        },
+        {
+          "type": "melhoria",
+          "text": "Resumo do vendedor: escolha do dia do envio (no semanal, o dia da semana; no mensal, o dia do mês, de 1 a 28) junto com o horário. O semanal cobre os 7 dias antes do envio e o mensal, o mês anterior inteiro."
+        }
+      ]
+    },
+    {
       "version": "3.0.85",
       "date": "2026-11-27",
       "title": "Cotação: leitura do orçamento pelo print com IA, caixa pelo número e texto para WhatsApp",
