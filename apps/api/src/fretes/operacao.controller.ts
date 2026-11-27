@@ -345,6 +345,13 @@ export class FretesOperacaoController {
     return this.ctes.reprocessPending(user, ctx)
   }
 
+  @Post('ctes/:id/analise-ia')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  aiAnalyze(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.ctes.aiAnalyze(user, id)
+  }
+
   @Post('ctes/:id/reconciliar')
   @HttpCode(200)
   reprocess(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @ReqContext() ctx: RequestCtx) {
