@@ -103,6 +103,8 @@ class CteListDto extends ShipmentListDto {
   @IsOptional() @bool @IsBoolean() pendentes?: boolean
   /** Estado do cliente (venda: destino) ou do fornecedor (compra: origem). */
   @IsOptional() @Matches(/^[A-Z]{2}$/) uf?: string
+  /** divergencia: maior diferença (cobrado acima do esperado) primeiro. */
+  @IsOptional() @IsIn(['divergencia']) ordem?: 'divergencia'
 }
 
 class DiagDto {
@@ -308,7 +310,7 @@ export class FretesOperacaoController {
 
   @Get('ctes')
   listCtes(@CurrentUser() user: AuthUser, @Query() q: CteListDto) {
-    return this.ctes.list(user, { unitId: q.filial, carrierId: q.transportadora, recStatus: q.situacao, decision: q.decisao, from: q.de, to: q.ate, search: q.busca, page: q.pagina, pending: q.pendentes, kind: q.tipo, uf: q.uf })
+    return this.ctes.list(user, { unitId: q.filial, carrierId: q.transportadora, recStatus: q.situacao, decision: q.decisao, from: q.de, to: q.ate, search: q.busca, page: q.pagina, pending: q.pendentes, kind: q.tipo, uf: q.uf, order: q.ordem })
   }
 
   @Get('ctes/diagnostico')

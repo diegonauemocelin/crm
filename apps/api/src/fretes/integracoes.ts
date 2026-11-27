@@ -589,3 +589,26 @@ export function parseSswQuote(soap: string): { price: number | null; deadlineDay
   const days = Number(tag(inner, 'prazo'))
   return { price, deadlineDays: Number.isFinite(days) && days >= 0 ? days : null, error: price === null || price <= 0 ? msg || 'Sem preço para este envio.' : null }
 }
+
+/**
+ * Integração de cotação online (API) ligada que corresponde à transportadora do CT-e, pelo nome dela (ou o do SSW
+ * configurado). O frete dessas é calculado na hora pela própria transportadora: sem tabela no CRM, o CT-e é conciliado.
+ */
+export function onlineIntegrationFor(c: Partial<IntegrationsConfig> | null | undefined, ...names: (string | null | undefined)[]): string | null {
+  const text = names
+    .filter(Boolean)
+    .join(' ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+  if (!text || !c) return null
+  const on = (x: { enabled?: boolean } | undefined) => !!x?.enabled
+  if (on(c.braspress) && /braspress/.test(text)) return 'Braspress'
+  if (on(c.jadlog) && /jadlog/.test(text)) return 'Jadlog'
+  if (on(c.rodonaves) && /rodonaves/.test(text)) return 'Rodonaves'
+  if (on(c.correios) && /correios|empresa brasileira de/.test(text)) return 'Correios'
+  if (on(c.dhl) && /\bdhl\b/.test(text)) return 'DHL Express'
+  const ssw = c.ssw?.name?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/\s+/)[0]
+  if (on(c.ssw) && ssw && ssw.length >= 2 && new RegExp(`\\b${ssw.replace(/[^a-z0-9]/g, '')}\\b`).test(text)) return c.ssw!.name
+  return null
+}
