@@ -17,6 +17,7 @@ import { CTE_AI_PROMPT, cteAiInput, cteXmlExtras, parseCteAi } from './cte-ia'
 import { GEMINI_MODELS, SECRET_KEY } from '../assistente/constantes'
 import { decrypt } from '../common/crypto'
 import { CotacaoService, DROP_OFF_CODE, dropOffOf, type QuoteResult } from './cotacao.service'
+import { IntegracoesService } from './integracoes.service'
 import { confrontNfeCte, DEFAULT_NFE_TOLERANCE } from './confronto'
 import { autoCarrierFromCte, companyRoles, type CteData, internalRateFrom, parseCteCancel, parseCteXml, type RateLearning } from './cte'
 import { money } from './formula'
@@ -57,6 +58,7 @@ export class CteService implements OnApplicationBootstrap {
     private readonly files: FilesService,
     private readonly settings: SettingsService,
     private readonly quotes: CotacaoService,
+    private readonly online: IntegracoesService,
   ) {}
 
   /** Ao subir: cadastra as transportadoras dos CT-es antigos que ainda estão sem cadastro (uma vez por CNPJ). */
@@ -487,6 +489,30 @@ export class CteService implements OnApplicationBootstrap {
         source = 'TABELA'
       } else if (r && 'reasons' in r) tableReasons = r.noTables ? [] : r.reasons
     }
+    // Transportadora cotada pela API (integração ligada) sem tabela no CRM, ou pedido cotado pela API: o frete é calculado
+    // na hora pela própria transportadora; o CT-e fica conciliado e aprovado (decisão do usuário, 27/11/2026).
+    const carrierName = c.carrierId ? (await this.prisma.freightCarrier.findUnique({ where: { id: c.carrierId }, select: { name: true, quoteName: true } })) : null
+    const api = exp?.online ? exp.tableName || 'cotação online' : !expected ? await this.online.onlineFor(c.tenantId, carrierName?.name, carrierName?.quoteName, c.emitName).catch(() => null) : null
+    if (api) {
+      await this.prisma.freightCte.update({
+        where: { id },
+        data: {
+          recStatus: 'CONCILIADO',
+          recTypes: [],
+          recSource: 'API',
+          expectedTotal: Number(c.total),
+          difference: 0,
+          recDetail: { reason: `Frete cotado pela API (${api}): a transportadora calcula na hora e não há tabela no CRM para comparar. Conciliado pelo valor cobrado.`, reference: `Cotação pela API (${api})` } as Prisma.InputJsonValue,
+          recAt: new Date(),
+          ...(!c.decision ? { decision: 'APROVADO', approvedValue: Number(c.total), decidedByName: 'Conciliação automática (API)', decidedAt: new Date() } : {}),
+        },
+      })
+      if (shipment && shipment.status === 'AGUARDANDO_CONCILIACAO') {
+        await this.prisma.freightShipment.update({ where: { id: shipment.id }, data: { status: 'CONCILIADO' } })
+        await this.prisma.freightShipmentEvent.create({ data: { shipmentId: shipment.id, status: 'CONCILIADO', note: `CT-e ${c.number} conciliado (cotação pela API)`, userName: 'Conciliação automática' } })
+      }
+      return
+    }
     if (!expected) {
       const why = !c.carrierId ? 'Transportadora do CT-e não cadastrada (CNPJ do emitente).' : !c.unitId ? 'Filial de origem não identificada (cadastre o CNPJ das filiais).' : !c.weight || !c.destZip ? 'CT-e sem peso ou CEP de destino.' : tableReasons && !tableReasons.length ? 'A transportadora não tem tabela de frete cadastrada (fora rascunho) e não há pedido com cotação.' : 'Nenhuma tabela da transportadora calcula este frete na data do CT-e e não há pedido com cotação.'
       await this.prisma.freightCte.update({ where: { id }, data: { recStatus: 'SEM_REFERENCIA', recTypes: [], recSource: null, expectedTotal: null, difference: null, recDetail: { reason: why, tables: tableReasons ?? [] } as Prisma.InputJsonValue, recAt: new Date() } })
@@ -606,12 +632,15 @@ export class CteService implements OnApplicationBootstrap {
     return this.get(user, id)
   }
 
-  async list(user: AuthUser, f: { unitId?: string; carrierId?: string; recStatus?: string; decision?: string; from?: string; to?: string; search?: string; page?: number; pending?: boolean; kind?: 'VENDA' | 'COMPRA'; uf?: string }) {
+  async list(user: AuthUser, f: { unitId?: string; carrierId?: string; recStatus?: string; decision?: string; from?: string; to?: string; search?: string; page?: number; pending?: boolean; kind?: 'VENDA' | 'COMPRA'; uf?: string; order?: 'divergencia'; pays?: 'CIF' | 'FOB' }) {
     assertCan(user, 'fretes_cte', 'view')
     const and: Prisma.FreightCteWhereInput[] = [this.scopeWhere(user)]
     if (f.unitId) and.push({ unitId: f.unitId })
     if (f.carrierId) and.push({ carrierId: f.carrierId })
     // Venda: a empresa manda a carga (remetente ou expedidora, saída da filial). Compra: só recebe ou paga o frete.
+    // CIF: a empresa é a tomadora do CT-e (paga o frete). FOB: o tomador é outro (o cliente, o fornecedor).
+    if (f.pays === 'CIF') and.push({ companyRoles: { has: 'TOMADOR' } })
+    else if (f.pays === 'FOB') and.push({ NOT: { companyRoles: { has: 'TOMADOR' } } })
     if (f.kind === 'VENDA') and.push({ companyRoles: { hasSome: SHIPPER_ROLES } })
     else if (f.kind === 'COMPRA') and.push({ NOT: { companyRoles: { hasSome: SHIPPER_ROLES } } })
     // Estado do cliente (venda: destino) ou do fornecedor (compra: origem).
@@ -657,7 +686,7 @@ export class CteService implements OnApplicationBootstrap {
     const where = { AND: and }
     const [total, rows, sums, byStatus] = await Promise.all([
       this.prisma.freightCte.count({ where }),
-      this.prisma.freightCte.findMany({ where, orderBy: [{ issuedAt: 'desc' }, { createdAt: 'desc' }], skip: (page - 1) * PAGE, take: PAGE }),
+      this.prisma.freightCte.findMany({ where, orderBy: f.order === 'divergencia' ? [{ difference: { sort: 'desc', nulls: 'last' } }, { issuedAt: 'desc' }] : [{ issuedAt: 'desc' }, { createdAt: 'desc' }], skip: (page - 1) * PAGE, take: PAGE }),
       // Fora da conciliação (transportadora que não concilia) não entra nos totais, a não ser filtrando por ela.
       this.prisma.freightCte.aggregate({ where: { AND: [...and, { fiscalStatus: { not: 'CANCELADO' } }, ...(f.recStatus === 'FORA' ? [] : [{ recStatus: { not: 'FORA' } }])] }, _sum: { total: true, expectedTotal: true, difference: true, approvedValue: true, creditValue: true } }),
       this.prisma.freightCte.groupBy({ by: ['recStatus'], where: { AND: and.filter((x) => x !== byRec) }, _count: { _all: true } }),

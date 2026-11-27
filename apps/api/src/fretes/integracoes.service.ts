@@ -58,6 +58,7 @@ import {
   type DhlConfig,
   type DhlScope,
   type RodonavesConfig,
+  onlineIntegrationFor,
 } from './integracoes'
 
 export interface IntegrationsInput {
@@ -111,6 +112,11 @@ export class IntegracoesService {
       dhl: (({ apiSecretEnc, ...rest }) => ({ ...rest, hasSecret: !!apiSecretEnc }))({ ...DEFAULT_DHL, ...(c.dhl ?? {}) }),
       ssw: (({ passwordEnc, ...rest }) => ({ ...rest, hasPassword: !!passwordEnc }))({ ...DEFAULT_SSW, ...(c.ssw ?? {}) }),
     }
+  }
+
+  /** Nome da integração de cotação online (API) ligada que atende esta transportadora, ou null. */
+  async onlineFor(tenantId: string, ...names: (string | null | undefined)[]) {
+    return onlineIntegrationFor(await this.config(tenantId), ...names)
   }
 
   /** A cotação internacional (DHL Express) está ligada? Para a tela de cotação (sem expor a configuração). */

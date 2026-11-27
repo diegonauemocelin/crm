@@ -145,6 +145,8 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
   const carrier = params.get('transportadora') ?? ''
   const kind = params.get('tipo') ?? ''
   const uf = params.get('uf') ?? ''
+  const order = params.get('ordem') ?? ''
+  const freightPay = params.get('frete') ?? ''
   // Período: atalhos (hoje, 7, 30 e 60 dias) ou datas informadas.
   const period = params.get('periodo') ?? (params.get('de') || params.get('ate') ? 'data' : '')
   const preset = PERIODS.find((x) => x.value === period)?.days
@@ -194,6 +196,8 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
   if (from) qs.set('de', from)
   if (to) qs.set('ate', to)
   if (uf) qs.set('uf', uf)
+  if (order) qs.set('ordem', order)
+  if (freightPay) qs.set('frete', freightPay)
   if (active.unitId) qs.set('filial', active.unitId)
   const list = useQuery({
     queryKey: ['fretes', 'ctes', qs.toString()],
@@ -291,6 +295,16 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
             <SelectItem value="COMPRA">Compra (entrada)</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={freightPay || '__all__'} onValueChange={(v) => setParam('frete', v === '__all__' ? '' : v)}>
+          <SelectTrigger className="w-48" aria-label="Frete CIF ou FOB">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">CIF e FOB</SelectItem>
+            <SelectItem value="CIF">CIF (a empresa paga)</SelectItem>
+            <SelectItem value="FOB">FOB (outro paga)</SelectItem>
+          </SelectContent>
+        </Select>
         {!pendingOnly && (
           <Select value={decision || '__all__'} onValueChange={(v) => setParam('decisao', v === '__all__' ? '' : v)}>
             <SelectTrigger className="w-56" aria-label="Decisão">
@@ -354,7 +368,25 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
         <div className="grid gap-2 sm:grid-cols-5">
           <Sum label="Cobrado" value={list.data.sums.charged} />
           <Sum label="Esperado" value={list.data.sums.expected} />
-          <Sum label="Diferença" value={list.data.sums.difference} danger={list.data.sums.difference > 0.009} />
+          <Sum
+            label="Diferença"
+            value={list.data.sums.difference}
+            danger={list.data.sums.difference > 0.009}
+            active={order === 'divergencia'}
+            hint={order === 'divergencia' ? 'Divergentes, maior primeiro · clique para voltar' : 'Clique: só divergentes, maior primeiro'}
+            onClick={() => {
+              const next = new URLSearchParams(params)
+              if (order === 'divergencia') {
+                next.delete('ordem')
+                if (next.get('situacao') === 'DIVERGENTE') next.delete('situacao')
+              } else {
+                next.set('ordem', 'divergencia')
+                next.set('situacao', 'DIVERGENTE')
+              }
+              setParams(next)
+              setPage(1)
+            }}
+          />
           <Sum label="Aprovado" value={list.data.sums.approved} />
           <Sum label="Créditos obtidos" value={list.data.sums.credit} />
         </div>
@@ -480,7 +512,7 @@ function CteCard({ c }: { c: Cte }) {
           {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
         </div>
         <span className="text-sm text-muted-foreground">
-          Emitido em {c.issuedAt ? dateTime(c.issuedAt) : '—'} · {sale ? 'Venda' : 'Compra'}
+          Emitido em {c.issuedAt ? dateTime(c.issuedAt) : '—'} · {sale ? 'Venda' : 'Compra'}{c.companyRoles ? (c.companyRoles.includes('TOMADOR') ? ' · CIF' : ' · FOB') : ''}
         </span>
       </div>
       <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-start">
@@ -525,12 +557,19 @@ function CteCard({ c }: { c: Cte }) {
   )
 }
 
-function Sum({ label, value, danger }: { label: string; value: number; danger?: boolean }) {
-  return (
-    <div className="rounded-md border px-3 py-2">
+function Sum({ label, value, danger, onClick, active, hint }: { label: string; value: number; danger?: boolean; onClick?: () => void; active?: boolean; hint?: string }) {
+  const body = (
+    <>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={cn('font-semibold tabular-nums', danger && 'text-destructive')}>{money(value)}</p>
-    </div>
+      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+    </>
+  )
+  if (!onClick) return <div className="rounded-md border px-3 py-2">{body}</div>
+  return (
+    <button type="button" onClick={onClick} aria-pressed={active} className={cn('rounded-md border px-3 py-2 text-left transition-colors hover:bg-muted/60', active && 'border-destructive/60 bg-destructive/5')}>
+      {body}
+    </button>
   )
 }
 
