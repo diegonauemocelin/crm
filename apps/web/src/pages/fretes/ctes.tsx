@@ -146,6 +146,7 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
   const kind = params.get('tipo') ?? ''
   const uf = params.get('uf') ?? ''
   const order = params.get('ordem') ?? ''
+  const freightPay = params.get('frete') ?? ''
   // Período: atalhos (hoje, 7, 30 e 60 dias) ou datas informadas.
   const period = params.get('periodo') ?? (params.get('de') || params.get('ate') ? 'data' : '')
   const preset = PERIODS.find((x) => x.value === period)?.days
@@ -196,6 +197,7 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
   if (to) qs.set('ate', to)
   if (uf) qs.set('uf', uf)
   if (order) qs.set('ordem', order)
+  if (freightPay) qs.set('frete', freightPay)
   if (active.unitId) qs.set('filial', active.unitId)
   const list = useQuery({
     queryKey: ['fretes', 'ctes', qs.toString()],
@@ -291,6 +293,16 @@ function CteList({ pendingOnly }: { pendingOnly: boolean }) {
             <SelectItem value="__all__">Compra e venda</SelectItem>
             <SelectItem value="VENDA">Venda (saída da filial)</SelectItem>
             <SelectItem value="COMPRA">Compra (entrada)</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={freightPay || '__all__'} onValueChange={(v) => setParam('frete', v === '__all__' ? '' : v)}>
+          <SelectTrigger className="w-48" aria-label="Frete CIF ou FOB">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">CIF e FOB</SelectItem>
+            <SelectItem value="CIF">CIF (a empresa paga)</SelectItem>
+            <SelectItem value="FOB">FOB (outro paga)</SelectItem>
           </SelectContent>
         </Select>
         {!pendingOnly && (
@@ -500,7 +512,7 @@ function CteCard({ c }: { c: Cte }) {
           {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
         </div>
         <span className="text-sm text-muted-foreground">
-          Emitido em {c.issuedAt ? dateTime(c.issuedAt) : '—'} · {sale ? 'Venda' : 'Compra'}
+          Emitido em {c.issuedAt ? dateTime(c.issuedAt) : '—'} · {sale ? 'Venda' : 'Compra'}{c.companyRoles ? (c.companyRoles.includes('TOMADOR') ? ' · CIF' : ' · FOB') : ''}
         </span>
       </div>
       <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-start">

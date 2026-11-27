@@ -105,6 +105,8 @@ class CteListDto extends ShipmentListDto {
   @IsOptional() @Matches(/^[A-Z]{2}$/) uf?: string
   /** divergencia: maior diferença (cobrado acima do esperado) primeiro. */
   @IsOptional() @IsIn(['divergencia']) ordem?: 'divergencia'
+  /** CIF: a empresa é a tomadora (paga o frete). FOB: quem paga é outro (cliente, fornecedor). */
+  @IsOptional() @IsIn(['CIF', 'FOB']) frete?: 'CIF' | 'FOB'
 }
 
 class DiagDto {
@@ -310,7 +312,7 @@ export class FretesOperacaoController {
 
   @Get('ctes')
   listCtes(@CurrentUser() user: AuthUser, @Query() q: CteListDto) {
-    return this.ctes.list(user, { unitId: q.filial, carrierId: q.transportadora, recStatus: q.situacao, decision: q.decisao, from: q.de, to: q.ate, search: q.busca, page: q.pagina, pending: q.pendentes, kind: q.tipo, uf: q.uf, order: q.ordem })
+    return this.ctes.list(user, { unitId: q.filial, carrierId: q.transportadora, recStatus: q.situacao, decision: q.decisao, from: q.de, to: q.ate, search: q.busca, page: q.pagina, pending: q.pendentes, kind: q.tipo, uf: q.uf, order: q.ordem, pays: q.frete })
   }
 
   @Get('ctes/diagnostico')

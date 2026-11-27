@@ -632,12 +632,15 @@ export class CteService implements OnApplicationBootstrap {
     return this.get(user, id)
   }
 
-  async list(user: AuthUser, f: { unitId?: string; carrierId?: string; recStatus?: string; decision?: string; from?: string; to?: string; search?: string; page?: number; pending?: boolean; kind?: 'VENDA' | 'COMPRA'; uf?: string; order?: 'divergencia' }) {
+  async list(user: AuthUser, f: { unitId?: string; carrierId?: string; recStatus?: string; decision?: string; from?: string; to?: string; search?: string; page?: number; pending?: boolean; kind?: 'VENDA' | 'COMPRA'; uf?: string; order?: 'divergencia'; pays?: 'CIF' | 'FOB' }) {
     assertCan(user, 'fretes_cte', 'view')
     const and: Prisma.FreightCteWhereInput[] = [this.scopeWhere(user)]
     if (f.unitId) and.push({ unitId: f.unitId })
     if (f.carrierId) and.push({ carrierId: f.carrierId })
     // Venda: a empresa manda a carga (remetente ou expedidora, saída da filial). Compra: só recebe ou paga o frete.
+    // CIF: a empresa é a tomadora do CT-e (paga o frete). FOB: o tomador é outro (o cliente, o fornecedor).
+    if (f.pays === 'CIF') and.push({ companyRoles: { has: 'TOMADOR' } })
+    else if (f.pays === 'FOB') and.push({ NOT: { companyRoles: { has: 'TOMADOR' } } })
     if (f.kind === 'VENDA') and.push({ companyRoles: { hasSome: SHIPPER_ROLES } })
     else if (f.kind === 'COMPRA') and.push({ NOT: { companyRoles: { hasSome: SHIPPER_ROLES } } })
     // Estado do cliente (venda: destino) ou do fornecedor (compra: origem).
